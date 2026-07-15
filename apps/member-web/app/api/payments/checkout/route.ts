@@ -1,3 +1,4 @@
+import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
@@ -10,28 +11,46 @@ export async function POST(request: Request) {
     const supabase = createSupabaseAdminClient();
     const { data: registration, error } = await supabase
       .from("registrations")
-      .select("id, lunch_selected, donation_cents, people(email, first_name, last_name), experiences(title, lunch_cents)")
+      .select("id, person_id, experience_id, lunch_selected, donation_cents")
       .eq("id", registrationId)
       .single();
     if (error || !registration) return NextResponse.json({ error: "Registration not found." }, { status: 404 });
 
-    const experience = Array.isArray(registration.experiences) ? registration.experiences[0] : registration.experiences;
-    const person = Array.isArray(registration.people) ? registration.people[0] : registration.people;
+    const [{ data: person }, { data: experience }] = await Promise.all([
+      supabase.from("people").select("email").eq("id", registration.person_id).single(),
+      supabase.from("experiences").select("title, lunch_cents").eq("id", registration.experience_id).single(),
+    ]);
+
     const lunchCents = registration.lunch_selected ? Number(experience?.lunch_cents ?? 0) : 0;
     const donationCents = Number(registration.donation_cents ?? 0);
-    const lineItems = [];
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
     if (lunchCents > 0) {
-      lineItems.push({ price_data: { currency: "usd", product_data: { name: `${experience?.title ?? "MA experience"} lunch` }, unit_amount: lunchCents }, quantity: 1 });
+      lineItems.push({
+        price_data: {
+          currency: "usd",
+          product_data: { name: `${experience?.title ?? "MA experience"} lunch` },
+          unit_amount: lunchCents,
+        },
+        quantity: 1,
+      });
     }
+
     if (donationCents > 0) {
-      lineItems.push({ price_data: { currency: "usd", product_data: { name: "Support Melanated Adventurers" }, unit_amount: donationCents }, quantity: 1 });
+      lineItems.push({
+        price_data: {
+          currency: "usd",
+          product_data: { name: "Support Melanated Adventurers" },
+          unit_amount: donationCents,
+        },
+        quantity: 1,
+      });
     }
+
     if (lineItems.length === 0) return NextResponse.json({ checkoutRequired: false });
 
     const baseUrl = process.env.APP_BASE_URL ?? new URL(request.url).origin;
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       customer_email: person?.email ?? undefined,
       line_items: lineItems,
