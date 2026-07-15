@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const allowedExperienceLevels = new Set(["new", "beginner", "comfortable", "experienced"]);
 
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name, email, and communication consent are required." }, { status: 400 });
     }
 
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseAdminClient();
     const { data: existing } = await supabase.from("people").select("id, access_status").eq("email", email).maybeSingle();
     if (existing) return NextResponse.json({ duplicate: true, accessStatus: existing.access_status });
 
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       referral_source: String(body.referralSource ?? "").trim() || null,
       support_notes: String(body.notes ?? "").trim() || null,
       communication_consent: true,
+      communication_consent_at: new Date().toISOString(),
       access_status: "waitlisted",
     }).select("id, access_status").single();
 
