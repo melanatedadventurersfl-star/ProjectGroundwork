@@ -1,10 +1,16 @@
 {
-  "name": "hostinger-smoke-test",
+  "name": "hostinger-nextjs-minimal",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "node -e \"console.log('No build needed')\"",
-    "start": "node server.js"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p $PORT"
+  },
+  "dependencies": {
+    "next": "15.5.20",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
   },
   "engines": {
     "node": ">=22"
