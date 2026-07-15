@@ -6,8 +6,9 @@ export default function Home() {
   return (
     <main className="page" id="top">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Melanated Adventurers home">
-          <img src="/ma-mark.svg" alt="Melanated Adventurers Pathfinder emblem" width="54" height="54" />
+        <a className="brandWordmark" href="#top" aria-label="Melanated Adventurers home">
+          <span className="brandMark" aria-hidden="true">MA</span>
+          <span className="brandName">Melanated Adventurers</span>
         </a>
         <span>Pathfinder Invitation</span>
       </header>
