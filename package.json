@@ -1,14 +1,25 @@
 {
-  "name": "project-groundwork",
+  "name": "ma-member-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "npm --prefix apps/member-web run build",
-    "start": "npm --prefix apps/member-web run start",
-    "typecheck": "npm --prefix apps/member-web run typecheck",
-    "postinstall": "npm --prefix apps/member-web install"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p $PORT",
+    "typecheck": "tsc --noEmit"
   },
-  "engines": {
-    "node": ">=22"
+  "dependencies": {
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.4",
+    "next": "^15.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "stripe": "^18.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.2"
   }
 }
