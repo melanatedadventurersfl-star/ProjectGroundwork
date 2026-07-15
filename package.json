@@ -1,0 +1,9 @@
+{
+  "name": "project-groundwork",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Repository manifest used to enable Git-based application deployment. The MA member app is deployed from the ma-app-foundation-v0.1 branch.",
+  "engines": {
+    "node": ">=22"
+  }
+}
