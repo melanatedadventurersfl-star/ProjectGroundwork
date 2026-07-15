@@ -44,4 +44,15 @@ jobs:
       - name: Require successful typecheck
         if: always()
         run: test "${{ steps.typecheck.outcome }}" = "success"
-      - run: npm run build
+      - id: build
+        continue-on-error: true
+        run: npm run build 2>&1 | tee build.log
+      - name: Upload build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: member-web-build
+          path: apps/member-web/build.log
+      - name: Require successful build
+        if: always()
+        run: test "${{ steps.build.outcome }}" = "success"
