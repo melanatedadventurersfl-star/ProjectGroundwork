@@ -18,15 +18,15 @@ export async function POST(req: Request) {
   }
 
   if (fit.length < 50) {
-    return NextResponse.json({ error: "Please tell us a little more about why you are a strong fit." }, { status: 400 });
+    return NextResponse.json({ error: "Please tell us a little more about why you would make a strong Pathfinder." }, { status: 400 });
   }
 
   if (acknowledgements.length !== 4 || !acknowledgements.every(Boolean)) {
-    return NextResponse.json({ error: "Please acknowledge each testing expectation." }, { status: 400 });
+    return NextResponse.json({ error: "Please accept each part of the Pathfinder Commitment." }, { status: 400 });
   }
 
   return NextResponse.json({
     ok: true,
-    application: { firstName, email, location, fit, acknowledgements },
+    request: { firstName, email, location, fit, acknowledgements },
   });
 }
