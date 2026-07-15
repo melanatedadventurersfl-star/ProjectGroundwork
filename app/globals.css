@@ -1,0 +1,88 @@
+:root {
+  --ink: #171b18;
+  --forest: #1f4a37;
+  --moss: #6f8a64;
+  --clay: #c56b45;
+  --sun: #e5b347;
+  --cream: #f5efe2;
+  --paper: #fffdf8;
+  --mist: #dce8df;
+  --line: #d6d3c8;
+  --muted: #62685f;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--cream); color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; }
+.shell { width: min(1120px, calc(100% - 36px)); margin: 0 auto; }
+.siteHeader { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 16px clamp(18px, 5vw, 72px); background: rgba(23,27,24,.96); color: white; backdrop-filter: blur(10px); }
+.brand { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--sun); color: var(--ink); font-weight: 900; text-decoration: none; }
+.siteHeader nav { display: flex; gap: 20px; align-items: center; font-size: 14px; }
+.siteHeader nav a { text-decoration: none; }
+.navButton { padding: 10px 16px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; }
+.hero { display: grid; grid-template-columns: 1.2fr .8fr; gap: 44px; align-items: center; padding: clamp(68px, 10vw, 118px) 0 72px; }
+.eyebrow { margin: 0 0 12px; color: var(--clay); font-size: 12px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.eyebrow.light { color: #f4cf7a; }
+h1 { margin: 0 0 22px; font-size: clamp(48px, 7vw, 84px); line-height: .95; letter-spacing: -.045em; max-width: 820px; }
+h2 { margin: 0 0 18px; font-size: clamp(32px, 4.4vw, 54px); line-height: 1.05; letter-spacing: -.03em; }
+h3 { margin: 0 0 10px; font-size: 22px; }
+p { line-height: 1.65; }
+.lede { max-width: 720px; margin: 0 0 28px; font-size: clamp(19px, 2vw, 24px); color: #3f463f; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.button { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; padding: 14px 22px; font-weight: 850; text-decoration: none; cursor: pointer; }
+.button.primary { background: var(--clay); color: white; }
+.button.secondary { border: 1px solid var(--forest); color: var(--forest); background: transparent; }
+.heroCard { position: relative; overflow: hidden; padding: 34px; min-height: 330px; border-radius: 30px; background: var(--forest); color: white; box-shadow: 0 24px 60px rgba(31,74,55,.22); }
+.heroCard h2 { font-size: clamp(34px, 4vw, 52px); max-width: 520px; }
+.heroCard p:last-child { color: #e6eee8; }
+.heroNumber { position: absolute; right: 20px; top: 4px; color: rgba(255,255,255,.08); font-size: 130px; font-weight: 900; line-height: 1; }
+.section { padding: 72px 0; }
+.sectionHeading { max-width: 760px; margin-bottom: 30px; }
+.sectionHeading.narrow { max-width: 700px; }
+.cardGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.featureCard { min-height: 250px; padding: 26px; border: 1px solid var(--line); border-radius: 22px; background: rgba(255,255,255,.72); box-shadow: 0 14px 36px rgba(23,27,24,.06); }
+.featureCard span { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-bottom: 34px; border-radius: 50%; background: var(--mist); color: var(--forest); font-weight: 900; }
+.featureCard p { color: var(--muted); }
+.stepsSection { background: var(--ink); color: white; }
+.stepsSection .sectionHeading p { color: #d9e1db; }
+.steps { display: grid; gap: 14px; margin-top: 34px; }
+.steps article { display: grid; grid-template-columns: 56px 1fr; gap: 18px; padding: 22px; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: rgba(255,255,255,.04); }
+.steps strong { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--sun); color: var(--ink); font-size: 20px; }
+.steps p { margin-bottom: 0; color: #d3dbd5; }
+.formIntro { display: grid; grid-template-columns: 1.3fr .7fr; gap: 24px; align-items: end; margin-bottom: 30px; }
+.trustNote { padding: 20px; border-left: 5px solid var(--sun); border-radius: 14px; background: var(--paper); color: var(--muted); }
+.interestForm { display: grid; gap: 22px; padding: 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--paper); box-shadow: 0 18px 50px rgba(23,27,24,.08); }
+.twoCol { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+label { display: grid; gap: 8px; font-weight: 750; }
+input, select, textarea { width: 100%; padding: 13px 14px; border: 1px solid #bfc3bb; border-radius: 12px; background: white; color: var(--ink); }
+input:focus, select:focus, textarea:focus, button:focus, a:focus { outline: 3px solid rgba(229,179,71,.65); outline-offset: 2px; }
+fieldset { margin: 0; padding: 20px; border: 1px solid var(--line); border-radius: 16px; }
+legend { padding: 0 8px; font-weight: 850; }
+.interestGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.check { display: flex; align-items: flex-start; gap: 10px; font-weight: 500; }
+.check input { width: 18px; margin-top: 2px; }
+.consent { padding-top: 4px; }
+.submitButton { width: fit-content; min-width: 250px; }
+.successCard { display: flex; gap: 18px; align-items: center; padding: 28px; border-radius: 22px; background: var(--mist); border: 1px solid #bfd2c3; }
+.successCard span { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; background: var(--forest); color: white; font-size: 24px; }
+.successCard h3, .successCard p { margin: 0; }
+footer { padding: 34px 0; background: #111512; color: white; }
+.footerInner { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+.footerInner p { margin: 4px 0 0; color: #bdc6bf; }
+
+@media (max-width: 820px) {
+  .hero, .formIntro { grid-template-columns: 1fr; }
+  .cardGrid { grid-template-columns: 1fr; }
+  .interestGrid { grid-template-columns: repeat(2, 1fr); }
+  .siteHeader nav a:not(.navButton) { display: none; }
+}
+
+@media (max-width: 560px) {
+  .twoCol, .interestGrid { grid-template-columns: 1fr; }
+  .hero { padding-top: 50px; }
+  .heroCard { min-height: auto; }
+  .footerInner { align-items: flex-start; flex-direction: column; }
+  .submitButton { width: 100%; min-width: 0; }
+}
