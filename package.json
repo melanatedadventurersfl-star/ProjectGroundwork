@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix apps/member-web run build",
-    "start": "npm --prefix apps/member-web run start",
+    "start": "node server.js",
     "typecheck": "npm --prefix apps/member-web run typecheck",
     "postinstall": "npm --prefix apps/member-web install"
   },
