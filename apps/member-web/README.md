@@ -4,27 +4,43 @@ This is the first production-oriented application slice for the Melanated Advent
 
 ## Included
 
-- Public early-access waitlist
-- Consistent prospective-member and access-status terminology
-- Local duplicate detection for prototype review
-- Operator waitlist and cohort-status preview
-- Castaway Island Preserve pilot experience shell
-- Supabase schema for people, roles, experiences, registrations, and status history
-- Environment placeholders for Supabase and Stripe
+- Public early-access waitlist backed by Supabase
+- Invitation-gated magic-link authentication
+- Operator role checks, cohort controls, and auditable status history
+- Operator-controlled invitation delivery
+- Castaway pilot registration
+- Optional lunch and support through Stripe Checkout
+- Stripe webhook reconciliation
+- Supabase schema for people, roles, experiences, registrations, payments, and access history
+- GitHub Actions typecheck and build validation
 
-## Current data mode
+## Required services
 
-The UI currently uses browser localStorage so it can be reviewed without credentials. The production schema is in `supabase/schema.sql`. The next implementation step is replacing the local adapter with Supabase server actions, authentication, operator authorization, and auditable writes.
+- Supabase project
+- Stripe account
+- Deployed Next.js environment
+- Email delivery through Supabase Auth or configured SMTP
+
+Copy `.env.example` to `.env.local`, apply `supabase/schema.sql`, and provide the required credentials before starting the app.
 
 ## Run locally
 
 ```bash
 cd apps/member-web
 npm install
+npm run typecheck
 npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+## Payment flow
+
+1. A participant submits the Castaway registration form.
+2. The app creates a registration immediately.
+3. Lunch or support selections create a Stripe Checkout Session.
+4. Stripe returns the participant to the Castaway page.
+5. The signed webhook marks the payment paid and the registration confirmed.
 
 ## Terminology
 
@@ -43,10 +59,10 @@ Access status and member role are deliberately separate.
 
 ## Next build slice
 
-1. Create Supabase project and apply the schema.
-2. Implement public waitlist server action with rate limiting and consent versioning.
-3. Add operator authentication and role-based access.
-4. Add approve, invite, activate, pause, and decline mutations with status history.
-5. Add email invitation delivery.
-6. Implement Castaway registration, optional lunch checkout, optional donation, and no-show tracking.
-7. Add automated tests and accessibility validation.
+1. Create live Supabase and Stripe environments.
+2. Deploy the schema and establish the first operator.
+3. Add rate limiting, abuse protection, and consent-version records.
+4. Add capacity enforcement, waitlisting, cancellation, and no-show operations.
+5. Add refund handling and webhook idempotency tests.
+6. Add welcome-contact assignments and event-day check-in.
+7. Run accessibility and permission tests against the deployed environment.
