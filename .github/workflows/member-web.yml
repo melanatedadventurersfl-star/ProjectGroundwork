@@ -56,3 +56,13 @@ jobs:
       - name: Require successful build
         if: always()
         run: test "${{ steps.build.outcome }}" = "success"
+      - name: Package Hostinger upload
+        run: |
+          rm -f typecheck.log build.log
+          zip -r ../../MA-Member-Web-Hostinger.zip . -x "node_modules/*" ".next/*" "*.log"
+      - name: Upload Hostinger package
+        uses: actions/upload-artifact@v4
+        with:
+          name: MA-Member-Web-Hostinger
+          path: MA-Member-Web-Hostinger.zip
+          if-no-files-found: error
