@@ -7,7 +7,13 @@ export default function Home() {
     <main className="page" id="top">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Melanated Adventurers home">
-          <img src="/ma-mark.svg" alt="Melanated Adventurers" />
+          <img
+            src="/ma-mark.svg"
+            alt="Melanated Adventurers"
+            width="120"
+            height="48"
+            style={{ display: "block", width: "clamp(92px, 12vw, 120px)", height: "auto" }}
+          />
         </a>
         <span>Private Early Access</span>
       </header>
@@ -48,9 +54,7 @@ export default function Home() {
         <div className="applicationIntro">
           <p className="eyebrow">Private Selection</p>
           <h2>Request consideration.</h2>
-          <p>
-            Tell us why you are a strong fit to help test what comes next.
-          </p>
+          <p>Tell us why you are a strong fit to help test what comes next.</p>
         </div>
         <EarlyAccessForm />
       </section>
