@@ -6,6 +6,7 @@ type FormState = {
   firstName: string;
   email: string;
   location: string;
+  socials: string;
   fit: string;
   acknowledgements: boolean[];
 };
@@ -21,6 +22,7 @@ const initialForm: FormState = {
   firstName: "",
   email: "",
   location: "",
+  socials: "",
   fit: "",
   acknowledgements: [false, false, false, false],
 };
@@ -111,6 +113,18 @@ export default function EarlyAccessForm() {
             value={form.location}
             onChange={(event) => setForm({ ...form, location: event.target.value })}
           />
+        </label>
+
+        <label>
+          <span>Social profiles <em>Optional</em></span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile"
+            value={form.socials}
+            onChange={(event) => setForm({ ...form, socials: event.target.value })}
+          />
+          <small>Share any handles or profile links you would like us to know about.</small>
         </label>
 
         <label>
