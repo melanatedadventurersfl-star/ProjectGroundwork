@@ -61,7 +61,8 @@ async function sendInvitation(formData: FormData) {
 
 export default async function OperatorPage() {
   const { supabase } = await requireOperator();
-  const { data: people = [] } = await supabase.from("people").select("id, first_name, last_name, email, experience_level, interests, attending_solo, created_at, access_status, cohort").order("created_at", { ascending: false });
+  const { data } = await supabase.from("people").select("id, first_name, last_name, email, experience_level, interests, attending_solo, created_at, access_status, cohort").order("created_at", { ascending: false });
+  const people = data ?? [];
   const counts = statuses.reduce<Record<string, number>>((result, status) => { result[status] = people.filter((person) => person.access_status === status).length; return result; }, {});
 
   return <main>
