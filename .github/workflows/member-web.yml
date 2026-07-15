@@ -32,5 +32,16 @@ jobs:
           node-version: 22
       - run: npm install --package-lock-only
       - run: npm ci
-      - run: npm run typecheck
+      - id: typecheck
+        continue-on-error: true
+        run: npm run typecheck -- --pretty false 2>&1 | tee typecheck.log
+      - name: Upload typecheck output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: member-web-typecheck
+          path: apps/member-web/typecheck.log
+      - name: Require successful typecheck
+        if: always()
+        run: test "${{ steps.typecheck.outcome }}" = "success"
       - run: npm run build
