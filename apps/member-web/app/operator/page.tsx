@@ -6,7 +6,7 @@ type AccessStatus = typeof statuses[number];
 
 async function updateStatus(formData: FormData) {
   "use server";
-  const { supabase, user } = await requireOperator();
+  const { supabase, personId: actorId } = await requireOperator();
   const personId = String(formData.get("personId") ?? "");
   const status = String(formData.get("status") ?? "") as AccessStatus;
   const cohort = String(formData.get("cohort") ?? "").trim() || null;
@@ -15,14 +15,18 @@ async function updateStatus(formData: FormData) {
   const { data: existing } = await supabase.from("people").select("access_status").eq("id", personId).single();
   if (!existing) return;
 
-  const timestamps: Record<string, string> = {};
-  if (status === "approved") timestamps.approved_at = new Date().toISOString();
-  if (status === "invited") timestamps.invited_at = new Date().toISOString();
-
-  const { error } = await supabase.from("people").update({ access_status: status, cohort, ...timestamps }).eq("id", personId);
+  const updates: Record<string, string | null> = { access_status: status, cohort };
+  if (status === "invited") updates.invited_at = new Date().toISOString();
+  const { error } = await supabase.from("people").update(updates).eq("id", personId);
   if (error) throw error;
 
-  await supabase.from("access_history").insert({ person_id: personId, from_status: existing.access_status, to_status: status, cohort, changed_by: user.id });
+  await supabase.from("access_status_history").insert({
+    person_id: personId,
+    from_status: existing.access_status,
+    to_status: status,
+    actor_id: actorId,
+    reason: cohort ? `Assigned to ${cohort}` : null,
+  });
   revalidatePath("/operator");
 }
 
