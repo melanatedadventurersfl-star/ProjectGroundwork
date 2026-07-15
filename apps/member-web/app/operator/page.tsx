@@ -1,71 +1,41 @@
-"use client";
+import { revalidatePath } from "next/cache";
+import { requireOperator } from "@/lib/auth";
 
-import { useEffect, useMemo, useState } from "react";
-import { AccessStatus, readWaitlist, updateAccessStatus, WaitlistRegistrant } from "@/lib/waitlist";
+const statuses = ["waitlisted", "under_review", "approved", "invited", "activated", "paused", "declined"] as const;
+type AccessStatus = typeof statuses[number];
 
-const statuses: AccessStatus[] = ["waitlisted", "under_review", "approved", "invited", "activated", "paused", "declined"];
+async function updateStatus(formData: FormData) {
+  "use server";
+  const { supabase, user } = await requireOperator();
+  const personId = String(formData.get("personId") ?? "");
+  const status = String(formData.get("status") ?? "") as AccessStatus;
+  const cohort = String(formData.get("cohort") ?? "").trim() || null;
+  if (!personId || !statuses.includes(status)) return;
 
-export default function OperatorPage() {
-  const [people, setPeople] = useState<WaitlistRegistrant[]>([]);
-  const [filter, setFilter] = useState<AccessStatus | "all">("all");
+  const { data: existing } = await supabase.from("people").select("access_status").eq("id", personId).single();
+  if (!existing) return;
 
-  useEffect(() => setPeople(readWaitlist()), []);
+  const timestamps: Record<string, string> = {};
+  if (status === "approved") timestamps.approved_at = new Date().toISOString();
+  if (status === "invited") timestamps.invited_at = new Date().toISOString();
 
-  const visible = useMemo(
-    () => filter === "all" ? people : people.filter((person) => person.accessStatus === filter),
-    [filter, people],
-  );
+  const { error } = await supabase.from("people").update({ access_status: status, cohort, ...timestamps }).eq("id", personId);
+  if (error) throw error;
 
-  function changeStatus(id: string, status: AccessStatus) {
-    setPeople(updateAccessStatus(id, status, status === "approved" || status === "invited" ? "Cohort 1" : undefined));
-  }
+  await supabase.from("access_history").insert({ person_id: personId, from_status: existing.access_status, to_status: status, cohort, changed_by: user.id });
+  revalidatePath("/operator");
+}
 
-  const counts = statuses.reduce<Record<string, number>>((result, status) => {
-    result[status] = people.filter((person) => person.accessStatus === status).length;
-    return result;
-  }, {});
+export default async function OperatorPage() {
+  const { supabase } = await requireOperator();
+  const { data: people = [] } = await supabase.from("people").select("id, first_name, last_name, email, experience_level, interests, attending_solo, created_at, access_status, cohort").order("created_at", { ascending: false });
+  const counts = statuses.reduce<Record<string, number>>((result, status) => { result[status] = people.filter((person) => person.access_status === status).length; return result; }, {});
 
-  return (
-    <main>
-      <section className="section">
-        <p className="eyebrow">Operator preview</p>
-        <h1>Early-access queue</h1>
-        <p className="lede">Review prospective members, control invitation cohorts, and keep access status separate from an eventual member role.</p>
-        <div className="grid">
-          <article className="card"><div className="stat">{people.length}</div><p>Total prospective members</p></article>
-          <article className="card"><div className="stat">{counts.waitlisted ?? 0}</div><p>Awaiting review</p></article>
-          <article className="card"><div className="stat">{(counts.invited ?? 0) + (counts.activated ?? 0)}</div><p>Invited or activated</p></article>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="actions" aria-label="Filter waitlist">
-          <button type="button" className="button secondary" onClick={() => setFilter("all")}>All</button>
-          {statuses.map((status) => <button type="button" className="button ghost" key={status} onClick={() => setFilter(status)}>{status.replaceAll("_", " ")}</button>)}
-        </div>
-        <div className="tableWrap panel">
-          <table>
-            <thead><tr><th>Prospective member</th><th>Signals</th><th>Joined</th><th>Access status</th></tr></thead>
-            <tbody>
-              {visible.map((person) => (
-                <tr key={person.id}>
-                  <td><strong>{person.firstName} {person.lastName}</strong><br /><span className="muted">{person.email}</span></td>
-                  <td>{person.experienceLevel}<br />{person.attendingSolo ? "Often attends solo" : ""}<br /><span className="muted">{person.interests.join(", ")}</span></td>
-                  <td>{new Date(person.createdAt).toLocaleDateString()}</td>
-                  <td>
-                    <label><span className="badge">{person.accessStatus.replaceAll("_", " ")}</span>
-                      <select value={person.accessStatus} onChange={(event) => changeStatus(person.id, event.target.value as AccessStatus)}>
-                        {statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
-                      </select>
-                    </label>
-                  </td>
-                </tr>
-              ))}
-              {visible.length === 0 && <tr><td colSpan={4}>No prospective members match this view yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  );
+  return <main>
+    <section className="section"><p className="eyebrow">Operator workspace</p><h1>Early-access queue</h1><p className="lede">Review prospective members, place them into cohorts, and preserve an auditable invitation history.</p><div className="grid"><article className="card"><div className="stat">{people.length}</div><p>Total prospective members</p></article><article className="card"><div className="stat">{counts.waitlisted ?? 0}</div><p>Awaiting review</p></article><article className="card"><div className="stat">{(counts.invited ?? 0) + (counts.activated ?? 0)}</div><p>Invited or activated</p></article></div></section>
+    <section className="section"><div className="tableWrap panel"><table><thead><tr><th>Prospective member</th><th>Signals</th><th>Joined</th><th>Access control</th></tr></thead><tbody>
+      {people.map((person) => <tr key={person.id}><td><strong>{person.first_name} {person.last_name}</strong><br/><span className="muted">{person.email}</span></td><td>{person.experience_level}<br/>{person.attending_solo ? "Often attends solo" : ""}<br/><span className="muted">{person.interests?.join(", ")}</span></td><td>{new Date(person.created_at).toLocaleDateString()}</td><td><form action={updateStatus}><input type="hidden" name="personId" value={person.id}/><label>Cohort<input name="cohort" defaultValue={person.cohort ?? ""} placeholder="Cohort 1"/></label><label>Status<select name="status" defaultValue={person.access_status}>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label><button type="submit">Save</button></form></td></tr>)}
+      {people.length === 0 && <tr><td colSpan={4}>No prospective members are waiting yet.</td></tr>}
+    </tbody></table></div></section>
+  </main>;
 }
