@@ -11,10 +11,10 @@ type FormState = {
 };
 
 const acknowledgementText = [
-  "I understand that applying does not guarantee selection.",
-  "I will participate actively if selected.",
-  "I will provide honest and thoughtful feedback.",
-  "I understand that features may still be changing.",
+  "I understand that requesting an invitation does not guarantee selection.",
+  "If invited, I will participate with curiosity, respect, and consistency.",
+  "I will provide thoughtful feedback that helps strengthen the experience for future members.",
+  "I understand that the experience will continue to evolve, and I am ready to be part of that journey.",
 ];
 
 const initialForm: FormState = {
@@ -66,7 +66,7 @@ export default function EarlyAccessForm() {
       if (!response.ok) throw new Error(data.error || "Something went wrong.");
 
       setStatus("success");
-      setMessage("Your request has been received. Selected individuals will receive a private invitation with next steps.");
+      setMessage("Your Pathfinder invitation request has been received. Selected individuals will receive a private invitation with next steps.");
       setForm(initialForm);
     } catch (error) {
       setStatus("error");
@@ -114,12 +114,12 @@ export default function EarlyAccessForm() {
         </label>
 
         <label>
-          <span>Why are you a strong fit to help test what comes next?</span>
+          <span>Why would you make a strong Pathfinder for Melanated Adventurers?</span>
           <textarea
             required
             minLength={50}
             rows={7}
-            placeholder="Tell us how you connect with Melanated Adventurers and what you would bring as a tester."
+            placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey."
             value={form.fit}
             onChange={(event) => setForm({ ...form, fit: event.target.value })}
           />
@@ -128,8 +128,8 @@ export default function EarlyAccessForm() {
       </div>
 
       <div className="acknowledgementPanel">
-        <p className="panelEyebrow">Before requesting consideration</p>
-        <p>All acknowledgements are required.</p>
+        <p className="panelEyebrow">The Pathfinder Commitment</p>
+        <p>All acknowledgements are required before your request can be submitted.</p>
         <div className="acknowledgementList">
           {acknowledgementText.map((text, index) => (
             <label className="acknowledgement" key={text}>
@@ -150,11 +150,11 @@ export default function EarlyAccessForm() {
         type="submit"
         disabled={status === "loading" || !formComplete}
       >
-        {status === "loading" ? "Submitting..." : "Request Consideration"}
+        {status === "loading" ? "Sending Request..." : "Request a Pathfinder Invitation"}
       </button>
 
       <p className="selectionNote">
-        Selected individuals will receive a private invitation with next steps.
+        Selected individuals will receive a private invitation with expectations and next steps.
       </p>
 
       {message && (
