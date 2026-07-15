@@ -11,10 +11,10 @@ type FormState = {
 };
 
 const acknowledgementText = [
-  "I understand that submitting this form does not guarantee selection.",
-  "I understand that selected testers are expected to participate actively and provide thoughtful feedback.",
-  "I understand that early-access features may still be changing or incomplete.",
-  "I am prepared to commit the time needed during the testing period.",
+  "I understand that applying does not guarantee selection.",
+  "I will participate actively if selected.",
+  "I will provide honest and thoughtful feedback.",
+  "I understand that features may still be changing.",
 ];
 
 const initialForm: FormState = {
@@ -29,7 +29,16 @@ export default function EarlyAccessForm() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
-  const allAcknowledged = useMemo(() => form.acknowledgements.every(Boolean), [form.acknowledgements]);
+
+  const formComplete = useMemo(() => {
+    const fieldsComplete =
+      form.firstName.trim().length > 0 &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
+      form.location.trim().length > 0 &&
+      form.fit.trim().length >= 50;
+
+    return fieldsComplete && form.acknowledgements.every(Boolean);
+  }, [form]);
 
   function toggleAcknowledgement(index: number) {
     setForm((current) => ({
@@ -42,6 +51,8 @@ export default function EarlyAccessForm() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!formComplete) return;
+
     setStatus("loading");
     setMessage("");
 
@@ -55,7 +66,7 @@ export default function EarlyAccessForm() {
       if (!response.ok) throw new Error(data.error || "Something went wrong.");
 
       setStatus("success");
-      setMessage("Your request has been received. Selected applicants will receive a private invitation with next steps.");
+      setMessage("Your request has been received. Selected individuals will receive a private invitation with next steps.");
       setForm(initialForm);
     } catch (error) {
       setStatus("error");
@@ -100,29 +111,30 @@ export default function EarlyAccessForm() {
             value={form.location}
             onChange={(event) => setForm({ ...form, location: event.target.value })}
           />
-          <small>Jacksonville and surrounding areas will be prioritized for the first cohort.</small>
         </label>
 
         <label>
-          <span>What makes you a strong fit for the first MA testing cohort?</span>
+          <span>Why are you a strong fit to help test what comes next?</span>
           <textarea
             required
             minLength={50}
             rows={7}
-            placeholder="Share how you connect with the MA mission, how you show up in community, and what you would bring to the testing experience."
+            placeholder="Tell us how you connect with Melanated Adventurers and what you would bring as a tester."
             value={form.fit}
             onChange={(event) => setForm({ ...form, fit: event.target.value })}
           />
+          <small>Minimum 50 characters.</small>
         </label>
       </div>
 
       <div className="acknowledgementPanel">
         <p className="panelEyebrow">Before requesting consideration</p>
-        <p>Please review and acknowledge the following:</p>
+        <p>All acknowledgements are required.</p>
         <div className="acknowledgementList">
           {acknowledgementText.map((text, index) => (
             <label className="acknowledgement" key={text}>
               <input
+                required
                 type="checkbox"
                 checked={form.acknowledgements[index]}
                 onChange={() => toggleAcknowledgement(index)}
@@ -136,13 +148,13 @@ export default function EarlyAccessForm() {
       <button
         className="primaryButton submitButton"
         type="submit"
-        disabled={status === "loading" || !allAcknowledged}
+        disabled={status === "loading" || !formComplete}
       >
         {status === "loading" ? "Submitting..." : "Request Consideration"}
       </button>
 
       <p className="selectionNote">
-        Submitting does not guarantee selection. Chosen applicants will receive a private invitation with expectations and next steps.
+        Selected individuals will receive a private invitation with next steps.
       </p>
 
       {message && (
