@@ -39,6 +39,7 @@ export default function EarlyAccessForm() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [wasSubscribed, setWasSubscribed] = useState(false);
 
   function syncAutofilledFields() {
@@ -120,7 +121,17 @@ export default function EarlyAccessForm() {
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Something went wrong.");
+
+      if (!response.ok) {
+        const errorMessage = data.error || "Something went wrong.";
+        if (response.status === 409) {
+          setStatus("error");
+          setMessage(errorMessage);
+          setShowDuplicateModal(true);
+          return;
+        }
+        throw new Error(errorMessage);
+      }
 
       setStatus("success");
       setWasSubscribed(Boolean(data.subscribed));
@@ -181,8 +192,8 @@ export default function EarlyAccessForm() {
               value={form.fit}
               onChange={(event) => setForm({ ...form, fit: event.target.value })}
             />
-            <small className={form.fit.length > 0 && form.fit.trim().length < 50 ? "characterCount warning" : "characterCount"}>
-              {form.fit.trim().length}/50 characters minimum
+            <small className={form.fit.length > 0 && form.fit.trim().length < 50 ? "characterCount warning" : form.fit.trim().length >= 50 ? "characterCount complete" : "characterCount"}>
+              {form.fit.trim().length >= 50 ? `${form.fit.trim().length} characters · Ready` : `${form.fit.trim().length}/50 characters minimum`}
             </small>
           </label>
         </div>
@@ -214,17 +225,28 @@ export default function EarlyAccessForm() {
 
         <p className="selectionNote">Selected individuals will receive a private invitation with expectations and next steps.</p>
 
-        {message && <p className="formMessage errorText">{message}</p>}
+        {message && !showDuplicateModal && <p className="formMessage errorText">{message}</p>}
       </form>
 
       {showConfirmation && (
         <div className="modalBackdrop" role="presentation" onClick={() => setShowConfirmation(false)}>
-          <div className="confirmationModal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" onClick={(event) => event.stopPropagation()}>
+          <div className="confirmationModal compactModal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" onClick={(event) => event.stopPropagation()}>
             <p className="panelEyebrow">Request Received</p>
-            <h2 id="confirmation-title">Your application has been submitted.</h2>
-            <p>Thank you for requesting a Pathfinder Invitation. We’ll review your application and contact selected individuals with next steps.</p>
+            <h2 id="confirmation-title">Application submitted.</h2>
+            <p>We’ll review your Pathfinder application and contact selected individuals with next steps.</p>
             {wasSubscribed && <p className="subscriptionConfirmation">You’re also subscribed to Melanated Adventurers email updates.</p>}
-            <button className="primaryButton" type="button" onClick={() => setShowConfirmation(false)}>Return to Home</button>
+            <button className="primaryButton" type="button" onClick={() => setShowConfirmation(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {showDuplicateModal && (
+        <div className="modalBackdrop" role="presentation" onClick={() => setShowDuplicateModal(false)}>
+          <div className="confirmationModal compactModal duplicateModal" role="dialog" aria-modal="true" aria-labelledby="duplicate-title" onClick={(event) => event.stopPropagation()}>
+            <p className="panelEyebrow">Application Already Received</p>
+            <h2 id="duplicate-title">You’re already on the list.</h2>
+            <p>{message}</p>
+            <button className="primaryButton" type="button" onClick={() => setShowDuplicateModal(false)}>Close</button>
           </div>
         </div>
       )}
