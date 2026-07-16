@@ -19,6 +19,27 @@ function notionHeaders(token: string) {
   };
 }
 
+function notionAccessError(status: number) {
+  if (status === 401) {
+    return NextResponse.json(
+      { error: "The Pathfinder database connection is not authorized. Please update the Notion integration token." },
+      { status: 503 }
+    );
+  }
+
+  if (status === 403 || status === 404) {
+    return NextResponse.json(
+      { error: "The Pathfinder database has not been shared with the website's Notion integration yet." },
+      { status: 503 }
+    );
+  }
+
+  return NextResponse.json(
+    { error: "The Pathfinder database could not be reached. Please try again shortly." },
+    { status: 502 }
+  );
+}
+
 async function subscribeToMailchimp(input: {
   firstName: string;
   lastName: string;
@@ -129,8 +150,9 @@ export async function POST(req: Request) {
     );
 
     if (!queryResponse.ok) {
-      console.error("Notion duplicate check failed:", await queryResponse.text());
-      return NextResponse.json({ error: "We could not verify your request. Please try again." }, { status: 502 });
+      const details = await queryResponse.text();
+      console.error(`Notion duplicate check failed (${queryResponse.status}):`, details);
+      return notionAccessError(queryResponse.status);
     }
 
     const duplicateData = await queryResponse.json();
@@ -165,8 +187,9 @@ export async function POST(req: Request) {
     });
 
     if (!createResponse.ok) {
-      console.error("Notion application creation failed:", await createResponse.text());
-      return NextResponse.json({ error: "Your request could not be saved. Please try again." }, { status: 502 });
+      const details = await createResponse.text();
+      console.error(`Notion application creation failed (${createResponse.status}):`, details);
+      return notionAccessError(createResponse.status);
     }
 
     const subscribed = marketingOptIn
