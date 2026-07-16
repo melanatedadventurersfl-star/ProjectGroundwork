@@ -32,7 +32,7 @@ export default function Home() {
       <section className="commitmentSection revealSection">
         <div className="sectionInner">
           <p className="eyebrow">The Pathfinder Commitment</p>
-          <h2>This is not passive access.</h2>
+          <h2>An invitation reserved for those ready to lead the way.</h2>
           <p>
             Pathfinders are expected to show up with curiosity, consistency, and thoughtful feedback as the experience evolves.
           </p>
