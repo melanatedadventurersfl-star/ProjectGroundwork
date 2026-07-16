@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || "appaPyt9IRCoD0i80";
@@ -7,23 +8,89 @@ function escapeFormulaValue(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
+async function subscribeToMailchimp(input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+}) {
+  const apiKey = process.env.MAILCHIMP_API_KEY;
+  const serverPrefix = process.env.MAILCHIMP_SERVER_PREFIX;
+  const audienceId = process.env.MAILCHIMP_AUDIENCE_ID;
+
+  if (!apiKey || !serverPrefix || !audienceId) {
+    console.warn("Mailchimp is not configured; application saved without subscription.");
+    return false;
+  }
+
+  const subscriberHash = createHash("md5").update(input.email.toLowerCase()).digest("hex");
+  const memberUrl = `https://${serverPrefix}.api.mailchimp.com/3.0/lists/${audienceId}/members/${subscriberHash}`;
+  const authorization = `Basic ${Buffer.from(`pathfinder:${apiKey}`).toString("base64")}`;
+
+  const memberResponse = await fetch(memberUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email_address: input.email,
+      status_if_new: "subscribed",
+      status: "subscribed",
+      merge_fields: {
+        FNAME: input.firstName,
+        LNAME: input.lastName,
+        PHONE: input.phone,
+      },
+    }),
+  });
+
+  if (!memberResponse.ok) {
+    const details = await memberResponse.text();
+    console.error("Mailchimp subscription failed:", details);
+    return false;
+  }
+
+  const tagResponse = await fetch(`${memberUrl}/tags`, {
+    method: "POST",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tags: [{ name: "Pathfinder Applicant", status: "active" }] }),
+  });
+
+  if (!tagResponse.ok) {
+    console.error("Mailchimp tag assignment failed:", await tagResponse.text());
+  }
+
+  return true;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const firstName = String(body.firstName || "").trim();
+    const lastName = String(body.lastName || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
+    const phone = String(body.phone || "").trim();
     const location = String(body.location || "").trim();
     const socials = String(body.socials || "").trim();
     const fit = String(body.fit || "").trim();
+    const marketingOptIn = Boolean(body.marketingOptIn);
     const acknowledgements = Array.isArray(body.acknowledgements) ? body.acknowledgements : [];
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-    if (!firstName || !location) {
-      return NextResponse.json({ error: "Please enter your name and location." }, { status: 400 });
+    if (!firstName || !lastName || !location) {
+      return NextResponse.json({ error: "Please enter your first name, last name, and location." }, { status: 400 });
     }
 
     if (!emailOk) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+    }
+
+    if (phone.length < 7) {
+      return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 });
     }
 
     if (socials.length > 500) {
@@ -31,7 +98,7 @@ export async function POST(req: Request) {
     }
 
     if (fit.length < 50) {
-      return NextResponse.json({ error: "Please tell us a little more about why you would make a strong Pathfinder." }, { status: 400 });
+      return NextResponse.json({ error: "Your Pathfinder response must be at least 50 characters." }, { status: 400 });
     }
 
     if (acknowledgements.length !== 4 || !acknowledgements.every(Boolean)) {
@@ -58,12 +125,8 @@ export async function POST(req: Request) {
     );
 
     if (!duplicateResponse.ok) {
-      const details = await duplicateResponse.text();
-      console.error("Airtable duplicate check failed:", details);
-      return NextResponse.json(
-        { error: "We could not verify your request. Please try again." },
-        { status: 502 }
-      );
+      console.error("Airtable duplicate check failed:", await duplicateResponse.text());
+      return NextResponse.json({ error: "We could not verify your request. Please try again." }, { status: 502 });
     }
 
     const duplicateData = await duplicateResponse.json();
@@ -85,12 +148,15 @@ export async function POST(req: Request) {
           {
             fields: {
               Name: firstName,
+              "Last Name": lastName,
               Email: email,
+              Phone: phone,
               Location: location,
               Socials: socials || undefined,
               Response: fit,
               Status: "Requested",
               "Commitment Accepted": true,
+              "Marketing Opt-In": marketingOptIn,
               "Submitted At": new Date().toISOString(),
             },
           },
@@ -100,15 +166,15 @@ export async function POST(req: Request) {
     });
 
     if (!createResponse.ok) {
-      const details = await createResponse.text();
-      console.error("Airtable record creation failed:", details);
-      return NextResponse.json(
-        { error: "Your request could not be saved. Please try again." },
-        { status: 502 }
-      );
+      console.error("Airtable record creation failed:", await createResponse.text());
+      return NextResponse.json({ error: "Your request could not be saved. Please try again." }, { status: 502 });
     }
 
-    return NextResponse.json({ ok: true });
+    const subscribed = marketingOptIn
+      ? await subscribeToMailchimp({ firstName, lastName, email, phone })
+      : false;
+
+    return NextResponse.json({ ok: true, subscribed });
   } catch (error) {
     console.error("Pathfinder invitation submission failed:", error);
     return NextResponse.json(
