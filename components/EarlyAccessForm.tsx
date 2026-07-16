@@ -34,8 +34,16 @@ const initialForm: FormState = {
 };
 
 function phoneDigits(value: string) {
-  const digits = value.replace(/\D/g, "");
-  return digits.startsWith("1") && digits.length > 10 ? digits.slice(1, 11) : digits.slice(0, 10);
+  const hasDisplayedCountryCode = value.trim().startsWith("+1");
+  let digits = value.replace(/\D/g, "");
+
+  if (hasDisplayedCountryCode && digits.startsWith("1")) {
+    digits = digits.slice(1);
+  } else if (digits.length === 11 && digits.startsWith("1")) {
+    digits = digits.slice(1);
+  }
+
+  return digits.slice(0, 10);
 }
 
 function formatUsPhone(value: string) {
