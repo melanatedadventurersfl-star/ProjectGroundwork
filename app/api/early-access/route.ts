@@ -8,6 +8,12 @@ function escapeFormulaValue(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
+function normalizeUsPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const nationalNumber = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return nationalNumber.length === 10 ? `+1${nationalNumber}` : "";
+}
+
 async function subscribeToMailchimp(input: {
   firstName: string;
   lastName: string;
@@ -73,7 +79,7 @@ export async function POST(req: Request) {
     const firstName = String(body.firstName || "").trim();
     const lastName = String(body.lastName || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
-    const phone = String(body.phone || "").trim();
+    const phone = normalizeUsPhone(String(body.phone || ""));
     const location = String(body.location || "").trim();
     const socials = String(body.socials || "").trim();
     const fit = String(body.fit || "").trim();
@@ -89,8 +95,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
 
-    if (phone.length < 7) {
-      return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 });
+    if (!phone) {
+      return NextResponse.json({ error: "Enter a valid 10-digit US phone number." }, { status: 400 });
     }
 
     if (socials.length > 500) {
