@@ -1,17 +1,22 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || "appaPyt9IRCoD0i80";
-const AIRTABLE_TABLE_ID = process.env.AIRTABLE_PATHFINDERS_TABLE_ID || "tbllReIVhcWRLmwSs";
-
-function escapeFormulaValue(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-}
+const NOTION_DATA_SOURCE_ID =
+  process.env.NOTION_PATHFINDER_DATA_SOURCE_ID || "94d17e55-23a5-4289-a8ca-ffa050b2d9b1";
+const NOTION_VERSION = "2026-03-11";
 
 function normalizeUsPhone(value: string) {
   const digits = value.replace(/\D/g, "");
   const nationalNumber = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
   return nationalNumber.length === 10 ? `+1${nationalNumber}` : "";
+}
+
+function notionHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "Notion-Version": NOTION_VERSION,
+  };
 }
 
 async function subscribeToMailchimp(input: {
@@ -35,41 +40,27 @@ async function subscribeToMailchimp(input: {
 
   const memberResponse = await fetch(memberUrl, {
     method: "PUT",
-    headers: {
-      Authorization: authorization,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: authorization, "Content-Type": "application/json" },
     body: JSON.stringify({
       email_address: input.email,
       status_if_new: "subscribed",
       status: "subscribed",
-      merge_fields: {
-        FNAME: input.firstName,
-        LNAME: input.lastName,
-        PHONE: input.phone,
-      },
+      merge_fields: { FNAME: input.firstName, LNAME: input.lastName, PHONE: input.phone },
     }),
   });
 
   if (!memberResponse.ok) {
-    const details = await memberResponse.text();
-    console.error("Mailchimp subscription failed:", details);
+    console.error("Mailchimp subscription failed:", await memberResponse.text());
     return false;
   }
 
   const tagResponse = await fetch(`${memberUrl}/tags`, {
     method: "POST",
-    headers: {
-      Authorization: authorization,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: authorization, "Content-Type": "application/json" },
     body: JSON.stringify({ tags: [{ name: "Pathfinder Applicant", status: "active" }] }),
   });
 
-  if (!tagResponse.ok) {
-    console.error("Mailchimp tag assignment failed:", await tagResponse.text());
-  }
-
+  if (!tagResponse.ok) console.error("Mailchimp tag assignment failed:", await tagResponse.text());
   return true;
 }
 
@@ -85,97 +76,96 @@ export async function POST(req: Request) {
     const fit = String(body.fit || "").trim();
     const marketingOptIn = Boolean(body.marketingOptIn);
     const acknowledgements = Array.isArray(body.acknowledgements) ? body.acknowledgements : [];
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
     if (!firstName || !lastName || !location) {
       return NextResponse.json({ error: "Please enter your first name, last name, and location." }, { status: 400 });
     }
-
-    if (!emailOk) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
-
     if (!phone) {
       return NextResponse.json({ error: "Enter a valid 10-digit US phone number." }, { status: 400 });
     }
-
     if (socials.length > 500) {
       return NextResponse.json({ error: "Please shorten the social profiles entry." }, { status: 400 });
     }
-
     if (fit.length < 50) {
       return NextResponse.json({ error: "Your Pathfinder response must be at least 50 characters." }, { status: 400 });
     }
-
     if (acknowledgements.length !== 4 || !acknowledgements.every(Boolean)) {
       return NextResponse.json({ error: "Please accept each part of the Pathfinder Commitment." }, { status: 400 });
     }
 
-    const airtableToken = process.env.AIRTABLE_TOKEN;
-    if (!airtableToken) {
-      console.error("AIRTABLE_TOKEN is not configured.");
+    const notionToken = process.env.NOTION_TOKEN;
+    if (!notionToken) {
+      console.error("NOTION_TOKEN is not configured.");
       return NextResponse.json(
         { error: "The invitation database is not available yet. Please try again shortly." },
         { status: 503 }
       );
     }
 
-    const tableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`;
-    const escapedEmail = escapeFormulaValue(email);
-    const escapedFirstName = escapeFormulaValue(firstName.toLowerCase());
-    const escapedLastName = escapeFormulaValue(lastName.toLowerCase());
-    const duplicateFormula = `OR(LOWER({Email})='${escapedEmail}',AND(LOWER({Name})='${escapedFirstName}',LOWER({Last Name})='${escapedLastName}'))`;
-    const duplicateResponse = await fetch(
-      `${tableUrl}?maxRecords=3&filterByFormula=${encodeURIComponent(duplicateFormula)}`,
+    const queryResponse = await fetch(
+      `https://api.notion.com/v1/data_sources/${NOTION_DATA_SOURCE_ID}/query`,
       {
-        headers: { Authorization: `Bearer ${airtableToken}` },
+        method: "POST",
+        headers: notionHeaders(notionToken),
         cache: "no-store",
+        body: JSON.stringify({
+          page_size: 3,
+          filter: {
+            or: [
+              { property: "Email", email: { equals: email } },
+              {
+                and: [
+                  { property: "First Name", rich_text: { equals: firstName } },
+                  { property: "Last Name", rich_text: { equals: lastName } },
+                ],
+              },
+            ],
+          },
+        }),
       }
     );
 
-    if (!duplicateResponse.ok) {
-      console.error("Airtable duplicate check failed:", await duplicateResponse.text());
+    if (!queryResponse.ok) {
+      console.error("Notion duplicate check failed:", await queryResponse.text());
       return NextResponse.json({ error: "We could not verify your request. Please try again." }, { status: 502 });
     }
 
-    const duplicateData = await duplicateResponse.json();
-    if (Array.isArray(duplicateData.records) && duplicateData.records.length > 0) {
+    const duplicateData = await queryResponse.json();
+    if (Array.isArray(duplicateData.results) && duplicateData.results.length > 0) {
       return NextResponse.json(
         { error: "A Pathfinder application has already been submitted with this name or email address." },
         { status: 409 }
       );
     }
 
-    const createResponse = await fetch(tableUrl, {
+    const submittedAt = new Date().toISOString();
+    const createResponse = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${airtableToken}`,
-        "Content-Type": "application/json",
-      },
+      headers: notionHeaders(notionToken),
       body: JSON.stringify({
-        records: [
-          {
-            fields: {
-              Name: firstName,
-              "Last Name": lastName,
-              Email: email,
-              Phone: phone,
-              Location: location,
-              Socials: socials || undefined,
-              Response: fit,
-              Status: "Requested",
-              "Commitment Accepted": true,
-              "Marketing Opt-In": marketingOptIn,
-              "Submitted At": new Date().toISOString(),
-            },
-          },
-        ],
-        typecast: true,
+        parent: { type: "data_source_id", data_source_id: NOTION_DATA_SOURCE_ID },
+        properties: {
+          Applicant: { title: [{ text: { content: `${firstName} ${lastName}` } }] },
+          "First Name": { rich_text: [{ text: { content: firstName } }] },
+          "Last Name": { rich_text: [{ text: { content: lastName } }] },
+          Email: { email },
+          Phone: { phone_number: phone },
+          Location: { rich_text: [{ text: { content: location } }] },
+          "Social Profiles": socials ? { rich_text: [{ text: { content: socials } }] } : { rich_text: [] },
+          "Pathfinder Response": { rich_text: [{ text: { content: fit } }] },
+          Status: { select: { name: "Requested" } },
+          "Commitment Accepted": { checkbox: true },
+          "Marketing Opt-In": { checkbox: marketingOptIn },
+          "Submitted At": { date: { start: submittedAt } },
+        },
       }),
     });
 
     if (!createResponse.ok) {
-      console.error("Airtable record creation failed:", await createResponse.text());
+      console.error("Notion application creation failed:", await createResponse.text());
       return NextResponse.json({ error: "Your request could not be saved. Please try again." }, { status: 502 });
     }
 
