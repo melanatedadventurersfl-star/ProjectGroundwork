@@ -33,6 +33,22 @@ const initialForm: FormState = {
   acknowledgements: [false, false, false, false],
 };
 
+function phoneDigits(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits.startsWith("1") && digits.length > 10 ? digits.slice(1, 11) : digits.slice(0, 10);
+}
+
+function formatUsPhone(value: string) {
+  const digits = phoneDigits(value);
+  if (!digits) return "";
+  if (digits.length <= 3) return `+1 (${digits}`;
+  if (digits.length <= 6) return `+1 (${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+const emailValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const textComplete = (value: string) => value.trim().length > 0;
+
 export default function EarlyAccessForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -51,7 +67,7 @@ export default function EarlyAccessForm() {
       firstName: String(values.get("firstName") || ""),
       lastName: String(values.get("lastName") || ""),
       email: String(values.get("email") || ""),
-      phone: String(values.get("phone") || ""),
+      phone: formatUsPhone(String(values.get("phone") || "")),
       location: String(values.get("location") || ""),
       socials: String(values.get("socials") || ""),
       fit: String(values.get("fit") || ""),
@@ -63,13 +79,15 @@ export default function EarlyAccessForm() {
     return () => timers.forEach(window.clearTimeout);
   }, []);
 
+  const phoneComplete = phoneDigits(form.phone).length === 10;
+
   const formComplete = useMemo(() => {
     const fieldsComplete =
-      form.firstName.trim().length > 0 &&
-      form.lastName.trim().length > 0 &&
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
-      form.phone.trim().length >= 7 &&
-      form.location.trim().length > 0 &&
+      textComplete(form.firstName) &&
+      textComplete(form.lastName) &&
+      emailValid(form.email) &&
+      phoneDigits(form.phone).length === 10 &&
+      textComplete(form.location) &&
       form.fit.trim().length >= 50;
 
     return fieldsComplete && form.acknowledgements.every(Boolean);
@@ -94,7 +112,7 @@ export default function EarlyAccessForm() {
       firstName: String(submitted.get("firstName") || form.firstName),
       lastName: String(submitted.get("lastName") || form.lastName),
       email: String(submitted.get("email") || form.email),
-      phone: String(submitted.get("phone") || form.phone),
+      phone: `+1${phoneDigits(String(submitted.get("phone") || form.phone))}`,
       location: String(submitted.get("location") || form.location),
       socials: String(submitted.get("socials") || form.socials),
       fit: String(submitted.get("fit") || form.fit),
@@ -103,8 +121,8 @@ export default function EarlyAccessForm() {
     const payloadComplete =
       payload.firstName.trim() &&
       payload.lastName.trim() &&
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email.trim()) &&
-      payload.phone.trim().length >= 7 &&
+      emailValid(payload.email) &&
+      /^\+1\d{10}$/.test(payload.phone) &&
       payload.location.trim() &&
       payload.fit.trim().length >= 50 &&
       payload.acknowledgements.every(Boolean);
@@ -151,32 +169,33 @@ export default function EarlyAccessForm() {
           <div className="nameGrid">
             <label>
               <span>First name</span>
-              <input required name="firstName" type="text" autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+              <input className={textComplete(form.firstName) ? "fieldComplete" : ""} required name="firstName" type="text" autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
             </label>
             <label>
               <span>Last name</span>
-              <input required name="lastName" type="text" autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+              <input className={textComplete(form.lastName) ? "fieldComplete" : ""} required name="lastName" type="text" autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
             </label>
           </div>
 
           <label>
             <span>Email address</span>
-            <input required name="email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            <input className={emailValid(form.email) ? "fieldComplete" : ""} required name="email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           </label>
 
           <label>
             <span>Phone number</span>
-            <input required name="phone" type="tel" autoComplete="tel" placeholder="(555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            <input className={phoneComplete ? "fieldComplete" : ""} required name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={17} placeholder="+1 (555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: formatUsPhone(event.target.value) })} />
+            <small>US numbers only. Country code +1 is added automatically.</small>
           </label>
 
           <label>
             <span>Location</span>
-            <input required name="location" type="text" autoComplete="address-level2" placeholder="City, state, or country" value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} />
+            <input className={textComplete(form.location) ? "fieldComplete" : ""} required name="location" type="text" autoComplete="address-level2" placeholder="City, state, or country" value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} />
           </label>
 
           <label>
             <span>Social profiles <em>Optional</em></span>
-            <input name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} />
+            <input className={textComplete(form.socials) ? "fieldComplete" : ""} name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} />
             <small>Share any handles or profile links you would like us to know about.</small>
           </label>
 
@@ -187,7 +206,7 @@ export default function EarlyAccessForm() {
               name="fit"
               minLength={50}
               rows={7}
-              className={form.fit.length > 0 && form.fit.trim().length < 50 ? "needsMore" : form.fit.trim().length >= 50 ? "meetsMinimum" : ""}
+              className={form.fit.length > 0 && form.fit.trim().length < 50 ? "needsMore" : form.fit.trim().length >= 50 ? "fieldComplete" : ""}
               placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey."
               value={form.fit}
               onChange={(event) => setForm({ ...form, fit: event.target.value })}
