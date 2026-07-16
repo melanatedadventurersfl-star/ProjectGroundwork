@@ -115,9 +115,12 @@ export async function POST(req: Request) {
     }
 
     const tableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`;
-    const duplicateFormula = `LOWER({Email})='${escapeFormulaValue(email)}'`;
+    const escapedEmail = escapeFormulaValue(email);
+    const escapedFirstName = escapeFormulaValue(firstName.toLowerCase());
+    const escapedLastName = escapeFormulaValue(lastName.toLowerCase());
+    const duplicateFormula = `OR(LOWER({Email})='${escapedEmail}',AND(LOWER({Name})='${escapedFirstName}',LOWER({Last Name})='${escapedLastName}'))`;
     const duplicateResponse = await fetch(
-      `${tableUrl}?maxRecords=1&filterByFormula=${encodeURIComponent(duplicateFormula)}`,
+      `${tableUrl}?maxRecords=3&filterByFormula=${encodeURIComponent(duplicateFormula)}`,
       {
         headers: { Authorization: `Bearer ${airtableToken}` },
         cache: "no-store",
@@ -132,7 +135,7 @@ export async function POST(req: Request) {
     const duplicateData = await duplicateResponse.json();
     if (Array.isArray(duplicateData.records) && duplicateData.records.length > 0) {
       return NextResponse.json(
-        { error: "A Pathfinder invitation request has already been submitted with this email address." },
+        { error: "A Pathfinder application has already been submitted with this name or email address." },
         { status: 409 }
       );
     }
