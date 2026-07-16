@@ -155,7 +155,7 @@ export default function EarlyAccessForm() {
       setWasSubscribed(Boolean(data.subscribed));
       setShowConfirmation(true);
       setForm(initialForm);
-      event.currentTarget.reset();
+      formRef.current?.reset();
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Please try again.");
@@ -164,7 +164,7 @@ export default function EarlyAccessForm() {
 
   return (
     <>
-      <form ref={formRef} className="applicationCard" onSubmit={handleSubmit} onInput={syncAutofilledFields} onChange={syncAutofilledFields}>
+      <form ref={formRef} className={`applicationCard${formComplete ? " formComplete" : ""}`} onSubmit={handleSubmit} onInput={syncAutofilledFields} onChange={syncAutofilledFields}>
         <div className="formColumn">
           <div className="nameGrid">
             <label>
