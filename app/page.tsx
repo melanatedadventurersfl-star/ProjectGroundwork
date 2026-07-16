@@ -59,7 +59,7 @@ export default function Home() {
       <footer className="footer">
         <span>Melanated Adventurers</span>
         <nav className="footerSocials" aria-label="Melanated Adventurers social media">
-          <a href="https://www.instagram.com/nelanatedadventurers/" target="_blank" rel="noreferrer">Instagram · @nelanatedAdventurers</a>
+          <a href="https://www.instagram.com/melanatedadventurers/" target="_blank" rel="noreferrer">Instagram</a>
           <a href="https://www.facebook.com/p/Melanated-Adventurers-61574754990326" target="_blank" rel="noreferrer">Facebook</a>
         </nav>
       </footer>
