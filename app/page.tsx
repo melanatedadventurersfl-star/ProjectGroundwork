@@ -19,7 +19,7 @@ export default function Home() {
         <div className="contours contoursRight" aria-hidden="true" />
         <div className="compassGhost" aria-hidden="true">✦</div>
         <div className="heroInner">
-          <h1>The next chapter begins soon.</h1>
+          <h1>Help shape what comes next.</h1>
           <p className="heroText">
             Melanated Adventurers is inviting a small number of committed individuals to become our first Pathfinders and help shape what comes next.
           </p>
@@ -49,7 +49,7 @@ export default function Home() {
 
       <section className="applicationSection revealSection" id="apply">
         <div className="applicationIntro">
-          <p className="eyebrow">Tell Us About Yourself</p>
+          <p className="eyebrow">Answer the Call</p>
           <h2>Request your invitation.</h2>
           <p>Every great journey begins with someone willing to take the first step.</p>
         </div>
@@ -58,7 +58,10 @@ export default function Home() {
 
       <footer className="footer">
         <span>Melanated Adventurers</span>
-        <span>Every trail begins somewhere.</span>
+        <nav className="footerSocials" aria-label="Melanated Adventurers social media">
+          <a href="https://www.instagram.com/nelanatedadventurers/" target="_blank" rel="noreferrer">Instagram · @nelanatedAdventurers</a>
+          <a href="https://www.facebook.com/p/Melanated-Adventurers-61574754990326" target="_blank" rel="noreferrer">Facebook</a>
+        </nav>
       </footer>
     </main>
   );
