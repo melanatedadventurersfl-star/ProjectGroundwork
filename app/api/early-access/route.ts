@@ -1,43 +1,10 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
-const NOTION_DATA_SOURCE_ID =
-  process.env.NOTION_PATHFINDER_DATA_SOURCE_ID || "94d17e55-23a5-4289-a8ca-ffa050b2d9b1";
-const NOTION_VERSION = "2026-03-11";
-
 function normalizeUsPhone(value: string) {
   const digits = value.replace(/\D/g, "");
   const nationalNumber = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
   return nationalNumber.length === 10 ? `+1${nationalNumber}` : "";
-}
-
-function notionHeaders(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Notion-Version": NOTION_VERSION,
-  };
-}
-
-function notionAccessError(status: number) {
-  if (status === 401) {
-    return NextResponse.json(
-      { error: "The Pathfinder database connection is not authorized. Please update the Notion integration token." },
-      { status: 503 }
-    );
-  }
-
-  if (status === 403 || status === 404) {
-    return NextResponse.json(
-      { error: "The Pathfinder database has not been shared with the website's Notion integration yet." },
-      { status: 503 }
-    );
-  }
-
-  return NextResponse.json(
-    { error: "The Pathfinder database could not be reached. Please try again shortly." },
-    { status: 502 }
-  );
 }
 
 async function subscribeToMailchimp(input: {
@@ -117,79 +84,55 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Please accept each part of the Pathfinder Commitment." }, { status: 400 });
     }
 
-    const notionToken = process.env.NOTION_TOKEN;
-    if (!notionToken) {
-      console.error("NOTION_TOKEN is not configured.");
+    const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+    const webhookSecret = process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
+
+    if (!webhookUrl) {
+      console.error("GOOGLE_SHEETS_WEBHOOK_URL is not configured.");
       return NextResponse.json(
         { error: "The invitation database is not available yet. Please try again shortly." },
         { status: 503 }
       );
     }
 
-    const queryResponse = await fetch(
-      `https://api.notion.com/v1/data_sources/${NOTION_DATA_SOURCE_ID}/query`,
-      {
-        method: "POST",
-        headers: notionHeaders(notionToken),
-        cache: "no-store",
-        body: JSON.stringify({
-          page_size: 3,
-          filter: {
-            or: [
-              { property: "Email", email: { equals: email } },
-              {
-                and: [
-                  { property: "First Name", rich_text: { equals: firstName } },
-                  { property: "Last Name", rich_text: { equals: lastName } },
-                ],
-              },
-            ],
-          },
-        }),
-      }
-    );
+    const sheetResponse = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        secret: webhookSecret || "",
+        submittedAt: new Date().toISOString(),
+        firstName,
+        lastName,
+        email,
+        phone,
+        location,
+        socials,
+        fit,
+        status: "Requested",
+        commitmentAccepted: true,
+        marketingOptIn,
+      }),
+    });
 
-    if (!queryResponse.ok) {
-      const details = await queryResponse.text();
-      console.error(`Notion duplicate check failed (${queryResponse.status}):`, details);
-      return notionAccessError(queryResponse.status);
+    const responseText = await sheetResponse.text();
+    let sheetData: { ok?: boolean; duplicate?: boolean; error?: string } = {};
+    try {
+      sheetData = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      console.error("Google Sheets webhook returned invalid JSON:", responseText);
     }
 
-    const duplicateData = await queryResponse.json();
-    if (Array.isArray(duplicateData.results) && duplicateData.results.length > 0) {
+    if (sheetResponse.status === 409 || sheetData.duplicate) {
       return NextResponse.json(
         { error: "A Pathfinder application has already been submitted with this name or email address." },
         { status: 409 }
       );
     }
 
-    const submittedAt = new Date().toISOString();
-    const createResponse = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
-      headers: notionHeaders(notionToken),
-      body: JSON.stringify({
-        parent: { type: "data_source_id", data_source_id: NOTION_DATA_SOURCE_ID },
-        properties: {
-          Applicant: { title: [{ text: { content: `${firstName} ${lastName}` } }] },
-          "First Name": { rich_text: [{ text: { content: firstName } }] },
-          "Last Name": { rich_text: [{ text: { content: lastName } }] },
-          Email: { email },
-          Phone: { phone_number: phone },
-          Location: { rich_text: [{ text: { content: location } }] },
-          "Social Profiles": socials ? { rich_text: [{ text: { content: socials } }] } : { rich_text: [] },
-          "Pathfinder Response": { rich_text: [{ text: { content: fit } }] },
-          Status: { select: { name: "Requested" } },
-          "Commitment Accepted": { checkbox: true },
-          "Marketing Opt-In": { checkbox: marketingOptIn },
-          "Submitted At": { date: { start: submittedAt } },
-        },
-      }),
-    });
-
-    if (!createResponse.ok) {
-      const details = await createResponse.text();
-      console.error(`Notion application creation failed (${createResponse.status}):`, details);
-      return notionAccessError(createResponse.status);
+    if (!sheetResponse.ok || !sheetData.ok) {
+      console.error("Google Sheets submission failed:", responseText);
+      return NextResponse.json({ error: sheetData.error || "Your request could not be saved. Please try again." }, { status: 502 });
     }
 
     const subscribed = marketingOptIn
