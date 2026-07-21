@@ -31,34 +31,52 @@
   <template id="trailhead-template">
     <section class="welcome-block">
       <p>Good evening, Jonathan.</p>
-      <h2>Your next adventure is getting close.</h2>
+      <h2>Your next adventure is already stirring.</h2>
+      <div class="status-line"><span class="pulse-dot"></span> Pathfinder dashboard updated moments ago</div>
     </section>
     <section class="tile-grid" aria-label="Trailhead tiles">
-      <button class="tile tile-large tile-photo" data-route="adventure" style="--image:url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80')">
+      <button class="tile tile-hero tile-photo" data-route="adventure" style="--image:url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80')">
         <span class="tile-label">NEXT ADVENTURE</span>
-        <strong>Great Melanated Little Camp of Horrors</strong>
-        <span class="tile-meta">Oct 30 • Brooksville</span>
+        <div>
+          <strong>Great Melanated Little Camp of Horrors</strong>
+          <span class="tile-meta">Oct 30 • Brooksville</span>
+        </div>
+        <span class="tile-badge">100 DAYS</span>
       </button>
-      <button class="tile tile-tall" data-route="community">
+
+      <button class="tile tile-tall tile-community" data-route="community">
         <span class="tile-label">COMMUNITY</span>
-        <strong>18 new stories</strong>
+        <div class="live-stack" aria-hidden="true">
+          <span>Ashley shared 24 photos</span>
+          <span>Marcus completed his first hike</span>
+          <span>18 new stories today</span>
+        </div>
         <span class="tile-meta">See what the circle is sharing</span>
       </button>
-      <button class="tile tile-small" data-route="passport">
+
+      <button class="tile tile-small tile-passport" data-route="passport">
         <span class="tile-label">PASSPORT</span>
         <strong>Pathfinder II</strong>
+        <span class="mini-progress"><i></i></span>
+        <span class="tile-meta">2 trips to next rank</span>
       </button>
-      <button class="tile tile-wide" data-route="journey">
+
+      <button class="tile tile-wide tile-journey" data-route="journey">
         <span class="tile-label">MY JOURNEY</span>
         <strong>12 adventures completed</strong>
+        <span class="tile-meta">4 states • 9 campouts • 1,000 memories</span>
       </button>
+
       <button class="tile tile-small tile-accent" data-route="campfire">
         <span class="tile-label">CAMPFIRE</span>
         <strong>3 updates</strong>
+        <span class="tile-meta">1 needs attention</span>
       </button>
-      <button class="tile tile-wide" data-route="explore">
+
+      <button class="tile tile-wide tile-explore" data-route="explore">
         <span class="tile-label">EXPLORE</span>
         <strong>Find your next outside story</strong>
+        <span class="tile-meta">Camping • Water • Trails • Skills</span>
       </button>
     </section>
   </template>
