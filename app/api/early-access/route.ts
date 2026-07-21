@@ -1,6 +1,9 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 function normalizeUsPhone(value: string) {
   const digits = value.replace(/\D/g, "");
   const nationalNumber = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
@@ -63,8 +66,10 @@ export async function POST(req: Request) {
     const state = String(body.state || "").trim().toUpperCase();
     const socials = String(body.socials || "").trim();
     const fit = String(body.fit || "").trim();
+    const photoCaption = String(body.photoCaption || "").trim();
     const marketingOptIn = Boolean(body.marketingOptIn);
     const acknowledgements = Array.isArray(body.acknowledgements) ? body.acknowledgements : [];
+    const photo = body.photo && typeof body.photo === "object" ? body.photo : null;
 
     if (!firstName || !lastName || !city || !state) {
       return NextResponse.json({ error: "Please enter your first name, last name, city, and state." }, { status: 400 });
@@ -84,8 +89,23 @@ export async function POST(req: Request) {
     if (fit.length < 50) {
       return NextResponse.json({ error: "Your Pathfinder response must be at least 50 characters." }, { status: 400 });
     }
+    if (photoCaption.length > 300) {
+      return NextResponse.json({ error: "Please shorten the photo caption to 300 characters or fewer." }, { status: 400 });
+    }
     if (acknowledgements.length !== 4 || !acknowledgements.every(Boolean)) {
       return NextResponse.json({ error: "Please accept each part of the Pathfinder Commitment." }, { status: 400 });
+    }
+
+    if (photo) {
+      const photoType = String(photo.type || "");
+      const photoSize = Number(photo.size || 0);
+      const photoData = String(photo.data || "");
+      if (!ALLOWED_PHOTO_TYPES.includes(photoType)) {
+        return NextResponse.json({ error: "Photo must be a JPG, PNG, or WebP image." }, { status: 400 });
+      }
+      if (!photoSize || photoSize > MAX_PHOTO_BYTES || !photoData) {
+        return NextResponse.json({ error: "Photo must be 4 MB or smaller." }, { status: 400 });
+      }
     }
 
     const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
@@ -114,6 +134,8 @@ export async function POST(req: Request) {
         state,
         socials,
         fit,
+        photo,
+        photoCaption,
         status: "Requested",
         commitmentAccepted: true,
         marketingOptIn,
