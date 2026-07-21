@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./polish.css";
 import "./state-select.css";
+import "./photo-upload.css";
 
 export const metadata: Metadata = {
   title: "Melanated Adventurers App",
