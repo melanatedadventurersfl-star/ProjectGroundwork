@@ -10,6 +10,38 @@ function normalizeUsPhone(value: string) {
   return nationalNumber.length === 10 ? `+1${nationalNumber}` : "";
 }
 
+function createSubmissionId(input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  city: string;
+  state: string;
+  socials: string;
+  fit: string;
+  photoCaption: string;
+  marketingOptIn: boolean;
+  photo: Record<string, unknown> | null;
+}) {
+  const photoData = input.photo ? String(input.photo.data || "") : "";
+  const photoHash = photoData ? createHash("sha256").update(photoData).digest("hex") : "";
+  const fingerprint = JSON.stringify({
+    firstName: input.firstName.toLowerCase(),
+    lastName: input.lastName.toLowerCase(),
+    email: input.email,
+    phone: input.phone,
+    city: input.city.toLowerCase(),
+    state: input.state,
+    socials: input.socials,
+    fit: input.fit,
+    photoCaption: input.photoCaption,
+    marketingOptIn: input.marketingOptIn,
+    photoHash,
+  });
+
+  return createHash("sha256").update(fingerprint).digest("hex");
+}
+
 async function subscribeToMailchimp(input: {
   firstName: string;
   lastName: string;
@@ -108,6 +140,20 @@ export async function POST(req: Request) {
       }
     }
 
+    const submissionId = createSubmissionId({
+      firstName,
+      lastName,
+      email,
+      phone,
+      city,
+      state,
+      socials,
+      fit,
+      photoCaption,
+      marketingOptIn,
+      photo,
+    });
+
     const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
     const webhookSecret = process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
 
@@ -125,6 +171,7 @@ export async function POST(req: Request) {
       cache: "no-store",
       body: JSON.stringify({
         secret: webhookSecret || "",
+        submissionId,
         submittedAt: new Date().toISOString(),
         firstName,
         lastName,
@@ -143,7 +190,7 @@ export async function POST(req: Request) {
     });
 
     const responseText = await sheetResponse.text();
-    let sheetData: { ok?: boolean; duplicate?: boolean; error?: string } = {};
+    let sheetData: { ok?: boolean; duplicate?: boolean; replay?: boolean; error?: string } = {};
     try {
       sheetData = responseText ? JSON.parse(responseText) : {};
     } catch {
@@ -162,11 +209,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: sheetData.error || "Your request could not be saved. Please try again." }, { status: 502 });
     }
 
-    const subscribed = marketingOptIn
-      ? await subscribeToMailchimp({ firstName, lastName, email, phone })
-      : false;
+    const subscribed = sheetData.replay
+      ? false
+      : marketingOptIn
+        ? await subscribeToMailchimp({ firstName, lastName, email, phone })
+        : false;
 
-    return NextResponse.json({ ok: true, subscribed });
+    return NextResponse.json({ ok: true, subscribed, replay: Boolean(sheetData.replay) });
   } catch (error) {
     console.error("Pathfinder invitation submission failed:", error);
     return NextResponse.json(
