@@ -7,7 +7,8 @@ type FormState = {
   lastName: string;
   email: string;
   phone: string;
-  location: string;
+  city: string;
+  state: string;
   socials: string;
   fit: string;
   marketingOptIn: boolean;
@@ -26,7 +27,8 @@ const initialForm: FormState = {
   lastName: "",
   email: "",
   phone: "",
-  location: "",
+  city: "",
+  state: "",
   socials: "",
   fit: "",
   marketingOptIn: false,
@@ -56,6 +58,7 @@ function formatUsPhone(value: string) {
 
 const emailValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const textComplete = (value: string) => value.trim().length > 0;
+const stateValid = (value: string) => /^[A-Z]{2}$/.test(value.trim().toUpperCase());
 
 export default function EarlyAccessForm() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -76,7 +79,8 @@ export default function EarlyAccessForm() {
       lastName: String(values.get("lastName") || ""),
       email: String(values.get("email") || ""),
       phone: formatUsPhone(String(values.get("phone") || "")),
-      location: String(values.get("location") || ""),
+      city: String(values.get("city") || ""),
+      state: String(values.get("state") || "").replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase(),
       socials: String(values.get("socials") || ""),
       fit: String(values.get("fit") || ""),
     }));
@@ -95,7 +99,8 @@ export default function EarlyAccessForm() {
       textComplete(form.lastName) &&
       emailValid(form.email) &&
       phoneDigits(form.phone).length === 10 &&
-      textComplete(form.location) &&
+      textComplete(form.city) &&
+      stateValid(form.state) &&
       form.fit.trim().length >= 50;
 
     return fieldsComplete && form.acknowledgements.every(Boolean);
@@ -121,7 +126,8 @@ export default function EarlyAccessForm() {
       lastName: String(submitted.get("lastName") || form.lastName),
       email: String(submitted.get("email") || form.email),
       phone: `+1${phoneDigits(String(submitted.get("phone") || form.phone))}`,
-      location: String(submitted.get("location") || form.location),
+      city: String(submitted.get("city") || form.city).trim(),
+      state: String(submitted.get("state") || form.state).replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase(),
       socials: String(submitted.get("socials") || form.socials),
       fit: String(submitted.get("fit") || form.fit),
     };
@@ -131,7 +137,8 @@ export default function EarlyAccessForm() {
       payload.lastName.trim() &&
       emailValid(payload.email) &&
       /^\+1\d{10}$/.test(payload.phone) &&
-      payload.location.trim() &&
+      payload.city.trim() &&
+      stateValid(payload.state) &&
       payload.fit.trim().length >= 50 &&
       payload.acknowledgements.every(Boolean);
 
@@ -196,10 +203,16 @@ export default function EarlyAccessForm() {
             <small>US numbers only. Country code +1 is added automatically.</small>
           </label>
 
-          <label>
-            <span>Location</span>
-            <input className={textComplete(form.location) ? "fieldComplete" : ""} required name="location" type="text" autoComplete="address-level2" placeholder="City, state, or country" value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} />
-          </label>
+          <div className="nameGrid">
+            <label>
+              <span>City</span>
+              <input className={textComplete(form.city) ? "fieldComplete" : ""} required name="city" type="text" autoComplete="address-level2" placeholder="City" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} />
+            </label>
+            <label>
+              <span>State</span>
+              <input className={stateValid(form.state) ? "fieldComplete" : ""} required name="state" type="text" autoComplete="address-level1" inputMode="text" maxLength={2} placeholder="FL" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value.replace(/[^a-zA-Z]/g, "").slice(0, 2).toUpperCase() })} />
+            </label>
+          </div>
 
           <label>
             <span>Social profiles <em>Optional</em></span>
