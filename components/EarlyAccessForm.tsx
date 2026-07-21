@@ -87,6 +87,7 @@ function fileToBase64(file: File) {
 const emailValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const textComplete = (value: string) => value.trim().length > 0;
 const stateValid = (value: string) => states.some(([code]) => code === value);
+const validationClass = (valid: boolean) => valid ? "fieldComplete" : "fieldInvalid";
 
 export default function EarlyAccessForm() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -135,6 +136,7 @@ export default function EarlyAccessForm() {
   }, [photo]);
 
   const phoneComplete = phoneDigits(form.phone).length === 10;
+  const fitComplete = form.fit.trim().length >= 50;
   const formComplete = useMemo(() => {
     const fieldsComplete =
       textComplete(form.firstName) && textComplete(form.lastName) && emailValid(form.email) &&
@@ -242,16 +244,19 @@ export default function EarlyAccessForm() {
       <form ref={formRef} className={`applicationCard${formComplete ? " formComplete" : ""}`} onSubmit={handleSubmit} onInput={syncAutofilledFields} onChange={syncAutofilledFields}>
         <div className="formColumn">
           <div className="nameGrid">
-            <label><span>First name</span><input className={textComplete(form.firstName) ? "fieldComplete" : ""} required name="firstName" type="text" autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} /></label>
-            <label><span>Last name</span><input className={textComplete(form.lastName) ? "fieldComplete" : ""} required name="lastName" type="text" autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} /></label>
+            <label><span>First name</span><input className={validationClass(textComplete(form.firstName))} required name="firstName" type="text" autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} /></label>
+            <label><span>Last name</span><input className={validationClass(textComplete(form.lastName))} required name="lastName" type="text" autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} /></label>
           </div>
-          <label><span>Email address</span><input className={emailValid(form.email) ? "fieldComplete" : ""} required name="email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-          <label><span>Phone number</span><input className={phoneComplete ? "fieldComplete" : ""} required name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={17} placeholder="+1 (555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: formatUsPhone(event.target.value) })} /><small>US numbers only. Country code +1 is added automatically.</small></label>
+          <label><span>Email address</span><input className={validationClass(emailValid(form.email))} required name="email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+          <label><span>Phone number</span><input className={validationClass(phoneComplete)} required name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={17} placeholder="+1 (555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: formatUsPhone(event.target.value) })} /><small>US numbers only. Country code +1 is added automatically.</small></label>
           <div className="nameGrid">
-            <label><span>City</span><input className={textComplete(form.city) ? "fieldComplete" : ""} required name="city" type="text" autoComplete="address-level2" placeholder="City" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
-            <label><span>State</span><select className={stateValid(form.state) ? "fieldComplete" : ""} required name="state" autoComplete="address-level1" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })}><option value="">Select state</option>{states.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
+            <label><span>City</span><input className={validationClass(textComplete(form.city))} required name="city" type="text" autoComplete="address-level2" placeholder="City" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
+            <label><span>State</span><select className={validationClass(stateValid(form.state))} required name="state" autoComplete="address-level1" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })}><option value="">Select state</option>{states.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
           </div>
-          <label><span>Social profiles <em>Optional</em></span><input className={textComplete(form.socials) ? "fieldComplete" : ""} name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
+
+          <label className="pathfinderResponseField"><span>Why would you make a strong Pathfinder for Melanated Adventurers?</span><textarea required name="fit" minLength={50} rows={7} className={validationClass(fitComplete)} placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey." value={form.fit} onChange={(event) => setForm({ ...form, fit: event.target.value })} /><small className={!fitComplete ? "characterCount warning" : "characterCount complete"}>{fitComplete ? `${form.fit.trim().length} characters · Ready` : `${form.fit.trim().length}/50 characters minimum`}</small></label>
+
+          <label><span>Social profiles <em>Optional</em></span><input name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
 
           <div className="photoField">
             <div className="photoFieldHeading"><span>Share a photo <em>Optional</em></span><small>JPG, PNG, or WebP · 4 MB maximum</small></div>
@@ -263,18 +268,19 @@ export default function EarlyAccessForm() {
             {photoError && <small className="photoError">{photoError}</small>}
             {photo && <label><span>Photo caption <em>Optional</em></span><textarea name="photoCaption" rows={3} maxLength={300} placeholder="Tell us what this photo means to you." value={form.photoCaption} onChange={(event) => setForm({ ...form, photoCaption: event.target.value })} /><small className="characterCount">{form.photoCaption.length}/300</small></label>}
           </div>
-
-          <label><span>Why would you make a strong Pathfinder for Melanated Adventurers?</span><textarea required name="fit" minLength={50} rows={7} className={form.fit.length > 0 && form.fit.trim().length < 50 ? "needsMore" : form.fit.trim().length >= 50 ? "fieldComplete" : ""} placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey." value={form.fit} onChange={(event) => setForm({ ...form, fit: event.target.value })} /><small className={form.fit.length > 0 && form.fit.trim().length < 50 ? "characterCount warning" : form.fit.trim().length >= 50 ? "characterCount complete" : "characterCount"}>{form.fit.trim().length >= 50 ? `${form.fit.trim().length} characters · Ready` : `${form.fit.trim().length}/50 characters minimum`}</small></label>
         </div>
+
         <div className="acknowledgementPanel">
           <p className="panelEyebrow">The Pathfinder Commitment</p><p>All acknowledgements are required before your request can be submitted.</p>
-          <div className="acknowledgementList">{acknowledgementText.map((text, index) => <label className="acknowledgement" key={text}><input required type="checkbox" checked={form.acknowledgements[index]} onChange={() => toggleAcknowledgement(index)} /><span>{text}</span></label>)}</div>
+          <div className="acknowledgementList">{acknowledgementText.map((text, index) => <label className="acknowledgement" key={text}><input className={form.acknowledgements[index] ? "ackComplete" : "ackInvalid"} required type="checkbox" checked={form.acknowledgements[index]} onChange={() => toggleAcknowledgement(index)} /><span>{text}</span></label>)}</div>
           <div className="marketingConsent"><p className="panelEyebrow">Keep Me Connected</p><label className="acknowledgement optionalConsent"><input type="checkbox" checked={form.marketingOptIn} onChange={(event) => setForm({ ...form, marketingOptIn: event.target.checked })} /><span>I’d like to receive occasional emails about Melanated Adventurers experiences, news, and community updates. I can unsubscribe at any time.</span></label></div>
         </div>
+
         <button className="primaryButton submitButton" type="submit" disabled={status === "loading" || !formComplete}>{status === "loading" ? "Sending Request..." : "Request a Pathfinder Invitation"}</button>
         <p className="selectionNote">Selected individuals will receive a private invitation with expectations and next steps.</p>
         {message && !showDuplicateModal && <p className="formMessage errorText">{message}</p>}
       </form>
+
       {showConfirmation && <div className="modalBackdrop" role="presentation" onClick={() => setShowConfirmation(false)}><div className="confirmationModal compactModal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title" onClick={(event) => event.stopPropagation()}><p className="panelEyebrow">Request Received</p><h2 id="confirmation-title">Application submitted.</h2><p>We’ll review your Pathfinder application and contact selected individuals with next steps.</p>{wasSubscribed && <p className="subscriptionConfirmation">You’re also subscribed to Melanated Adventurers email updates.</p>}<button className="primaryButton" type="button" onClick={() => setShowConfirmation(false)}>Close</button></div></div>}
       {showDuplicateModal && <div className="modalBackdrop" role="presentation" onClick={() => setShowDuplicateModal(false)}><div className="confirmationModal compactModal duplicateModal" role="dialog" aria-modal="true" aria-labelledby="duplicate-title" onClick={(event) => event.stopPropagation()}><p className="panelEyebrow">Application Already Received</p><h2 id="duplicate-title">You’re already on the list.</h2><p>{message}</p><button className="primaryButton" type="button" onClick={() => setShowDuplicateModal(false)}>Close</button></div></div>}
     </>
