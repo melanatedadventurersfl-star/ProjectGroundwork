@@ -74,6 +74,79 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
+create or replace function public.is_household_member(target_household_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.household_members hm
+    where hm.household_id = target_household_id
+      and hm.profile_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_household_owner(target_household_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.household_members hm
+    where hm.household_id = target_household_id
+      and hm.profile_id = auth.uid()
+      and hm.role = 'owner'
+  );
+$$;
+
+create or replace function public.create_household(household_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_household_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if nullif(trim(household_name), '') is null then
+    raise exception 'Household name is required';
+  end if;
+
+  insert into public.households (name, created_by)
+  values (trim(household_name), auth.uid())
+  returning id into new_household_id;
+
+  insert into public.household_members (
+    household_id,
+    profile_id,
+    role,
+    can_manage_bookings,
+    can_manage_readiness
+  )
+  values (
+    new_household_id,
+    auth.uid(),
+    'owner',
+    true,
+    true
+  );
+
+  return new_household_id;
+end;
+$$;
+
+grant execute on function public.create_household(text) to authenticated;
+
 alter table public.profiles enable row level security;
 alter table public.households enable row level security;
 alter table public.household_members enable row level security;
@@ -89,68 +162,26 @@ with check (auth.uid() = id);
 
 create policy "Households are readable by members"
 on public.households for select
-using (
-  exists (
-    select 1
-    from public.household_members hm
-    where hm.household_id = households.id
-      and hm.profile_id = auth.uid()
-  )
-);
-
-create policy "Households are creatable by authenticated users"
-on public.households for insert
-with check (auth.uid() = created_by);
+using (public.is_household_member(id));
 
 create policy "Households are editable by owners"
 on public.households for update
-using (
-  exists (
-    select 1
-    from public.household_members hm
-    where hm.household_id = households.id
-      and hm.profile_id = auth.uid()
-      and hm.role = 'owner'
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.household_members hm
-    where hm.household_id = households.id
-      and hm.profile_id = auth.uid()
-      and hm.role = 'owner'
-  )
-);
+using (public.is_household_owner(id))
+with check (public.is_household_owner(id));
 
 create policy "Household membership is readable by household members"
 on public.household_members for select
-using (
-  exists (
-    select 1
-    from public.household_members self
-    where self.household_id = household_members.household_id
-      and self.profile_id = auth.uid()
-  )
-);
+using (public.is_household_member(household_id));
 
-create policy "Household owners manage membership"
-on public.household_members for all
-using (
-  exists (
-    select 1
-    from public.household_members owner_row
-    where owner_row.household_id = household_members.household_id
-      and owner_row.profile_id = auth.uid()
-      and owner_row.role = 'owner'
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.household_members owner_row
-    where owner_row.household_id = household_members.household_id
-      and owner_row.profile_id = auth.uid()
-      and owner_row.role = 'owner'
-  )
-);
+create policy "Household owners can add members"
+on public.household_members for insert
+with check (public.is_household_owner(household_id));
+
+create policy "Household owners can update members"
+on public.household_members for update
+using (public.is_household_owner(household_id))
+with check (public.is_household_owner(household_id));
+
+create policy "Household owners can remove members"
+on public.household_members for delete
+using (public.is_household_owner(household_id));
