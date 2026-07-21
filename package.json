@@ -2,7 +2,16 @@
   "name": "project-groundwork",
   "version": "0.1.0",
   "private": true,
-  "description": "Repository manifest used to enable Git-based application deployment. The MA member app is deployed from the ma-app-foundation-v0.1 branch.",
+  "description": "Melanated Adventurers product blueprint and application workspace.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "mobile:start": "npm --workspace @ma/mobile run start",
+    "mobile:lint": "npm --workspace @ma/mobile run lint",
+    "mobile:typecheck": "npm --workspace @ma/mobile run typecheck",
+    "check": "npm run mobile:lint && npm run mobile:typecheck"
+  },
   "engines": {
     "node": ">=22"
   }
