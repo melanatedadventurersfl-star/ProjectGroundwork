@@ -59,14 +59,18 @@ export async function POST(req: Request) {
     const lastName = String(body.lastName || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
     const phone = normalizeUsPhone(String(body.phone || ""));
-    const location = String(body.location || "").trim();
+    const city = String(body.city || "").trim();
+    const state = String(body.state || "").trim().toUpperCase();
     const socials = String(body.socials || "").trim();
     const fit = String(body.fit || "").trim();
     const marketingOptIn = Boolean(body.marketingOptIn);
     const acknowledgements = Array.isArray(body.acknowledgements) ? body.acknowledgements : [];
 
-    if (!firstName || !lastName || !location) {
-      return NextResponse.json({ error: "Please enter your first name, last name, and location." }, { status: 400 });
+    if (!firstName || !lastName || !city || !state) {
+      return NextResponse.json({ error: "Please enter your first name, last name, city, and state." }, { status: 400 });
+    }
+    if (!/^[A-Z]{2}$/.test(state)) {
+      return NextResponse.json({ error: "Enter a valid two-letter state abbreviation." }, { status: 400 });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
@@ -106,7 +110,8 @@ export async function POST(req: Request) {
         lastName,
         email,
         phone,
-        location,
+        city,
+        state,
         socials,
         fit,
         status: "Requested",
@@ -125,7 +130,7 @@ export async function POST(req: Request) {
 
     if (sheetResponse.status === 409 || sheetData.duplicate) {
       return NextResponse.json(
-        { error: "A Pathfinder application has already been submitted with this name or email address." },
+        { error: "A Pathfinder application has already been submitted with this email address." },
         { status: 409 }
       );
     }
