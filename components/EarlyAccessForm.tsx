@@ -258,16 +258,16 @@ export default function EarlyAccessForm() {
 
           <div className="photoField">
             <div className="photoFieldHeading"><span>Share a photo <em>Optional</em></span><small>JPG, PNG, or WebP · 4 MB maximum</small></div>
-            <label className={`photoPicker${photoPreview ? " hasPhoto" : ""}`}>
+            <label className={`photoPicker${photoPreview ? " hasPhoto fieldComplete" : ""}`}>
               <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} />
               {photoPreview ? <img src={photoPreview} alt="Selected applicant preview" /> : <span><strong>Choose a photo</strong><small>A moment, place, or adventure that says something about you.</small></span>}
             </label>
             {photo && <button className="removePhotoButton" type="button" onClick={() => { setPhoto(null); setForm({ ...form, photoCaption: "" }); }}>Remove photo</button>}
             {photoError && <small className="photoError">{photoError}</small>}
-            {photo && <label><span>Photo caption <em>Optional</em></span><textarea name="photoCaption" rows={3} maxLength={300} placeholder="Tell us what this photo means to you." value={form.photoCaption} onChange={(event) => setForm({ ...form, photoCaption: event.target.value })} /><small className="characterCount">{form.photoCaption.length}/300</small></label>}
+            {photo && <label><span>Photo caption <em>Optional</em></span><textarea className={textComplete(form.photoCaption) ? "fieldComplete" : ""} name="photoCaption" rows={3} maxLength={300} placeholder="Tell us what this photo means to you." value={form.photoCaption} onChange={(event) => setForm({ ...form, photoCaption: event.target.value })} /><small className="characterCount">{form.photoCaption.length}/300</small></label>}
           </div>
 
-          <label><span>Social profiles <em>Optional</em></span><input name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
+          <label><span>Social profiles <em>Optional</em></span><input className={textComplete(form.socials) ? "fieldComplete" : ""} name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
         </div>
 
         <div className="acknowledgementPanel">
