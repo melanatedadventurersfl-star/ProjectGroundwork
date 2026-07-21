@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Melanated Adventurers",
+    "slug": "melanated-adventurers",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "melanatedadventurers",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-sqlite"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.melanatedadventurers.app"
+    },
+    "android": {
+      "package": "com.melanatedadventurers.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
+}
