@@ -19,9 +19,9 @@ export default function Home() {
         <div className="contours contoursRight" aria-hidden="true" />
         <div className="compassGhost" aria-hidden="true">✦</div>
         <div className="heroInner">
-          <h1>Help shape what comes next.</h1>
+          <h1>Not everyone is meant to find this.</h1>
           <p className="heroText">
-            Melanated Adventurers is inviting a small number of committed individuals to become our first Pathfinders and help shape what comes next.
+            Somewhere beyond the map, something new is taking shape. We&apos;re inviting a small group of Pathfinders to help build it before the world ever sees it.
           </p>
           <p className="limited">Limited entry. Invitation only.</p>
           <a className="primaryButton invitationButton" href="#apply">Request a Pathfinder Invitation</a>
