@@ -14,6 +14,7 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="adventures" />
         <Stack.Screen name="checkout" />
+        <Stack.Screen name="readiness" />
         <Stack.Screen name="host" />
       </Stack>
     </AuthProvider>
