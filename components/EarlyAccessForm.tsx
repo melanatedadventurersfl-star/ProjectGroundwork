@@ -256,8 +256,6 @@ export default function EarlyAccessForm() {
 
           <label className="pathfinderResponseField"><span>Why would you make a strong Pathfinder for Melanated Adventurers?</span><textarea required name="fit" minLength={50} rows={7} className={validationClass(fitComplete)} placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey." value={form.fit} onChange={(event) => setForm({ ...form, fit: event.target.value })} /><small className={!fitComplete ? "characterCount warning" : "characterCount complete"}>{fitComplete ? `${form.fit.trim().length} characters · Ready` : `${form.fit.trim().length}/50 characters minimum`}</small></label>
 
-          <label><span>Social profiles <em>Optional</em></span><input name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
-
           <div className="photoField">
             <div className="photoFieldHeading"><span>Share a photo <em>Optional</em></span><small>JPG, PNG, or WebP · 4 MB maximum</small></div>
             <label className={`photoPicker${photoPreview ? " hasPhoto" : ""}`}>
@@ -268,6 +266,8 @@ export default function EarlyAccessForm() {
             {photoError && <small className="photoError">{photoError}</small>}
             {photo && <label><span>Photo caption <em>Optional</em></span><textarea name="photoCaption" rows={3} maxLength={300} placeholder="Tell us what this photo means to you." value={form.photoCaption} onChange={(event) => setForm({ ...form, photoCaption: event.target.value })} /><small className="characterCount">{form.photoCaption.length}/300</small></label>}
           </div>
+
+          <label><span>Social profiles <em>Optional</em></span><input name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
         </div>
 
         <div className="acknowledgementPanel">
