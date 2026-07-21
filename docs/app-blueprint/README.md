@@ -35,16 +35,20 @@ Milestone 2 defines the launch member journey, screen structures, reusable UI sy
 
 ## Milestone 3 — System and Build Planning
 
-**Status: Not started**
+**Status: Complete**
 
-Planned documents:
+1. [Data Model](15-Data-Model.md)
+2. [API and Integration Plan](16-API-and-Integration-Plan.md)
+3. [Authentication and Permissions](17-Authentication-and-Permissions.md)
+4. [Product Decision Log](18-Product-Decision-Log.md)
+5. [Release Roadmap](19-Release-Roadmap.md)
+6. [Testing and Accessibility Plan](20-Testing-and-Accessibility-Plan.md)
 
-- Data Model
-- API and Integration Plan
-- Authentication and Permissions
-- Product Decision Log
-- Release Roadmap
-- Testing and Accessibility Plan
+Milestone 3 defines the launch data structure, service boundaries, integration strategy, access controls, recorded product decisions, release stages, and quality requirements.
+
+## Blueprint Status
+
+The strategic blueprint is complete through system and build planning. The project is ready to move into the prototype and implementation phase.
 
 ## Prototype Route
 
@@ -61,6 +65,17 @@ Trailhead
 → Passport Stamp
 → Journey Entry
 ```
+
+## Recommended Next Phase — Prototype and Implementation
+
+1. Confirm the application technology stack.
+2. Create the member app folder and development environment.
+3. Convert the design system into reusable design tokens.
+4. Build the shared component library.
+5. Implement the prototype route with sample data.
+6. Conduct Pathfinder usability testing.
+7. Finalize backend, payment, and deployment choices.
+8. Begin the internal alpha.
 
 ## Guiding Statement
 
