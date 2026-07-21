@@ -1,0 +1,42 @@
+.applicationCard select {
+  width: 100%;
+  height: 52px;
+  padding: 0 42px 0 14px;
+  border: 1px solid rgba(227, 210, 194, 0.18);
+  border-radius: 5px;
+  background-color: #171513;
+  color: #f6ede5;
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #c9bdb2 50%),
+    linear-gradient(135deg, #c9bdb2 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 22px,
+    calc(100% - 13px) 22px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.applicationCard select:invalid {
+  color: #8f847a;
+}
+
+.applicationCard select:valid {
+  color: #f6ede5;
+  background-color: #171513;
+}
+
+.applicationCard select:focus {
+  border-color: #bd7444;
+  background-color: #1a1714;
+  box-shadow: 0 0 0 3px rgba(189, 116, 68, 0.1);
+}
+
+.applicationCard select option {
+  background: #171513;
+  color: #f6ede5;
+}
