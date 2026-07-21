@@ -1,8 +1,9 @@
 const SPREADSHEET_ID = "1YON11nXJr0d0o0nbx0bsYmvWzsC44IxnNqaU7eU56LI";
 const SHEET_NAME = "Applications";
-const PHOTO_FOLDER_NAME = "Pathfinder Applicant Photos";
+const PHOTO_FOLDER_ID = "1XVLfyvtf_22cZMpVX9-Ie6sJp4LEqFhj";
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const SUBMISSION_ID_COLUMN = 16;
 
 function doGet() {
   return jsonResponse({
@@ -26,10 +27,20 @@ function doPost(event) {
       throw new Error(`Sheet tab '${SHEET_NAME}' was not found.`);
     }
 
-    if (findDuplicate(sheet, payload)) {
+    if (findSubmissionReplay(sheet, payload.submissionId)) {
+      return jsonResponse({
+        ok: true,
+        duplicate: false,
+        replay: true,
+        photoSaved: Boolean(payload.photo),
+      });
+    }
+
+    if (findDuplicateEmail(sheet, payload.email)) {
       return jsonResponse({
         ok: false,
         duplicate: true,
+        replay: false,
         error: "A Pathfinder application has already been submitted with this email address.",
       });
     }
@@ -52,23 +63,30 @@ function doPost(event) {
       safeCell(photoUrl),
       safeCell(payload.photoCaption || ""),
       "",
+      safeCell(payload.submissionId),
     ]);
 
     SpreadsheetApp.flush();
 
-    return jsonResponse({ ok: true, duplicate: false, photoSaved: Boolean(photoUrl) });
+    return jsonResponse({
+      ok: true,
+      duplicate: false,
+      replay: false,
+      photoSaved: Boolean(photoUrl),
+    });
   } catch (error) {
     console.error(error);
     return jsonResponse({
       ok: false,
       duplicate: false,
+      replay: false,
       error: error instanceof Error ? error.message : "The application could not be saved.",
     });
   } finally {
     try {
       lock.releaseLock();
     } catch (_) {
-      // The lock may not have been acquired if the request failed early.
+      // The lock may not have been acquired.
     }
   }
 }
@@ -95,6 +113,7 @@ function validateSecret(receivedSecret) {
 
 function validatePayload(payload) {
   const requiredText = [
+    ["submissionId", "Submission ID"],
     ["firstName", "First name"],
     ["lastName", "Last name"],
     ["email", "Email"],
@@ -109,6 +128,10 @@ function validatePayload(payload) {
       throw new Error(`${label} is required.`);
     }
   });
+
+  if (!/^[a-f0-9]{64}$/i.test(String(payload.submissionId))) {
+    throw new Error("The submission ID is invalid.");
+  }
 
   const email = String(payload.email).trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -160,7 +183,7 @@ function savePhoto(payload) {
   const photo = payload.photo;
   validatePhoto(photo);
 
-  const folder = getPhotoFolder();
+  const folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
   const extension = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
   const safeName = `${normalizeFilePart(payload.lastName)}-${normalizeFilePart(payload.firstName)}-${Date.now()}.${extension}`;
   const bytes = Utilities.base64Decode(String(photo.data));
@@ -170,22 +193,34 @@ function savePhoto(payload) {
   return file.getUrl();
 }
 
-function getPhotoFolder() {
-  const properties = PropertiesService.getScriptProperties();
-  const savedId = properties.getProperty("PHOTO_FOLDER_ID");
+function authorizeDriveAccess() {
+  const folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
+  const testFile = folder.createFile("authorization-test.txt", "Drive access authorized.");
+  testFile.setTrashed(true);
+  Logger.log("Drive authorization complete.");
+}
 
-  if (savedId) {
-    try {
-      return DriveApp.getFolderById(savedId);
-    } catch (_) {
-      properties.deleteProperty("PHOTO_FOLDER_ID");
-    }
+function findSubmissionReplay(sheet, submissionId) {
+  const normalizedId = String(submissionId || "").trim().toLowerCase();
+  const lastRow = sheet.getLastRow();
+
+  if (!normalizedId || lastRow < 2) {
+    return false;
   }
 
-  const matches = DriveApp.getFoldersByName(PHOTO_FOLDER_NAME);
-  const folder = matches.hasNext() ? matches.next() : DriveApp.createFolder(PHOTO_FOLDER_NAME);
-  properties.setProperty("PHOTO_FOLDER_ID", folder.getId());
-  return folder;
+  const ids = sheet.getRange(2, SUBMISSION_ID_COLUMN, lastRow - 1, 1).getDisplayValues();
+  return ids.some((row) => normalize(row[0]) === normalizedId);
+}
+
+function findDuplicateEmail(sheet, email) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return false;
+  }
+
+  const emails = sheet.getRange(2, 4, lastRow - 1, 1).getDisplayValues();
+  const targetEmail = normalize(email);
+  return emails.some((row) => normalize(row[0]) === targetEmail);
 }
 
 function normalizeFilePart(value) {
@@ -194,16 +229,6 @@ function normalizeFilePart(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "applicant";
-}
-
-function findDuplicate(sheet, payload) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return false;
-
-  const rows = sheet.getRange(2, 1, lastRow - 1, 15).getDisplayValues();
-  const targetEmail = normalize(payload.email);
-
-  return rows.some((row) => normalize(row[3]) === targetEmail);
 }
 
 function normalize(value) {
