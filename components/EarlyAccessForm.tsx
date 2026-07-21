@@ -11,6 +11,7 @@ type FormState = {
   state: string;
   socials: string;
   fit: string;
+  photoCaption: string;
   marketingOptIn: boolean;
   acknowledgements: boolean[];
 };
@@ -47,9 +48,13 @@ const initialForm: FormState = {
   state: "",
   socials: "",
   fit: "",
+  photoCaption: "",
   marketingOptIn: false,
   acknowledgements: [false, false, false, false],
 };
+
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 function phoneDigits(value: string) {
   const hasDisplayedCountryCode = value.trim().startsWith("+1");
@@ -67,13 +72,29 @@ function formatUsPhone(value: string) {
   return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.onerror = () => reject(new Error("The selected photo could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
 const emailValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const textComplete = (value: string) => value.trim().length > 0;
 const stateValid = (value: string) => states.some(([code]) => code === value);
 
 export default function EarlyAccessForm() {
   const formRef = useRef<HTMLFormElement>(null);
+  const submittingRef = useRef(false);
   const [form, setForm] = useState<FormState>(initialForm);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [photoError, setPhotoError] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -94,6 +115,7 @@ export default function EarlyAccessForm() {
       state: String(values.get("state") || "").toUpperCase(),
       socials: String(values.get("socials") || ""),
       fit: String(values.get("fit") || ""),
+      photoCaption: String(values.get("photoCaption") || ""),
     }));
   }
 
@@ -102,15 +124,21 @@ export default function EarlyAccessForm() {
     return () => timers.forEach(window.clearTimeout);
   }, []);
 
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(photo);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
   const phoneComplete = phoneDigits(form.phone).length === 10;
   const formComplete = useMemo(() => {
     const fieldsComplete =
-      textComplete(form.firstName) &&
-      textComplete(form.lastName) &&
-      emailValid(form.email) &&
-      phoneDigits(form.phone).length === 10 &&
-      textComplete(form.city) &&
-      stateValid(form.state) &&
+      textComplete(form.firstName) && textComplete(form.lastName) && emailValid(form.email) &&
+      phoneDigits(form.phone).length === 10 && textComplete(form.city) && stateValid(form.state) &&
       form.fit.trim().length >= 50;
     return fieldsComplete && form.acknowledgements.every(Boolean);
   }, [form]);
@@ -122,8 +150,32 @@ export default function EarlyAccessForm() {
     }));
   }
 
+  function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0] || null;
+    setPhotoError("");
+    if (!selected) {
+      setPhoto(null);
+      return;
+    }
+    if (!ALLOWED_PHOTO_TYPES.includes(selected.type)) {
+      setPhotoError("Choose a JPG, PNG, or WebP image.");
+      event.target.value = "";
+      setPhoto(null);
+      return;
+    }
+    if (selected.size > MAX_PHOTO_BYTES) {
+      setPhotoError("Photo must be 4 MB or smaller.");
+      event.target.value = "";
+      setPhoto(null);
+      return;
+    }
+    setPhoto(selected);
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingRef.current) return;
+
     const submitted = new FormData(event.currentTarget);
     const payload = {
       ...form,
@@ -135,21 +187,30 @@ export default function EarlyAccessForm() {
       state: String(submitted.get("state") || form.state).toUpperCase(),
       socials: String(submitted.get("socials") || form.socials).trim(),
       fit: String(submitted.get("fit") || form.fit).trim(),
+      photoCaption: String(submitted.get("photoCaption") || form.photoCaption).trim(),
     };
 
     const payloadComplete =
       payload.firstName && payload.lastName && emailValid(payload.email) &&
       /^\+1\d{10}$/.test(payload.phone) && payload.city && stateValid(payload.state) &&
       payload.fit.length >= 50 && payload.acknowledgements.every(Boolean);
-    if (!payloadComplete) return;
+    if (!payloadComplete || photoError) return;
 
+    submittingRef.current = true;
     setStatus("loading");
     setMessage("");
     try {
+      const photoPayload = photo ? {
+        name: photo.name,
+        type: photo.type,
+        size: photo.size,
+        data: await fileToBase64(photo),
+      } : null;
+
       const response = await fetch("/api/early-access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, photo: photoPayload }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -166,10 +227,13 @@ export default function EarlyAccessForm() {
       setWasSubscribed(Boolean(data.subscribed));
       setShowConfirmation(true);
       setForm(initialForm);
+      setPhoto(null);
       formRef.current?.reset();
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      submittingRef.current = false;
     }
   }
 
@@ -185,24 +249,25 @@ export default function EarlyAccessForm() {
           <label><span>Phone number</span><input className={phoneComplete ? "fieldComplete" : ""} required name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={17} placeholder="+1 (555) 555-5555" value={form.phone} onChange={(event) => setForm({ ...form, phone: formatUsPhone(event.target.value) })} /><small>US numbers only. Country code +1 is added automatically.</small></label>
           <div className="nameGrid">
             <label><span>City</span><input className={textComplete(form.city) ? "fieldComplete" : ""} required name="city" type="text" autoComplete="address-level2" placeholder="City" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
-            <label>
-              <span>State</span>
-              <select className={stateValid(form.state) ? "fieldComplete" : ""} required name="state" autoComplete="address-level1" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })}>
-                <option value="">Select state</option>
-                {states.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-              </select>
-            </label>
+            <label><span>State</span><select className={stateValid(form.state) ? "fieldComplete" : ""} required name="state" autoComplete="address-level1" value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })}><option value="">Select state</option>{states.map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
           </div>
           <label><span>Social profiles <em>Optional</em></span><input className={textComplete(form.socials) ? "fieldComplete" : ""} name="socials" type="text" autoComplete="off" placeholder="Instagram, Facebook, TikTok, LinkedIn, or another profile" value={form.socials} onChange={(event) => setForm({ ...form, socials: event.target.value })} /><small>Share any handles or profile links you would like us to know about.</small></label>
-          <label>
-            <span>Why would you make a strong Pathfinder for Melanated Adventurers?</span>
-            <textarea required name="fit" minLength={50} rows={7} className={form.fit.length > 0 && form.fit.trim().length < 50 ? "needsMore" : form.fit.trim().length >= 50 ? "fieldComplete" : ""} placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey." value={form.fit} onChange={(event) => setForm({ ...form, fit: event.target.value })} />
-            <small className={form.fit.length > 0 && form.fit.trim().length < 50 ? "characterCount warning" : form.fit.trim().length >= 50 ? "characterCount complete" : "characterCount"}>{form.fit.trim().length >= 50 ? `${form.fit.trim().length} characters · Ready` : `${form.fit.trim().length}/50 characters minimum`}</small>
-          </label>
+
+          <div className="photoField">
+            <div className="photoFieldHeading"><span>Share a photo <em>Optional</em></span><small>JPG, PNG, or WebP · 4 MB maximum</small></div>
+            <label className={`photoPicker${photoPreview ? " hasPhoto" : ""}`}>
+              <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} />
+              {photoPreview ? <img src={photoPreview} alt="Selected applicant preview" /> : <span><strong>Choose a photo</strong><small>A moment, place, or adventure that says something about you.</small></span>}
+            </label>
+            {photo && <button className="removePhotoButton" type="button" onClick={() => { setPhoto(null); setForm({ ...form, photoCaption: "" }); }}>Remove photo</button>}
+            {photoError && <small className="photoError">{photoError}</small>}
+            {photo && <label><span>Photo caption <em>Optional</em></span><textarea name="photoCaption" rows={3} maxLength={300} placeholder="Tell us what this photo means to you." value={form.photoCaption} onChange={(event) => setForm({ ...form, photoCaption: event.target.value })} /><small className="characterCount">{form.photoCaption.length}/300</small></label>}
+          </div>
+
+          <label><span>Why would you make a strong Pathfinder for Melanated Adventurers?</span><textarea required name="fit" minLength={50} rows={7} className={form.fit.length > 0 && form.fit.trim().length < 50 ? "needsMore" : form.fit.trim().length >= 50 ? "fieldComplete" : ""} placeholder="Tell us how you connect with the mission, how you show up in community, and what you would bring to the journey." value={form.fit} onChange={(event) => setForm({ ...form, fit: event.target.value })} /><small className={form.fit.length > 0 && form.fit.trim().length < 50 ? "characterCount warning" : form.fit.trim().length >= 50 ? "characterCount complete" : "characterCount"}>{form.fit.trim().length >= 50 ? `${form.fit.trim().length} characters · Ready` : `${form.fit.trim().length}/50 characters minimum`}</small></label>
         </div>
         <div className="acknowledgementPanel">
-          <p className="panelEyebrow">The Pathfinder Commitment</p>
-          <p>All acknowledgements are required before your request can be submitted.</p>
+          <p className="panelEyebrow">The Pathfinder Commitment</p><p>All acknowledgements are required before your request can be submitted.</p>
           <div className="acknowledgementList">{acknowledgementText.map((text, index) => <label className="acknowledgement" key={text}><input required type="checkbox" checked={form.acknowledgements[index]} onChange={() => toggleAcknowledgement(index)} /><span>{text}</span></label>)}</div>
           <div className="marketingConsent"><p className="panelEyebrow">Keep Me Connected</p><label className="acknowledgement optionalConsent"><input type="checkbox" checked={form.marketingOptIn} onChange={(event) => setForm({ ...form, marketingOptIn: event.target.checked })} /><span>I’d like to receive occasional emails about Melanated Adventurers experiences, news, and community updates. I can unsubscribe at any time.</span></label></div>
         </div>
