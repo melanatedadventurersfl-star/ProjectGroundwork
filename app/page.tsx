@@ -25,11 +25,11 @@ export default function Home() {
           </p>
           <p className="limited">Limited entry. Invitation only.</p>
           <a className="primaryButton invitationButton" href="#apply">Request a Pathfinder Invitation</a>
-          <span className="downArrow" aria-hidden="true">↓</span>
+          <a className="downArrow" href="#commitment" aria-label="Scroll to the Pathfinder Commitment section">↓</a>
         </div>
       </section>
 
-      <section className="commitmentSection revealSection">
+      <section className="commitmentSection revealSection" id="commitment">
         <div className="sectionInner">
           <p className="eyebrow">The Pathfinder Commitment</p>
           <h2>An invitation reserved for those ready to lead the way.</h2>
