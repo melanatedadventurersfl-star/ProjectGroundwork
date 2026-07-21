@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#14271f" />
+  <title>Melanated Adventurers Prototype</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MELANATED ADVENTURERS</p>
+        <h1 id="screen-title">Trailhead</h1>
+      </div>
+      <button class="icon-button" id="campfire-button" aria-label="Open Campfire">🔥<span class="notification-dot"></span></button>
+    </header>
+
+    <main id="app" tabindex="-1"></main>
+
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button data-route="trailhead" class="nav-item active"><span>⌂</span><small>Trailhead</small></button>
+      <button data-route="explore" class="nav-item"><span>⌕</span><small>Explore</small></button>
+      <button data-route="community" class="nav-item"><span>◉</span><small>Community</small></button>
+      <button data-route="passport" class="nav-item"><span>▣</span><small>Passport</small></button>
+      <button data-route="more" class="nav-item"><span>•••</span><small>More</small></button>
+    </nav>
+  </div>
+
+  <template id="trailhead-template">
+    <section class="welcome-block">
+      <p>Good evening, Jonathan.</p>
+      <h2>Your next adventure is getting close.</h2>
+    </section>
+    <section class="tile-grid" aria-label="Trailhead tiles">
+      <button class="tile tile-large tile-photo" data-route="adventure" style="--image:url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80')">
+        <span class="tile-label">NEXT ADVENTURE</span>
+        <strong>Great Melanated Little Camp of Horrors</strong>
+        <span class="tile-meta">Oct 30 • Brooksville</span>
+      </button>
+      <button class="tile tile-tall" data-route="community">
+        <span class="tile-label">COMMUNITY</span>
+        <strong>18 new stories</strong>
+        <span class="tile-meta">See what the circle is sharing</span>
+      </button>
+      <button class="tile tile-small" data-route="passport">
+        <span class="tile-label">PASSPORT</span>
+        <strong>Pathfinder II</strong>
+      </button>
+      <button class="tile tile-wide" data-route="journey">
+        <span class="tile-label">MY JOURNEY</span>
+        <strong>12 adventures completed</strong>
+      </button>
+      <button class="tile tile-small tile-accent" data-route="campfire">
+        <span class="tile-label">CAMPFIRE</span>
+        <strong>3 updates</strong>
+      </button>
+      <button class="tile tile-wide" data-route="explore">
+        <span class="tile-label">EXPLORE</span>
+        <strong>Find your next outside story</strong>
+      </button>
+    </section>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
