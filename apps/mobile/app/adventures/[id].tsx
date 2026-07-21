@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -95,6 +95,7 @@ export default function AdventureDetailScreen() {
           <Pressable
             style={[styles.primaryButton, adventure.status === 'sold_out' && styles.disabledButton]}
             disabled={adventure.status === 'sold_out'}
+            onPress={() => router.push(`/checkout/${adventure.id}`)}
           >
             <Text style={styles.primaryButtonText}>{adventure.status === 'sold_out' ? 'Sold out' : 'Choose tickets'}</Text>
           </Pressable>
