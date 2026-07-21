@@ -28,7 +28,7 @@ function doPost(event) {
       return jsonResponse({
         ok: false,
         duplicate: true,
-        error: "A Pathfinder application has already been submitted with this name or email address.",
+        error: "A Pathfinder application has already been submitted with this email address.",
       });
     }
 
@@ -36,15 +36,15 @@ function doPost(event) {
       safeCell(payload.submittedAt || new Date().toISOString()),
       safeCell(payload.firstName),
       safeCell(payload.lastName),
-      safeCell(payload.email.toLowerCase()),
+      safeCell(String(payload.email).toLowerCase()),
       safeCell(payload.phone),
-      safeCell(payload.location),
+      safeCell(payload.city),
+      safeCell(payload.state),
       safeCell(payload.socials || ""),
       safeCell(payload.fit),
       safeCell(payload.status || "Requested"),
       Boolean(payload.commitmentAccepted),
       Boolean(payload.marketingOptIn),
-      "",
     ]);
 
     SpreadsheetApp.flush();
@@ -92,7 +92,8 @@ function validatePayload(payload) {
     ["lastName", "Last name"],
     ["email", "Email"],
     ["phone", "Phone"],
-    ["location", "Location"],
+    ["city", "City"],
+    ["state", "State"],
     ["fit", "Pathfinder response"],
   ];
 
@@ -112,6 +113,11 @@ function validatePayload(payload) {
     throw new Error("Enter a valid 10-digit US phone number.");
   }
 
+  const state = String(payload.state).trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(state)) {
+    throw new Error("Select a valid state.");
+  }
+
   if (String(payload.fit).trim().length < 50) {
     throw new Error("The Pathfinder response must be at least 50 characters.");
   }
@@ -127,17 +133,8 @@ function findDuplicate(sheet, payload) {
 
   const rows = sheet.getRange(2, 1, lastRow - 1, 12).getDisplayValues();
   const targetEmail = normalize(payload.email);
-  const targetFirst = normalize(payload.firstName);
-  const targetLast = normalize(payload.lastName);
 
-  return rows.some((row) => {
-    const existingFirst = normalize(row[1]);
-    const existingLast = normalize(row[2]);
-    const existingEmail = normalize(row[3]);
-
-    return existingEmail === targetEmail ||
-      (existingFirst === targetFirst && existingLast === targetLast);
-  });
+  return rows.some((row) => normalize(row[3]) === targetEmail);
 }
 
 function normalize(value) {
