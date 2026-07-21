@@ -21,17 +21,17 @@ The blueprint defines what the platform is, why it exists, how the member experi
 
 ## Milestone 2 — Experience Design
 
-**Status: Not started**
+**Status: Complete**
 
-Planned documents:
+1. [User Flows](08-User-Flows.md)
+2. [Component Library](09-Component-Library.md)
+3. [Wireframes](10-Wireframes.md)
+4. [Design System](11-Design-System.md)
+5. [Live Tile Engine Specification](12-Live-Tile-Engine.md)
+6. [Passport Experience Specification](13-Passport-Experience.md)
+7. [Campfire Experience Specification](14-Campfire-Experience.md)
 
-- User Flows
-- Wireframes
-- Component Library
-- Design System
-- Live Tile Engine Specification
-- Passport Experience Specification
-- Campfire Experience Specification
+Milestone 2 defines the launch member journey, screen structures, reusable UI system, visual language, Trailhead tile behavior, Passport progression experience, and Campfire activity model.
 
 ## Milestone 3 — System and Build Planning
 
@@ -45,6 +45,22 @@ Planned documents:
 - Product Decision Log
 - Release Roadmap
 - Testing and Accessibility Plan
+
+## Prototype Route
+
+The first interactive build should support:
+
+```text
+Trailhead
+→ Explore
+→ Adventure Detail
+→ Registration
+→ Confirmation
+→ Adventure Hub
+→ Check-In
+→ Passport Stamp
+→ Journey Entry
+```
 
 ## Guiding Statement
 
