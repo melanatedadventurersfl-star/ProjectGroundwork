@@ -44,6 +44,7 @@ export default function Home() {
               </div>
             ))}
           </div>
+          <a className="downArrow" href="#apply" aria-label="Scroll to the Pathfinder invitation form">↓</a>
         </div>
       </section>
 
