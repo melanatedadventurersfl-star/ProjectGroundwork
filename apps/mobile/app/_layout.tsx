@@ -16,6 +16,8 @@ export default function RootLayout() {
         <Stack.Screen name="checkout" />
         <Stack.Screen name="readiness" />
         <Stack.Screen name="notifications" />
+        <Stack.Screen name="passport" />
+        <Stack.Screen name="member" />
         <Stack.Screen name="host" />
       </Stack>
     </AuthProvider>
