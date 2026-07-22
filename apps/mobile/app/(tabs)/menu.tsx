@@ -4,10 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const menuItems = [
   { title: 'Notifications', detail: 'Announcements, deadlines, and emergency alerts.', route: '/notifications' },
-  { title: 'Profile and preferences', detail: 'Manage your member details and communication settings.' },
-  { title: 'Household', detail: 'Manage adults, dependents, and booking permissions.' },
-  { title: 'Tickets and orders', detail: 'Review registrations and entry credentials.' },
-  { title: 'Support', detail: 'Get help with an adventure or your account.' },
+  { title: 'Member Basecamp', detail: 'Profile, preferences, household, tickets, orders, and support.', route: '/member' },
+  { title: 'Passport and Journey', detail: 'Stamps, completed adventures, memories, and reflections.', route: '/(tabs)/passport' },
 ];
 
 export default function MenuScreen() {
@@ -18,11 +16,7 @@ export default function MenuScreen() {
         <Text style={styles.title}>Menu</Text>
         <View style={styles.list}>
           {menuItems.map((item) => (
-            <Pressable
-              key={item.title}
-              style={styles.card}
-              onPress={() => item.route ? router.push(item.route as never) : undefined}
-            >
+            <Pressable key={item.title} style={styles.card} onPress={() => router.push(item.route as never)}>
               <Text style={styles.cardTitle}>{item.title}</Text>
               <Text style={styles.cardDetail}>{item.detail}</Text>
             </Pressable>
