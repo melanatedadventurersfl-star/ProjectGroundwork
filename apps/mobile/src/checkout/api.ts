@@ -31,8 +31,12 @@ export async function createHeldOrder(adventureId: string, selection: CheckoutSe
     .single();
   if (orderError) throw orderError;
 
-  const ticketIds = Object.keys(selection.ticketQuantities).filter((id) => selection.ticketQuantities[id] > 0);
-  const addonIds = Object.keys(selection.addonQuantities).filter((id) => selection.addonQuantities[id] > 0);
+  const ticketIds = Object.keys(selection.ticketQuantities).filter(
+    (id) => (selection.ticketQuantities[id] ?? 0) > 0,
+  );
+  const addonIds = Object.keys(selection.addonQuantities).filter(
+    (id) => (selection.addonQuantities[id] ?? 0) > 0,
+  );
 
   const [{ data: tickets, error: ticketError }, { data: addons, error: addonError }] = await Promise.all([
     supabase.from('ticket_types').select('id,name,price_cents').in('id', ticketIds),

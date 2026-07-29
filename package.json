@@ -7,6 +7,7 @@
     "apps/*"
   ],
   "scripts": {
+    "bootstrap": "npm install && npm run check",
     "mobile:start": "npm --workspace @ma/mobile run start",
     "mobile:lint": "npm --workspace @ma/mobile run lint",
     "mobile:typecheck": "npm --workspace @ma/mobile run typecheck",
