@@ -1,6 +1,7 @@
 name: Mobile CI
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'apps/mobile/**'
@@ -28,10 +29,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies and generate lockfile
+        run: npm install
+
+      - name: Verify lockfile was generated
+        run: test -f package-lock.json
 
       - name: Lint mobile app
         run: npm run mobile:lint
@@ -41,3 +44,11 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+
+      - name: Upload generated lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock
+          path: package-lock.json
+          if-no-files-found: error
