@@ -1,0 +1,41 @@
+name: EAS Android Preview
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Expo authentication
+        run: |
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "EXPO_TOKEN repository secret is required."
+            exit 1
+          fi
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Verify EAS project link
+        working-directory: apps/mobile
+        run: |
+          node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) { console.error('Missing expo.extra.eas.projectId. Run eas init once and commit the generated project ID.'); process.exit(1); }"
+
+      - name: Build installable Android preview
+        working-directory: apps/mobile
+        run: npx eas-cli@latest build --platform android --profile preview --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
