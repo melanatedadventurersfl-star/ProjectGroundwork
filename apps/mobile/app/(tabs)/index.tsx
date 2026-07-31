@@ -5,6 +5,10 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { getAdventureQueue } from '../../src/readiness/api';
 import type { AdventureQueueItem } from '../../src/readiness/types';
 
+function isPaymentPending(item: AdventureQueueItem) {
+  return item.order_status === 'held';
+}
+
 export default function TrailheadScreen() {
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +34,7 @@ export default function TrailheadScreen() {
   }, []);
 
   const primaryAdventure = queue[0];
+  const primaryPaymentPending = primaryAdventure ? isPaymentPending(primaryAdventure) : false;
 
   return (
     <ScrollView
@@ -46,18 +51,38 @@ export default function TrailheadScreen() {
       {primaryAdventure ? (
         <Pressable
           style={styles.primaryTile}
-          onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: primaryAdventure.order_id } })}
+          disabled={primaryPaymentPending}
+          onPress={() =>
+            router.push({ pathname: '/readiness/[orderId]', params: { orderId: primaryAdventure.order_id } })
+          }
         >
-          <Text style={styles.primaryLabel}>PRIMARY ADVENTURE</Text>
+          <Text style={styles.primaryLabel}>
+            {primaryPaymentPending ? 'RESERVATION HELD' : 'PRIMARY ADVENTURE'}
+          </Text>
           <Text style={styles.primaryTitle}>{primaryAdventure.title}</Text>
-          <Text style={styles.primaryMeta}>{new Date(primaryAdventure.starts_at).toLocaleDateString()} · {primaryAdventure.city}, {primaryAdventure.state}</Text>
-          <View style={styles.scoreRow}>
-            <Text style={styles.score}>{primaryAdventure.readiness_score}% ready</Text>
-            <Text style={primaryAdventure.blocker_count > 0 ? styles.blocker : styles.clear}>
-              {primaryAdventure.blocker_count > 0 ? `${primaryAdventure.blocker_count} blocker${primaryAdventure.blocker_count === 1 ? '' : 's'}` : 'No blockers'}
-            </Text>
-          </View>
-          <Text style={styles.primaryAction}>Continue getting ready →</Text>
+          <Text style={styles.primaryMeta}>
+            {new Date(primaryAdventure.starts_at).toLocaleDateString()} · {primaryAdventure.city}, {primaryAdventure.state}
+          </Text>
+          {primaryPaymentPending ? (
+            <View style={styles.pendingPanel}>
+              <Text style={styles.pendingTitle}>Payment pending</Text>
+              <Text style={styles.pendingBody}>
+                Your reservation is saved. Readiness will unlock after payment is completed.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.scoreRow}>
+                <Text style={styles.score}>{primaryAdventure.readiness_score}% ready</Text>
+                <Text style={primaryAdventure.blocker_count > 0 ? styles.blocker : styles.clear}>
+                  {primaryAdventure.blocker_count > 0
+                    ? `${primaryAdventure.blocker_count} blocker${primaryAdventure.blocker_count === 1 ? '' : 's'}`
+                    : 'No blockers'}
+                </Text>
+              </View>
+              <Text style={styles.primaryAction}>Continue getting ready →</Text>
+            </>
+          )}
         </Pressable>
       ) : (
         <Pressable style={styles.emptyTile} onPress={() => router.push('/(tabs)/explore')}>
@@ -69,19 +94,25 @@ export default function TrailheadScreen() {
       {queue.length > 1 ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Adventure Queue</Text>
-          {queue.slice(1).map((item) => (
-            <Pressable
-              key={item.order_id}
-              style={styles.queueCard}
-              onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: item.order_id } })}
-            >
-              <View style={styles.queueCopy}>
-                <Text style={styles.queueTitle}>{item.title}</Text>
-                <Text style={styles.queueMeta}>{new Date(item.starts_at).toLocaleDateString()} · {item.city}</Text>
-              </View>
-              <Text style={styles.queueScore}>{item.readiness_score}%</Text>
-            </Pressable>
-          ))}
+          {queue.slice(1).map((item) => {
+            const paymentPending = isPaymentPending(item);
+            return (
+              <Pressable
+                key={item.order_id}
+                style={styles.queueCard}
+                disabled={paymentPending}
+                onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: item.order_id } })}
+              >
+                <View style={styles.queueCopy}>
+                  <Text style={styles.queueTitle}>{item.title}</Text>
+                  <Text style={styles.queueMeta}>{new Date(item.starts_at).toLocaleDateString()} · {item.city}</Text>
+                </View>
+                <Text style={paymentPending ? styles.queuePending : styles.queueScore}>
+                  {paymentPending ? 'Payment pending' : `${item.readiness_score}%`}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
@@ -113,6 +144,9 @@ const styles = StyleSheet.create({
   blocker: { color: '#FFB4A9', fontWeight: '800' },
   clear: { color: '#BFE2C9', fontWeight: '800' },
   primaryAction: { color: '#E4C56F', fontWeight: '900', marginTop: 8 },
+  pendingPanel: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 14, marginTop: 8, gap: 4 },
+  pendingTitle: { color: '#E4C56F', fontSize: 18, fontWeight: '900' },
+  pendingBody: { color: '#DCE6E0', lineHeight: 20 },
   emptyTile: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 20, gap: 8, marginBottom: 20 },
   emptyTitle: { color: '#17211B', fontSize: 22, fontWeight: '900' },
   emptyBody: { color: '#56615A', lineHeight: 21 },
@@ -123,6 +157,7 @@ const styles = StyleSheet.create({
   queueTitle: { color: '#17211B', fontSize: 17, fontWeight: '800' },
   queueMeta: { color: '#56615A', marginTop: 4 },
   queueScore: { color: '#24543B', fontSize: 18, fontWeight: '900' },
+  queuePending: { color: '#9A6A00', fontSize: 14, fontWeight: '900' },
   grid: { gap: 12 },
   tile: { minHeight: 120, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, justifyContent: 'space-between' },
   tileTitle: { color: '#17211B', fontSize: 20, fontWeight: '700' },
