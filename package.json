@@ -15,5 +15,11 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "allowScripts": {
+    "unrs-resolver@1.12.2": true
+  },
+  "overrides": {
+    "react": "19.2.3"
   }
 }
