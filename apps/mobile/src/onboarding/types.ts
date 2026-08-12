@@ -39,7 +39,7 @@ export const INITIAL_ONBOARDING_FORM: OnboardingForm = {
   lastName: '',
   displayName: '',
   homeCity: '',
-  homeState: 'FL',
+  homeState: '',
   discoveryRadiusMiles: 50,
   experienceLevel: 'new',
   interests: [],
