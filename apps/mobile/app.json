@@ -1,44 +1,53 @@
-﻿{
-    "expo":  {
-                 "name":  "Melanated Adventurers",
-                 "slug":  "melanated-adventurers",
-                 "version":  "0.1.0",
-                 "orientation":  "portrait",
-                 "scheme":  "melanatedadventurers",
-                 "userInterfaceStyle":  "automatic",
-                 "plugins":  [
-                                 "expo-router",
-                                 "expo-sqlite",
-                                 "expo-status-bar"
-                             ],
-                 "experiments":  {
-                                     "typedRoutes":  true
-                                 },
-                 "ios":  {
-                             "supportsTablet":  true,
-                             "bundleIdentifier":  "com.melanatedadventurers.app"
-                         },
-                 "android":  {
-                                 "package":  "com.melanatedadventurers.app"
-                             },
-                 "web":  {
-                             "bundler":  "metro",
-                             "output":  "static"
-                         },
-                 "extra":  {
-                               "router":  {
-
-                                          },
-                               "eas":  {
-                                           "projectId":  "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
-                                       }
-                           },
-                 "owner":  "themelanated",
-                 "runtimeVersion":  {
-                                        "policy":  "appVersion"
-                                    },
-                 "updates":  {
-                                 "url":  "https://u.expo.dev/ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
-                             }
-             }
+{
+  "expo": {
+    "name": "Melanated Adventurers",
+    "slug": "melanated-adventurers",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "melanatedadventurers",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/ma-app-icon.png",
+    "splash": {
+      "image": "./assets/ma-splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#17211B"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.melanatedadventurers.app",
+      "icon": "./assets/ma-app-icon.png"
+    },
+    "android": {
+      "package": "com.melanatedadventurers.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/ma-app-icon.png",
+        "backgroundColor": "#17211B"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
+      }
+    },
+    "owner": "themelanated",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
+    }
+  }
 }
