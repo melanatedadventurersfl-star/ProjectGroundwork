@@ -45,13 +45,24 @@ export async function listAdventures(filters: AdventureFilters = {}): Promise<Ad
 }
 
 export async function getAdventure(id: string): Promise<AdventureDetail> {
-  const { data, error } = await supabase
-    .from('adventures')
-    .select('*')
-    .eq('id', id)
-    .single();
+  const [{ data, error }, { data: sessionData }] = await Promise.all([
+    supabase.from('adventures').select('*').eq('id', id).single(),
+    supabase.auth.getSession(),
+  ]);
   if (error) throw error;
-  return data as AdventureDetail;
+
+  const profileId = sessionData.session?.user.id;
+  if (!profileId) return data as AdventureDetail;
+
+  const { data: saved, error: savedError } = await supabase
+    .from('saved_adventures')
+    .select('adventure_id')
+    .eq('profile_id', profileId)
+    .eq('adventure_id', id)
+    .maybeSingle();
+  if (savedError) throw savedError;
+
+  return { ...(data as AdventureDetail), is_saved: Boolean(saved) };
 }
 
 export async function setAdventureSaved(adventureId: string, shouldSave: boolean): Promise<void> {
