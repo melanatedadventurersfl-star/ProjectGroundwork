@@ -1,28 +1,37 @@
 import { Link, router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const canSubmit = useMemo(() => Boolean(email.trim() && password), [email, password]);
 
   async function handleSignIn() {
+    if (!canSubmit || isSubmitting) return;
+
     setIsSubmitting(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setIsSubmitting(false);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      Alert.alert('Unable to sign in', error.message);
-      return;
+      if (error) {
+        Alert.alert('Unable to sign in', getFriendlyAuthError(error, 'Unable to sign in.'));
+        return;
+      }
+
+      router.replace('/(tabs)');
+    } catch (caught) {
+      Alert.alert('Unable to sign in', getFriendlyAuthError(caught, 'Unable to sign in.'));
+    } finally {
+      setIsSubmitting(false);
     }
-
-    router.replace('/(tabs)');
   }
 
   return (
@@ -51,7 +60,11 @@ export default function SignInScreen() {
           value={password}
         />
 
-        <Pressable disabled={isSubmitting} onPress={handleSignIn} style={styles.button}>
+        <Pressable
+          disabled={!canSubmit || isSubmitting}
+          onPress={() => void handleSignIn()}
+          style={[styles.button, (!canSubmit || isSubmitting) && styles.buttonDisabled]}
+        >
           <Text style={styles.buttonText}>{isSubmitting ? 'Signing in…' : 'Sign in'}</Text>
         </Pressable>
 
@@ -71,6 +84,7 @@ const styles = StyleSheet.create({
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
   input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
   button: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#24543B' },
+  buttonDisabled: { opacity: 0.45 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   link: { textAlign: 'center', color: '#24543B', fontWeight: '700' },
 });
