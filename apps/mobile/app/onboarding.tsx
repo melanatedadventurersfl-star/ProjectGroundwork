@@ -9,10 +9,12 @@ import {
   Switch,
   Text,
   TextInput,
+  type TextInputProps,
   View,
 } from 'react-native';
 
 import { useAuth } from '../src/auth/AuthProvider';
+import { getStateOption, loadCitiesForState, US_STATES } from '../src/onboarding/locations';
 import {
   completeOnboarding,
   loadOnboardingProfile,
@@ -22,17 +24,29 @@ import {
   INITIAL_ONBOARDING_FORM,
   INTEREST_OPTIONS,
   type ExperienceLevel,
+  type HouseholdMode,
   type OnboardingForm,
 } from '../src/onboarding/types';
 
 const TITLES = [
   'Tell us who you are',
-  'Choose your adventure radius',
+  'Where are you starting from?',
   'What calls you outside?',
   'How should we reach you?',
   'Help us support you',
   'Bring your household along',
 ];
+
+function formatUsPhone(value: string) {
+  const digits = value.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function phoneIsValid(value: string) {
+  return value.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '').length === 10;
+}
 
 export default function OnboardingScreen() {
   const { session } = useAuth();
@@ -40,6 +54,11 @@ export default function OnboardingScreen() {
   const [form, setForm] = useState<OnboardingForm>(INITIAL_ONBOARDING_FORM);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [stateSearch, setStateSearch] = useState('');
+  const [citySearch, setCitySearch] = useState('');
+  const [cities, setCities] = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesError, setCitiesError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session?.user.id) return;
@@ -47,38 +66,96 @@ export default function OnboardingScreen() {
     loadOnboardingProfile(session.user.id)
       .then((profile) => {
         const communication = (profile.communication_preferences ?? {}) as Record<string, boolean>;
+        const state = profile.home_state ?? '';
+        const city = profile.home_city ?? '';
         setForm((current) => ({
           ...current,
           firstName: profile.first_name ?? '',
           lastName: profile.last_name ?? '',
           displayName: profile.display_name ?? '',
-          homeCity: profile.home_city ?? '',
-          homeState: profile.home_state ?? 'FL',
+          homeCity: city,
+          homeState: state,
           discoveryRadiusMiles: profile.discovery_radius_miles ?? 50,
           experienceLevel: (profile.experience_level ?? 'new') as ExperienceLevel,
           interests: profile.interests ?? [],
           pushEnabled: communication.push ?? true,
           emailEnabled: communication.email ?? true,
           smsEnabled: communication.sms ?? false,
+          phoneNumber: profile.phone_number ? formatUsPhone(profile.phone_number) : '',
+          smsConsent: Boolean(profile.sms_consent_at),
           accessibilityNeeds: profile.accessibility_needs ?? '',
           dietaryNeeds: profile.dietary_needs ?? '',
           supportNotes: profile.support_notes ?? '',
         }));
+        setStateSearch(getStateOption(state)?.name ?? '');
+        setCitySearch(city);
         setStep(Math.min(Math.max(profile.onboarding_step ?? 1, 1), 6));
       })
       .catch((error: Error) => Alert.alert('Unable to load onboarding', error.message))
       .finally(() => setIsLoading(false));
   }, [session?.user.id]);
 
+  useEffect(() => {
+    if (!form.homeState) {
+      setCities([]);
+      return;
+    }
+
+    let active = true;
+    setCitiesLoading(true);
+    setCitiesError(null);
+    loadCitiesForState(form.homeState)
+      .then((nextCities) => {
+        if (active) setCities(nextCities);
+      })
+      .catch(() => {
+        if (active) setCitiesError('We could not load the official city list. Try again.');
+      })
+      .finally(() => {
+        if (active) setCitiesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [form.homeState]);
+
+  const stateOptions = useMemo(() => {
+    const query = stateSearch.trim().toLowerCase();
+    if (!query || form.homeState) return [];
+    return US_STATES.filter(
+      (state) => state.name.toLowerCase().includes(query) || state.abbreviation.toLowerCase().startsWith(query),
+    ).slice(0, 8);
+  }, [form.homeState, stateSearch]);
+
+  const cityOptions = useMemo(() => {
+    const query = citySearch.trim().toLowerCase();
+    if (!form.homeState || !query || form.homeCity) return [];
+    return cities.filter((city) => city.toLowerCase().includes(query)).slice(0, 10);
+  }, [cities, citySearch, form.homeCity, form.homeState]);
+
   const canContinue = useMemo(() => {
     if (step === 1) return Boolean(form.firstName.trim() && form.lastName.trim() && form.displayName.trim());
-    if (step === 2) return Boolean(form.homeCity.trim() && form.homeState.trim());
+    if (step === 2) return Boolean(getStateOption(form.homeState) && cities.includes(form.homeCity));
     if (step === 3) return form.interests.length > 0;
+    if (step === 4) return !form.smsEnabled || (phoneIsValid(form.phoneNumber) && form.smsConsent);
+    if (step === 6) {
+      if (form.householdMode === 'create') return Boolean(form.householdName.trim());
+      if (form.householdMode === 'join') return /^[A-Z0-9]{8}$/.test(form.householdInviteCode.trim().toUpperCase());
+    }
     return true;
-  }, [form, step]);
+  }, [cities, form, step]);
 
   const update = <K extends keyof OnboardingForm>(key: K, value: OnboardingForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const selectState = (abbreviation: string) => {
+    const state = getStateOption(abbreviation);
+    if (!state) return;
+    setStateSearch(state.name);
+    setCitySearch('');
+    setForm((current) => ({ ...current, homeState: state.abbreviation, homeCity: '' }));
   };
 
   const next = async () => {
@@ -94,7 +171,8 @@ export default function OnboardingScreen() {
         router.replace('/(tabs)');
       }
     } catch (error) {
-      Alert.alert('Unable to save', error instanceof Error ? error.message : 'Please try again.');
+      const message = error instanceof Error ? error.message : 'Please try again.';
+      Alert.alert('Unable to save', message.includes('Household invite code not found') ? 'That household invite code was not found. Check the code and try again.' : message);
     } finally {
       setIsSaving(false);
     }
@@ -120,13 +198,70 @@ export default function OnboardingScreen() {
 
       {step === 2 && (
         <View style={styles.section}>
-          <Field label="Home city" value={form.homeCity} onChangeText={(value) => update('homeCity', value)} />
-          <Field label="State" value={form.homeState} onChangeText={(value) => update('homeState', value.toUpperCase())} />
-          <Text style={styles.label}>Discovery radius</Text>
-          <View style={styles.optionRow}>
-            {[25, 50, 100, 250].map((radius) => (
-              <Choice key={radius} selected={form.discoveryRadiusMiles === radius} label={`${radius} mi`} onPress={() => update('discoveryRadiusMiles', radius)} />
+          <View style={styles.field}>
+            <Text style={styles.label}>State</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Search for your state"
+              placeholderTextColor="#7B827D"
+              value={stateSearch}
+              onChangeText={(value) => {
+                setStateSearch(value);
+                update('homeState', '');
+                update('homeCity', '');
+                setCitySearch('');
+              }}
+            />
+            {stateOptions.map((state) => (
+              <Pressable key={state.abbreviation} style={styles.searchOption} onPress={() => selectState(state.abbreviation)}>
+                <Text style={styles.searchOptionText}>{state.name}</Text>
+                <Text style={styles.searchOptionMeta}>{state.abbreviation}</Text>
+              </Pressable>
             ))}
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>City</Text>
+            <TextInput
+              editable={Boolean(form.homeState) && !citiesLoading}
+              style={[styles.input, (!form.homeState || citiesLoading) && styles.inputDisabled]}
+              placeholder={form.homeState ? 'Search official cities' : 'Select a state first'}
+              placeholderTextColor="#7B827D"
+              value={citySearch}
+              onChangeText={(value) => {
+                setCitySearch(value);
+                update('homeCity', '');
+              }}
+            />
+            {citiesLoading ? <Text style={styles.help}>Loading cities…</Text> : null}
+            {citiesError ? <Text style={styles.errorText}>{citiesError}</Text> : null}
+            {cityOptions.map((city) => (
+              <Pressable
+                key={city}
+                style={styles.searchOption}
+                onPress={() => {
+                  setCitySearch(city);
+                  update('homeCity', city);
+                }}
+              >
+                <Text style={styles.searchOptionText}>{city}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>How far are you willing to travel for a local adventure?</Text>
+            <Text style={styles.help}>This helps us show you nearby experiences. Destination trips and special events may still appear outside this range.</Text>
+            <View style={styles.optionRow}>
+              {[25, 50, 100, 250].map((radius) => (
+                <Choice
+                  key={radius}
+                  selected={form.discoveryRadiusMiles === radius}
+                  label={radius === 250 ? '250+ mi' : `${radius} mi`}
+                  onPress={() => update('discoveryRadiusMiles', radius)}
+                />
+              ))}
+            </View>
           </View>
         </View>
       )}
@@ -162,7 +297,33 @@ export default function OnboardingScreen() {
         <View style={styles.section}>
           <Toggle label="Push notifications" value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} />
           <Toggle label="Email updates" value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} />
-          <Toggle label="Text messages" value={form.smsEnabled} onValueChange={(value) => update('smsEnabled', value)} />
+          <Toggle
+            label="Text messages"
+            value={form.smsEnabled}
+            onValueChange={(value) => {
+              update('smsEnabled', value);
+              if (!value) update('smsConsent', false);
+            }}
+          />
+
+          {form.smsEnabled ? (
+            <View style={styles.smsPanel}>
+              <Field
+                label="Mobile phone number"
+                value={form.phoneNumber}
+                onChangeText={(value) => update('phoneNumber', formatUsPhone(value))}
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                placeholder="(555) 555-5555"
+              />
+              <Pressable style={styles.checkboxRow} onPress={() => update('smsConsent', !form.smsConsent)}>
+                <View style={[styles.checkbox, form.smsConsent && styles.checkboxChecked]}>
+                  {form.smsConsent ? <Text style={styles.checkmark}>✓</Text> : null}
+                </View>
+                <Text style={styles.checkboxLabel}>I agree to receive text messages about bookings, readiness, safety, and account updates. Message and data rates may apply. Reply STOP to opt out.</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Text style={styles.help}>Emergency and safety alerts may still use required channels for an adventure you join.</Text>
         </View>
       )}
@@ -178,12 +339,41 @@ export default function OnboardingScreen() {
 
       {step === 6 && (
         <View style={styles.section}>
-          <Text style={styles.body}>Create a household now to manage shared bookings and readiness. You can skip this and add one later.</Text>
-          <Field label="Household name (optional)" value={form.householdName} onChangeText={(value) => update('householdName', value)} />
+          <Text style={styles.body}>Adventure together. A household lets you manage shared bookings, waivers, payments, and readiness in one place.</Text>
+          <View style={styles.optionRow}>
+            {([
+              ['skip', 'Skip for now'],
+              ['create', 'Create new'],
+              ['join', 'Join existing'],
+            ] as [HouseholdMode, string][]).map(([mode, label]) => (
+              <Choice key={mode} selected={form.householdMode === mode} label={label} onPress={() => update('householdMode', mode)} />
+            ))}
+          </View>
+
+          {form.householdMode === 'create' ? (
+            <>
+              <Field label="Household name" value={form.householdName} onChangeText={(value) => update('householdName', value)} placeholder="The Carr Crew" />
+              <Text style={styles.help}>After your household is created, it will have an invite code you can share with people you want to add.</Text>
+            </>
+          ) : null}
+
+          {form.householdMode === 'join' ? (
+            <>
+              <Field
+                label="Household invite code"
+                value={form.householdInviteCode}
+                onChangeText={(value) => update('householdInviteCode', value.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase())}
+                autoCapitalize="characters"
+                placeholder="AB12CD34"
+              />
+              <Text style={styles.help}>Ask the household owner for their 8-character invite code. Household names are not used for joining.</Text>
+            </>
+          ) : null}
+
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>Your Trailhead is ready</Text>
             <Text style={styles.body}>{form.displayName} · {form.homeCity}, {form.homeState}</Text>
-            <Text style={styles.body}>{form.interests.length} interests selected · {form.discoveryRadiusMiles}-mile discovery radius</Text>
+            <Text style={styles.body}>{form.interests.length} interests selected · {form.discoveryRadiusMiles === 250 ? '250+' : form.discoveryRadiusMiles}-mile local range</Text>
           </View>
         </View>
       )}
@@ -196,7 +386,7 @@ export default function OnboardingScreen() {
         )}
         <Pressable
           style={[styles.primaryButton, !canContinue && styles.disabled]}
-          onPress={next}
+          onPress={() => void next()}
           disabled={!canContinue || isSaving}
         >
           <Text style={styles.primaryButtonText}>{isSaving ? 'Saving…' : step === 6 ? 'Enter Trailhead' : 'Continue'}</Text>
@@ -206,7 +396,18 @@ export default function OnboardingScreen() {
   );
 }
 
-function Field({ label, multiline = false, ...props }: { label: string; multiline?: boolean; value: string; onChangeText: (value: string) => void }) {
+type FieldProps = {
+  label: string;
+  multiline?: boolean;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  keyboardType?: TextInputProps['keyboardType'];
+  autoComplete?: TextInputProps['autoComplete'];
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+};
+
+function Field({ label, multiline = false, ...props }: FieldProps) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -242,15 +443,26 @@ const styles = StyleSheet.create({
   field: { gap: 8 },
   label: { fontSize: 13, fontWeight: '700', color: '#17211B' },
   input: { minHeight: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, backgroundColor: '#FFFFFF', color: '#17211B' },
+  inputDisabled: { opacity: 0.55 },
   multiline: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   choice: { paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 999, backgroundColor: '#FFFFFF' },
   choiceSelected: { borderColor: '#24543B', backgroundColor: '#24543B' },
-  choiceText: { textTransform: 'capitalize', color: '#17211B', fontWeight: '600' },
+  choiceText: { color: '#17211B', fontWeight: '600' },
   choiceTextSelected: { color: '#FFFFFF' },
+  searchOption: { minHeight: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E3DED3', backgroundColor: '#FFFFFF' },
+  searchOptionText: { color: '#17211B', fontWeight: '700' },
+  searchOptionMeta: { color: '#56615A' },
   toggleRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#FFFFFF' },
+  smsPanel: { gap: 14, padding: 16, borderRadius: 12, backgroundColor: '#EEE7DA' },
+  checkboxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  checkbox: { width: 22, height: 22, marginTop: 2, borderWidth: 2, borderColor: '#24543B', borderRadius: 5, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: '#24543B' },
+  checkmark: { color: '#FFFFFF', fontWeight: '900' },
+  checkboxLabel: { flex: 1, color: '#56615A', fontSize: 13, lineHeight: 19 },
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
   help: { fontSize: 13, lineHeight: 18, color: '#56615A' },
+  errorText: { color: '#A23D2B', fontSize: 13 },
   summary: { padding: 18, gap: 8, borderRadius: 12, backgroundColor: '#EEE7DA' },
   summaryTitle: { fontSize: 20, fontWeight: '800', color: '#17211B' },
   actions: { flexDirection: 'row', gap: 12, marginTop: 36, paddingBottom: 36 },
