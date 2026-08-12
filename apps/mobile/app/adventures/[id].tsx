@@ -6,6 +6,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAdventure, setAdventureSaved } from '../../src/adventures/api';
 import type { AdventureDetail } from '../../src/adventures/types';
 
+function formatAdventureDate(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatAdventureTime(date: Date) {
+  return date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export default function AdventureDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [adventure, setAdventure] = useState<AdventureDetail | null>(null);
@@ -19,7 +35,10 @@ export default function AdventureDetailScreen() {
 
     getAdventure(id)
       .then((result) => {
-        if (active) setAdventure(result);
+        if (active) {
+          setAdventure(result);
+          setSaved(Boolean(result.is_saved));
+        }
       })
       .catch((caught) => {
         if (active) setError(caught instanceof Error ? caught.message : 'Unable to load adventure.');
@@ -55,6 +74,10 @@ export default function AdventureDetailScreen() {
 
   const start = new Date(adventure.starts_at);
   const end = new Date(adventure.ends_at);
+  const sameDay = start.toDateString() === end.toDateString();
+  const when = sameDay
+    ? `${formatAdventureDate(start)} · ${formatAdventureTime(start)}–${formatAdventureTime(end)}`
+    : `${formatAdventureDate(start)} at ${formatAdventureTime(start)}\n${formatAdventureDate(end)} at ${formatAdventureTime(end)}`;
   const price = adventure.starting_price_cents === 0 ? 'Free' : `From $${(adventure.starting_price_cents / 100).toFixed(0)}`;
 
   return (
@@ -66,7 +89,7 @@ export default function AdventureDetailScreen() {
 
         <View style={styles.panel}>
           <Text style={styles.label}>When</Text>
-          <Text style={styles.value}>{start.toLocaleString()} to {end.toLocaleString()}</Text>
+          <Text style={styles.value}>{when}</Text>
           <Text style={styles.label}>Where</Text>
           <Text style={styles.value}>{adventure.venue_name ? `${adventure.venue_name}, ` : ''}{adventure.city}, {adventure.state}</Text>
           <Text style={styles.label}>Difficulty</Text>
@@ -114,7 +137,7 @@ const styles = StyleSheet.create({
   summary: { color: '#d4d8d5', fontSize: 18, lineHeight: 27 },
   panel: { backgroundColor: '#17211c', borderRadius: 18, padding: 18, gap: 5 },
   label: { color: '#d3a94f', fontSize: 12, fontWeight: '900', textTransform: 'uppercase', marginTop: 8 },
-  value: { color: '#fff8e8', fontSize: 16, textTransform: 'capitalize' },
+  value: { color: '#fff8e8', fontSize: 16, lineHeight: 23 },
   sectionTitle: { color: '#fff8e8', fontSize: 23, fontWeight: '900', marginTop: 8 },
   body: { color: '#d4d8d5', fontSize: 16, lineHeight: 25 },
   actions: { gap: 10, marginTop: 12 },
