@@ -1,28 +1,42 @@
-import { Link } from 'expo-router';
-import { useState } from 'react';
+import { Link, router } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const canSubmit = useMemo(() => Boolean(email.trim() && password.length >= 6), [email, password]);
 
   async function handleSignUp() {
+    if (!canSubmit || isSubmitting) return;
+
     setIsSubmitting(true);
-    const { error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-    });
-    setIsSubmitting(false);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      Alert.alert('Unable to create account', error.message);
-      return;
+      if (error) {
+        Alert.alert('Unable to create account', getFriendlyAuthError(error, 'Unable to create account.'));
+        return;
+      }
+
+      if (data.session) {
+        router.replace('/');
+        return;
+      }
+
+      Alert.alert('Check your email', 'Use the verification link to activate your account, then return to sign in.');
+    } catch (caught) {
+      Alert.alert('Unable to create account', getFriendlyAuthError(caught, 'Unable to create account.'));
+    } finally {
+      setIsSubmitting(false);
     }
-
-    Alert.alert('Check your email', 'Use the verification link to activate your account, then return to sign in.');
   }
 
   return (
@@ -45,13 +59,17 @@ export default function SignUpScreen() {
           autoCapitalize="none"
           autoComplete="new-password"
           onChangeText={setPassword}
-          placeholder="Password"
+          placeholder="Password (6+ characters)"
           secureTextEntry
           style={styles.input}
           value={password}
         />
 
-        <Pressable disabled={isSubmitting} onPress={handleSignUp} style={styles.button}>
+        <Pressable
+          disabled={!canSubmit || isSubmitting}
+          onPress={() => void handleSignUp()}
+          style={[styles.button, (!canSubmit || isSubmitting) && styles.buttonDisabled]}
+        >
           <Text style={styles.buttonText}>{isSubmitting ? 'Creating account…' : 'Create account'}</Text>
         </Pressable>
 
@@ -71,6 +89,7 @@ const styles = StyleSheet.create({
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
   input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
   button: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#24543B' },
+  buttonDisabled: { opacity: 0.45 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   link: { textAlign: 'center', color: '#24543B', fontWeight: '700' },
 });
