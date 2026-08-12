@@ -117,10 +117,12 @@ export default function TrailheadScreen() {
       ) : null}
 
       <View style={styles.grid}>
-        <Pressable style={styles.tile} onPress={() => router.push('/(tabs)/explore')}>
-          <Text style={styles.tileTitle}>Find your next adventure</Text>
-          <Text style={styles.tileDetail}>Explore upcoming experiences near you.</Text>
-        </Pressable>
+        {primaryAdventure ? (
+          <Pressable style={styles.tile} onPress={() => router.push('/(tabs)/explore')}>
+            <Text style={styles.tileTitle}>Find your next adventure</Text>
+            <Text style={styles.tileDetail}>Explore upcoming experiences near you.</Text>
+          </Pressable>
+        ) : null}
         <Pressable style={styles.tile} onPress={() => router.push('/(tabs)/community')}>
           <Text style={styles.tileTitle}>Around the campfire</Text>
           <Text style={styles.tileDetail}>Community updates and conversations live here.</Text>
