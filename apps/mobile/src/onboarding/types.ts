@@ -10,6 +10,7 @@ export const INTEREST_OPTIONS = [
 ] as const;
 
 export type ExperienceLevel = 'new' | 'beginner' | 'intermediate' | 'experienced';
+export type HouseholdMode = 'skip' | 'create' | 'join';
 
 export type OnboardingForm = {
   firstName: string;
@@ -23,10 +24,14 @@ export type OnboardingForm = {
   pushEnabled: boolean;
   emailEnabled: boolean;
   smsEnabled: boolean;
+  phoneNumber: string;
+  smsConsent: boolean;
   accessibilityNeeds: string;
   dietaryNeeds: string;
   supportNotes: string;
+  householdMode: HouseholdMode;
   householdName: string;
+  householdInviteCode: string;
 };
 
 export const INITIAL_ONBOARDING_FORM: OnboardingForm = {
@@ -41,8 +46,12 @@ export const INITIAL_ONBOARDING_FORM: OnboardingForm = {
   pushEnabled: true,
   emailEnabled: true,
   smsEnabled: false,
+  phoneNumber: '',
+  smsConsent: false,
   accessibilityNeeds: '',
   dietaryNeeds: '',
   supportNotes: '',
+  householdMode: 'skip',
   householdName: '',
+  householdInviteCode: '',
 };
