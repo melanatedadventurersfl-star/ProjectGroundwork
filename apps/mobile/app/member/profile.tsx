@@ -1,146 +1,16 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getMemberBasecamp, saveProfileDetails, saveProfilePrivacy } from '../../src/member/api';
+import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
-import { getMemberBasecamp, saveProfilePrivacy } from '../../src/member/api';
-import { getJourney } from '../../src/passport/api';
-
-const ladder = [
-  { name: 'Explorer', min: 0 },
-  { name: 'Pathfinder', min: 1 },
-  { name: 'Trailblazer', min: 3 },
-  { name: 'Wayfinder', min: 6 },
-  { name: 'Summiteer', min: 10 },
-  { name: 'Legacy Adventurer', min: 20 },
-] as const;
-
-const privacySettings: [string, string, string][] = [
-  ['profile_is_private', 'Private account', 'Limit your full profile to approved connections.'],
-  ['city_visible', 'Show city & state', 'Let community members see your general location.'],
-  ['badges_visible', 'Show badges', 'Display milestone badges on your community profile.'],
-  ['adventures_visible', 'Show completed adventures', 'Let people see your public adventure history.'],
-  ['interests_visible', 'Show interests', 'Use your selected interests on your profile.'],
-  ['trail_family_visible', 'Show Trail Family connection', 'Show that you are part of a Trail Family, without exposing private dependent details.'],
-];
-
-function memberLevel(completed: number) {
-  return [...ladder].reverse().find((level) => completed >= level.min) ?? ladder[0];
-}
-
-export default function MemberProfileScreen() {
-  const [data, setData] = useState<any>(null);
-  const [completedCount, setCompletedCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const [basecamp, journey] = await Promise.all([getMemberBasecamp(), getJourney()]);
-      setData(basecamp);
-      setCompletedCount(journey.length);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load your profile.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { void load(); }, []);
-
-  const level = useMemo(() => memberLevel(completedCount), [completedCount]);
-  const nextLevel = useMemo(() => ladder.find((item) => item.min > completedCount), [completedCount]);
-
-  async function toggle(key: string, value: boolean) {
-    setSavingKey(key);
-    setData((current: any) => ({ ...current, profile: { ...current.profile, [key]: value } }));
-    try {
-      await saveProfilePrivacy({ [key]: value });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update privacy setting.');
-      await load();
-    } finally {
-      setSavingKey(null);
-    }
-  }
-
-  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
-
-  const profile = data?.profile ?? {};
-  const cityLine = [profile.home_city, profile.home_state].filter(Boolean).join(', ');
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable>
-        <View style={styles.identityRow}>
-          <View style={styles.avatar}><Text style={styles.avatarText}>{String(profile.display_name ?? 'A').slice(0, 1).toUpperCase()}</Text></View>
-          <View style={styles.identityText}>
-            <Text style={styles.name}>{profile.display_name ?? 'Your profile'}</Text>
-            {profile.username ? <Text style={styles.username}>@{profile.username}</Text> : <Text style={styles.usernameMuted}>Username not set</Text>}
-            {cityLine ? <Text style={styles.location}>{cityLine}</Text> : null}
-          </View>
-        </View>
-
-        <View style={styles.levelCard}>
-          <Text style={styles.eyebrow}>MEMBER STATUS</Text>
-          <Text style={styles.levelName}>{level.name}</Text>
-          <Text style={styles.levelDetail}>{completedCount} completed official adventure{completedCount === 1 ? '' : 's'}</Text>
-          {nextLevel ? <Text style={styles.nextLevel}>{nextLevel.min - completedCount} more to reach {nextLevel.name}</Text> : <Text style={styles.nextLevel}>Top of the trail.</Text>}
-          {profile.platform_role && profile.platform_role !== 'member' ? <Text style={styles.role}>Role: {String(profile.platform_role).replace('_', ' ')}</Text> : null}
-          {profile.event_host_level && profile.event_host_level !== 'member' ? <Text style={styles.role}>Host access: {String(profile.event_host_level).replace('_', ' ')}</Text> : null}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>About</Text>
-          <Text style={styles.body}>{profile.bio || 'Add a short bio to tell the community what kind of outside you love.'}</Text>
-          {Array.isArray(profile.interests) && profile.interests.length ? (
-            <View style={styles.chips}>{profile.interests.map((interest: string) => <Text key={interest} style={styles.chip}>{interest}</Text>)}</View>
-          ) : null}
-          <Text style={styles.joined}>Joined {profile.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'recently'}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Profile privacy</Text>
-          <Text style={styles.body}>City is visible by default. Exact address, phone, email, payment details, and dependent information are never public profile fields.</Text>
-          {privacySettings.map(([key, label, detail]) => (
-            <View key={key} style={styles.settingRow}>
-              <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>{label}</Text>
-                <Text style={styles.settingDetail}>{detail}</Text>
-              </View>
-              <Switch
-                value={Boolean(profile[key])}
-                onValueChange={(value) => void toggle(key, value)}
-                disabled={savingKey === key}
-                trackColor={{ false: '#435148', true: '#8C763F' }}
-                thumbColor={Boolean(profile[key]) ? '#F0D083' : '#D9DED9'}
-              />
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.linksCard}>
-          <Pressable style={styles.linkRow} onPress={() => router.push('/member/trips')}><Text style={styles.linkTitle}>Trips & Payments</Text><Text style={styles.linkArrow}>›</Text></Pressable>
-          <Pressable style={styles.linkRow} onPress={() => router.push('/member/trail-family')}><Text style={styles.linkTitle}>Trail Family</Text><Text style={styles.linkArrow}>›</Text></Pressable>
-          <Pressable style={styles.linkRow} onPress={() => router.push('/notifications')}><Text style={styles.linkTitle}>Notification Center</Text><Text style={styles.linkArrow}>›</Text></Pressable>
-        </View>
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0F1713' }, center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 20, paddingBottom: 50, gap: 14 }, back: { color: '#D7B45A', fontWeight: '800', fontSize: 16 },
-  identityRow: { flexDirection: 'row', alignItems: 'center', gap: 15, marginTop: 6 }, avatar: { width: 74, height: 74, borderRadius: 37, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: '#17211C', fontSize: 31, fontWeight: '900' }, identityText: { flex: 1 }, name: { color: '#FFF8E8', fontSize: 29, fontWeight: '900' }, username: { color: '#D7B45A', fontWeight: '800', marginTop: 2 }, usernameMuted: { color: '#7E8A82', marginTop: 2 }, location: { color: '#B5BEB8', marginTop: 5 },
-  levelCard: { backgroundColor: '#25372D', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#3B5245' }, eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1 }, levelName: { color: '#FFF8E8', fontSize: 27, fontWeight: '900', marginTop: 7 }, levelDetail: { color: '#C7D0CA', marginTop: 4 }, nextLevel: { color: '#F0D083', marginTop: 10, fontWeight: '800' }, role: { color: '#B8C5BD', marginTop: 5, textTransform: 'capitalize' },
-  card: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#28362E', padding: 17, gap: 9 }, cardTitle: { color: '#FFF8E8', fontSize: 20, fontWeight: '900' }, body: { color: '#AEB8B2', lineHeight: 21 }, joined: { color: '#829087', fontSize: 12, marginTop: 4 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, chip: { color: '#F0D083', backgroundColor: '#26372D', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, fontWeight: '700' },
-  settingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#243129' }, settingText: { flex: 1 }, settingLabel: { color: '#FFF8E8', fontWeight: '800', fontSize: 15 }, settingDetail: { color: '#89968E', fontSize: 12, lineHeight: 17, marginTop: 3 },
-  linksCard: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#28362E', overflow: 'hidden' }, linkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 17, borderBottomWidth: 1, borderBottomColor: '#26332C' }, linkTitle: { color: '#FFF8E8', fontWeight: '800', fontSize: 16 }, linkArrow: { color: '#D7B45A', fontSize: 26 }, error: { color: '#FFB4A9' },
-});
+const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const privacy=[['profile_is_private','Private account'],['city_visible','Show city & state'],['badges_visible','Show badges'],['adventures_visible','Show completed adventures'],['interests_visible','Show interests'],['trail_family_visible','Show Trail Family summary']] as const;
+export default function ProfileScreen(){const [data,setData]=useState<any>(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[message,setMessage]=useState(''),[name,setName]=useState(''),[username,setUsername]=useState(''),[bio,setBio]=useState(''),[state,setState]=useState('FL'),[city,setCity]=useState(''),[query,setQuery]=useState(''),[suggestions,setSuggestions]=useState<WeatherLocationSuggestion[]>([]);
+ async function load(){setLoading(true);try{const b=await getMemberBasecamp();setData(b);const p=b.profile??{};setName(p.display_name??'');setUsername(p.username??'');setBio(p.bio??'');setState(p.home_state??'FL');setCity(p.home_city??'');setQuery(p.home_city??'')}finally{setLoading(false)}}useEffect(()=>{void load()},[]);
+ useEffect(()=>{if(query.trim().length<2||query===city){setSuggestions([]);return}const t=setTimeout(()=>searchWeatherLocations(`${query}, ${state}`).then(x=>setSuggestions(x.slice(0,5))).catch(()=>setSuggestions([])),350);return()=>clearTimeout(t)},[query,state,city]);
+ async function save(){setSaving(true);setMessage('');try{await saveProfileDetails({display_name:name,username:username||null,bio:bio||null,home_city:city||null,home_state:state});setMessage('Profile saved.');await load()}catch(e){setMessage(e instanceof Error?e.message:'Unable to save profile.')}finally{setSaving(false)}}
+ async function toggle(key:string,value:boolean){setData((c:any)=>({...c,profile:{...c.profile,[key]:value}}));try{await saveProfilePrivacy({[key]:value})}catch{await load()}}
+ if(loading)return <SafeAreaView style={s.center}><ActivityIndicator color="#D7B45A"/></SafeAreaView>;const p=data?.profile??{};return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled"><Pressable onPress={()=>router.back()}><Text style={s.back}>‹ Back</Text></Pressable><View style={s.hero}><View style={s.avatar}><Text style={s.avatarText}>{(name||'A').slice(0,1).toUpperCase()}</Text></View><View style={{flex:1}}><Text style={s.title}>Edit Profile</Text><Text style={s.sub}>Your community-facing member identity.</Text></View></View><View style={s.card}><Text style={s.label}>DISPLAY NAME</Text><TextInput value={name} onChangeText={setName} style={s.input}/><Text style={s.label}>USERNAME · OPTIONAL</Text><TextInput value={username} onChangeText={setUsername} autoCapitalize="none" placeholder="@trailname" placeholderTextColor="#66746B" style={s.input}/><Text style={s.label}>BIO</Text><TextInput value={bio} onChangeText={setBio} multiline maxLength={280} placeholder="Tell the community what kind of outside you love." placeholderTextColor="#66746B" style={[s.input,s.bio]}/></View><View style={s.card}><Text style={s.cardTitle}>Home location</Text><Text style={s.help}>Choose a state first, then select a real city. This powers discovery and saved-location weather.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.states}>{states.map(x=><Pressable key={x} onPress={()=>{setState(x);setCity('');setQuery('')}} style={[s.stateChip,state===x&&s.stateActive]}><Text style={[s.stateText,state===x&&s.stateTextActive]}>{x}</Text></Pressable>)}</ScrollView><TextInput value={query} onChangeText={v=>{setQuery(v);if(v!==city)setCity('')}} placeholder={`Search cities in ${state}`} placeholderTextColor="#66746B" style={s.input}/>{suggestions.map(x=><Pressable key={`${x.id}-${x.name}`} style={s.suggestion} onPress={()=>{setCity(x.name);setQuery(x.name);setSuggestions([])}}><Text style={s.suggestionTitle}>{x.name}</Text><Text style={s.suggestionMeta}>{x.region}</Text></Pressable>)}{city?<Text style={s.selected}>Selected: {city}, {state}</Text>:null}</View><Pressable disabled={saving||!name.trim()||!city} onPress={()=>void save()} style={[s.save,(saving||!name.trim()||!city)&&s.disabled]}><Text style={s.saveText}>{saving?'Saving…':'Save Profile'}</Text></Pressable>{message?<Text style={s.message}>{message}</Text>:null}<View style={s.card}><Text style={s.cardTitle}>Profile privacy</Text><Text style={s.help}>Exact address, phone, email, payment details and dependent details are never public profile fields.</Text>{privacy.map(([key,label])=><View key={key} style={s.row}><Text style={s.rowText}>{label}</Text><Switch value={Boolean(p[key])} onValueChange={v=>void toggle(key,v)} trackColor={{false:'#435148',true:'#8C763F'}} thumbColor={p[key]?'#F0D083':'#D9DED9'}/></View>)}</View></ScrollView></SafeAreaView>}
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#0F1713'},center:{flex:1,backgroundColor:'#0F1713',alignItems:'center',justifyContent:'center'},content:{padding:20,paddingBottom:60,gap:14},back:{color:'#D7B45A',fontWeight:'900'},hero:{flexDirection:'row',alignItems:'center',gap:14},avatar:{width:70,height:70,borderRadius:35,backgroundColor:'#D7B45A',alignItems:'center',justifyContent:'center'},avatarText:{fontSize:30,fontWeight:'900',color:'#17211C'},title:{fontSize:30,fontWeight:'900',color:'#FFF8E8'},sub:{color:'#94A198',marginTop:3},card:{backgroundColor:'#17211C',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16,gap:10},cardTitle:{color:'#FFF8E8',fontSize:20,fontWeight:'900'},help:{color:'#96A39B',lineHeight:20},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},states:{gap:7},stateChip:{borderWidth:1,borderColor:'#435148',borderRadius:999,paddingHorizontal:11,paddingVertical:7},stateActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},stateText:{color:'#C6CEC8',fontWeight:'800'},stateTextActive:{color:'#17211C'},suggestion:{paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},suggestionTitle:{color:'#FFF8E8',fontWeight:'800'},suggestionMeta:{color:'#88958C',fontSize:12,marginTop:2},selected:{color:'#F0D083',fontWeight:'800'},save:{backgroundColor:'#D7B45A',borderRadius:14,padding:15,alignItems:'center'},disabled:{opacity:.45},saveText:{color:'#17211C',fontWeight:'900',fontSize:16},message:{color:'#E4D7B0',textAlign:'center'},row:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12,paddingTop:9,borderTopWidth:1,borderTopColor:'#26332C'},rowText:{color:'#FFF8E8',fontWeight:'700',flex:1}});
