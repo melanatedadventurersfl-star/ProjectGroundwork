@@ -77,9 +77,19 @@ export async function joinGroup(groupId: string) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
   if (!userId) throw new Error('You must be signed in to join a group.');
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('community_group_members')
+    .select('group_id')
+    .eq('group_id', groupId)
+    .eq('profile_id', userId)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing) return;
+
   const { error } = await supabase
     .from('community_group_members')
-    .upsert({ group_id: groupId, profile_id: userId, role: 'member' }, { onConflict: 'group_id,profile_id', ignoreDuplicates: true });
+    .insert({ group_id: groupId, profile_id: userId, role: 'member' });
   if (error) throw error;
 }
 
