@@ -15,6 +15,15 @@ const ladder = [
   { name: 'Legacy Adventurer', min: 20 },
 ] as const;
 
+const privacySettings: [string, string, string][] = [
+  ['profile_is_private', 'Private account', 'Limit your full profile to approved connections.'],
+  ['city_visible', 'Show city & state', 'Let community members see your general location.'],
+  ['badges_visible', 'Show badges', 'Display milestone badges on your community profile.'],
+  ['adventures_visible', 'Show completed adventures', 'Let people see your public adventure history.'],
+  ['interests_visible', 'Show interests', 'Use your selected interests on your profile.'],
+  ['trail_family_visible', 'Show Trail Family connection', 'Show that you are part of a Trail Family, without exposing private dependent details.'],
+];
+
 function memberLevel(completed: number) {
   return [...ladder].reverse().find((level) => completed >= level.min) ?? ladder[0];
 }
@@ -97,14 +106,7 @@ export default function MemberProfileScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Profile privacy</Text>
           <Text style={styles.body}>City is visible by default. Exact address, phone, email, payment details, and dependent information are never public profile fields.</Text>
-          {[
-            ['profile_is_private', 'Private account', 'Limit your full profile to approved connections.'],
-            ['city_visible', 'Show city & state', 'Let community members see your general location.'],
-            ['badges_visible', 'Show badges', 'Display milestone badges on your community profile.'],
-            ['adventures_visible', 'Show completed adventures', 'Let people see your public adventure history.'],
-            ['interests_visible', 'Show interests', 'Use your selected interests on your profile.'],
-            ['trail_family_visible', 'Show Trail Family connection', 'Show that you are part of a Trail Family, without exposing private dependent details.'],
-          ].map(([key, label, detail]) => (
+          {privacySettings.map(([key, label, detail]) => (
             <View key={key} style={styles.settingRow}>
               <View style={styles.settingText}>
                 <Text style={styles.settingLabel}>{label}</Text>
