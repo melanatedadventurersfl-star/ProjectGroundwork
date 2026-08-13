@@ -58,7 +58,8 @@ export default function TrailheadScreen() {
 
   async function load(isRefresh = false) {
     try {
-      isRefresh ? setRefreshing(true) : setLoading(true);
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
       const [nextQueue, groups, journey, stamps, adventures, profileResult] = await Promise.all([
@@ -254,7 +255,7 @@ const styles = StyleSheet.create({
   sectionAction: { color: '#D7B45A', fontWeight: '800' },
   featureImage: { height: 300, justifyContent: 'flex-end', overflow: 'hidden', borderRadius: 24, backgroundColor: '#26372D' },
   featureImageRadius: { borderRadius: 24 },
-  featureShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,12,9,0.48)' },
+  featureShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,12,9,0.48)' },
   featureContent: { padding: 20, gap: 7 },
   featureTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   featureBadge: { color: '#F0D083', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
