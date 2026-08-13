@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,14 +16,20 @@ function statusLabel(status: string) {
 }
 
 export default function TripsScreen() {
-  const [trips, setTrips] = useState<MemberTrip[]>([]);
+  const [upcoming, setUpcoming] = useState<MemberTrip[]>([]);
+  const [history, setHistory] = useState<MemberTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     try {
       setLoading(true);
-      setTrips(await getMemberTrips());
+      const trips = await getMemberTrips();
+      const now = Date.now();
+      const nextUpcoming = trips.filter((trip) => trip.adventures && new Date(trip.adventures.starts_at).getTime() >= now && !['cancelled', 'refunded', 'expired'].includes(trip.status));
+      const upcomingIds = new Set(nextUpcoming.map((trip) => trip.id));
+      setUpcoming(nextUpcoming);
+      setHistory(trips.filter((trip) => !upcomingIds.has(trip.id)));
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load trips and payments.');
@@ -33,9 +39,6 @@ export default function TripsScreen() {
   }
 
   useEffect(() => { void load(); }, []);
-
-  const upcoming = useMemo(() => trips.filter((trip) => trip.adventures && new Date(trip.adventures.starts_at).getTime() >= Date.now() && !['cancelled','refunded','expired'].includes(trip.status)), [trips]);
-  const history = useMemo(() => trips.filter((trip) => !upcoming.includes(trip)), [trips, upcoming]);
 
   function TripCard({ trip }: { trip: MemberTrip }) {
     const adventure = trip.adventures;
