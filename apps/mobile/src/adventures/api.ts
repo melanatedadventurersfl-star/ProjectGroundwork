@@ -9,10 +9,23 @@ export type AdventureFilters = {
   savedOnly?: boolean;
 };
 
-export async function listAdventures(filters: AdventureFilters = {}): Promise<AdventureSummary[]> {
+async function attachSavedState(adventures: AdventureSummary[], savedOnly = false): Promise<AdventureSummary[]> {
   const { data: sessionData } = await supabase.auth.getSession();
   const profileId = sessionData.session?.user.id;
+  if (!profileId || adventures.length === 0) return savedOnly ? [] : adventures;
 
+  const { data: saved, error: savedError } = await supabase
+    .from('saved_adventures')
+    .select('adventure_id')
+    .eq('profile_id', profileId);
+  if (savedError) throw savedError;
+
+  const savedIds = new Set((saved ?? []).map((row) => row.adventure_id as string));
+  const enriched = adventures.map((adventure) => ({ ...adventure, is_saved: savedIds.has(adventure.id) }));
+  return savedOnly ? enriched.filter((adventure) => adventure.is_saved) : enriched;
+}
+
+export async function listAdventures(filters: AdventureFilters = {}): Promise<AdventureSummary[]> {
   let query = supabase
     .from('adventure_discovery')
     .select('*')
@@ -29,19 +42,16 @@ export async function listAdventures(filters: AdventureFilters = {}): Promise<Ad
 
   const { data, error } = await query;
   if (error) throw error;
+  return attachSavedState((data ?? []) as AdventureSummary[], filters.savedOnly);
+}
 
-  const adventures = (data ?? []) as AdventureSummary[];
-  if (!profileId || adventures.length === 0) return adventures;
-
-  const { data: saved, error: savedError } = await supabase
-    .from('saved_adventures')
-    .select('adventure_id')
-    .eq('profile_id', profileId);
-  if (savedError) throw savedError;
-
-  const savedIds = new Set((saved ?? []).map((row) => row.adventure_id as string));
-  const enriched = adventures.map((adventure) => ({ ...adventure, is_saved: savedIds.has(adventure.id) }));
-  return filters.savedOnly ? enriched.filter((adventure) => adventure.is_saved) : enriched;
+export async function listPastAdventures(): Promise<AdventureSummary[]> {
+  const { data, error } = await supabase
+    .from('past_adventure_discovery')
+    .select('*')
+    .order('starts_at', { ascending: false });
+  if (error) throw error;
+  return attachSavedState((data ?? []) as AdventureSummary[]);
 }
 
 export async function getAdventure(id: string): Promise<AdventureDetail> {
