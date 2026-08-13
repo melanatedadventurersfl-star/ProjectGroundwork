@@ -1,174 +1,26 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { AdventureCard } from '../../src/adventures/AdventureCard';
 import { listAdventures, setAdventureSaved } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { getEventHostAccess, listLocalEvents, type LocalEvent } from '../../src/local-events/api';
+import { getMemberTrips, type MemberTrip } from '../../src/member/api';
 
-const categories = ['All', 'Camping', 'Hiking', 'Water', 'Travel', 'Culture'];
-type ExploreMode = 'adventures' | 'local' | 'saved';
+type Mode='adventures'|'local'|'saved'|'reservations';
+const categories=['All','Camping','Hiking','Water','Travel','Culture'];
+const radii=['25','50','100','250','Anywhere'];
 
-function LocalEventCard({ event }: { event: LocalEvent }) {
-  const start = new Date(event.starts_at);
-  return (
-    <Pressable style={styles.localCard} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
-      <View style={styles.localTopRow}>
-        <Text style={styles.localBadge}>LOCAL EVENT</Text>
-        <Text style={styles.localRsvp}>{event.rsvp_count} going/interested</Text>
-      </View>
-      <Text style={styles.localTitle}>{event.title}</Text>
-      <Text style={styles.localMeta}>{start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · {event.city}, {event.state}</Text>
-      <Text style={styles.localHost}>Hosted by {event.host_name}</Text>
-      <Text style={styles.localDescription} numberOfLines={3}>{event.description}</Text>
-      <Text style={styles.localAction}>View local event →</Text>
-    </Pressable>
-  );
-}
+function LocalCard({event}:{event:LocalEvent}){return <Pressable style={s.card} onPress={()=>router.push({pathname:'/local-events/[id]',params:{id:event.id}})}><Text style={s.badge}>LOCAL EVENT</Text><Text style={s.cardTitle}>{event.title}</Text><Text style={s.meta}>{new Date(event.starts_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · {event.city}, {event.state}</Text><Text style={s.gold}>Hosted by {event.host_name}</Text><Text style={s.body} numberOfLines={2}>{event.description}</Text><Text style={s.gold}>View Local Event →</Text></Pressable>}
+function TripCard({trip}:{trip:MemberTrip}){const a=trip.adventures;return <Pressable style={s.card} onPress={()=>router.push('/member/trips')}><Text style={s.badge}>{trip.status==='held'||trip.status==='payment_pending'?'RESERVATION HELD':'RESERVATION'}</Text><Text style={s.cardTitle}>{a?.title??'Adventure reservation'}</Text><Text style={s.meta}>{a?`${new Date(a.starts_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})} · ${a.city}, ${a.state}`:'Trip details'}</Text><Text style={s.body}>{trip.status.replaceAll('_',' ')}</Text><Text style={s.gold}>Manage Reservation →</Text></Pressable>}
 
-export default function ExploreScreen() {
-  const [mode, setMode] = useState<ExploreMode>('adventures');
-  const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
-  const [localEvents, setLocalEvents] = useState<LocalEvent[]>([]);
-  const [canCreateLocalEvent, setCanCreateLocalEvent] = useState(false);
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('All');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const filters = useMemo(() => ({
-    search,
-    category: category === 'All' ? undefined : category,
-    savedOnly: mode === 'saved',
-  }), [search, category, mode]);
-
-  const load = useCallback(async (isRefresh = false) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
-    setError(null);
-    try {
-      const [nextAdventures, nextLocalEvents, access] = await Promise.all([
-        listAdventures(filters),
-        listLocalEvents(),
-        getEventHostAccess(),
-      ]);
-      setAdventures(nextAdventures);
-      setLocalEvents(nextLocalEvents);
-      setCanCreateLocalEvent(access.canCreate);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load Explore.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [filters]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => void load(), 200);
-    return () => clearTimeout(timer);
-  }, [load]);
-
-  async function toggleSaved(adventure: AdventureSummary) {
-    const nextSaved = !adventure.is_saved;
-    setAdventures((current) => current.map((item) => item.id === adventure.id ? { ...item, is_saved: nextSaved } : item));
-    try {
-      await setAdventureSaved(adventure.id, nextSaved);
-      if (mode === 'saved' && !nextSaved) setAdventures((current) => current.filter((item) => item.id !== adventure.id));
-    } catch (caught) {
-      setAdventures((current) => current.map((item) => item.id === adventure.id ? { ...item, is_saved: adventure.is_saved } : item));
-      setError(caught instanceof Error ? caught.message : 'Unable to update saved adventure.');
-    }
-  }
-
-  const rows = mode === 'local' ? localEvents : adventures;
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <FlatList
-        data={rows as Array<AdventureSummary | LocalEvent>}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.eyebrow}>FIND YOUR NEXT OUTSIDE</Text>
-            <View style={styles.headingRow}>
-              <Text style={styles.heading}>Explore</Text>
-              <Pressable style={styles.pastButton} onPress={() => router.push('/past-adventures')}><Text style={styles.pastButtonText}>Past Adventures</Text></Pressable>
-            </View>
-            <View style={styles.modeRow}>
-              {([
-                ['adventures', 'Adventures'],
-                ['local', 'Local Events'],
-                ['saved', 'Saved'],
-              ] as Array<[ExploreMode, string]>).map(([value, label]) => (
-                <Pressable key={value} onPress={() => setMode(value)} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
-                  <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {mode === 'local' ? (
-              <View style={styles.localIntro}>
-                <Text style={styles.localIntroTitle}>Member-hosted, close to home.</Text>
-                <Text style={styles.localIntroBody}>Local Events are lighter meetups hosted by trusted members. Official MA Adventures are always labeled separately.</Text>
-                {canCreateLocalEvent ? (
-                  <Pressable style={styles.createButton} onPress={() => router.push('/local-events/create')}><Text style={styles.createButtonText}>Create local event</Text></Pressable>
-                ) : <Text style={styles.hostNote}>Event posting unlocks for approved community hosts.</Text>}
-              </View>
-            ) : (
-              <>
-                <TextInput
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder={mode === 'saved' ? 'Search your saved adventures' : 'Search by adventure, city, or vibe'}
-                  placeholderTextColor="#7F8C84"
-                  style={styles.search}
-                  accessibilityLabel="Search adventures"
-                />
-                <View style={styles.filterRow}>
-                  {categories.map((item) => (
-                    <Pressable key={item} onPress={() => setCategory(item)} style={[styles.filter, category === item && styles.filterSelected]}>
-                      <Text style={[styles.filterText, category === item && styles.filterTextSelected]}>{item}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {mode === 'saved' ? <Text style={styles.savedHint}>Everything you bookmark lives here.</Text> : null}
-              </>
-            )}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            {loading ? <ActivityIndicator color="#D7B45A" /> : null}
-          </View>
-        }
-        renderItem={({ item }) => mode === 'local' ? <LocalEventCard event={item as LocalEvent} /> : <AdventureCard adventure={item as AdventureSummary} onToggleSaved={toggleSaved} />}
-        ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-        ListEmptyComponent={!loading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>{mode === 'saved' ? 'No saved adventures yet' : mode === 'local' ? 'No local events nearby yet' : 'No adventures match those filters'}</Text>
-            <Text style={styles.empty}>{mode === 'saved' ? 'Use the bookmark action on any adventure and it will show up here.' : 'Try another filter or check back soon.'}</Text>
-          </View>
-        ) : null}
-      />
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0F1713' }, content: { padding: 18, paddingBottom: 36 }, header: { gap: 14, marginBottom: 18 }, eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.1, fontSize: 12 },
-  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, heading: { color: '#FFF8E8', fontSize: 36, lineHeight: 40, fontWeight: '900' }, pastButton: { borderWidth: 1, borderColor: '#526057', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 8 }, pastButtonText: { color: '#F0D083', fontWeight: '800', fontSize: 12 },
-  modeRow: { flexDirection: 'row', backgroundColor: '#151F1A', borderRadius: 14, padding: 4, gap: 4 }, modeButton: { flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: 'center' }, modeButtonActive: { backgroundColor: '#D7B45A' }, modeText: { color: '#AAB4AE', fontWeight: '800', fontSize: 13 }, modeTextActive: { color: '#152019' },
-  search: { backgroundColor: '#17211C', color: '#FFF8E8', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: '#26342C' }, filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, filter: { borderWidth: 1, borderColor: '#526057', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 }, filterSelected: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' }, filterText: { color: '#D4D8D5', fontWeight: '700' }, filterTextSelected: { color: '#17211C' }, savedHint: { color: '#98A49D', lineHeight: 20 },
-  localIntro: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#29372F', padding: 16, gap: 8 }, localIntroTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' }, localIntroBody: { color: '#C6CEC8', lineHeight: 21 }, createButton: { alignSelf: 'flex-start', marginTop: 4, backgroundColor: '#D7B45A', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }, createButtonText: { color: '#17211C', fontWeight: '900' }, hostNote: { color: '#D7B45A', fontWeight: '800', marginTop: 4 },
-  localCard: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#29372F', padding: 17, gap: 7 }, localTopRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, localBadge: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }, localRsvp: { color: '#87948B', fontSize: 12 }, localTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900' }, localMeta: { color: '#AEB8B2' }, localHost: { color: '#D7B45A', fontWeight: '700' }, localDescription: { color: '#D5DBD7', lineHeight: 21, marginTop: 2 }, localAction: { color: '#FFF1C7', fontWeight: '900', marginTop: 5 }, error: { color: '#FFB4A9' }, emptyCard: { backgroundColor: '#151F1A', borderRadius: 18, padding: 20, marginTop: 8 }, emptyTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', textAlign: 'center' }, empty: { color: '#AEB8B2', textAlign: 'center', paddingTop: 7, lineHeight: 20 },
-});
+export default function ExploreScreen(){const [mode,setMode]=useState<Mode>('adventures'),[adventures,setAdventures]=useState<AdventureSummary[]>([]),[events,setEvents]=useState<LocalEvent[]>([]),[trips,setTrips]=useState<MemberTrip[]>([]),[canCreate,setCanCreate]=useState(false),[search,setSearch]=useState(''),[category,setCategory]=useState('All'),[state,setState]=useState(''),[city,setCity]=useState(''),[radius,setRadius]=useState('Anywhere'),[loading,setLoading]=useState(true),[refreshing,setRefreshing]=useState(false),[error,setError]=useState<string|null>(null);
+ const filters=useMemo(()=>({search:search||city,category:category==='All'?undefined:category,state:state.trim().toUpperCase()||undefined,savedOnly:mode==='saved'}),[search,city,category,state,mode]);
+ const load=useCallback(async(refresh=false)=>{refresh?setRefreshing(true):setLoading(true);try{const [a,e,t,h]=await Promise.all([listAdventures(filters),listLocalEvents(),getMemberTrips(),getEventHostAccess()]);setAdventures(a);setEvents(e);setTrips(t);setCanCreate(h.canCreate);setError(null)}catch(x){setError(x instanceof Error?x.message:'Unable to load Explore.')}finally{setLoading(false);setRefreshing(false)}},[filters]);
+ useEffect(()=>{const timer=setTimeout(()=>void load(),200);return()=>clearTimeout(timer)},[load]);
+ async function toggle(a:AdventureSummary){const next=!a.is_saved;setAdventures(c=>c.map(x=>x.id===a.id?{...x,is_saved:next}:x));try{await setAdventureSaved(a.id,next)}catch{void load()}}
+ const local=events.filter(e=>{const q=search.toLowerCase();return(!q||`${e.title} ${e.host_name} ${e.city} ${e.category}`.toLowerCase().includes(q))&&(!state||e.state.toUpperCase()===state.toUpperCase())&&(!city||e.city.toLowerCase().includes(city.toLowerCase()))});
+ const rows:any[]=mode==='local'?local:mode==='reservations'?trips:adventures;
+ return <SafeAreaView style={s.safe}><FlatList data={rows} keyExtractor={(x:any)=>x.id} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>void load(true)} tintColor="#D7B45A"/>} ListHeaderComponent={<View style={s.header}><Text style={s.eyebrow}>FIND YOUR NEXT OUTSIDE</Text><Text style={s.title}>Explore</Text><View style={s.tabs}>{([['adventures','Adventures'],['local','Local Events'],['saved','Saved'],['reservations','Reservations']] as [Mode,string][]).map(([v,l])=><Pressable key={v} onPress={()=>setMode(v)} style={[s.tab,mode===v&&s.tabActive]}><Text style={[s.tabText,mode===v&&s.tabTextActive]}>{l}</Text></Pressable>)}</View>{mode==='reservations'?<View style={s.note}><Text style={s.cardTitle}>Quick reservation view</Text><Text style={s.body}>Use Trips & Payments for tickets, attendees, payment history and readiness.</Text><Pressable onPress={()=>router.push('/member/trips')}><Text style={s.gold}>Open Trips & Payments →</Text></Pressable></View>:<><TextInput value={search} onChangeText={setSearch} placeholder={mode==='local'?'Search event, host, city or type':'Search adventure, keyword, city, state or type'} placeholderTextColor="#728078" style={s.input}/><View style={s.row}><TextInput value={state} onChangeText={setState} autoCapitalize="characters" maxLength={2} placeholder="State" placeholderTextColor="#728078" style={[s.input,{width:82}]}/><TextInput value={city} onChangeText={setCity} placeholder="City" placeholderTextColor="#728078" style={[s.input,{flex:1}]}/></View><Text style={s.filterLabel}>RADIUS</Text><View style={s.chips}>{radii.map(r=><Pressable key={r} onPress={()=>setRadius(r)} style={[s.chip,radius===r&&s.chipActive]}><Text style={[s.chipText,radius===r&&s.chipTextActive]}>{r==='Anywhere'?r:`${r} mi`}</Text></Pressable>)}</View>{mode!=='local'?<><Text style={s.filterLabel}>ADVENTURE TYPE</Text><View style={s.chips}>{categories.map(c=><Pressable key={c} onPress={()=>setCategory(c)} style={[s.chip,category===c&&s.chipActive]}><Text style={[s.chipText,category===c&&s.chipTextActive]}>{c}</Text></Pressable>)}</View></>:<View style={s.note}><Text style={s.cardTitle}>Member-hosted, close to home.</Text><Text style={s.body}>Local Events are lighter meetups. Official MA Adventures stay clearly separate.</Text>{canCreate?<Pressable onPress={()=>router.push('/local-events/create')}><Text style={s.gold}>Create Local Event →</Text></Pressable>:null}</View>}</>}{error?<Text style={s.error}>{error}</Text>:null}{loading?<ActivityIndicator color="#D7B45A"/>:null}</View>} renderItem={({item})=>mode==='local'?<LocalCard event={item as LocalEvent}/>:mode==='reservations'?<TripCard trip={item as MemberTrip}/>:<AdventureCard adventure={item as AdventureSummary} onToggleSaved={toggle}/>} ItemSeparatorComponent={()=><View style={{height:14}}/>}/></SafeAreaView>}
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#0F1713'},content:{padding:18,paddingBottom:42},header:{gap:12,marginBottom:18},eyebrow:{color:'#D7B45A',fontWeight:'900',fontSize:11,letterSpacing:1.1},title:{color:'#FFF8E8',fontSize:36,fontWeight:'900'},gold:{color:'#D7B45A',fontWeight:'900',marginTop:7},tabs:{flexDirection:'row',backgroundColor:'#151F1A',borderRadius:14,padding:4,gap:3},tab:{flex:1,paddingVertical:10,paddingHorizontal:2,borderRadius:10,alignItems:'center'},tabActive:{backgroundColor:'#D7B45A'},tabText:{color:'#9FAAA3',fontSize:11,fontWeight:'800'},tabTextActive:{color:'#17211C'},input:{backgroundColor:'#17211C',borderWidth:1,borderColor:'#2A3930',borderRadius:13,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},row:{flexDirection:'row',gap:9},filterLabel:{color:'#849188',fontSize:10,fontWeight:'900',letterSpacing:1},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{borderWidth:1,borderColor:'#46554C',borderRadius:999,paddingHorizontal:10,paddingVertical:6},chipActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},chipText:{color:'#D2D8D4',fontWeight:'700',fontSize:12},chipTextActive:{color:'#17211C'},note:{backgroundColor:'#17211C',borderWidth:1,borderColor:'#29372F',borderRadius:16,padding:15},card:{backgroundColor:'#17211C',borderRadius:18,borderWidth:1,borderColor:'#29372F',padding:16},badge:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:.8},cardTitle:{color:'#FFF8E8',fontSize:20,fontWeight:'900',marginTop:4},meta:{color:'#AEB8B2',marginTop:5},body:{color:'#AEB8B2',lineHeight:20,marginTop:5},error:{color:'#FFB4A9'}});

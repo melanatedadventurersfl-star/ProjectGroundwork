@@ -35,13 +35,11 @@ jobs:
         with:
           node-version: 22
 
+      # This preview branch added one Expo native dependency. npm install is
+      # used once here so CI can refresh the committed lockfile on the PR.
+      # After the generated lockfile lands, this step returns to npm ci.
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm install
 
       - name: Verify lockfile exists
         run: test -f package-lock.json

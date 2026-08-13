@@ -2,174 +2,24 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { getMemberBasecamp } from '../../src/member/api';
-import {
-  getAllMemoryPhotos,
-  getJourney,
-  getMemberBadges,
-  getPassportStamps,
-  type JourneyItem,
-  type MemberBadge,
-  type MemoryPhoto,
-  type PassportStamp,
-} from '../../src/passport/api';
+import { getAllMemoryPhotos, getJourney, getMemberBadges, getPassportStamps, type JourneyItem, type MemberBadge, type MemoryPhoto, type PassportStamp } from '../../src/passport/api';
 
-type PassportView = 'journey' | 'stamps' | 'badges' | 'memories';
-
-const ladder = [
-  { name: 'Explorer', min: 0 },
-  { name: 'Pathfinder', min: 1 },
-  { name: 'Trailblazer', min: 3 },
-  { name: 'Wayfinder', min: 6 },
-  { name: 'Summiteer', min: 10 },
-  { name: 'Legacy Adventurer', min: 20 },
-] as const;
-
-function levelFor(completed: number) {
-  return [...ladder].reverse().find((level) => completed >= level.min) ?? ladder[0];
-}
-
-export default function PassportScreen() {
-  const [journey, setJourney] = useState<JourneyItem[]>([]);
-  const [stamps, setStamps] = useState<PassportStamp[]>([]);
-  const [badges, setBadges] = useState<MemberBadge[]>([]);
-  const [photos, setPhotos] = useState<MemoryPhoto[]>([]);
-  const [profile, setProfile] = useState<any>(null);
-  const [view, setView] = useState<PassportView>('journey');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setError(null);
-      const [nextJourney, nextStamps, nextBadges, nextPhotos, basecamp] = await Promise.all([
-        getJourney(),
-        getPassportStamps(),
-        getMemberBadges(),
-        getAllMemoryPhotos(),
-        getMemberBasecamp(),
-      ]);
-      setJourney(nextJourney);
-      setStamps(nextStamps);
-      setBadges(nextBadges);
-      setPhotos(nextPhotos);
-      setProfile(basecamp.profile);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load your Passport.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const level = useMemo(() => levelFor(journey.length), [journey.length]);
-  const nextLevel = useMemo(() => ladder.find((item) => item.min > journey.length), [journey.length]);
-
-  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
-
-  const displayName = profile?.display_name ?? 'Adventurer';
-  const joined = profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'Recently';
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <FlatList
-        data={view === 'journey' ? journey : []}
-        keyExtractor={(item) => item.adventure_id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor="#D7B45A" />}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.eyebrow}>YOUR MA STORY</Text>
-            <Text style={styles.title}>Passport</Text>
-
-            <View style={styles.identityCard}>
-              <View style={styles.avatar}><Text style={styles.avatarText}>{String(displayName).slice(0, 1).toUpperCase()}</Text></View>
-              <View style={styles.identityText}>
-                <Text style={styles.name}>{displayName}</Text>
-                <Text style={styles.status}>{level.name}</Text>
-                <Text style={styles.joined}>Joined {joined}</Text>
-              </View>
-              {profile?.platform_role && profile.platform_role !== 'member' ? <Text style={styles.roleBadge}>{String(profile.platform_role).replace('_', ' ').toUpperCase()}</Text> : null}
-            </View>
-
-            <View style={styles.progressCard}>
-              <Text style={styles.progressTitle}>{nextLevel ? `Path to ${nextLevel.name}` : 'Legacy status reached'}</Text>
-              <Text style={styles.progressBody}>{nextLevel ? `${nextLevel.min - journey.length} more completed official adventure${nextLevel.min - journey.length === 1 ? '' : 's'} to advance.` : 'Keep building the story. The trail does not end at the title.'}</Text>
-            </View>
-
-            <View style={styles.statsGrid}>
-              <Pressable style={[styles.stat, view === 'journey' && styles.statActive]} onPress={() => setView('journey')}><Text style={styles.statNumber}>{journey.length}</Text><Text style={styles.statLabel}>Adventures</Text></Pressable>
-              <Pressable style={[styles.stat, view === 'stamps' && styles.statActive]} onPress={() => setView('stamps')}><Text style={styles.statNumber}>{stamps.length}</Text><Text style={styles.statLabel}>Stamps</Text></Pressable>
-              <Pressable style={[styles.stat, view === 'badges' && styles.statActive]} onPress={() => setView('badges')}><Text style={styles.statNumber}>{badges.length}</Text><Text style={styles.statLabel}>Badges</Text></Pressable>
-              <Pressable style={[styles.stat, view === 'memories' && styles.statActive]} onPress={() => setView('memories')}><Text style={styles.statNumber}>{photos.length}</Text><Text style={styles.statLabel}>Memories</Text></Pressable>
-            </View>
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            {view === 'journey' ? (
-              <View style={styles.sectionHeadingRow}><Text style={styles.sectionTitle}>Journey Timeline</Text><Text style={styles.sectionMeta}>Completed official adventures</Text></View>
-            ) : null}
-
-            {view === 'stamps' ? (
-              <View style={styles.panel}>
-                <Text style={styles.sectionTitle}>Official Stamp Book</Text>
-                <Text style={styles.panelIntro}>One official stamp is tied to each completed MA adventure.</Text>
-                {stamps.length ? <View style={styles.tileGrid}>{stamps.map((stamp) => <View key={`${stamp.stamp_id}-${stamp.adventure_id ?? ''}`} style={styles.stampTile}><Text style={styles.stampMark}>✦</Text><Text style={styles.tileTitle}>{stamp.title}</Text><Text style={styles.tileDate}>{new Date(stamp.earned_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text></View>)}</View> : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Your stamp book is waiting.</Text><Text style={styles.empty}>Complete an official MA adventure to earn the first stamp.</Text></View>}
-              </View>
-            ) : null}
-
-            {view === 'badges' ? (
-              <View style={styles.panel}>
-                <Text style={styles.sectionTitle}>Badges</Text>
-                <Text style={styles.panelIntro}>Badges recognize milestones and achievements. They are separate from your member status and event stamps.</Text>
-                {badges.length ? <View style={styles.tileGrid}>{badges.map((badge) => <View key={badge.badge_id} style={styles.badgeTile}><Text style={styles.badgeMark}>◆</Text><Text style={styles.tileTitle}>{badge.title}</Text><Text style={styles.tileDate}>{badge.category}</Text></View>)}</View> : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No badges yet.</Text><Text style={styles.empty}>Milestone and achievement badges will appear here as you earn them.</Text></View>}
-              </View>
-            ) : null}
-
-            {view === 'memories' ? (
-              <View style={styles.panel}>
-                <Text style={styles.sectionTitle}>Adventure Memories</Text>
-                <Text style={styles.panelIntro}>Photos shared from completed adventures collect here. Attendee upload controls live on the individual adventure memory page.</Text>
-                {photos.length ? <View style={styles.photoGrid}>{photos.map((photo) => <View key={photo.id} style={styles.photoTile}><Image source={{ uri: photo.image_url }} style={styles.photo} /><Text style={styles.photoCaption} numberOfLines={2}>{photo.caption || (photo.visibility === 'group' ? 'Shared adventure memory' : 'Private memory')}</Text></View>)}</View> : <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No memories added yet.</Text><Text style={styles.empty}>After an adventure, open it from your Journey Timeline to add reflections and photos.</Text></View>}
-              </View>
-            ) : null}
-          </View>
-        }
-        ListEmptyComponent={view === 'journey' ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Your first chapter is still ahead.</Text>
-            <Text style={styles.empty}>Completed registered adventures will appear here automatically.</Text>
-            <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.emptyAction}>Explore adventures →</Text></Pressable>
-          </View>
-        ) : null}
-        renderItem={({ item, index }) => (
-          <View style={styles.timelineRow}>
-            <View style={styles.timelineRail}><View style={styles.timelineDot} />{index < journey.length - 1 ? <View style={styles.timelineLine} /> : null}</View>
-            <Pressable style={styles.card} onPress={() => router.push(`/passport/reflection/${item.adventure_id}`)}>
-              <Text style={styles.date}>{new Date(item.experienced_at ?? item.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <Text style={styles.meta}>{item.category} · {item.city}, {item.state}</Text>
-              <View style={styles.memoryStats}><Text style={styles.memoryStat}>{item.stamp_count} official stamp{Number(item.stamp_count) === 1 ? '' : 's'}</Text><Text style={styles.memoryStat}>{item.photo_count} memor{item.photo_count === 1 ? 'y' : 'ies'}</Text></View>
-              {item.highlight ? <Text style={styles.highlight}>“{item.highlight}”</Text> : <Text style={styles.prompt}>Open memories & reflection →</Text>}
-            </Pressable>
-          </View>
-        )}
-      />
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0F1713' }, center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' }, content: { padding: 18, paddingBottom: 42 }, header: { gap: 12, marginBottom: 15 }, eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.1, fontSize: 11 }, title: { color: '#FFF8E8', fontSize: 36, lineHeight: 40, fontWeight: '900' },
-  identityCard: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#1D2B24', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#32453A' }, avatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: '#17211C', fontSize: 24, fontWeight: '900' }, identityText: { flex: 1 }, name: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' }, status: { color: '#F0D083', fontWeight: '900', marginTop: 2 }, joined: { color: '#89968E', fontSize: 12, marginTop: 3 }, roleBadge: { color: '#BFE2C9', fontSize: 9, fontWeight: '900', backgroundColor: '#26382E', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
-  progressCard: { backgroundColor: '#17211C', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#28362E' }, progressTitle: { color: '#FFF8E8', fontWeight: '900' }, progressBody: { color: '#AEB8B2', marginTop: 4, lineHeight: 19 },
-  statsGrid: { flexDirection: 'row', gap: 7 }, stat: { flex: 1, backgroundColor: '#17211C', borderRadius: 14, paddingVertical: 13, paddingHorizontal: 8, borderWidth: 1, borderColor: '#28362E', alignItems: 'center' }, statActive: { borderColor: '#D7B45A', backgroundColor: '#223027' }, statNumber: { color: '#FFF8E8', fontSize: 23, fontWeight: '900' }, statLabel: { color: '#8F9A93', fontSize: 10, marginTop: 3 },
-  sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10, marginTop: 4 }, sectionTitle: { color: '#FFF8E8', fontSize: 22, fontWeight: '900' }, sectionMeta: { color: '#7F8B83', fontSize: 11 }, panel: { gap: 10, marginTop: 4 }, panelIntro: { color: '#9CA8A0', lineHeight: 20 }, tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, stampTile: { width: '48%', borderWidth: 1, borderColor: '#5C5134', backgroundColor: '#161F1A', borderRadius: 14, padding: 12 }, badgeTile: { width: '48%', borderWidth: 1, borderColor: '#3D5145', backgroundColor: '#17231C', borderRadius: 14, padding: 12 }, stampMark: { color: '#D7B45A', fontSize: 20 }, badgeMark: { color: '#BFE2C9', fontSize: 19 }, tileTitle: { color: '#FFF8E8', fontWeight: '900', marginTop: 5 }, tileDate: { color: '#89958D', fontSize: 12, marginTop: 4, textTransform: 'capitalize' },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, photoTile: { width: '48%', backgroundColor: '#17211C', borderRadius: 14, overflow: 'hidden' }, photo: { width: '100%', aspectRatio: 1 }, photoCaption: { color: '#C7D0CA', fontSize: 12, lineHeight: 17, padding: 9 },
-  timelineRow: { flexDirection: 'row', alignItems: 'stretch' }, timelineRail: { width: 28, alignItems: 'center' }, timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#D7B45A', marginTop: 20 }, timelineLine: { width: 1, flex: 1, backgroundColor: '#405047', marginTop: 5 }, card: { flex: 1, backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#28362E', padding: 17, gap: 6, marginBottom: 12 }, date: { color: '#D7B45A', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }, cardTitle: { color: '#FFF8E8', fontSize: 20, fontWeight: '900' }, meta: { color: '#99A49D' }, memoryStats: { flexDirection: 'row', gap: 13, marginTop: 3 }, memoryStat: { color: '#D6DFD9', fontSize: 12, fontWeight: '700' }, highlight: { color: '#E4E9E5', fontSize: 15, lineHeight: 22, marginTop: 7 }, prompt: { color: '#D7B45A', fontWeight: '800', marginTop: 7 },
-  emptyCard: { backgroundColor: '#17211C', borderRadius: 18, padding: 20, marginTop: 8, gap: 7 }, emptyTitle: { color: '#FFF8E8', fontSize: 19, fontWeight: '900', textAlign: 'center' }, empty: { color: '#AAB4AE', textAlign: 'center', lineHeight: 20 }, emptyAction: { color: '#D7B45A', fontWeight: '900', textAlign: 'center', marginTop: 5 }, error: { color: '#FFB4A9' },
-});
+type ViewMode='journey'|'stamps'|'badges'|'memories';
+const ladder=[['Explorer',0],['Pathfinder',1],['Trailblazer',3],['Wayfinder',5],['Summiteer',10],['Legacy Adventurer',20]] as const;
+function rankFor(n:number){return [...ladder].reverse().find(x=>n>=x[1])??ladder[0]}
+function Crest({rank,ghost=false}:{rank:string;ghost?:boolean}){const glyph=rank==='Explorer'?'⌁':rank==='Pathfinder'?'✥':rank==='Trailblazer'?'▲':rank==='Wayfinder'?'✦':rank==='Summiteer'?'△':'◆';return <View style={[s.crest,ghost&&s.crestGhost]}><View style={s.crestInner}><Text style={s.crestGlyph}>{glyph}</Text></View></View>}
+export default function PassportScreen(){const [journey,setJourney]=useState<JourneyItem[]>([]),[stamps,setStamps]=useState<PassportStamp[]>([]),[badges,setBadges]=useState<MemberBadge[]>([]),[photos,setPhotos]=useState<MemoryPhoto[]>([]),[profile,setProfile]=useState<any>(null),[mode,setMode]=useState<ViewMode>('journey'),[loading,setLoading]=useState(true),[refreshing,setRefreshing]=useState(false),[error,setError]=useState<string|null>(null);
+ const load=useCallback(async()=>{try{const [j,st,b,p,base]=await Promise.all([getJourney(),getPassportStamps(),getMemberBadges(),getAllMemoryPhotos(),getMemberBasecamp()]);setJourney(j);setStamps(st);setBadges(b);setPhotos(p);setProfile(base.profile);setError(null)}catch(e){setError(e instanceof Error?e.message:'Unable to load Passport.')}finally{setLoading(false);setRefreshing(false)}},[]);useEffect(()=>{void load()},[load]);
+ const rank=useMemo(()=>rankFor(journey.length),[journey.length]);const states=new Set(journey.map(x=>x.state).filter(Boolean));const name=profile?.display_name||[profile?.first_name,profile?.last_name].filter(Boolean).join(' ')||profile?.username||'Member';const joined=profile?.created_at?new Date(profile.created_at).toLocaleDateString(undefined,{month:'long',year:'numeric'}):'Recently';
+ if(loading)return <SafeAreaView style={s.center}><ActivityIndicator color="#D7B45A"/></SafeAreaView>;
+ const data=mode==='journey'?journey:[];
+ return <SafeAreaView style={s.safe}><FlatList data={data} keyExtractor={x=>x.adventure_id} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>{setRefreshing(true);void load()}} tintColor="#D7B45A"/>} contentContainerStyle={s.content} ListHeaderComponent={<View style={s.header}><Text style={s.eyebrow}>EVERY ADVENTURE LEAVES A MARK</Text><Text style={s.title}>Passport</Text><View style={s.identity}><View style={s.ghostWrap}><Crest rank={rank[0]} ghost/></View><View style={s.identityText}><Text style={s.name}>{name}</Text>{profile?.username?<Text style={s.username}>@{profile.username}</Text>:null}<Text style={s.rank}>{rank[0]}</Text><Text style={s.joined}>Member since {joined}{profile?.home_city?` · ${profile.home_city}, ${profile.home_state}`:''}</Text></View><Crest rank={rank[0]}/></View>
+ <View style={s.ladder}><Text style={s.sectionTitle}>Rank Trail</Text><View style={s.ladderRow}>{ladder.map(([r,min])=><View key={r} style={s.rankStep}><View style={[s.dot,journey.length>=min&&s.dotDone,r===rank[0]&&s.dotCurrent]}/><Text style={[s.rankLabel,journey.length>=min&&s.rankDone]} numberOfLines={2}>{r}</Text><Text style={s.rankMin}>{min}</Text></View>)}</View><Pressable onPress={()=>router.push('/guide')}><Text style={s.link}>About Ranks & Passport →</Text></Pressable></View>
+ <View style={s.stats}>{([['journey','Adventures',journey.length],['stamps','Stamps',stamps.length],['badges','Badges',badges.length],['memories','Memories',photos.length]] as [ViewMode,string,number][]).map(([v,l,n])=><Pressable key={v} style={[s.stat,mode===v&&s.statActive]} onPress={()=>setMode(v)}><Text style={s.statNum}>{n}</Text><Text style={s.statLabel}>{l}</Text></Pressable>)}</View>
+ <Pressable style={s.journeyBar} onPress={()=>setMode('journey')}><Text style={s.eyebrow}>MY JOURNEY</Text><View style={s.journeyCounts}><Text style={s.journeyCount}>{journey.length} Adventures</Text><Text style={s.journeyCount}>{states.size} States</Text></View></Pressable>{error?<Text style={s.error}>{error}</Text>:null}
+ {mode==='journey'?<Text style={s.sectionTitle}>Journey Timeline</Text>:null}
+ {mode==='stamps'?<View><View style={s.sectionRow}><Text style={s.sectionTitle}>Stamp Book</Text><Text style={s.muted}>Newest first</Text></View>{stamps.length?<View style={s.grid}>{stamps.map(st=><Pressable key={`${st.stamp_id}-${st.adventure_id}`} style={s.stamp} onPress={()=>st.adventure_id&&router.push(`/passport/reflection/${st.adventure_id}`)}><View style={s.stampSeal}><Text style={s.stampGlyph}>✦</Text><Text style={s.stampMA}>MA</Text></View><Text style={s.tileTitle}>{st.title}</Text><Text style={s.muted}>{new Date(st.earned_at).toLocaleDateString(undefined,{month:'short',year:'numeric'})}</Text></Pressable>)}</View>:<View style={s.empty}><Text style={s.tileTitle}>Your stamp book is waiting.</Text><Text style={s.muted}>Complete an official MA Adventure to earn the first stamp.</Text></View>}</View>:null}
+ {mode==='badges'?<View><Text style={s.sectionTitle}>Achievement Badges</Text><Text style={s.muted}>Collectible milestones are separate from rank emblems and official stamps.</Text>{badges.length?<View style={s.grid}>{badges.map(b=><View key={b.badge_id} style={s.badgeTile}><View style={s.medal}><Text style={s.medalGlyph}>✦</Text></View><Text style={s.tileTitle}>{b.title}</Text><Text style={s.muted}>{b.category}</Text></View>)}</View>:<View style={s.empty}><Text style={s.tileTitle}>No badges earned yet.</Text><Text style={s.muted}>Your first milestones will appear here.</Text></View>}</View>:null}
+ {mode==='memories'?<View><Text style={s.sectionTitle}>My Scrapbook</Text><Text style={s.muted}>Your own photos and reflections live here. Shared trip photos stay connected to each Adventure.</Text>{photos.length?<View style={s.grid}>{photos.map(p=><View key={p.id} style={s.photoTile}><Image source={{uri:p.image_url}} style={s.photo}/><Text style={s.photoText} numberOfLines={2}>{p.caption||'Adventure memory'}</Text></View>)}</View>:<View style={s.empty}><Text style={s.tileTitle}>No memories yet.</Text><Text style={s.muted}>Completed Adventures can become memory albums.</Text></View>}</View>:null}</View>} renderItem={({item,index})=><View style={s.timeline}><View style={s.rail}><View style={s.timelineDot}/>{index<journey.length-1?<View style={s.line}/>:null}</View><Pressable style={s.timelineCard} onPress={()=>router.push(`/passport/reflection/${item.adventure_id}`)}><Text style={s.date}>{new Date(item.experienced_at||item.starts_at).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</Text><Text style={s.tileTitle}>{item.title}</Text><Text style={s.muted}>{item.category} · {item.city}, {item.state}</Text><Text style={s.link}>Open Stamp & Memories →</Text></Pressable></View>}/></SafeAreaView>}
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#0F1713'},center:{flex:1,backgroundColor:'#0F1713',alignItems:'center',justifyContent:'center'},content:{padding:18,paddingBottom:48},header:{gap:13,marginBottom:12},eyebrow:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1.1},title:{color:'#FFF8E8',fontSize:36,fontWeight:'900'},identity:{minHeight:150,backgroundColor:'#1B2922',borderRadius:20,borderWidth:1,borderColor:'#35483C',padding:17,flexDirection:'row',alignItems:'center',overflow:'hidden'},ghostWrap:{position:'absolute',right:48,top:20,opacity:.08,transform:[{scale:2.5}]},identityText:{flex:1,zIndex:2},name:{color:'#FFF8E8',fontSize:23,fontWeight:'900'},username:{color:'#A4B0A8',marginTop:3},rank:{color:'#F0D083',fontWeight:'900',marginTop:8},joined:{color:'#87948B',fontSize:12,marginTop:4},crest:{width:64,height:64,transform:[{rotate:'45deg'}],borderRadius:12,borderWidth:2,borderColor:'#D7B45A',backgroundColor:'#26372D',alignItems:'center',justifyContent:'center'},crestGhost:{width:74,height:74},crestInner:{width:42,height:42,borderWidth:1,borderColor:'#F0D083',alignItems:'center',justifyContent:'center'},crestGlyph:{transform:[{rotate:'-45deg'}],color:'#FFF0C4',fontSize:23,fontWeight:'900'},ladder:{backgroundColor:'#17211C',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:15},ladderRow:{flexDirection:'row',justifyContent:'space-between',marginTop:14},rankStep:{width:'16%',alignItems:'center'},dot:{width:10,height:10,borderRadius:5,backgroundColor:'#435148'},dotDone:{backgroundColor:'#8B783D'},dotCurrent:{width:14,height:14,borderRadius:7,backgroundColor:'#D7B45A'},rankLabel:{color:'#657169',fontSize:8,textAlign:'center',marginTop:6},rankDone:{color:'#D4DAD6',fontWeight:'800'},rankMin:{color:'#5E6A62',fontSize:8,marginTop:3},sectionTitle:{color:'#FFF8E8',fontSize:21,fontWeight:'900'},link:{color:'#D7B45A',fontWeight:'900',marginTop:9},stats:{flexDirection:'row',gap:6},stat:{flex:1,backgroundColor:'#17211C',borderWidth:1,borderColor:'#28362E',borderRadius:13,paddingVertical:12,alignItems:'center'},statActive:{borderColor:'#D7B45A'},statNum:{color:'#FFF8E8',fontSize:22,fontWeight:'900'},statLabel:{color:'#849188',fontSize:9,marginTop:2},journeyBar:{backgroundColor:'#1A2821',borderWidth:1,borderColor:'#33483B',borderRadius:17,padding:15},journeyCounts:{flexDirection:'row',gap:18,marginTop:7},journeyCount:{color:'#FFF8E8',fontWeight:'900'},sectionRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},muted:{color:'#8F9B93',lineHeight:19,marginTop:4},grid:{flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:10},stamp:{width:'48%',backgroundColor:'#161F1A',borderRadius:16,borderWidth:1,borderColor:'#655837',padding:12},stampSeal:{width:68,height:68,borderRadius:34,borderWidth:2,borderColor:'#D7B45A',alignItems:'center',justifyContent:'center',alignSelf:'center'},stampGlyph:{color:'#D7B45A',fontSize:19},stampMA:{color:'#F0D083',fontSize:10,fontWeight:'900'},tileTitle:{color:'#FFF8E8',fontSize:16,fontWeight:'900',marginTop:7},badgeTile:{width:'48%',backgroundColor:'#17231C',borderRadius:16,borderWidth:1,borderColor:'#3D5145',padding:12},medal:{width:68,height:68,borderRadius:34,backgroundColor:'#26372D',borderWidth:3,borderColor:'#D7B45A',alignItems:'center',justifyContent:'center',alignSelf:'center'},medalGlyph:{color:'#F0D083',fontSize:25},photoTile:{width:'48%',backgroundColor:'#17211C',borderRadius:14,overflow:'hidden'},photo:{width:'100%',aspectRatio:1},photoText:{color:'#C7D0CA',fontSize:12,padding:9},empty:{backgroundColor:'#17211C',borderRadius:16,padding:17,marginTop:10},timeline:{flexDirection:'row'},rail:{width:26,alignItems:'center'},timelineDot:{width:10,height:10,borderRadius:5,backgroundColor:'#D7B45A',marginTop:20},line:{width:1,flex:1,backgroundColor:'#405047',marginTop:5},timelineCard:{flex:1,backgroundColor:'#17211C',borderRadius:17,borderWidth:1,borderColor:'#28362E',padding:16,marginBottom:12},date:{color:'#D7B45A',fontSize:10,fontWeight:'900'},error:{color:'#FFB4A9'}});

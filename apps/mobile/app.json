@@ -13,7 +13,13 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Melanated Adventurers to use your location for nearby Adventures and local weather."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -28,13 +28,25 @@ export type Waiver = {
   required: boolean;
 };
 
+export type CheckoutAttendeeKind = 'self' | 'household_member' | 'connected_member' | 'guest';
+
 export type CheckoutAttendee = {
   ticketTypeId: string;
-  kind: 'self' | 'household_member' | 'guest';
+  kind: CheckoutAttendeeKind;
   profileId?: string;
   firstName: string;
   lastName: string;
   email?: string;
+};
+
+export type CheckoutKnownPerson = {
+  profileId: string;
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  relationship: 'self' | 'trail_family' | 'connection';
+  trailFamilyRole?: string | null;
 };
 
 export type CheckoutSelection = {

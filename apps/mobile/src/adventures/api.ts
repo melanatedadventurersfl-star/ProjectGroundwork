@@ -9,6 +9,29 @@ export type AdventureFilters = {
   savedOnly?: boolean;
 };
 
+export type AdventureRsvpStatus = 'interested' | 'going' | 'not_going';
+export type AdventureAttendanceVisibility = 'community' | 'private';
+
+export type AdventureRsvpSummary = {
+  interested: number;
+  going: number;
+  myStatus: AdventureRsvpStatus | null;
+  myVisibility: AdventureAttendanceVisibility;
+};
+
+export type AdventureTicketType = {
+  id: string;
+  adventure_id: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  capacity: number | null;
+  min_per_order: number;
+  max_per_order: number;
+  is_active: boolean;
+  sort_order: number;
+};
+
 async function attachSavedState(adventures: AdventureSummary[], savedOnly = false): Promise<AdventureSummary[]> {
   const { data: sessionData } = await supabase.auth.getSession();
   const profileId = sessionData.session?.user.id;
@@ -34,7 +57,7 @@ export async function listAdventures(filters: AdventureFilters = {}): Promise<Ad
 
   if (filters.search?.trim()) {
     const term = filters.search.trim().replace(/[%_,]/g, '');
-    query = query.or(`title.ilike.%${term}%,summary.ilike.%${term}%,city.ilike.%${term}%`);
+    query = query.or(`title.ilike.%${term}%,summary.ilike.%${term}%,city.ilike.%${term}%,state.ilike.%${term}%,category.ilike.%${term}%`);
   }
   if (filters.category) query = query.eq('category', filters.category);
   if (filters.state) query = query.eq('state', filters.state);
@@ -73,6 +96,65 @@ export async function getAdventure(id: string): Promise<AdventureDetail> {
   if (savedError) throw savedError;
 
   return { ...(data as AdventureDetail), is_saved: Boolean(saved) };
+}
+
+export async function listAdventureTicketTypes(adventureId: string): Promise<AdventureTicketType[]> {
+  const { data, error } = await supabase
+    .from('ticket_types')
+    .select('id,adventure_id,name,description,price_cents,capacity,min_per_order,max_per_order,is_active,sort_order')
+    .eq('adventure_id', adventureId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+    .order('price_cents', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as AdventureTicketType[];
+}
+
+export async function getAdventureRsvpSummary(adventureId: string): Promise<AdventureRsvpSummary> {
+  const [{ data: sessionData }, { data, error }] = await Promise.all([
+    supabase.auth.getSession(),
+    supabase.from('adventure_rsvps').select('profile_id,status,visibility').eq('adventure_id', adventureId),
+  ]);
+  if (error) throw error;
+
+  const userId = sessionData.session?.user.id;
+  let interested = 0;
+  let going = 0;
+  let myStatus: AdventureRsvpStatus | null = null;
+  let myVisibility: AdventureAttendanceVisibility = 'private';
+
+  for (const row of data ?? []) {
+    if (row.status === 'interested') interested += 1;
+    if (row.status === 'going') going += 1;
+    if (row.profile_id === userId) {
+      myStatus = row.status as AdventureRsvpStatus;
+      myVisibility = (row.visibility ?? 'private') as AdventureAttendanceVisibility;
+    }
+  }
+
+  return { interested, going, myStatus, myVisibility };
+}
+
+export async function setAdventureRsvp(
+  adventureId: string,
+  status: AdventureRsvpStatus,
+  visibility: AdventureAttendanceVisibility = 'private',
+) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const profileId = sessionData.session?.user.id;
+  if (!profileId) throw new Error('You must be signed in to RSVP.');
+
+  const { error } = await supabase.from('adventure_rsvps').upsert(
+    {
+      adventure_id: adventureId,
+      profile_id: profileId,
+      status,
+      visibility,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'adventure_id,profile_id' },
+  );
+  if (error) throw error;
 }
 
 export async function setAdventureSaved(adventureId: string, shouldSave: boolean): Promise<void> {

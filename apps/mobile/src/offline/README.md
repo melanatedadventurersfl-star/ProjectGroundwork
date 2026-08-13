@@ -1,0 +1,1 @@
+Offline support is intentionally scoped to member trip essentials for the first consolidated preview. Fresh weather, Explore discovery, live community activity, new payments, and new notifications still require a connection.

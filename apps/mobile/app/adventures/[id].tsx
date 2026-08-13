@@ -1,61 +1,75 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getAdventure, setAdventureSaved } from '../../src/adventures/api';
+import {
+  getAdventure,
+  getAdventureRsvpSummary,
+  listAdventureTicketTypes,
+  setAdventureRsvp,
+  setAdventureSaved,
+  type AdventureAttendanceVisibility,
+  type AdventureRsvpStatus,
+  type AdventureRsvpSummary,
+  type AdventureTicketType,
+} from '../../src/adventures/api';
 import type { AdventureDetail } from '../../src/adventures/types';
 
-function formatAdventureDate(date: Date) {
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+function titleCase(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function formatAdventureTime(date: Date) {
-  return date.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function AdventureDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [adventure, setAdventure] = useState<AdventureDetail | null>(null);
+  const [tickets, setTickets] = useState<AdventureTicketType[]>([]);
+  const [rsvp, setRsvp] = useState<AdventureRsvpSummary>({ interested: 0, going: 0, myStatus: null, myVisibility: 'private' });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(async () => {
     if (!id) return;
-
-    getAdventure(id)
-      .then((result) => {
-        if (active) {
-          setAdventure(result);
-          setSaved(Boolean(result.is_saved));
-        }
-      })
-      .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : 'Unable to load adventure.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
+    try {
+      const [nextAdventure, nextTickets, nextRsvp] = await Promise.all([
+        getAdventure(id),
+        listAdventureTicketTypes(id),
+        getAdventureRsvpSummary(id),
+      ]);
+      setAdventure(nextAdventure);
+      setSaved(Boolean(nextAdventure.is_saved));
+      setTickets(nextTickets);
+      setRsvp(nextRsvp);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to load adventure.');
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const priceLabel = useMemo(() => {
+    if (!adventure) return '';
+    if (!tickets.length) return adventure.starting_price_cents === 0 ? 'Free' : `$${Math.round(adventure.starting_price_cents / 100)}`;
+    const minimum = Math.min(...tickets.map((ticket) => ticket.price_cents));
+    if (tickets.length === 1) return minimum === 0 ? 'Free' : `$${Math.round(minimum / 100)}`;
+    return minimum === 0 ? 'From Free' : `From $${Math.round(minimum / 100)}`;
+  }, [adventure, tickets]);
 
   async function toggleSaved() {
     if (!adventure) return;
     const next = !saved;
     setSaved(next);
+    setNotice(next ? 'Adventure saved.' : 'Removed from Saved.');
     try {
       await setAdventureSaved(adventure.id, next);
     } catch (caught) {
@@ -64,87 +78,118 @@ export default function AdventureDetailScreen() {
     }
   }
 
-  if (loading) {
-    return <SafeAreaView style={styles.center}><ActivityIndicator /></SafeAreaView>;
+  async function chooseRsvp(status: AdventureRsvpStatus) {
+    if (!adventure) return;
+    setWorking(true);
+    try {
+      await setAdventureRsvp(adventure.id, status, rsvp.myVisibility);
+      await load();
+      setNotice(status === 'not_going' ? 'Marked Not Going. This does not cancel an active reservation.' : `Marked ${titleCase(status)}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to update RSVP.');
+    } finally {
+      setWorking(false);
+    }
   }
 
-  if (!adventure || error) {
-    return <SafeAreaView style={styles.center}><Text style={styles.error}>{error ?? 'Adventure not found.'}</Text></SafeAreaView>;
+  async function setVisibility(visibility: AdventureAttendanceVisibility) {
+    if (!adventure) return;
+    const status = rsvp.myStatus ?? 'interested';
+    setWorking(true);
+    try {
+      await setAdventureRsvp(adventure.id, status, visibility);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to update attendance privacy.');
+    } finally {
+      setWorking(false);
+    }
   }
 
-  const start = new Date(adventure.starts_at);
-  const end = new Date(adventure.ends_at);
-  const sameDay = start.toDateString() === end.toDateString();
-  const when = sameDay
-    ? `${formatAdventureDate(start)} · ${formatAdventureTime(start)}–${formatAdventureTime(end)}`
-    : `${formatAdventureDate(start)} at ${formatAdventureTime(start)}\n${formatAdventureDate(end)} at ${formatAdventureTime(end)}`;
-  const price = adventure.starting_price_cents === 0 ? 'Free' : `From $${(adventure.starting_price_cents / 100).toFixed(0)}`;
+  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
+  if (!adventure) return <SafeAreaView style={styles.center}><Text style={styles.error}>{error ?? 'Adventure not found.'}</Text></SafeAreaView>;
+
+  const soldOut = adventure.status === 'sold_out';
+  const cancelled = adventure.status === 'cancelled';
+  const closed = soldOut || cancelled || adventure.status === 'completed';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.category}>{adventure.category}</Text>
-        <Text style={styles.title}>{adventure.title}</Text>
-        <Text style={styles.summary}>{adventure.summary}</Text>
-
-        <View style={styles.panel}>
-          <Text style={styles.label}>When</Text>
-          <Text style={styles.value}>{when}</Text>
-          <Text style={styles.label}>Where</Text>
-          <Text style={styles.value}>{adventure.venue_name ? `${adventure.venue_name}, ` : ''}{adventure.city}, {adventure.state}</Text>
-          <Text style={styles.label}>Difficulty</Text>
-          <Text style={styles.value}>{adventure.difficulty}</Text>
-          <Text style={styles.label}>Starting price</Text>
-          <Text style={styles.value}>{price}</Text>
-          {adventure.spots_remaining !== null ? <Text style={styles.value}>{adventure.spots_remaining} spots remaining</Text> : null}
+        <View style={styles.heroWrap}>
+          <ImageBackground source={adventure.hero_image_url ? { uri: adventure.hero_image_url } : undefined} style={styles.hero} imageStyle={styles.heroRadius}>
+            <View style={styles.heroShade} />
+            <View style={styles.heroTop}>
+              <Pressable style={styles.heroButton} onPress={() => router.back()}><Text style={styles.heroButtonText}>‹</Text></Pressable>
+              <Pressable style={styles.heroButton} onPress={() => void toggleSaved()}><Text style={styles.saveGlyph}>{saved ? '★' : '☆'}</Text></Pressable>
+            </View>
+            <View style={styles.heroBottom}>
+              <Text style={styles.eyebrow}>{adventure.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL MA ADVENTURE'}</Text>
+              <Text style={styles.title}>{adventure.title}</Text>
+              <Text style={styles.heroMeta}>{formatDate(adventure.starts_at)} · {adventure.city}, {adventure.state}</Text>
+            </View>
+          </ImageBackground>
         </View>
 
-        <Text style={styles.sectionTitle}>About this adventure</Text>
-        <Text style={styles.body}>{adventure.description}</Text>
-
-        {adventure.meeting_instructions ? (
-          <>
-            <Text style={styles.sectionTitle}>Meeting information</Text>
-            <Text style={styles.body}>{adventure.meeting_instructions}</Text>
-          </>
-        ) : null}
-
+        {notice ? <View style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></View> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <View style={styles.actions}>
-          <Pressable style={styles.secondaryButton} onPress={() => void toggleSaved()}>
-            <Text style={styles.secondaryButtonText}>{saved ? 'Saved' : 'Save adventure'}</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.primaryButton, adventure.status === 'sold_out' && styles.disabledButton]}
-            disabled={adventure.status === 'sold_out'}
-            onPress={() => router.push(`/checkout/${adventure.id}`)}
-          >
-            <Text style={styles.primaryButtonText}>{adventure.status === 'sold_out' ? 'Sold out' : 'Choose tickets'}</Text>
-          </Pressable>
+        <View style={styles.factGrid}>
+          <View style={styles.fact}><Text style={styles.factLabel}>DATE</Text><Text style={styles.factValue}>{new Date(adventure.starts_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</Text></View>
+          <View style={styles.fact}><Text style={styles.factLabel}>LOCATION</Text><Text style={styles.factValue}>{adventure.city}, {adventure.state}</Text></View>
+          <View style={styles.fact}><Text style={styles.factLabel}>PRICE</Text><Text style={styles.factValue}>{priceLabel}</Text></View>
+          <View style={styles.fact}><Text style={styles.factLabel}>AVAILABILITY</Text><Text style={styles.factValue}>{soldOut ? 'Sold Out' : adventure.spots_remaining == null ? 'Open' : `${adventure.spots_remaining} spots`}</Text></View>
         </View>
+
+        <View style={styles.chips}><Text style={styles.chip}>{titleCase(adventure.difficulty)}</Text><Text style={styles.chip}>{titleCase(adventure.category)}</Text></View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Community RSVP</Text>
+          <Text style={styles.body}>{rsvp.going} going · {rsvp.interested} interested</Text>
+          <View style={styles.rsvpRow}>
+            {(['interested','going','not_going'] as AdventureRsvpStatus[]).map((status) => (
+              <Pressable key={status} disabled={working} style={[styles.rsvpButton, rsvp.myStatus === status && styles.rsvpActive]} onPress={() => void chooseRsvp(status)}>
+                <Text style={[styles.rsvpText, rsvp.myStatus === status && styles.rsvpTextActive]}>{titleCase(status)}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.privacyLabel}>Attendance privacy</Text>
+          <View style={styles.rsvpRow}>
+            <Pressable style={[styles.privacyButton, rsvp.myVisibility === 'private' && styles.privacyActive]} onPress={() => void setVisibility('private')}><Text style={styles.privacyText}>Private Going</Text></Pressable>
+            <Pressable style={[styles.privacyButton, rsvp.myVisibility === 'community' && styles.privacyActive]} onPress={() => void setVisibility('community')}><Text style={styles.privacyText}>Visible to Community</Text></Pressable>
+          </View>
+          <Text style={styles.microcopy}>Private attendance can still count toward totals without exposing your name.</Text>
+        </View>
+
+        <View style={styles.card}><Text style={styles.sectionTitle}>About</Text><Text style={styles.body}>{adventure.description}</Text></View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>General area</Text>
+          <View style={styles.mapPlaceholder}><Text style={styles.mapPin}>⌖</Text><Text style={styles.mapTitle}>{adventure.city}, {adventure.state}</Text><Text style={styles.microcopy}>Exact meetup details are shared only when the organizer marks them appropriate for attendees.</Text></View>
+        </View>
+
+        {adventure.meeting_instructions ? <View style={styles.card}><Text style={styles.sectionTitle}>Meeting information</Text><Text style={styles.body}>{adventure.meeting_instructions}</Text></View> : null}
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Choose your experience</Text>
+          {tickets.length ? tickets.map((ticket) => (
+            <View key={ticket.id} style={styles.ticketRow}><View style={{flex:1}}><Text style={styles.ticketName}>{ticket.name}</Text>{ticket.description ? <Text style={styles.microcopy}>{ticket.description}</Text> : null}</View><Text style={styles.ticketPrice}>{ticket.price_cents === 0 ? 'Free' : `$${Math.round(ticket.price_cents / 100)}`}</Text></View>
+          )) : <Text style={styles.body}>Ticket options are being finalized for this adventure.</Text>}
+        </View>
+
+        <View style={styles.card}><Text style={styles.sectionTitle}>What to expect</Text><Text style={styles.body}>Your reservation flow includes attendee assignment, Trail Family or Connection selection, readiness, waivers, and trip updates. Packing and host instructions appear with confirmed trip information.</Text></View>
+
+        <Pressable style={[styles.primaryButton, closed && styles.disabled]} disabled={closed || !tickets.length} onPress={() => router.push(`/checkout/${adventure.id}`)}>
+          <Text style={styles.primaryButtonText}>{cancelled ? 'Adventure cancelled' : soldOut ? 'Sold out' : tickets.length ? 'Choose tickets' : 'Tickets coming soon'}</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0f1713' },
-  center: { flex: 1, backgroundColor: '#0f1713', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  content: { padding: 22, paddingBottom: 48, gap: 14 },
-  category: { color: '#d3a94f', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.1 },
-  title: { color: '#fff8e8', fontSize: 36, lineHeight: 40, fontWeight: '900' },
-  summary: { color: '#d4d8d5', fontSize: 18, lineHeight: 27 },
-  panel: { backgroundColor: '#17211c', borderRadius: 18, padding: 18, gap: 5 },
-  label: { color: '#d3a94f', fontSize: 12, fontWeight: '900', textTransform: 'uppercase', marginTop: 8 },
-  value: { color: '#fff8e8', fontSize: 16, lineHeight: 23 },
-  sectionTitle: { color: '#fff8e8', fontSize: 23, fontWeight: '900', marginTop: 8 },
-  body: { color: '#d4d8d5', fontSize: 16, lineHeight: 25 },
-  actions: { gap: 10, marginTop: 12 },
-  primaryButton: { backgroundColor: '#d3a94f', borderRadius: 14, padding: 15, alignItems: 'center' },
-  primaryButtonText: { color: '#17211c', fontWeight: '900', fontSize: 16 },
-  secondaryButton: { borderWidth: 1, borderColor: '#f2ead8', borderRadius: 14, padding: 15, alignItems: 'center' },
-  secondaryButtonText: { color: '#f2ead8', fontWeight: '800' },
-  disabledButton: { opacity: 0.5 },
-  error: { color: '#ffb4a9', textAlign: 'center' },
+  safeArea:{flex:1,backgroundColor:'#0F1713'},center:{flex:1,backgroundColor:'#0F1713',alignItems:'center',justifyContent:'center',padding:24},content:{padding:18,paddingBottom:54,gap:14},
+  heroWrap:{borderRadius:24,overflow:'hidden'},hero:{height:390,justifyContent:'space-between',backgroundColor:'#26372D'},heroRadius:{borderRadius:24},heroShade:{...StyleSheet.absoluteFill,backgroundColor:'rgba(6,11,8,0.42)'},heroTop:{flexDirection:'row',justifyContent:'space-between',padding:14},heroButton:{width:42,height:42,borderRadius:21,backgroundColor:'rgba(15,23,19,0.78)',alignItems:'center',justifyContent:'center'},heroButtonText:{color:'#FFF8E8',fontSize:30},saveGlyph:{color:'#F0D083',fontSize:25},heroBottom:{padding:20},eyebrow:{color:'#F0D083',fontWeight:'900',letterSpacing:1,fontSize:11},title:{color:'#FFF8E8',fontSize:35,lineHeight:39,fontWeight:'900',marginTop:6},heroMeta:{color:'#E5E9E6',marginTop:7,fontWeight:'700'},
+  notice:{backgroundColor:'#24352B',borderRadius:12,padding:11},noticeText:{color:'#CDE0D2',fontWeight:'700'},error:{color:'#FFB4A9'},factGrid:{flexDirection:'row',flexWrap:'wrap',gap:9},fact:{width:'48%',backgroundColor:'#17211C',borderRadius:15,padding:14,borderWidth:1,borderColor:'#2A3830'},factLabel:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:.8},factValue:{color:'#FFF8E8',fontSize:16,fontWeight:'900',marginTop:5},chips:{flexDirection:'row',gap:8,flexWrap:'wrap'},chip:{color:'#F0D083',backgroundColor:'#24352B',paddingHorizontal:11,paddingVertical:7,borderRadius:999,fontWeight:'800'},
+  card:{backgroundColor:'#17211C',borderRadius:18,padding:17,borderWidth:1,borderColor:'#29372F',gap:9},sectionTitle:{color:'#FFF8E8',fontSize:21,fontWeight:'900'},body:{color:'#D1D8D3',fontSize:15,lineHeight:23},rsvpRow:{flexDirection:'row',gap:7,flexWrap:'wrap'},rsvpButton:{flexGrow:1,borderWidth:1,borderColor:'#536159',borderRadius:11,paddingVertical:10,paddingHorizontal:11,alignItems:'center'},rsvpActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},rsvpText:{color:'#E8ECE9',fontWeight:'800',fontSize:12},rsvpTextActive:{color:'#17211C'},privacyLabel:{color:'#FFF8E8',fontWeight:'800',marginTop:3},privacyButton:{borderWidth:1,borderColor:'#44534A',borderRadius:999,paddingHorizontal:11,paddingVertical:8},privacyActive:{borderColor:'#D7B45A',backgroundColor:'#26362C'},privacyText:{color:'#E7ECE8',fontSize:12,fontWeight:'700'},microcopy:{color:'#8F9B93',fontSize:12,lineHeight:18},mapPlaceholder:{minHeight:155,backgroundColor:'#1F3027',borderRadius:14,alignItems:'center',justifyContent:'center',padding:18},mapPin:{color:'#D7B45A',fontSize:32},mapTitle:{color:'#FFF8E8',fontSize:18,fontWeight:'900',marginBottom:5},ticketRow:{flexDirection:'row',gap:12,alignItems:'center',paddingVertical:9,borderTopWidth:1,borderTopColor:'#26332C'},ticketName:{color:'#FFF8E8',fontWeight:'900'},ticketPrice:{color:'#F0D083',fontWeight:'900'},primaryButton:{backgroundColor:'#D7B45A',borderRadius:14,padding:16,alignItems:'center',marginTop:2},primaryButtonText:{color:'#17211C',fontWeight:'900',fontSize:16},disabled:{opacity:.5}
 });
