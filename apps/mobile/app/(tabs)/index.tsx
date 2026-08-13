@@ -1,286 +1,41 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Dimensions,
-  ImageBackground,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Dimensions, FlatList, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { listAdventures } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { getGroups } from '../../src/community/api';
 import { supabase } from '../../src/lib/supabase';
-import { getJourney, getPassportStamps } from '../../src/passport/api';
+import { getJourney, getPassportStamps, getMemberBadges } from '../../src/passport/api';
 import { getAdventureQueue } from '../../src/readiness/api';
 import type { AdventureQueueItem } from '../../src/readiness/types';
+import { getWeather, type WeatherForecast } from '../../src/weather/api';
 
-const CARD_WIDTH = Dimensions.get('window').width - 36;
+const W=Dimensions.get('window').width-36;
+function greeting(h:number){return h<12?'Good morning':h<18?'Good afternoon':'Good evening'}
+function rankFor(n:number){if(n>=20)return'Legacy Adventurer';if(n>=10)return'Summiteer';if(n>=5)return'Wayfinder';if(n>=3)return'Trailblazer';if(n>=1)return'Pathfinder';return'Explorer'}
+function date(v:string){return new Date(v).toLocaleDateString(undefined,{month:'short',day:'numeric'})}
 
-function isPaymentPending(item: AdventureQueueItem) {
-  return item.order_status === 'held' || item.order_status === 'payment_pending';
+export default function TrailheadScreen(){
+ const [queue,setQueue]=useState<AdventureQueueItem[]>([]),[adventures,setAdventures]=useState<AdventureSummary[]>([]),[first,setFirst]=useState('Adventurer'),[location,setLocation]=useState(''),[groups,setGroups]=useState(0),[journey,setJourney]=useState<any[]>([]),[stamps,setStamps]=useState(0),[badges,setBadges]=useState(0),[weather,setWeather]=useState<WeatherForecast|null>(null),[loading,setLoading]=useState(true),[refreshing,setRefreshing]=useState(false),[error,setError]=useState<string|null>(null),[active,setActive]=useState(1),[paused,setPaused]=useState(false),[reduceMotion,setReduceMotion]=useState(false);
+ const listRef=useRef<FlatList<AdventureSummary>>(null); const resumeTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const featured=useMemo(()=>adventures.filter(a=>a.status!=='cancelled').slice(0,5),[adventures]);
+ const loop=useMemo(()=>featured.length>1?[featured[featured.length-1],...featured,featured[0]]:featured,[featured]);
+ async function load(refresh=false){refresh?setRefreshing(true):setLoading(true);try{const {data:s}=await supabase.auth.getSession();const uid=s.session?.user.id;const [q,g,j,ps,pb,a,p]=await Promise.all([getAdventureQueue(),getGroups(),getJourney(),getPassportStamps(),getMemberBadges(),listAdventures(),uid?supabase.from('profiles').select('first_name,display_name,home_city,home_state').eq('id',uid).single():Promise.resolve({data:null,error:null})]);setQueue(q);setGroups(g.filter(x=>x.is_member).length);setJourney(j);setStamps(ps.length);setBadges(pb.length);setAdventures(a);const x=p.data as any;setFirst(x?.first_name||x?.display_name?.split(' ')[0]||'Adventurer');const loc=[x?.home_city,x?.home_state].filter(Boolean).join(', ');setLocation(loc);if(x?.home_city&&x?.home_state){getWeather(x.home_city,x.home_state).then(setWeather).catch(()=>setWeather(null))}setError(null)}catch(e){setError(e instanceof Error?e.message:'Unable to load Trailhead.')}finally{setLoading(false);setRefreshing(false)}}
+ useEffect(()=>{void load();AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion)},[]);
+ useEffect(()=>{if(reduceMotion||paused||loop.length<2)return;const t=setInterval(()=>{setActive(i=>{const n=i+1;listRef.current?.scrollToIndex({index:n,animated:true});return n})},5000);return()=>clearInterval(t)},[reduceMotion,paused,loop.length]);
+ function pause(){setPaused(true);if(resumeTimer.current)clearTimeout(resumeTimer.current);resumeTimer.current=setTimeout(()=>setPaused(false),4500)}
+ function settle(i:number){if(featured.length<2)return;let n=i;if(i===0){n=featured.length;listRef.current?.scrollToIndex({index:n,animated:false})}else if(i===featured.length+1){n=1;listRef.current?.scrollToIndex({index:n,animated:false})}setActive(n)}
+ const states=new Set(journey.map((x:any)=>x.state).filter(Boolean)); const currentRank=rankFor(journey.length);
+ return <ScrollView style={s.screen} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>void load(true)} tintColor="#D7B45A"/>}>
+  <View style={s.top}><View style={s.mark}><Text style={s.markText}>MA</Text></View><View style={s.actions}><Pressable onPress={()=>router.push('/notifications')}><Text style={s.topLink}>Alerts</Text></Pressable><Pressable onPress={()=>router.push('/member/profile')}><Text style={s.topLink}>Profile</Text></Pressable></View></View>
+  <Text style={s.greet}>{greeting(new Date().getHours())}, {first}</Text><Text style={s.title}>What’s next on your trail?</Text>
+  {loading?<ActivityIndicator color="#D7B45A" style={{margin:18}}/>:null}{error?<Text style={s.error}>{error}</Text>:null}
+  {featured.length?<View style={s.section}><View style={s.sectionRow}><Text style={s.sectionTitle}>Featured Adventures</Text><Text style={s.count}>{featured.length>1?`${Math.max(1,Math.min(featured.length,active))} of ${featured.length}`:'1 of 1'}</Text></View><FlatList ref={listRef} horizontal data={loop} keyExtractor={(x,i)=>`${x.id}-${i}`} initialScrollIndex={featured.length>1?1:0} getItemLayout={(_,i)=>({length:W,offset:W*i,index:i})} pagingEnabled showsHorizontalScrollIndicator={false} onTouchStart={pause} onScrollBeginDrag={pause} onMomentumScrollEnd={e=>settle(Math.round(e.nativeEvent.contentOffset.x/W))} renderItem={({item})=><Pressable style={{width:W}} onPress={()=>router.push({pathname:'/adventures/[id]',params:{id:item.id}})}><ImageBackground source={item.hero_image_url?{uri:item.hero_image_url}:undefined} style={s.hero} imageStyle={s.heroRadius}><View style={s.shade}/><View style={s.heroBody}><Text style={s.eyebrow}>{item.is_featured?'FEATURED ADVENTURE':'OFFICIAL MA ADVENTURE'}</Text><Text style={s.heroTitle}>{item.title}</Text><Text style={s.heroMeta}>{date(item.starts_at)} · {item.city}, {item.state}</Text><Text style={s.heroAction}>View Adventure →</Text></View></ImageBackground></Pressable>}/></View>:null}
+  {weather?<Pressable style={s.weather} onPress={()=>router.push('/member/weather' as never)}><View><Text style={s.eyebrow}>WEATHER · SAVED LOCATION</Text><Text style={s.weatherTitle}>{weather.location.name}, {weather.location.region} · {Math.round(weather.current.temp_f)}°</Text><Text style={s.muted}>{weather.current.condition.text} · Feels {Math.round(weather.current.feelslike_f)}°</Text></View><Text style={s.weatherGlyph}>☁︎</Text></Pressable>:<Pressable style={s.weather} onPress={()=>router.push('/member/weather' as never)}><View><Text style={s.eyebrow}>WEATHER</Text><Text style={s.weatherTitle}>{location||'Set your location'}</Text><Text style={s.muted}>Open Weather & Location</Text></View><Text style={s.weatherGlyph}>☁︎</Text></Pressable>}
+  <View style={s.duo}><Pressable style={s.half} onPress={()=>router.push('/(tabs)/community')}><Text style={s.eyebrow}>COMMUNITY · WHAT’S HAPPENING</Text><Text style={s.big}>{groups}</Text><Text style={s.cardTitle}>Your Groups</Text><Text style={s.muted}>Adventure, local and interest communities.</Text><Text style={s.link}>View Groups →</Text></Pressable><Pressable style={s.half} onPress={()=>router.push('/(tabs)/passport')}><Text style={s.eyebrow}>PASSPORT</Text><Text style={s.cardTitle}>{currentRank}</Text><Text style={s.big}>{stamps}</Text><Text style={s.muted}>{stamps} stamps · {badges} badges</Text><Text style={s.link}>View Passport →</Text></Pressable></View>
+  <Pressable style={s.journey} onPress={()=>router.push('/(tabs)/passport')}><Text style={s.eyebrow}>MY JOURNEY</Text><View style={s.journeyStats}><View><Text style={s.stat}>{journey.length}</Text><Text style={s.statLabel}>Adventures</Text></View><View><Text style={s.stat}>{states.size}</Text><Text style={s.statLabel}>States</Text></View><View><Text style={s.stat}>{groups}</Text><Text style={s.statLabel}>Communities</Text></View></View><Text style={s.link}>Open Journey in Passport →</Text></Pressable>
+  <View style={s.section}><View style={s.sectionRow}><Text style={s.sectionTitle}>Current Reservations</Text><Pressable onPress={()=>router.push('/member/trips')}><Text style={s.link}>Manage</Text></Pressable></View>{queue.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:10}}>{queue.slice(0,4).map(q=><Pressable key={q.order_id} style={s.reservation} onPress={()=>router.push('/member/trips')}><Text style={s.eyebrow}>{q.order_status==='held'||q.order_status==='payment_pending'?'RESERVATION HELD':'CONFIRMED'}</Text><Text style={s.cardTitle}>{q.title}</Text><Text style={s.muted}>{date(q.starts_at)} · {q.city}, {q.state}</Text><Text style={s.link}>{q.order_status==='held'?'Continue payment →':'View Reservation →'}</Text></Pressable>)}</ScrollView>:<View style={s.empty}><Text style={s.cardTitle}>No active reservations</Text><Text style={s.muted}>When you book an Adventure, the essentials will live here.</Text></View>}</View>
+  <View style={s.section}><View style={s.sectionRow}><Text style={s.sectionTitle}>Upcoming Adventures</Text><Pressable onPress={()=>router.push('/(tabs)/explore')}><Text style={s.link}>Explore</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:10}}>{adventures.slice(0,5).map(a=><Pressable key={a.id} style={s.upcoming} onPress={()=>router.push({pathname:'/adventures/[id]',params:{id:a.id}})}><ImageBackground source={a.hero_image_url?{uri:a.hero_image_url}:undefined} style={s.thumb} imageStyle={{borderRadius:14}}/><Text style={s.upTitle} numberOfLines={2}>{a.title}</Text><Text style={s.muted}>{date(a.starts_at)} · {a.city}</Text></Pressable>)}</ScrollView></View>
+ </ScrollView>
 }
-
-function greetingForHour(hour: number) {
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function daysUntil(value: string) {
-  return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 86400000));
-}
-
-function adventureStatusLabel(adventure: AdventureSummary) {
-  if (adventure.status === 'sold_out') return 'SOLD OUT';
-  if (adventure.status === 'cancelled') return 'CANCELLED';
-  if (adventure.spots_remaining != null && adventure.spots_remaining <= 3) return 'ALMOST FULL';
-  return adventure.is_featured ? 'FEATURED ADVENTURE' : 'UPCOMING ADVENTURE';
-}
-
-export default function TrailheadScreen() {
-  const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
-  const [featured, setFeatured] = useState<AdventureSummary[]>([]);
-  const [firstName, setFirstName] = useState('Adventurer');
-  const [homeLocation, setHomeLocation] = useState('');
-  const [groupCount, setGroupCount] = useState(0);
-  const [journeyCount, setJourneyCount] = useState(0);
-  const [stampCount, setStampCount] = useState(0);
-  const [activeFeature, setActiveFeature] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load(isRefresh = false) {
-    try {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData.session?.user.id;
-      const [nextQueue, groups, journey, stamps, adventures, profileResult] = await Promise.all([
-        getAdventureQueue(),
-        getGroups(),
-        getJourney(),
-        getPassportStamps(),
-        listAdventures(),
-        userId
-          ? supabase.from('profiles').select('first_name, display_name, home_city, home_state').eq('id', userId).single()
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      setQueue(nextQueue);
-      setGroupCount(groups.filter((group) => group.is_member).length);
-      setJourneyCount(journey.length);
-      setStampCount(stamps.length);
-      setFeatured(adventures.filter((item) => item.status !== 'cancelled').slice(0, 6));
-
-      const profile = profileResult.data as {
-        first_name?: string | null;
-        display_name?: string | null;
-        home_city?: string | null;
-        home_state?: string | null;
-      } | null;
-      setFirstName(profile?.first_name || profile?.display_name?.split(' ')[0] || 'Adventurer');
-      setHomeLocation([profile?.home_city, profile?.home_state].filter(Boolean).join(', '));
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load Trailhead.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => { void load(); }, []);
-
-  const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
-  const primaryAdventure = queue[0];
-  const primaryPaymentPending = primaryAdventure ? isPaymentPending(primaryAdventure) : false;
-
-  return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}
-    >
-      <View style={styles.topRow}>
-        <View style={styles.brandMark}><Text style={styles.brandLetters}>MA</Text></View>
-        <View style={styles.topActions}>
-          <Pressable style={styles.iconButton} onPress={() => router.push('/notifications')}>
-            <Text style={styles.iconGlyph}>◌</Text><Text style={styles.iconLabel}>Alerts</Text>
-          </Pressable>
-          <Pressable style={styles.iconButton} onPress={() => router.push('/member/profile')}>
-            <Text style={styles.profileGlyph}>{firstName.slice(0, 1).toUpperCase()}</Text><Text style={styles.iconLabel}>Profile</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <Text style={styles.greeting}>{greeting}, {firstName}</Text>
-      <Text style={styles.title}>What’s next on your trail?</Text>
-      <Text style={styles.statusLine}>Upcoming adventures, trip updates, and your community in one place.</Text>
-
-      {loading ? <ActivityIndicator color="#D7B45A" style={styles.loader} /> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      {featured.length ? (
-        <View style={styles.featureSection}>
-          <View style={styles.sectionHeadingRow}>
-            <Text style={styles.sectionTitle}>Upcoming adventures</Text>
-            <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.sectionAction}>See all</Text></Pressable>
-          </View>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            decelerationRate="fast"
-            snapToInterval={CARD_WIDTH}
-            onMomentumScrollEnd={(event) => setActiveFeature(Math.round(event.nativeEvent.contentOffset.x / CARD_WIDTH))}
-          >
-            {featured.map((adventure) => (
-              <Pressable
-                key={adventure.id}
-                style={{ width: CARD_WIDTH }}
-                onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
-              >
-                <ImageBackground
-                  source={adventure.hero_image_url ? { uri: adventure.hero_image_url } : undefined}
-                  style={styles.featureImage}
-                  imageStyle={styles.featureImageRadius}
-                >
-                  <View style={styles.featureShade} />
-                  <View style={styles.featureContent}>
-                    <View style={styles.featureTopRow}>
-                      <Text style={styles.featureBadge}>{adventureStatusLabel(adventure)}</Text>
-                      {adventure.spots_remaining != null && adventure.status === 'published' ? (
-                        <Text style={styles.featureSpots}>{adventure.spots_remaining} spots</Text>
-                      ) : null}
-                    </View>
-                    <Text style={styles.featureTitle}>{adventure.title}</Text>
-                    <Text style={styles.featureMeta}>
-                      {new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {adventure.city}, {adventure.state}
-                    </Text>
-                    <Text style={styles.featureAction}>View adventure →</Text>
-                  </View>
-                </ImageBackground>
-              </Pressable>
-            ))}
-          </ScrollView>
-          <View style={styles.dots}>
-            {featured.map((item, index) => <View key={item.id} style={[styles.dot, index === activeFeature && styles.dotActive]} />)}
-          </View>
-        </View>
-      ) : null}
-
-      {primaryAdventure ? (
-        <Pressable
-          style={styles.tripCard}
-          onPress={() => primaryPaymentPending
-            ? router.push('/member/trips')
-            : router.push({ pathname: '/readiness/[orderId]', params: { orderId: primaryAdventure.order_id } })}
-        >
-          <View style={styles.tripTopRow}>
-            <Text style={styles.cardEyebrow}>{primaryPaymentPending ? 'RESERVATION HELD' : 'YOUR NEXT TRIP'}</Text>
-            <Text style={styles.tripCountdown}>{daysUntil(primaryAdventure.starts_at)} days</Text>
-          </View>
-          <Text style={styles.tripTitle}>{primaryAdventure.title}</Text>
-          <Text style={styles.tripMeta}>{new Date(primaryAdventure.starts_at).toLocaleDateString()} · {primaryAdventure.city}, {primaryAdventure.state}</Text>
-          <Text style={styles.tripStatus}>{primaryPaymentPending ? 'Payment pending' : `${primaryAdventure.readiness_score}% ready`}</Text>
-          <Text style={styles.cardAction}>{primaryPaymentPending ? 'Manage reservation →' : 'Continue readiness →'}</Text>
-        </Pressable>
-      ) : null}
-
-      <View style={styles.quickGrid}>
-        <Pressable style={styles.quickCard} onPress={() => router.push('/member/trips')}>
-          <Text style={styles.cardEyebrow}>TRIPS & PAYMENTS</Text>
-          <Text style={styles.quickTitle}>Reservations</Text>
-          <Text style={styles.quickBody}>Manage bookings, payment status, tickets, and readiness.</Text>
-          <Text style={styles.cardAction}>Open →</Text>
-        </Pressable>
-        <Pressable style={styles.quickCard} onPress={() => router.push('/(tabs)/community')}>
-          <Text style={styles.cardEyebrow}>GROUPS</Text>
-          <Text style={styles.quickNumber}>{groupCount}</Text>
-          <Text style={styles.quickTitle}>Your clubhouse</Text>
-          <Text style={styles.cardAction}>Open →</Text>
-        </Pressable>
-        <Pressable style={styles.quickCard} onPress={() => router.push('/(tabs)/passport')}>
-          <Text style={styles.cardEyebrow}>PASSPORT</Text>
-          <Text style={styles.quickNumber}>{stampCount}</Text>
-          <Text style={styles.quickTitle}>Official stamps</Text>
-          <Text style={styles.cardAction}>Open →</Text>
-        </Pressable>
-        <Pressable style={styles.quickCard} onPress={() => router.push('/(tabs)/explore')}>
-          <Text style={styles.cardEyebrow}>EXPLORE</Text>
-          <Text style={styles.quickNumber}>{journeyCount}</Text>
-          <Text style={styles.quickTitle}>Adventures completed</Text>
-          <Text style={styles.cardAction}>Find more →</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.weatherCard}>
-        <View>
-          <Text style={styles.cardEyebrow}>WEATHER</Text>
-          <Text style={styles.weatherTitle}>{homeLocation || 'Your area'}</Text>
-          <Text style={styles.weatherBody}>Live trail weather will appear here once the weather provider is connected.</Text>
-        </View>
-        <Text style={styles.weatherGlyph}>☁︎</Text>
-      </View>
-    </ScrollView>
-  );
-}
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0F1713' },
-  container: { paddingHorizontal: 18, paddingTop: 54, paddingBottom: 34 },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  brandMark: { width: 54, height: 42, borderWidth: 1, borderColor: '#D7B45A', borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  brandLetters: { color: '#D7B45A', fontSize: 19, fontWeight: '900', letterSpacing: 1.6 },
-  topActions: { flexDirection: 'row', gap: 12 },
-  iconButton: { alignItems: 'center', minWidth: 44 },
-  iconGlyph: { color: '#E8DDC0', fontSize: 24, lineHeight: 25 },
-  profileGlyph: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#D7B45A', color: '#17211C', textAlign: 'center', textAlignVertical: 'center', fontWeight: '900' },
-  iconLabel: { color: '#7F8C84', fontSize: 10, marginTop: 3 },
-  greeting: { color: '#D7B45A', fontWeight: '800', fontSize: 15, marginTop: 26 },
-  title: { color: '#FFF8E8', fontSize: 35, lineHeight: 39, fontWeight: '900', marginTop: 7 },
-  statusLine: { color: '#9DA8A1', fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 20 },
-  loader: { marginVertical: 12 },
-  error: { color: '#FFB4A9', marginBottom: 12 },
-  featureSection: { marginBottom: 18 },
-  sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionTitle: { color: '#FFF8E8', fontSize: 21, fontWeight: '900' },
-  sectionAction: { color: '#D7B45A', fontWeight: '800' },
-  featureImage: { height: 300, justifyContent: 'flex-end', overflow: 'hidden', borderRadius: 24, backgroundColor: '#26372D' },
-  featureImageRadius: { borderRadius: 24 },
-  featureShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,12,9,0.48)' },
-  featureContent: { padding: 20, gap: 7 },
-  featureTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  featureBadge: { color: '#F0D083', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  featureSpots: { color: '#FFF8E8', fontSize: 11, fontWeight: '800' },
-  featureTitle: { color: '#FFF8E8', fontSize: 28, lineHeight: 31, fontWeight: '900' },
-  featureMeta: { color: '#E0E5E1', fontSize: 14 },
-  featureAction: { color: '#F0D083', fontWeight: '900', marginTop: 5 },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#435148' },
-  dotActive: { width: 18, backgroundColor: '#D7B45A' },
-  tripCard: { backgroundColor: '#1B2A22', borderRadius: 20, borderWidth: 1, borderColor: '#33483B', padding: 18, gap: 6, marginBottom: 14 },
-  tripTopRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  tripCountdown: { color: '#FFF8E8', fontWeight: '900' },
-  tripTitle: { color: '#FFF8E8', fontSize: 22, fontWeight: '900' },
-  tripMeta: { color: '#AEB8B2' },
-  tripStatus: { color: '#F0D083', fontWeight: '800', marginTop: 3 },
-  cardEyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  cardAction: { color: '#D7B45A', fontWeight: '900', fontSize: 13, marginTop: 8 },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  quickCard: { width: '48%', minHeight: 165, backgroundColor: '#17211C', borderWidth: 1, borderColor: '#28362E', borderRadius: 18, padding: 15 },
-  quickNumber: { color: '#FFF8E8', fontSize: 28, fontWeight: '900', marginTop: 11 },
-  quickTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900', marginTop: 7 },
-  quickBody: { color: '#98A49D', fontSize: 12, lineHeight: 18, marginTop: 7 },
-  weatherCard: { marginTop: 14, backgroundColor: '#1B2A2D', borderRadius: 18, padding: 17, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#2C4145' },
-  weatherTitle: { color: '#FFF8E8', fontSize: 19, fontWeight: '900', marginTop: 5 },
-  weatherBody: { color: '#9EAAA6', lineHeight: 19, marginTop: 5, maxWidth: 260 },
-  weatherGlyph: { color: '#D7E1DD', fontSize: 38 },
-});
+const s=StyleSheet.create({screen:{flex:1,backgroundColor:'#0F1713'},content:{paddingHorizontal:18,paddingTop:52,paddingBottom:42,gap:15},top:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},mark:{width:52,height:42,borderWidth:1,borderColor:'#D7B45A',borderRadius:14,alignItems:'center',justifyContent:'center'},markText:{color:'#D7B45A',fontWeight:'900',letterSpacing:1.7,fontSize:18},actions:{flexDirection:'row',gap:18},topLink:{color:'#E3D8BB',fontWeight:'800'},greet:{color:'#D7B45A',fontWeight:'800',marginTop:8},title:{color:'#FFF8E8',fontSize:35,lineHeight:39,fontWeight:'900'},error:{color:'#FFB4A9'},section:{gap:10},sectionRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},sectionTitle:{color:'#FFF8E8',fontSize:21,fontWeight:'900'},count:{color:'#7F8C84',fontSize:12},hero:{height:300,justifyContent:'flex-end',backgroundColor:'#26372D',borderRadius:24,overflow:'hidden'},heroRadius:{borderRadius:24},shade:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(7,12,9,.48)'},heroBody:{padding:20,gap:6},eyebrow:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},heroTitle:{color:'#FFF8E8',fontSize:28,lineHeight:31,fontWeight:'900'},heroMeta:{color:'#E0E5E1'},heroAction:{color:'#F0D083',fontWeight:'900',marginTop:4},weather:{backgroundColor:'#1A2821',borderRadius:18,borderWidth:1,borderColor:'#32453A',padding:16,flexDirection:'row',justifyContent:'space-between',alignItems:'center'},weatherTitle:{color:'#FFF8E8',fontSize:17,fontWeight:'900',marginTop:5},weatherGlyph:{color:'#F0D083',fontSize:32},muted:{color:'#96A39B',lineHeight:19,marginTop:3},duo:{flexDirection:'row',gap:10},half:{flex:1,minHeight:180,backgroundColor:'#17211C',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:15},big:{color:'#FFF8E8',fontSize:30,fontWeight:'900',marginTop:10},cardTitle:{color:'#FFF8E8',fontSize:18,fontWeight:'900',marginTop:5},link:{color:'#D7B45A',fontWeight:'900',marginTop:8},journey:{backgroundColor:'#17211C',borderRadius:20,borderWidth:1,borderColor:'#3A493F',padding:17},journeyStats:{flexDirection:'row',justifyContent:'space-between',marginTop:13},stat:{color:'#FFF8E8',fontSize:26,fontWeight:'900'},statLabel:{color:'#8F9A93',fontSize:11,marginTop:2},reservation:{width:270,backgroundColor:'#1A2821',borderRadius:18,borderWidth:1,borderColor:'#33483B',padding:16},empty:{backgroundColor:'#17211C',borderRadius:18,padding:16},upcoming:{width:165,backgroundColor:'#17211C',borderRadius:16,padding:10},thumb:{width:'100%',height:105,backgroundColor:'#26372D'},upTitle:{color:'#FFF8E8',fontWeight:'900',fontSize:15,lineHeight:19,marginTop:9}});
