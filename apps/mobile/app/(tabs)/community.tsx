@@ -1,24 +1,29 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createPost, getCommunityFeed, reportPost, setReaction, type CommunityPost } from '../../src/community/api';
+import { getGroups, joinGroup, type CommunityGroup } from '../../src/community/api';
 
-export default function CommunityScreen() {
-  const [posts, setPosts] = useState<CommunityPost[]>([]);
-  const [draft, setDraft] = useState('');
+function kindLabel(kind: CommunityGroup['kind']) {
+  if (kind === 'adventure') return 'ADVENTURE GROUP';
+  if (kind === 'local') return 'LOCAL GROUP';
+  return 'INTEREST GROUP';
+}
+
+export default function GroupsScreen() {
+  const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      setPosts(await getCommunityFeed());
+      setGroups(await getGroups());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load the Campfire.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load your groups.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -27,75 +32,85 @@ export default function CommunityScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function submitPost() {
-    if (!draft.trim()) return;
-    setSubmitting(true);
+  const myGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
+  const suggested = useMemo(() => groups.filter((group) => !group.is_member && group.visibility === 'public'), [groups]);
+
+  async function handleJoin(group: CommunityGroup) {
+    setJoiningId(group.id);
     try {
-      await createPost(draft);
-      setDraft('');
+      await joinGroup(group.id);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to publish your post.');
+      setError(caught instanceof Error ? caught.message : 'Unable to join this group.');
     } finally {
-      setSubmitting(false);
+      setJoiningId(null);
     }
   }
 
-  async function react(postId: string) {
-    try {
-      await setReaction(postId, 'support');
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to react.');
-    }
-  }
-
-  function report(postId: string) {
-    Alert.alert('Report this post?', 'A moderator will review it.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Report', style: 'destructive', onPress: () => void reportPost(postId, 'community_guidelines') },
-    ]);
-  }
-
-  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /></SafeAreaView>;
+  const sections: Array<{ key: string; title: string; subtitle: string; data: CommunityGroup[] }> = [
+    {
+      key: 'mine',
+      title: 'Your Groups',
+      subtitle: 'Adventure groups appear automatically after a confirmed registration.',
+      data: myGroups,
+    },
+    {
+      key: 'suggested',
+      title: 'Suggested Groups',
+      subtitle: 'Join local and interest spaces when you want a little more campfire.',
+      data: suggested,
+    },
+  ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
+        data={sections}
+        keyExtractor={(section) => section.key}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor="#D7B45A" />}
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={styles.eyebrow}>AROUND THE CAMPFIRE</Text>
-            <Text style={styles.title}>Community</Text>
-            <Text style={styles.intro}>Share moments, ask questions, and keep the adventure moving beyond the event itself.</Text>
-            <View style={styles.composer}>
-              <TextInput value={draft} onChangeText={setDraft} placeholder="What are you bringing to the Campfire?" placeholderTextColor="#77827b" multiline maxLength={4000} style={styles.input} />
-              <Pressable style={[styles.button, (!draft.trim() || submitting) && styles.disabled]} disabled={!draft.trim() || submitting} onPress={() => void submitPost()}>
-                <Text style={styles.buttonText}>{submitting ? 'Posting…' : 'Post'}</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.title}>Groups</Text>
+            <Text style={styles.intro}>Connect around the adventures, places, and outdoor interests you actually share.</Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
+            {loading ? <ActivityIndicator color="#D7B45A" /> : null}
           </View>
         }
-        ListEmptyComponent={<Text style={styles.empty}>The Campfire is quiet. Start the first conversation.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Pressable onPress={() => router.push(`/community/${item.id}`)}>
-              <View style={styles.row}>
-                <Text style={styles.author}>{item.author_name}</Text>
-                {item.is_pinned ? <Text style={styles.pinned}>PINNED</Text> : null}
+        renderItem={({ item: section }) => (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <Text style={styles.sectionSubtitle}>{section.subtitle}</Text>
+            {section.data.length ? section.data.map((group) => (
+              <Pressable
+                key={group.id}
+                style={styles.card}
+                onPress={() => group.is_member
+                  ? router.push({ pathname: '/groups/[id]', params: { id: group.id } })
+                  : void handleJoin(group)}
+              >
+                <View style={styles.cardTopRow}>
+                  <Text style={styles.kind}>{kindLabel(group.kind)}</Text>
+                  <Text style={styles.memberCount}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+                </View>
+                <Text style={styles.cardTitle}>{group.name}</Text>
+                {group.city && group.state ? <Text style={styles.meta}>{group.city}, {group.state}</Text> : null}
+                {group.description ? <Text style={styles.description} numberOfLines={3}>{group.description}</Text> : null}
+                <Text style={styles.action}>
+                  {group.is_member ? 'Open group →' : joiningId === group.id ? 'Joining…' : 'Join group'}
+                </Text>
+              </Pressable>
+            )) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>{section.key === 'mine' ? 'No groups yet' : 'Nothing suggested yet'}</Text>
+                <Text style={styles.emptyBody}>
+                  {section.key === 'mine'
+                    ? 'Your confirmed adventures will create private trip groups here.'
+                    : 'Local and interest groups will appear here as they open.'}
+                </Text>
               </View>
-              <Text style={styles.date}>{new Date(item.created_at).toLocaleString()}</Text>
-              <Text style={styles.body}>{item.body}</Text>
-            </Pressable>
-            <View style={styles.actions}>
-              <Pressable onPress={() => void react(item.id)}><Text style={styles.action}>Support · {item.reaction_count}</Text></Pressable>
-              <Pressable onPress={() => router.push(`/community/${item.id}`)}><Text style={styles.action}>Comments · {item.comment_count}</Text></Pressable>
-              <Pressable onLongPress={() => report(item.id)}><Text style={styles.report}>Hold to report</Text></Pressable>
-            </View>
+            )}
           </View>
         )}
       />
@@ -104,8 +119,25 @@ export default function CommunityScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0f1713' }, center: { flex: 1, backgroundColor: '#0f1713', alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 18, paddingBottom: 42, gap: 12 }, header: { gap: 10, marginBottom: 8 }, eyebrow: { color: '#d3a94f', fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#fff8e8', fontSize: 34, fontWeight: '900' }, intro: { color: '#cbd2cd', fontSize: 16, lineHeight: 23 },
-  composer: { backgroundColor: '#17211c', borderRadius: 18, padding: 14, gap: 10 }, input: { minHeight: 82, color: '#fff8e8', fontSize: 16, textAlignVertical: 'top' }, button: { backgroundColor: '#d3a94f', padding: 13, borderRadius: 12, alignItems: 'center' }, buttonText: { color: '#17211c', fontWeight: '900' }, disabled: { opacity: 0.45 },
-  card: { backgroundColor: '#17211c', borderRadius: 18, padding: 16, gap: 8 }, row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, author: { color: '#fff8e8', fontWeight: '900', fontSize: 17 }, pinned: { color: '#d3a94f', fontWeight: '900', fontSize: 11 }, date: { color: '#859188', fontSize: 12, marginTop: 5 }, body: { color: '#e4e9e5', fontSize: 16, lineHeight: 24, marginTop: 7 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 }, action: { color: '#d3a94f', fontWeight: '800' }, report: { color: '#859188', fontSize: 12 }, error: { color: '#ffb4a9' }, empty: { color: '#cbd2cd', textAlign: 'center', marginTop: 28 }
+  safeArea: { flex: 1, backgroundColor: '#0F1713' },
+  content: { padding: 18, paddingBottom: 42, gap: 22 },
+  header: { gap: 9, marginBottom: 8 },
+  eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.1, fontSize: 12 },
+  title: { color: '#FFF8E8', fontSize: 36, lineHeight: 40, fontWeight: '900' },
+  intro: { color: '#C6CEC8', fontSize: 16, lineHeight: 23, maxWidth: 520 },
+  error: { color: '#FFB4A9', marginTop: 5 },
+  section: { gap: 10 },
+  sectionTitle: { color: '#FFF8E8', fontSize: 23, fontWeight: '900' },
+  sectionSubtitle: { color: '#8F9B93', lineHeight: 20, marginBottom: 2 },
+  card: { backgroundColor: '#17211C', borderWidth: 1, borderColor: '#28362E', borderRadius: 20, padding: 17, gap: 7 },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  kind: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 0.8 },
+  memberCount: { color: '#859188', fontSize: 12 },
+  cardTitle: { color: '#FFF8E8', fontSize: 21, lineHeight: 25, fontWeight: '900' },
+  meta: { color: '#AEB8B2', fontSize: 13 },
+  description: { color: '#CDD4CF', lineHeight: 21, marginTop: 3 },
+  action: { color: '#D7B45A', fontWeight: '900', marginTop: 6 },
+  emptyCard: { backgroundColor: '#141E19', borderRadius: 18, padding: 17, gap: 5 },
+  emptyTitle: { color: '#FFF8E8', fontWeight: '900', fontSize: 17 },
+  emptyBody: { color: '#8F9B93', lineHeight: 20 },
 });

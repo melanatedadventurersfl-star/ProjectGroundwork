@@ -12,6 +12,7 @@ export type JourneyItem = {
   highlight: string | null;
   reflection: string | null;
   stamp_count: number;
+  photo_count: number;
 };
 
 export type PassportStamp = {
@@ -23,13 +24,38 @@ export type PassportStamp = {
   adventure_id: string | null;
 };
 
+export type MemoryPhoto = {
+  id: string;
+  adventure_id: string;
+  image_url: string;
+  caption: string | null;
+  visibility: 'private' | 'group';
+  created_at: string;
+};
+
 export async function getJourney(): Promise<JourneyItem[]> {
   const { data, error } = await supabase
     .from('member_journey')
     .select('*')
     .order('experienced_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as JourneyItem[];
+
+  const journey = (data ?? []) as Omit<JourneyItem, 'photo_count'>[];
+  if (!journey.length) return [];
+
+  const { data: photos, error: photoError } = await supabase
+    .from('adventure_memory_photos')
+    .select('adventure_id')
+    .in('adventure_id', journey.map((item) => item.adventure_id));
+  if (photoError) throw photoError;
+
+  const counts = new Map<string, number>();
+  for (const row of photos ?? []) {
+    const adventureId = row.adventure_id as string;
+    counts.set(adventureId, (counts.get(adventureId) ?? 0) + 1);
+  }
+
+  return journey.map((item) => ({ ...item, photo_count: counts.get(item.adventure_id) ?? 0 }));
 }
 
 export async function getPassportStamps(): Promise<PassportStamp[]> {
@@ -46,6 +72,34 @@ export async function getPassportStamps(): Promise<PassportStamp[]> {
     description: row.passport_stamps?.description ?? null,
     icon_name: row.passport_stamps?.icon_name ?? null,
   }));
+}
+
+export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .select('id, adventure_id, image_url, caption, visibility, created_at')
+    .eq('adventure_id', adventureId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as MemoryPhoto[];
+}
+
+export async function addMemoryPhoto(input: {
+  adventureId: string;
+  imageUrl: string;
+  caption?: string;
+  visibility: 'private' | 'group';
+}) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
+  const { error } = await supabase.from('adventure_memory_photos').insert({
+    profile_id: userData.user.id,
+    adventure_id: input.adventureId,
+    image_url: input.imageUrl.trim(),
+    caption: input.caption?.trim() || null,
+    visibility: input.visibility,
+  });
+  if (error) throw error;
 }
 
 export async function saveReflection(input: {
