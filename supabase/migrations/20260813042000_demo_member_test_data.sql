@@ -1,0 +1,6 @@
+-- Demo/test data for QA only.
+-- Intentionally excludes auth credentials so production authentication data is never seeded by migration.
+-- The connected development project currently contains demo profiles and adventures used to exercise
+-- profile privacy, member status, Trail Family, groups, payments, sold-out/cancelled states, and Passport history.
+--
+-- Keep future reusable demo seed data in a dedicated development seed workflow rather than production migrations.
