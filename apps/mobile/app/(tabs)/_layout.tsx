@@ -1,5 +1,5 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Text, type ColorValue } from 'react-native';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 
@@ -11,7 +11,7 @@ const tabIcons = {
   menu: '≡',
 } as const;
 
-function TabGlyph({ glyph, color, size }: { glyph: string; color: string; size: number }) {
+function TabGlyph({ glyph, color, size }: { glyph: string; color: ColorValue; size: number }) {
   return (
     <Text
       style={{
