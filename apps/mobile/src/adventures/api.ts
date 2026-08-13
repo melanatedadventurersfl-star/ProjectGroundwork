@@ -70,10 +70,27 @@ export async function setAdventureSaved(adventureId: string, shouldSave: boolean
   const profileId = sessionData.session?.user.id;
   if (!profileId) throw new Error('You must be signed in to save an adventure.');
 
-  const operation = shouldSave
-    ? supabase.from('saved_adventures').upsert({ profile_id: profileId, adventure_id: adventureId })
-    : supabase.from('saved_adventures').delete().eq('profile_id', profileId).eq('adventure_id', adventureId);
+  if (!shouldSave) {
+    const { error } = await supabase
+      .from('saved_adventures')
+      .delete()
+      .eq('profile_id', profileId)
+      .eq('adventure_id', adventureId);
+    if (error) throw error;
+    return;
+  }
 
-  const { error } = await operation;
+  const { data: existing, error: lookupError } = await supabase
+    .from('saved_adventures')
+    .select('adventure_id')
+    .eq('profile_id', profileId)
+    .eq('adventure_id', adventureId)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing) return;
+
+  const { error } = await supabase
+    .from('saved_adventures')
+    .insert({ profile_id: profileId, adventure_id: adventureId });
   if (error) throw error;
 }
