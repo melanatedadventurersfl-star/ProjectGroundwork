@@ -1,4 +1,4 @@
-export type AdventureStatus = 'published' | 'sold_out';
+export type AdventureStatus = 'published' | 'sold_out' | 'cancelled' | 'completed';
 export type AdventureDifficulty = 'easy' | 'moderate' | 'challenging';
 
 export type AdventureSummary = {

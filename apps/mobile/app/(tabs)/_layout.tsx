@@ -1,5 +1,6 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 
@@ -16,9 +17,9 @@ function TabGlyph({ glyph, color, size }: { glyph: string; color: ColorValue; si
     <Text
       style={{
         color,
-        fontSize: Math.max(22, size),
+        fontSize: Math.max(21, size - 1),
         fontWeight: '300',
-        lineHeight: Math.max(24, size + 2),
+        lineHeight: Math.max(23, size + 1),
       }}
     >
       {glyph}
@@ -28,6 +29,7 @@ function TabGlyph({ glyph, color, size }: { glyph: string; color: ColorValue; si
 
 export default function TabLayout() {
   const { session, isLoading } = useAuth();
+  const insets = useSafeAreaInsets();
 
   if (!isLoading && !session) {
     return <Redirect href="/(auth)/sign-in" />;
@@ -43,11 +45,12 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#121B16',
           borderTopColor: '#26332B',
-          height: 72,
-          paddingTop: 8,
-          paddingBottom: 8,
+          height: 58 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 6),
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+        tabBarItemStyle: { paddingVertical: 1 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Trailhead', tabBarIcon: ({ color, size }) => <TabGlyph glyph={tabIcons.index} color={color} size={size} /> }} />

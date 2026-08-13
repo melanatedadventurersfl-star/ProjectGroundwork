@@ -24,6 +24,15 @@ export type PassportStamp = {
   adventure_id: string | null;
 };
 
+export type MemberBadge = {
+  badge_id: string;
+  title: string;
+  description: string | null;
+  icon_name: string | null;
+  category: string;
+  earned_at: string;
+};
+
 export type MemoryPhoto = {
   id: string;
   adventure_id: string;
@@ -72,6 +81,31 @@ export async function getPassportStamps(): Promise<PassportStamp[]> {
     description: row.passport_stamps?.description ?? null,
     icon_name: row.passport_stamps?.icon_name ?? null,
   }));
+}
+
+export async function getMemberBadges(): Promise<MemberBadge[]> {
+  const { data, error } = await supabase
+    .from('member_badges')
+    .select('badge_id, earned_at, badges(title, description, icon_name, category)')
+    .order('earned_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    badge_id: row.badge_id,
+    earned_at: row.earned_at,
+    title: row.badges?.title ?? 'Member badge',
+    description: row.badges?.description ?? null,
+    icon_name: row.badges?.icon_name ?? null,
+    category: row.badges?.category ?? 'milestone',
+  }));
+}
+
+export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .select('id, adventure_id, image_url, caption, visibility, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as MemoryPhoto[];
 }
 
 export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
