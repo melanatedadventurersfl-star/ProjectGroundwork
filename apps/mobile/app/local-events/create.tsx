@@ -57,8 +57,8 @@ export default function CreateLocalEventScreen() {
   }, [cities, citySearch]);
 
   const parsedStart = startsAt ? new Date(startsAt) : null;
-  const validDate = parsedStart && !Number.isNaN(parsedStart.getTime());
-  const canSubmit = allowed && title.trim() && description.trim() && category && validDate && state && city && !saving;
+  const validDate = Boolean(parsedStart && !Number.isNaN(parsedStart.getTime()));
+  const canSubmit = Boolean(allowed && title.trim() && description.trim() && category && validDate && state && city && !saving);
 
   async function submit() {
     if (!canSubmit || !parsedStart) return;
