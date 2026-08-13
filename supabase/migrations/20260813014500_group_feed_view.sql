@@ -1,7 +1,8 @@
-create or replace view public.community_feed as
+drop view if exists public.community_feed;
+
+create view public.community_feed as
 select
   p.id,
-  p.group_id,
   p.adventure_id,
   p.author_id,
   coalesce(pr.display_name, pr.first_name, 'Member') as author_name,
@@ -11,7 +12,8 @@ select
   p.is_pinned,
   p.created_at,
   count(distinct r.profile_id)::int as reaction_count,
-  count(distinct c.id)::int as comment_count
+  count(distinct c.id)::int as comment_count,
+  p.group_id
 from public.community_posts p
 join public.profiles pr on pr.id = p.author_id
 left join public.community_reactions r on r.post_id = p.id
