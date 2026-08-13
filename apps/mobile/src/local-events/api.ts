@@ -51,36 +51,28 @@ export async function listLocalEvents(): Promise<LocalEvent[]> {
   const userId = sessionData.session?.user.id;
 
   const { data: events, error } = await supabase
-    .from('local_events')
-    .select('id, host_id, title, description, category, starts_at, ends_at, city, state, venue_name, meeting_details, image_url, capacity, is_free, status, group_id')
+    .from('local_event_discovery')
+    .select('*')
     .eq('status', 'published')
     .gte('starts_at', new Date().toISOString())
     .order('starts_at', { ascending: true });
   if (error) throw error;
   if (!events?.length) return [];
 
-  const hostIds = [...new Set(events.map((event) => event.host_id as string))];
-  const eventIds = events.map((event) => event.id as string);
-  const [{ data: hosts, error: hostError }, { data: rsvps, error: rsvpError }] = await Promise.all([
-    supabase.from('profiles').select('id, display_name, first_name').in('id', hostIds),
-    supabase.from('local_event_rsvps').select('local_event_id, profile_id, status').in('local_event_id', eventIds).neq('status', 'cancelled'),
-  ]);
-  if (hostError) throw hostError;
-  if (rsvpError) throw rsvpError;
-
-  const hostNames = new Map((hosts ?? []).map((host: any) => [host.id, host.display_name ?? host.first_name ?? 'Member host']));
-  const counts = new Map<string, number>();
-  const mine = new Map<string, LocalEvent['my_rsvp']>();
-  for (const row of rsvps ?? []) {
-    const eventId = (row as any).local_event_id as string;
-    counts.set(eventId, (counts.get(eventId) ?? 0) + 1);
-    if (userId && (row as any).profile_id === userId) mine.set(eventId, (row as any).status as LocalEvent['my_rsvp']);
+  let myRsvps: any[] = [];
+  if (userId) {
+    const { data, error: rsvpError } = await supabase
+      .from('local_event_rsvps')
+      .select('local_event_id, status')
+      .eq('profile_id', userId)
+      .in('local_event_id', events.map((event: any) => event.id));
+    if (rsvpError) throw rsvpError;
+    myRsvps = data ?? [];
   }
 
+  const mine = new Map(myRsvps.map((row: any) => [row.local_event_id, row.status]));
   return events.map((event: any) => ({
     ...event,
-    host_name: hostNames.get(event.host_id) ?? 'Member host',
-    rsvp_count: counts.get(event.id) ?? 0,
     my_rsvp: mine.get(event.id) ?? null,
   })) as LocalEvent[];
 }
