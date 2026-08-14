@@ -89,8 +89,10 @@ export default function PassportScreen() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={(
           <View style={styles.header}>
-            <Text style={styles.eyebrow}>EVERY ADVENTURE LEAVES A MARK</Text>
-            <Text style={styles.title}>Passport</Text>
+            <View style={styles.pageIntro}>
+              <Text style={styles.eyebrow}>EVERY ADVENTURE LEAVES A MARK</Text>
+              <Text style={styles.title}>Passport</Text>
+            </View>
 
             <View style={styles.identity}>
               <View style={styles.identityGlow} />
@@ -106,33 +108,37 @@ export default function PassportScreen() {
                 )}
               </View>
               <View style={styles.heroEmblem}>
-                <RankEmblem rank={currentRank} size={118} />
+                <RankEmblem rank={currentRank} size={128} />
               </View>
             </View>
 
             <Pressable style={styles.journeyBar} onPress={() => setMode('journey')}>
-              <Text style={styles.eyebrow}>MY JOURNEY</Text>
+              <View style={styles.journeyHeaderRow}>
+                <Text style={styles.eyebrow}>MY JOURNEY</Text>
+                {journey.length ? <Text style={styles.journeyMini}>{states.size} state{states.size === 1 ? '' : 's'}</Text> : null}
+              </View>
               {journey.length ? (
-                <View style={styles.journeyCounts}>
-                  <Text style={styles.journeyCount}>{journey.length} Adventure{journey.length === 1 ? '' : 's'}</Text>
-                  <Text style={styles.journeyCount}>{states.size} State{states.size === 1 ? '' : 's'}</Text>
-                </View>
+                <>
+                  <Text style={styles.journeyHero}>{journey.length} adventure{journey.length === 1 ? '' : 's'} on your trail.</Text>
+                  <Text style={styles.muted}>Every completed MA experience adds another chapter to your Passport.</Text>
+                </>
               ) : (
                 <>
-                  <Text style={styles.journeyEmpty}>Your map starts with your first adventure.</Text>
+                  <Text style={styles.journeyHero}>Your map starts with your first adventure.</Text>
                   <Text style={styles.muted}>Complete an official MA experience and your trail will grow here.</Text>
                 </>
               )}
             </Pressable>
 
             <View style={styles.ladder}>
-              <View style={styles.sectionRow}>
-                <View>
+              <View style={styles.rankTrailHeader}>
+                <View style={styles.rankTrailCopy}>
                   <Text style={styles.sectionTitle}>Rank Trail</Text>
-                  <Text style={styles.muted}>Each rank unlocks a new expedition emblem.</Text>
+                  <Text style={styles.muted}>Complete adventures to rise through the Pathfinder ranks.</Text>
                 </View>
                 <Text style={styles.rankTrailCount}>{journey.length} completed</Text>
               </View>
+
               <View style={styles.ladderRow}>
                 {rankLadder.map(([rankName, minimum]) => {
                   const reached = journey.length >= minimum;
@@ -140,37 +146,61 @@ export default function PassportScreen() {
                   return (
                     <View key={rankName} style={styles.rankStep}>
                       <View style={[styles.rankEmblemShell, selected && styles.rankEmblemCurrent]}>
-                        <RankEmblem rank={rankName as RankName} size={46} muted={!reached} />
+                        <RankEmblem rank={rankName as RankName} size={58} muted={!reached} />
                       </View>
                       <Text style={[styles.rankLabel, reached && styles.rankDone, selected && styles.rankCurrent]} numberOfLines={2}>{rankName}</Text>
-                      <Text style={styles.rankMin}>{minimum === 0 ? 'Start' : `${minimum}`}</Text>
+                      <Text style={[styles.rankMin, selected && styles.rankMinCurrent]}>{minimum === 0 ? 'Start' : `${minimum}`}</Text>
                     </View>
                   );
                 })}
               </View>
+
               <Pressable onPress={() => router.push('/guide')}><Text style={styles.link}>About Ranks & Passport</Text></Pressable>
             </View>
 
-            <View style={styles.stats}>
+            <View style={styles.modeTabs}>
               {([
                 ['journey', 'Adventures', journey.length],
                 ['stamps', 'Stamps', stamps.length],
                 ['badges', 'Badges', badges.length],
                 ['memories', 'Memories', photos.length],
-              ] as [ViewMode, string, number][]).map(([value, label, count]) => (
-                <Pressable key={value} style={[styles.stat, mode === value && styles.statActive]} onPress={() => setMode(value)}>
-                  <Text style={styles.statNum}>{count || '•'}</Text>
-                  <Text style={styles.statLabel}>{label}</Text>
-                </Pressable>
-              ))}
+              ] as [ViewMode, string, number][]).map(([value, label, count]) => {
+                const active = mode === value;
+                return (
+                  <Pressable key={value} style={[styles.modeTab, active && styles.modeTabActive]} onPress={() => setMode(value)}>
+                    <Text style={[styles.modeCount, active && styles.modeCountActive]}>{count}</Text>
+                    <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            {mode === 'journey' ? <Text style={styles.sectionTitle}>{journey.length ? 'Journey Timeline' : 'Your first chapter is waiting'}</Text> : null}
+
+            {mode === 'journey' && !journey.length ? (
+              <View style={styles.sectionPanel}>
+                <Text style={styles.panelEyebrow}>JOURNEY TIMELINE</Text>
+                <Text style={styles.panelTitle}>Your first chapter is waiting.</Text>
+                <Text style={styles.panelBody}>Completed adventures will build your timeline automatically, along with the stamps, memories, and milestones you collect.</Text>
+              </View>
+            ) : null}
+
+            {mode === 'journey' && journey.length ? (
+              <View style={styles.sectionHeadingRow}>
+                <View>
+                  <Text style={styles.panelEyebrow}>JOURNEY TIMELINE</Text>
+                  <Text style={styles.sectionTitle}>Your adventure history</Text>
+                </View>
+                <Text style={styles.muted}>{journey.length} total</Text>
+              </View>
+            ) : null}
 
             {mode === 'stamps' ? (
-              <View>
-                <View style={styles.sectionRow}><Text style={styles.sectionTitle}>Stamp Book</Text><Text style={styles.muted}>Newest first</Text></View>
+              <View style={styles.sectionBlock}>
+                <View style={styles.sectionHeadingRow}>
+                  <View><Text style={styles.panelEyebrow}>COLLECTED SEALS</Text><Text style={styles.sectionTitle}>Stamp Book</Text></View>
+                  {stamps.length ? <Text style={styles.muted}>Newest first</Text> : null}
+                </View>
                 {stamps.length ? (
                   <View style={styles.grid}>
                     {stamps.map((stamp) => (
@@ -182,41 +212,53 @@ export default function PassportScreen() {
                     ))}
                   </View>
                 ) : (
-                  <View style={styles.empty}><Text style={styles.tileTitle}>Your stamp book is waiting.</Text><Text style={styles.muted}>Complete an official MA Adventure to earn your first passport-style seal.</Text></View>
+                  <View style={styles.sectionPanel}>
+                    <Text style={styles.panelTitle}>Your stamp book is waiting.</Text>
+                    <Text style={styles.panelBody}>Complete an official MA Adventure to earn your first passport-style seal.</Text>
+                  </View>
                 )}
               </View>
             ) : null}
 
             {mode === 'badges' ? (
-              <View>
-                <Text style={styles.sectionTitle}>Achievement Badges</Text>
-                <Text style={styles.muted}>Milestone medallions stay distinct from your six Passport rank emblems.</Text>
+              <View style={styles.sectionBlock}>
+                <View><Text style={styles.panelEyebrow}>SPECIAL MILESTONES</Text><Text style={styles.sectionTitle}>Achievement Badges</Text></View>
                 {badges.length ? (
                   <View style={styles.grid}>
                     {badges.map((badge) => (
                       <View key={badge.badge_id} style={styles.badgeTile}>
                         <View style={styles.medal}><Text style={styles.medalGlyph}>MA</Text></View>
-                        <Text style={styles.tileTitle}>{badge.title}</Text><Text style={styles.muted}>{badge.category}</Text>
+                        <Text style={styles.tileTitle}>{badge.title}</Text>
+                        <Text style={styles.muted}>{badge.category}</Text>
                       </View>
                     ))}
                   </View>
                 ) : (
-                  <View style={styles.empty}><Text style={styles.tileTitle}>Your first badge is still ahead.</Text><Text style={styles.muted}>Milestones appear here as you explore, connect, and complete Adventures.</Text></View>
+                  <View style={styles.sectionPanel}>
+                    <Text style={styles.panelTitle}>Your first badge is still ahead.</Text>
+                    <Text style={styles.panelBody}>Milestones appear here as you explore, connect, and complete Adventures.</Text>
+                  </View>
                 )}
               </View>
             ) : null}
 
             {mode === 'memories' ? (
-              <View>
-                <Text style={styles.sectionTitle}>My Scrapbook</Text><Text style={styles.muted}>Your photos and reflections live here.</Text>
+              <View style={styles.sectionBlock}>
+                <View><Text style={styles.panelEyebrow}>PHOTOS & REFLECTIONS</Text><Text style={styles.sectionTitle}>My Scrapbook</Text></View>
                 {photos.length ? (
                   <View style={styles.grid}>
                     {photos.map((photo) => (
-                      <View key={photo.id} style={styles.photoTile}><Image source={{ uri: photo.image_url }} style={styles.photo} /><Text style={styles.photoText} numberOfLines={2}>{photo.caption || 'Adventure memory'}</Text></View>
+                      <View key={photo.id} style={styles.photoTile}>
+                        <Image source={{ uri: photo.image_url }} style={styles.photo} />
+                        <Text style={styles.photoText} numberOfLines={2}>{photo.caption || 'Adventure memory'}</Text>
+                      </View>
                     ))}
                   </View>
                 ) : (
-                  <View style={styles.empty}><Text style={styles.tileTitle}>Your scrapbook has open pages.</Text><Text style={styles.muted}>Completed Adventures can become memory albums.</Text></View>
+                  <View style={styles.sectionPanel}>
+                    <Text style={styles.panelTitle}>Your scrapbook has open pages.</Text>
+                    <Text style={styles.panelBody}>Completed Adventures can become memory albums with photos and reflections.</Text>
+                  </View>
                 )}
               </View>
             ) : null}
@@ -224,14 +266,18 @@ export default function PassportScreen() {
         )}
         renderItem={({ item, index }) => (
           <View style={styles.timeline}>
-            <View style={styles.rail}><View style={styles.timelineDot} />{index < journey.length - 1 ? <View style={styles.line} /> : null}</View>
+            <View style={styles.rail}>
+              <View style={styles.timelineDot} />
+              {index < journey.length - 1 ? <View style={styles.line} /> : null}
+            </View>
             <Pressable style={styles.timelineCard} onPress={() => router.push(`/passport/reflection/${item.adventure_id}`)}>
               <Text style={styles.date}>{new Date(item.experienced_at || item.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-              <Text style={styles.tileTitle}>{item.title}</Text><Text style={styles.muted}>{item.category} · {item.city}, {item.state}</Text><Text style={styles.link}>Open Stamp & Memories</Text>
+              <Text style={styles.tileTitle}>{item.title}</Text>
+              <Text style={styles.muted}>{item.category} · {item.city}, {item.state}</Text>
+              <Text style={styles.link}>Open Stamp & Memories</Text>
             </Pressable>
           </View>
         )}
-        ListEmptyComponent={mode === 'journey' ? <View style={styles.empty}><Text style={styles.tileTitle}>Nothing to count yet. Plenty to start.</Text><Text style={styles.muted}>Your completed Adventures will build this timeline automatically.</Text></View> : null}
       />
     </SafeAreaView>
   );
@@ -241,42 +287,53 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0F1713' },
   center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 18, paddingBottom: 48 },
-  header: { gap: 13, marginBottom: 12 },
+  header: { gap: 14, marginBottom: 12 },
+  pageIntro: { gap: 4 },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   title: { color: '#FFF8E8', fontSize: 36, fontWeight: '900' },
-  identity: { minHeight: 178, backgroundColor: '#1B2922', borderRadius: 22, borderWidth: 1, borderColor: '#35483C', padding: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
-  identityGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -38, top: -24, backgroundColor: 'rgba(215,180,90,0.055)' },
+  identity: { minHeight: 184, backgroundColor: '#1B2922', borderRadius: 24, borderWidth: 1, borderColor: '#35483C', padding: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
+  identityGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, right: -50, top: -35, backgroundColor: 'rgba(215,180,90,0.065)' },
   identityText: { flex: 1, zIndex: 2, paddingRight: 8 },
-  heroEmblem: { width: 122, height: 122, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  name: { color: '#FFF8E8', fontSize: 23, fontWeight: '900' },
+  heroEmblem: { width: 132, height: 132, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  name: { color: '#FFF8E8', fontSize: 24, fontWeight: '900' },
   username: { color: '#A4B0A8', marginTop: 3 },
-  rank: { color: '#F0D083', fontWeight: '900', marginTop: 8, fontSize: 16 },
+  rank: { color: '#F0D083', fontWeight: '900', marginTop: 9, fontSize: 16 },
   joined: { color: '#87948B', fontSize: 11, marginTop: 4, lineHeight: 16 },
   rankProgress: { color: '#C7B77F', fontSize: 11, fontWeight: '800', marginTop: 8 },
-  journeyBar: { minHeight: 128, backgroundColor: '#1A2821', borderWidth: 1, borderColor: '#33483B', borderRadius: 17, padding: 15 },
-  journeyCounts: { flexDirection: 'row', gap: 18, marginTop: 8 },
-  journeyCount: { color: '#FFF8E8', fontWeight: '900' },
-  journeyEmpty: { color: '#FFF8E8', fontSize: 19, fontWeight: '900', lineHeight: 24, marginTop: 10, maxWidth: '82%' },
-  ladder: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#28362E', padding: 15 },
-  ladderRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 },
+  journeyBar: { minHeight: 120, backgroundColor: '#18271F', borderWidth: 1, borderColor: '#34483C', borderRadius: 20, padding: 16 },
+  journeyHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  journeyMini: { color: '#89968E', fontSize: 10, fontWeight: '700' },
+  journeyHero: { color: '#FFF8E8', fontSize: 20, fontWeight: '900', lineHeight: 25, marginTop: 9, maxWidth: '88%' },
+  ladder: { backgroundColor: '#151F1A', borderRadius: 20, borderWidth: 1, borderColor: '#2B3931', padding: 16 },
+  rankTrailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  rankTrailCopy: { flex: 1 },
+  ladderRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 },
   rankStep: { width: '16%', alignItems: 'center' },
-  rankEmblemShell: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
-  rankEmblemCurrent: { backgroundColor: 'rgba(215,180,90,0.10)', borderWidth: 1, borderColor: 'rgba(215,180,90,0.40)' },
+  rankEmblemShell: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
+  rankEmblemCurrent: { backgroundColor: 'rgba(215,180,90,0.09)', borderWidth: 1, borderColor: 'rgba(215,180,90,0.46)' },
   rankLabel: { color: '#657169', fontSize: 8, lineHeight: 10, textAlign: 'center', marginTop: 7 },
   rankDone: { color: '#D4DAD6', fontWeight: '800' },
   rankCurrent: { color: '#F0D083' },
   rankMin: { color: '#5E6A62', fontSize: 8, marginTop: 3 },
-  rankTrailCount: { color: '#8D998F', fontSize: 10, fontWeight: '700' },
+  rankMinCurrent: { color: '#BFA653' },
+  rankTrailCount: { color: '#8D998F', fontSize: 10, fontWeight: '700', paddingTop: 4 },
   sectionTitle: { color: '#FFF8E8', fontSize: 21, fontWeight: '900' },
-  link: { color: '#D7B45A', fontWeight: '900', marginTop: 9 },
-  stats: { flexDirection: 'row', gap: 6 },
-  stat: { flex: 1, backgroundColor: '#17211C', borderWidth: 1, borderColor: '#28362E', borderRadius: 13, paddingVertical: 12, alignItems: 'center' },
-  statActive: { borderColor: '#D7B45A' },
-  statNum: { color: '#FFF8E8', fontSize: 22, fontWeight: '900' },
-  statLabel: { color: '#849188', fontSize: 9, marginTop: 2 },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  link: { color: '#D7B45A', fontWeight: '900', marginTop: 12 },
+  modeTabs: { flexDirection: 'row', backgroundColor: '#141E19', borderRadius: 18, borderWidth: 1, borderColor: '#28362E', padding: 4, gap: 3 },
+  modeTab: { flex: 1, minHeight: 62, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
+  modeTabActive: { backgroundColor: '#213028', borderColor: '#D7B45A' },
+  modeCount: { color: '#91A097', fontSize: 18, fontWeight: '900' },
+  modeCountActive: { color: '#F2D476' },
+  modeLabel: { color: '#7E8B83', fontSize: 9, fontWeight: '700', marginTop: 2 },
+  modeLabelActive: { color: '#FFF2C7' },
+  sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10, paddingTop: 2 },
+  sectionBlock: { gap: 10 },
+  sectionPanel: { backgroundColor: '#18231D', borderRadius: 18, borderWidth: 1, borderColor: '#2A3830', padding: 18 },
+  panelEyebrow: { color: '#9A8860', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  panelTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900', marginTop: 4 },
+  panelBody: { color: '#8F9B93', lineHeight: 19, marginTop: 7 },
   muted: { color: '#8F9B93', lineHeight: 19, marginTop: 4 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 2 },
   stamp: { width: '48%', backgroundColor: '#161F1A', borderRadius: 16, borderWidth: 1, borderColor: '#655837', padding: 12 },
   stampSeal: { width: 68, height: 68, borderRadius: 34, borderWidth: 2, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   stampGlyph: { color: '#D7B45A', fontSize: 15, fontWeight: '900' },
@@ -287,7 +344,6 @@ const styles = StyleSheet.create({
   photoTile: { width: '48%', backgroundColor: '#17211C', borderRadius: 14, overflow: 'hidden' },
   photo: { width: '100%', aspectRatio: 1 },
   photoText: { color: '#C7D0CA', fontSize: 12, padding: 9 },
-  empty: { backgroundColor: '#17211C', borderRadius: 16, padding: 17, marginTop: 10 },
   timeline: { flexDirection: 'row' },
   rail: { width: 26, alignItems: 'center' },
   timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#D7B45A', marginTop: 20 },
