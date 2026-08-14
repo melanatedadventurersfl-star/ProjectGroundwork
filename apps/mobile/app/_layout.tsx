@@ -15,7 +15,6 @@ function AppShell() {
   const hideBottomNav =
     isLoading ||
     !session ||
-    pathname === '/' ||
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
