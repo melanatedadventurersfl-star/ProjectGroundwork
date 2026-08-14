@@ -45,6 +45,39 @@ export type MemoryPhoto = {
   created_at: string;
 };
 
+const PHOTO_BUCKET = 'adventure-photos';
+const memoryPhotoSelect = 'id, profile_id, adventure_id, image_url, caption, visibility, moderation_status, created_at';
+
+function isRemoteUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+async function withSignedPhotoUrls(rows: MemoryPhoto[]): Promise<MemoryPhoto[]> {
+  return Promise.all(rows.map(async (photo) => {
+    if (!photo.image_url || isRemoteUrl(photo.image_url)) return photo;
+
+    const { data, error } = await supabase.storage
+      .from(PHOTO_BUCKET)
+      .createSignedUrl(photo.image_url, 60 * 60);
+
+    if (error || !data?.signedUrl) return photo;
+    return { ...photo, image_url: data.signedUrl };
+  }));
+}
+
+function extensionFor(mimeType?: string | null, uri?: string) {
+  const byMime: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
+  };
+  if (mimeType && byMime[mimeType]) return byMime[mimeType];
+  const guessed = uri?.split('?')[0].split('.').pop()?.toLowerCase();
+  return guessed && /^[a-z0-9]{2,5}$/.test(guessed) ? guessed : 'jpg';
+}
+
 export async function getJourney(): Promise<JourneyItem[]> {
   const { data, error } = await supabase
     .from('member_journey')
@@ -105,15 +138,13 @@ export async function getMemberBadges(): Promise<MemberBadge[]> {
   }));
 }
 
-const memoryPhotoSelect = 'id, profile_id, adventure_id, image_url, caption, visibility, moderation_status, created_at';
-
 export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
   const { data, error } = await supabase
     .from('adventure_memory_photos')
     .select(memoryPhotoSelect)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as MemoryPhoto[];
+  return withSignedPhotoUrls((data ?? []) as MemoryPhoto[]);
 }
 
 export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
@@ -125,7 +156,7 @@ export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[
     .eq('visibility', 'group')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as MemoryPhoto[];
+  return withSignedPhotoUrls((data ?? []) as MemoryPhoto[]);
 }
 
 export async function addMemoryPhoto(input: {
@@ -156,6 +187,46 @@ export async function addMemoryPhoto(input: {
   }
 
   return data;
+}
+
+export async function uploadMemoryPhoto(input: {
+  adventureId: string;
+  localUri: string;
+  mimeType?: string | null;
+  caption?: string;
+  visibility: 'private' | 'group';
+}) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
+
+  const response = await fetch(input.localUri);
+  if (!response.ok) throw new Error('Unable to read the selected photo.');
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Photos must be 10 MB or smaller.');
+
+  const extension = extensionFor(input.mimeType, input.localUri);
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+  const path = `${userData.user.id}/${input.adventureId}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(PHOTO_BUCKET)
+    .upload(path, bytes, {
+      contentType: input.mimeType || 'image/jpeg',
+      upsert: false,
+    });
+  if (uploadError) throw uploadError;
+
+  try {
+    return await addMemoryPhoto({
+      adventureId: input.adventureId,
+      imageUrl: path,
+      caption: input.caption,
+      visibility: input.visibility,
+    });
+  } catch (error) {
+    await supabase.storage.from(PHOTO_BUCKET).remove([path]);
+    throw error;
+  }
 }
 
 export async function saveReflection(input: {
