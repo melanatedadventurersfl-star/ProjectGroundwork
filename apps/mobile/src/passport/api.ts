@@ -45,11 +45,6 @@ export type MemoryPhoto = {
   created_at: string;
 };
 
-export type AdventurePhotoCollection = {
-  mine: MemoryPhoto[];
-  event: MemoryPhoto[];
-};
-
 export async function getJourney(): Promise<JourneyItem[]> {
   const { data, error } = await supabase
     .from('member_journey')
@@ -63,6 +58,8 @@ export async function getJourney(): Promise<JourneyItem[]> {
   const { data: photos, error: photoError } = await supabase
     .from('adventure_memory_photos')
     .select('adventure_id')
+    .eq('moderation_status', 'approved')
+    .eq('visibility', 'group')
     .in('adventure_id', journey.map((item) => item.adventure_id));
   if (photoError) throw photoError;
 
@@ -124,20 +121,11 @@ export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[
     .from('adventure_memory_photos')
     .select(memoryPhotoSelect)
     .eq('adventure_id', adventureId)
+    .eq('moderation_status', 'approved')
+    .eq('visibility', 'group')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as MemoryPhoto[];
-}
-
-export async function getAdventurePhotoCollection(adventureId: string): Promise<AdventurePhotoCollection> {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
-
-  const photos = await getMemoryPhotos(adventureId);
-  return {
-    mine: photos.filter((photo) => photo.profile_id === userData.user.id),
-    event: photos.filter((photo) => photo.moderation_status === 'approved' && photo.visibility === 'group'),
-  };
 }
 
 export async function addMemoryPhoto(input: {
