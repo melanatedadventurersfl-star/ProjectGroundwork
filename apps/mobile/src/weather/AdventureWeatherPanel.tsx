@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import type { AdventureDetail } from '../adventures/types';
+import type { AdventureSummary } from '../adventures/types';
 import { getAdventureWeather, type WeatherForecast } from './api';
 
 type Props = {
-  adventure: AdventureDetail;
+  adventure: AdventureSummary;
 };
 
 const FORECAST_HORIZON_MS = 72 * 60 * 60 * 1000;
