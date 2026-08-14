@@ -37,22 +37,42 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Normalize Pathfinder launcher PNG for Expo prebuild
+      - name: Normalize native Android PNG assets for Expo prebuild
         run: |
           python3 -m pip install --quiet pillow
           python3 - <<'PY'
           from pathlib import Path
           from PIL import Image
 
-          path = Path('apps/mobile/assets/ma-pathfinder-mark.png')
-          temp = path.with_name('ma-pathfinder-mark.normalized.png')
+          paths = [
+              Path('apps/mobile/assets/ma-app-icon.png'),
+              Path('apps/mobile/assets/ma-splash-icon.png'),
+              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
+          ]
 
-          with Image.open(path) as image:
-              image.load()
-              image.convert('RGBA').save(temp, format='PNG', optimize=False)
+          for path in paths:
+              temp = path.with_name(path.stem + '.normalized.png')
+              with Image.open(path) as image:
+                  image.load()
+                  rgba = image.convert('RGBA')
+                  rgba.save(temp, format='PNG', optimize=False, compress_level=6)
+              temp.replace(path)
+              print(f'Normalized {path} as standard RGBA PNG.')
+          PY
 
-          temp.replace(path)
-          print(f'Normalized {path} for Expo Android image processing.')
+      - name: Verify normalized PNGs can be decoded
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+
+          for path in [
+              'apps/mobile/assets/ma-app-icon.png',
+              'apps/mobile/assets/ma-splash-icon.png',
+              'apps/mobile/assets/ma-pathfinder-mark.png',
+          ]:
+              with Image.open(path) as image:
+                  image.verify()
+              print(f'Valid PNG: {path}')
           PY
 
       - name: Verify Expo authentication
