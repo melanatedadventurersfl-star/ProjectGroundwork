@@ -19,6 +19,14 @@
         {
           "locationWhenInUsePermission": "Allow Melanated Adventurers to use your location for nearby Adventures and local weather."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Melanated Adventurers to access your photos so you can add memories to your adventures.",
+          "cameraPermission": "Allow Melanated Adventurers to use your camera so you can add photos to your adventures.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {
