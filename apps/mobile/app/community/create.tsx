@@ -33,7 +33,7 @@ const postTypes: Array<{ value: PostType; label: string; helper: string; icon: s
   { value: 'ask', label: 'Ask', helper: 'Ask the community for advice or recommendations.', icon: 'help-circle-outline' },
   { value: 'meetup', label: 'Meetup', helper: 'Plan something people can join.', icon: 'calendar-outline' },
   { value: 'buddy', label: 'Adventure Buddy', helper: 'Find people for a hike, paddle, camp, or trip.', icon: 'people-outline' },
-  { value: 'recommendation', label: 'Recommend a Place', helper: 'Share a trail, park, campsite, or hidden gem.', icon: 'trail-sign-outline' },
+  { value: 'recommendation', label: 'Place', helper: 'Share a trail, park, campsite, or hidden gem.', icon: 'location-outline' },
 ];
 
 const audiences: Array<{ value: Audience; label: string; helper: string; icon: string }> = [
@@ -43,14 +43,12 @@ const audiences: Array<{ value: Audience; label: string; helper: string; icon: s
   { value: 'group', label: 'A Group', helper: 'Post inside one of your communities.', icon: 'albums-outline' },
 ];
 
-const commonTypes: PostType[] = ['update', 'photo', 'ask', 'meetup'];
-const moreTypes: PostType[] = ['buddy', 'recommendation'];
-
 function placeholderFor(type: PostType) {
-  if (type === 'photo') return 'Tell your community about this moment…';
+  if (type === 'photo') return 'Say something about this moment…';
   if (type === 'ask') return 'What do you want to ask the community?';
   if (type === 'buddy') return 'What do you want to do, where, and when?';
   if (type === 'recommendation') return 'What place are you recommending and why?';
+  if (type === 'meetup') return 'What are you planning?';
   return 'What’s happening outside?';
 }
 
@@ -60,7 +58,7 @@ export default function CreateCommunityPostScreen() {
   const [type, setType] = useState<PostType>(initialType);
   const [audience, setAudience] = useState<Audience>('everyone');
   const [audienceOpen, setAudienceOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(moreTypes.includes(initialType));
+  const [moreOpen, setMoreOpen] = useState(initialType === 'buddy');
   const [circleId, setCircleId] = useState<string | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [circles, setCircles] = useState<CommunityCircle[]>([]);
@@ -71,7 +69,6 @@ export default function CreateCommunityPostScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selected = useMemo(() => postTypes.find((item) => item.value === type)!, [type]);
   const selectedAudience = useMemo(() => audiences.find((item) => item.value === audience)!, [audience]);
   const memberGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const selectedGroup = useMemo(() => memberGroups.find((group) => group.id === groupId) ?? null, [memberGroups, groupId]);
@@ -98,6 +95,7 @@ export default function CreateCommunityPostScreen() {
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     setPhoto({ uri: asset.uri, mimeType: asset.mimeType });
+    setType('photo');
   }
 
   function changeAudience(next: Audience) {
@@ -108,8 +106,13 @@ export default function CreateCommunityPostScreen() {
   }
 
   function selectType(next: PostType) {
-    setType(next);
-    setMoreOpen(moreTypes.includes(next) || moreOpen);
+    if (type === next && next !== 'photo') {
+      setType('update');
+      setMoreOpen(false);
+    } else {
+      setType(next);
+      if (next === 'buddy') setMoreOpen(true);
+    }
     setError(null);
   }
 
@@ -120,6 +123,7 @@ export default function CreateCommunityPostScreen() {
 
   async function submit() {
     if (type === 'meetup') {
+      if (needsTarget) return;
       router.replace({ pathname: '/local-events/create', params: { audience, circleId: circleId ?? undefined, groupId: groupId ?? undefined } });
       return;
     }
@@ -148,35 +152,129 @@ export default function CreateCommunityPostScreen() {
     }
   }
 
-  const audienceName = audience === 'circle' && selectedCircle ? selectedCircle.name : audience === 'group' && selectedGroup ? selectedGroup.name : selectedAudience.label;
+  const audienceName = audience === 'circle' && selectedCircle
+    ? selectedCircle.name
+    : audience === 'group' && selectedGroup
+      ? selectedGroup.name
+      : selectedAudience.label;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.topRow}>
-          <Pressable style={styles.closeButton} onPress={() => router.back()}><Ionicons name="close" size={23} color={TEXT} /></Pressable>
+          <Pressable style={styles.closeButton} onPress={() => router.back()}>
+            <Ionicons name="close" size={23} color={TEXT} />
+          </Pressable>
           <View style={styles.flex}>
             <Text style={styles.eyebrow}>COMMUNITY</Text>
             <Text style={styles.title}>Create Post</Text>
           </View>
           <Pressable disabled={cannotSubmit} style={[styles.postButton, cannotSubmit && styles.disabled]} onPress={() => void submit()}>
-            {submitting ? <ActivityIndicator color="#101510" size="small" /> : <Text style={styles.postButtonText}>{type === 'meetup' ? 'Continue' : 'Post'}</Text>}
+            {submitting
+              ? <ActivityIndicator color="#101510" size="small" />
+              : <Text style={styles.postButtonText}>{type === 'meetup' ? 'Continue' : 'Post'}</Text>}
           </Pressable>
         </View>
 
-        <Pressable style={styles.audiencePill} onPress={() => setAudienceOpen((value) => !value)}>
-          <Ionicons name={selectedAudience.icon as never} size={17} color={GOLD} />
-          <Text style={styles.audiencePillLabel}>Share with</Text>
-          <Text style={styles.audiencePillValue} numberOfLines={1}>{audienceName}</Text>
-          <Ionicons name={audienceOpen ? 'chevron-up' : 'chevron-down'} size={17} color={MUTED} />
-        </Pressable>
+        <View style={styles.composerCard}>
+          {photo ? (
+            <View style={styles.photoWrap}>
+              <Image source={{ uri: photo.uri }} style={styles.photoPreview} />
+              <View style={styles.photoActions}>
+                <Pressable onPress={() => void choosePhoto()}><Text style={styles.photoAction}>Change</Text></Pressable>
+                <Pressable onPress={() => { setPhoto(null); if (type === 'photo') setType('update'); }}><Text style={styles.removePhoto}>Remove</Text></Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          <TextInput
+            value={body}
+            onChangeText={setBody}
+            placeholder={placeholderFor(type)}
+            placeholderTextColor="#738078"
+            multiline
+            maxLength={4000}
+            autoFocus={type !== 'photo'}
+            style={styles.input}
+          />
+          <Text style={styles.counter}>{body.length}/4000</Text>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionRow}>
+          <Pressable
+            onPress={() => photo ? selectType('photo') : void choosePhoto()}
+            style={[styles.actionChip, type === 'photo' && styles.actionChipActive]}
+          >
+            <Ionicons name="image-outline" size={18} color={type === 'photo' ? '#101510' : '#D6DDD8'} />
+            <Text style={[styles.actionText, type === 'photo' && styles.actionTextActive]}>Photo</Text>
+          </Pressable>
+
+          <Pressable onPress={() => selectType('recommendation')} style={[styles.actionChip, type === 'recommendation' && styles.actionChipActive]}>
+            <Ionicons name="location-outline" size={18} color={type === 'recommendation' ? '#101510' : '#D6DDD8'} />
+            <Text style={[styles.actionText, type === 'recommendation' && styles.actionTextActive]}>Place</Text>
+          </Pressable>
+
+          <Pressable onPress={() => selectType('meetup')} style={[styles.actionChip, type === 'meetup' && styles.actionChipActive]}>
+            <Ionicons name="calendar-outline" size={18} color={type === 'meetup' ? '#101510' : '#D6DDD8'} />
+            <Text style={[styles.actionText, type === 'meetup' && styles.actionTextActive]}>Meetup</Text>
+          </Pressable>
+
+          <Pressable onPress={() => selectType('ask')} style={[styles.actionChip, type === 'ask' && styles.actionChipActive]}>
+            <Ionicons name="help-circle-outline" size={18} color={type === 'ask' ? '#101510' : '#D6DDD8'} />
+            <Text style={[styles.actionText, type === 'ask' && styles.actionTextActive]}>Ask</Text>
+          </Pressable>
+
+          <Pressable onPress={() => setMoreOpen((value) => !value)} style={[styles.actionChip, type === 'buddy' && styles.actionChipActive]}>
+            <Ionicons name="ellipsis-horizontal" size={18} color={type === 'buddy' ? '#101510' : '#D6DDD8'} />
+            <Text style={[styles.actionText, type === 'buddy' && styles.actionTextActive]}>More</Text>
+          </Pressable>
+        </ScrollView>
+
+        {moreOpen ? (
+          <Pressable onPress={() => selectType('buddy')} style={[styles.moreOption, type === 'buddy' && styles.moreOptionActive]}>
+            <View style={styles.moreIcon}>
+              <Ionicons name="people-outline" size={20} color={type === 'buddy' ? GOLD : '#C5CEC8'} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={[styles.moreTitle, type === 'buddy' && styles.moreTitleActive]}>Adventure Buddy</Text>
+              <Text style={styles.moreHelper}>Find people for a hike, paddle, camp, or trip.</Text>
+            </View>
+            {type === 'buddy' ? <Ionicons name="checkmark-circle" size={20} color={GOLD} /> : null}
+          </Pressable>
+        ) : null}
+
+        {type === 'meetup' ? (
+          <View style={styles.meetupNote}>
+            <Ionicons name="calendar-outline" size={18} color={GOLD} />
+            <Text style={styles.meetupNoteText}>Continue to add the date, location, capacity, and meetup details.</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.shareSection}>
+          <Text style={styles.shareLabel}>WHO CAN SEE THIS?</Text>
+          <Pressable style={styles.audiencePill} onPress={() => setAudienceOpen((value) => !value)}>
+            <View style={styles.audienceIcon}>
+              <Ionicons name={selectedAudience.icon as never} size={18} color={GOLD} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.audiencePillLabel}>Share with</Text>
+              <Text style={styles.audiencePillValue} numberOfLines={1}>{audienceName}</Text>
+            </View>
+            <Ionicons name={audienceOpen ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+          </Pressable>
+        </View>
 
         {audienceOpen ? (
           <View style={styles.audienceMenu}>
             {audiences.map((item) => (
               <Pressable key={item.value} onPress={() => changeAudience(item.value)} style={[styles.audienceOption, audience === item.value && styles.audienceOptionActive]}>
-                <View style={styles.audienceOptionIcon}><Ionicons name={item.icon as never} size={18} color={audience === item.value ? GOLD : MUTED} /></View>
-                <View style={styles.flex}><Text style={styles.optionTitle}>{item.label}</Text><Text style={styles.optionHelper}>{item.helper}</Text></View>
+                <View style={styles.audienceOptionIcon}>
+                  <Ionicons name={item.icon as never} size={18} color={audience === item.value ? GOLD : MUTED} />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={styles.optionTitle}>{item.label}</Text>
+                  <Text style={styles.optionHelper}>{item.helper}</Text>
+                </View>
                 {audience === item.value ? <Ionicons name="checkmark-circle" size={20} color={GOLD} /> : null}
               </Pressable>
             ))}
@@ -207,92 +305,6 @@ export default function CreateCommunityPostScreen() {
           </View>
         ) : null}
 
-        <View style={styles.typeSection}>
-          <Text style={styles.sectionTitle}>What do you want to share?</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
-            {commonTypes.map((value) => {
-              const item = postTypes.find((entry) => entry.value === value)!;
-              return (
-                <Pressable key={value} onPress={() => selectType(value)} style={[styles.typeChip, type === value && styles.typeChipActive]}>
-                  <Ionicons name={item.icon as never} size={17} color={type === value ? '#101510' : '#D6DDD8'} />
-                  <Text style={[styles.typeChipText, type === value && styles.typeChipTextActive]}>{item.label}</Text>
-                </Pressable>
-              );
-            })}
-            <Pressable onPress={() => setMoreOpen((value) => !value)} style={[styles.typeChip, moreTypes.includes(type) && styles.typeChipActive]}>
-              <Ionicons name="ellipsis-horizontal" size={17} color={moreTypes.includes(type) ? '#101510' : '#D6DDD8'} />
-              <Text style={[styles.typeChipText, moreTypes.includes(type) && styles.typeChipTextActive]}>More</Text>
-            </Pressable>
-          </ScrollView>
-          {moreOpen ? (
-            <View style={styles.moreRow}>
-              {moreTypes.map((value) => {
-                const item = postTypes.find((entry) => entry.value === value)!;
-                return (
-                  <Pressable key={value} onPress={() => selectType(value)} style={[styles.moreOption, type === value && styles.moreOptionActive]}>
-                    <Ionicons name={item.icon as never} size={20} color={type === value ? GOLD : '#C5CEC8'} />
-                    <View style={styles.flex}><Text style={[styles.moreTitle, type === value && styles.moreTitleActive]}>{item.label}</Text><Text style={styles.moreHelper}>{item.helper}</Text></View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.composerCard}>
-          <View style={styles.composerTop}>
-            <View style={styles.activeType}><Ionicons name={selected.icon as never} size={16} color={GOLD} /><Text style={styles.activeTypeText}>{selected.label}</Text></View>
-            {type !== 'meetup' ? <Text style={styles.counter}>{body.length}/4000</Text> : null}
-          </View>
-
-          {type === 'meetup' ? (
-            <View style={styles.meetupPrompt}>
-              <Ionicons name="calendar-outline" size={30} color={GOLD} />
-              <Text style={styles.meetupTitle}>Plan a meetup</Text>
-              <Text style={styles.guidance}>Continue to add the date, location, capacity, and meetup details.</Text>
-              <Pressable style={styles.continueButton} onPress={() => void submit()}><Text style={styles.continueButtonText}>Continue to Meetup</Text></Pressable>
-            </View>
-          ) : (
-            <>
-              {type === 'photo' || photo ? (
-                photo ? (
-                  <View style={styles.photoWrap}>
-                    <Image source={{ uri: photo.uri }} style={styles.photoPreview} />
-                    <View style={styles.photoActions}>
-                      <Pressable onPress={() => void choosePhoto()}><Text style={styles.photoAction}>Change</Text></Pressable>
-                      <Pressable onPress={() => setPhoto(null)}><Text style={styles.removePhoto}>Remove</Text></Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <Pressable style={styles.addPhoto} onPress={() => void choosePhoto()}>
-                    <Ionicons name="images-outline" size={28} color={GOLD} />
-                    <Text style={styles.addPhotoTitle}>Add photos</Text>
-                    <Text style={styles.addPhotoHelper}>Choose a photo from your library</Text>
-                  </Pressable>
-                )
-              ) : null}
-
-              <TextInput
-                value={body}
-                onChangeText={setBody}
-                placeholder={placeholderFor(type)}
-                placeholderTextColor="#738078"
-                multiline
-                maxLength={4000}
-                autoFocus={type !== 'photo'}
-                style={styles.input}
-              />
-
-              {type !== 'photo' && !photo ? (
-                <Pressable style={styles.attachPhoto} onPress={() => void choosePhoto()}>
-                  <Ionicons name="image-outline" size={18} color={GOLD} />
-                  <Text style={styles.attachPhotoText}>Add photo</Text>
-                </Pressable>
-              ) : null}
-            </>
-          )}
-        </View>
-
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
     </SafeAreaView>
@@ -301,8 +313,8 @@ export default function CreateCommunityPostScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: BG },
-  content: { padding: 18, paddingBottom: 48, gap: 12 },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  content: { padding: 18, paddingBottom: 52, gap: 12 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 4 },
   closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: CARD, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1 },
   eyebrow: { color: '#AA9461', fontSize: 10.5, fontWeight: '900', letterSpacing: 1.1 },
@@ -310,9 +322,37 @@ const styles = StyleSheet.create({
   postButton: { minWidth: 70, minHeight: 40, borderRadius: 12, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
   postButtonText: { color: '#101510', fontWeight: '900' },
   disabled: { opacity: 0.42 },
-  audiencePill: { alignSelf: 'flex-start', maxWidth: '100%', minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#18231D', borderWidth: 1, borderColor: '#344139', borderRadius: 99, paddingHorizontal: 12 },
-  audiencePillLabel: { color: MUTED, fontSize: 12, fontWeight: '700' },
-  audiencePillValue: { color: TEXT, fontSize: 12.5, fontWeight: '900', maxWidth: 180 },
+
+  composerCard: { minHeight: 250, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 15, gap: 10 },
+  input: { flex: 1, minHeight: 170, color: TEXT, fontSize: 19, lineHeight: 27, textAlignVertical: 'top', padding: 0 },
+  counter: { color: '#66736B', fontSize: 10.5, textAlign: 'right' },
+  photoWrap: { gap: 7 },
+  photoPreview: { width: '100%', height: 235, borderRadius: 13, backgroundColor: '#0C1411' },
+  photoActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18 },
+  photoAction: { color: GOLD, fontWeight: '800' },
+  removePhoto: { color: '#FFB4A9', fontWeight: '800' },
+
+  actionRow: { gap: 7, paddingRight: 18 },
+  actionChip: { minHeight: 40, borderWidth: 1, borderColor: '#344139', borderRadius: 99, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CARD },
+  actionChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  actionText: { color: '#D6DDD8', fontWeight: '800', fontSize: 12 },
+  actionTextActive: { color: '#101510' },
+
+  moreOption: { minHeight: 62, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 14, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  moreOptionActive: { borderColor: '#8A764A', backgroundColor: '#1B2721' },
+  moreIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#202D26', alignItems: 'center', justifyContent: 'center' },
+  moreTitle: { color: TEXT, fontWeight: '900', fontSize: 13.5 },
+  moreTitleActive: { color: GOLD },
+  moreHelper: { color: MUTED, fontSize: 10.5, marginTop: 2 },
+  meetupNote: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 13, backgroundColor: '#17231D', paddingHorizontal: 12, paddingVertical: 10 },
+  meetupNoteText: { flex: 1, color: MUTED, fontSize: 11.5, lineHeight: 17 },
+
+  shareSection: { marginTop: 4, gap: 7 },
+  shareLabel: { color: '#83775A', fontSize: 9.5, fontWeight: '900', letterSpacing: 1 },
+  audiencePill: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#18231D', borderWidth: 1, borderColor: '#344139', borderRadius: 14, paddingHorizontal: 11 },
+  audienceIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#202D26', alignItems: 'center', justifyContent: 'center' },
+  audiencePillLabel: { color: MUTED, fontSize: 10.5, fontWeight: '700' },
+  audiencePillValue: { color: TEXT, fontSize: 13.5, fontWeight: '900', marginTop: 1 },
   audienceMenu: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 15, padding: 8, gap: 4 },
   audienceOption: { minHeight: 52, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 8 },
   audienceOptionActive: { backgroundColor: '#1D2A23' },
@@ -326,39 +366,5 @@ const styles = StyleSheet.create({
   targetChipText: { color: '#CFD7D2', fontSize: 11.5, fontWeight: '700' },
   targetChipTextActive: { color: GOLD },
   emptyTarget: { width: '100%', color: MUTED, fontSize: 11.5, lineHeight: 17 },
-  typeSection: { gap: 8, marginTop: 2 },
-  sectionTitle: { color: TEXT, fontSize: 17, fontWeight: '900' },
-  typeRow: { gap: 7, paddingRight: 18 },
-  typeChip: { minHeight: 38, borderWidth: 1, borderColor: '#344139', borderRadius: 99, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CARD },
-  typeChipActive: { backgroundColor: GOLD, borderColor: GOLD },
-  typeChipText: { color: '#D6DDD8', fontWeight: '800', fontSize: 12 },
-  typeChipTextActive: { color: '#101510' },
-  moreRow: { gap: 7 },
-  moreOption: { minHeight: 58, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 13, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  moreOptionActive: { borderColor: '#8A764A', backgroundColor: '#1B2721' },
-  moreTitle: { color: TEXT, fontWeight: '900', fontSize: 13.5 },
-  moreTitleActive: { color: GOLD },
-  moreHelper: { color: MUTED, fontSize: 10.5, marginTop: 2 },
-  composerCard: { minHeight: 220, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 14, gap: 11 },
-  composerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  activeType: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  activeTypeText: { color: '#E4D3A2', fontWeight: '900', fontSize: 12 },
-  counter: { color: '#738078', fontSize: 10.5 },
-  input: { minHeight: 120, color: TEXT, fontSize: 17, lineHeight: 24, textAlignVertical: 'top' },
-  addPhoto: { minHeight: 130, borderWidth: 1, borderStyle: 'dashed', borderColor: '#5B654E', borderRadius: 13, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  addPhotoTitle: { color: '#E5D6AB', fontSize: 15, fontWeight: '900' },
-  addPhotoHelper: { color: MUTED, fontSize: 11.5 },
-  attachPhoto: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 99, backgroundColor: '#1D2A23', paddingHorizontal: 10, paddingVertical: 7 },
-  attachPhotoText: { color: '#E1D2A8', fontWeight: '800', fontSize: 11.5 },
-  photoWrap: { gap: 7 },
-  photoPreview: { width: '100%', height: 235, borderRadius: 13, backgroundColor: '#0C1411' },
-  photoActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18 },
-  photoAction: { color: GOLD, fontWeight: '800' },
-  removePhoto: { color: '#FFB4A9', fontWeight: '800' },
-  meetupPrompt: { minHeight: 190, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 20 },
-  meetupTitle: { color: TEXT, fontSize: 19, fontWeight: '900' },
-  guidance: { color: MUTED, fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  continueButton: { marginTop: 6, backgroundColor: GOLD, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 11 },
-  continueButtonText: { color: '#101510', fontWeight: '900' },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 11, borderRadius: 12, lineHeight: 18 },
 });

@@ -28,14 +28,22 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 
 function relativeTime(value: string) {
-  const diff = Date.now() - new Date(value).getTime();
-  const minutes = Math.max(1, Math.floor(diff / 60000));
-  if (minutes < 60) return `${minutes}m`;
+  const created = new Date(value);
+  const diff = Math.max(0, Date.now() - created.getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Now';
+  if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (days < 7) return `${days}d ago`;
+
+  const now = new Date();
+  return created.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(created.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
 }
 
 function postTypeLabel(post: CommunityPost) {
@@ -103,13 +111,19 @@ function CommunityPostCard({ post }: { post: CommunityPost }) {
   return (
     <Pressable style={({ pressed }) => [styles.feedCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.feedHeader}>
-        <View style={styles.feedAvatar}><Text style={styles.feedAvatarText}>{post.author_name.slice(0, 1).toUpperCase()}</Text></View>
+        <View style={styles.feedAvatar}>
+          {post.avatar_url ? (
+            <Image source={{ uri: post.avatar_url }} style={styles.feedAvatarImage} resizeMode="cover" />
+          ) : (
+            <Text style={styles.feedAvatarText}>{post.author_name.slice(0, 1).toUpperCase()}</Text>
+          )}
+        </View>
         <View style={styles.feedHeaderCopy}>
           <View style={styles.authorLine}>
             <Text style={styles.feedName} numberOfLines={1}>{post.author_name}</Text>
             <Ionicons name={audienceIcon(post) as never} size={13} color={MUTED} />
           </View>
-          <Text style={styles.feedMeta}>{relativeTime(post.created_at)} ago</Text>
+          <Text style={styles.feedMeta}>{relativeTime(post.created_at)}</Text>
         </View>
         {badge ? <View style={styles.postTypeBadge}><Text style={styles.postTypeBadgeText}>{badge}</Text></View> : null}
       </View>
@@ -326,7 +340,8 @@ const styles = StyleSheet.create({
   feedSectionHint: { color: '#7F8B83', fontSize: 11.5, lineHeight: 16 },
   feedCard: { backgroundColor: 'transparent', paddingHorizontal: 2, paddingVertical: 9, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#26332C' },
   feedHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  feedAvatar: { width: 41, height: 41, borderRadius: 21, borderWidth: 1, borderColor: '#738078', alignItems: 'center', justifyContent: 'center' },
+  feedAvatar: { width: 41, height: 41, borderRadius: 21, borderWidth: 1, borderColor: '#738078', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  feedAvatarImage: { width: '100%', height: '100%' },
   feedAvatarText: { color: TEXT, fontWeight: '900', fontSize: 15 },
   feedHeaderCopy: { flex: 1 },
   authorLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
