@@ -12,15 +12,41 @@ type WeatherSceneProps = {
   reduceMotion?: boolean;
 };
 
-function getLocalHour(localtime?: string) {
-  if (!localtime) return new Date().getHours();
-  const match = localtime.match(/\b(\d{1,2}):(\d{2})\b/);
-  const hour = Number(match?.[1]);
-  return Number.isFinite(hour) ? hour : new Date().getHours();
+function clockMinutes(value?: string) {
+  if (!value) return null;
+  const match = value.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const period = match[3]?.toUpperCase();
+  if (period === 'PM' && hour !== 12) hour += 12;
+  if (period === 'AM' && hour === 12) hour = 0;
+  return hour * 60 + minute;
 }
 
-function getDayPhase(localtime?: string): DayPhase {
-  const hour = getLocalHour(localtime);
+function getLocalMinutes(localtime?: string) {
+  const time = localtime?.split(' ')[1];
+  return clockMinutes(time) ?? new Date().getHours() * 60 + new Date().getMinutes();
+}
+
+function getDayPhase(weather?: WeatherForecast | null): DayPhase {
+  const now = getLocalMinutes(weather?.location.localtime);
+  const astro = weather?.forecast?.forecastday?.[0]?.astro;
+  const sunrise = clockMinutes(astro?.sunrise);
+  const sunset = clockMinutes(astro?.sunset);
+
+  if (sunrise != null && sunset != null) {
+    const dawnStart = sunrise - 45;
+    const dawnEnd = sunrise + 45;
+    const duskStart = sunset - 45;
+    const duskEnd = sunset + 45;
+    if (now >= dawnStart && now < dawnEnd) return 'dawn';
+    if (now >= dawnEnd && now < duskStart) return 'day';
+    if (now >= duskStart && now < duskEnd) return 'dusk';
+    return 'night';
+  }
+
+  const hour = Math.floor(now / 60);
   if (hour >= 5 && hour < 7) return 'dawn';
   if (hour >= 7 && hour < 18) return 'day';
   if (hour >= 18 && hour < 20) return 'dusk';
@@ -81,7 +107,7 @@ function Cloud({ style }: { style?: StyleProp<ViewStyle> }) {
 
 export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = false }: WeatherSceneProps) {
   const condition = weather?.current.condition.text;
-  const phase = getDayPhase(weather?.location.localtime);
+  const phase = getDayPhase(weather);
   const kind = getSceneKind(condition);
   const palette = getPalette(kind, phase);
 
@@ -169,6 +195,11 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
   const showSun = kind === 'clear' && !isNight;
   const showMoon = (kind === 'clear' || kind === 'cloudy') && isNight;
   const showClouds = kind === 'cloudy' || kind === 'rain' || kind === 'storm';
+  const sunPosition = phase === 'dawn'
+    ? styles.sunDawn
+    : phase === 'dusk'
+      ? styles.sunDusk
+      : styles.sunDay;
 
   return (
     <View style={[styles.scene, { backgroundColor: palette.background, borderColor: palette.border }]}>
@@ -190,7 +221,7 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
         )) : null}
 
         {showSun ? (
-          <Animated.View style={[styles.sunGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}>
+          <Animated.View style={[styles.sunGlow, sunPosition, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}>
             <View style={[styles.sun, { backgroundColor: palette.accent }]} />
           </Animated.View>
         ) : null}
@@ -273,9 +304,12 @@ const styles = StyleSheet.create({
   title: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 7 },
   muted: { color: '#DCE3DE', lineHeight: 19, marginTop: 3 },
   sunGlow: {
-    position: 'absolute', width: 106, height: 106, right: 9, top: -11, borderRadius: 53,
+    position: 'absolute', width: 106, height: 106, borderRadius: 53,
     backgroundColor: 'rgba(244,207,111,0.13)', alignItems: 'center', justifyContent: 'center',
   },
+  sunDay: { right: 9, top: -11 },
+  sunDawn: { right: 4, top: 55 },
+  sunDusk: { right: 4, top: 51 },
   sun: { width: 54, height: 54, borderRadius: 27 },
   moonGlow: {
     position: 'absolute', width: 104, height: 104, right: 4, top: -7, borderRadius: 52,
