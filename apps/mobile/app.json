@@ -54,7 +54,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "pathfinder-normalized-v1",
+      "nativeBuildAssetRevision": "all-native-pngs-normalized-v2",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
