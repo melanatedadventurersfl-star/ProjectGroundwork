@@ -6,22 +6,27 @@ import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-nativ
 
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
 import { PersistentBottomNav } from '../src/navigation/PersistentBottomNav';
+import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
 
 function AppShell() {
   const { session, isLoading } = useAuth();
   const pathname = usePathname();
-  const hideBottomNav =
+  const isAuthFlow =
     isLoading ||
     !session ||
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up');
+  const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
+  const hideBottomNav = isAuthFlow;
+  const hideTopNav = isAuthFlow || isTrailhead;
 
   return (
     <View style={styles.appShell}>
+      {hideTopNav ? null : <PersistentTopNav />}
       <View style={styles.stackArea}>
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false }}>
