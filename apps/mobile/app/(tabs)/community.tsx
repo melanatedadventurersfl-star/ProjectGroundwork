@@ -54,7 +54,7 @@ const audiences: { value: CommunityAudience; label: string; icon: string }[] = [
   { value: 'everyone', label: 'Everyone', icon: 'globe-outline' },
   { value: 'connections', label: 'My Connections', icon: 'people-outline' },
   { value: 'circle', label: 'A Circle', icon: 'people-circle-outline' },
-  { value: 'group', label: 'A Group', icon: 'albums-outline' },
+  { value: 'group', label: 'Groups', icon: 'albums-outline' },
 ];
 
 function relativeTime(value: string) {
@@ -208,7 +208,7 @@ export default function CommunityScreen() {
   const [composerType, setComposerType] = useState<CommunityPostType>('update');
   const [composerAudience, setComposerAudience] = useState<CommunityAudience>('everyone');
   const [composerCircleId, setComposerCircleId] = useState<string | null>(null);
-  const [composerGroupId, setComposerGroupId] = useState<string | null>(null);
+  const [composerGroupIds, setComposerGroupIds] = useState<string[]>([]);
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
@@ -244,8 +244,9 @@ export default function CommunityScreen() {
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
   const selectedAudience = audiences.find((item) => item.value === composerAudience) ?? audiences[0]!;
   const selectedCircle = circles.find((circle) => circle.id === composerCircleId) ?? null;
-  const selectedGroup = yourGroups.find((group) => group.id === composerGroupId) ?? null;
-  const targetMissing = (composerAudience === 'circle' && !composerCircleId) || (composerAudience === 'group' && !composerGroupId);
+  const selectedGroups = yourGroups.filter((group) => composerGroupIds.includes(group.id));
+  const selectedGroup = selectedGroups[0] ?? null;
+  const targetMissing = (composerAudience === 'circle' && !composerCircleId) || (composerAudience === 'group' && composerGroupIds.length === 0);
   const bodyMissing = composerType !== 'meetup' && !composerBody.trim() && !composerPhoto;
   const cannotPost = submitting || targetMissing || bodyMissing;
 
@@ -277,9 +278,13 @@ export default function CommunityScreen() {
   function changeAudience(next: CommunityAudience) {
     setComposerAudience(next);
     setComposerCircleId(null);
-    setComposerGroupId(null);
+    setComposerGroupIds([]);
     setAudienceOpen(false);
     setTargetOpen(next === 'circle' || next === 'group');
+  }
+
+  function toggleGroup(groupId: string) {
+    setComposerGroupIds((current) => current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]);
   }
 
   async function submitPost() {
@@ -290,7 +295,7 @@ export default function CommunityScreen() {
         params: {
           audience: composerAudience,
           circleId: composerCircleId ?? undefined,
-          groupId: composerGroupId ?? undefined,
+          groupId: composerGroupIds[0] ?? undefined,
         },
       });
       return;
@@ -302,19 +307,37 @@ export default function CommunityScreen() {
     let uploadedPath: string | null = null;
     try {
       if (composerPhoto) uploadedPath = await uploadCommunityPostImage(composerPhoto);
-      await createPost({
-        body: composerBody,
-        postType: composerType,
-        audience: composerAudience,
-        circleId: composerCircleId,
-        groupId: composerGroupId,
-        adventureId: selectedGroup?.adventure_id ?? null,
-        imagePath: uploadedPath,
-      });
+
+      if (composerAudience === 'group') {
+        for (const groupId of composerGroupIds) {
+          const group = yourGroups.find((item) => item.id === groupId);
+          await createPost({
+            body: composerBody,
+            postType: composerType,
+            audience: 'group',
+            groupId,
+            adventureId: group?.adventure_id ?? null,
+            imagePath: uploadedPath,
+          });
+        }
+      } else {
+        await createPost({
+          body: composerBody,
+          postType: composerType,
+          audience: composerAudience,
+          circleId: composerCircleId,
+          groupId: null,
+          adventureId: selectedGroup?.adventure_id ?? null,
+          imagePath: uploadedPath,
+        });
+      }
+
       setComposerBody('');
       setComposerPhoto(null);
       setComposerType('update');
+      setComposerGroupIds([]);
       setTypeOpen(false);
+      setTargetOpen(false);
       await load();
     } catch (caught) {
       if (uploadedPath) await removeCommunityPostImage(uploadedPath).catch(() => undefined);
@@ -341,10 +364,6 @@ export default function CommunityScreen() {
               <Ionicons name="location-outline" size={14} color={MUTED} />
               <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups{nearbyCount ? ` · ${nearbyCount} adventurer${nearbyCount === 1 ? '' : 's'} nearby` : ''}</Text>
             </View>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable onPress={() => router.push('/notifications')}><Ionicons name="notifications-outline" size={23} color={TEXT} /></Pressable>
-            <Pressable style={styles.profileButton} onPress={() => router.push('/member/profile')}><Ionicons name="person" size={17} color={TEXT} /></Pressable>
           </View>
         </View>
 
@@ -390,7 +409,7 @@ export default function CommunityScreen() {
                 <Pressable style={styles.compactControl} onPress={() => { setTypeOpen((value) => !value); setAudienceOpen(false); setTargetOpen(false); }}>
                   <Ionicons name={selectedType.icon as never} size={18} color={GOLD_MUTED} />
                   <Text style={styles.compactControlText}>{selectedType.label}</Text>
-                  <Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={15} color={MUTED} />
+                  <Ionicons name={typeOpen ? 'close-circle-outline' : 'options-outline'} size={17} color={GOLD_MUTED} />
                 </Pressable>
               </View>
 
@@ -434,25 +453,46 @@ export default function CommunityScreen() {
                 <View>
                   <Pressable style={styles.targetControl} onPress={() => setTargetOpen((value) => !value)}>
                     <Text style={styles.targetControlText}>
-                      {composerAudience === 'circle' ? selectedCircle?.name ?? 'Choose a Circle' : selectedGroup?.name ?? 'Choose a Group'}
+                      {composerAudience === 'circle'
+                        ? selectedCircle?.name ?? 'Choose a Circle'
+                        : composerGroupIds.length === 0
+                          ? 'Choose Groups'
+                          : composerGroupIds.length === 1
+                            ? selectedGroups[0]?.name ?? '1 group selected'
+                            : `${composerGroupIds.length} groups selected`}
                     </Text>
                     <Ionicons name={targetOpen ? 'chevron-up' : 'chevron-down'} size={15} color={MUTED} />
                   </Pressable>
                   {targetOpen ? (
                     <View style={styles.targetList}>
-                      {(composerAudience === 'circle' ? circles : yourGroups).map((target) => (
-                        <Pressable
-                          key={target.id}
-                          style={styles.dropdownRow}
-                          onPress={() => {
-                            if (composerAudience === 'circle') setComposerCircleId(target.id);
-                            else setComposerGroupId(target.id);
-                            setTargetOpen(false);
-                          }}
-                        >
-                          <Text style={styles.dropdownText}>{target.name}</Text>
+                      {(composerAudience === 'circle' ? circles : yourGroups).map((target) => {
+                        const selected = composerAudience === 'circle' ? composerCircleId === target.id : composerGroupIds.includes(target.id);
+                        return (
+                          <Pressable
+                            key={target.id}
+                            style={[styles.dropdownRow, selected && styles.dropdownRowSelected]}
+                            onPress={() => {
+                              if (composerAudience === 'circle') {
+                                setComposerCircleId(target.id);
+                                setTargetOpen(false);
+                              } else if (composerType === 'meetup') {
+                                setComposerGroupIds([target.id]);
+                                setTargetOpen(false);
+                              } else {
+                                toggleGroup(target.id);
+                              }
+                            }}
+                          >
+                            <Text style={[styles.dropdownText, selected && styles.dropdownTextActive]}>{target.name}</Text>
+                            {selected ? <Ionicons name="checkmark-circle" size={18} color={GOLD} /> : <Ionicons name="ellipse-outline" size={18} color={MUTED} />}
+                          </Pressable>
+                        );
+                      })}
+                      {composerAudience === 'group' && composerType !== 'meetup' ? (
+                        <Pressable style={styles.targetDone} onPress={() => setTargetOpen(false)}>
+                          <Text style={styles.targetDoneText}>Done{composerGroupIds.length ? ` · ${composerGroupIds.length} selected` : ''}</Text>
                         </Pressable>
-                      ))}
+                      ) : null}
                     </View>
                   ) : null}
                 </View>
@@ -540,6 +580,7 @@ const styles = StyleSheet.create({
   compactControlText: { color: '#D8DED9', fontSize: 11.5, fontWeight: '800' },
   dropdown: { borderWidth: 1, borderColor: '#38473E', borderRadius: 12, backgroundColor: '#121C17', overflow: 'hidden' },
   dropdownRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#344239' },
+  dropdownRowSelected: { backgroundColor: '#1B2A22' },
   dropdownText: { flex: 1, color: '#CED6D0', fontSize: 12.5, fontWeight: '700' },
   dropdownTextActive: { color: GOLD },
   composerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
@@ -551,6 +592,8 @@ const styles = StyleSheet.create({
   targetControl: { minHeight: 40, borderWidth: 1, borderColor: '#34423A', borderRadius: 11, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   targetControlText: { flex: 1, color: '#D8DED9', fontSize: 12, fontWeight: '800' },
   targetList: { marginTop: 6, borderWidth: 1, borderColor: '#38473E', borderRadius: 11, overflow: 'hidden' },
+  targetDone: { minHeight: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1D2B24' },
+  targetDoneText: { color: GOLD, fontSize: 12.5, fontWeight: '900' },
   meetupHint: { color: '#8F9B93', fontSize: 11, lineHeight: 15, paddingHorizontal: 2 },
 
   feedSectionHeader: { paddingHorizontal: 2, paddingTop: 2, gap: 1 },
