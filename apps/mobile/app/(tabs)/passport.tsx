@@ -244,20 +244,32 @@ export default function PassportScreen() {
 
             {mode === 'memories' ? (
               <View style={styles.sectionBlock}>
-                <View><Text style={styles.panelEyebrow}>PHOTOS & REFLECTIONS</Text><Text style={styles.sectionTitle}>My Scrapbook</Text></View>
+                <View style={styles.sectionHeadingRow}>
+                  <View><Text style={styles.panelEyebrow}>YOUR PERSONAL ARCHIVE</Text><Text style={styles.sectionTitle}>Memories</Text></View>
+                  <Text style={styles.muted}>{photos.length} saved</Text>
+                </View>
+                <Text style={styles.panelBody}>Moments from the adventures you’ve lived. Keep them private, share them with MA members, or make selected memories public.</Text>
+                <View style={styles.memoryActions}>
+                  <Pressable style={styles.memoryPrimary} onPress={() => router.push('/passport/memories')}>
+                    <Text style={styles.memoryPrimaryText}>Open Memories</Text>
+                  </Pressable>
+                  <Pressable style={styles.memorySecondary} onPress={() => router.push('/passport/memories/add')}>
+                    <Text style={styles.memorySecondaryText}>+ Add</Text>
+                  </Pressable>
+                </View>
                 {photos.length ? (
                   <View style={styles.grid}>
-                    {photos.map((photo) => (
-                      <View key={photo.id} style={styles.photoTile}>
+                    {photos.slice(0, 4).map((photo) => (
+                      <Pressable key={photo.id} style={styles.photoTile} onPress={() => router.push(`/passport/memories/photo/${photo.id}`)}>
                         <Image source={{ uri: photo.image_url }} style={styles.photo} />
                         <Text style={styles.photoText} numberOfLines={2}>{photo.caption || 'Adventure memory'}</Text>
-                      </View>
+                      </Pressable>
                     ))}
                   </View>
                 ) : (
                   <View style={styles.sectionPanel}>
-                    <Text style={styles.panelTitle}>Your scrapbook has open pages.</Text>
-                    <Text style={styles.panelBody}>Completed Adventures can become memory albums with photos and reflections.</Text>
+                    <Text style={styles.panelTitle}>{journey.length ? 'Your adventures already have stories.' : 'Your scrapbook has open pages.'}</Text>
+                    <Text style={styles.panelBody}>{journey.length ? 'Add a personal photo or save an event photo to start building your Memories.' : 'Complete an official MA Adventure and your Memories can begin.'}</Text>
                   </View>
                 )}
               </View>
@@ -345,7 +357,12 @@ const styles = StyleSheet.create({
   badgeEarned: { color: '#75837A', fontSize: 10, alignSelf: 'stretch', marginTop: 4 },
   medal: { width: 92, height: 92, borderRadius: 46, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
   medalGlyph: { color: '#F0D083', fontSize: 17, fontWeight: '900' },
-  photoTile: { width: '48%', backgroundColor: '#17211C', borderRadius: 14, overflow: 'hidden' },
+  memoryActions: { flexDirection: 'row', gap: 9 },
+  memoryPrimary: { flex: 1, backgroundColor: '#D7B45A', borderRadius: 13, padding: 13, alignItems: 'center' },
+  memoryPrimaryText: { color: '#142019', fontWeight: '900' },
+  memorySecondary: { minWidth: 78, borderWidth: 1, borderColor: '#D7B45A', borderRadius: 13, padding: 13, alignItems: 'center' },
+  memorySecondaryText: { color: '#F0D083', fontWeight: '900' },
+  photoTile: { width: '48%', backgroundColor: '#17211C', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#2A3931' },
   photo: { width: '100%', aspectRatio: 1 },
   photoText: { color: '#C7D0CA', fontSize: 12, padding: 9 },
   timeline: { flexDirection: 'row' },

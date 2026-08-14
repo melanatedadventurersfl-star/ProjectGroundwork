@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabase';
 
+const MEMORY_BUCKET = 'adventure-photos';
+const SIGNED_MEMORY_URL_TTL_SECONDS = 60 * 60;
+
 export type JourneyItem = {
   adventure_id: string;
   title: string;
@@ -34,76 +37,138 @@ export type MemberBadge = {
   earned_at: string;
 };
 
+export type MemoryVisibility = 'private' | 'group' | 'public';
+export type MemorySource = 'personal' | 'event_gallery';
+
 export type MemoryPhoto = {
   id: string;
-  profile_id: string;
+  profile_id?: string;
   adventure_id: string;
   image_url: string;
+  storage_path?: string | null;
   caption: string | null;
-  visibility: 'private' | 'group';
+  reflection: string | null;
+  visibility: MemoryVisibility;
+  featured: boolean;
+  source_kind: MemorySource;
+  source_photo_id: string | null;
+  media_type: 'photo' | 'video';
   moderation_status: 'pending' | 'approved' | 'rejected';
   created_at: string;
 };
 
-const PHOTO_BUCKET = 'adventure-photos';
-const memoryPhotoSelect = 'id, profile_id, adventure_id, image_url, caption, visibility, moderation_status, created_at';
+export type MemoryAlbum = JourneyItem & {
+  memories: MemoryPhoto[];
+  cover_url: string | null;
+};
+
+async function requireUserId() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) throw error ?? new Error('Sign in required.');
+  return data.user.id;
+}
 
 function isRemoteUrl(value: string) {
-  return /^https?:\/\//i.test(value);
+  return /^(https?:|data:|file:)/i.test(value);
 }
 
-async function withSignedPhotoUrls(rows: MemoryPhoto[]): Promise<MemoryPhoto[]> {
-  return Promise.all(rows.map(async (photo) => {
-    if (!photo.image_url || isRemoteUrl(photo.image_url)) return photo;
+async function hydrateMemoryPhoto(row: any): Promise<MemoryPhoto> {
+  const rawUrl = row.image_url as string;
+  if (!rawUrl || isRemoteUrl(rawUrl)) return row as MemoryPhoto;
 
-    const { data, error } = await supabase.storage
-      .from(PHOTO_BUCKET)
-      .createSignedUrl(photo.image_url, 60 * 60);
+  const { data, error } = await supabase.storage
+    .from(MEMORY_BUCKET)
+    .createSignedUrl(rawUrl, SIGNED_MEMORY_URL_TTL_SECONDS);
+  if (error) throw error;
 
-    if (error || !data?.signedUrl) return photo;
-    return { ...photo, image_url: data.signedUrl };
-  }));
-}
-
-function extensionFor(mimeType?: string | null, uri?: string) {
-  const byMime: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/heic': 'heic',
-    'image/heif': 'heif',
+  return {
+    ...(row as MemoryPhoto),
+    image_url: data.signedUrl,
+    storage_path: rawUrl,
   };
-  const mimeExtension = mimeType ? byMime[mimeType] : undefined;
-  if (mimeExtension) return mimeExtension;
-  const cleanUri = uri?.split('?').at(0) ?? '';
-  const guessed = cleanUri.split('.').pop()?.toLowerCase();
-  return guessed && /^[a-z0-9]{2,5}$/.test(guessed) ? guessed : 'jpg';
+}
+
+async function hydrateMemoryPhotos(rows: any[]): Promise<MemoryPhoto[]> {
+  return Promise.all(rows.map(hydrateMemoryPhoto));
+}
+
+function decodeBase64(base64: string): ArrayBuffer {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const clean = base64.replace(/^data:[^,]+,/, '').replace(/\s/g, '').replace(/=+$/, '');
+  const outputLength = Math.floor((clean.length * 6) / 8);
+  const bytes = new Uint8Array(outputLength);
+  let buffer = 0;
+  let bits = 0;
+  let offset = 0;
+  for (const char of clean) {
+    const value = alphabet.indexOf(char);
+    if (value < 0) continue;
+    buffer = (buffer << 6) | value;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes[offset++] = (buffer >> bits) & 0xff;
+    }
+  }
+  return bytes.buffer;
+}
+
+function extensionFor(mimeType?: string | null, fileName?: string | null) {
+  const fromName = fileName?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (fromName && fromName.length <= 5) return fromName;
+  if (mimeType === 'image/png') return 'png';
+  if (mimeType === 'image/heic' || mimeType === 'image/heif') return 'heic';
+  if (mimeType === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+async function invokePhotoModeration(photoId: string) {
+  const { error } = await supabase.functions.invoke('moderate-adventure-photo', { body: { photoId } });
+  if (error) console.warn('Photo uploaded but automated moderation could not run.', error);
+}
+
+export async function uploadMemoryImage(input: {
+  adventureId: string;
+  base64: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+}) {
+  const userId = await requireUserId();
+  const ext = extensionFor(input.mimeType, input.fileName);
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const path = `${userId}/${input.adventureId}/${fileName}`;
+  const { error } = await supabase.storage.from(MEMORY_BUCKET).upload(path, decodeBase64(input.base64), {
+    contentType: input.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+export async function removeUploadedMemoryImage(path: string) {
+  const userId = await requireUserId();
+  if (!path.startsWith(`${userId}/`)) return;
+  await supabase.storage.from(MEMORY_BUCKET).remove([path]);
 }
 
 export async function getJourney(): Promise<JourneyItem[]> {
-  const { data, error } = await supabase
-    .from('member_journey')
-    .select('*')
-    .order('experienced_at', { ascending: false });
+  const userId = await requireUserId();
+  const { data, error } = await supabase.from('member_journey').select('*').order('experienced_at', { ascending: false });
   if (error) throw error;
-
   const journey = (data ?? []) as Omit<JourneyItem, 'photo_count'>[];
   if (!journey.length) return [];
-
   const { data: photos, error: photoError } = await supabase
     .from('adventure_memory_photos')
     .select('adventure_id')
-    .eq('moderation_status', 'approved')
-    .eq('visibility', 'group')
+    .eq('profile_id', userId)
     .in('adventure_id', journey.map((item) => item.adventure_id));
   if (photoError) throw photoError;
-
   const counts = new Map<string, number>();
   for (const row of photos ?? []) {
     const adventureId = row.adventure_id as string;
     counts.set(adventureId, (counts.get(adventureId) ?? 0) + 1);
   }
-
   return journey.map((item) => ({ ...item, photo_count: counts.get(item.adventure_id) ?? 0 }));
 }
 
@@ -140,55 +205,99 @@ export async function getMemberBadges(): Promise<MemberBadge[]> {
   }));
 }
 
+const memoryFields = 'id, profile_id, adventure_id, image_url, caption, reflection, visibility, featured, source_kind, source_photo_id, media_type, moderation_status, created_at';
+
 export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('adventure_memory_photos')
-    .select(memoryPhotoSelect)
+    .select(memoryFields)
+    .eq('profile_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return withSignedPhotoUrls((data ?? []) as MemoryPhoto[]);
+  return hydrateMemoryPhotos(data ?? []);
+}
+
+export async function getOwnedMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .select(memoryFields)
+    .eq('profile_id', userId)
+    .eq('adventure_id', adventureId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return hydrateMemoryPhotos(data ?? []);
 }
 
 export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
   const { data, error } = await supabase
     .from('adventure_memory_photos')
-    .select(memoryPhotoSelect)
+    .select(memoryFields)
     .eq('adventure_id', adventureId)
     .eq('moderation_status', 'approved')
-    .eq('visibility', 'group')
+    .in('visibility', ['group', 'public'])
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return withSignedPhotoUrls((data ?? []) as MemoryPhoto[]);
+  return hydrateMemoryPhotos(data ?? []);
+}
+
+export const getEventGalleryPhotos = getMemoryPhotos;
+
+export async function getMemoryPhoto(memoryId: string): Promise<MemoryPhoto> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .select(memoryFields)
+    .eq('profile_id', userId)
+    .eq('id', memoryId)
+    .single();
+  if (error) throw error;
+  return hydrateMemoryPhoto(data);
+}
+
+export async function getMemoryAlbums(): Promise<MemoryAlbum[]> {
+  const [journey, memories] = await Promise.all([getJourney(), getAllMemoryPhotos()]);
+  const byAdventure = new Map<string, MemoryPhoto[]>();
+  for (const memory of memories) {
+    const current = byAdventure.get(memory.adventure_id) ?? [];
+    current.push(memory);
+    byAdventure.set(memory.adventure_id, current);
+  }
+  return journey
+    .map((item) => {
+      const albumMemories = byAdventure.get(item.adventure_id) ?? [];
+      return { ...item, memories: albumMemories, cover_url: albumMemories[0]?.image_url ?? null };
+    })
+    .filter((album) => album.memories.length > 0);
 }
 
 export async function addMemoryPhoto(input: {
   adventureId: string;
   imageUrl: string;
   caption?: string;
-  visibility: 'private' | 'group';
+  reflection?: string;
+  visibility?: MemoryVisibility;
+  sourceKind?: MemorySource;
+  sourcePhotoId?: string;
+  mediaType?: 'photo' | 'video';
 }) {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
-
+  const userId = await requireUserId();
   const { data, error } = await supabase.from('adventure_memory_photos').insert({
-    profile_id: userData.user.id,
+    profile_id: userId,
     adventure_id: input.adventureId,
     image_url: input.imageUrl.trim(),
     caption: input.caption?.trim() || null,
-    visibility: input.visibility,
+    reflection: input.reflection?.trim() || null,
+    visibility: input.visibility ?? 'private',
+    source_kind: input.sourceKind ?? 'personal',
+    source_photo_id: input.sourcePhotoId?.trim() || null,
+    media_type: input.mediaType ?? 'photo',
     moderation_status: 'pending',
-  }).select('id').single();
+  }).select(memoryFields).single();
   if (error) throw error;
-
-  const { error: moderationError } = await supabase.functions.invoke('moderate-adventure-photo', {
-    body: { photoId: data.id },
-  });
-
-  if (moderationError) {
-    console.warn('Photo uploaded but automated moderation could not run.', moderationError);
-  }
-
-  return data;
+  if ((input.sourceKind ?? 'personal') === 'personal') await invokePhotoModeration(data.id as string);
+  return hydrateMemoryPhoto(data);
 }
 
 export async function uploadMemoryPhoto(input: {
@@ -198,36 +307,80 @@ export async function uploadMemoryPhoto(input: {
   caption?: string;
   visibility: 'private' | 'group';
 }) {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
-
+  const userId = await requireUserId();
   const response = await fetch(input.localUri);
   if (!response.ok) throw new Error('Unable to read the selected photo.');
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Photos must be 10 MB or smaller.');
-
   const extension = extensionFor(input.mimeType, input.localUri);
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
-  const path = `${userData.user.id}/${input.adventureId}/${fileName}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from(PHOTO_BUCKET)
-    .upload(path, bytes, {
-      contentType: input.mimeType || 'image/jpeg',
-      upsert: false,
-    });
+  const path = `${userId}/${input.adventureId}/${fileName}`;
+  const { error: uploadError } = await supabase.storage.from(MEMORY_BUCKET).upload(path, bytes, {
+    contentType: input.mimeType || 'image/jpeg',
+    upsert: false,
+  });
   if (uploadError) throw uploadError;
-
   try {
-    return await addMemoryPhoto({
-      adventureId: input.adventureId,
-      imageUrl: path,
-      caption: input.caption,
-      visibility: input.visibility,
-    });
+    return await addMemoryPhoto({ adventureId: input.adventureId, imageUrl: path, caption: input.caption, visibility: input.visibility });
   } catch (error) {
-    await supabase.storage.from(PHOTO_BUCKET).remove([path]);
+    await supabase.storage.from(MEMORY_BUCKET).remove([path]);
     throw error;
+  }
+}
+
+export async function saveEventGalleryPhoto(input: {
+  adventureId: string;
+  imageUrl: string;
+  sourcePhotoId?: string;
+  caption?: string;
+}) {
+  return addMemoryPhoto({
+    adventureId: input.adventureId,
+    imageUrl: input.imageUrl,
+    sourcePhotoId: input.sourcePhotoId,
+    caption: input.caption,
+    sourceKind: 'event_gallery',
+    visibility: 'private',
+  });
+}
+
+export async function updateMemoryPhoto(memoryId: string, input: {
+  caption?: string;
+  reflection?: string;
+  visibility?: MemoryVisibility;
+  featured?: boolean;
+}) {
+  const userId = await requireUserId();
+  const patch: Record<string, unknown> = {};
+  if (input.caption !== undefined) patch.caption = input.caption.trim() || null;
+  if (input.reflection !== undefined) patch.reflection = input.reflection.trim() || null;
+  if (input.visibility !== undefined) patch.visibility = input.visibility;
+  if (input.featured !== undefined) patch.featured = input.featured;
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .update(patch)
+    .eq('profile_id', userId)
+    .eq('id', memoryId)
+    .select(memoryFields)
+    .single();
+  if (error) throw error;
+  if (input.visibility && input.visibility !== 'private' && data.moderation_status === 'pending') await invokePhotoModeration(data.id as string);
+  return hydrateMemoryPhoto(data);
+}
+
+export async function removeMemoryPhoto(memoryId: string) {
+  const userId = await requireUserId();
+  const { data: memory, error: readError } = await supabase
+    .from('adventure_memory_photos')
+    .select('image_url, source_kind')
+    .eq('profile_id', userId)
+    .eq('id', memoryId)
+    .single();
+  if (readError) throw readError;
+  const { error } = await supabase.from('adventure_memory_photos').delete().eq('profile_id', userId).eq('id', memoryId);
+  if (error) throw error;
+  if (memory.source_kind === 'personal' && memory.image_url && !isRemoteUrl(memory.image_url)) {
+    await supabase.storage.from(MEMORY_BUCKET).remove([memory.image_url]);
   }
 }
 
@@ -238,10 +391,9 @@ export async function saveReflection(input: {
   reflection: string;
   visibility: 'private' | 'community';
 }) {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
+  const userId = await requireUserId();
   const { error } = await supabase.from('adventure_reflections').upsert({
-    profile_id: userData.user.id,
+    profile_id: userId,
     adventure_id: input.adventureId,
     rating: input.rating,
     highlight: input.highlight.trim() || null,
