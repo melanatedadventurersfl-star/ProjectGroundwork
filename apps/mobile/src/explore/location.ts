@@ -28,7 +28,10 @@ export function resolveSearchCenter(search: string, fallbackCity?: string, fallb
   const normalized = normalize(search);
   if (normalized) {
     for (const [key, point] of Object.entries(CITY_POINTS)) {
-      const [city, state] = key.split(',');
+      const parts = key.split(',');
+      const city = parts[0];
+      const state = parts[1];
+      if (!city || !state) continue;
       if (normalized.includes(city) && (normalized.includes(state) || normalized.includes('fl'))) return point;
     }
   }
