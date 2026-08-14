@@ -7,6 +7,7 @@
     "scheme": "melanatedadventurers",
     "userInterfaceStyle": "automatic",
     "splash": {
+      "image": "./assets/ma-pathfinder-mark.png",
       "resizeMode": "contain",
       "backgroundColor": "#17211B"
     },
@@ -29,11 +30,16 @@
       "bundleIdentifier": "com.melanatedadventurers.app"
     },
     "android": {
-      "package": "com.melanatedadventurers.app"
+      "package": "com.melanatedadventurers.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/ma-pathfinder-mark.png",
+        "backgroundColor": "#0D0D0D"
+      }
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/ma-pathfinder-mark.png"
     },
     "extra": {
       "router": {},
