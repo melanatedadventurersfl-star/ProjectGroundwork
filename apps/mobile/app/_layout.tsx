@@ -1,12 +1,48 @@
 import * as Updates from 'expo-updates';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-native';
 
-import { AuthProvider } from '../src/auth/AuthProvider';
+import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
+import { PersistentBottomNav } from '../src/navigation/PersistentBottomNav';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
+
+function AppShell() {
+  const { session, isLoading } = useAuth();
+  const pathname = usePathname();
+  const hideBottomNav =
+    isLoading ||
+    !session ||
+    pathname === '/' ||
+    pathname.startsWith('/onboarding') ||
+    pathname.startsWith('/(auth)') ||
+    pathname.startsWith('/sign-in') ||
+    pathname.startsWith('/sign-up');
+
+  return (
+    <View style={styles.appShell}>
+      <View style={styles.stackArea}>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="adventures" />
+          <Stack.Screen name="checkout" />
+          <Stack.Screen name="readiness" />
+          <Stack.Screen name="notifications" />
+          <Stack.Screen name="passport" />
+          <Stack.Screen name="member" />
+          <Stack.Screen name="host" />
+        </Stack>
+      </View>
+      {hideBottomNav ? null : <PersistentBottomNav />}
+    </View>
+  );
+}
 
 export default function RootLayout() {
   const [applyingUpdate, setApplyingUpdate] = useState(false);
@@ -62,25 +98,14 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="adventures" />
-        <Stack.Screen name="checkout" />
-        <Stack.Screen name="readiness" />
-        <Stack.Screen name="notifications" />
-        <Stack.Screen name="passport" />
-        <Stack.Screen name="member" />
-        <Stack.Screen name="host" />
-      </Stack>
+      <AppShell />
     </AuthProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  appShell: { flex: 1, backgroundColor: '#0F1713' },
+  stackArea: { flex: 1 },
   updateScreen: {
     flex: 1,
     backgroundColor: '#0F1713',
