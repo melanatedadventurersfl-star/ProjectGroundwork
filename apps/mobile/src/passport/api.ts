@@ -27,6 +27,7 @@ export type PassportStamp = {
 
 export type MemberBadge = {
   badge_id: string;
+  code: string | null;
   title: string;
   description: string | null;
   icon_name: string | null;
@@ -88,12 +89,13 @@ export async function getPassportStamps(): Promise<PassportStamp[]> {
 export async function getMemberBadges(): Promise<MemberBadge[]> {
   const { data, error } = await supabase
     .from('member_badges')
-    .select('badge_id, earned_at, badges(title, description, icon_name, category)')
+    .select('badge_id, earned_at, badges(code, title, description, icon_name, category)')
     .order('earned_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row: any) => ({
     badge_id: row.badge_id,
     earned_at: row.earned_at,
+    code: row.badges?.code ?? null,
     title: row.badges?.title ?? 'Member badge',
     description: row.badges?.description ?? null,
     icon_name: row.badges?.icon_name ?? null,
