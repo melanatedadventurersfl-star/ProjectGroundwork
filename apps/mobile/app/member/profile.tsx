@@ -5,14 +5,15 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Swi
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, saveProfilePrivacy, uploadProfilePhoto } from '../../src/member/api';
-import { getJourney, getPassportStamps, type PassportStamp } from '../../src/passport/api';
+import { getJourney, getMemberBadges, getPassportStamps, type MemberBadge, type PassportStamp } from '../../src/passport/api';
+import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
 const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
-const privacy=[['profile_is_private','Private account'],['city_visible','Show city & state'],['badges_visible','Show stamps'],['adventures_visible','Show completed adventures'],['interests_visible','Show interests'],['trail_family_visible','Show Trail Family summary']] as const;
+const privacy=[['profile_is_private','Private account'],['city_visible','Show city & state'],['badges_visible','Show badges'],['adventures_visible','Show completed adventures'],['interests_visible','Show interests'],['trail_family_visible','Show Trail Family summary']] as const;
 type ProfileTab='journey'|'posts'|'photos'|'about';
 
 function formatDate(value?:string|null){
@@ -22,16 +23,24 @@ function formatDate(value?:string|null){
  return date.toLocaleDateString(undefined,{month:'short',day:'numeric',year:date.getFullYear()!==new Date().getFullYear()?'numeric':undefined});
 }
 
-function Stat({icon,value,label,last=false}:{icon:AppIconName;value:number;label:string;last?:boolean}){
- return <View style={[styles.statCell,last&&styles.statCellLast]}><AppIcon name={icon} color="#F5C341" size={18}/><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>;
+function Stat({icon,value,label,last=false,onPress}:{icon:AppIconName;value:number;label:string;last?:boolean;onPress:()=>void}){
+ return <Pressable accessibilityRole="button" accessibilityLabel={`View ${label}`} onPress={onPress} style={({pressed})=>[styles.statCell,last&&styles.statCellLast,pressed&&styles.statCellPressed]}><AppIcon name={icon} color="#F5C341" size={18}/><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></Pressable>;
 }
 
 function FeaturedStamp({stamp}:{stamp:PassportStamp}){
- return <View style={styles.favoriteCard}>
+ return <Pressable style={({pressed})=>[styles.favoriteCard,pressed&&styles.collectionCardPressed]} onPress={()=>stamp.adventure_id?router.push(`/passport/reflection/${stamp.adventure_id}`):router.push('/member/stamps')}>
   <View style={styles.favoriteArt}>{isLegacyStampCode(stamp.code)?<StampArt code={stamp.code} width={68}/>:<View style={styles.genericStamp}><AppIcon name="stamp" color="#F5C341" size={28}/></View>}</View>
   <Text style={styles.favoriteTitle} numberOfLines={2}>{stamp.title}</Text>
   <Text style={styles.favoriteMeta}>Earned</Text>
- </View>;
+ </Pressable>;
+}
+
+function FeaturedBadge({badge}:{badge:MemberBadge}){
+ return <Pressable style={({pressed})=>[styles.favoriteCard,pressed&&styles.collectionCardPressed]} onPress={()=>router.push('/member/badges')}>
+  <View style={styles.favoriteArt}>{hasBadgeArt(badge.title)?<BadgeArt title={badge.title} size={72}/>:<View style={styles.genericBadge}><AppIcon name="badge" color="#F5C341" size={30}/></View>}</View>
+  <Text style={styles.favoriteTitle} numberOfLines={2}>{badge.title}</Text>
+  <Text style={styles.favoriteMeta}>Achievement</Text>
+ </Pressable>;
 }
 
 function Avatar({url,name,size=76}:{url?:string|null;name?:string|null;size?:number}){
@@ -47,6 +56,7 @@ export default function ProfileScreen(){
  const [data,setData]=useState<any>(null);
  const [journey,setJourney]=useState<any[]>([]);
  const [stamps,setStamps]=useState<PassportStamp[]>([]);
+ const [badges,setBadges]=useState<MemberBadge[]>([]);
  const [loading,setLoading]=useState(true);
  const [saving,setSaving]=useState(false);
  const [photoBusy,setPhotoBusy]=useState(false);
@@ -62,8 +72,8 @@ export default function ProfileScreen(){
  async function load(){
   setLoading(true);
   try{
-   const [base,nextJourney,nextStamps]=await Promise.all([getMemberBasecamp(),getJourney(),getPassportStamps()]);
-   setData(base);setJourney(nextJourney);setStamps(nextStamps);
+   const [base,nextJourney,nextStamps,nextBadges]=await Promise.all([getMemberBasecamp(),getJourney(),getPassportStamps(),getMemberBadges()]);
+   setData(base);setJourney(nextJourney);setStamps(nextStamps);setBadges(nextBadges);
    const profile=base.profile??{};
    setName(profile.display_name??'');setUsername(profile.username??'');setBio(profile.bio??'');
    setState(profile.home_state??'FL');setCity(profile.home_city??'');setQuery(profile.home_city??'');
@@ -125,6 +135,7 @@ export default function ProfileScreen(){
  const location=[profile.home_city,profile.home_state].filter(Boolean).join(', ');
  const totalPhotos=journey.reduce((sum,item)=>sum+(Number(item.photo_count)||0),0);
  const featuredStamps=stamps.slice(0,3);
+ const featuredBadges=badges.slice(0,3);
  if(loading)return <SafeAreaView style={styles.center}><ActivityIndicator color="#F5C341"/></SafeAreaView>;
 
  if(editing)return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
@@ -171,14 +182,23 @@ export default function ProfileScreen(){
    <View style={styles.progressTrack}><View style={[styles.progressFill,{width:`${progress*100}%`}]}/></View>
    {nextRank?<Text style={styles.progressText}><Text style={styles.progressNumber}>{remaining}</Text> adventure{remaining===1?'':'s'} to <Text style={styles.progressNext}>{nextRank[0]}</Text></Text>:<Text style={styles.progressText}>Highest rank reached</Text>}
 
-   <View style={styles.statsCard}><Stat icon="adventure" value={journey.length} label="Adventures"/><Stat icon="stamp" value={stamps.length} label="Stamps"/><Stat icon="photos" value={totalPhotos} label="Photos"/><Stat icon="trail-family" value={data?.households?.length??0} label="Trail Family" last/></View>
+   <View style={styles.statsCard}>
+    <Stat icon="adventure" value={journey.length} label="Adventures" onPress={()=>router.push('/past-adventures')}/>
+    <Stat icon="stamp" value={stamps.length} label="Stamps" onPress={()=>router.push('/member/stamps')}/>
+    <Stat icon="badge" value={badges.length} label="Badges" onPress={()=>router.push('/member/badges')}/>
+    <Stat icon="photos" value={totalPhotos} label="Photos" onPress={()=>setTab('photos')}/>
+    <Stat icon="trail-family" value={data?.households?.length??0} label="Trail Family" onPress={()=>router.push('/member/trail-family')} last/>
+   </View>
   </View>
 
   <View style={styles.tabs}>{(['journey','posts','photos','about'] as ProfileTab[]).map(value=><Pressable key={value} onPress={()=>setTab(value)} style={styles.tab}><Text style={[styles.tabText,tab===value&&styles.tabTextActive]}>{value.charAt(0).toUpperCase()+value.slice(1)}</Text>{tab===value?<View style={styles.tabUnderline}/>:null}</Pressable>)}</View>
 
   {tab==='journey'?<>
-   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text></View>
+   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={()=>router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View>
    {featuredStamps.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredStamps.map(stamp=><FeaturedStamp key={stamp.stamp_id} stamp={stamp}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your earned stamps will live here</Text><Text style={styles.muted}>Complete official adventures to start building your collection.</Text></View>}
+
+   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Achievement Badges</Text><Pressable onPress={()=>router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable></View>
+   {featuredBadges.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredBadges.map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your achievement case is waiting</Text><Text style={styles.muted}>Milestone badges you earn will appear here alongside your stamps.</Text></View>}
 
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Adventure Journey</Text></View>
    {journey.length?<View style={styles.timeline}>{journey.map((item,index)=><Pressable key={item.adventure_id} style={styles.timelineRow} onPress={()=>router.push(`/passport/reflection/${item.adventure_id}`)}>
@@ -189,7 +209,7 @@ export default function ProfileScreen(){
 
   {tab==='posts'?<View style={styles.card}><Text style={styles.cardTitle}>Posts</Text><View style={styles.emptyInner}><Text style={styles.emptyTitle}>No posts yet</Text><Text style={styles.muted}>Share something from your next adventure.</Text></View></View>:null}
 
-  {tab==='photos'?<View style={styles.card}><Text style={styles.cardTitle}>Photos</Text><Text style={styles.muted}>Your photos stay organized around the adventures they came from.</Text>{journey.filter(item=>Number(item.photo_count)>0).map(item=><Pressable key={item.adventure_id} style={styles.listRow} onPress={()=>router.push(`/passport/reflection/${item.adventure_id}`)}><View><Text style={styles.listTitle}>{item.title}</Text><Text style={styles.muted}>{item.photo_count} photo{Number(item.photo_count)===1?'':'s'}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={22}/></Pressable>)}{totalPhotos===0?<View style={styles.emptyInner}><Text style={styles.emptyTitle}>No adventure photos yet</Text><Text style={styles.muted}>Photos added to memories will collect here automatically.</Text></View>:null}</View>:null}
+  {tab==='photos'?<View style={styles.card}><Text style={styles.cardTitle}>Photos</Text><Text style={styles.muted}>Your photos stay organized around the adventures they came from.</Text>{journey.filter(item=>Number(item.photo_count)>0).map(item=><Pressable key={item.adventure_id} style={styles.listRow} onPress={()=>router.push(`/passport/photos/${item.adventure_id}`)}><View><Text style={styles.listTitle}>{item.title}</Text><Text style={styles.muted}>{item.photo_count} photo{Number(item.photo_count)===1?'':'s'}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={22}/></Pressable>)}{totalPhotos===0?<View style={styles.emptyInner}><Text style={styles.emptyTitle}>No adventure photos yet</Text><Text style={styles.muted}>Photos added to memories will collect here automatically.</Text></View>:null}</View>:null}
 
   {tab==='about'?<View style={styles.card}><Text style={styles.cardTitle}>About</Text><Text style={styles.body}>{profile.bio||'Add a short bio to tell the community what kind of outside you love.'}</Text>{Array.isArray(profile.interests)&&profile.interests.length?<View style={styles.chips}>{profile.interests.map((interest:string)=><Text key={interest} style={styles.chip}>{interest}</Text>)}</View>:null}<Text style={styles.muted}>Joined {profile.created_at?new Date(profile.created_at).toLocaleDateString(undefined,{month:'long',year:'numeric'}):'recently'}</Text></View>:null}
  </ScrollView></SafeAreaView>;
@@ -200,10 +220,10 @@ const styles=StyleSheet.create({
  topBar:{minHeight:42,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},editPill:{flexDirection:'row',alignItems:'center',gap:7,backgroundColor:'#171D1B',borderWidth:1,borderColor:'#252E2A',borderRadius:999,paddingHorizontal:14,paddingVertical:9},editPillText:{color:'#F5C341',fontWeight:'800'},editBack:{flexDirection:'row',alignItems:'center',alignSelf:'flex-start'},editBackText:{color:'#F5C341',fontWeight:'800'},
  profileHeaderCard:{backgroundColor:'#111A17',borderWidth:1,borderColor:'#27332F',borderRadius:22,padding:16},identityRankRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},identityCluster:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:10},avatarWrap:{width:68,height:68,position:'relative',flexShrink:0},mainCameraBadge:{position:'absolute',right:-1,bottom:1,width:23,height:23,borderRadius:12,backgroundColor:'#F5C341',borderWidth:2,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},heroCopy:{flex:1,minWidth:0,gap:2},name:{fontSize:25,fontWeight:'900',lineHeight:28,color:'#F7F8F3',letterSpacing:-.45,flexShrink:1},handle:{color:'#F5C341',fontSize:14.5,fontWeight:'800',flexShrink:1},locationRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:2,minWidth:0},location:{color:'#AEB9B4',fontSize:13,flexShrink:1},rankIdentity:{width:104,flexShrink:0,alignItems:'center',justifyContent:'center',paddingLeft:9,borderLeftWidth:1,borderLeftColor:'rgba(93,113,103,.26)'},rankCompact:{width:'100%',color:'#F7F8F3',fontSize:11,fontWeight:'900',letterSpacing:.2,marginTop:3,textAlign:'center'},rankCount:{color:'#6FD3CF',fontSize:11,fontWeight:'800',marginTop:1},bioText:{color:'#D4DBD7',fontSize:14.5,lineHeight:20,marginTop:11},
  progressTrack:{height:7,borderRadius:99,backgroundColor:'#194B4B',overflow:'hidden',marginTop:10},progressFill:{height:'100%',backgroundColor:'#F5C341',borderRadius:99},progressText:{color:'#80CDC9',fontSize:11.5,marginTop:6},progressNumber:{color:'#F5C341',fontWeight:'900'},progressNext:{color:'#F5C341',fontWeight:'900'},
- statsCard:{flexDirection:'row',marginTop:12,paddingTop:12,borderTopWidth:1,borderTopColor:'#25322D'},statCell:{flex:1,alignItems:'center',paddingHorizontal:4,borderRightWidth:1,borderRightColor:'#29332F'},statCellLast:{borderRightWidth:0},statValue:{color:'#F7F8F3',fontSize:21,fontWeight:'900',marginTop:2},statLabel:{color:'#AAB5B0',fontSize:9.8,marginTop:1,textAlign:'center'},
+ statsCard:{flexDirection:'row',marginTop:12,paddingTop:12,borderTopWidth:1,borderTopColor:'#25322D'},statCell:{flex:1,alignItems:'center',paddingHorizontal:2,paddingVertical:3,borderRightWidth:1,borderRightColor:'#29332F'},statCellLast:{borderRightWidth:0},statCellPressed:{opacity:.55},statValue:{color:'#F7F8F3',fontSize:20,fontWeight:'900',marginTop:2},statLabel:{color:'#AAB5B0',fontSize:8.8,marginTop:1,textAlign:'center'},
  photoEditor:{flexDirection:'row',alignItems:'center',gap:14,backgroundColor:'#111A17',borderRadius:20,borderWidth:1,borderColor:'#28362E',padding:15},photoPressable:{width:84,height:84,borderRadius:42,position:'relative'},photoCopy:{flex:1,gap:5},photoAction:{color:'#F5C341',fontWeight:'900',marginTop:2},cameraBadge:{position:'absolute',right:-1,bottom:2,width:28,height:28,borderRadius:14,backgroundColor:'#F5C341',borderWidth:3,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},photoBusy:{position:'absolute',left:0,right:0,top:0,bottom:0,borderRadius:42,backgroundColor:'rgba(9,17,15,.68)',alignItems:'center',justifyContent:'center'},
  tabs:{flexDirection:'row',backgroundColor:'#121A18',borderRadius:17,borderWidth:1,borderColor:'#28322E',overflow:'hidden'},tab:{flex:1,alignItems:'center',paddingTop:12,paddingBottom:9,position:'relative'},tabText:{color:'#A8B2AD',fontSize:13,fontWeight:'800'},tabTextActive:{color:'#F5C341'},tabUnderline:{height:3,backgroundColor:'#F5C341',position:'absolute',bottom:0,left:18,right:18,borderRadius:4},
- sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:1},sectionTitle:{color:'#F7F8F3',fontSize:21,fontWeight:'900'},favoritesRow:{gap:10,paddingRight:8},favoriteCard:{width:128,minHeight:156,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#29342F',padding:11,alignItems:'center'},favoriteArt:{height:78,alignItems:'center',justifyContent:'center'},favoriteTitle:{color:'#F7F8F3',fontWeight:'900',fontSize:13,textAlign:'center',marginTop:4},favoriteMeta:{color:'#60C9C3',fontSize:11,marginTop:4},genericStamp:{width:64,height:64,borderRadius:18,borderWidth:2,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center',transform:[{rotate:'3deg'}]},
+ sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:1},sectionTitle:{color:'#F7F8F3',fontSize:21,fontWeight:'900'},sectionLink:{color:'#67CFC8',fontSize:12.5,fontWeight:'800'},favoritesRow:{gap:10,paddingRight:8},favoriteCard:{width:128,minHeight:156,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#29342F',padding:11,alignItems:'center'},collectionCardPressed:{opacity:.62},favoriteArt:{height:78,alignItems:'center',justifyContent:'center'},favoriteTitle:{color:'#F7F8F3',fontWeight:'900',fontSize:13,textAlign:'center',marginTop:4},favoriteMeta:{color:'#60C9C3',fontSize:11,marginTop:4},genericStamp:{width:64,height:64,borderRadius:18,borderWidth:2,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center',transform:[{rotate:'3deg'}]},genericBadge:{width:64,height:64,borderRadius:32,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},
  timeline:{gap:0},timelineRow:{flexDirection:'row'},timelineRail:{width:45,alignItems:'center'},completeDot:{width:32,height:32,borderRadius:16,alignItems:'center',justifyContent:'center',zIndex:2},timelineLine:{width:2,backgroundColor:'#39473F',flex:1,minHeight:82},journeyCard:{flex:1,minHeight:100,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28332F',marginBottom:10,padding:12,flexDirection:'row',alignItems:'center',gap:11},journeyBadge:{width:44,height:44,borderRadius:12,backgroundColor:'#16302A',alignItems:'center',justifyContent:'center'},journeyCopy:{flex:1},journeyTitle:{color:'#F7F8F3',fontSize:15.5,fontWeight:'900'},journeyMeta:{color:'#AAB6B0',fontSize:12.5,marginTop:3},journeyStatusRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:7},journeyStatus:{color:'#67CFC8',fontSize:11.5,fontWeight:'800'},journeyDot:{color:'#67CFC8',fontSize:12},
  card:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16,gap:10},cardTitle:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},empty:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16},emptyInner:{backgroundColor:'#0C1411',borderRadius:14,padding:15,marginTop:4},emptyTitle:{color:'#F7F8F3',fontWeight:'900'},muted:{color:'#96A39B',lineHeight:20},body:{color:'#C8D0CB',lineHeight:22},
  editTitle:{fontSize:27,fontWeight:'900',color:'#FFF8E8'},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},gold:{color:'#D7B45A',fontWeight:'800',marginTop:2},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},states:{gap:7},stateChip:{borderWidth:1,borderColor:'#435148',borderRadius:999,paddingHorizontal:11,paddingVertical:7},stateActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},stateText:{color:'#C6CEC8',fontWeight:'800'},stateTextActive:{color:'#17211C'},suggestion:{paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},suggestionTitle:{color:'#FFF8E8',fontWeight:'800'},primary:{backgroundColor:'#D7B45A',borderRadius:14,padding:14,alignItems:'center'},primaryText:{color:'#17211C',fontWeight:'900'},disabled:{opacity:.45},message:{color:'#E4D7B0',textAlign:'center'},privacyRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12,paddingTop:9,borderTopWidth:1,borderTopColor:'#26332C'},rowText:{color:'#FFF8E8',fontWeight:'700',flex:1},listRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},listTitle:{color:'#FFF8E8',fontWeight:'800'},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{color:'#F0D083',backgroundColor:'#26372D',borderRadius:999,paddingHorizontal:10,paddingVertical:6,fontSize:12,fontWeight:'700'}
