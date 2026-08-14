@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 const jsonHeaders = { "Content-Type": "application/json" };
 const MODEL = "omni-moderation-latest";
 const REVIEW_THRESHOLD = 0.35;
+const PHOTO_BUCKET = "adventure-photos";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -13,6 +14,10 @@ function maxCategoryScore(scores: Record<string, number> | undefined) {
   if (!scores) return 0;
   const values = Object.values(scores).filter((value) => Number.isFinite(value));
   return values.length ? Math.max(...values) : 0;
+}
+
+function isRemoteUrl(value: string) {
+  return /^https?:\/\//i.test(value);
 }
 
 Deno.serve(async (req: Request) => {
@@ -67,9 +72,30 @@ Deno.serve(async (req: Request) => {
       return json({ status: "pending", reason: "Automated moderation is not configured." }, 202);
     }
 
+    let moderationImageUrl = photo.image_url as string;
+    if (!isRemoteUrl(moderationImageUrl)) {
+      const { data: signed, error: signedError } = await adminClient.storage
+        .from(PHOTO_BUCKET)
+        .createSignedUrl(moderationImageUrl, 10 * 60);
+
+      if (signedError || !signed?.signedUrl) {
+        await adminClient
+          .from("adventure_memory_photos")
+          .update({
+            moderation_source: "ai",
+            moderation_model: MODEL,
+            moderation_reason: "Automated moderation could not access the stored photo; human review required.",
+          })
+          .eq("id", photo.id);
+        return json({ status: "pending", reason: "Photo could not be prepared for moderation." }, 202);
+      }
+
+      moderationImageUrl = signed.signedUrl;
+    }
+
     const input: Array<Record<string, unknown>> = [];
     if (photo.caption?.trim()) input.push({ type: "text", text: photo.caption.trim() });
-    input.push({ type: "image_url", image_url: { url: photo.image_url } });
+    input.push({ type: "image_url", image_url: { url: moderationImageUrl } });
 
     const upstream = await fetch("https://api.openai.com/v1/moderations", {
       method: "POST",
