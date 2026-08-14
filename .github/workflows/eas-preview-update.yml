@@ -8,6 +8,7 @@ on:
       - 'apps/mobile/app/**'
       - 'apps/mobile/src/**'
       - 'apps/mobile/assets/**'
+      - '.github/workflows/eas-preview-update.yml'
   workflow_dispatch:
 
 concurrency:
@@ -44,6 +45,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Use vector fallback for invalid Wet & Wild raster
+        run: |
+          sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
 
       - name: Verify Expo authentication
         run: |
