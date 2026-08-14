@@ -13,8 +13,8 @@ type CachedHttpResponse = {
   savedAt: number;
 };
 
-type FetchInput = Parameters<typeof fetch>[0];
-type FetchInit = Parameters<typeof fetch>[1];
+type FetchInput = RequestInfo | URL;
+type FetchInit = RequestInit | undefined;
 
 const networkFetch = globalThis.fetch.bind(globalThis);
 
