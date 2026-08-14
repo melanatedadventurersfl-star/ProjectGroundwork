@@ -1,8 +1,15 @@
 import { supabase } from '../lib/supabase';
 
+export type CommunityPostType = 'update' | 'photo' | 'ask' | 'meetup' | 'buddy' | 'recommendation';
+export type CommunityAudience = 'everyone' | 'connections' | 'circle' | 'group';
+
 export type CommunityPost = {
   id: string;
   group_id: string | null;
+  circle_id: string | null;
+  audience: CommunityAudience;
+  post_type: CommunityPostType;
+  metadata: Record<string, unknown>;
   adventure_id: string | null;
   author_id: string;
   author_name: string;
@@ -28,6 +35,24 @@ export type CommunityGroup = {
   is_member: boolean;
   member_count: number;
 };
+
+export type CreateCommunityPostInput = {
+  body: string;
+  postType?: CommunityPostType;
+  audience?: CommunityAudience;
+  adventureId?: string | null;
+  groupId?: string | null;
+  circleId?: string | null;
+  imagePath?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+async function currentUserId() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('You must be signed in.');
+  return userId;
+}
 
 export async function getGroups(): Promise<CommunityGroup[]> {
   const { data: sessionData } = await supabase.auth.getSession();
@@ -74,9 +99,7 @@ export async function getGroup(groupId: string): Promise<CommunityGroup> {
 }
 
 export async function joinGroup(groupId: string) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData.session?.user.id;
-  if (!userId) throw new Error('You must be signed in to join a group.');
+  const userId = await currentUserId();
 
   const { data: existing, error: lookupError } = await supabase
     .from('community_group_members')
@@ -94,15 +117,21 @@ export async function joinGroup(groupId: string) {
 }
 
 export async function leaveGroup(groupId: string) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData.session?.user.id;
-  if (!userId) throw new Error('You must be signed in to leave a group.');
+  const userId = await currentUserId();
   const { error } = await supabase
     .from('community_group_members')
     .delete()
     .eq('group_id', groupId)
     .eq('profile_id', userId);
   if (error) throw error;
+}
+
+async function signCommunityMedia(path: string | null) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const { data, error } = await supabase.storage.from('community-media').createSignedUrl(path, 60 * 60);
+  if (error) return null;
+  return data.signedUrl;
 }
 
 export async function getCommunityFeed(adventureId?: string, groupId?: string) {
@@ -115,26 +144,70 @@ export async function getCommunityFeed(adventureId?: string, groupId?: string) {
   if (groupId) query = query.eq('group_id', groupId);
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as CommunityPost[];
+
+  const rows = (data ?? []) as CommunityPost[];
+  return Promise.all(rows.map(async (post) => ({ ...post, image_url: await signCommunityMedia(post.image_url) })));
 }
 
-export async function createPost(body: string, adventureId?: string, groupId?: string) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData.session?.user.id;
-  if (!userId) throw new Error('You must be signed in to post.');
+export async function uploadCommunityPostImage(input: { uri: string; mimeType?: string | null }) {
+  const userId = await currentUserId();
+  const response = await fetch(input.uri);
+  const bytes = await response.arrayBuffer();
+  const mimeType = input.mimeType || 'image/jpeg';
+  const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extension}`;
+  const { error } = await supabase.storage.from('community-media').upload(path, bytes, {
+    contentType: mimeType,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+export async function removeCommunityPostImage(path: string) {
+  if (!path || /^https?:\/\//i.test(path)) return;
+  const { error } = await supabase.storage.from('community-media').remove([path]);
+  if (error) throw error;
+}
+
+export async function createPost(input: CreateCommunityPostInput): Promise<void>;
+export async function createPost(body: string, adventureId?: string, groupId?: string): Promise<void>;
+export async function createPost(inputOrBody: CreateCommunityPostInput | string, adventureId?: string, groupId?: string) {
+  const userId = await currentUserId();
+  const input: CreateCommunityPostInput = typeof inputOrBody === 'string'
+    ? {
+        body: inputOrBody,
+        adventureId: adventureId ?? null,
+        groupId: groupId ?? null,
+        audience: groupId ? 'group' : 'everyone',
+        postType: 'update',
+      }
+    : inputOrBody;
+
+  const body = input.body.trim() || (input.imagePath ? 'Shared a photo.' : '');
+  if (!body) throw new Error('Add something before posting.');
+
+  const audience = input.audience ?? (input.groupId ? 'group' : 'everyone');
+  if (audience === 'circle' && !input.circleId) throw new Error('Choose a Circle.');
+  if (audience === 'group' && !input.groupId) throw new Error('Choose a Group.');
+
   const { error } = await supabase.from('community_posts').insert({
     author_id: userId,
-    body: body.trim(),
-    adventure_id: adventureId ?? null,
-    group_id: groupId ?? null,
+    body,
+    post_type: input.postType ?? 'update',
+    audience,
+    adventure_id: input.adventureId ?? null,
+    group_id: audience === 'group' ? input.groupId ?? null : null,
+    circle_id: audience === 'circle' ? input.circleId ?? null : null,
+    image_url: input.imagePath ?? null,
+    metadata: input.metadata ?? {},
   });
   if (error) throw error;
 }
 
 export async function setReaction(postId: string, reaction: 'like' | 'love' | 'celebrate' | 'support' | null) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData.session?.user.id;
-  if (!userId) throw new Error('You must be signed in to react.');
+  const userId = await currentUserId();
   if (!reaction) {
     const { error } = await supabase.from('community_reactions').delete().eq('post_id', postId).eq('profile_id', userId);
     if (error) throw error;
@@ -145,9 +218,7 @@ export async function setReaction(postId: string, reaction: 'like' | 'love' | 'c
 }
 
 export async function reportPost(postId: string, reason: string, details?: string) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData.session?.user.id;
-  if (!userId) throw new Error('You must be signed in to report content.');
+  const userId = await currentUserId();
   const { error } = await supabase.from('community_reports').insert({ reporter_id: userId, post_id: postId, reason, details: details ?? null });
   if (error) throw error;
 }
