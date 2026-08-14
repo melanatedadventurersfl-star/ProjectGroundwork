@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { CommunityPost } from '../community/api';
+import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 
 type Props = {
@@ -14,9 +15,13 @@ type Props = {
   badgeCount: number;
 };
 
+function normalizeRank(rank: string): RankName {
+  return rank === 'Legacy Adventurer' ? 'Legacy Pathfinder' : rank as RankName;
+}
+
 function nextRank(journeyCount: number) {
   if (journeyCount >= 20) return null;
-  if (journeyCount >= 10) return { label: 'Legacy Adventurer', remaining: 20 - journeyCount };
+  if (journeyCount >= 10) return { label: 'Legacy Pathfinder', remaining: 20 - journeyCount };
   if (journeyCount >= 5) return { label: 'Summiteer', remaining: 10 - journeyCount };
   if (journeyCount >= 3) return { label: 'Wayfinder', remaining: 5 - journeyCount };
   if (journeyCount >= 1) return { label: 'Trailblazer', remaining: 3 - journeyCount };
@@ -33,6 +38,7 @@ export function TrailheadIdentityCards({
   badgeCount,
 }: Props) {
   const milestone = nextRank(journeyCount);
+  const displayRank = normalizeRank(currentRank);
   const communityHeadline = communityPost?.body || (groupCount ? `${groupCount} group${groupCount === 1 ? '' : 's'} joined` : 'Find your people');
   const communityMeta = communityPost
     ? `${communityPost.author_name} · ${communityPost.reaction_count + communityPost.comment_count} interactions`
@@ -78,14 +84,12 @@ export function TrailheadIdentityCards({
             <Text style={styles.eyebrow}>PASSPORT</Text>
           </View>
 
-          <View style={styles.passportStamp} pointerEvents="none">
-            <View style={styles.passportStampInner}>
-              <AppIcon name="passport" color="rgba(244,217,139,0.20)" size={38} />
-            </View>
+          <View style={styles.emblemBackdrop} pointerEvents="none">
+            <RankEmblem rank={displayRank} size={108} />
           </View>
 
           <View style={styles.cardBody}>
-            <Text style={styles.rank}>{currentRank}</Text>
+            <Text style={styles.rank}>{displayRank}</Text>
             {milestone ? (
               <Text style={styles.muted}>{milestone.remaining} adventure{milestone.remaining === 1 ? '' : 's'} to {milestone.label}</Text>
             ) : (
@@ -157,19 +161,19 @@ const styles = StyleSheet.create({
   card: { flex: 1, minHeight: 214, borderRadius: 22, borderWidth: 1, padding: 15, overflow: 'hidden' },
   communityCard: { backgroundColor: '#193329', borderColor: '#36584A' },
   passportCard: { backgroundColor: '#342B1D', borderColor: '#6B5934' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 3 },
   iconBadge: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   communityIconBadge: { backgroundColor: 'rgba(118,164,143,0.12)', borderColor: 'rgba(155,201,180,0.28)' },
   passportIconBadge: { backgroundColor: 'rgba(215,180,90,0.10)', borderColor: 'rgba(215,180,90,0.30)' },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   cardBody: { flex: 1, justifyContent: 'center', paddingTop: 8, zIndex: 2 },
   cardTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 21, fontWeight: '900' },
-  rank: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900' },
+  rank: { color: '#FFF8E8', fontSize: 21, lineHeight: 25, fontWeight: '900', maxWidth: '76%' },
   muted: { color: '#AEBAB3', lineHeight: 18, marginTop: 5, fontSize: 12 },
   passportCounts: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
   countText: { color: '#D8CCAD', fontSize: 11, fontWeight: '700' },
   countDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: '#8C7950' },
-  ctaRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 10, zIndex: 2 },
+  ctaRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 10, zIndex: 3 },
   cta: { color: '#D7B45A', fontWeight: '900', fontSize: 13 },
   communityMotif: { position: 'absolute', right: -8, bottom: 18, width: 96, height: 92, opacity: 0.45 },
   node: { position: 'absolute', width: 13, height: 13, borderRadius: 7, borderWidth: 2, borderColor: 'rgba(166,211,191,0.30)', backgroundColor: 'rgba(166,211,191,0.08)' },
@@ -179,8 +183,7 @@ const styles = StyleSheet.create({
   connection: { position: 'absolute', height: 1, backgroundColor: 'rgba(166,211,191,0.22)' },
   connectionOne: { width: 58, right: 19, top: 31, transform: [{ rotate: '-24deg' }] },
   connectionTwo: { width: 45, right: 26, bottom: 32, transform: [{ rotate: '36deg' }] },
-  passportStamp: { position: 'absolute', width: 94, height: 94, borderRadius: 47, borderWidth: 2, borderColor: 'rgba(215,180,90,0.11)', right: -14, bottom: 24, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-9deg' }] },
-  passportStampInner: { width: 70, height: 70, borderRadius: 35, borderWidth: 1, borderColor: 'rgba(215,180,90,0.10)', alignItems: 'center', justifyContent: 'center' },
+  emblemBackdrop: { position: 'absolute', right: -20, bottom: 22, opacity: 0.34, transform: [{ rotate: '-7deg' }] },
   journeyCard: { minHeight: 190, backgroundColor: '#18261F', borderRadius: 22, borderWidth: 1, borderColor: '#3A4D42', padding: 17, overflow: 'hidden' },
   journeyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   journeyTitle: { color: '#FFF8E8', fontSize: 20, lineHeight: 24, fontWeight: '900', marginTop: 7 },
