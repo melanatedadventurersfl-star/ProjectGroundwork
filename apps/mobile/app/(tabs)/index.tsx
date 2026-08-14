@@ -18,13 +18,11 @@ import { listAdventures } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { getGroups } from '../../src/community/api';
 import { supabase } from '../../src/lib/supabase';
-import { getJourney, getMemberBadges, getPassportStamps } from '../../src/passport/api';
 import { getAdventureQueue } from '../../src/readiness/api';
 import type { AdventureQueueItem } from '../../src/readiness/types';
-import { TrailheadIdentityCards } from '../../src/trailhead/TrailheadIdentityCards';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeather } from '../../src/weather/api';
-import { WeatherScene } from '../../src/weather/WeatherScene';
+import type { WeatherForecast } from '../../src/weather/api';
 
 const CARD_WIDTH = Dimensions.get('window').width - 36;
 
@@ -32,15 +30,6 @@ function greeting(hour: number) {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
-}
-
-function rankFor(count: number) {
-  if (count >= 20) return 'Legacy Adventurer';
-  if (count >= 10) return 'Summiteer';
-  if (count >= 5) return 'Wayfinder';
-  if (count >= 3) return 'Trailblazer';
-  if (count >= 1) return 'Pathfinder';
-  return 'Explorer';
 }
 
 function shortDate(value: string) {
@@ -64,10 +53,7 @@ export default function TrailheadScreen() {
   const [displayName, setDisplayName] = useState('Adventurer');
   const [location, setLocation] = useState('');
   const [groupCount, setGroupCount] = useState(0);
-  const [journey, setJourney] = useState<any[]>([]);
-  const [stampCount, setStampCount] = useState(0);
-  const [badgeCount, setBadgeCount] = useState(0);
-  const [weather, setWeather] = useState<any>(null);
+  const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,12 +87,9 @@ export default function TrailheadScreen() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
-      const [nextQueue, groups, nextJourney, stamps, badges, nextAdventures, profileResult] = await Promise.all([
+      const [nextQueue, groups, nextAdventures, profileResult] = await Promise.all([
         getAdventureQueue(),
         getGroups(),
-        getJourney(),
-        getPassportStamps(),
-        getMemberBadges(),
         listAdventures(),
         userId
           ? supabase.from('profiles').select('first_name,display_name,home_city,home_state').eq('id', userId).single()
@@ -116,9 +99,6 @@ export default function TrailheadScreen() {
 
       setQueue(nextQueue);
       setGroupCount(myGroupIds.length);
-      setJourney(nextJourney);
-      setStampCount(stamps.length);
-      setBadgeCount(badges.length);
       setAdventures(nextAdventures);
       const profile = profileResult.data as {
         first_name?: string | null;
@@ -179,8 +159,7 @@ export default function TrailheadScreen() {
     setActiveFeature(next);
   }
 
-  const statesVisited = new Set(journey.map((item: any) => item.state).filter(Boolean));
-  const currentRank = rankFor(journey.length);
+  const todayForecast = weather?.forecast.forecastday[0]?.day;
 
   return (
     <ScrollView
@@ -245,58 +224,68 @@ export default function TrailheadScreen() {
         </View>
       ) : null}
 
-      <Pressable onPress={() => router.push('/member/weather' as never)} accessibilityRole="button" accessibilityLabel="Open weather details">
-        <WeatherScene weather={weather} fallbackLocation={location} reduceMotion={reduceMotion} />
-      </Pressable>
+      <View style={styles.utilityRow}>
+        <Pressable
+          style={[styles.utilityCard, styles.weatherCard]}
+          onPress={() => router.push('/member/weather' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Open weather details"
+        >
+          <Text style={styles.utilityEyebrow}>WEATHER</Text>
+          <Text style={styles.weatherTemp}>{weather ? `${Math.round(weather.current.temp_f)}°` : '—'}</Text>
+          <Text style={styles.utilityTitle} numberOfLines={2}>{weather?.current.condition.text || 'Check the forecast'}</Text>
+          <Text style={styles.utilityMeta} numberOfLines={1}>
+            {todayForecast ? `H ${Math.round(todayForecast.maxtemp_f)}°  L ${Math.round(todayForecast.mintemp_f)}°` : location || 'Your local weather'}
+          </Text>
+        </Pressable>
 
-      {nextReservation ? (
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Your Next Move</Text>
-            <Pressable onPress={() => router.push('/member/trips')}><Text style={styles.linkBare}>Manage</Text></Pressable>
-          </View>
+        {nextReservation ? (
           <Pressable
+            style={styles.utilityCard}
             accessibilityRole="button"
             accessibilityLabel={`Get ready for ${nextReservation.title}`}
             onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: nextReservation.order_id } })}
           >
             <ImageBackground
               source={nextReservationAdventure?.hero_image_url ? { uri: nextReservationAdventure.hero_image_url } : undefined}
-              style={styles.nextMoveCard}
-              imageStyle={styles.nextMoveImage}
+              style={styles.utilityImage}
+              imageStyle={styles.utilityImageRadius}
             >
-              <View style={styles.nextMoveShade} />
-              <View style={styles.nextMoveTopRow}>
-                <View style={styles.countdownPill}>
-                  <Text style={styles.countdownText}>{countdown(nextReservation.starts_at)}</Text>
-                </View>
-                <View style={styles.readyPill}>
-                  <Text style={styles.readyText}>{Math.round(nextReservation.readiness_score)}% ready</Text>
-                </View>
-              </View>
-              <View style={styles.nextMoveBody}>
-                <Text style={styles.eyebrow}>YOUR NEXT ADVENTURE</Text>
-                <Text style={styles.nextMoveHeadline}>You’re headed to {nextReservation.city} next.</Text>
-                <Text style={styles.nextMoveTitle}>{nextReservation.title}</Text>
-                <Text style={styles.nextMoveMeta}>{shortDate(nextReservation.starts_at)} · {nextReservation.city}, {nextReservation.state}</Text>
-                <View style={styles.nextMoveFooter}>
-                  <Text style={styles.link}>Get Ready →</Text>
-                  {queue.length > 1 ? <Text style={styles.moreBookings}>+{queue.length - 1} more booked</Text> : null}
-                </View>
+              <View style={styles.utilityShade} />
+              <View style={styles.utilityImageBody}>
+                <Text style={styles.utilityEyebrow}>NEXT ADVENTURE</Text>
+                <Text style={styles.countdownSmall}>{countdown(nextReservation.starts_at)}</Text>
+                <Text style={styles.utilityTitle} numberOfLines={2}>{nextReservation.title}</Text>
+                <Text style={styles.utilityMeta} numberOfLines={1}>{nextReservation.city}, {nextReservation.state}</Text>
               </View>
             </ImageBackground>
           </Pressable>
-        </View>
-      ) : null}
+        ) : (
+          <Pressable style={styles.utilityCard} onPress={() => router.push('/(tabs)/explore')}>
+            <Text style={styles.utilityEyebrow}>NEXT ADVENTURE</Text>
+            <Text style={styles.utilityTitle}>Your next trail is waiting.</Text>
+            <Text style={styles.utilityMeta}>Explore upcoming adventures</Text>
+            <Text style={styles.link}>Find one →</Text>
+          </Pressable>
+        )}
+      </View>
 
-      <TrailheadIdentityCards
-        groupCount={groupCount}
-        currentRank={currentRank}
-        journeyCount={journey.length}
-        stateCount={statesVisited.size}
-        stampCount={stampCount}
-        badgeCount={badgeCount}
-      />
+      <Pressable style={styles.campfireCard} onPress={() => router.push('/(tabs)/community')} accessibilityRole="button">
+        <View style={styles.campfireTopRow}>
+          <View>
+            <Text style={styles.utilityEyebrow}>COMMUNITY</Text>
+            <Text style={styles.campfireTitle}>Around the Campfire</Text>
+          </View>
+          <View style={styles.campfireBadge}>
+            <Text style={styles.campfireBadgeText}>{groupCount} {groupCount === 1 ? 'crew' : 'crews'}</Text>
+          </View>
+        </View>
+        <Text style={styles.campfireCopy}>See what the community is sharing, join the conversation, and catch up with your crews.</Text>
+        <View style={styles.campfireFooter}>
+          <Text style={styles.campfirePrompt}>What’s happening on the trail?</Text>
+          <Text style={styles.linkBare}>Open Campfire →</Text>
+        </View>
+      </Pressable>
 
       <View style={styles.section}>
         <View style={styles.sectionRow}>
@@ -333,7 +322,7 @@ const styles = StyleSheet.create({
   count: { color: '#7F8C84', fontSize: 12 },
   hero: { height: 300, justifyContent: 'flex-end', backgroundColor: '#26372D', borderRadius: 24, overflow: 'hidden' },
   heroRadius: { borderRadius: 24 },
-  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,12,9,0.48)' },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,12,9,0.48)' },
   heroBody: { padding: 20, gap: 6 },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   heroTitle: { color: '#FFF8E8', fontSize: 28, lineHeight: 31, fontWeight: '900' },
@@ -342,20 +331,26 @@ const styles = StyleSheet.create({
   linkBare: { color: '#D7B45A', fontWeight: '900' },
   muted: { color: '#A7B1AA', lineHeight: 19, marginTop: 3 },
   horizontalGap: { gap: 12, paddingRight: 8 },
-  nextMoveCard: { height: 230, borderRadius: 22, overflow: 'hidden', backgroundColor: '#25342C', justifyContent: 'space-between' },
-  nextMoveImage: { borderRadius: 22 },
-  nextMoveShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(6,11,8,0.57)' },
-  nextMoveTopRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, zIndex: 2 },
-  countdownPill: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6, backgroundColor: '#D7B45A' },
-  countdownText: { color: '#17211C', fontSize: 11, fontWeight: '900' },
-  readyPill: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6, backgroundColor: 'rgba(15,23,19,0.76)', borderWidth: 1, borderColor: 'rgba(246,244,238,0.24)' },
-  readyText: { color: '#FFF8E8', fontSize: 11, fontWeight: '800' },
-  nextMoveBody: { padding: 18, paddingTop: 8, zIndex: 2 },
-  nextMoveHeadline: { color: '#FFF8E8', fontSize: 23, lineHeight: 27, fontWeight: '900', marginTop: 5 },
-  nextMoveTitle: { color: '#E7EAE7', fontSize: 14, lineHeight: 18, fontWeight: '800', marginTop: 5 },
-  nextMoveMeta: { color: '#C9D1CC', marginTop: 3, fontSize: 12 },
-  nextMoveFooter: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  moreBookings: { color: '#B8C1BB', fontSize: 11, fontWeight: '700', marginBottom: 1 },
+  utilityRow: { flexDirection: 'row', gap: 12 },
+  utilityCard: { flex: 1, minHeight: 164, borderRadius: 20, borderWidth: 1, borderColor: '#324239', backgroundColor: '#17211C', padding: 16, overflow: 'hidden', justifyContent: 'flex-end' },
+  weatherCard: { backgroundColor: '#1A2821' },
+  utilityEyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  weatherTemp: { color: '#FFF8E8', fontSize: 38, lineHeight: 42, fontWeight: '900', marginTop: 8 },
+  utilityTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 20, fontWeight: '900', marginTop: 7 },
+  utilityMeta: { color: '#AFC0B6', fontSize: 11, lineHeight: 15, marginTop: 5 },
+  utilityImage: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
+  utilityImageRadius: { borderRadius: 20 },
+  utilityShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,12,9,0.58)' },
+  utilityImageBody: { padding: 16, zIndex: 2 },
+  countdownSmall: { alignSelf: 'flex-start', backgroundColor: '#D7B45A', color: '#17211C', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '900', marginTop: 8 },
+  campfireCard: { borderRadius: 24, padding: 20, backgroundColor: '#1B2A22', borderWidth: 1, borderColor: '#3D5146', gap: 16 },
+  campfireTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 },
+  campfireTitle: { color: '#FFF8E8', fontSize: 26, lineHeight: 30, fontWeight: '900', marginTop: 4 },
+  campfireBadge: { borderRadius: 999, backgroundColor: '#263A30', paddingHorizontal: 10, paddingVertical: 6 },
+  campfireBadgeText: { color: '#D8E2DC', fontSize: 11, fontWeight: '800' },
+  campfireCopy: { color: '#C4CEC8', fontSize: 14, lineHeight: 20 },
+  campfireFooter: { borderTopWidth: 1, borderTopColor: '#34463C', paddingTop: 14, gap: 7 },
+  campfirePrompt: { color: '#FFF8E8', fontSize: 15, fontWeight: '800' },
   upcomingCard: { width: 180 },
   thumbnail: { height: 118, backgroundColor: '#26372D', borderRadius: 17 },
   thumbnailRadius: { borderRadius: 17 },
