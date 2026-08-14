@@ -16,6 +16,14 @@ async function profileId() {
   return data.user.id;
 }
 
+function avatarPathFromUrl(url?: string | null) {
+  if (!url) return null;
+  const marker = '/profile-avatars/';
+  const index = url.indexOf(marker);
+  if (index < 0) return null;
+  return decodeURIComponent(url.slice(index + marker.length).split('?')[0]);
+}
+
 export async function getMemberBasecamp() {
   const id = await profileId();
   const [profile, settings, household, tickets, support] = await Promise.all([
@@ -42,6 +50,47 @@ export async function saveProfileDetails(values: { display_name: string; usernam
     if (error.code === '23505') throw new Error('That username is already taken.');
     throw error;
   }
+}
+
+export async function uploadProfilePhoto(input: { uri: string; mimeType?: string | null }) {
+  const id = await profileId();
+  const { data: current, error: currentError } = await supabase.from('profiles').select('avatar_url').eq('id', id).single();
+  if (currentError) throw currentError;
+
+  const response = await fetch(input.uri);
+  const bytes = await response.arrayBuffer();
+  const mimeType = input.mimeType || 'image/jpeg';
+  const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+  const path = `${id}/avatar-${Date.now()}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, bytes, {
+    contentType: mimeType,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+
+  const { data: publicData } = supabase.storage.from('profile-avatars').getPublicUrl(path);
+  const avatarUrl = `${publicData.publicUrl}?v=${Date.now()}`;
+  const { error: profileError } = await supabase.from('profiles').update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() }).eq('id', id);
+  if (profileError) {
+    await supabase.storage.from('profile-avatars').remove([path]);
+    throw profileError;
+  }
+
+  const oldPath = avatarPathFromUrl(current.avatar_url);
+  if (oldPath && oldPath !== path) await supabase.storage.from('profile-avatars').remove([oldPath]);
+  return avatarUrl;
+}
+
+export async function removeProfilePhoto() {
+  const id = await profileId();
+  const { data: current, error: currentError } = await supabase.from('profiles').select('avatar_url').eq('id', id).single();
+  if (currentError) throw currentError;
+  const { error } = await supabase.from('profiles').update({ avatar_url: null, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw error;
+  const oldPath = avatarPathFromUrl(current.avatar_url);
+  if (oldPath) await supabase.storage.from('profile-avatars').remove([oldPath]);
 }
 
 export async function saveProfilePrivacy(values: Record<string, boolean>) {
