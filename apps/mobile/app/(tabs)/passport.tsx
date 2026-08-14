@@ -75,6 +75,10 @@ export default function PassportScreen() {
   }
 
   const data = mode === 'journey' ? journey : [];
+  const featuredMemory = photos[0] ?? null;
+  const featuredAdventure = featuredMemory
+    ? journey.find((item) => item.adventure_id === featuredMemory.adventure_id) ?? null
+    : null;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -244,32 +248,59 @@ export default function PassportScreen() {
 
             {mode === 'memories' ? (
               <View style={styles.sectionBlock}>
-                <View style={styles.sectionHeadingRow}>
-                  <View><Text style={styles.panelEyebrow}>YOUR PERSONAL ARCHIVE</Text><Text style={styles.sectionTitle}>Memories</Text></View>
-                  <Text style={styles.muted}>{photos.length} saved</Text>
-                </View>
-                <Text style={styles.panelBody}>Moments from the adventures you’ve lived. Keep them private, share them with MA members, or make selected memories public.</Text>
-                <View style={styles.memoryActions}>
-                  <Pressable style={styles.memoryPrimary} onPress={() => router.push('/passport/memories')}>
-                    <Text style={styles.memoryPrimaryText}>Open Memories</Text>
-                  </Pressable>
-                  <Pressable style={styles.memorySecondary} onPress={() => router.push('/passport/memories/add')}>
-                    <Text style={styles.memorySecondaryText}>+ Add</Text>
-                  </Pressable>
-                </View>
-                {photos.length ? (
-                  <View style={styles.grid}>
-                    {photos.slice(0, 4).map((photo) => (
-                      <Pressable key={photo.id} style={styles.photoTile} onPress={() => router.push(`/passport/memories/photo/${photo.id}`)}>
-                        <Image source={{ uri: photo.image_url }} style={styles.photo} />
-                        <Text style={styles.photoText} numberOfLines={2}>{photo.caption || 'Adventure memory'}</Text>
-                      </Pressable>
-                    ))}
+                <View style={styles.memoryHeadingRow}>
+                  <View style={styles.memoryHeadingCopy}>
+                    <Text style={styles.panelEyebrow}>YOUR PERSONAL ARCHIVE</Text>
+                    <Text style={styles.sectionTitle}>Memories</Text>
                   </View>
+                  <View style={styles.memoryCountChip}>
+                    <Text style={styles.memoryCountText}>{photos.length} SAVED</Text>
+                  </View>
+                </View>
+                <Text style={styles.memoryIntro}>The moments you chose to keep.</Text>
+
+                {featuredMemory ? (
+                  <>
+                    <Pressable style={styles.memoryHeroCard} onPress={() => router.push(`/passport/memories/photo/${featuredMemory.id}`)}>
+                      <Image source={{ uri: featuredMemory.image_url }} style={styles.memoryHeroImage} />
+                      <View style={styles.memoryHeroShade} />
+                      <View style={styles.memoryHeroTopRow}>
+                        <View style={styles.memoryHeroBadge}>
+                          <Text style={styles.memoryHeroBadgeText}>LATEST MEMORY</Text>
+                        </View>
+                      </View>
+                      <View style={styles.memoryHeroCopy}>
+                        <Text style={styles.memoryHeroTitle} numberOfLines={2}>{featuredMemory.caption || featuredAdventure?.title || 'Adventure memory'}</Text>
+                        <Text style={styles.memoryHeroMeta} numberOfLines={1}>
+                          {featuredAdventure
+                            ? `${new Date(featuredAdventure.experienced_at || featuredAdventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ${featuredAdventure.city}, ${featuredAdventure.state}`
+                            : 'Saved to your Passport'}
+                        </Text>
+                        {featuredMemory.caption && featuredAdventure ? (
+                          <Text style={styles.memoryHeroAdventure} numberOfLines={1}>{featuredAdventure.title}</Text>
+                        ) : null}
+                      </View>
+                      <View style={styles.memoryHeroArrow}><Text style={styles.memoryHeroArrowText}>→</Text></View>
+                    </Pressable>
+
+                    <View style={styles.memoryFooterActions}>
+                      <Pressable style={styles.memoryAddButton} onPress={() => router.push('/passport/memories/add')}>
+                        <Text style={styles.memoryAddButtonText}>+ Add Memory</Text>
+                      </Pressable>
+                      <Pressable style={styles.memoryViewAll} onPress={() => router.push('/passport/memories')}>
+                        <Text style={styles.memoryViewAllText}>View All Memories →</Text>
+                      </Pressable>
+                    </View>
+                  </>
                 ) : (
                   <View style={styles.sectionPanel}>
                     <Text style={styles.panelTitle}>{journey.length ? 'Your adventures already have stories.' : 'Your scrapbook has open pages.'}</Text>
                     <Text style={styles.panelBody}>{journey.length ? 'Add a personal photo or save an event photo to start building your Memories.' : 'Complete an official MA Adventure and your Memories can begin.'}</Text>
+                    {journey.length ? (
+                      <Pressable style={styles.memoryEmptyAction} onPress={() => router.push('/passport/memories/add')}>
+                        <Text style={styles.memoryEmptyActionText}>+ Add your first memory</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 )}
               </View>
@@ -357,14 +388,30 @@ const styles = StyleSheet.create({
   badgeEarned: { color: '#75837A', fontSize: 10, alignSelf: 'stretch', marginTop: 4 },
   medal: { width: 92, height: 92, borderRadius: 46, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
   medalGlyph: { color: '#F0D083', fontSize: 17, fontWeight: '900' },
-  memoryActions: { flexDirection: 'row', gap: 9 },
-  memoryPrimary: { flex: 1, backgroundColor: '#D7B45A', borderRadius: 13, padding: 13, alignItems: 'center' },
-  memoryPrimaryText: { color: '#142019', fontWeight: '900' },
-  memorySecondary: { minWidth: 78, borderWidth: 1, borderColor: '#D7B45A', borderRadius: 13, padding: 13, alignItems: 'center' },
-  memorySecondaryText: { color: '#F0D083', fontWeight: '900' },
-  photoTile: { width: '48%', backgroundColor: '#17211C', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#2A3931' },
-  photo: { width: '100%', aspectRatio: 1 },
-  photoText: { color: '#C7D0CA', fontSize: 12, padding: 9 },
+  memoryHeadingRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  memoryHeadingCopy: { flex: 1 },
+  memoryCountChip: { borderWidth: 1, borderColor: 'rgba(215,180,90,0.42)', backgroundColor: 'rgba(215,180,90,0.08)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  memoryCountText: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
+  memoryIntro: { color: '#9AA79F', fontSize: 14, lineHeight: 19 },
+  memoryHeroCard: { minHeight: 300, borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: '#405346', backgroundColor: '#17211C', position: 'relative' },
+  memoryHeroImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: '100%', height: '100%' },
+  memoryHeroShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(7,12,9,0.34)' },
+  memoryHeroTopRow: { position: 'absolute', left: 14, right: 14, top: 14, flexDirection: 'row', justifyContent: 'space-between' },
+  memoryHeroBadge: { backgroundColor: 'rgba(15,23,19,0.78)', borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,248,232,0.18)', paddingHorizontal: 9, paddingVertical: 6 },
+  memoryHeroBadgeText: { color: '#FFF1C4', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
+  memoryHeroCopy: { marginTop: 'auto', padding: 18, paddingRight: 54, backgroundColor: 'rgba(9,14,11,0.58)' },
+  memoryHeroTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 27, fontWeight: '900' },
+  memoryHeroMeta: { color: '#E3E9E5', fontSize: 11, marginTop: 5 },
+  memoryHeroAdventure: { color: '#E6C76D', fontSize: 11, fontWeight: '900', marginTop: 6 },
+  memoryHeroArrow: { position: 'absolute', right: 16, bottom: 18, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(215,180,90,0.94)', alignItems: 'center', justifyContent: 'center' },
+  memoryHeroArrowText: { color: '#142019', fontSize: 18, lineHeight: 20, fontWeight: '900' },
+  memoryFooterActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 2 },
+  memoryAddButton: { borderWidth: 1, borderColor: '#D7B45A', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
+  memoryAddButtonText: { color: '#F0D083', fontSize: 12, fontWeight: '900' },
+  memoryViewAll: { flex: 1, alignItems: 'flex-end', paddingVertical: 10 },
+  memoryViewAllText: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' },
+  memoryEmptyAction: { marginTop: 14, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#D7B45A', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
+  memoryEmptyActionText: { color: '#F0D083', fontWeight: '900', fontSize: 12 },
   timeline: { flexDirection: 'row' },
   rail: { width: 26, alignItems: 'center' },
   timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#D7B45A', marginTop: 20 },
