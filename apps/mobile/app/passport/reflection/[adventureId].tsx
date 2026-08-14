@@ -142,6 +142,18 @@ export default function StampDetailScreen() {
           {earnedDate ? <Text style={styles.earnedDate}>{earnedDate}</Text> : null}
         </View>
 
+        <Pressable
+          style={styles.addPhotoCard}
+          onPress={() => adventureId && router.push(`/passport/photos/${adventureId}`)}
+        >
+          <View style={styles.addPhotoIcon}><Text style={styles.addPhotoPlus}>＋</Text></View>
+          <View style={styles.addPhotoCopy}>
+            <Text style={styles.addPhotoTitle}>Add Photos</Text>
+            <Text style={styles.addPhotoBody}>Choose from your library or take a photo. Shared photos are reviewed before joining the Event Gallery.</Text>
+          </View>
+          <Text style={styles.addPhotoArrow}>›</Text>
+        </Pressable>
+
         <View style={styles.section}>
           <View style={styles.sectionHeading}>
             <View>
@@ -268,6 +280,13 @@ const styles = StyleSheet.create({
   earnedTitle: { color: '#FFF8E8', fontSize: 12, fontWeight: '900', letterSpacing: 0.7 },
   earnedBody: { color: '#A6B0AA', fontSize: 12, marginTop: 3 },
   earnedDate: { color: '#D7B45A', fontSize: 11, fontWeight: '800' },
+  addPhotoCard: { backgroundColor: '#17231D', borderWidth: 1, borderColor: '#D7B45A', borderRadius: 18, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  addPhotoIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
+  addPhotoPlus: { color: '#17211C', fontSize: 25, fontWeight: '900', lineHeight: 27 },
+  addPhotoCopy: { flex: 1, gap: 3 },
+  addPhotoTitle: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' },
+  addPhotoBody: { color: '#95A198', fontSize: 12, lineHeight: 17 },
+  addPhotoArrow: { color: '#D7B45A', fontSize: 30, fontWeight: '300' },
   section: { gap: 13 },
   sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
