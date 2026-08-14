@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { WeatherForecast } from './api';
 
@@ -59,17 +59,17 @@ function getPalette(kind: SceneKind, phase: DayPhase) {
 }
 
 const STAR_POSITIONS = [
-  { left: '58%', top: 18, size: 3 },
-  { left: '68%', top: 38, size: 2 },
-  { left: '78%', top: 16, size: 4 },
-  { left: '88%', top: 48, size: 2 },
-  { left: '72%', top: 76, size: 3 },
-  { left: '92%', top: 88, size: 3 },
-] as const;
+  { left: '58%' as const, top: 18, size: 3 },
+  { left: '68%' as const, top: 38, size: 2 },
+  { left: '78%' as const, top: 16, size: 4 },
+  { left: '88%' as const, top: 48, size: 2 },
+  { left: '72%' as const, top: 76, size: 3 },
+  { left: '92%' as const, top: 88, size: 3 },
+];
 
 const RAIN_DROPS = [18, 42, 68, 94, 122, 150, 178, 204];
 
-function Cloud({ style }: { style?: object }) {
+function Cloud({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.cloud, style]}>
       <View style={[styles.cloudBubble, styles.cloudBubbleOne]} />
@@ -91,13 +91,16 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
   const [flash] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
-    if (reduceMotion) {
-      drift.setValue(0);
-      pulse.setValue(0);
-      rain.setValue(0);
-      flash.setValue(0);
-      return;
-    }
+    drift.stopAnimation();
+    pulse.stopAnimation();
+    rain.stopAnimation();
+    flash.stopAnimation();
+    drift.setValue(0);
+    pulse.setValue(0);
+    rain.setValue(0);
+    flash.setValue(0);
+
+    if (reduceMotion) return;
 
     const animations: Animated.CompositeAnimation[] = [];
 
@@ -105,7 +108,7 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
       animations.push(Animated.loop(Animated.timing(drift, {
         toValue: 1,
         duration: 18000,
-        easing: Easing.inOut(Easing.linear),
+        easing: Easing.linear,
         useNativeDriver: true,
       })));
     }
@@ -145,29 +148,25 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
   const glowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 0.75] });
   const glowScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.05] });
 
-  const locationLabel = weather
-    ? `${weather.location.name}, ${weather.location.region}`
-    : fallbackLocation || 'Set your location';
-
-  const detailLabel = weather
-    ? `${weather.current.condition.text} · Feels ${Math.round(weather.current.feelslike_f)}°`
-    : 'Open Weather & Location';
-
   const timeLabel = useMemo(() => {
     const localtime = weather?.location.localtime;
-    if (!localtime) return null;
-    const time = localtime.split(' ')[1];
+    const time = localtime?.split(' ')[1];
     if (!time) return null;
     const [hoursText, minutes = '00'] = time.split(':');
     const hours = Number(hoursText);
     if (!Number.isFinite(hours)) return null;
-    const suffix = hours >= 12 ? 'PM' : 'AM';
-    const displayHour = hours % 12 || 12;
-    return `${displayHour}:${minutes} ${suffix}`;
+    return `${hours % 12 || 12}:${minutes} ${hours >= 12 ? 'PM' : 'AM'}`;
   }, [weather?.location.localtime]);
 
+  const locationLabel = weather
+    ? `${weather.location.name}, ${weather.location.region}`
+    : fallbackLocation || 'Set your location';
+  const detailLabel = weather
+    ? `${weather.current.condition.text} · Feels ${Math.round(weather.current.feelslike_f)}°`
+    : 'Open Weather & Location';
+
   const isNight = phase === 'night';
-  const showSun = kind === 'clear' && phase !== 'night';
+  const showSun = kind === 'clear' && !isNight;
   const showMoon = (kind === 'clear' || kind === 'cloudy') && isNight;
   const showClouds = kind === 'cloudy' || kind === 'rain' || kind === 'storm';
 
@@ -179,7 +178,13 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
             key={`${star.left}-${star.top}`}
             style={[
               styles.star,
-              { left: star.left, top: star.top, width: star.size, height: star.size, opacity: index % 2 ? 0.42 : glowOpacity },
+              {
+                left: star.left,
+                top: star.top,
+                width: star.size,
+                height: star.size,
+                opacity: index % 2 ? 0.42 : glowOpacity,
+              },
             ]}
           />
         )) : null}
@@ -228,7 +233,7 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
           </View>
         ) : null}
 
-        {kind === 'storm' ? <Animated.View style={[StyleSheet.absoluteFillObject, styles.flash, { opacity: flash }]} /> : null}
+        {kind === 'storm' ? <Animated.View style={[styles.fill, styles.flash, { opacity: flash }]} /> : null}
       </View>
 
       <View style={styles.content}>
@@ -246,6 +251,7 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
 }
 
 const styles = StyleSheet.create({
+  fill: StyleSheet.absoluteFill,
   scene: {
     minHeight: 128,
     borderRadius: 20,
@@ -254,175 +260,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sky: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   content: {
     padding: 16,
     maxWidth: '84%',
     zIndex: 4,
   },
-  eyebrowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  eyebrow: {
-    color: '#D7B45A',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  time: {
-    color: 'rgba(255,248,232,0.64)',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  title: {
-    color: '#FFF8E8',
-    fontSize: 18,
-    fontWeight: '900',
-    marginTop: 7,
-  },
-  muted: {
-    color: '#DCE3DE',
-    lineHeight: 19,
-    marginTop: 3,
-  },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  time: { color: 'rgba(255,248,232,0.64)', fontSize: 10, fontWeight: '800' },
+  title: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 7 },
+  muted: { color: '#DCE3DE', lineHeight: 19, marginTop: 3 },
   sunGlow: {
-    position: 'absolute',
-    width: 106,
-    height: 106,
-    right: 9,
-    top: -11,
-    borderRadius: 53,
-    backgroundColor: 'rgba(244,207,111,0.13)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', width: 106, height: 106, right: 9, top: -11, borderRadius: 53,
+    backgroundColor: 'rgba(244,207,111,0.13)', alignItems: 'center', justifyContent: 'center',
   },
-  sun: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-  },
+  sun: { width: 54, height: 54, borderRadius: 27 },
   moonGlow: {
-    position: 'absolute',
-    width: 104,
-    height: 104,
-    right: 4,
-    top: -7,
-    borderRadius: 52,
-    backgroundColor: 'rgba(210,225,240,0.09)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', width: 104, height: 104, right: 4, top: -7, borderRadius: 52,
+    backgroundColor: 'rgba(210,225,240,0.09)', alignItems: 'center', justifyContent: 'center',
   },
-  moon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#E8E4CF',
-  },
-  moonCutout: {
-    position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    right: 17,
-    top: 18,
-  },
-  star: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: '#F4F0DC',
-  },
-  cloudLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  moon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#E8E4CF' },
+  moonCutout: { position: 'absolute', width: 48, height: 48, borderRadius: 24, right: 17, top: 18 },
+  star: { position: 'absolute', borderRadius: 999, backgroundColor: '#F4F0DC' },
+  cloudLayer: { ...StyleSheet.absoluteFill },
   cloud: {
-    position: 'absolute',
-    width: 104,
-    height: 46,
-    borderRadius: 24,
+    position: 'absolute', width: 104, height: 46, borderRadius: 24,
     backgroundColor: 'rgba(225,234,237,0.17)',
   },
-  cloudOne: {
-    right: 8,
-    top: 13,
-  },
-  cloudTwo: {
-    right: -22,
-    top: 67,
-    transform: [{ scale: 0.78 }],
-  },
-  cloudBubble: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(225,234,237,0.17)',
-  },
-  cloudBubbleOne: {
-    width: 42,
-    height: 42,
-    left: 14,
-    top: -16,
-  },
-  cloudBubbleTwo: {
-    width: 50,
-    height: 50,
-    left: 42,
-    top: -21,
-  },
-  cloudBubbleThree: {
-    width: 35,
-    height: 35,
-    right: 2,
-    top: -7,
-  },
-  rainLayer: {
-    ...StyleSheet.absoluteFillObject,
-    right: 0,
-    left: undefined,
-    width: 228,
-  },
+  cloudOne: { right: 8, top: 13 },
+  cloudTwo: { right: -22, top: 67, transform: [{ scale: 0.78 }] },
+  cloudBubble: { position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(225,234,237,0.17)' },
+  cloudBubbleOne: { width: 42, height: 42, left: 14, top: -16 },
+  cloudBubbleTwo: { width: 50, height: 50, left: 42, top: -21 },
+  cloudBubbleThree: { width: 35, height: 35, right: 2, top: -7 },
+  rainLayer: { ...StyleSheet.absoluteFill, right: 0, left: undefined, width: 228 },
   rainDrop: {
-    position: 'absolute',
-    width: 2,
-    height: 22,
-    borderRadius: 1,
-    backgroundColor: 'rgba(181,213,224,0.34)',
-    transform: [{ rotate: '14deg' }],
+    position: 'absolute', width: 2, height: 22, borderRadius: 1,
+    backgroundColor: 'rgba(181,213,224,0.34)', transform: [{ rotate: '14deg' }],
   },
-  fogLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  fogLayer: { ...StyleSheet.absoluteFill },
   fogBand: {
-    position: 'absolute',
-    right: -22,
-    top: 25,
-    width: 240,
-    height: 18,
-    borderRadius: 12,
+    position: 'absolute', right: -22, top: 25, width: 240, height: 18, borderRadius: 12,
     backgroundColor: 'rgba(230,235,232,0.11)',
   },
-  fogBandTwo: {
-    top: 58,
-    right: -55,
-    width: 270,
-  },
-  fogBandThree: {
-    top: 92,
-    right: -8,
-    width: 210,
-  },
-  snowLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  fogBandTwo: { top: 58, right: -55, width: 270 },
+  fogBandThree: { top: 92, right: -8, width: 210 },
+  snowLayer: { ...StyleSheet.absoluteFill },
   snowFlake: {
-    position: 'absolute',
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+    position: 'absolute', width: 5, height: 5, borderRadius: 3,
     backgroundColor: 'rgba(244,249,251,0.74)',
   },
-  flash: {
-    backgroundColor: 'rgba(232,238,255,0.22)',
-  },
+  flash: { backgroundColor: 'rgba(232,238,255,0.22)' },
 });
