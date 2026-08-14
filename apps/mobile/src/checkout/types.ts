@@ -7,6 +7,8 @@ export type TicketType = {
   capacity: number | null;
   min_per_order: number;
   max_per_order: number;
+  /** Number of individual admissions included in one unit of this ticket type. */
+  admissions_per_unit?: number;
 };
 
 export type AdventureAddon = {
