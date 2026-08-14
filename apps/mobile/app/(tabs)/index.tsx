@@ -61,7 +61,7 @@ function countdown(value: string) {
 export default function TrailheadScreen() {
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
-  const [firstName, setFirstName] = useState('Adventurer');
+  const [displayName, setDisplayName] = useState('Adventurer');
   const [location, setLocation] = useState('');
   const [groupCount, setGroupCount] = useState(0);
   const [journey, setJourney] = useState<any[]>([]);
@@ -126,7 +126,7 @@ export default function TrailheadScreen() {
         home_city?: string | null;
         home_state?: string | null;
       } | null;
-      setFirstName(profile?.first_name || profile?.display_name?.split(' ')[0] || 'Adventurer');
+      setDisplayName(profile?.display_name?.trim() || profile?.first_name?.trim() || 'Adventurer');
       setLocation([profile?.home_city, profile?.home_state].filter(Boolean).join(', '));
       if (profile?.home_city && profile?.home_state) {
         try {
@@ -205,7 +205,7 @@ export default function TrailheadScreen() {
         </View>
       </View>
 
-      <Text style={styles.greeting}>{greeting(new Date().getHours())}, {firstName}</Text>
+      <Text style={styles.greeting}>{greeting(new Date().getHours())}, {displayName}</Text>
       <Text style={styles.title}>What’s next on your trail?</Text>
       {loading ? <ActivityIndicator color="#D7B45A" style={styles.loader} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
