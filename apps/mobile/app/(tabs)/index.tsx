@@ -168,7 +168,7 @@ export default function TrailheadScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}>
       <View style={styles.topRow}>
-        <View style={styles.brandMark}><Text style={styles.brandMountain}>⌁</Text><Text style={styles.brandText}>MA</Text></View>
+        <ImageBackground source={require('../../assets/ma-pathfinder-mark.png')} style={{ width: 56, height: 56 }} resizeMode="contain" accessibilityLabel="Melanated Adventurers" />
         <View style={styles.topActions}>
           <Pressable accessibilityLabel="Alerts" onPress={() => router.push('/notifications')} style={styles.iconButton}><Text style={styles.iconGlyph}>!</Text></Pressable>
           <Pressable accessibilityLabel="Profile" onPress={() => router.push('/member/profile')} style={styles.iconButton}><Text style={styles.profileGlyph}>●</Text></Pressable>
