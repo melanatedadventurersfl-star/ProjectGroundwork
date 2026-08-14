@@ -211,7 +211,7 @@ export default function WeatherScreen() {
         <View style={s.sectionRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.section}>Upcoming adventures</Text>
-            <Text style={s.savedIntro}>Weather follows each saved adventure's destination automatically.</Text>
+            <Text style={s.savedIntro}>Weather follows each saved adventure&apos;s destination automatically.</Text>
           </View>
           <Text style={s.sectionMeta}>{upcomingAdventures.length}</Text>
         </View>
