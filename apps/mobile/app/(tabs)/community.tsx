@@ -42,7 +42,7 @@ const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 
-const postTypes: Array<{ value: CommunityPostType; label: string; icon: string }> = [
+const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
   { value: 'update', label: 'Update', icon: 'create-outline' },
   { value: 'ask', label: 'Ask', icon: 'help-circle-outline' },
   { value: 'meetup', label: 'Meetup', icon: 'calendar-outline' },
@@ -50,7 +50,7 @@ const postTypes: Array<{ value: CommunityPostType; label: string; icon: string }
   { value: 'recommendation', label: 'Recommend a Place', icon: 'location-outline' },
 ];
 
-const audiences: Array<{ value: CommunityAudience; label: string; icon: string }> = [
+const audiences: { value: CommunityAudience; label: string; icon: string }[] = [
   { value: 'everyone', label: 'Everyone', icon: 'globe-outline' },
   { value: 'connections', label: 'My Connections', icon: 'people-outline' },
   { value: 'circle', label: 'A Circle', icon: 'people-circle-outline' },
@@ -241,8 +241,8 @@ export default function CommunityScreen() {
   );
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : 'Your area';
   const nearbyCount = nearbyGroups.reduce((total, group) => total + group.member_count, 0);
-  const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0];
-  const selectedAudience = audiences.find((item) => item.value === composerAudience) ?? audiences[0];
+  const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
+  const selectedAudience = audiences.find((item) => item.value === composerAudience) ?? audiences[0]!;
   const selectedCircle = circles.find((circle) => circle.id === composerCircleId) ?? null;
   const selectedGroup = yourGroups.find((group) => group.id === composerGroupId) ?? null;
   const targetMissing = (composerAudience === 'circle' && !composerCircleId) || (composerAudience === 'group' && !composerGroupId);
