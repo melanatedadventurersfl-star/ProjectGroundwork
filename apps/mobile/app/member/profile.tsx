@@ -150,18 +150,18 @@ export default function ProfileScreen(){
    <View style={styles.identityRankRow}>
     <View style={styles.identityCluster}>
      <Pressable onPress={photoMenu} style={styles.avatarWrap}>
-      <Avatar url={profile.avatar_url} name={profile.display_name} size={70}/>
+      <Avatar url={profile.avatar_url} name={profile.display_name} size={68}/>
       <View style={styles.mainCameraBadge}><AppIcon name="camera" color="#121A17" size={12}/></View>
      </Pressable>
      <View style={styles.heroCopy}>
-      <Text style={styles.name}>{profile.display_name??'Adventurer'}</Text>
-      {profile.username?<Text style={styles.handle}>@{profile.username}</Text>:null}
-      {profile.city_visible!==false&&location?<View style={styles.locationRow}><AppIcon name="location" color="#AEB9B4" size={14}/><Text style={styles.location}>{location}</Text></View>:null}
+      <Text style={styles.name} numberOfLines={2} ellipsizeMode="tail">{profile.display_name??'Adventurer'}</Text>
+      {profile.username?<Text style={styles.handle} numberOfLines={1}>@{profile.username}</Text>:null}
+      {profile.city_visible!==false&&location?<View style={styles.locationRow}><AppIcon name="location" color="#AEB9B4" size={14}/><Text style={styles.location} numberOfLines={1}>{location}</Text></View>:null}
      </View>
     </View>
     <View style={styles.rankIdentity}>
-     <RankEmblem rank={rank} size={48}/>
-     <Text style={styles.rankCompact}>{rank.toUpperCase()}</Text>
+     <RankEmblem rank={rank} size={44}/>
+     <Text style={styles.rankCompact} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.82}>{rank.toUpperCase()}</Text>
      <Text style={styles.rankCount}>{journey.length}/{nextMinimum}</Text>
     </View>
    </View>
@@ -198,7 +198,7 @@ export default function ProfileScreen(){
 const styles=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#09110F'},center:{flex:1,backgroundColor:'#09110F',alignItems:'center',justifyContent:'center'},content:{paddingHorizontal:18,paddingTop:8,paddingBottom:72,gap:15},editContent:{padding:20,paddingBottom:60,gap:14},
  topBar:{minHeight:42,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},editPill:{flexDirection:'row',alignItems:'center',gap:7,backgroundColor:'#171D1B',borderWidth:1,borderColor:'#252E2A',borderRadius:999,paddingHorizontal:14,paddingVertical:9},editPillText:{color:'#F5C341',fontWeight:'800'},editBack:{flexDirection:'row',alignItems:'center',alignSelf:'flex-start'},editBackText:{color:'#F5C341',fontWeight:'800'},
- profileHeaderCard:{backgroundColor:'#111A17',borderWidth:1,borderColor:'#27332F',borderRadius:22,padding:16},identityRankRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},identityCluster:{flex:1,flexDirection:'row',alignItems:'center',gap:12},avatarWrap:{width:70,height:70,position:'relative'},mainCameraBadge:{position:'absolute',right:-1,bottom:1,width:24,height:24,borderRadius:12,backgroundColor:'#F5C341',borderWidth:2,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},heroCopy:{flex:1,gap:2},name:{fontSize:27,fontWeight:'900',color:'#F7F8F3',letterSpacing:-.5},handle:{color:'#F5C341',fontSize:15,fontWeight:'800'},locationRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:2},location:{color:'#AEB9B4',fontSize:13.5},rankIdentity:{width:88,alignItems:'center',justifyContent:'center',paddingLeft:8,borderLeftWidth:1,borderLeftColor:'#25322D'},rankCompact:{color:'#F7F8F3',fontSize:11.5,fontWeight:'900',letterSpacing:.5,marginTop:3,textAlign:'center'},rankCount:{color:'#6FD3CF',fontSize:11,fontWeight:'800',marginTop:1},bioText:{color:'#D4DBD7',fontSize:14.5,lineHeight:20,marginTop:11},
+ profileHeaderCard:{backgroundColor:'#111A17',borderWidth:1,borderColor:'#27332F',borderRadius:22,padding:16},identityRankRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},identityCluster:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:10},avatarWrap:{width:68,height:68,position:'relative',flexShrink:0},mainCameraBadge:{position:'absolute',right:-1,bottom:1,width:23,height:23,borderRadius:12,backgroundColor:'#F5C341',borderWidth:2,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},heroCopy:{flex:1,minWidth:0,gap:2},name:{fontSize:25,fontWeight:'900',lineHeight:28,color:'#F7F8F3',letterSpacing:-.45,flexShrink:1},handle:{color:'#F5C341',fontSize:14.5,fontWeight:'800',flexShrink:1},locationRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:2,minWidth:0},location:{color:'#AEB9B4',fontSize:13,flexShrink:1},rankIdentity:{width:104,flexShrink:0,alignItems:'center',justifyContent:'center',paddingLeft:9,borderLeftWidth:1,borderLeftColor:'rgba(93,113,103,.26)'},rankCompact:{width:'100%',color:'#F7F8F3',fontSize:11,fontWeight:'900',letterSpacing:.2,marginTop:3,textAlign:'center'},rankCount:{color:'#6FD3CF',fontSize:11,fontWeight:'800',marginTop:1},bioText:{color:'#D4DBD7',fontSize:14.5,lineHeight:20,marginTop:11},
  progressTrack:{height:7,borderRadius:99,backgroundColor:'#194B4B',overflow:'hidden',marginTop:10},progressFill:{height:'100%',backgroundColor:'#F5C341',borderRadius:99},progressText:{color:'#80CDC9',fontSize:11.5,marginTop:6},progressNumber:{color:'#F5C341',fontWeight:'900'},progressNext:{color:'#F5C341',fontWeight:'900'},
  statsCard:{flexDirection:'row',marginTop:12,paddingTop:12,borderTopWidth:1,borderTopColor:'#25322D'},statCell:{flex:1,alignItems:'center',paddingHorizontal:4,borderRightWidth:1,borderRightColor:'#29332F'},statCellLast:{borderRightWidth:0},statValue:{color:'#F7F8F3',fontSize:21,fontWeight:'900',marginTop:2},statLabel:{color:'#AAB5B0',fontSize:9.8,marginTop:1,textAlign:'center'},
  photoEditor:{flexDirection:'row',alignItems:'center',gap:14,backgroundColor:'#111A17',borderRadius:20,borderWidth:1,borderColor:'#28362E',padding:15},photoPressable:{width:84,height:84,borderRadius:42,position:'relative'},photoCopy:{flex:1,gap:5},photoAction:{color:'#F5C341',fontWeight:'900',marginTop:2},cameraBadge:{position:'absolute',right:-1,bottom:2,width:28,height:28,borderRadius:14,backgroundColor:'#F5C341',borderWidth:3,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},photoBusy:{position:'absolute',left:0,right:0,top:0,bottom:0,borderRadius:42,backgroundColor:'rgba(9,17,15,.68)',alignItems:'center',justifyContent:'center'},
