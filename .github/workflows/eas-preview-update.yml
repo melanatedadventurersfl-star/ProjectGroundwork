@@ -10,6 +10,10 @@ on:
       - 'apps/mobile/assets/**'
   workflow_dispatch:
 
+concurrency:
+  group: eas-preview-ota-main
+  cancel-in-progress: true
+
 jobs:
   update:
     if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ota]') }}
@@ -17,6 +21,19 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify this is still the latest main commit
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          git fetch origin main
+          LATEST_MAIN="$(git rev-parse origin/main)"
+          if [ "${GITHUB_SHA}" != "${LATEST_MAIN}" ]; then
+            echo "Skipping stale OTA publish. Triggered SHA ${GITHUB_SHA}, latest main is ${LATEST_MAIN}."
+            exit 1
+          fi
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -39,9 +56,10 @@ jobs:
 
       - name: Publish preview OTA update
         working-directory: apps/mobile
-        run: npx eas-cli@latest update --channel preview --platform android --message "${{ github.event.head_commit.message || 'Manual preview update' }}" --non-interactive
+        run: npx eas-cli@latest update --channel preview --platform android --message "main:${GITHUB_SHA::8} · ${{ github.event.head_commit.message || 'Manual preview update' }}" --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
           EXPO_PUBLIC_SUPABASE_URL: https://hqndxityqrdiiwqyjagu.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K
