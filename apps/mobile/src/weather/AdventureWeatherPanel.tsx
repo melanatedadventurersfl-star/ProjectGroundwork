@@ -27,8 +27,9 @@ export function AdventureWeatherPanel({ adventure }: Props) {
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mountedAt] = useState(() => Date.now());
   const startsAt = new Date(adventure.starts_at);
-  const withinHorizon = startsAt.getTime() - Date.now() <= FORECAST_HORIZON_MS;
+  const withinHorizon = startsAt.getTime() - mountedAt <= FORECAST_HORIZON_MS;
 
   useEffect(() => {
     let active = true;
@@ -46,7 +47,7 @@ export function AdventureWeatherPanel({ adventure }: Props) {
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [adventure.city, adventure.latitude, adventure.longitude, adventure.state, withinHorizon]);
+  }, [adventure, withinHorizon]);
 
   const eventDay = useMemo(() => {
     if (!weather) return null;
