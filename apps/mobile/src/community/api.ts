@@ -135,14 +135,10 @@ async function signCommunityMedia(path: string | null) {
 }
 
 export async function getCommunityFeed(adventureId?: string, groupId?: string) {
-  let query = supabase
-    .from('community_feed')
-    .select('*')
-    .order('is_pinned', { ascending: false })
-    .order('created_at', { ascending: false });
-  if (adventureId) query = query.eq('adventure_id', adventureId);
-  if (groupId) query = query.eq('group_id', groupId);
-  const { data, error } = await query;
+  const { data, error } = await supabase.rpc('get_community_feed', {
+    target_adventure_id: adventureId ?? null,
+    target_group_id: groupId ?? null,
+  });
   if (error) throw error;
 
   const rows = (data ?? []) as CommunityPost[];
