@@ -32,13 +32,20 @@ create unique index if not exists adventure_memory_photos_saved_source_unique
 create index if not exists adventure_memory_photos_featured_idx
   on public.adventure_memory_photos (profile_id, featured, created_at desc);
 
+-- Owners always see their own memories. Anything shared beyond the owner remains
+-- behind the existing photo-moderation gate before another member can read it.
 drop policy if exists "Members read their memory photos" on public.adventure_memory_photos;
 create policy "Members read their memory photos"
 on public.adventure_memory_photos for select to authenticated
 using (
   profile_id = auth.uid()
-  or visibility = 'public'
-  or (visibility = 'group' and public.is_paid_adventure_attendee(adventure_id, auth.uid()))
+  or (
+    moderation_status = 'approved'
+    and (
+      visibility = 'public'
+      or (visibility = 'group' and public.is_paid_adventure_attendee(adventure_id, auth.uid()))
+    )
+  )
 );
 
 drop policy if exists "Members update their memory photos" on public.adventure_memory_photos;
@@ -48,3 +55,26 @@ using (profile_id = auth.uid())
 with check (profile_id = auth.uid());
 
 grant update on public.adventure_memory_photos to authenticated;
+
+-- Keep the Storage bucket private. Signed URLs are only issuable when the object
+-- belongs to the current member or its linked Memory has passed moderation and
+-- is visible to that viewer.
+drop policy if exists "Members read permitted adventure photos" on storage.objects;
+create policy "Members read permitted adventure photos"
+on storage.objects for select to authenticated
+using (
+  bucket_id = 'adventure-photos'
+  and (
+    owner_id = (select auth.uid())::text
+    or exists (
+      select 1
+      from public.adventure_memory_photos p
+      where p.image_url = storage.objects.name
+        and p.moderation_status = 'approved'
+        and (
+          p.visibility = 'public'
+          or (p.visibility = 'group' and public.is_paid_adventure_attendee(p.adventure_id, auth.uid()))
+        )
+    )
+  )
+);
