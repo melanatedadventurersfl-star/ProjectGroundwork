@@ -2,6 +2,7 @@
   "expo": {
     "name": "Melanated Adventurers",
     "slug": "melanated-adventurers",
+    "description": "Melanated Adventurers mobile app",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "melanatedadventurers",
