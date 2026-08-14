@@ -14,6 +14,7 @@ import {
   type MemoryPhoto,
   type PassportStamp,
 } from '../../src/passport/api';
+import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder, type RankName } from '../../src/passport/RankEmblem';
 import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 
@@ -211,14 +212,24 @@ export default function PassportScreen() {
 
             {mode === 'badges' ? (
               <View style={styles.sectionBlock}>
-                <View><Text style={styles.panelEyebrow}>SPECIAL MILESTONES</Text><Text style={styles.sectionTitle}>Achievement Badges</Text></View>
+                <View style={styles.sectionHeadingRow}>
+                  <View><Text style={styles.panelEyebrow}>SPECIAL MILESTONES</Text><Text style={styles.sectionTitle}>Achievement Badges</Text></View>
+                  {badges.length ? <Text style={styles.muted}>Premium embroidered series</Text> : null}
+                </View>
                 {badges.length ? (
                   <View style={styles.grid}>
                     {badges.map((badge) => (
                       <View key={badge.badge_id} style={styles.badgeTile}>
-                        <View style={styles.medal}><Text style={styles.medalGlyph}>MA</Text></View>
+                        <View style={styles.badgeArtwork}>
+                          {hasBadgeArt(badge.title) ? (
+                            <BadgeArt title={badge.title} size={142} />
+                          ) : (
+                            <View style={styles.medal}><Text style={styles.medalGlyph}>MA</Text></View>
+                          )}
+                        </View>
                         <Text style={styles.tileTitle}>{badge.title}</Text>
-                        <Text style={styles.muted}>{badge.category}</Text>
+                        <Text style={styles.badgeCategory}>{badge.category}</Text>
+                        <Text style={styles.badgeEarned}>Earned {new Date(badge.earned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
                       </View>
                     ))}
                   </View>
@@ -340,9 +351,12 @@ const styles = StyleSheet.create({
   stampSeal: { width: 92, height: 92, borderRadius: 46, borderWidth: 2, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginVertical: 18 },
   stampGlyph: { color: '#D7B45A', fontSize: 17, fontWeight: '900' },
   tileTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 7, alignSelf: 'stretch' },
-  badgeTile: { width: '48%', backgroundColor: '#17231C', borderRadius: 16, borderWidth: 1, borderColor: '#3D5145', padding: 12 },
-  medal: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
-  medalGlyph: { color: '#F0D083', fontSize: 15, fontWeight: '900' },
+  badgeTile: { width: '48%', backgroundColor: '#141D18', borderRadius: 18, borderWidth: 1, borderColor: '#445447', padding: 10, alignItems: 'center' },
+  badgeArtwork: { minHeight: 146, width: '100%', alignItems: 'center', justifyContent: 'center' },
+  badgeCategory: { color: '#C7A953', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.7, alignSelf: 'stretch', marginTop: 4 },
+  badgeEarned: { color: '#75837A', fontSize: 10, alignSelf: 'stretch', marginTop: 4 },
+  medal: { width: 92, height: 92, borderRadius: 46, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
+  medalGlyph: { color: '#F0D083', fontSize: 17, fontWeight: '900' },
   memoryActions: { flexDirection: 'row', gap: 9 },
   memoryPrimary: { flex: 1, backgroundColor: '#D7B45A', borderRadius: 13, padding: 13, alignItems: 'center' },
   memoryPrimaryText: { color: '#142019', fontWeight: '900' },

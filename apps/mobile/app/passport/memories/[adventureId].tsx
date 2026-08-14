@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getJourney, getMemoryPhotos, type JourneyItem, type MemoryPhoto } from '../../../src/passport/api';
+import { getJourney, getOwnedMemoryPhotos, type JourneyItem, type MemoryPhoto } from '../../../src/passport/api';
 
 export default function MemoryAlbumScreen() {
   const { adventureId } = useLocalSearchParams<{ adventureId: string }>();
@@ -16,7 +16,7 @@ export default function MemoryAlbumScreen() {
     if (!adventureId) return;
     try {
       setLoading(true);
-      const [journey, nextPhotos] = await Promise.all([getJourney(), getMemoryPhotos(adventureId)]);
+      const [journey, nextPhotos] = await Promise.all([getJourney(), getOwnedMemoryPhotos(adventureId)]);
       setAdventure(journey.find((item) => item.adventure_id === adventureId) ?? null);
       setPhotos(nextPhotos);
       setError(null);

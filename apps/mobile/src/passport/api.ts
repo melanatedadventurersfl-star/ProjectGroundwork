@@ -42,6 +42,7 @@ export type MemorySource = 'personal' | 'event_gallery';
 
 export type MemoryPhoto = {
   id: string;
+  profile_id?: string;
   adventure_id: string;
   image_url: string;
   storage_path?: string | null;
@@ -52,6 +53,7 @@ export type MemoryPhoto = {
   source_kind: MemorySource;
   source_photo_id: string | null;
   media_type: 'photo' | 'video';
+  moderation_status: 'pending' | 'approved' | 'rejected';
   created_at: string;
 };
 
@@ -98,7 +100,6 @@ function decodeBase64(base64: string): ArrayBuffer {
   let buffer = 0;
   let bits = 0;
   let offset = 0;
-
   for (const char of clean) {
     const value = alphabet.indexOf(char);
     if (value < 0) continue;
@@ -109,7 +110,6 @@ function decodeBase64(base64: string): ArrayBuffer {
       bytes[offset++] = (buffer >> bits) & 0xff;
     }
   }
-
   return bytes.buffer;
 }
 
@@ -122,6 +122,11 @@ function extensionFor(mimeType?: string | null, fileName?: string | null) {
   return 'jpg';
 }
 
+async function invokePhotoModeration(photoId: string) {
+  const { error } = await supabase.functions.invoke('moderate-adventure-photo', { body: { photoId } });
+  if (error) console.warn('Photo uploaded but automated moderation could not run.', error);
+}
+
 export async function uploadMemoryImage(input: {
   adventureId: string;
   base64: string;
@@ -132,13 +137,11 @@ export async function uploadMemoryImage(input: {
   const ext = extensionFor(input.mimeType, input.fileName);
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   const path = `${userId}/${input.adventureId}/${fileName}`;
-  const { error } = await supabase.storage
-    .from(MEMORY_BUCKET)
-    .upload(path, decodeBase64(input.base64), {
-      contentType: input.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
-      cacheControl: '3600',
-      upsert: false,
-    });
+  const { error } = await supabase.storage.from(MEMORY_BUCKET).upload(path, decodeBase64(input.base64), {
+    contentType: input.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    cacheControl: '3600',
+    upsert: false,
+  });
   if (error) throw error;
   return path;
 }
@@ -151,28 +154,21 @@ export async function removeUploadedMemoryImage(path: string) {
 
 export async function getJourney(): Promise<JourneyItem[]> {
   const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from('member_journey')
-    .select('*')
-    .order('experienced_at', { ascending: false });
+  const { data, error } = await supabase.from('member_journey').select('*').order('experienced_at', { ascending: false });
   if (error) throw error;
-
   const journey = (data ?? []) as Omit<JourneyItem, 'photo_count'>[];
   if (!journey.length) return [];
-
   const { data: photos, error: photoError } = await supabase
     .from('adventure_memory_photos')
     .select('adventure_id')
     .eq('profile_id', userId)
     .in('adventure_id', journey.map((item) => item.adventure_id));
   if (photoError) throw photoError;
-
   const counts = new Map<string, number>();
   for (const row of photos ?? []) {
     const adventureId = row.adventure_id as string;
     counts.set(adventureId, (counts.get(adventureId) ?? 0) + 1);
   }
-
   return journey.map((item) => ({ ...item, photo_count: counts.get(item.adventure_id) ?? 0 }));
 }
 
@@ -209,7 +205,7 @@ export async function getMemberBadges(): Promise<MemberBadge[]> {
   }));
 }
 
-const memoryFields = 'id, adventure_id, image_url, caption, reflection, visibility, featured, source_kind, source_photo_id, media_type, created_at';
+const memoryFields = 'id, profile_id, adventure_id, image_url, caption, reflection, visibility, featured, source_kind, source_photo_id, media_type, moderation_status, created_at';
 
 export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
   const userId = await requireUserId();
@@ -222,7 +218,7 @@ export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
   return hydrateMemoryPhotos(data ?? []);
 }
 
-export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
+export async function getOwnedMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
     .from('adventure_memory_photos')
@@ -233,6 +229,20 @@ export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[
   if (error) throw error;
   return hydrateMemoryPhotos(data ?? []);
 }
+
+export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
+  const { data, error } = await supabase
+    .from('adventure_memory_photos')
+    .select(memoryFields)
+    .eq('adventure_id', adventureId)
+    .eq('moderation_status', 'approved')
+    .in('visibility', ['group', 'public'])
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return hydrateMemoryPhotos(data ?? []);
+}
+
+export const getEventGalleryPhotos = getMemoryPhotos;
 
 export async function getMemoryPhoto(memoryId: string): Promise<MemoryPhoto> {
   const userId = await requireUserId();
@@ -283,9 +293,39 @@ export async function addMemoryPhoto(input: {
     source_kind: input.sourceKind ?? 'personal',
     source_photo_id: input.sourcePhotoId?.trim() || null,
     media_type: input.mediaType ?? 'photo',
+    moderation_status: 'pending',
   }).select(memoryFields).single();
   if (error) throw error;
+  if ((input.sourceKind ?? 'personal') === 'personal') await invokePhotoModeration(data.id as string);
   return hydrateMemoryPhoto(data);
+}
+
+export async function uploadMemoryPhoto(input: {
+  adventureId: string;
+  localUri: string;
+  mimeType?: string | null;
+  caption?: string;
+  visibility: 'private' | 'group';
+}) {
+  const userId = await requireUserId();
+  const response = await fetch(input.localUri);
+  if (!response.ok) throw new Error('Unable to read the selected photo.');
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Photos must be 10 MB or smaller.');
+  const extension = extensionFor(input.mimeType, input.localUri);
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+  const path = `${userId}/${input.adventureId}/${fileName}`;
+  const { error: uploadError } = await supabase.storage.from(MEMORY_BUCKET).upload(path, bytes, {
+    contentType: input.mimeType || 'image/jpeg',
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+  try {
+    return await addMemoryPhoto({ adventureId: input.adventureId, imageUrl: path, caption: input.caption, visibility: input.visibility });
+  } catch (error) {
+    await supabase.storage.from(MEMORY_BUCKET).remove([path]);
+    throw error;
+  }
 }
 
 export async function saveEventGalleryPhoto(input: {
@@ -316,7 +356,6 @@ export async function updateMemoryPhoto(memoryId: string, input: {
   if (input.reflection !== undefined) patch.reflection = input.reflection.trim() || null;
   if (input.visibility !== undefined) patch.visibility = input.visibility;
   if (input.featured !== undefined) patch.featured = input.featured;
-
   const { data, error } = await supabase
     .from('adventure_memory_photos')
     .update(patch)
@@ -325,6 +364,7 @@ export async function updateMemoryPhoto(memoryId: string, input: {
     .select(memoryFields)
     .single();
   if (error) throw error;
+  if (input.visibility && input.visibility !== 'private' && data.moderation_status === 'pending') await invokePhotoModeration(data.id as string);
   return hydrateMemoryPhoto(data);
 }
 
@@ -337,14 +377,8 @@ export async function removeMemoryPhoto(memoryId: string) {
     .eq('id', memoryId)
     .single();
   if (readError) throw readError;
-
-  const { error } = await supabase
-    .from('adventure_memory_photos')
-    .delete()
-    .eq('profile_id', userId)
-    .eq('id', memoryId);
+  const { error } = await supabase.from('adventure_memory_photos').delete().eq('profile_id', userId).eq('id', memoryId);
   if (error) throw error;
-
   if (memory.source_kind === 'personal' && memory.image_url && !isRemoteUrl(memory.image_url)) {
     await supabase.storage.from(MEMORY_BUCKET).remove([memory.image_url]);
   }
