@@ -1,8 +1,10 @@
 import { router, useFocusEffect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   ImageBackground,
@@ -17,9 +19,13 @@ import {
 import { listAdventures } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { getGroups } from '../../src/community/api';
+import { removeProfileCover, uploadProfileCover } from '../../src/member/api';
 import { supabase } from '../../src/lib/supabase';
+import { getJourney } from '../../src/passport/api';
+import { rankFor } from '../../src/passport/RankEmblem';
 import { getAdventureQueue } from '../../src/readiness/api';
 import type { AdventureQueueItem } from '../../src/readiness/types';
+import { TrailheadCover } from '../../src/trailhead/TrailheadCover';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeather } from '../../src/weather/api';
 import type { WeatherForecast } from '../../src/weather/api';
@@ -53,6 +59,9 @@ export default function TrailheadScreen() {
   const [displayName, setDisplayName] = useState('Adventurer');
   const [location, setLocation] = useState('');
   const [groupCount, setGroupCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,6 +81,7 @@ export default function TrailheadScreen() {
   const adventureById = useMemo(() => new Map(adventures.map((item) => [item.id, item])), [adventures]);
   const nextReservation = queue[0];
   const nextReservationAdventure = nextReservation ? adventureById.get(nextReservation.adventure_id) : undefined;
+  const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
   const loop = useMemo<AdventureSummary[]>(() => {
     if (featured.length <= 1) return featured;
     const first = featured[0];
@@ -87,27 +97,31 @@ export default function TrailheadScreen() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
-      const [nextQueue, groups, nextAdventures, profileResult] = await Promise.all([
+      const [nextQueue, groups, nextJourney, nextAdventures, profileResult] = await Promise.all([
         getAdventureQueue(),
         getGroups(),
+        getJourney(),
         listAdventures(),
         userId
-          ? supabase.from('profiles').select('first_name,display_name,home_city,home_state').eq('id', userId).single()
+          ? supabase.from('profiles').select('*').eq('id', userId).single()
           : Promise.resolve({ data: null, error: null }),
       ]);
       const myGroupIds = groups.filter((group) => group.is_member).map((group) => group.id);
 
       setQueue(nextQueue);
       setGroupCount(myGroupIds.length);
+      setCompletedCount(nextJourney.length);
       setAdventures(nextAdventures);
       const profile = profileResult.data as {
         first_name?: string | null;
         display_name?: string | null;
         home_city?: string | null;
         home_state?: string | null;
+        cover_url?: string | null;
       } | null;
       setDisplayName(profile?.display_name?.trim() || profile?.first_name?.trim() || 'Adventurer');
       setLocation([profile?.home_city, profile?.home_state].filter(Boolean).join(', '));
+      setCoverUrl(profile?.cover_url ?? null);
       if (profile?.home_city && profile?.home_state) {
         try {
           setWeather(await getWeather(profile.home_city, profile.home_state));
@@ -159,6 +173,56 @@ export default function TrailheadScreen() {
     setActiveFeature(next);
   }
 
+  async function chooseCoverPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo access needed', 'Allow photo library access to choose a Trailhead cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 6],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setCoverBusy(true);
+    try {
+      const asset = result.assets[0];
+      const nextCoverUrl = await uploadProfileCover({ uri: asset.uri, mimeType: asset.mimeType });
+      setCoverUrl(nextCoverUrl);
+    } catch (caught) {
+      Alert.alert('Cover photo', caught instanceof Error ? caught.message : 'Unable to update your Trailhead cover.');
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  async function useDefaultCover() {
+    setCoverBusy(true);
+    try {
+      await removeProfileCover();
+      setCoverUrl(null);
+    } catch (caught) {
+      Alert.alert('Cover photo', caught instanceof Error ? caught.message : 'Unable to restore the default cover.');
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
+  function coverMenu() {
+    if (!coverUrl) {
+      void chooseCoverPhoto();
+      return;
+    }
+    Alert.alert('Trailhead cover', 'Choose what you want to do.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Change photo', onPress: () => void chooseCoverPhoto() },
+      { text: 'Use default scenery', onPress: () => void useDefaultCover() },
+    ]);
+  }
+
   const todayForecast = weather?.forecast.forecastday[0]?.day;
 
   return (
@@ -184,7 +248,16 @@ export default function TrailheadScreen() {
         </View>
       </View>
 
-      <Text style={styles.greeting}>{greeting(new Date().getHours())}, {displayName}</Text>
+      <TrailheadCover
+        coverUrl={coverUrl}
+        displayName={displayName}
+        greeting={greeting(new Date().getHours())}
+        rank={memberRank}
+        busy={coverBusy}
+        onEdit={coverMenu}
+        onRankPress={() => router.push('/member/profile')}
+      />
+
       <Text style={styles.title}>What’s next on your trail?</Text>
       {loading ? <ActivityIndicator color="#D7B45A" style={styles.loader} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -312,7 +385,6 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   topActions: { flexDirection: 'row', gap: 10 },
   iconButton: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
-  greeting: { color: '#D7B45A', fontWeight: '800', marginTop: 8 },
   title: { color: '#FFF8E8', fontSize: 35, lineHeight: 39, fontWeight: '900' },
   loader: { margin: 18 },
   error: { color: '#FFB4A9' },
