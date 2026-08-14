@@ -136,15 +136,26 @@ export async function addMemoryPhoto(input: {
 }) {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
-  const { error } = await supabase.from('adventure_memory_photos').insert({
+
+  const { data, error } = await supabase.from('adventure_memory_photos').insert({
     profile_id: userData.user.id,
     adventure_id: input.adventureId,
     image_url: input.imageUrl.trim(),
     caption: input.caption?.trim() || null,
     visibility: input.visibility,
     moderation_status: 'pending',
-  });
+  }).select('id').single();
   if (error) throw error;
+
+  const { error: moderationError } = await supabase.functions.invoke('moderate-adventure-photo', {
+    body: { photoId: data.id },
+  });
+
+  if (moderationError) {
+    console.warn('Photo uploaded but automated moderation could not run.', moderationError);
+  }
+
+  return data;
 }
 
 export async function saveReflection(input: {
