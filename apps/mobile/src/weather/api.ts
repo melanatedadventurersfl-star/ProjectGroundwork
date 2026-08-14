@@ -6,6 +6,38 @@ import { supabase } from '../lib/supabase';
  * The mobile app never calls WeatherAPI directly. Keeping the third-party
  * request behind Supabase protects WEATHERAPI_KEY from the app bundle.
  */
+export type WeatherCondition = {
+  text: string;
+  icon: string;
+};
+
+export type WeatherHour = {
+  time: string;
+  temp_f: number;
+  feelslike_f?: number;
+  chance_of_rain?: number;
+  humidity?: number;
+  wind_mph?: number;
+  uv?: number;
+  condition: WeatherCondition;
+};
+
+export type WeatherForecastDay = {
+  date: string;
+  day: {
+    maxtemp_f: number;
+    mintemp_f: number;
+    daily_chance_of_rain: number;
+    uv?: number;
+    condition: WeatherCondition;
+  };
+  astro?: {
+    sunrise?: string;
+    sunset?: string;
+  };
+  hour?: WeatherHour[];
+};
+
 export type WeatherForecast = {
   location: {
     name: string;
@@ -14,30 +46,19 @@ export type WeatherForecast = {
     lat: number;
     lon: number;
     localtime: string;
+    tz_id?: string;
   };
   current: {
     temp_f: number;
     feelslike_f: number;
     humidity: number;
     wind_mph: number;
-    condition: {
-      text: string;
-      icon: string;
-    };
+    uv?: number;
+    precip_in?: number;
+    condition: WeatherCondition;
   };
   forecast: {
-    forecastday: Array<{
-      date: string;
-      day: {
-        maxtemp_f: number;
-        mintemp_f: number;
-        daily_chance_of_rain: number;
-        condition: {
-          text: string;
-          icon: string;
-        };
-      };
-    }>;
+    forecastday: WeatherForecastDay[];
   };
 };
 
@@ -59,14 +80,27 @@ async function invokeWeather<T>(body: Record<string, unknown>): Promise<T> {
   return data;
 }
 
-/** Load a three-day forecast for a saved city/state. */
+/** Load the supported three-day forecast for a home city/state. */
 export function getWeather(city: string, state: string, days = 3) {
   return invokeWeather<WeatherForecast>({ q: `${city},${state}`, days });
 }
 
-/** Load weather by transient device coordinates without changing the profile. */
+/** Load weather by coordinates without changing the member profile. */
 export function getWeatherByCoordinates(latitude: number, longitude: number, days = 3) {
   return invokeWeather<WeatherForecast>({ q: `${latitude},${longitude}`, days });
+}
+
+/** Load destination weather, preferring precise adventure coordinates. */
+export function getAdventureWeather(location: {
+  latitude?: number | null;
+  longitude?: number | null;
+  city: string;
+  state: string;
+}, days = 3) {
+  if (typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+    return getWeatherByCoordinates(location.latitude, location.longitude, days);
+  }
+  return getWeather(location.city, location.state, days);
 }
 
 /**
