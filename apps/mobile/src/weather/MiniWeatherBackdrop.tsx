@@ -84,8 +84,8 @@ export function MiniWeatherBackdrop({ condition, isDay = true }: Props) {
         },
       ]}
     />
-    <View style={[styles.scrim, { backgroundColor: `rgba(7, 14, 12, ${overlayOpacity})` }]} />
-    {kind === 'rain' || kind === 'storm' ? <Animated.View style={[styles.rainLayer, { transform: [{ translateY: rainY }] }]}>
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(7, 14, 12, ${overlayOpacity})` }]} />
+    {kind === 'rain' || kind === 'storm' ? <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY: rainY }] }]}>
       <View style={[styles.rainLine, { left: '61%' }]} />
       <View style={[styles.rainLine, { left: '72%', opacity: 0.36 }]} />
       <View style={[styles.rainLine, { left: '84%', opacity: 0.28 }]} />
@@ -101,10 +101,6 @@ const styles = StyleSheet.create({
     height: '112%',
     left: '-6%',
     top: '-6%',
-  },
-  scrim: StyleSheet.absoluteFillObject,
-  rainLayer: {
-    ...StyleSheet.absoluteFillObject,
   },
   rainLine: {
     position: 'absolute',
