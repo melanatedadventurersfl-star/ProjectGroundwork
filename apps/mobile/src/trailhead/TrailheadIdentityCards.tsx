@@ -44,7 +44,6 @@ export function TrailheadIdentityCards({
             <Text style={styles.shortcutTitle}>{groupCount ? `${groupCount} joined` : 'Find your people'}</Text>
             <Text style={styles.shortcutMeta}>See what’s happening</Text>
           </View>
-          <AppIcon name="chevron-forward" color="#D7B45A" size={18} />
         </Pressable>
 
         <Pressable
@@ -64,7 +63,6 @@ export function TrailheadIdentityCards({
             <Text style={styles.shortcutTitle} numberOfLines={1}>{displayRank}</Text>
             <Text style={styles.shortcutMeta}>{stampCount} stamps · {badgeCount} badges</Text>
           </View>
-          <AppIcon name="chevron-forward" color="#D7B45A" size={18} />
         </Pressable>
       </View>
 
@@ -99,7 +97,6 @@ export function TrailheadIdentityCards({
             <Text style={styles.stat}>{groupCount}</Text>
             <Text style={styles.statLabel}>Communities</Text>
           </View>
-          <AppIcon name="chevron-forward" color="#D7B45A" size={18} />
         </View>
       </Pressable>
     </View>
