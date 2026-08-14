@@ -1,1 +1,3 @@
-Offline support is intentionally scoped to member trip essentials for the first consolidated preview. Fresh weather, Explore discovery, live community activity, new payments, and new notifications still require a connection.
+Offline support keeps the last successful Supabase read responses on-device for up to 90 days and falls back to them when the network is unavailable. This makes previously loaded member/profile data, tickets and trip details, Adventures, Passport records, and other database-backed read screens available offline after they have been opened online at least once.
+
+The cache is user-scoped, is cleared on sign-out, and never queues or fakes writes. New RSVPs, saves, posts, uploads, payments, support requests, live weather, notifications, and other actions that change server data still require a connection. Remote images and newly requested private signed media may also require a connection unless the device already has them in its own image cache.
