@@ -37,6 +37,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Normalize Pathfinder launcher PNG for Expo prebuild
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          path = Path('apps/mobile/assets/ma-pathfinder-mark.png')
+          temp = path.with_name('ma-pathfinder-mark.normalized.png')
+
+          with Image.open(path) as image:
+              image.load()
+              image.convert('RGBA').save(temp, format='PNG', optimize=False)
+
+          temp.replace(path)
+          print(f'Normalized {path} for Expo Android image processing.')
+          PY
+
       - name: Verify Expo authentication
         run: |
           if [ -z "${EXPO_TOKEN}" ]; then
