@@ -21,7 +21,8 @@ function avatarPathFromUrl(url?: string | null) {
   const marker = '/profile-avatars/';
   const index = url.indexOf(marker);
   if (index < 0) return null;
-  return decodeURIComponent(url.slice(index + marker.length).split('?')[0]);
+  const path = url.slice(index + marker.length).split('?')[0];
+  return path ? decodeURIComponent(path) : null;
 }
 
 export async function getMemberBasecamp() {
