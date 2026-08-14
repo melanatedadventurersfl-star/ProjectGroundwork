@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
   topSpacer: { width: 40 },
   hero: { height: 236, borderRadius: 24, overflow: 'hidden', backgroundColor: '#27372F', justifyContent: 'space-between' },
   heroImage: { borderRadius: 24 },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,11,8,0.48)' },
+  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(6,11,8,0.48)' },
   heroTop: { padding: 16, alignItems: 'flex-start', zIndex: 2 },
   countdownPill: { backgroundColor: '#D7B45A', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6 },
   countdownText: { color: '#17211C', fontSize: 11, fontWeight: '900' },
