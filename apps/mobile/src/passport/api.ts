@@ -17,6 +17,7 @@ export type JourneyItem = {
 
 export type PassportStamp = {
   stamp_id: string;
+  code: string | null;
   title: string;
   description: string | null;
   icon_name: string | null;
@@ -70,13 +71,14 @@ export async function getJourney(): Promise<JourneyItem[]> {
 export async function getPassportStamps(): Promise<PassportStamp[]> {
   const { data, error } = await supabase
     .from('member_passport_stamps')
-    .select('stamp_id, earned_at, adventure_id, passport_stamps(title, description, icon_name)')
+    .select('stamp_id, earned_at, adventure_id, passport_stamps(code, title, description, icon_name)')
     .order('earned_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row: any) => ({
     stamp_id: row.stamp_id,
     earned_at: row.earned_at,
     adventure_id: row.adventure_id,
+    code: row.passport_stamps?.code ?? null,
     title: row.passport_stamps?.title ?? 'Adventure stamp',
     description: row.passport_stamps?.description ?? null,
     icon_name: row.passport_stamps?.icon_name ?? null,
