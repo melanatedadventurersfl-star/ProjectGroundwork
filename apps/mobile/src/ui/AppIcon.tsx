@@ -19,7 +19,16 @@ export type AppIconName =
   | 'guide'
   | 'support'
   | 'about'
-  | 'privacy';
+  | 'privacy'
+  | 'adventure'
+  | 'stamp'
+  | 'photos'
+  | 'trail-family'
+  | 'location'
+  | 'edit'
+  | 'camera'
+  | 'checkmark'
+  | 'badge';
 
 const icons: Record<AppIconName, IoniconName> = {
   trailhead: 'home-outline',
@@ -37,6 +46,15 @@ const icons: Record<AppIconName, IoniconName> = {
   support: 'help-circle-outline',
   about: 'information-circle-outline',
   privacy: 'shield-checkmark-outline',
+  adventure: 'compass-outline',
+  stamp: 'ribbon-outline',
+  photos: 'images-outline',
+  'trail-family': 'people-outline',
+  location: 'location-outline',
+  edit: 'pencil-outline',
+  camera: 'camera-outline',
+  checkmark: 'checkmark-circle',
+  badge: 'medal-outline',
 };
 
 export function AppIcon({
