@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Swi
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, saveProfilePrivacy, uploadProfilePhoto } from '../../src/member/api';
+import { ProfilePosts } from '../../src/member/ProfilePosts';
 import { getJourney, getMemberBadges, getPassportStamps, type MemberBadge, type PassportStamp } from '../../src/passport/api';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
@@ -12,7 +13,7 @@ import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
-const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
 const privacy=[['profile_is_private','Private account'],['city_visible','Show city & state'],['badges_visible','Show badges'],['adventures_visible','Show completed adventures'],['interests_visible','Show interests'],['trail_family_visible','Show Trail Family summary']] as const;
 type ProfileTab='journey'|'posts'|'photos'|'about';
 
@@ -207,7 +208,7 @@ export default function ProfileScreen(){
    </Pressable>)}</View>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your journey starts with the first adventure</Text><Text style={styles.muted}>Completed official Adventures will build your timeline here.</Text></View>}
   </>:null}
 
-  {tab==='posts'?<View style={styles.card}><Text style={styles.cardTitle}>Posts</Text><View style={styles.emptyInner}><Text style={styles.emptyTitle}>No posts yet</Text><Text style={styles.muted}>Share something from your next adventure.</Text></View></View>:null}
+  {tab==='posts'?<ProfilePosts/>:null}
 
   {tab==='photos'?<View style={styles.card}><Text style={styles.cardTitle}>Photos</Text><Text style={styles.muted}>Your photos stay organized around the adventures they came from.</Text>{journey.filter(item=>Number(item.photo_count)>0).map(item=><Pressable key={item.adventure_id} style={styles.listRow} onPress={()=>router.push(`/passport/photos/${item.adventure_id}`)}><View><Text style={styles.listTitle}>{item.title}</Text><Text style={styles.muted}>{item.photo_count} photo{Number(item.photo_count)===1?'':'s'}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={22}/></Pressable>)}{totalPhotos===0?<View style={styles.emptyInner}><Text style={styles.emptyTitle}>No adventure photos yet</Text><Text style={styles.muted}>Photos added to memories will collect here automatically.</Text></View>:null}</View>:null}
 
