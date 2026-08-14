@@ -1,15 +1,16 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getMemberBasecamp, saveProfileDetails, saveProfilePrivacy } from '../../src/member/api';
+import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, saveProfilePrivacy, uploadProfilePhoto } from '../../src/member/api';
 import { getJourney, getPassportStamps, type PassportStamp } from '../../src/passport/api';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
-const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
 const privacy=[['profile_is_private','Private account'],['city_visible','Show city & state'],['badges_visible','Show stamps'],['adventures_visible','Show completed adventures'],['interests_visible','Show interests'],['trail_family_visible','Show Trail Family summary']] as const;
 type ProfileTab='journey'|'posts'|'photos'|'about';
 
@@ -32,6 +33,12 @@ function FeaturedStamp({stamp}:{stamp:PassportStamp}){
  </View>;
 }
 
+function Avatar({url,name,size=94}:{url?:string|null;name?:string|null;size?:number}){
+ const radius=size/2;
+ if(url)return <Image source={{uri:url}} style={{width:size,height:size,borderRadius:radius,backgroundColor:'#F5C341'}}/>;
+ return <View style={{width:size,height:size,borderRadius:radius,backgroundColor:'#F5C341',alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:size*.44,fontWeight:'900',color:'#121A17'}}>{String(name??'A').slice(0,1).toUpperCase()}</Text></View>;
+}
+
 export default function ProfileScreen(){
  const params=useLocalSearchParams<{edit?:string}>();
  const [editing,setEditing]=useState(params.edit==='1');
@@ -41,6 +48,7 @@ export default function ProfileScreen(){
  const [stamps,setStamps]=useState<PassportStamp[]>([]);
  const [loading,setLoading]=useState(true);
  const [saving,setSaving]=useState(false);
+ const [photoBusy,setPhotoBusy]=useState(false);
  const [message,setMessage]=useState('');
  const [name,setName]=useState('');
  const [username,setUsername]=useState('');
@@ -77,6 +85,35 @@ export default function ProfileScreen(){
   setData((current:any)=>({...current,profile:{...current.profile,[key]:value}}));
   try{await saveProfilePrivacy({[key]:value})}catch{await load()}
  }
+ async function chooseProfilePhoto(){
+  setMessage('');
+  const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if(!permission.granted){setMessage('Photo library access is needed to choose a profile picture.');return}
+  const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],quality:.85});
+  if(result.canceled||!result.assets?.[0])return;
+  setPhotoBusy(true);
+  try{
+   const asset=result.assets[0];
+   const avatarUrl=await uploadProfilePhoto({uri:asset.uri,mimeType:asset.mimeType});
+   setData((current:any)=>({...current,profile:{...current.profile,avatar_url:avatarUrl}}));
+   setMessage('Profile photo updated.');
+  }catch(error){setMessage(error instanceof Error?error.message:'Unable to update profile photo.')}
+  finally{setPhotoBusy(false)}
+ }
+ async function removePhoto(){
+  setPhotoBusy(true);setMessage('');
+  try{await removeProfilePhoto();setData((current:any)=>({...current,profile:{...current.profile,avatar_url:null}}));setMessage('Profile photo removed.')}
+  catch(error){setMessage(error instanceof Error?error.message:'Unable to remove profile photo.')}
+  finally{setPhotoBusy(false)}
+ }
+ function photoMenu(){
+  if(!data?.profile?.avatar_url){void chooseProfilePhoto();return}
+  Alert.alert('Profile photo','Choose what you want to do.',[
+   {text:'Cancel',style:'cancel'},
+   {text:'Change photo',onPress:()=>void chooseProfilePhoto()},
+   {text:'Remove photo',style:'destructive',onPress:()=>void removePhoto()},
+  ]);
+ }
 
  const profile=data?.profile??{};
  const rank=useMemo(()=>rankFor(journey.length),[journey.length]);
@@ -91,7 +128,14 @@ export default function ProfileScreen(){
 
  if(editing)return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
   <Pressable onPress={()=>setEditing(false)}><Text style={styles.back}>‹ Profile</Text></Pressable>
-  <View style={styles.identity}><View style={styles.avatar}><Text style={styles.avatarText}>{(name||'A').slice(0,1).toUpperCase()}</Text></View><View style={{flex:1}}><Text style={styles.editTitle}>Edit Profile</Text><Text style={styles.muted}>Manage your community-facing identity.</Text></View></View>
+  <View style={styles.photoEditor}>
+   <Pressable onPress={photoMenu} disabled={photoBusy} style={styles.photoPressable}>
+    <Avatar url={profile.avatar_url} name={name} size={104}/>
+    <View style={styles.cameraBadge}><Text style={styles.cameraBadgeText}>⌁</Text></View>
+    {photoBusy?<View style={styles.photoBusy}><ActivityIndicator color="#F5C341"/></View>:null}
+   </Pressable>
+   <View style={styles.photoCopy}><Text style={styles.editTitle}>Profile photo</Text><Text style={styles.muted}>Tap your photo to choose, change, or remove it.</Text><Pressable onPress={photoMenu} disabled={photoBusy}><Text style={styles.photoAction}>{profile.avatar_url?'Change photo':'Choose photo'}</Text></Pressable></View>
+  </View>
   <View style={styles.card}><Text style={styles.label}>DISPLAY NAME</Text><TextInput value={name} onChangeText={setName} style={styles.input}/><Text style={styles.label}>USERNAME · OPTIONAL</Text><TextInput value={username} onChangeText={setUsername} autoCapitalize="none" placeholder="@trailname" placeholderTextColor="#66746B" style={styles.input}/><Text style={styles.label}>BIO</Text><TextInput value={bio} onChangeText={setBio} multiline maxLength={280} placeholder="Tell the community what kind of outside you love." placeholderTextColor="#66746B" style={[styles.input,styles.bio]}/></View>
   <View style={styles.card}><Text style={styles.cardTitle}>Home location</Text><Text style={styles.muted}>Choose a state first, then select a verified city.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.states}>{states.map(code=><Pressable key={code} onPress={()=>{setState(code);setCity('');setQuery('')}} style={[styles.stateChip,state===code&&styles.stateActive]}><Text style={[styles.stateText,state===code&&styles.stateTextActive]}>{code}</Text></Pressable>)}</ScrollView><TextInput value={query} onChangeText={value=>{setQuery(value);if(value!==city)setCity('')}} placeholder={`Search cities in ${state}`} placeholderTextColor="#66746B" style={styles.input}/>{suggestions.map(item=><Pressable key={`${item.id}-${item.name}`} style={styles.suggestion} onPress={()=>{setCity(item.name);setQuery(item.name);setSuggestions([])}}><Text style={styles.suggestionTitle}>{item.name}</Text><Text style={styles.muted}>{item.region}</Text></Pressable>)}{city?<Text style={styles.gold}>Selected: {city}, {state}</Text>:<Text style={styles.muted}>Select a city result before saving.</Text>}</View>
   <Pressable disabled={saving||!name.trim()||!city} onPress={()=>void save()} style={[styles.primary,(saving||!name.trim()||!city)&&styles.disabled]}><Text style={styles.primaryText}>{saving?'Saving…':'Save Profile'}</Text></Pressable>{message?<Text style={styles.message}>{message}</Text>:null}
@@ -102,7 +146,7 @@ export default function ProfileScreen(){
   <View style={styles.topBar}><Pressable onPress={()=>router.back()} hitSlop={10}><Text style={styles.back}>‹</Text></Pressable><Pressable style={styles.editPill} onPress={()=>setEditing(true)}><Text style={styles.editPillText}>Edit Profile</Text><Text style={styles.editPencil}>✎</Text></Pressable></View>
 
   <View style={styles.heroRow}>
-   <View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>{String(profile.display_name??'A').slice(0,1).toUpperCase()}</Text></View>
+   <View style={styles.avatarLarge}><Avatar url={profile.avatar_url} name={profile.display_name} size={94}/></View>
    <View style={styles.heroCopy}><Text style={styles.name}>{profile.display_name??'Adventurer'}</Text>{profile.username?<Text style={styles.handle}>@{profile.username}</Text>:null}{profile.city_visible!==false&&location?<Text style={styles.location}>⌖  {location}</Text>:null}</View>
   </View>
   <Text style={styles.bioText}>{profile.bio||'Add a short bio to tell the community what kind of outside you love.'}</Text>
@@ -138,7 +182,8 @@ export default function ProfileScreen(){
 const styles=StyleSheet.create({
  safe:{flex:1,backgroundColor:'#09110F'},center:{flex:1,backgroundColor:'#09110F',alignItems:'center',justifyContent:'center'},content:{paddingHorizontal:18,paddingTop:8,paddingBottom:72,gap:18},editContent:{padding:20,paddingBottom:60,gap:14},
  topBar:{minHeight:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},back:{color:'#F5C341',fontSize:32,fontWeight:'500'},editPill:{flexDirection:'row',alignItems:'center',gap:9,backgroundColor:'#171D1B',borderWidth:1,borderColor:'#252E2A',borderRadius:999,paddingHorizontal:16,paddingVertical:10},editPillText:{color:'#F5C341',fontWeight:'800'},editPencil:{color:'#F5C341',fontSize:18},
- heroRow:{flexDirection:'row',alignItems:'center',gap:20},avatarLarge:{width:94,height:94,borderRadius:47,backgroundColor:'#F5C341',alignItems:'center',justifyContent:'center',shadowColor:'#F5C341',shadowOpacity:.18,shadowRadius:12},avatarLargeText:{fontSize:42,fontWeight:'900',color:'#121A17'},heroCopy:{flex:1,gap:5},name:{fontSize:34,fontWeight:'900',color:'#F7F8F3',letterSpacing:-.6},handle:{color:'#F5C341',fontSize:17,fontWeight:'800'},location:{color:'#B2BDB8',fontSize:15},bioText:{color:'#D4DBD7',fontSize:16,lineHeight:23,paddingHorizontal:2,marginTop:-7,marginBottom:2},
+ heroRow:{flexDirection:'row',alignItems:'center',gap:20},avatarLarge:{width:94,height:94,borderRadius:47,overflow:'hidden',shadowColor:'#F5C341',shadowOpacity:.18,shadowRadius:12},heroCopy:{flex:1,gap:5},name:{fontSize:34,fontWeight:'900',color:'#F7F8F3',letterSpacing:-.6},handle:{color:'#F5C341',fontSize:17,fontWeight:'800'},location:{color:'#B2BDB8',fontSize:15},bioText:{color:'#D4DBD7',fontSize:16,lineHeight:23,paddingHorizontal:2,marginTop:-7,marginBottom:2},
+ photoEditor:{flexDirection:'row',alignItems:'center',gap:16,backgroundColor:'#111A17',borderRadius:20,borderWidth:1,borderColor:'#28362E',padding:16},photoPressable:{width:104,height:104,borderRadius:52,position:'relative'},photoCopy:{flex:1,gap:6},photoAction:{color:'#F5C341',fontWeight:'900',marginTop:2},cameraBadge:{position:'absolute',right:-2,bottom:3,width:32,height:32,borderRadius:16,backgroundColor:'#F5C341',borderWidth:3,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},cameraBadgeText:{color:'#121A17',fontSize:17,fontWeight:'900'},photoBusy:{position:'absolute',left:0,right:0,top:0,bottom:0,borderRadius:52,backgroundColor:'rgba(9,17,15,.68)',alignItems:'center',justifyContent:'center'},
  statsCard:{flexDirection:'row',backgroundColor:'#111A17',borderRadius:20,borderWidth:1,borderColor:'#27332F',paddingVertical:15},statCell:{flex:1,alignItems:'center',paddingHorizontal:5,borderRightWidth:1,borderRightColor:'#29332F'},statIcon:{color:'#F5C341',fontSize:18,fontWeight:'900'},statValue:{color:'#F7F8F3',fontSize:25,fontWeight:'900',marginTop:3},statLabel:{color:'#AAB5B0',fontSize:10.5,marginTop:1,textAlign:'center'},
  rankCard:{backgroundColor:'#0C3433',borderWidth:1,borderColor:'#245654',borderRadius:22,padding:16,flexDirection:'row',alignItems:'center',gap:16,overflow:'hidden'},rankCopy:{flex:1},rank:{color:'#F7F8F3',fontSize:25,fontWeight:'900',letterSpacing:.4},rankSub:{color:'#6FD3CF',marginTop:3,fontSize:13},progressTrack:{height:10,borderRadius:99,backgroundColor:'#194B4B',overflow:'hidden',marginTop:14},progressFill:{height:'100%',backgroundColor:'#F5C341',borderRadius:99},progressText:{color:'#80CDC9',fontSize:13,marginTop:9},progressNumber:{color:'#F5C341',fontWeight:'900'},progressNext:{color:'#F5C341',fontWeight:'900'},
  tabs:{flexDirection:'row',backgroundColor:'#121A18',borderRadius:17,borderWidth:1,borderColor:'#28322E',overflow:'hidden'},tab:{flex:1,alignItems:'center',paddingTop:13,paddingBottom:10,position:'relative'},tabText:{color:'#A8B2AD',fontSize:13,fontWeight:'800'},tabTextActive:{color:'#F5C341'},tabUnderline:{height:3,backgroundColor:'#F5C341',position:'absolute',bottom:0,left:18,right:18,borderRadius:4},
