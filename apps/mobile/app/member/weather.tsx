@@ -19,14 +19,8 @@ import {
   type WeatherHour,
   type WeatherLocationSuggestion,
 } from '../../src/weather/api';
-import {
-  deleteSavedWeatherLocation,
-  listSavedWeatherLocations,
-  saveWeatherLocation,
-  type SavedWeatherLocation,
-} from '../../src/weather/savedLocations';
 
-type WeatherMode = 'current' | 'home' | 'adventures' | 'saved' | 'search';
+type WeatherMode = 'current' | 'home' | 'adventures' | 'search';
 
 function hourLabel(value: string) {
   const time = value.split(' ')[1] ?? value;
@@ -57,40 +51,21 @@ function nextHours(data: WeatherForecast): WeatherHour[] {
   return today.hour.slice(start, start + 8);
 }
 
-function sameCoordinates(aLat: number, aLon: number, bLat: number, bLon: number) {
-  return Math.abs(aLat - bLat) < 0.001 && Math.abs(aLon - bLon) < 0.001;
-}
-
 export default function WeatherScreen() {
   const [data, setData] = useState<WeatherForecast | null>(null);
   const [home, setHome] = useState<{ city: string; state: string } | null>(null);
   const [upcomingAdventures, setUpcomingAdventures] = useState<AdventureSummary[]>([]);
-  const [savedLocations, setSavedLocations] = useState<SavedWeatherLocation[]>([]);
-  const [selectedSavedLocation, setSelectedSavedLocation] = useState<SavedWeatherLocation | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savedLoading, setSavedLoading] = useState(false);
   const [mode, setMode] = useState<WeatherMode>('current');
   const [error, setError] = useState('');
   const [searchText, setSearchText] = useState('');
   const [suggestions, setSuggestions] = useState<WeatherLocationSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
 
-  async function refreshSavedLocations() {
-    setSavedLoading(true);
-    try {
-      setSavedLocations(await listSavedWeatherLocations());
-    } catch {
-      setSavedLocations([]);
-    } finally {
-      setSavedLoading(false);
-    }
-  }
-
   async function loadHome() {
     setLoading(true);
     setError('');
     setSuggestions([]);
-    setSelectedSavedLocation(null);
     try {
       const basecamp = await getMemberBasecamp();
       const city = basecamp.profile?.home_city;
@@ -110,7 +85,6 @@ export default function WeatherScreen() {
     setLoading(true);
     setError('');
     setSuggestions([]);
-    setSelectedSavedLocation(null);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
@@ -140,7 +114,6 @@ export default function WeatherScreen() {
     setLoading(true);
     setError('');
     setSuggestions([]);
-    setSelectedSavedLocation(null);
     try {
       setData(await getWeatherByQuery(value));
       setMode('search');
@@ -156,7 +129,6 @@ export default function WeatherScreen() {
     setSuggestions([]);
     setLoading(true);
     setError('');
-    setSelectedSavedLocation(null);
     try {
       setData(await getWeatherByCoordinates(item.lat, item.lon));
       setMode('search');
@@ -184,60 +156,11 @@ export default function WeatherScreen() {
     }
   }
 
-  async function saveActiveSearchLocation() {
-    if (!data) return;
-    setSavedLoading(true);
-    try {
-      await saveWeatherLocation({
-        name: data.location.name,
-        region: data.location.region,
-        country: data.location.country,
-        latitude: data.location.lat,
-        longitude: data.location.lon,
-      });
-      await refreshSavedLocations();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to save that location.');
-    } finally {
-      setSavedLoading(false);
-    }
-  }
-
-  async function removeSavedLocation(item: SavedWeatherLocation) {
-    setSavedLoading(true);
-    try {
-      await deleteSavedWeatherLocation(item.id);
-      if (selectedSavedLocation?.id === item.id) setSelectedSavedLocation(null);
-      await refreshSavedLocations();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to remove that location.');
-    } finally {
-      setSavedLoading(false);
-    }
-  }
-
-  async function loadSavedLocation(item: SavedWeatherLocation) {
-    setLoading(true);
-    setError('');
-    setSuggestions([]);
-    setSelectedSavedLocation(item);
-    try {
-      setData(await getWeatherByCoordinates(item.latitude, item.longitude));
-      setMode('saved');
-    } catch (caught) {
-      setSelectedSavedLocation(null);
-      setError(caught instanceof Error ? caught.message : 'Unable to load that saved location.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
     void loadCurrent(true);
     void listAdventures({ savedOnly: true })
       .then((items) => setUpcomingAdventures(items.filter((item) => new Date(item.ends_at).getTime() >= Date.now())))
       .catch(() => setUpcomingAdventures([]));
-    void refreshSavedLocations();
   }, []);
 
   const hours = useMemo(() => data ? nextHours(data) : [], [data]);
@@ -245,15 +168,13 @@ export default function WeatherScreen() {
   const days = data?.forecast?.forecastday ?? [];
   const today = days[0];
   const showingAdventures = mode === 'adventures';
-  const showingSavedList = mode === 'saved' && !selectedSavedLocation;
-  const activeSearchIsSaved = Boolean(data && savedLocations.some((item) => sameCoordinates(item.latitude, item.longitude, data.location.lat, data.location.lon)));
 
   return <SafeAreaView style={s.safe}>
     <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
       <Pressable onPress={() => router.back()}><Text style={s.back}>‹ Back</Text></Pressable>
       <Text style={s.eyebrow}>WEATHER & LOCATION</Text>
       <Text style={s.title}>Trail weather</Text>
-      <Text style={s.intro}>See weather where you are, at home, for an upcoming adventure, from a saved place, or anywhere you search.</Text>
+      <Text style={s.intro}>See weather where you are, at home, for an upcoming adventure, or anywhere you search.</Text>
 
       <View style={s.toggle}>
         <Pressable style={[s.toggleBtn, mode === 'current' && s.active]} onPress={() => void loadCurrent()}>
@@ -262,11 +183,8 @@ export default function WeatherScreen() {
         <Pressable style={[s.toggleBtn, mode === 'home' && s.active]} onPress={() => void loadHome()}>
           <Text style={[s.toggleText, mode === 'home' && s.activeText]}>Home</Text>
         </Pressable>
-        <Pressable style={[s.toggleBtn, mode === 'adventures' && s.active]} onPress={() => { setMode('adventures'); setSelectedSavedLocation(null); setError(''); setSuggestions([]); }}>
+        <Pressable style={[s.toggleBtn, mode === 'adventures' && s.active]} onPress={() => { setMode('adventures'); setError(''); setSuggestions([]); }}>
           <Text style={[s.toggleText, mode === 'adventures' && s.activeText]}>Upcoming</Text>
-        </Pressable>
-        <Pressable style={[s.toggleBtn, mode === 'saved' && s.active]} onPress={() => { setMode('saved'); setSelectedSavedLocation(null); setError(''); setSuggestions([]); void refreshSavedLocations(); }}>
-          <Text style={[s.toggleText, mode === 'saved' && s.activeText]}>Saved</Text>
         </Pressable>
       </View>
 
@@ -307,36 +225,7 @@ export default function WeatherScreen() {
           <Text style={s.emptyTitle}>No upcoming adventures yet</Text>
           <Text style={s.emptyBody}>Save an adventure and its destination weather will appear here automatically.</Text>
         </View>}
-      </View> : null}
-
-      {showingSavedList ? <View style={s.savedSection}>
-        <View style={s.sectionRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.section}>Saved locations</Text>
-            <Text style={s.savedIntro}>Places you want to check again without retyping them.</Text>
-          </View>
-          <Text style={s.sectionMeta}>{savedLocations.length}</Text>
-        </View>
-        {savedLoading ? <ActivityIndicator color="#D7B45A" /> : null}
-        {savedLocations.length ? savedLocations.map((item) => <View key={item.id} style={s.savedLocationCard}>
-          <Pressable style={s.savedLocationMain} onPress={() => void loadSavedLocation(item)}>
-            <Text style={s.savedLocationName}>{item.name}{item.region ? `, ${item.region}` : ''}</Text>
-            <Text style={s.savedLocationCountry}>{item.country ?? ''}</Text>
-          </Pressable>
-          <Pressable onPress={() => void removeSavedLocation(item)} style={s.removeButton}>
-            <Text style={s.removeButtonText}>Remove</Text>
-          </Pressable>
-        </View>) : <View style={s.emptyCard}>
-          <Text style={s.emptyTitle}>No saved locations yet</Text>
-          <Text style={s.emptyBody}>Search for a city or ZIP code, open its weather, then tap Save location.</Text>
-        </View>}
-      </View> : null}
-
-      {!showingAdventures && !showingSavedList ? <>
-        {selectedSavedLocation ? <Pressable onPress={() => { setSelectedSavedLocation(null); setMode('saved'); }}>
-          <Text style={s.backToSaved}>‹ Saved locations</Text>
-        </Pressable> : null}
-
+      </View> : <>
         {loading ? <ActivityIndicator color="#D7B45A" style={{ margin: 24 }} /> : null}
         {error ? <View style={s.card}>
           <Text style={s.error}>{error}</Text>
@@ -344,16 +233,6 @@ export default function WeatherScreen() {
         </View> : null}
 
         {data && !loading ? <>
-          {mode === 'search' ? <View style={s.searchResultHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.searchResultLabel}>SEARCH RESULT</Text>
-              <Text style={s.searchResultName}>{data.location.name}{data.location.region ? `, ${data.location.region}` : ''}</Text>
-            </View>
-            <Pressable disabled={activeSearchIsSaved || savedLoading} onPress={() => void saveActiveSearchLocation()} style={[s.saveLocationButton, activeSearchIsSaved && s.saveLocationButtonDisabled]}>
-              <Text style={s.saveLocationButtonText}>{activeSearchIsSaved ? 'Saved' : 'Save location'}</Text>
-            </Pressable>
-          </View> : null}
-
           <WeatherScene weather={data} />
 
           {hours.length ? <>
@@ -401,7 +280,7 @@ export default function WeatherScreen() {
             </View>
           </View>)}
         </> : null}
-      </> : null}
+      </>}
     </ScrollView>
   </SafeAreaView>;
 }
@@ -410,14 +289,13 @@ const s = StyleSheet.create({
   safe:{flex:1,backgroundColor:'#0F1713'},
   content:{padding:20,paddingBottom:60,gap:12},
   back:{color:'#D7B45A',fontWeight:'900'},
-  backToSaved:{color:'#D7B45A',fontWeight:'900',marginTop:2},
   eyebrow:{color:'#D7B45A',fontSize:11,fontWeight:'900',letterSpacing:1.1,marginTop:8},
   title:{color:'#FFF8E8',fontSize:34,fontWeight:'900'},
   intro:{color:'#9DA8A1',lineHeight:21},
   toggle:{flexDirection:'row',backgroundColor:'#151F1A',borderRadius:14,padding:4,gap:4},
-  toggleBtn:{flex:1,paddingVertical:10,paddingHorizontal:4,borderRadius:11,alignItems:'center'},
+  toggleBtn:{flex:1,paddingVertical:10,paddingHorizontal:7,borderRadius:11,alignItems:'center'},
   active:{backgroundColor:'#D7B45A'},
-  toggleText:{color:'#AAB4AE',fontWeight:'800',fontSize:11,textAlign:'center'},
+  toggleText:{color:'#AAB4AE',fontWeight:'800',fontSize:12,textAlign:'center'},
   activeText:{color:'#17211C'},
   searchBox:{position:'relative'},
   input:{backgroundColor:'#17211C',borderWidth:1,borderColor:'#2D3B33',borderRadius:14,paddingHorizontal:13,paddingVertical:12,paddingRight:42,color:'#FFF8E8'},
@@ -460,19 +338,7 @@ const s = StyleSheet.create({
   savedHeader:{flexDirection:'row',justifyContent:'space-between',alignItems:'baseline',gap:12,paddingHorizontal:2},
   savedTitle:{color:'#FFF8E8',fontWeight:'900',fontSize:15,flex:1},
   savedDate:{color:'#A7B1AA',fontSize:12,fontWeight:'800'},
-  savedLocationCard:{backgroundColor:'#17211C',borderRadius:16,borderWidth:1,borderColor:'#2D3B33',padding:14,flexDirection:'row',alignItems:'center',gap:12},
-  savedLocationMain:{flex:1},
-  savedLocationName:{color:'#FFF8E8',fontWeight:'900',fontSize:15},
-  savedLocationCountry:{color:'#87938B',fontSize:11,marginTop:3},
-  removeButton:{paddingHorizontal:10,paddingVertical:8,borderRadius:10,backgroundColor:'#253229'},
-  removeButtonText:{color:'#D9E0DB',fontSize:11,fontWeight:'800'},
   emptyCard:{backgroundColor:'#17211C',borderRadius:16,borderWidth:1,borderColor:'#2D3B33',padding:18,gap:5},
   emptyTitle:{color:'#FFF8E8',fontWeight:'900',fontSize:16},
   emptyBody:{color:'#87938B',lineHeight:19},
-  searchResultHeader:{flexDirection:'row',alignItems:'center',gap:12},
-  searchResultLabel:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},
-  searchResultName:{color:'#FFF8E8',fontSize:16,fontWeight:'900',marginTop:2},
-  saveLocationButton:{backgroundColor:'#D7B45A',borderRadius:12,paddingHorizontal:12,paddingVertical:9},
-  saveLocationButtonDisabled:{opacity:0.55},
-  saveLocationButtonText:{color:'#17211C',fontSize:11,fontWeight:'900'},
 });
