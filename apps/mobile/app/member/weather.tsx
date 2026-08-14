@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { listAdventures } from '../../src/adventures/api';
+import type { AdventureSummary } from '../../src/adventures/types';
 import { getMemberBasecamp } from '../../src/member/api';
+import { AdventureWeatherPanel } from '../../src/weather/AdventureWeatherPanel';
 import { WeatherScene } from '../../src/weather/WeatherScene';
 import { getWeather, getWeatherByCoordinates, type WeatherForecast, type WeatherHour } from '../../src/weather/api';
 
@@ -41,6 +44,7 @@ function nextHours(data: WeatherForecast): WeatherHour[] {
 export default function WeatherScreen() {
   const [data, setData] = useState<WeatherForecast | null>(null);
   const [home, setHome] = useState<{ city: string; state: string } | null>(null);
+  const [savedAdventures, setSavedAdventures] = useState<AdventureSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'home' | 'current'>('home');
   const [error, setError] = useState('');
@@ -79,7 +83,12 @@ export default function WeatherScreen() {
     }
   }
 
-  useEffect(() => { void loadHome(); }, []);
+  useEffect(() => {
+    void loadHome();
+    void listAdventures({ savedOnly: true })
+      .then((items) => setSavedAdventures(items.filter((item) => new Date(item.ends_at).getTime() >= Date.now())))
+      .catch(() => setSavedAdventures([]));
+  }, []);
 
   const hours = useMemo(() => data ? nextHours(data) : [], [data]);
   const conditions = useMemo(() => data ? adventureCondition(data) : null, [data]);
@@ -145,6 +154,23 @@ export default function WeatherScreen() {
             </View>
           </View>)}
         </> : null}
+
+        {savedAdventures.length ? <View style={s.savedSection}>
+          <View style={s.sectionRow}>
+            <View>
+              <Text style={s.section}>Saved adventures</Text>
+              <Text style={s.savedIntro}>Destination weather follows each event, not your Home Location.</Text>
+            </View>
+            <Text style={s.sectionMeta}>{savedAdventures.length}</Text>
+          </View>
+          {savedAdventures.map((adventure) => <Pressable key={adventure.id} onPress={() => router.push(`/adventures/${adventure.id}`)} style={s.savedWrap}>
+            <View style={s.savedHeader}>
+              <Text style={s.savedTitle}>{adventure.title}</Text>
+              <Text style={s.savedDate}>{new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+            </View>
+            <AdventureWeatherPanel adventure={adventure} />
+          </Pressable>)}
+        </View> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -188,4 +214,10 @@ const s = StyleSheet.create({
   dayTitle: { color: '#FFF8E8', fontWeight: '900' },
   range: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
   rain: { color: '#D7B45A', fontSize: 12, marginTop: 3 },
+  savedSection: { gap: 10, marginTop: 5 },
+  savedIntro: { color: '#87938B', fontSize: 12, marginTop: 3, maxWidth: 290 },
+  savedWrap: { gap: 7 },
+  savedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, paddingHorizontal: 2 },
+  savedTitle: { color: '#FFF8E8', fontWeight: '900', fontSize: 15, flex: 1 },
+  savedDate: { color: '#A7B1AA', fontSize: 12, fontWeight: '800' },
 });
