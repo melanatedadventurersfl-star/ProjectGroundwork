@@ -35,6 +35,79 @@ jobs:
         with:
           node-version: 22
 
+      - name: Repair legacy native PNGs on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageFile
+
+          # Only main may self-heal legacy/truncated source artwork. PRs must
+          # provide valid images and are rejected by the strict check below.
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
+          paths = [
+              Path('apps/mobile/assets/ma-app-icon.png'),
+              Path('apps/mobile/assets/ma-splash-icon.png'),
+              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
+          ]
+
+          for path in paths:
+              temp = path.with_name(path.stem + '.repaired.png')
+              with Image.open(path) as image:
+                  image.load()
+                  image.convert('RGBA').save(
+                      temp,
+                      format='PNG',
+                      optimize=False,
+                      compress_level=6,
+                  )
+              temp.replace(path)
+              print(f'Re-encoded native asset: {path}')
+          PY
+
+          if git diff --quiet -- \
+            apps/mobile/assets/ma-app-icon.png \
+            apps/mobile/assets/ma-splash-icon.png \
+            apps/mobile/assets/ma-pathfinder-mark.png; then
+            echo "Native assets already have canonical PNG encoding."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add \
+              apps/mobile/assets/ma-app-icon.png \
+              apps/mobile/assets/ma-splash-icon.png \
+              apps/mobile/assets/ma-pathfinder-mark.png
+            git commit -m "Repair native PNG asset encoding"
+            git push
+          fi
+
+      - name: Strictly validate native image assets
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          paths = [
+              Path('apps/mobile/assets/ma-app-icon.png'),
+              Path('apps/mobile/assets/ma-splash-icon.png'),
+              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
+          ]
+
+          for path in paths:
+              with Image.open(path) as image:
+                  if image.format != 'PNG':
+                      raise RuntimeError(f'{path} must be a PNG, got {image.format}.')
+                  image.verify()
+              with Image.open(path) as image:
+                  image.load()
+                  width, height = image.size
+                  if width <= 0 or height <= 0:
+                      raise RuntimeError(f'{path} has invalid dimensions {image.size}.')
+              print(f'Validated PNG: {path} ({width}x{height})')
+          PY
+
       # This preview branch added one Expo native dependency. npm install is
       # used once here so CI can refresh the committed lockfile on the PR.
       # After the generated lockfile lands, this step returns to npm ci.
