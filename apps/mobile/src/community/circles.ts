@@ -62,6 +62,19 @@ export async function getConnections(): Promise<Connection[]> {
 
 export async function sendConnectionRequest(profileId: string) {
   const userId = await requireUserId();
+  const { data: existing, error: lookupError } = await supabase
+    .from('member_connections')
+    .select('id, status')
+    .or(`and(requester_id.eq.${userId},addressee_id.eq.${profileId}),and(requester_id.eq.${profileId},addressee_id.eq.${userId})`)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+
+  if (existing?.status === 'pending' || existing?.status === 'accepted') return;
+  if (existing?.id) {
+    const { error: deleteError } = await supabase.from('member_connections').delete().eq('id', existing.id);
+    if (deleteError) throw deleteError;
+  }
+
   const { error } = await supabase.from('member_connections').insert({ requester_id: userId, addressee_id: profileId });
   if (error) throw error;
 }
