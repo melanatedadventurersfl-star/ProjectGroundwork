@@ -41,7 +41,6 @@ const rasterStampAssets: Partial<Record<LegacyStampCode, ImageSourcePropType>> =
   'legacy-event-2025-group-launch': require('../../assets/stamps/2025-group-launch.jpg'),
   'legacy-event-2025-huguenot-camping': require('../../assets/stamps/2025-huguenot-camping.jpg'),
   'legacy-event-2025-float-out': require('../../assets/stamps/2025-float-out.jpg'),
-  'legacy-event-2025-wet-wild': require('../../assets/stamps/2025-wet-wild.jpg'),
   'legacy-event-2026-beach-escape': require('../../assets/stamps/2026-beach-escape.jpg'),
 };
 
