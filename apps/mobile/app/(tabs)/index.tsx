@@ -21,6 +21,7 @@ import { supabase } from '../../src/lib/supabase';
 import { getJourney, getMemberBadges, getPassportStamps } from '../../src/passport/api';
 import { getAdventureQueue } from '../../src/readiness/api';
 import type { AdventureQueueItem } from '../../src/readiness/types';
+import { TrailheadIdentityCards } from '../../src/trailhead/TrailheadIdentityCards';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeather } from '../../src/weather/api';
 import { WeatherScene } from '../../src/weather/WeatherScene';
@@ -86,8 +87,15 @@ export default function TrailheadScreen() {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
       const [nextQueue, groups, nextJourney, stamps, badges, nextAdventures, profileResult] = await Promise.all([
-        getAdventureQueue(), getGroups(), getJourney(), getPassportStamps(), getMemberBadges(), listAdventures(),
-        userId ? supabase.from('profiles').select('first_name,display_name,home_city,home_state').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
+        getAdventureQueue(),
+        getGroups(),
+        getJourney(),
+        getPassportStamps(),
+        getMemberBadges(),
+        listAdventures(),
+        userId
+          ? supabase.from('profiles').select('first_name,display_name,home_city,home_state').eq('id', userId).single()
+          : Promise.resolve({ data: null, error: null }),
       ]);
       const myGroupIds = groups.filter((group) => group.is_member).map((group) => group.id);
       const feed = await getCommunityFeed();
@@ -104,12 +112,23 @@ export default function TrailheadScreen() {
       setStampCount(stamps.length);
       setBadgeCount(badges.length);
       setAdventures(nextAdventures);
-      const profile = profileResult.data as { first_name?: string | null; display_name?: string | null; home_city?: string | null; home_state?: string | null } | null;
+      const profile = profileResult.data as {
+        first_name?: string | null;
+        display_name?: string | null;
+        home_city?: string | null;
+        home_state?: string | null;
+      } | null;
       setFirstName(profile?.first_name || profile?.display_name?.split(' ')[0] || 'Adventurer');
       setLocation([profile?.home_city, profile?.home_state].filter(Boolean).join(', '));
       if (profile?.home_city && profile?.home_state) {
-        try { setWeather(await getWeather(profile.home_city, profile.home_state)); } catch { setWeather(null); }
-      } else setWeather(null);
+        try {
+          setWeather(await getWeather(profile.home_city, profile.home_state));
+        } catch {
+          setWeather(null);
+        }
+      } else {
+        setWeather(null);
+      }
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load Trailhead.');
@@ -147,8 +166,13 @@ export default function TrailheadScreen() {
   function settleCarousel(index: number) {
     if (featured.length < 2) return;
     let next = index;
-    if (index === 0) { next = featured.length; listRef.current?.scrollToIndex({ index: next, animated: false }); }
-    else if (index === featured.length + 1) { next = 1; listRef.current?.scrollToIndex({ index: next, animated: false }); }
+    if (index === 0) {
+      next = featured.length;
+      listRef.current?.scrollToIndex({ index: next, animated: false });
+    } else if (index === featured.length + 1) {
+      next = 1;
+      listRef.current?.scrollToIndex({ index: next, animated: false });
+    }
     setActiveFeature(next);
   }
 
@@ -157,49 +181,168 @@ export default function TrailheadScreen() {
   const currentCommunityPost = communityPosts[communityIndex];
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}
+    >
       <View style={styles.topRow}>
-        <ImageBackground source={require('../../assets/ma-pathfinder-mark.png')} style={{ width: 56, height: 56 }} resizeMode="contain" accessibilityLabel="Melanated Adventurers" />
+        <ImageBackground
+          source={require('../../assets/ma-pathfinder-mark.png')}
+          style={{ width: 56, height: 56 }}
+          resizeMode="contain"
+          accessibilityLabel="Melanated Adventurers"
+        />
         <View style={styles.topActions}>
-          <Pressable accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} style={styles.iconButton}><AppIcon name="notifications" color="#F6F4EE" size={22} /></Pressable>
-          <Pressable accessibilityLabel="Profile" onPress={() => router.push('/member/profile')} style={styles.iconButton}><AppIcon name="profile" color="#F6F4EE" size={22} /></Pressable>
+          <Pressable accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} style={styles.iconButton}>
+            <AppIcon name="notifications" color="#F6F4EE" size={22} />
+          </Pressable>
+          <Pressable accessibilityLabel="Profile" onPress={() => router.push('/member/profile')} style={styles.iconButton}>
+            <AppIcon name="profile" color="#F6F4EE" size={22} />
+          </Pressable>
         </View>
       </View>
-      <Text style={styles.greeting}>{greeting(new Date().getHours())}, {firstName}</Text><Text style={styles.title}>What’s next on your trail?</Text>
-      {loading ? <ActivityIndicator color="#D7B45A" style={styles.loader} /> : null}{error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {featured.length ? <View style={styles.section}><View style={styles.sectionRow}><Text style={styles.sectionTitle}>Featured Adventures</Text><Text style={styles.count}>{featured.length > 1 ? `${Math.max(1, Math.min(featured.length, activeFeature))} of ${featured.length}` : '1 of 1'}</Text></View><FlatList ref={listRef} horizontal data={loop} keyExtractor={(item, index) => `${item.id}-${index}`} initialScrollIndex={featured.length > 1 ? 1 : 0} getItemLayout={(_, index) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * index, index })} pagingEnabled showsHorizontalScrollIndicator={false} onTouchStart={pauseCarousel} onScrollBeginDrag={pauseCarousel} onMomentumScrollEnd={(event) => settleCarousel(Math.round(event.nativeEvent.contentOffset.x / CARD_WIDTH))} renderItem={({ item }) => <Pressable style={{ width: CARD_WIDTH }} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}><ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.hero} imageStyle={styles.heroRadius}><View style={styles.heroShade} /><View style={styles.heroBody}><Text style={styles.eyebrow}>{item.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL MA ADVENTURE'}</Text><Text style={styles.heroTitle}>{item.title}</Text><Text style={styles.heroMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text><Text style={styles.link}>View Adventure →</Text></View></ImageBackground></Pressable>} /></View> : null}
+      <Text style={styles.greeting}>{greeting(new Date().getHours())}, {firstName}</Text>
+      <Text style={styles.title}>What’s next on your trail?</Text>
+      {loading ? <ActivityIndicator color="#D7B45A" style={styles.loader} /> : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {featured.length ? (
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Featured Adventures</Text>
+            <Text style={styles.count}>{featured.length > 1 ? `${Math.max(1, Math.min(featured.length, activeFeature))} of ${featured.length}` : '1 of 1'}</Text>
+          </View>
+          <FlatList
+            ref={listRef}
+            horizontal
+            data={loop}
+            keyExtractor={(item, index) => `${item.id}-${index}`}
+            initialScrollIndex={featured.length > 1 ? 1 : 0}
+            getItemLayout={(_, index) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * index, index })}
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onTouchStart={pauseCarousel}
+            onScrollBeginDrag={pauseCarousel}
+            onMomentumScrollEnd={(event) => settleCarousel(Math.round(event.nativeEvent.contentOffset.x / CARD_WIDTH))}
+            renderItem={({ item }) => (
+              <Pressable style={{ width: CARD_WIDTH }} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
+                <ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.hero} imageStyle={styles.heroRadius}>
+                  <View style={styles.heroShade} />
+                  <View style={styles.heroBody}>
+                    <Text style={styles.eyebrow}>{item.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL MA ADVENTURE'}</Text>
+                    <Text style={styles.heroTitle}>{item.title}</Text>
+                    <Text style={styles.heroMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text>
+                    <Text style={styles.link}>View Adventure →</Text>
+                  </View>
+                </ImageBackground>
+              </Pressable>
+            )}
+          />
+        </View>
+      ) : null}
 
       <Pressable onPress={() => router.push('/member/weather' as never)} accessibilityRole="button" accessibilityLabel="Open weather details">
         <WeatherScene weather={weather} fallbackLocation={location} reduceMotion={reduceMotion} />
       </Pressable>
 
-      <View style={styles.duo}>
-        <Pressable style={[styles.halfCard, styles.communityCard]} onPress={() => router.push('/(tabs)/community')}>
-          <Text style={styles.cardWatermark}>COMMUNITY</Text><Text style={styles.eyebrow}>COMMUNITY</Text>
-          {currentCommunityPost ? <><Text style={styles.quote} numberOfLines={3}>“{currentCommunityPost.body}”</Text><Text style={styles.muted}>{currentCommunityPost.author_name} · {groupCount} group{groupCount === 1 ? '' : 's'}</Text></> : <><Text style={styles.cardTitle}>{groupCount ? `${groupCount} group${groupCount === 1 ? '' : 's'} joined` : 'Find your people'}</Text><Text style={styles.muted}>{groupCount ? 'Fresh group activity will rotate here.' : 'Join a group and its conversation will come alive here.'}</Text></>}
-          <Text style={styles.link}>View Groups →</Text>
-        </Pressable>
-        <Pressable style={[styles.halfCard, styles.passportCard]} onPress={() => router.push('/(tabs)/passport')}>
-          <Text style={styles.cardWatermark}>✦</Text><Text style={styles.eyebrow}>PASSPORT</Text><Text style={styles.cardTitle}>{currentRank}</Text>
-          {stampCount || badgeCount ? <Text style={styles.muted}>{stampCount} stamp{stampCount === 1 ? '' : 's'} · {badgeCount} badge{badgeCount === 1 ? '' : 's'}</Text> : <Text style={styles.muted}>Your first stamp is waiting on the trail.</Text>}
-          <Text style={styles.link}>View Passport →</Text>
-        </Pressable>
+      <TrailheadIdentityCards
+        communityPost={currentCommunityPost}
+        groupCount={groupCount}
+        currentRank={currentRank}
+        journeyCount={journey.length}
+        stateCount={statesVisited.size}
+        stampCount={stampCount}
+        badgeCount={badgeCount}
+      />
+
+      <View style={styles.section}>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Current Reservations</Text>
+          <Pressable onPress={() => router.push('/member/trips')}><Text style={styles.link}>Manage</Text></Pressable>
+        </View>
+        {queue.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>
+            {queue.slice(0, 4).map((item) => {
+              const adventure = adventureById.get(item.adventure_id);
+              return (
+                <Pressable key={item.order_id} style={styles.reservationShell} onPress={() => router.push('/member/trips')}>
+                  <ImageBackground source={adventure?.hero_image_url ? { uri: adventure.hero_image_url } : undefined} style={styles.reservationCard} imageStyle={styles.reservationImage}>
+                    <View style={styles.reservationShade} />
+                    <View style={styles.reservationBody}>
+                      <Text style={styles.eyebrow}>{item.order_status === 'held' || item.order_status === 'payment_pending' ? 'RESERVATION HELD' : 'CONFIRMED'}</Text>
+                      <Text style={styles.reservationTitle}>{item.title}</Text>
+                      <Text style={styles.reservationMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text>
+                      <Text style={styles.link}>View Reservation →</Text>
+                    </View>
+                  </ImageBackground>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.cardTitle}>Nothing booked yet</Text>
+            <Text style={styles.muted}>Your next confirmed adventure will land here with its event artwork.</Text>
+          </View>
+        )}
       </View>
 
-      <Pressable style={styles.journeyCard} onPress={() => router.push('/(tabs)/passport')}>
-        <Text style={styles.journeyWatermark}>⌁⌁⌁</Text><Text style={styles.eyebrow}>MY JOURNEY</Text>
-        {journey.length ? <View style={styles.journeyStats}><View><Text style={styles.stat}>{journey.length}</Text><Text style={styles.statLabel}>Adventures</Text></View><View><Text style={styles.stat}>{statesVisited.size}</Text><Text style={styles.statLabel}>States</Text></View><View><Text style={styles.stat}>{groupCount}</Text><Text style={styles.statLabel}>Communities</Text></View></View> : <><Text style={styles.journeyPrompt}>Your map starts with your first adventure.</Text><Text style={styles.muted}>Book, explore, and watch your trail take shape.</Text></>}
-        <Text style={styles.link}>Open Journey in Passport →</Text>
-      </Pressable>
-
-      <View style={styles.section}><View style={styles.sectionRow}><Text style={styles.sectionTitle}>Current Reservations</Text><Pressable onPress={() => router.push('/member/trips')}><Text style={styles.link}>Manage</Text></Pressable></View>{queue.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>{queue.slice(0, 4).map((item) => { const adventure = adventureById.get(item.adventure_id); return <Pressable key={item.order_id} style={styles.reservationShell} onPress={() => router.push('/member/trips')}><ImageBackground source={adventure?.hero_image_url ? { uri: adventure.hero_image_url } : undefined} style={styles.reservationCard} imageStyle={styles.reservationImage}><View style={styles.reservationShade} /><View style={styles.reservationBody}><Text style={styles.eyebrow}>{item.order_status === 'held' || item.order_status === 'payment_pending' ? 'RESERVATION HELD' : 'CONFIRMED'}</Text><Text style={styles.reservationTitle}>{item.title}</Text><Text style={styles.reservationMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text><Text style={styles.link}>View Reservation →</Text></View></ImageBackground></Pressable>; })}</ScrollView> : <View style={styles.emptyCard}><Text style={styles.cardTitle}>Nothing booked yet</Text><Text style={styles.muted}>Your next confirmed adventure will land here with its event artwork.</Text></View>}</View>
-
-      <View style={styles.section}><View style={styles.sectionRow}><Text style={styles.sectionTitle}>Upcoming Adventures</Text><Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.link}>Explore</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>{adventures.slice(0, 5).map((item) => <Pressable key={item.id} style={styles.upcomingCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}><ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.thumbnail} imageStyle={styles.thumbnailRadius} /><Text style={styles.upcomingTitle} numberOfLines={2}>{item.title}</Text><Text style={styles.muted}>{shortDate(item.starts_at)} · {item.city}</Text></Pressable>)}</ScrollView></View>
+      <View style={styles.section}>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Upcoming Adventures</Text>
+          <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.link}>Explore</Text></Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>
+          {adventures.slice(0, 5).map((item) => (
+            <Pressable key={item.id} style={styles.upcomingCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
+              <ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.thumbnail} imageStyle={styles.thumbnailRadius} />
+              <Text style={styles.upcomingTitle} numberOfLines={2}>{item.title}</Text>
+              <Text style={styles.muted}>{shortDate(item.starts_at)} · {item.city}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen:{flex:1,backgroundColor:'#0F1713'},content:{paddingHorizontal:18,paddingTop:52,paddingBottom:48,gap:15},topRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},brandMark:{width:58,height:46,borderWidth:1,borderColor:'#D7B45A',borderRadius:16,alignItems:'center',justifyContent:'center',backgroundColor:'#17211C',overflow:'hidden'},brandMountain:{position:'absolute',top:0,color:'#667A6E',fontSize:30,fontWeight:'900'},brandText:{color:'#F0D083',fontWeight:'900',letterSpacing:1.2,fontSize:17,marginTop:8},topActions:{flexDirection:'row',gap:10},iconButton:{width:42,height:42,borderRadius:21,borderWidth:1,borderColor:'#405047',backgroundColor:'#17211C',alignItems:'center',justifyContent:'center'},iconGlyph:{color:'#F0D083',fontWeight:'900',fontSize:18},profileGlyph:{color:'#E9E0CA',fontSize:18},greeting:{color:'#D7B45A',fontWeight:'800',marginTop:8},title:{color:'#FFF8E8',fontSize:35,lineHeight:39,fontWeight:'900'},loader:{margin:18},error:{color:'#FFB4A9'},section:{gap:10},sectionRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},sectionTitle:{color:'#FFF8E8',fontSize:21,fontWeight:'900'},count:{color:'#7F8C84',fontSize:12},hero:{height:300,justifyContent:'flex-end',backgroundColor:'#26372D',borderRadius:24,overflow:'hidden'},heroRadius:{borderRadius:24},heroShade:{...StyleSheet.absoluteFill,backgroundColor:'rgba(7,12,9,0.48)'},heroBody:{padding:20,gap:6},eyebrow:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},heroTitle:{color:'#FFF8E8',fontSize:28,lineHeight:31,fontWeight:'900'},heroMeta:{color:'#E0E5E1'},link:{color:'#D7B45A',fontWeight:'900',marginTop:8},weatherCard:{minHeight:118,borderRadius:20,borderWidth:1,borderColor:'#526052',padding:16,justifyContent:'center',overflow:'hidden'},weatherBackdrop:{position:'absolute',right:12,top:-20,fontSize:116,color:'rgba(255,248,232,0.15)',fontWeight:'900'},weatherContent:{maxWidth:'82%'},weatherTitle:{color:'#FFF8E8',fontSize:18,fontWeight:'900',marginTop:6},weatherMuted:{color:'#DCE3DE',lineHeight:19,marginTop:3},duo:{flexDirection:'row',gap:10},halfCard:{flex:1,minHeight:205,borderRadius:20,borderWidth:1,padding:15,overflow:'hidden',justifyContent:'space-between'},communityCard:{backgroundColor:'#1D3028',borderColor:'#385548'},passportCard:{backgroundColor:'#342D20',borderColor:'#665A39'},cardWatermark:{position:'absolute',right:-10,bottom:-12,color:'rgba(255,255,255,0.05)',fontSize:52,fontWeight:'900'},quote:{color:'#FFF8E8',fontWeight:'800',fontSize:15,lineHeight:20,marginTop:8},muted:{color:'#A7B1AA',lineHeight:19,marginTop:3},cardTitle:{color:'#FFF8E8',fontSize:18,fontWeight:'900',marginTop:5},journeyCard:{minHeight:166,backgroundColor:'#1B2721',borderRadius:20,borderWidth:1,borderColor:'#3A493F',padding:17,overflow:'hidden'},journeyWatermark:{position:'absolute',right:-5,bottom:10,color:'rgba(215,180,90,0.08)',fontSize:54,fontWeight:'900'},journeyStats:{flexDirection:'row',justifyContent:'space-between',marginTop:13},journeyPrompt:{color:'#FFF8E8',fontSize:21,fontWeight:'900',lineHeight:26,marginTop:15,maxWidth:'80%'},stat:{color:'#FFF8E8',fontSize:26,fontWeight:'900'},statLabel:{color:'#8F9A93',fontSize:11,marginTop:2},horizontalGap:{gap:10},reservationShell:{width:278,height:170,borderRadius:18,overflow:'hidden'},reservationCard:{flex:1,justifyContent:'flex-end',backgroundColor:'#25342C'},reservationImage:{borderRadius:18},reservationShade:{...StyleSheet.absoluteFill,backgroundColor:'rgba(7,12,9,0.56)'},reservationBody:{padding:15},reservationTitle:{color:'#FFF8E8',fontSize:18,fontWeight:'900',marginTop:5},reservationMeta:{color:'#DDE5E0',marginTop:4},emptyCard:{backgroundColor:'#17211C',borderRadius:18,borderWidth:1,borderColor:'#29372F',padding:17},upcomingCard:{width:158},thumbnail:{height:105,backgroundColor:'#26372D',borderRadius:16},thumbnailRadius:{borderRadius:16},upcomingTitle:{color:'#FFF8E8',fontWeight:'900',marginTop:8,lineHeight:18},
+  screen: { flex: 1, backgroundColor: '#0F1713' },
+  content: { paddingHorizontal: 18, paddingTop: 52, paddingBottom: 48, gap: 15 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  topActions: { flexDirection: 'row', gap: 10 },
+  iconButton: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
+  greeting: { color: '#D7B45A', fontWeight: '800', marginTop: 8 },
+  title: { color: '#FFF8E8', fontSize: 35, lineHeight: 39, fontWeight: '900' },
+  loader: { margin: 18 },
+  error: { color: '#FFB4A9' },
+  section: { gap: 10 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { color: '#FFF8E8', fontSize: 21, fontWeight: '900' },
+  count: { color: '#7F8C84', fontSize: 12 },
+  hero: { height: 300, justifyContent: 'flex-end', backgroundColor: '#26372D', borderRadius: 24, overflow: 'hidden' },
+  heroRadius: { borderRadius: 24 },
+  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,12,9,0.48)' },
+  heroBody: { padding: 20, gap: 6 },
+  eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  heroTitle: { color: '#FFF8E8', fontSize: 28, lineHeight: 31, fontWeight: '900' },
+  heroMeta: { color: '#E0E5E1' },
+  link: { color: '#D7B45A', fontWeight: '900', marginTop: 8 },
+  muted: { color: '#A7B1AA', lineHeight: 19, marginTop: 3 },
+  cardTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 5 },
+  horizontalGap: { gap: 10 },
+  reservationShell: { width: 278, height: 170, borderRadius: 18, overflow: 'hidden' },
+  reservationCard: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#25342C' },
+  reservationImage: { borderRadius: 18 },
+  reservationShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,12,9,0.56)' },
+  reservationBody: { padding: 15 },
+  reservationTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 5 },
+  reservationMeta: { color: '#DDE5E0', marginTop: 4 },
+  emptyCard: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#29372F', padding: 17 },
+  upcomingCard: { width: 158 },
+  thumbnail: { height: 105, backgroundColor: '#26372D', borderRadius: 16 },
+  thumbnailRadius: { borderRadius: 16 },
+  upcomingTitle: { color: '#FFF8E8', fontWeight: '900', marginTop: 8, lineHeight: 18 },
 });
