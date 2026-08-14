@@ -19,9 +19,10 @@ export type TaggedGroup = {
 export type PostTaggingValue = {
   people: TaggedPerson[];
   groups: TaggedGroup[];
+  hashtags?: string[];
 };
 
-export const EMPTY_POST_TAGGING: PostTaggingValue = { people: [], groups: [] };
+export const EMPTY_POST_TAGGING: PostTaggingValue = { people: [], groups: [], hashtags: [] };
 
 const GOLD = '#D7B45A';
 const TEXT = '#FFF8E8';
@@ -37,6 +38,7 @@ export function postTaggingMetadata(value: PostTaggingValue) {
   return {
     tagged_people: value.people.map((person) => ({ id: person.id, name: person.display_name })),
     tagged_groups: value.groups.map((group) => ({ id: group.id, name: group.name })),
+    hashtags: Array.from(new Set((value.hashtags ?? []).map((tag) => tag.trim().replace(/^#/, '').toLowerCase()).filter(Boolean))),
   };
 }
 
@@ -49,14 +51,24 @@ function metadataArray(metadata: Record<string, unknown>, key: 'tagged_people' |
   }) : [];
 }
 
+export function metadataHashtags(metadata: Record<string, unknown>) {
+  const value = metadata.hashtags;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && !!item.trim()).map((item) => item.replace(/^#/, '').toLowerCase()) : [];
+}
+
 export function PostTagSummary({ metadata }: { metadata: Record<string, unknown> }) {
   const people = metadataArray(metadata, 'tagged_people');
   const groups = metadataArray(metadata, 'tagged_groups');
-  if (!people.length && !groups.length) return null;
+  const hashtags = metadataHashtags(metadata);
+  if (!people.length && !groups.length && !hashtags.length) return null;
 
-  const visible = [...people.map((item) => `@${item.name}`), ...groups.map((item) => item.name)];
-  const first = visible.slice(0, 3).join(' · ');
-  const remaining = Math.max(0, visible.length - 3);
+  const visible = [
+    ...people.map((item) => `@${item.name}`),
+    ...groups.map((item) => `&${item.name}`),
+    ...hashtags.map((item) => `#${item}`),
+  ];
+  const first = visible.slice(0, 4).join(' · ');
+  const remaining = Math.max(0, visible.length - 4);
 
   return (
     <View style={styles.summaryRow}>
@@ -66,6 +78,7 @@ export function PostTagSummary({ metadata }: { metadata: Record<string, unknown>
   );
 }
 
+// Legacy picker retained for the full-screen create flow. The Campfire composer now uses inline @, &, and # suggestions.
 export function PostTaggingFields({
   groups,
   value,
@@ -95,15 +108,9 @@ export function PostTaggingFields({
       setSearching(true);
       setSearchError(null);
       void searchCommunityMembers(query)
-        .then((results) => {
-          if (!cancelled) setPeople(results);
-        })
-        .catch(() => {
-          if (!cancelled) setSearchError('Unable to search members right now.');
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
+        .then((results) => { if (!cancelled) setPeople(results); })
+        .catch(() => { if (!cancelled) setSearchError('Unable to search members right now.'); })
+        .finally(() => { if (!cancelled) setSearching(false); });
     }, 250);
 
     return () => {
@@ -118,7 +125,7 @@ export function PostTaggingFields({
     return groups.filter((group) => group.name.toLowerCase().includes(needle));
   }, [groups, query]);
 
-  const selectedCount = value.people.length + value.groups.length;
+  const selectedCount = value.people.length + value.groups.length + (value.hashtags?.length ?? 0);
 
   function togglePerson(person: CommunityPerson) {
     const selected = value.people.some((item) => item.id === person.id);
@@ -160,7 +167,13 @@ export function PostTaggingFields({
           {value.groups.map((group) => (
             <Pressable key={`group-${group.id}`} style={styles.selectedChip} onPress={() => onChange({ ...value, groups: value.groups.filter((item) => item.id !== group.id) })}>
               <Ionicons name="people-outline" size={13} color={GOLD} />
-              <Text style={styles.selectedChipText}>{group.name}</Text>
+              <Text style={styles.selectedChipText}>&{group.name}</Text>
+              <Ionicons name="close" size={13} color={MUTED} />
+            </Pressable>
+          ))}
+          {(value.hashtags ?? []).map((tag) => (
+            <Pressable key={`tag-${tag}`} style={styles.selectedChip} onPress={() => onChange({ ...value, hashtags: (value.hashtags ?? []).filter((item) => item !== tag) })}>
+              <Text style={styles.selectedChipText}>#{tag}</Text>
               <Ionicons name="close" size={13} color={MUTED} />
             </Pressable>
           ))}
@@ -180,15 +193,7 @@ export function PostTaggingFields({
 
           <View style={styles.searchBox}>
             <Ionicons name="search-outline" size={17} color={MUTED} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={tab === 'people' ? 'Search people' : 'Search groups'}
-              placeholderTextColor="#738078"
-              returnKeyType="done"
-              autoCapitalize="none"
-              style={styles.searchInput}
-            />
+            <TextInput value={query} onChangeText={setQuery} placeholder={tab === 'people' ? 'Search people' : 'Search groups'} placeholderTextColor="#738078" returnKeyType="done" autoCapitalize="none" style={styles.searchInput} />
           </View>
 
           {tab === 'people' ? (
