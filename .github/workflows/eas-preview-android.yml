@@ -5,10 +5,21 @@ on:
     branches:
       - main
     paths:
-      - 'apps/mobile/**'
-      - 'package-lock.json'
+      # Only changes that can affect the installed/native app should
+      # automatically consume an EAS Android build.
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/eas.json'
+      - 'apps/mobile/package.json'
+      - 'apps/mobile/android/**'
+      - 'apps/mobile/assets/ma-app-icon.png'
+      - 'apps/mobile/assets/ma-splash-icon.png'
+      - 'apps/mobile/assets/ma-pathfinder-mark.png'
       - '.github/workflows/eas-preview-android.yml'
   workflow_dispatch:
+
+concurrency:
+  group: eas-preview-android-main
+  cancel-in-progress: true
 
 jobs:
   build:
