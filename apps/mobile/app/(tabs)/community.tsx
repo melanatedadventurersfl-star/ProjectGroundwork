@@ -260,20 +260,20 @@ export default function CommunityScreen() {
         {tab === 'for-you' ? (
           <>
             <View style={styles.composer}>
-              <View style={styles.composerPromptRow}>
+              <Pressable style={({ pressed }) => [styles.composerPromptRow, pressed && styles.pressed]} onPress={() => router.push('/community/create')}>
                 <View style={styles.memberAvatar}><Ionicons name="person" size={18} color={TEXT} /></View>
                 <Text style={styles.composerPrompt}>What’s happening outside?</Text>
-              </View>
+                <Ionicons name="chevron-forward" size={18} color={MUTED} />
+              </Pressable>
               <View style={styles.quickActionsRow}>
-                <QuickAction icon="create-outline" label="Share" />
-                <QuickAction icon="images-outline" label="Photos" />
+                <QuickAction icon="images-outline" label="Photo" onPress={() => router.push({ pathname: '/community/create', params: { type: 'photo' } })} />
                 <QuickAction icon="calendar-outline" label="Meetup" onPress={() => router.push('/local-events/create')} />
-                <QuickAction icon="help-circle-outline" label="Ask" />
+                <QuickAction icon="help-circle-outline" label="Ask" onPress={() => router.push({ pathname: '/community/create', params: { type: 'ask' } })} />
               </View>
             </View>
 
             <View style={styles.feedSectionHeader}>
-              <Text style={styles.feedSectionLabel}>Latest from your circle</Text>
+              <Text style={styles.feedSectionLabel}>From your community</Text>
               <Text style={styles.feedSectionHint}>Groups, meetups, and people you connect with</Text>
             </View>
 
@@ -336,10 +336,10 @@ const styles = StyleSheet.create({
   loader: { marginVertical: 3 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
   composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 10, gap: 8 },
-  composerPromptRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 2 },
+  composerPromptRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 2 },
   memberAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#294236' },
   memberAvatarWarm: { backgroundColor: '#5E4A2B' },
-  composerPrompt: { color: '#E4E8E5', fontSize: 15.5, fontWeight: '600' },
+  composerPrompt: { flex: 1, color: '#E4E8E5', fontSize: 15.5, fontWeight: '600' },
   quickActionsRow: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#37443C', paddingTop: 7 },
   quickAction: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, gap: 3 },
   quickActionText: { color: '#D8DED9', fontSize: 10.5, textAlign: 'center', fontWeight: '700' },
