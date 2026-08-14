@@ -16,13 +16,58 @@ async function profileId() {
   return data.user.id;
 }
 
-function avatarPathFromUrl(url?: string | null) {
+function profileMediaPathFromUrl(url?: string | null) {
   if (!url) return null;
   const marker = '/profile-avatars/';
   const index = url.indexOf(marker);
   if (index < 0) return null;
   const path = url.slice(index + marker.length).split('?')[0];
   return path ? decodeURIComponent(path) : null;
+}
+
+async function uploadProfileMedia(input: { uri: string; mimeType?: string | null; kind: 'avatar' | 'cover' }) {
+  const id = await profileId();
+  const column = input.kind === 'avatar' ? 'avatar_url' : 'cover_url';
+  const { data: current, error: currentError } = await supabase.from('profiles').select(column).eq('id', id).single();
+  if (currentError) throw currentError;
+
+  const response = await fetch(input.uri);
+  const bytes = await response.arrayBuffer();
+  const mimeType = input.mimeType || 'image/jpeg';
+  const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+  const path = `${id}/${input.kind}-${Date.now()}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, bytes, {
+    contentType: mimeType,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+
+  const { data: publicData } = supabase.storage.from('profile-avatars').getPublicUrl(path);
+  const publicUrl = `${publicData.publicUrl}?v=${Date.now()}`;
+  const { error: profileError } = await supabase.from('profiles').update({ [column]: publicUrl, updated_at: new Date().toISOString() }).eq('id', id);
+  if (profileError) {
+    await supabase.storage.from('profile-avatars').remove([path]);
+    throw profileError;
+  }
+
+  const oldUrl = (current as Record<string, string | null> | null)?.[column] ?? null;
+  const oldPath = profileMediaPathFromUrl(oldUrl);
+  if (oldPath && oldPath !== path) await supabase.storage.from('profile-avatars').remove([oldPath]);
+  return publicUrl;
+}
+
+async function removeProfileMedia(kind: 'avatar' | 'cover') {
+  const id = await profileId();
+  const column = kind === 'avatar' ? 'avatar_url' : 'cover_url';
+  const { data: current, error: currentError } = await supabase.from('profiles').select(column).eq('id', id).single();
+  if (currentError) throw currentError;
+  const { error } = await supabase.from('profiles').update({ [column]: null, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw error;
+  const oldUrl = (current as Record<string, string | null> | null)?.[column] ?? null;
+  const oldPath = profileMediaPathFromUrl(oldUrl);
+  if (oldPath) await supabase.storage.from('profile-avatars').remove([oldPath]);
 }
 
 export async function getMemberBasecamp() {
@@ -53,45 +98,20 @@ export async function saveProfileDetails(values: { display_name: string; usernam
   }
 }
 
-export async function uploadProfilePhoto(input: { uri: string; mimeType?: string | null }) {
-  const id = await profileId();
-  const { data: current, error: currentError } = await supabase.from('profiles').select('avatar_url').eq('id', id).single();
-  if (currentError) throw currentError;
-
-  const response = await fetch(input.uri);
-  const bytes = await response.arrayBuffer();
-  const mimeType = input.mimeType || 'image/jpeg';
-  const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
-  const path = `${id}/avatar-${Date.now()}.${extension}`;
-
-  const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, bytes, {
-    contentType: mimeType,
-    cacheControl: '3600',
-    upsert: false,
-  });
-  if (uploadError) throw uploadError;
-
-  const { data: publicData } = supabase.storage.from('profile-avatars').getPublicUrl(path);
-  const avatarUrl = `${publicData.publicUrl}?v=${Date.now()}`;
-  const { error: profileError } = await supabase.from('profiles').update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() }).eq('id', id);
-  if (profileError) {
-    await supabase.storage.from('profile-avatars').remove([path]);
-    throw profileError;
-  }
-
-  const oldPath = avatarPathFromUrl(current.avatar_url);
-  if (oldPath && oldPath !== path) await supabase.storage.from('profile-avatars').remove([oldPath]);
-  return avatarUrl;
+export function uploadProfilePhoto(input: { uri: string; mimeType?: string | null }) {
+  return uploadProfileMedia({ ...input, kind: 'avatar' });
 }
 
-export async function removeProfilePhoto() {
-  const id = await profileId();
-  const { data: current, error: currentError } = await supabase.from('profiles').select('avatar_url').eq('id', id).single();
-  if (currentError) throw currentError;
-  const { error } = await supabase.from('profiles').update({ avatar_url: null, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) throw error;
-  const oldPath = avatarPathFromUrl(current.avatar_url);
-  if (oldPath) await supabase.storage.from('profile-avatars').remove([oldPath]);
+export function removeProfilePhoto() {
+  return removeProfileMedia('avatar');
+}
+
+export function uploadProfileCover(input: { uri: string; mimeType?: string | null }) {
+  return uploadProfileMedia({ ...input, kind: 'cover' });
+}
+
+export function removeProfileCover() {
+  return removeProfileMedia('cover');
 }
 
 export async function saveProfilePrivacy(values: Record<string, boolean>) {
