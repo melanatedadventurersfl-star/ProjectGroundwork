@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import type { WeatherForecast } from './api';
@@ -85,10 +85,10 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
   const kind = getSceneKind(condition);
   const palette = getPalette(kind, phase);
 
-  const drift = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
-  const rain = useRef(new Animated.Value(0)).current;
-  const flash = useRef(new Animated.Value(0)).current;
+  const [drift] = useState(() => new Animated.Value(0));
+  const [pulse] = useState(() => new Animated.Value(0));
+  const [rain] = useState(() => new Animated.Value(0));
+  const [flash] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (reduceMotion) {
