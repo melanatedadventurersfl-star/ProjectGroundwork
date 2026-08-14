@@ -15,6 +15,7 @@ import {
   type PassportStamp,
 } from '../../src/passport/api';
 import { RankEmblem, rankFor, rankLadder, type RankName } from '../../src/passport/RankEmblem';
+import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 
 type ViewMode = 'journey' | 'stamps' | 'badges' | 'memories';
 
@@ -107,9 +108,7 @@ export default function PassportScreen() {
                   <Text style={styles.rankProgress}>Highest Passport rank achieved.</Text>
                 )}
               </View>
-              <View style={styles.heroEmblem}>
-                <RankEmblem rank={currentRank} size={128} />
-              </View>
+              <View style={styles.heroEmblem}><RankEmblem rank={currentRank} size={128} /></View>
             </View>
 
             <Pressable style={styles.journeyBar} onPress={() => setMode('journey')}>
@@ -117,17 +116,8 @@ export default function PassportScreen() {
                 <Text style={styles.eyebrow}>MY JOURNEY</Text>
                 {journey.length ? <Text style={styles.journeyMini}>{states.size} state{states.size === 1 ? '' : 's'}</Text> : null}
               </View>
-              {journey.length ? (
-                <>
-                  <Text style={styles.journeyHero}>{journey.length} adventure{journey.length === 1 ? '' : 's'} on your trail.</Text>
-                  <Text style={styles.muted}>Every completed MA experience adds another chapter to your Passport.</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.journeyHero}>Your map starts with your first adventure.</Text>
-                  <Text style={styles.muted}>Complete an official MA experience and your trail will grow here.</Text>
-                </>
-              )}
+              <Text style={styles.journeyHero}>{journey.length ? `${journey.length} adventure${journey.length === 1 ? '' : 's'} on your trail.` : 'Your map starts with your first adventure.'}</Text>
+              <Text style={styles.muted}>{journey.length ? 'Every completed MA experience adds another chapter to your Passport.' : 'Complete an official MA experience and your trail will grow here.'}</Text>
             </Pressable>
 
             <View style={styles.ladder}>
@@ -138,7 +128,6 @@ export default function PassportScreen() {
                 </View>
                 <Text style={styles.rankTrailCount}>{journey.length} completed</Text>
               </View>
-
               <View style={styles.ladderRow}>
                 {rankLadder.map(([rankName, minimum]) => {
                   const reached = journey.length >= minimum;
@@ -154,7 +143,6 @@ export default function PassportScreen() {
                   );
                 })}
               </View>
-
               <Pressable onPress={() => router.push('/guide')}><Text style={styles.link}>About Ranks & Passport</Text></Pressable>
             </View>
 
@@ -187,10 +175,7 @@ export default function PassportScreen() {
 
             {mode === 'journey' && journey.length ? (
               <View style={styles.sectionHeadingRow}>
-                <View>
-                  <Text style={styles.panelEyebrow}>JOURNEY TIMELINE</Text>
-                  <Text style={styles.sectionTitle}>Your adventure history</Text>
-                </View>
+                <View><Text style={styles.panelEyebrow}>JOURNEY TIMELINE</Text><Text style={styles.sectionTitle}>Your adventure history</Text></View>
                 <Text style={styles.muted}>{journey.length} total</Text>
               </View>
             ) : null}
@@ -205,7 +190,11 @@ export default function PassportScreen() {
                   <View style={styles.grid}>
                     {stamps.map((stamp) => (
                       <Pressable key={`${stamp.stamp_id}-${stamp.adventure_id}`} style={styles.stamp} onPress={() => stamp.adventure_id && router.push(`/passport/reflection/${stamp.adventure_id}`)}>
-                        <View style={styles.stampSeal}><Text style={styles.stampGlyph}>MA</Text></View>
+                        {isLegacyStampCode(stamp.code) ? (
+                          <View style={styles.stampArtwork}><StampArt code={stamp.code} width={138} /></View>
+                        ) : (
+                          <View style={styles.stampSeal}><Text style={styles.stampGlyph}>MA</Text></View>
+                        )}
                         <Text style={styles.tileTitle}>{stamp.title}</Text>
                         <Text style={styles.muted}>{new Date(stamp.earned_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
                       </Pressable>
@@ -333,11 +322,12 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900', marginTop: 4 },
   panelBody: { color: '#8F9B93', lineHeight: 19, marginTop: 7 },
   muted: { color: '#8F9B93', lineHeight: 19, marginTop: 4 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 2 },
-  stamp: { width: '48%', backgroundColor: '#161F1A', borderRadius: 16, borderWidth: 1, borderColor: '#655837', padding: 12 },
-  stampSeal: { width: 68, height: 68, borderRadius: 34, borderWidth: 2, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
-  stampGlyph: { color: '#D7B45A', fontSize: 15, fontWeight: '900' },
-  tileTitle: { color: '#FFF8E8', fontSize: 16, fontWeight: '900', marginTop: 7 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 2, alignItems: 'flex-start' },
+  stamp: { width: '48%', backgroundColor: '#141D18', borderRadius: 18, borderWidth: 1, borderColor: '#3B463E', padding: 10, alignItems: 'center' },
+  stampArtwork: { width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 2 },
+  stampSeal: { width: 92, height: 92, borderRadius: 46, borderWidth: 2, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginVertical: 18 },
+  stampGlyph: { color: '#D7B45A', fontSize: 17, fontWeight: '900' },
+  tileTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 7, alignSelf: 'stretch' },
   badgeTile: { width: '48%', backgroundColor: '#17231C', borderRadius: 16, borderWidth: 1, borderColor: '#3D5145', padding: 12 },
   medal: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   medalGlyph: { color: '#F0D083', fontSize: 15, fontWeight: '900' },
