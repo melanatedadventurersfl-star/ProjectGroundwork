@@ -1,36 +1,164 @@
+import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getGroups, joinGroup, type CommunityGroup } from '../../src/community/api';
 import { getMemberBasecamp } from '../../src/member/api';
 
-function kindLabel(kind: CommunityGroup['kind']) {
-  if (kind === 'adventure') return 'ADVENTURE GROUP';
-  if (kind === 'local') return 'LOCAL EVENT GROUP';
-  return 'INTEREST GROUP';
-}
+type CommunityTab = 'for-you' | 'nearby' | 'groups';
 
-function GroupCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+const GOLD = '#D7B45A';
+const BG = '#0F1713';
+const CARD = '#17211C';
+const CARD_ALT = '#1B2A22';
+const BORDER = '#28362E';
+const TEXT = '#FFF8E8';
+const MUTED = '#AEB8B2';
+
+function GroupRow({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const isMember = group.is_member;
+
   return (
     <Pressable
-      style={styles.card}
-      onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}
+      style={({ pressed }) => [styles.groupRow, pressed && styles.pressed]}
+      onPress={() => {
+        if (isMember) {
+          router.push({ pathname: '/groups/[id]', params: { id: group.id } });
+        } else {
+          onJoin(group);
+        }
+      }}
     >
-      <View style={styles.cardTopRow}>
-        <Text style={styles.kind}>{kindLabel(group.kind)}</Text>
-        <Text style={styles.memberCount}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+      <View style={styles.groupAvatar}>
+        <Text style={styles.groupAvatarText}>{group.name.slice(0, 2).toUpperCase()}</Text>
       </View>
-      <Text style={styles.cardTitle}>{group.name}</Text>
-      {group.city && group.state ? <Text style={styles.meta}>{group.city}, {group.state}</Text> : null}
-      {group.description ? <Text style={styles.description} numberOfLines={3}>{group.description}</Text> : null}
-      <Text style={styles.action}>{group.is_member ? 'Open group →' : joining ? 'Joining…' : 'Join group'}</Text>
+      <View style={styles.groupCopy}>
+        <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
+        <Text style={styles.groupMeta} numberOfLines={1}>
+          {isMember ? `${group.member_count} member${group.member_count === 1 ? '' : 's'}` : joining ? 'Joining…' : `${group.member_count} members · Tap to join`}
+        </Text>
+      </View>
+      <Ionicons name={isMember ? 'chevron-forward' : 'add-circle-outline'} size={22} color={isMember ? MUTED : GOLD} />
     </Pressable>
   );
 }
 
-export default function GroupsScreen() {
+function QuickAction({ icon, label, onPress }: { icon: string; label: string; onPress?: () => void }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]} onPress={onPress}>
+      <Ionicons name={icon as never} size={21} color={GOLD} />
+      <Text style={styles.quickActionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function FeedCard() {
+  return (
+    <View style={styles.feedCard}>
+      <View style={styles.feedHeader}>
+        <View style={styles.feedAvatar}><Text style={styles.feedAvatarText}>JOS</Text></View>
+        <View style={styles.feedHeaderCopy}>
+          <Text style={styles.feedName}>Jacksonville Outside Social</Text>
+          <Text style={styles.feedMeta}>2h ago · Jacksonville, FL</Text>
+        </View>
+        <Ionicons name="ellipsis-horizontal" size={21} color={MUTED} />
+      </View>
+
+      <View style={styles.photoCollage}>
+        <View style={styles.photoHero}>
+          <View style={styles.sun} />
+          <View style={styles.waterLine} />
+          <Text style={styles.photoLabel}>St. Johns River</Text>
+        </View>
+        <View style={styles.photoStack}>
+          <View style={[styles.photoSmall, styles.photoPeople]}>
+            <Ionicons name="people" size={34} color={TEXT} />
+          </View>
+          <View style={[styles.photoSmall, styles.photoTrail]}>
+            <Ionicons name="leaf" size={32} color={TEXT} />
+          </View>
+        </View>
+      </View>
+
+      <Text style={styles.feedBody}>Sunset paddle on the St. Johns River never gets old 🌅 Perfect evening with a great crew.</Text>
+      <View style={styles.engagementRow}>
+        <View style={styles.engagementLeft}>
+          <Ionicons name="heart" size={20} color={GOLD} />
+          <Text style={styles.engagementText}>24 likes</Text>
+          <Text style={styles.engagementDot}>·</Text>
+          <Text style={styles.engagementText}>8 comments</Text>
+        </View>
+        <View style={styles.engagementActions}>
+          <Ionicons name="chatbubble-outline" size={22} color={TEXT} />
+          <Ionicons name="share-social-outline" size={23} color={TEXT} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function PartnerPost() {
+  return (
+    <View style={styles.feedCard}>
+      <View style={styles.feedHeader}>
+        <View style={[styles.memberAvatar, styles.memberAvatarWarm]}>
+          <Ionicons name="person" size={21} color={TEXT} />
+        </View>
+        <View style={styles.feedHeaderCopy}>
+          <Text style={styles.feedName}>Looking for hiking partners</Text>
+          <Text style={styles.feedMeta}>Alex R. · 1h ago · Jacksonville, FL</Text>
+        </View>
+        <Ionicons name="ellipsis-horizontal" size={21} color={MUTED} />
+      </View>
+      <Text style={styles.partnerBody}>New to the area and looking for friendly folks to hit some local trails with. Weekends work best for me!</Text>
+      <View style={styles.partnerFooter}>
+        <View style={styles.tagRow}>
+          <View style={styles.tag}><Ionicons name="trail-sign-outline" size={15} color={MUTED} /><Text style={styles.tagText}>Intermediate</Text></View>
+          <View style={styles.tag}><Ionicons name="people-outline" size={15} color={MUTED} /><Text style={styles.tagText}>Weekends</Text></View>
+        </View>
+        <Pressable style={styles.primaryButton}><Text style={styles.primaryButtonText}>I’m interested</Text></Pressable>
+      </View>
+      <Text style={styles.interestedCount}>12 interested</Text>
+    </View>
+  );
+}
+
+function NearbyEventCard({ location }: { location: string }) {
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeadingRow}>
+        <Text style={styles.sectionHeading}>Happening near you</Text>
+        <Pressable><Text style={styles.link}>View all</Text></Pressable>
+      </View>
+      <View style={styles.eventRow}>
+        <View style={styles.eventThumb}>
+          <Ionicons name="boat-outline" size={38} color={TEXT} />
+        </View>
+        <View style={styles.eventCopy}>
+          <Text style={styles.eventTitle}>Sunrise Paddle on The St. Johns</Text>
+          <View style={styles.metaLine}><Ionicons name="calendar-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>Sat, May 17 · 8:00 AM</Text></View>
+          <View style={styles.metaLine}><Ionicons name="location-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>{location}</Text></View>
+          <View style={styles.metaLine}><Ionicons name="people-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>18 going · 4 spots left</Text></View>
+        </View>
+      </View>
+      <Pressable style={styles.fullButton} onPress={() => router.push('/local-events/create')}>
+        <Text style={styles.primaryButtonText}>View meetup</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export default function CommunityScreen() {
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
@@ -38,6 +166,7 @@ export default function GroupsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<CommunityTab>('for-you');
 
   const load = useCallback(async () => {
     try {
@@ -47,7 +176,7 @@ export default function GroupsScreen() {
       setHomeState(basecamp.profile?.home_state ?? null);
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load Groups.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load Community.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,10 +186,12 @@ export default function GroupsScreen() {
   useEffect(() => { void load(); }, [load]);
 
   const yourGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
-  const adventureGroups = useMemo(() => groups.filter((group) => group.kind === 'adventure'), [groups]);
-  const localGroups = useMemo(() => groups.filter((group) => group.kind === 'local'), [groups]);
-  const interestGroups = useMemo(() => groups.filter((group) => group.kind === 'interest'), [groups]);
-  const nearYou = useMemo(() => groups.filter((group) => !group.is_member && group.state && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [groups, homeCity, homeState]);
+  const nearbyGroups = useMemo(
+    () => groups.filter((group) => group.state && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)),
+    [groups, homeCity, homeState],
+  );
+  const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : 'Jacksonville, FL';
+  const nearbyCount = Math.max(128, nearbyGroups.reduce((total, group) => total + group.member_count, 0));
 
   async function handleJoin(group: CommunityGroup) {
     setJoiningId(group.id);
@@ -74,52 +205,172 @@ export default function GroupsScreen() {
     }
   }
 
-  const shelves = [
-    { key: 'yours', title: 'Your Groups', subtitle: 'Your adventure, local-event, and interest spaces.', data: yourGroups },
-    { key: 'adventure', title: 'Adventure Groups', subtitle: 'Trip coordination for official MA Adventures.', data: adventureGroups },
-    { key: 'near', title: 'Near You', subtitle: homeCity && homeState ? `Communities around ${homeCity}, ${homeState}.` : 'Set your profile city to improve local discovery.', data: nearYou },
-    { key: 'interest', title: 'For Your Interests', subtitle: 'Ongoing communities built around the outdoors you enjoy.', data: interestGroups },
-    { key: 'local', title: 'Local Event Groups', subtitle: 'Member-hosted meetups and their conversation spaces.', data: localGroups },
-  ];
+  const visibleGroupList = tab === 'nearby' ? nearbyGroups : groups;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <FlatList
-        data={shelves}
-        keyExtractor={(item) => item.key}
+      <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor="#D7B45A" />}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.eyebrow}>YOUR COMMUNITY CLUBHOUSE</Text>
-            <Text style={styles.title}>Groups</Text>
-            <Text style={styles.intro}>Belong first, scroll second. Groups are organized around shared adventures, local events, and interests rather than one giant feed.</Text>
-            <View style={styles.guideCard}>
-              <Text style={styles.guideTitle}>How Groups work</Text>
-              <Text style={styles.guideBody}>Adventure Groups unlock with confirmed trips. Local Event Groups support meetups. Interest Groups stay open for ongoing conversation.</Text>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={GOLD} />}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerRow}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Community</Text>
+            <View style={styles.locationRow}>
+              <Ionicons name="location-outline" size={15} color={MUTED} />
+              <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups · {nearbyCount} adventurers nearby</Text>
             </View>
-            {loading ? <ActivityIndicator color="#D7B45A" /> : null}
-            {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{item.title}</Text>
-            <Text style={styles.sectionSubtitle}>{item.subtitle}</Text>
-            {item.data.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
-                {item.data.map((group) => <GroupCard key={`${item.key}-${group.id}`} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
-              </ScrollView>
-            ) : (
-              <View style={styles.emptyCard}><Text style={styles.emptyBody}>Nothing here yet. This shelf will fill as your community activity grows.</Text></View>
-            )}
+          <View style={styles.headerActions}>
+            <Pressable onPress={() => router.push('/notifications')}><Ionicons name="notifications-outline" size={24} color={TEXT} /></Pressable>
+            <Pressable style={styles.profileButton} onPress={() => router.push('/member/profile')}><Ionicons name="person" size={18} color={TEXT} /></Pressable>
+          </View>
+        </View>
+
+        <View style={styles.tabs}>
+          {([
+            ['for-you', 'For You'],
+            ['nearby', 'Nearby'],
+            ['groups', 'Groups'],
+          ] as const).map(([value, label]) => (
+            <Pressable key={value} style={[styles.tab, tab === value && styles.tabActive]} onPress={() => setTab(value)}>
+              <Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {loading ? <ActivityIndicator color={GOLD} style={styles.loader} /> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {tab === 'for-you' ? (
+          <>
+            <View style={styles.composer}>
+              <View style={styles.composerPromptRow}>
+                <View style={styles.memberAvatar}><Ionicons name="person" size={20} color={TEXT} /></View>
+                <Text style={styles.composerPrompt}>What’s happening outside?</Text>
+              </View>
+              <View style={styles.quickActionsRow}>
+                <QuickAction icon="create-outline" label="Share something" />
+                <QuickAction icon="images-outline" label="Post photos" />
+                <QuickAction icon="calendar-outline" label="Plan meetup" onPress={() => router.push('/local-events/create')} />
+                <QuickAction icon="help-circle-outline" label="Ask community" />
+              </View>
+            </View>
+
+            <FeedCard />
+            <PartnerPost />
+            <NearbyEventCard location={locationLabel} />
+
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionHeadingRow}>
+                <Text style={styles.sectionHeading}>Your Communities</Text>
+                <Pressable onPress={() => setTab('groups')}><Text style={styles.link}>Manage</Text></Pressable>
+              </View>
+              <View style={styles.groupList}>
+                {yourGroups.slice(0, 3).map((group) => (
+                  <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />
+                ))}
+                {!yourGroups.length && !loading ? <Text style={styles.emptyText}>Join a few communities and they’ll live here.</Text> : null}
+              </View>
+            </View>
+          </>
+        ) : (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeadingRow}>
+              <View>
+                <Text style={styles.sectionHeading}>{tab === 'nearby' ? 'Near You' : 'Groups'}</Text>
+                <Text style={styles.sectionSubheading}>{tab === 'nearby' ? `Communities around ${locationLabel}.` : 'Your local, interest, and adventure communities.'}</Text>
+              </View>
+              {tab === 'nearby' ? <Ionicons name="navigate-outline" size={22} color={GOLD} /> : <Ionicons name="people-outline" size={22} color={GOLD} />}
+            </View>
+            <View style={styles.groupList}>
+              {visibleGroupList.map((group) => (
+                <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />
+              ))}
+              {!visibleGroupList.length && !loading ? <Text style={styles.emptyText}>Nothing here yet. Pull to refresh or check back as the community grows.</Text> : null}
+            </View>
           </View>
         )}
-      />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea:{flex:1,backgroundColor:'#0F1713'},content:{padding:18,paddingBottom:44,gap:24},header:{gap:10,marginBottom:4},eyebrow:{color:'#D7B45A',fontWeight:'900',letterSpacing:1.1,fontSize:11},title:{color:'#FFF8E8',fontSize:36,fontWeight:'900'},intro:{color:'#C6CEC8',fontSize:16,lineHeight:23},guideCard:{backgroundColor:'#1B2A22',borderWidth:1,borderColor:'#33483B',borderRadius:18,padding:16,marginTop:4},guideTitle:{color:'#FFF8E8',fontSize:18,fontWeight:'900'},guideBody:{color:'#AEB8B2',lineHeight:20,marginTop:6},error:{color:'#FFB4A9'},section:{gap:8},sectionTitle:{color:'#FFF8E8',fontSize:23,fontWeight:'900'},sectionSubtitle:{color:'#8F9B93',lineHeight:19},shelf:{gap:11,paddingVertical:3,paddingRight:18},card:{width:285,backgroundColor:'#17211C',borderWidth:1,borderColor:'#28362E',borderRadius:20,padding:17,gap:7},cardTopRow:{flexDirection:'row',justifyContent:'space-between',gap:10},kind:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:.8},memberCount:{color:'#859188',fontSize:11},cardTitle:{color:'#FFF8E8',fontSize:20,fontWeight:'900'},meta:{color:'#AEB8B2',fontSize:13},description:{color:'#CDD4CF',lineHeight:20},action:{color:'#D7B45A',fontWeight:'900',marginTop:5},emptyCard:{backgroundColor:'#141E19',borderRadius:16,padding:15},emptyBody:{color:'#8F9B93',lineHeight:20}
+  safeArea: { flex: 1, backgroundColor: BG },
+  content: { padding: 18, paddingBottom: 42, gap: 14 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
+  headerCopy: { flex: 1 },
+  title: { color: TEXT, fontSize: 34, lineHeight: 39, fontWeight: '900' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  subtitle: { flex: 1, color: MUTED, fontSize: 12.5, lineHeight: 18 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  profileButton: { width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: GOLD, backgroundColor: CARD_ALT, alignItems: 'center', justifyContent: 'center' },
+  tabs: { flexDirection: 'row', backgroundColor: '#18211D', borderRadius: 15, padding: 3 },
+  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  tabActive: { backgroundColor: '#2A2D28' },
+  tabText: { color: '#A4ADA7', fontWeight: '800' },
+  tabTextActive: { color: GOLD },
+  loader: { marginVertical: 3 },
+  error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
+  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 12 },
+  composerPromptRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  memberAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#294236' },
+  memberAvatarWarm: { backgroundColor: '#5E4A2B' },
+  composerPrompt: { color: '#E4E8E5', fontSize: 17, fontWeight: '600' },
+  quickActionsRow: { flexDirection: 'row', borderWidth: 1, borderColor: '#37443C', borderRadius: 15, overflow: 'hidden' },
+  quickAction: { flex: 1, minHeight: 62, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5, gap: 4, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#3A463F' },
+  quickActionText: { color: TEXT, fontSize: 10.5, lineHeight: 14, textAlign: 'center', fontWeight: '700' },
+  feedCard: { backgroundColor: CARD, borderRadius: 18, padding: 12, gap: 10 },
+  feedHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  feedAvatar: { width: 43, height: 43, borderRadius: 22, borderWidth: 1, borderColor: '#738078', alignItems: 'center', justifyContent: 'center' },
+  feedAvatarText: { color: TEXT, fontWeight: '900', fontSize: 16 },
+  feedHeaderCopy: { flex: 1 },
+  feedName: { color: TEXT, fontSize: 16, fontWeight: '900' },
+  feedMeta: { color: '#8F9B93', fontSize: 12, marginTop: 2 },
+  photoCollage: { flexDirection: 'row', gap: 5, height: 210, borderRadius: 14, overflow: 'hidden' },
+  photoHero: { flex: 1.65, backgroundColor: '#263E50', justifyContent: 'flex-end', padding: 10, overflow: 'hidden' },
+  photoStack: { flex: 1, gap: 5 },
+  photoSmall: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  photoPeople: { backgroundColor: '#5B5A34' },
+  photoTrail: { backgroundColor: '#2C4A33' },
+  sun: { position: 'absolute', right: 18, top: 36, width: 38, height: 38, borderRadius: 19, backgroundColor: '#E6A94C' },
+  waterLine: { position: 'absolute', left: 0, right: 0, bottom: 38, height: 38, backgroundColor: '#1B3040', opacity: 0.85 },
+  photoLabel: { color: TEXT, fontWeight: '900', fontSize: 13 },
+  feedBody: { color: '#E0E5E1', fontSize: 14, lineHeight: 20 },
+  engagementRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  engagementLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  engagementText: { color: MUTED, fontSize: 12.5 },
+  engagementDot: { color: '#6E7A72' },
+  engagementActions: { flexDirection: 'row', alignItems: 'center', gap: 17 },
+  partnerBody: { color: '#D9DFDB', lineHeight: 20 },
+  partnerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
+  tagRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#3B493F', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 7 },
+  tagText: { color: MUTED, fontSize: 11 },
+  primaryButton: { backgroundColor: GOLD, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 13 },
+  primaryButtonText: { color: '#101510', fontWeight: '900' },
+  interestedCount: { color: '#8F9B93', fontSize: 11, textAlign: 'right', marginTop: -4 },
+  sectionCard: { backgroundColor: CARD, borderRadius: 18, padding: 13, gap: 12 },
+  sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  sectionHeading: { color: TEXT, fontSize: 18, fontWeight: '900' },
+  sectionSubheading: { color: '#8F9B93', fontSize: 12.5, marginTop: 2 },
+  link: { color: GOLD, fontWeight: '800' },
+  eventRow: { flexDirection: 'row', gap: 12 },
+  eventThumb: { width: 112, minHeight: 118, borderRadius: 14, backgroundColor: '#294A3A', alignItems: 'center', justifyContent: 'center' },
+  eventCopy: { flex: 1, gap: 6 },
+  eventTitle: { color: TEXT, fontWeight: '900', fontSize: 15 },
+  metaLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  metaLineText: { flex: 1, color: MUTED, fontSize: 11.5, lineHeight: 16 },
+  fullButton: { backgroundColor: GOLD, minHeight: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  groupList: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
+  groupRow: { minHeight: 66, paddingHorizontal: 10, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
+  groupAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: '#4A594F', backgroundColor: '#1D3026', alignItems: 'center', justifyContent: 'center' },
+  groupAvatarText: { color: TEXT, fontWeight: '900', fontSize: 12 },
+  groupCopy: { flex: 1 },
+  groupName: { color: TEXT, fontWeight: '800', fontSize: 14 },
+  groupMeta: { color: '#8F9B93', fontSize: 11.5, marginTop: 2 },
+  emptyText: { color: '#8F9B93', padding: 14, lineHeight: 19 },
+  pressed: { opacity: 0.72 },
 });
