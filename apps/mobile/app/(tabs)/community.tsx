@@ -63,6 +63,19 @@ function QuickAction({ icon, label, onPress }: { icon: string; label: string; on
   );
 }
 
+function CircleGateway({ compact = false }: { compact?: boolean }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.circleGateway, compact && styles.circleGatewayCompact, pressed && styles.pressed]} onPress={() => router.push('/circles')}>
+      <View style={styles.circleGatewayIcon}><Ionicons name="people-circle-outline" size={27} color={GOLD} /></View>
+      <View style={styles.groupCopy}>
+        <Text style={styles.circleGatewayTitle}>Circles & Connections</Text>
+        <Text style={styles.circleGatewayCopy} numberOfLines={compact ? 1 : 2}>Organize your people into private crews for invites, sharing, and adventures.</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={MUTED} />
+    </Pressable>
+  );
+}
+
 function FeedCard() {
   return (
     <View style={styles.feedCard}>
@@ -191,8 +204,8 @@ export default function CommunityScreen() {
     () => groups.filter((group) => group.state && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)),
     [groups, homeCity, homeState],
   );
-  const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : 'Jacksonville, FL';
-  const nearbyCount = Math.max(128, nearbyGroups.reduce((total, group) => total + group.member_count, 0));
+  const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : 'Your area';
+  const nearbyCount = nearbyGroups.reduce((total, group) => total + group.member_count, 0);
 
   async function handleJoin(group: CommunityGroup) {
     setJoiningId(group.id);
@@ -220,7 +233,7 @@ export default function CommunityScreen() {
             <Text style={styles.title}>Community</Text>
             <View style={styles.locationRow}>
               <Ionicons name="location-outline" size={14} color={MUTED} />
-              <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups · {nearbyCount} adventurers nearby</Text>
+              <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups{nearbyCount ? ` · ${nearbyCount} adventurers nearby` : ''}</Text>
             </View>
           </View>
           <View style={styles.headerActions}>
@@ -261,12 +274,13 @@ export default function CommunityScreen() {
 
             <View style={styles.feedSectionHeader}>
               <Text style={styles.feedSectionLabel}>Latest from your circle</Text>
-              <Text style={styles.feedSectionHint}>Groups, meetups, and people you follow</Text>
+              <Text style={styles.feedSectionHint}>Groups, meetups, and people you connect with</Text>
             </View>
 
             <FeedCard />
             <PartnerPost />
             <NearbyEventCard location={locationLabel} />
+            <CircleGateway />
 
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeadingRow}>
@@ -285,11 +299,12 @@ export default function CommunityScreen() {
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeadingRow}>
               <View>
-                <Text style={styles.sectionHeading}>{tab === 'nearby' ? 'Near You' : 'Groups'}</Text>
-                <Text style={styles.sectionSubheading}>{tab === 'nearby' ? `Communities around ${locationLabel}.` : 'Your local, interest, and adventure communities.'}</Text>
+                <Text style={styles.sectionHeading}>{tab === 'nearby' ? 'Near You' : 'People & Groups'}</Text>
+                <Text style={styles.sectionSubheading}>{tab === 'nearby' ? `Communities around ${locationLabel}.` : 'Your private circles and shared adventure communities.'}</Text>
               </View>
               {tab === 'nearby' ? <Ionicons name="navigate-outline" size={22} color={GOLD_MUTED} /> : <Ionicons name="people-outline" size={22} color={GOLD_MUTED} />}
             </View>
+            {tab === 'groups' ? <CircleGateway compact /> : null}
             <View style={styles.groupList}>
               {visibleGroupList.map((group) => (
                 <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />
@@ -366,6 +381,11 @@ const styles = StyleSheet.create({
   sectionHeading: { color: TEXT, fontSize: 17.5, fontWeight: '900' },
   sectionSubheading: { color: '#8F9B93', fontSize: 12, marginTop: 2 },
   link: { color: GOLD_MUTED, fontWeight: '800' },
+  circleGateway: { minHeight: 78, backgroundColor: CARD, borderWidth: 1, borderColor: '#3A463E', borderRadius: 17, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  circleGatewayCompact: { minHeight: 66, borderRadius: 14, backgroundColor: '#1A251F' },
+  circleGatewayIcon: { width: 46, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: '#89764A', backgroundColor: '#1C2A23', alignItems: 'center', justifyContent: 'center' },
+  circleGatewayTitle: { color: TEXT, fontSize: 14.5, fontWeight: '900' },
+  circleGatewayCopy: { color: '#98A49C', fontSize: 11.5, lineHeight: 16, marginTop: 2 },
   eventRow: { flexDirection: 'row', gap: 11 },
   eventThumb: { width: 104, minHeight: 110, borderRadius: 14, backgroundColor: '#294A3A', alignItems: 'center', justifyContent: 'center' },
   eventCopy: { flex: 1, gap: 5 },
