@@ -16,7 +16,7 @@ import {
 
 import { listAdventures } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
-import { getCommunityFeed, getGroups, type CommunityPost } from '../../src/community/api';
+import { getGroups } from '../../src/community/api';
 import { supabase } from '../../src/lib/supabase';
 import { getJourney, getMemberBadges, getPassportStamps } from '../../src/passport/api';
 import { getAdventureQueue } from '../../src/readiness/api';
@@ -47,14 +47,23 @@ function shortDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function countdown(value: string) {
+  const start = new Date(value);
+  const now = new Date();
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const days = Math.ceil((startDay - today) / 86400000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `In ${days} days`;
+}
+
 export default function TrailheadScreen() {
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [firstName, setFirstName] = useState('Adventurer');
   const [location, setLocation] = useState('');
   const [groupCount, setGroupCount] = useState(0);
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
-  const [communityIndex, setCommunityIndex] = useState(0);
   const [journey, setJourney] = useState<any[]>([]);
   const [stampCount, setStampCount] = useState(0);
   const [badgeCount, setBadgeCount] = useState(0);
@@ -69,8 +78,14 @@ export default function TrailheadScreen() {
   const listRef = useRef<FlatList<AdventureSummary>>(null);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const featured = useMemo(() => adventures.filter((item) => item.status !== 'cancelled').slice(0, 5), [adventures]);
+  const activeAdventures = useMemo(
+    () => adventures.filter((item) => item.status !== 'cancelled'),
+    [adventures],
+  );
+  const featured = useMemo(() => activeAdventures.slice(0, 5), [activeAdventures]);
   const adventureById = useMemo(() => new Map(adventures.map((item) => [item.id, item])), [adventures]);
+  const nextReservation = queue[0];
+  const nextReservationAdventure = nextReservation ? adventureById.get(nextReservation.adventure_id) : undefined;
   const loop = useMemo<AdventureSummary[]>(() => {
     if (featured.length <= 1) return featured;
     const first = featured[0];
@@ -98,16 +113,9 @@ export default function TrailheadScreen() {
           : Promise.resolve({ data: null, error: null }),
       ]);
       const myGroupIds = groups.filter((group) => group.is_member).map((group) => group.id);
-      const feed = await getCommunityFeed();
-      const myFeed = feed
-        .filter((post) => !post.group_id || myGroupIds.includes(post.group_id))
-        .sort((a, b) => (b.reaction_count + b.comment_count * 2) - (a.reaction_count + a.comment_count * 2))
-        .slice(0, 6);
 
       setQueue(nextQueue);
       setGroupCount(myGroupIds.length);
-      setCommunityPosts(myFeed);
-      setCommunityIndex((current) => myFeed.length ? current % myFeed.length : 0);
       setJourney(nextJourney);
       setStampCount(stamps.length);
       setBadgeCount(badges.length);
@@ -151,11 +159,6 @@ export default function TrailheadScreen() {
     }, 5000);
     return () => clearInterval(timer);
   }, [reduceMotion, paused, loop.length]);
-  useEffect(() => {
-    if (reduceMotion || communityPosts.length < 2) return;
-    const timer = setInterval(() => setCommunityIndex((current) => (current + 1) % communityPosts.length), 7000);
-    return () => clearInterval(timer);
-  }, [communityPosts.length, reduceMotion]);
 
   function pauseCarousel() {
     setPaused(true);
@@ -178,7 +181,6 @@ export default function TrailheadScreen() {
 
   const statesVisited = new Set(journey.map((item: any) => item.state).filter(Boolean));
   const currentRank = rankFor(journey.length);
-  const currentCommunityPost = communityPosts[communityIndex];
 
   return (
     <ScrollView
@@ -247,8 +249,47 @@ export default function TrailheadScreen() {
         <WeatherScene weather={weather} fallbackLocation={location} reduceMotion={reduceMotion} />
       </Pressable>
 
+      {nextReservation ? (
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Your Next Move</Text>
+            <Pressable onPress={() => router.push('/member/trips')}><Text style={styles.linkBare}>Manage</Text></Pressable>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Get ready for ${nextReservation.title}`}
+            onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: nextReservation.order_id } })}
+          >
+            <ImageBackground
+              source={nextReservationAdventure?.hero_image_url ? { uri: nextReservationAdventure.hero_image_url } : undefined}
+              style={styles.nextMoveCard}
+              imageStyle={styles.nextMoveImage}
+            >
+              <View style={styles.nextMoveShade} />
+              <View style={styles.nextMoveTopRow}>
+                <View style={styles.countdownPill}>
+                  <Text style={styles.countdownText}>{countdown(nextReservation.starts_at)}</Text>
+                </View>
+                <View style={styles.readyPill}>
+                  <Text style={styles.readyText}>{Math.round(nextReservation.readiness_score)}% ready</Text>
+                </View>
+              </View>
+              <View style={styles.nextMoveBody}>
+                <Text style={styles.eyebrow}>YOUR NEXT ADVENTURE</Text>
+                <Text style={styles.nextMoveHeadline}>You’re headed to {nextReservation.city} next.</Text>
+                <Text style={styles.nextMoveTitle}>{nextReservation.title}</Text>
+                <Text style={styles.nextMoveMeta}>{shortDate(nextReservation.starts_at)} · {nextReservation.city}, {nextReservation.state}</Text>
+                <View style={styles.nextMoveFooter}>
+                  <Text style={styles.link}>Get Ready →</Text>
+                  {queue.length > 1 ? <Text style={styles.moreBookings}>+{queue.length - 1} more booked</Text> : null}
+                </View>
+              </View>
+            </ImageBackground>
+          </Pressable>
+        </View>
+      ) : null}
+
       <TrailheadIdentityCards
-        communityPost={currentCommunityPost}
         groupCount={groupCount}
         currentRank={currentRank}
         journeyCount={journey.length}
@@ -259,43 +300,11 @@ export default function TrailheadScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Current Reservations</Text>
-          <Pressable onPress={() => router.push('/member/trips')}><Text style={styles.link}>Manage</Text></Pressable>
-        </View>
-        {queue.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>
-            {queue.slice(0, 4).map((item) => {
-              const adventure = adventureById.get(item.adventure_id);
-              return (
-                <Pressable key={item.order_id} style={styles.reservationShell} onPress={() => router.push('/member/trips')}>
-                  <ImageBackground source={adventure?.hero_image_url ? { uri: adventure.hero_image_url } : undefined} style={styles.reservationCard} imageStyle={styles.reservationImage}>
-                    <View style={styles.reservationShade} />
-                    <View style={styles.reservationBody}>
-                      <Text style={styles.eyebrow}>{item.order_status === 'held' || item.order_status === 'payment_pending' ? 'RESERVATION HELD' : 'CONFIRMED'}</Text>
-                      <Text style={styles.reservationTitle}>{item.title}</Text>
-                      <Text style={styles.reservationMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text>
-                      <Text style={styles.link}>View Reservation →</Text>
-                    </View>
-                  </ImageBackground>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.cardTitle}>Nothing booked yet</Text>
-            <Text style={styles.muted}>Your next confirmed adventure will land here with its event artwork.</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Upcoming Adventures</Text>
-          <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.link}>Explore</Text></Pressable>
+          <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.linkBare}>Explore</Text></Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>
-          {adventures.slice(0, 5).map((item) => (
+          {activeAdventures.slice(0, 5).map((item) => (
             <Pressable key={item.id} style={styles.upcomingCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
               <ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.thumbnail} imageStyle={styles.thumbnailRadius} />
               <Text style={styles.upcomingTitle} numberOfLines={2}>{item.title}</Text>
@@ -310,7 +319,7 @@ export default function TrailheadScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0F1713' },
-  content: { paddingHorizontal: 18, paddingTop: 52, paddingBottom: 48, gap: 15 },
+  content: { paddingHorizontal: 18, paddingTop: 52, paddingBottom: 48, gap: 16 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   topActions: { flexDirection: 'row', gap: 10 },
   iconButton: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
@@ -330,19 +339,25 @@ const styles = StyleSheet.create({
   heroTitle: { color: '#FFF8E8', fontSize: 28, lineHeight: 31, fontWeight: '900' },
   heroMeta: { color: '#E0E5E1' },
   link: { color: '#D7B45A', fontWeight: '900', marginTop: 8 },
+  linkBare: { color: '#D7B45A', fontWeight: '900' },
   muted: { color: '#A7B1AA', lineHeight: 19, marginTop: 3 },
-  cardTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 5 },
-  horizontalGap: { gap: 10 },
-  reservationShell: { width: 278, height: 170, borderRadius: 18, overflow: 'hidden' },
-  reservationCard: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#25342C' },
-  reservationImage: { borderRadius: 18 },
-  reservationShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(7,12,9,0.56)' },
-  reservationBody: { padding: 15 },
-  reservationTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 5 },
-  reservationMeta: { color: '#DDE5E0', marginTop: 4 },
-  emptyCard: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#29372F', padding: 17 },
-  upcomingCard: { width: 158 },
-  thumbnail: { height: 105, backgroundColor: '#26372D', borderRadius: 16 },
-  thumbnailRadius: { borderRadius: 16 },
+  horizontalGap: { gap: 12, paddingRight: 8 },
+  nextMoveCard: { height: 230, borderRadius: 22, overflow: 'hidden', backgroundColor: '#25342C', justifyContent: 'space-between' },
+  nextMoveImage: { borderRadius: 22 },
+  nextMoveShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(6,11,8,0.57)' },
+  nextMoveTopRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, zIndex: 2 },
+  countdownPill: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6, backgroundColor: '#D7B45A' },
+  countdownText: { color: '#17211C', fontSize: 11, fontWeight: '900' },
+  readyPill: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6, backgroundColor: 'rgba(15,23,19,0.76)', borderWidth: 1, borderColor: 'rgba(246,244,238,0.24)' },
+  readyText: { color: '#FFF8E8', fontSize: 11, fontWeight: '800' },
+  nextMoveBody: { padding: 18, paddingTop: 8, zIndex: 2 },
+  nextMoveHeadline: { color: '#FFF8E8', fontSize: 23, lineHeight: 27, fontWeight: '900', marginTop: 5 },
+  nextMoveTitle: { color: '#E7EAE7', fontSize: 14, lineHeight: 18, fontWeight: '800', marginTop: 5 },
+  nextMoveMeta: { color: '#C9D1CC', marginTop: 3, fontSize: 12 },
+  nextMoveFooter: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  moreBookings: { color: '#B8C1BB', fontSize: 11, fontWeight: '700', marginBottom: 1 },
+  upcomingCard: { width: 180 },
+  thumbnail: { height: 118, backgroundColor: '#26372D', borderRadius: 17 },
+  thumbnailRadius: { borderRadius: 17 },
   upcomingTitle: { color: '#FFF8E8', fontWeight: '900', marginTop: 8, lineHeight: 18 },
 });
