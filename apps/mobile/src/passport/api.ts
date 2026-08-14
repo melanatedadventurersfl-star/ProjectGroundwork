@@ -73,8 +73,10 @@ function extensionFor(mimeType?: string | null, uri?: string) {
     'image/heic': 'heic',
     'image/heif': 'heif',
   };
-  if (mimeType && byMime[mimeType]) return byMime[mimeType];
-  const guessed = uri?.split('?')[0].split('.').pop()?.toLowerCase();
+  const mimeExtension = mimeType ? byMime[mimeType] : undefined;
+  if (mimeExtension) return mimeExtension;
+  const cleanUri = uri?.split('?').at(0) ?? '';
+  const guessed = cleanUri.split('.').pop()?.toLowerCase();
   return guessed && /^[a-z0-9]{2,5}$/.test(guessed) ? guessed : 'jpg';
 }
 
