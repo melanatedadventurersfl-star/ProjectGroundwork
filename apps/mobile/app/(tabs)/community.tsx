@@ -28,6 +28,13 @@ import {
   type CommunityPostType,
 } from '../../src/community/api';
 import { getCircles, type CommunityCircle } from '../../src/community/circles';
+import {
+  EMPTY_PLACE_RECOMMENDATION,
+  PlaceRecommendationFields,
+  PlaceRecommendationSummary,
+  placeRecommendationMetadata,
+  type PlaceRecommendationValue,
+} from '../../src/community/placeRecommendation';
 import { getMemberBasecamp } from '../../src/member/api';
 
 type CommunityTab = 'for-you' | 'nearby' | 'groups';
@@ -94,7 +101,7 @@ function audienceIcon(post: CommunityPost) {
 function placeholderFor(type: CommunityPostType) {
   if (type === 'ask') return 'What do you want to ask the community?';
   if (type === 'buddy') return 'What do you want to do, where, and when?';
-  if (type === 'recommendation') return 'What place are you recommending and why?';
+  if (type === 'recommendation') return 'Why do you recommend this place?';
   if (type === 'meetup') return 'What are you planning?';
   return 'What’s happening outside?';
 }
@@ -156,6 +163,7 @@ function CommunityPostCard({ post }: { post: CommunityPost }) {
         {badge ? <View style={styles.postTypeBadge}><Text style={styles.postTypeBadgeText}>{badge}</Text></View> : null}
       </View>
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
+      {post.post_type === 'recommendation' ? <PlaceRecommendationSummary metadata={post.metadata} /> : null}
       {post.body ? <Text style={styles.feedBody}>{post.body}</Text> : null}
       <View style={styles.engagementRow}>
         <View style={styles.engagementLeft}>
@@ -210,6 +218,7 @@ export default function CommunityScreen() {
   const [composerCircleId, setComposerCircleId] = useState<string | null>(null);
   const [composerGroupId, setComposerGroupId] = useState<string | null>(null);
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
+  const [placeRecommendation, setPlaceRecommendation] = useState<PlaceRecommendationValue>(EMPTY_PLACE_RECOMMENDATION);
   const [typeOpen, setTypeOpen] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
@@ -246,8 +255,9 @@ export default function CommunityScreen() {
   const selectedCircle = circles.find((circle) => circle.id === composerCircleId) ?? null;
   const selectedGroup = yourGroups.find((group) => group.id === composerGroupId) ?? null;
   const targetMissing = (composerAudience === 'circle' && !composerCircleId) || (composerAudience === 'group' && !composerGroupId);
+  const recommendationMissing = composerType === 'recommendation' && (!placeRecommendation.name.trim() || !placeRecommendation.location.trim());
   const bodyMissing = composerType !== 'meetup' && !composerBody.trim() && !composerPhoto;
-  const cannotPost = submitting || targetMissing || bodyMissing;
+  const cannotPost = submitting || targetMissing || recommendationMissing || bodyMissing;
 
   async function handleJoin(group: CommunityGroup) {
     setJoiningId(group.id);
@@ -310,9 +320,11 @@ export default function CommunityScreen() {
         groupId: composerGroupId,
         adventureId: selectedGroup?.adventure_id ?? null,
         imagePath: uploadedPath,
+        metadata: composerType === 'recommendation' ? placeRecommendationMetadata(placeRecommendation) : {},
       });
       setComposerBody('');
       setComposerPhoto(null);
+      setPlaceRecommendation(EMPTY_PLACE_RECOMMENDATION);
       setComposerType('update');
       setTypeOpen(false);
       await load();
@@ -331,6 +343,7 @@ export default function CommunityScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={GOLD} />}
         showsVerticalScrollIndicator={false}
       >
@@ -377,9 +390,14 @@ export default function CommunityScreen() {
                 placeholder={placeholderFor(composerType)}
                 placeholderTextColor="#7F8B83"
                 multiline
+                blurOnSubmit={false}
                 maxLength={4000}
                 style={styles.composerInput}
               />
+
+              {composerType === 'recommendation' ? (
+                <PlaceRecommendationFields value={placeRecommendation} onChange={setPlaceRecommendation} />
+              ) : null}
 
               <View style={styles.composerControls}>
                 <Pressable style={styles.compactControl} onPress={() => void choosePhoto()}>
