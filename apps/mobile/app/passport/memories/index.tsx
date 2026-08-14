@@ -124,6 +124,8 @@ export default function MemoriesScreen() {
   );
 }
 
+const absoluteFill = { position: 'absolute' as const, top: 0, right: 0, bottom: 0, left: 0 };
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0F1713' },
   center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
@@ -149,9 +151,9 @@ const styles = StyleSheet.create({
   photoAdventure: { color: '#87948B', fontSize: 10 },
   albumStack: { gap: 13, marginTop: 4 },
   albumCard: { minHeight: 210, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#34483C', backgroundColor: '#17211C' },
-  albumCover: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  albumCoverPlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: '#223128' },
-  albumShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,13,10,0.54)' },
+  albumCover: { ...absoluteFill, width: '100%', height: '100%' },
+  albumCoverPlaceholder: { ...absoluteFill, backgroundColor: '#223128' },
+  albumShade: { ...absoluteFill, backgroundColor: 'rgba(8,13,10,0.54)' },
   albumCopy: { flex: 1, justifyContent: 'flex-end', padding: 17 },
   albumDate: { color: '#E4C66E', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
   albumTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 27, fontWeight: '900', marginTop: 4 },
