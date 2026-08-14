@@ -1,3 +1,4 @@
+import { Image, type ImageSourcePropType } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 export type LegacyStampCode =
@@ -36,6 +37,14 @@ const stamps: Record<LegacyStampCode, StampDefinition> = {
   'legacy-event-2026-splash-after-dark': { year: 2026, title: ['SPLASH', 'AFTER DARK'], date: 'JUL 25', location: 'ORLANDO AREA', ink: '#3A285C', accent: '#4E78A8', paper: '#D8CEB7', motif: 'night' },
 };
 
+const rasterStampAssets: Partial<Record<LegacyStampCode, ImageSourcePropType>> = {
+  'legacy-event-2025-group-launch': require('../../assets/stamps/2025-group-launch.jpg'),
+  'legacy-event-2025-huguenot-camping': require('../../assets/stamps/2025-huguenot-camping.jpg'),
+  'legacy-event-2025-float-out': require('../../assets/stamps/2025-float-out.jpg'),
+  'legacy-event-2025-wet-wild': require('../../assets/stamps/2025-wet-wild.jpg'),
+  'legacy-event-2026-beach-escape': require('../../assets/stamps/2026-beach-escape.jpg'),
+};
+
 export function isLegacyStampCode(code: string | null | undefined): code is LegacyStampCode {
   return !!code && code in stamps;
 }
@@ -54,7 +63,7 @@ function Scene({ motif, ink, accent }: Pick<StampDefinition, 'motif' | 'ink' | '
   return <G><Circle cx="142" cy="78" r="19" fill={accent} opacity={0.8}/><Circle cx="149" cy="72" r="19" fill={ink} opacity={0.38}/>{waves}<Path d="M44 145 C54 115 62 90 86 90 C111 90 112 115 95 121 C80 127 80 140 91 145" stroke={accent} strokeWidth={8} fill="none"/><G fill={ink}><Circle cx="123" cy="141" r="7"/><Circle cx="146" cy="145" r="7"/></G></G>;
 }
 
-export function StampArt({ code, width = 150 }: { code: LegacyStampCode; width?: number }) {
+function VectorStampArt({ code, width }: { code: LegacyStampCode; width: number }) {
   const stamp = stamps[code];
   const height = stamp.year === 2025 ? width * 1.18 : width * 1.48;
   const viewHeight = stamp.year === 2025 ? 220 : 272;
@@ -97,4 +106,14 @@ export function StampArt({ code, width = 150 }: { code: LegacyStampCode; width?:
       <SvgText x="95" y={stamp.year === 2025 ? 207 : 250} fill={stamp.ink} fontSize="8.5" fontWeight="800" textAnchor="middle" letterSpacing="0.6">{stamp.location}</SvgText>
     </Svg>
   );
+}
+
+export function StampArt({ code, width = 150 }: { code: LegacyStampCode; width?: number }) {
+  const raster = rasterStampAssets[code];
+  if (raster) {
+    const height = width;
+    return <Image source={raster} style={{ width, height }} resizeMode="contain" />;
+  }
+
+  return <VectorStampArt code={code} width={width} />;
 }
