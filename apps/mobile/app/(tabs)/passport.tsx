@@ -14,6 +14,7 @@ import {
   type MemoryPhoto,
   type PassportStamp,
 } from '../../src/passport/api';
+import { BadgeArt, isPremiumBadgeCode } from '../../src/passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder, type RankName } from '../../src/passport/RankEmblem';
 import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 
@@ -211,14 +212,24 @@ export default function PassportScreen() {
 
             {mode === 'badges' ? (
               <View style={styles.sectionBlock}>
-                <View><Text style={styles.panelEyebrow}>SPECIAL MILESTONES</Text><Text style={styles.sectionTitle}>Achievement Badges</Text></View>
+                <View style={styles.sectionHeadingRow}>
+                  <View><Text style={styles.panelEyebrow}>SPECIAL MILESTONES</Text><Text style={styles.sectionTitle}>Achievement Badges</Text></View>
+                  <Text style={styles.badgeSeries}>Premium embroidered series</Text>
+                </View>
                 {badges.length ? (
                   <View style={styles.grid}>
                     {badges.map((badge) => (
                       <View key={badge.badge_id} style={styles.badgeTile}>
-                        <View style={styles.medal}><Text style={styles.medalGlyph}>MA</Text></View>
-                        <Text style={styles.tileTitle}>{badge.title}</Text>
-                        <Text style={styles.muted}>{badge.category}</Text>
+                        <View style={styles.badgeArtArea}>
+                          {isPremiumBadgeCode(badge.code) ? (
+                            <BadgeArt code={badge.code} size={146} />
+                          ) : (
+                            <View style={styles.medal}><Text style={styles.medalGlyph}>MA</Text></View>
+                          )}
+                        </View>
+                        <Text style={styles.badgeTitle} numberOfLines={2}>{badge.title}</Text>
+                        <Text style={styles.badgeCategory}>{badge.category.toUpperCase()}</Text>
+                        <Text style={styles.badgeDate}>Earned {new Date(badge.earned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
                       </View>
                     ))}
                   </View>
@@ -328,9 +339,14 @@ const styles = StyleSheet.create({
   stampSeal: { width: 92, height: 92, borderRadius: 46, borderWidth: 2, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginVertical: 18 },
   stampGlyph: { color: '#D7B45A', fontSize: 17, fontWeight: '900' },
   tileTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 7, alignSelf: 'stretch' },
-  badgeTile: { width: '48%', backgroundColor: '#17231C', borderRadius: 16, borderWidth: 1, borderColor: '#3D5145', padding: 12 },
-  medal: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
-  medalGlyph: { color: '#F0D083', fontSize: 15, fontWeight: '900' },
+  badgeSeries: { color: '#AEB9B1', fontSize: 11, fontWeight: '700', maxWidth: 130, textAlign: 'right', paddingBottom: 2 },
+  badgeTile: { width: '48%', minHeight: 244, backgroundColor: '#17231C', borderRadius: 18, borderWidth: 1, borderColor: '#3D5145', padding: 10, overflow: 'hidden' },
+  badgeArtArea: { height: 150, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  badgeTitle: { color: '#FFF8E8', fontSize: 16, lineHeight: 20, fontWeight: '900', marginTop: 2 },
+  badgeCategory: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginTop: 5 },
+  badgeDate: { color: '#8F9B93', fontSize: 10, marginTop: 4 },
+  medal: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#26372D', borderWidth: 3, borderColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+  medalGlyph: { color: '#F0D083', fontSize: 16, fontWeight: '900' },
   photoTile: { width: '48%', backgroundColor: '#17211C', borderRadius: 14, overflow: 'hidden' },
   photo: { width: '100%', aspectRatio: 1 },
   photoText: { color: '#C7D0CA', fontSize: 12, padding: 9 },
