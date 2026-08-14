@@ -143,6 +143,12 @@ export async function uploadMemoryImage(input: {
   return path;
 }
 
+export async function removeUploadedMemoryImage(path: string) {
+  const userId = await requireUserId();
+  if (!path.startsWith(`${userId}/`)) return;
+  await supabase.storage.from(MEMORY_BUCKET).remove([path]);
+}
+
 export async function getJourney(): Promise<JourneyItem[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
