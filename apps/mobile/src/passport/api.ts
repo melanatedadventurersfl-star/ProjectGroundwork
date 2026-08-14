@@ -36,11 +36,18 @@ export type MemberBadge = {
 
 export type MemoryPhoto = {
   id: string;
+  profile_id: string;
   adventure_id: string;
   image_url: string;
   caption: string | null;
   visibility: 'private' | 'group';
+  moderation_status: 'pending' | 'approved' | 'rejected';
   created_at: string;
+};
+
+export type AdventurePhotoCollection = {
+  mine: MemoryPhoto[];
+  event: MemoryPhoto[];
 };
 
 export async function getJourney(): Promise<JourneyItem[]> {
@@ -101,10 +108,12 @@ export async function getMemberBadges(): Promise<MemberBadge[]> {
   }));
 }
 
+const memoryPhotoSelect = 'id, profile_id, adventure_id, image_url, caption, visibility, moderation_status, created_at';
+
 export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
   const { data, error } = await supabase
     .from('adventure_memory_photos')
-    .select('id, adventure_id, image_url, caption, visibility, created_at')
+    .select(memoryPhotoSelect)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as MemoryPhoto[];
@@ -113,11 +122,22 @@ export async function getAllMemoryPhotos(): Promise<MemoryPhoto[]> {
 export async function getMemoryPhotos(adventureId: string): Promise<MemoryPhoto[]> {
   const { data, error } = await supabase
     .from('adventure_memory_photos')
-    .select('id, adventure_id, image_url, caption, visibility, created_at')
+    .select(memoryPhotoSelect)
     .eq('adventure_id', adventureId)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as MemoryPhoto[];
+}
+
+export async function getAdventurePhotoCollection(adventureId: string): Promise<AdventurePhotoCollection> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
+
+  const photos = await getMemoryPhotos(adventureId);
+  return {
+    mine: photos.filter((photo) => photo.profile_id === userData.user.id),
+    event: photos.filter((photo) => photo.moderation_status === 'approved' && photo.visibility === 'group'),
+  };
 }
 
 export async function addMemoryPhoto(input: {
@@ -134,6 +154,7 @@ export async function addMemoryPhoto(input: {
     image_url: input.imageUrl.trim(),
     caption: input.caption?.trim() || null,
     visibility: input.visibility,
+    moderation_status: 'pending',
   });
   if (error) throw error;
 }
