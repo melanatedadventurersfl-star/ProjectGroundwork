@@ -37,13 +37,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Normalize native Android PNG assets for Expo prebuild
+      - name: Canonicalize native Android PNG assets
         run: |
           python3 -m pip install --quiet pillow
           python3 - <<'PY'
           from pathlib import Path
-          from PIL import Image
+          from PIL import Image, ImageFile
 
+          # Temporary compatibility for any legacy truncated PNG already in
+          # history. Mobile CI repairs and recommits these files on main.
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
           paths = [
               Path('apps/mobile/assets/ma-app-icon.png'),
               Path('apps/mobile/assets/ma-splash-icon.png'),
@@ -51,16 +54,20 @@ jobs:
           ]
 
           for path in paths:
-              temp = path.with_name(path.stem + '.normalized.png')
+              temp = path.with_name(path.stem + '.canonical.png')
               with Image.open(path) as image:
                   image.load()
-                  rgba = image.convert('RGBA')
-                  rgba.save(temp, format='PNG', optimize=False, compress_level=6)
+                  image.convert('RGBA').save(
+                      temp,
+                      format='PNG',
+                      optimize=False,
+                      compress_level=6,
+                  )
               temp.replace(path)
-              print(f'Normalized {path} as standard RGBA PNG.')
+              print(f'Canonicalized {path}')
           PY
 
-      - name: Verify normalized PNGs can be decoded
+      - name: Strictly verify PNGs before EAS upload
         run: |
           python3 - <<'PY'
           from PIL import Image
@@ -71,8 +78,12 @@ jobs:
               'apps/mobile/assets/ma-pathfinder-mark.png',
           ]:
               with Image.open(path) as image:
+                  if image.format != 'PNG':
+                      raise RuntimeError(f'{path} is not a PNG.')
                   image.verify()
-              print(f'Valid PNG: {path}')
+              with Image.open(path) as image:
+                  image.load()
+                  print(f'Valid PNG: {path} ({image.width}x{image.height})')
           PY
 
       - name: Verify Expo authentication
