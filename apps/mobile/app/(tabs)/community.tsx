@@ -44,7 +44,7 @@ import {
 } from '../../src/community/postTagging';
 import { getMemberBasecamp } from '../../src/member/api';
 
-type CommunityTab = 'for-you' | 'nearby' | 'groups';
+type CommunityTab = 'campfire' | 'nearby' | 'crew' | 'groups';
 type PickedPhoto = { uri: string; mimeType?: string | null };
 
 const GOLD = '#D7B45A';
@@ -66,8 +66,8 @@ const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
 
 const audiences: { value: CommunityAudience; label: string; icon: string }[] = [
   { value: 'everyone', label: 'Everyone', icon: 'globe-outline' },
-  { value: 'connections', label: 'My Connections', icon: 'people-outline' },
-  { value: 'circle', label: 'A Circle', icon: 'people-circle-outline' },
+  { value: 'connections', label: 'My Trailmates', icon: 'people-outline' },
+  { value: 'circle', label: 'A Crew', icon: 'people-circle-outline' },
   { value: 'group', label: 'A Group', icon: 'albums-outline' },
 ];
 
@@ -106,7 +106,7 @@ function audienceIcon(post: CommunityPost) {
 }
 
 function placeholderFor(type: CommunityPostType) {
-  if (type === 'ask') return 'What do you want to ask the community?';
+  if (type === 'ask') return 'What do you want to ask around the Campfire?';
   if (type === 'buddy') return 'What do you want to do, where, and when?';
   if (type === 'recommendation') return 'Why do you recommend this place?';
   if (type === 'meetup') return 'What are you planning?';
@@ -140,8 +140,21 @@ function CircleGateway({ compact = false }: { compact?: boolean }) {
     <Pressable style={({ pressed }) => [styles.circleGateway, compact && styles.circleGatewayCompact, pressed && styles.pressed]} onPress={() => router.push('/circles')}>
       <View style={styles.circleGatewayIcon}><Ionicons name="people-circle-outline" size={27} color={GOLD} /></View>
       <View style={styles.groupCopy}>
-        <Text style={styles.circleGatewayTitle}>Circles & Connections</Text>
-        <Text style={styles.circleGatewayCopy} numberOfLines={compact ? 1 : 2}>Organize your people into private crews for invites, sharing, and adventures.</Text>
+        <Text style={styles.circleGatewayTitle}>Crew & Trailmates</Text>
+        <Text style={styles.circleGatewayCopy} numberOfLines={compact ? 1 : 2}>Organize your Trailmates into private crews for invites, sharing, and adventures.</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={MUTED} />
+    </Pressable>
+  );
+}
+
+function CrewRow({ crew }: { crew: CommunityCircle }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.groupRow, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/circles/[id]', params: { id: crew.id } })}>
+      <View style={styles.crewAvatar}><Ionicons name="people" size={19} color={GOLD} /></View>
+      <View style={styles.groupCopy}>
+        <Text style={styles.groupName} numberOfLines={1}>{crew.name}</Text>
+        <Text style={styles.groupMeta}>{crew.member_count} {crew.member_count === 1 ? 'Trailmate' : 'Trailmates'}</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color={MUTED} />
     </Pressable>
@@ -218,7 +231,7 @@ export default function CommunityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<CommunityTab>('for-you');
+  const [tab, setTab] = useState<CommunityTab>('campfire');
 
   const [composerBody, setComposerBody] = useState('');
   const [composerType, setComposerType] = useState<CommunityPostType>('update');
@@ -243,7 +256,7 @@ export default function CommunityScreen() {
       setHomeState(basecamp.profile?.home_state ?? null);
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load Community.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load Campfire.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -362,7 +375,7 @@ export default function CommunityScreen() {
       >
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
-            <Text style={styles.title}>Community</Text>
+            <Text style={styles.title}>Campfire</Text>
             <View style={styles.locationRow}>
               <Ionicons name="location-outline" size={14} color={MUTED} />
               <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups{nearbyCount ? ` · ${nearbyCount} adventurer${nearbyCount === 1 ? '' : 's'} nearby` : ''}</Text>
@@ -375,7 +388,7 @@ export default function CommunityScreen() {
         </View>
 
         <View style={styles.tabs}>
-          {([['for-you', 'For You'], ['nearby', 'Nearby'], ['groups', 'Groups']] as const).map(([value, label]) => (
+          {([['campfire', 'Campfire'], ['nearby', 'Nearby'], ['crew', 'Crew'], ['groups', 'Groups']] as const).map(([value, label]) => (
             <Pressable key={value} style={[styles.tab, tab === value && styles.tabActive]} onPress={() => setTab(value)}>
               <Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{label}</Text>
             </Pressable>
@@ -385,7 +398,7 @@ export default function CommunityScreen() {
         {loading ? <ActivityIndicator color={GOLD} style={styles.loader} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {tab === 'for-you' ? (
+        {tab === 'campfire' ? (
           <>
             <View style={styles.composer}>
               {composerPhoto ? (
@@ -467,7 +480,7 @@ export default function CommunityScreen() {
                 <View>
                   <Pressable style={styles.targetControl} onPress={() => setTargetOpen((value) => !value)}>
                     <Text style={styles.targetControlText}>
-                      {composerAudience === 'circle' ? selectedCircle?.name ?? 'Choose a Circle' : selectedGroup?.name ?? 'Choose a Group'}
+                      {composerAudience === 'circle' ? selectedCircle?.name ?? 'Choose a Crew' : selectedGroup?.name ?? 'Choose a Group'}
                     </Text>
                     <Ionicons name={targetOpen ? 'chevron-up' : 'chevron-down'} size={15} color={MUTED} />
                   </Pressable>
@@ -497,8 +510,8 @@ export default function CommunityScreen() {
             </View>
 
             <View style={styles.feedSectionHeader}>
-              <Text style={styles.feedSectionLabel}>From your community</Text>
-              <Text style={styles.feedSectionHint}>Posts you’re allowed to see from Community, Connections, Circles, and Groups</Text>
+              <Text style={styles.feedSectionLabel}>Around the Campfire</Text>
+              <Text style={styles.feedSectionHint}>Posts you can see from the Campfire, Trailmates, Crews, and Groups</Text>
             </View>
 
             {posts.map((post) => <CommunityPostCard key={post.id} post={post} />)}
@@ -506,7 +519,7 @@ export default function CommunityScreen() {
               <View style={styles.emptyFeed}>
                 <Ionicons name="create-outline" size={24} color={GOLD} />
                 <Text style={styles.emptyFeedTitle}>Start the conversation</Text>
-                <Text style={styles.emptyFeedText}>Write something above, add a photo if you want, and post it without leaving Community.</Text>
+                <Text style={styles.emptyFeedText}>Write something above, add a photo if you want, and post it without leaving the Campfire.</Text>
               </View>
             ) : null}
 
@@ -515,28 +528,42 @@ export default function CommunityScreen() {
 
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeadingRow}>
-                <Text style={styles.sectionHeading}>Your Communities</Text>
+                <Text style={styles.sectionHeading}>Your Groups</Text>
                 <Pressable onPress={() => setTab('groups')}><Text style={styles.link}>Manage</Text></Pressable>
               </View>
               <View style={styles.groupList}>
                 {yourGroups.slice(0, 3).map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
-                {!yourGroups.length && !loading ? <Text style={styles.emptyText}>Join a few communities and they’ll live here.</Text> : null}
+                {!yourGroups.length && !loading ? <Text style={styles.emptyText}>Join a few groups and they’ll live here.</Text> : null}
               </View>
             </View>
           </>
+        ) : tab === 'crew' ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeadingRow}>
+              <View style={styles.flexHeading}>
+                <Text style={styles.sectionHeading}>Your Crew</Text>
+                <Text style={styles.sectionSubheading}>Your Trailmates, organized your way.</Text>
+              </View>
+              <Ionicons name="people-circle-outline" size={22} color={GOLD_MUTED} />
+            </View>
+            <CircleGateway compact />
+            <View style={styles.groupList}>
+              {circles.map((crew) => <CrewRow key={crew.id} crew={crew} />)}
+              {!circles.length && !loading ? <Text style={styles.emptyText}>Create a crew to organize the Trailmates you adventure with most.</Text> : null}
+            </View>
+          </View>
         ) : (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeadingRow}>
-              <View>
-                <Text style={styles.sectionHeading}>{tab === 'nearby' ? 'Near You' : 'People & Groups'}</Text>
-                <Text style={styles.sectionSubheading}>{tab === 'nearby' ? `Communities around ${locationLabel}.` : 'Your private circles and shared adventure communities.'}</Text>
+              <View style={styles.flexHeading}>
+                <Text style={styles.sectionHeading}>{tab === 'nearby' ? 'Near You' : 'Groups'}</Text>
+                <Text style={styles.sectionSubheading}>{tab === 'nearby' ? `People, groups, and adventures around ${locationLabel}.` : 'Adventure communities you belong to or can discover.'}</Text>
               </View>
               {tab === 'nearby' ? <Ionicons name="navigate-outline" size={22} color={GOLD_MUTED} /> : <Ionicons name="people-outline" size={22} color={GOLD_MUTED} />}
             </View>
-            {tab === 'groups' ? <CircleGateway compact /> : null}
             <View style={styles.groupList}>
               {visibleGroupList.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
-              {!visibleGroupList.length && !loading ? <Text style={styles.emptyText}>Nothing here yet. Pull to refresh or check back as the community grows.</Text> : null}
+              {!visibleGroupList.length && !loading ? <Text style={styles.emptyText}>Nothing here yet. Pull to refresh or check back as the Campfire grows.</Text> : null}
             </View>
           </View>
         )}
@@ -558,7 +585,7 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', backgroundColor: '#18211D', borderRadius: 14, padding: 3 },
   tab: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
   tabActive: { backgroundColor: '#2A2D28' },
-  tabText: { color: '#A4ADA7', fontWeight: '800', fontSize: 13 },
+  tabText: { color: '#A4ADA7', fontWeight: '800', fontSize: 12 },
   tabTextActive: { color: GOLD },
   loader: { marginVertical: 3 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
@@ -611,6 +638,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#101510', fontWeight: '900' },
   sectionCard: { backgroundColor: CARD, borderRadius: 17, padding: 12, gap: 11 },
   sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  flexHeading: { flex: 1 },
   sectionHeading: { color: TEXT, fontSize: 17.5, fontWeight: '900' },
   sectionSubheading: { color: '#8F9B93', fontSize: 12, marginTop: 2 },
   link: { color: GOLD_MUTED, fontWeight: '800' },
@@ -629,6 +657,7 @@ const styles = StyleSheet.create({
   groupList: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
   groupRow: { minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
   groupAvatar: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: '#4A594F', backgroundColor: '#1D3026', alignItems: 'center', justifyContent: 'center' },
+  crewAvatar: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: '#6C6041', backgroundColor: '#1D3026', alignItems: 'center', justifyContent: 'center' },
   groupAvatarText: { color: TEXT, fontWeight: '900', fontSize: 11.5 },
   groupCopy: { flex: 1 },
   groupName: { color: TEXT, fontWeight: '800', fontSize: 13.5 },

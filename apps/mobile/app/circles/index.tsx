@@ -57,7 +57,7 @@ function CircleRow({ circle }: { circle: CommunityCircle }) {
       <View style={styles.flex}>
         <Text style={styles.rowTitle}>{circle.name}</Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {circle.member_count === 0 ? 'No one here yet' : `${circle.member_count} ${circle.member_count === 1 ? 'person' : 'people'}${preview.length ? ` · ${preview.join(', ')}` : ''}`}
+          {circle.member_count === 0 ? 'No Trailmates yet' : `${circle.member_count} ${circle.member_count === 1 ? 'Trailmate' : 'Trailmates'}${preview.length ? ` · ${preview.join(', ')}` : ''}`}
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color={MUTED} />
@@ -172,7 +172,7 @@ export default function CirclesScreen() {
       await load();
       router.push({ pathname: '/circles/[id]', params: { id } });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to create circle.');
+      setError(caught instanceof Error ? caught.message : 'Unable to create crew.');
     } finally {
       setCreating(false);
     }
@@ -202,16 +202,16 @@ export default function CirclesScreen() {
           <Pressable style={styles.backButton} onPress={() => router.back()}><Ionicons name="chevron-back" size={22} color={TEXT} /></Pressable>
           <View style={styles.flex}>
             <Text style={styles.eyebrow}>YOUR PEOPLE</Text>
-            <Text style={styles.title}>Circles</Text>
+            <Text style={styles.title}>Crew</Text>
           </View>
           <Pressable style={styles.addButton} onPress={() => setCreateOpen(true)}><Ionicons name="add" size={24} color="#101510" /></Pressable>
         </View>
 
-        <Text style={styles.intro}>Connections are the people you know. Circles are your private way of organizing them for adventures, invites, and sharing.</Text>
+        <Text style={styles.intro}>Connections are people you know. Crews are your private way of organizing your Trailmates for adventures, invites, and sharing.</Text>
 
         <View style={styles.tabs}>
-          <Pressable style={[styles.tab, tab === 'circles' && styles.tabActive]} onPress={() => setTab('circles')}><Text style={[styles.tabText, tab === 'circles' && styles.tabTextActive]}>Circles</Text></Pressable>
-          <Pressable style={[styles.tab, tab === 'connections' && styles.tabActive]} onPress={() => setTab('connections')}><Text style={[styles.tabText, tab === 'connections' && styles.tabTextActive]}>Connections</Text></Pressable>
+          <Pressable style={[styles.tab, tab === 'circles' && styles.tabActive]} onPress={() => setTab('circles')}><Text style={[styles.tabText, tab === 'circles' && styles.tabTextActive]}>My Crews</Text></Pressable>
+          <Pressable style={[styles.tab, tab === 'connections' && styles.tabActive]} onPress={() => setTab('connections')}><Text style={[styles.tabText, tab === 'connections' && styles.tabTextActive]}>Trailmates</Text></Pressable>
         </View>
 
         {loading ? <ActivityIndicator color={GOLD} /> : null}
@@ -220,7 +220,7 @@ export default function CirclesScreen() {
         {tab === 'circles' ? (
           <>
             <View style={styles.sectionHeader}>
-              <View><Text style={styles.sectionTitle}>Your circles</Text><Text style={styles.sectionHint}>Only you can see how you organize people.</Text></View>
+              <View><Text style={styles.sectionTitle}>Your crews</Text><Text style={styles.sectionHint}>Only you can see how you organize your Trailmates.</Text></View>
               <Text style={styles.count}>{circles.length}</Text>
             </View>
             <View style={styles.listCard}>
@@ -228,7 +228,7 @@ export default function CirclesScreen() {
               {!circles.length && !loading ? (
                 <Pressable style={styles.emptyState} onPress={() => setCreateOpen(true)}>
                   <View style={styles.emptyIcon}><Ionicons name="people-circle-outline" size={30} color={GOLD} /></View>
-                  <Text style={styles.emptyTitle}>Make your first circle</Text>
+                  <Text style={styles.emptyTitle}>Make your first crew</Text>
                   <Text style={styles.emptyText}>Try Camp Crew, Paddle People, Hiking Friends, or Jacksonville Crew.</Text>
                 </Pressable>
               ) : null}
@@ -238,14 +238,14 @@ export default function CirclesScreen() {
           <>
             {requests.length ? <><Text style={styles.sectionTitle}>Requests</Text><View style={styles.listCard}>{requests.map((item) => <ConnectionRow key={item.connection_id} connection={item} busy={busyId === item.connection_id} onAccept={() => void act(item.connection_id, () => respondToConnectionRequest(item.connection_id, 'accepted'))} onDecline={() => void act(item.connection_id, () => respondToConnectionRequest(item.connection_id, 'declined'))} onRemove={() => void act(item.connection_id, () => removeConnection(item.connection_id))} />)}</View></> : null}
 
-            <Text style={styles.sectionTitle}>Find people</Text>
+            <Text style={styles.sectionTitle}>Find Trailmates</Text>
             <View style={styles.searchBox}><Ionicons name="search" size={18} color={MUTED} /><TextInput value={query} onChangeText={setQuery} placeholder="Search members or city" placeholderTextColor="#738078" style={styles.searchInput} /></View>
             {query.trim().length >= 2 ? <View style={styles.listCard}>{results.map((person) => <SearchResult key={person.id} person={person} busy={busyId === person.id} onConnect={() => void act(person.id, () => sendConnectionRequest(person.id))} />)}{!results.length ? <Text style={styles.emptySearch}>No members found.</Text> : null}</View> : null}
 
-            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your connections</Text><Text style={styles.count}>{accepted.length}</Text></View>
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your Trailmates</Text><Text style={styles.count}>{accepted.length}</Text></View>
             <View style={styles.listCard}>
               {accepted.map((item) => <ConnectionRow key={item.connection_id} connection={item} busy={busyId === item.connection_id} onAccept={() => undefined} onDecline={() => undefined} onRemove={() => void act(item.connection_id, () => removeConnection(item.connection_id))} />)}
-              {!accepted.length ? <Text style={styles.emptySearch}>Connections you accept will show up here.</Text> : null}
+              {!accepted.length ? <Text style={styles.emptySearch}>People you connect with will show up here as Trailmates.</Text> : null}
             </View>
 
             {outgoing.length ? <><Text style={styles.sectionTitle}>Sent requests</Text><View style={styles.listCard}>{outgoing.map((item) => <ConnectionRow key={item.connection_id} connection={item} busy={busyId === item.connection_id} onAccept={() => undefined} onDecline={() => undefined} onRemove={() => void act(item.connection_id, () => removeConnection(item.connection_id))} />)}</View></> : null}
@@ -256,10 +256,10 @@ export default function CirclesScreen() {
       <Modal visible={createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}><Text style={styles.modalTitle}>New circle</Text><Pressable onPress={() => setCreateOpen(false)}><Ionicons name="close" size={22} color={TEXT} /></Pressable></View>
-            <Text style={styles.modalCopy}>Give this part of your adventure crew a name. Circle membership stays private to you.</Text>
+            <View style={styles.modalHeader}><Text style={styles.modalTitle}>New crew</Text><Pressable onPress={() => setCreateOpen(false)}><Ionicons name="close" size={22} color={TEXT} /></Pressable></View>
+            <Text style={styles.modalCopy}>Give this part of your adventure crew a name. Crew membership stays private to you.</Text>
             <TextInput autoFocus value={circleName} onChangeText={setCircleName} maxLength={60} placeholder="Camp Crew" placeholderTextColor="#718078" style={styles.nameInput} />
-            <Pressable disabled={!circleName.trim() || creating} style={[styles.createButton, (!circleName.trim() || creating) && styles.disabled]} onPress={() => void createNewCircle()}><Text style={styles.createButtonText}>{creating ? 'Creating…' : 'Create circle'}</Text></Pressable>
+            <Pressable disabled={!circleName.trim() || creating} style={[styles.createButton, (!circleName.trim() || creating) && styles.disabled]} onPress={() => void createNewCircle()}><Text style={styles.createButtonText}>{creating ? 'Creating…' : 'Create crew'}</Text></Pressable>
           </View>
         </View>
       </Modal>
