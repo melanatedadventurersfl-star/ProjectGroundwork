@@ -96,14 +96,16 @@ export default function MemoryAlbumScreen() {
   );
 }
 
+const absoluteFill = { position: 'absolute' as const, top: 0, right: 0, bottom: 0, left: 0 };
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0F1713' },
   center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 18, paddingBottom: 48, gap: 14 },
   back: { color: '#D7B45A', fontWeight: '900', fontSize: 15 },
   hero: { minHeight: 260, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#34483C', backgroundColor: '#1A2821' },
-  heroImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,13,10,0.58)' },
+  heroImage: { ...absoluteFill, width: '100%', height: '100%' },
+  heroShade: { ...absoluteFill, backgroundColor: 'rgba(8,13,10,0.58)' },
   heroCopy: { flex: 1, justifyContent: 'flex-end', padding: 20 },
   eyebrow: { color: '#E1C16A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   title: { color: '#FFF8E8', fontSize: 28, lineHeight: 33, fontWeight: '900', marginTop: 5 },
