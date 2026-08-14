@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   addMemoryPhoto,
   getJourney,
+  removeUploadedMemoryImage,
   uploadMemoryImage,
   type JourneyItem,
   type MemoryVisibility,
@@ -147,21 +148,27 @@ export default function AddMemoryScreen() {
 
       const createdIds: string[] = [];
       for (const image of selectedImages) {
-        const storagePath = await uploadMemoryImage({
-          adventureId,
-          base64: image.base64,
-          mimeType: image.mimeType,
-          fileName: image.fileName,
-        });
-        const memory = await addMemoryPhoto({
-          adventureId,
-          imageUrl: storagePath,
-          caption,
-          reflection,
-          visibility,
-          sourceKind: 'personal',
-        });
-        createdIds.push(memory.id);
+        let storagePath: string | null = null;
+        try {
+          storagePath = await uploadMemoryImage({
+            adventureId,
+            base64: image.base64,
+            mimeType: image.mimeType,
+            fileName: image.fileName,
+          });
+          const memory = await addMemoryPhoto({
+            adventureId,
+            imageUrl: storagePath,
+            caption,
+            reflection,
+            visibility,
+            sourceKind: 'personal',
+          });
+          createdIds.push(memory.id);
+        } catch (caught) {
+          if (storagePath) await removeUploadedMemoryImage(storagePath);
+          throw caught;
+        }
       }
 
       if (createdIds.length === 1) {
