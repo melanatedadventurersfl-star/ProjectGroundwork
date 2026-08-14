@@ -1,10 +1,11 @@
 import { Redirect, Tabs } from 'expo-router';
+import type { ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
-function TabIcon({ name, color, size }: { name: AppIconName; color: string; size: number }) {
+function TabIcon({ name, color, size }: { name: AppIconName; color: ColorValue; size: number }) {
   return <AppIcon name={name} color={color} size={Math.max(22, size)} />;
 }
 
