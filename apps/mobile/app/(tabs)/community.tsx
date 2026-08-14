@@ -1,4 +1,5 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -9,14 +10,28 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCommunityFeed, getGroups, joinGroup, type CommunityGroup, type CommunityPost } from '../../src/community/api';
+import {
+  createPost,
+  getCommunityFeed,
+  getGroups,
+  joinGroup,
+  removeCommunityPostImage,
+  uploadCommunityPostImage,
+  type CommunityAudience,
+  type CommunityGroup,
+  type CommunityPost,
+  type CommunityPostType,
+} from '../../src/community/api';
+import { getCircles, type CommunityCircle } from '../../src/community/circles';
 import { getMemberBasecamp } from '../../src/member/api';
 
 type CommunityTab = 'for-you' | 'nearby' | 'groups';
+type PickedPhoto = { uri: string; mimeType?: string | null };
 
 const GOLD = '#D7B45A';
 const GOLD_MUTED = '#B79B58';
@@ -26,6 +41,21 @@ const CARD_ALT = '#1B2A22';
 const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
+
+const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
+  { value: 'update', label: 'Update', icon: 'create-outline' },
+  { value: 'ask', label: 'Ask', icon: 'help-circle-outline' },
+  { value: 'meetup', label: 'Meetup', icon: 'calendar-outline' },
+  { value: 'buddy', label: 'Adventure Buddy', icon: 'people-outline' },
+  { value: 'recommendation', label: 'Recommend a Place', icon: 'location-outline' },
+];
+
+const audiences: { value: CommunityAudience; label: string; icon: string }[] = [
+  { value: 'everyone', label: 'Everyone', icon: 'globe-outline' },
+  { value: 'connections', label: 'My Connections', icon: 'people-outline' },
+  { value: 'circle', label: 'A Circle', icon: 'people-circle-outline' },
+  { value: 'group', label: 'A Group', icon: 'albums-outline' },
+];
 
 function relativeTime(value: string) {
   const created = new Date(value);
@@ -50,7 +80,6 @@ function postTypeLabel(post: CommunityPost) {
   if (post.post_type === 'ask') return 'ASK';
   if (post.post_type === 'buddy') return 'ADVENTURE BUDDY';
   if (post.post_type === 'recommendation') return 'PLACE RECOMMENDATION';
-  if (post.post_type === 'photo') return 'PHOTO';
   if (post.post_type === 'meetup') return 'MEETUP';
   return null;
 }
@@ -60,6 +89,14 @@ function audienceIcon(post: CommunityPost) {
   if (post.audience === 'circle') return 'people-circle-outline';
   if (post.audience === 'group') return 'albums-outline';
   return 'globe-outline';
+}
+
+function placeholderFor(type: CommunityPostType) {
+  if (type === 'ask') return 'What do you want to ask the community?';
+  if (type === 'buddy') return 'What do you want to do, where, and when?';
+  if (type === 'recommendation') return 'What place are you recommending and why?';
+  if (type === 'meetup') return 'What are you planning?';
+  return 'What’s happening outside?';
 }
 
 function GroupRow({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
@@ -80,15 +117,6 @@ function GroupRow({ group, joining, onJoin }: { group: CommunityGroup; joining: 
         </Text>
       </View>
       <Ionicons name={isMember ? 'chevron-forward' : 'add-circle-outline'} size={22} color={isMember ? MUTED : GOLD} />
-    </Pressable>
-  );
-}
-
-function QuickAction({ icon, label, onPress }: { icon: string; label: string; onPress?: () => void }) {
-  return (
-    <Pressable style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]} onPress={onPress}>
-      <Ionicons name={icon as never} size={18} color={GOLD_MUTED} />
-      <Text style={styles.quickActionText}>{label}</Text>
     </Pressable>
   );
 }
@@ -128,7 +156,7 @@ function CommunityPostCard({ post }: { post: CommunityPost }) {
         {badge ? <View style={styles.postTypeBadge}><Text style={styles.postTypeBadgeText}>{badge}</Text></View> : null}
       </View>
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
-      <Text style={styles.feedBody}>{post.body}</Text>
+      {post.body ? <Text style={styles.feedBody}>{post.body}</Text> : null}
       <View style={styles.engagementRow}>
         <View style={styles.engagementLeft}>
           <Ionicons name="heart-outline" size={18} color={GOLD_MUTED} />
@@ -157,7 +185,7 @@ function NearbyEventCard({ location }: { location: string }) {
           <View style={styles.metaLine}><Ionicons name="location-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>{location}</Text></View>
         </View>
       </View>
-      <Pressable style={styles.fullButton} onPress={() => router.push({ pathname: '/community/create', params: { type: 'meetup' } })}>
+      <Pressable style={styles.fullButton} onPress={() => router.push('/local-events/create')}>
         <Text style={styles.primaryButtonText}>Plan a meetup</Text>
       </Pressable>
     </View>
@@ -166,6 +194,7 @@ function NearbyEventCard({ location }: { location: string }) {
 
 export default function CommunityScreen() {
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [circles, setCircles] = useState<CommunityCircle[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
@@ -175,10 +204,22 @@ export default function CommunityScreen() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<CommunityTab>('for-you');
 
+  const [composerBody, setComposerBody] = useState('');
+  const [composerType, setComposerType] = useState<CommunityPostType>('update');
+  const [composerAudience, setComposerAudience] = useState<CommunityAudience>('everyone');
+  const [composerCircleId, setComposerCircleId] = useState<string | null>(null);
+  const [composerGroupId, setComposerGroupId] = useState<string | null>(null);
+  const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
+  const [typeOpen, setTypeOpen] = useState(false);
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
   const load = useCallback(async () => {
     try {
-      const [nextGroups, nextPosts, basecamp] = await Promise.all([getGroups(), getCommunityFeed(), getMemberBasecamp()]);
+      const [nextGroups, nextCircles, nextPosts, basecamp] = await Promise.all([getGroups(), getCircles(), getCommunityFeed(), getMemberBasecamp()]);
       setGroups(nextGroups);
+      setCircles(nextCircles);
       setPosts(nextPosts);
       setHomeCity(basecamp.profile?.home_city ?? null);
       setHomeState(basecamp.profile?.home_state ?? null);
@@ -200,6 +241,13 @@ export default function CommunityScreen() {
   );
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : 'Your area';
   const nearbyCount = nearbyGroups.reduce((total, group) => total + group.member_count, 0);
+  const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
+  const selectedAudience = audiences.find((item) => item.value === composerAudience) ?? audiences[0]!;
+  const selectedCircle = circles.find((circle) => circle.id === composerCircleId) ?? null;
+  const selectedGroup = yourGroups.find((group) => group.id === composerGroupId) ?? null;
+  const targetMissing = (composerAudience === 'circle' && !composerCircleId) || (composerAudience === 'group' && !composerGroupId);
+  const bodyMissing = composerType !== 'meetup' && !composerBody.trim() && !composerPhoto;
+  const cannotPost = submitting || targetMissing || bodyMissing;
 
   async function handleJoin(group: CommunityGroup) {
     setJoiningId(group.id);
@@ -213,12 +261,76 @@ export default function CommunityScreen() {
     }
   }
 
+  async function choosePhoto() {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo library access is needed to upload a photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.88 });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setComposerPhoto({ uri: asset.uri, mimeType: asset.mimeType });
+  }
+
+  function changeAudience(next: CommunityAudience) {
+    setComposerAudience(next);
+    setComposerCircleId(null);
+    setComposerGroupId(null);
+    setAudienceOpen(false);
+    setTargetOpen(next === 'circle' || next === 'group');
+  }
+
+  async function submitPost() {
+    if (composerType === 'meetup') {
+      if (targetMissing) return;
+      router.push({
+        pathname: '/local-events/create',
+        params: {
+          audience: composerAudience,
+          circleId: composerCircleId ?? undefined,
+          groupId: composerGroupId ?? undefined,
+        },
+      });
+      return;
+    }
+    if (cannotPost) return;
+
+    setSubmitting(true);
+    setError(null);
+    let uploadedPath: string | null = null;
+    try {
+      if (composerPhoto) uploadedPath = await uploadCommunityPostImage(composerPhoto);
+      await createPost({
+        body: composerBody,
+        postType: composerType,
+        audience: composerAudience,
+        circleId: composerCircleId,
+        groupId: composerGroupId,
+        adventureId: selectedGroup?.adventure_id ?? null,
+        imagePath: uploadedPath,
+      });
+      setComposerBody('');
+      setComposerPhoto(null);
+      setComposerType('update');
+      setTypeOpen(false);
+      await load();
+    } catch (caught) {
+      if (uploadedPath) await removeCommunityPostImage(uploadedPath).catch(() => undefined);
+      setError(caught instanceof Error ? caught.message : 'Unable to publish this post.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const visibleGroupList = tab === 'nearby' ? nearbyGroups : groups;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={GOLD} />}
         showsVerticalScrollIndicator={false}
       >
@@ -227,7 +339,7 @@ export default function CommunityScreen() {
             <Text style={styles.title}>Community</Text>
             <View style={styles.locationRow}>
               <Ionicons name="location-outline" size={14} color={MUTED} />
-              <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups{nearbyCount ? ` · ${nearbyCount} adventurers nearby` : ''}</Text>
+              <Text style={styles.subtitle}>{locationLabel} · {yourGroups.length} groups{nearbyCount ? ` · ${nearbyCount} adventurer${nearbyCount === 1 ? '' : 's'} nearby` : ''}</Text>
             </View>
           </View>
           <View style={styles.headerActions}>
@@ -250,16 +362,105 @@ export default function CommunityScreen() {
         {tab === 'for-you' ? (
           <>
             <View style={styles.composer}>
-              <Pressable style={({ pressed }) => [styles.composerPromptRow, pressed && styles.pressed]} onPress={() => router.push('/community/create')}>
-                <View style={styles.memberAvatar}><Ionicons name="person" size={18} color={TEXT} /></View>
-                <Text style={styles.composerPrompt}>What’s happening outside?</Text>
-                <Ionicons name="chevron-forward" size={18} color={MUTED} />
-              </Pressable>
-              <View style={styles.quickActionsRow}>
-                <QuickAction icon="images-outline" label="Photo" onPress={() => router.push({ pathname: '/community/create', params: { type: 'photo' } })} />
-                <QuickAction icon="calendar-outline" label="Meetup" onPress={() => router.push({ pathname: '/community/create', params: { type: 'meetup' } })} />
-                <QuickAction icon="help-circle-outline" label="Ask" onPress={() => router.push({ pathname: '/community/create', params: { type: 'ask' } })} />
+              {composerPhoto ? (
+                <View style={styles.composerPhotoWrap}>
+                  <Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} resizeMode="cover" />
+                  <Pressable style={styles.removePhotoButton} onPress={() => setComposerPhoto(null)}>
+                    <Ionicons name="close" size={18} color={TEXT} />
+                  </Pressable>
+                </View>
+              ) : null}
+
+              <TextInput
+                value={composerBody}
+                onChangeText={setComposerBody}
+                placeholder={placeholderFor(composerType)}
+                placeholderTextColor="#7F8B83"
+                multiline
+                maxLength={4000}
+                style={styles.composerInput}
+              />
+
+              <View style={styles.composerControls}>
+                <Pressable style={styles.compactControl} onPress={() => void choosePhoto()}>
+                  <Ionicons name="image-outline" size={18} color={GOLD_MUTED} />
+                  <Text style={styles.compactControlText}>{composerPhoto ? 'Change photo' : 'Upload photo'}</Text>
+                </Pressable>
+
+                <Pressable style={styles.compactControl} onPress={() => { setTypeOpen((value) => !value); setAudienceOpen(false); setTargetOpen(false); }}>
+                  <Ionicons name={selectedType.icon as never} size={18} color={GOLD_MUTED} />
+                  <Text style={styles.compactControlText}>{selectedType.label}</Text>
+                  <Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={15} color={MUTED} />
+                </Pressable>
               </View>
+
+              {typeOpen ? (
+                <View style={styles.dropdown}>
+                  {postTypes.map((item) => (
+                    <Pressable key={item.value} style={styles.dropdownRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}>
+                      <Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} />
+                      <Text style={[styles.dropdownText, item.value === composerType && styles.dropdownTextActive]}>{item.label}</Text>
+                      {item.value === composerType ? <Ionicons name="checkmark" size={17} color={GOLD} /> : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              <View style={styles.composerFooter}>
+                <Pressable style={styles.shareControl} onPress={() => { setAudienceOpen((value) => !value); setTypeOpen(false); setTargetOpen(false); }}>
+                  <Ionicons name={selectedAudience.icon as never} size={16} color={GOLD} />
+                  <Text style={styles.shareText}>Share with {selectedAudience.label}</Text>
+                  <Ionicons name={audienceOpen ? 'chevron-up' : 'chevron-down'} size={14} color={MUTED} />
+                </Pressable>
+
+                <Pressable disabled={cannotPost} style={[styles.postButton, cannotPost && styles.postButtonDisabled]} onPress={() => void submitPost()}>
+                  {submitting ? <ActivityIndicator size="small" color="#101510" /> : <Text style={styles.postButtonText}>{composerType === 'meetup' ? 'Set up meetup' : 'Post'}</Text>}
+                </Pressable>
+              </View>
+
+              {audienceOpen ? (
+                <View style={styles.dropdown}>
+                  {audiences.map((item) => (
+                    <Pressable key={item.value} style={styles.dropdownRow} onPress={() => changeAudience(item.value)}>
+                      <Ionicons name={item.icon as never} size={18} color={item.value === composerAudience ? GOLD : MUTED} />
+                      <Text style={[styles.dropdownText, item.value === composerAudience && styles.dropdownTextActive]}>{item.label}</Text>
+                      {item.value === composerAudience ? <Ionicons name="checkmark" size={17} color={GOLD} /> : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              {(composerAudience === 'circle' || composerAudience === 'group') ? (
+                <View>
+                  <Pressable style={styles.targetControl} onPress={() => setTargetOpen((value) => !value)}>
+                    <Text style={styles.targetControlText}>
+                      {composerAudience === 'circle' ? selectedCircle?.name ?? 'Choose a Circle' : selectedGroup?.name ?? 'Choose a Group'}
+                    </Text>
+                    <Ionicons name={targetOpen ? 'chevron-up' : 'chevron-down'} size={15} color={MUTED} />
+                  </Pressable>
+                  {targetOpen ? (
+                    <View style={styles.targetList}>
+                      {(composerAudience === 'circle' ? circles : yourGroups).map((target) => (
+                        <Pressable
+                          key={target.id}
+                          style={styles.dropdownRow}
+                          onPress={() => {
+                            if (composerAudience === 'circle') setComposerCircleId(target.id);
+                            else setComposerGroupId(target.id);
+                            setTargetOpen(false);
+                          }}
+                        >
+                          <Text style={styles.dropdownText}>{target.name}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {composerType === 'meetup' ? (
+                <Text style={styles.meetupHint}>Meetups continue into the event setup for date, time, location, and capacity.</Text>
+              ) : null}
             </View>
 
             <View style={styles.feedSectionHeader}>
@@ -269,11 +470,11 @@ export default function CommunityScreen() {
 
             {posts.map((post) => <CommunityPostCard key={post.id} post={post} />)}
             {!posts.length && !loading ? (
-              <Pressable style={styles.emptyFeed} onPress={() => router.push('/community/create')}>
+              <View style={styles.emptyFeed}>
                 <Ionicons name="create-outline" size={24} color={GOLD} />
                 <Text style={styles.emptyFeedTitle}>Start the conversation</Text>
-                <Text style={styles.emptyFeedText}>Share an update, ask a question, post a photo, or find your next adventure buddy.</Text>
-              </Pressable>
+                <Text style={styles.emptyFeedText}>Write something above, add a photo if you want, and post it without leaving Community.</Text>
+              </View>
             ) : null}
 
             <NearbyEventCard location={locationLabel} />
@@ -328,13 +529,30 @@ const styles = StyleSheet.create({
   tabTextActive: { color: GOLD },
   loader: { marginVertical: 3 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
-  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 10, gap: 8 },
-  composerPromptRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 2 },
-  memberAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#294236' },
-  composerPrompt: { flex: 1, color: '#E4E8E5', fontSize: 15.5, fontWeight: '600' },
-  quickActionsRow: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#37443C', paddingTop: 7 },
-  quickAction: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, gap: 3 },
-  quickActionText: { color: '#D8DED9', fontSize: 10.5, textAlign: 'center', fontWeight: '700' },
+
+  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 11, gap: 9 },
+  composerInput: { minHeight: 64, maxHeight: 150, color: TEXT, fontSize: 15, lineHeight: 21, paddingHorizontal: 3, paddingVertical: 5, textAlignVertical: 'top' },
+  composerPhotoWrap: { position: 'relative' },
+  composerPhoto: { width: '100%', height: 180, borderRadius: 13, backgroundColor: '#101813' },
+  removePhotoButton: { position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(15,23,19,0.88)', alignItems: 'center', justifyContent: 'center' },
+  composerControls: { flexDirection: 'row', gap: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#37443C' },
+  compactControl: { flex: 1, minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: '#34423A', borderRadius: 11, backgroundColor: '#18231D', paddingHorizontal: 8 },
+  compactControlText: { color: '#D8DED9', fontSize: 11.5, fontWeight: '800' },
+  dropdown: { borderWidth: 1, borderColor: '#38473E', borderRadius: 12, backgroundColor: '#121C17', overflow: 'hidden' },
+  dropdownRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#344239' },
+  dropdownText: { flex: 1, color: '#CED6D0', fontSize: 12.5, fontWeight: '700' },
+  dropdownTextActive: { color: GOLD },
+  composerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  shareControl: { flex: 1, minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },
+  shareText: { flex: 1, color: '#B9C2BC', fontSize: 11.5, fontWeight: '700' },
+  postButton: { minWidth: 74, minHeight: 38, borderRadius: 11, paddingHorizontal: 13, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  postButtonDisabled: { opacity: 0.38 },
+  postButtonText: { color: '#101510', fontWeight: '900', fontSize: 12 },
+  targetControl: { minHeight: 40, borderWidth: 1, borderColor: '#34423A', borderRadius: 11, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  targetControlText: { flex: 1, color: '#D8DED9', fontSize: 12, fontWeight: '800' },
+  targetList: { marginTop: 6, borderWidth: 1, borderColor: '#38473E', borderRadius: 11, overflow: 'hidden' },
+  meetupHint: { color: '#8F9B93', fontSize: 11, lineHeight: 15, paddingHorizontal: 2 },
+
   feedSectionHeader: { paddingHorizontal: 2, paddingTop: 2, gap: 1 },
   feedSectionLabel: { color: TEXT, fontSize: 15, fontWeight: '900' },
   feedSectionHint: { color: '#7F8B83', fontSize: 11.5, lineHeight: 16 },
