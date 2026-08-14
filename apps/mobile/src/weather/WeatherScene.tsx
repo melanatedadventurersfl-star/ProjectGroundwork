@@ -139,10 +139,10 @@ export function WeatherScene({ weather, fallbackLocation = '', reduceMotion = fa
         },
       ]}
     />
-    <View pointerEvents="none" style={[styles.scrim, { backgroundColor: `rgba(6, 13, 11, ${scrimOpacity})` }]} />
-    <View pointerEvents="none" style={styles.edgeShade} />
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(6, 13, 11, ${scrimOpacity})` }]} />
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.edgeShade]} />
 
-    {kind === 'rain' || kind === 'storm' ? <Animated.View pointerEvents="none" style={[styles.rainLayer, { transform: [{ translateY: rainY }] }]}>
+    {kind === 'rain' || kind === 'storm' ? <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateY: rainY }] }]}>
       {[12, 38, 67, 96, 128, 160, 194, 226, 260, 294].map((left, index) => <View
         key={left}
         style={[styles.rainLine, { left, top: (index % 4) * 26, opacity: 0.18 + (index % 3) * 0.05 }]}
@@ -177,12 +177,9 @@ const styles = StyleSheet.create({
     left: '-6%',
     top: '-6%',
   },
-  scrim: StyleSheet.absoluteFillObject,
   edgeShade: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(5, 10, 9, 0.08)',
   },
-  rainLayer: StyleSheet.absoluteFillObject,
   rainLine: {
     position: 'absolute',
     width: 1,
