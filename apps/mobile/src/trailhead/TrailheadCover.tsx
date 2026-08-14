@@ -7,7 +7,7 @@ import { AppIcon } from '../ui/AppIcon';
 
 function DefaultScenery() {
   return (
-    <Svg width="100%" height="100%" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" style={StyleSheet.absoluteFillObject}>
+    <Svg width="100%" height="100%" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" style={StyleSheet.absoluteFill}>
       <Defs>
         <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor="#496A78" />
@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   imageRadius: { borderRadius: 18 },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,8,0.23)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(5,10,8,0.23)' },
   headerRow: {
     position: 'absolute',
     top: 8,
