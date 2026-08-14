@@ -1,8 +1,9 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getGroups, joinGroup, type CommunityGroup } from '../../src/community/api';
+import { getCommunityFeed, getGroups, joinGroup, type CommunityGroup, type CommunityPost } from '../../src/community/api';
 import { getMemberBasecamp } from '../../src/member/api';
 
 type CommunityTab = 'for-you' | 'nearby' | 'groups';
@@ -26,23 +27,44 @@ const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 
+function relativeTime(value: string) {
+  const diff = Date.now() - new Date(value).getTime();
+  const minutes = Math.max(1, Math.floor(diff / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function postTypeLabel(post: CommunityPost) {
+  if (post.post_type === 'ask') return 'ASK';
+  if (post.post_type === 'buddy') return 'ADVENTURE BUDDY';
+  if (post.post_type === 'recommendation') return 'PLACE RECOMMENDATION';
+  if (post.post_type === 'photo') return 'PHOTO';
+  if (post.post_type === 'meetup') return 'MEETUP';
+  return null;
+}
+
+function audienceIcon(post: CommunityPost) {
+  if (post.audience === 'connections') return 'people-outline';
+  if (post.audience === 'circle') return 'people-circle-outline';
+  if (post.audience === 'group') return 'albums-outline';
+  return 'globe-outline';
+}
+
 function GroupRow({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
   const isMember = group.is_member;
-
   return (
     <Pressable
       style={({ pressed }) => [styles.groupRow, pressed && styles.pressed]}
       onPress={() => {
-        if (isMember) {
-          router.push({ pathname: '/groups/[id]', params: { id: group.id } });
-        } else {
-          onJoin(group);
-        }
+        if (isMember) router.push({ pathname: '/groups/[id]', params: { id: group.id } });
+        else onJoin(group);
       }}
     >
-      <View style={styles.groupAvatar}>
-        <Text style={styles.groupAvatarText}>{group.name.slice(0, 2).toUpperCase()}</Text>
-      </View>
+      <View style={styles.groupAvatar}><Text style={styles.groupAvatarText}>{group.name.slice(0, 2).toUpperCase()}</Text></View>
       <View style={styles.groupCopy}>
         <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
         <Text style={styles.groupMeta} numberOfLines={1}>
@@ -76,74 +98,33 @@ function CircleGateway({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function FeedCard() {
+function CommunityPostCard({ post }: { post: CommunityPost }) {
+  const badge = postTypeLabel(post);
   return (
-    <View style={styles.feedCard}>
+    <Pressable style={({ pressed }) => [styles.feedCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.feedHeader}>
-        <View style={styles.feedAvatar}><Text style={styles.feedAvatarText}>JOS</Text></View>
+        <View style={styles.feedAvatar}><Text style={styles.feedAvatarText}>{post.author_name.slice(0, 1).toUpperCase()}</Text></View>
         <View style={styles.feedHeaderCopy}>
-          <Text style={styles.feedName}>Jacksonville Outside Social</Text>
-          <Text style={styles.feedMeta}>2h ago · Jacksonville, FL</Text>
-        </View>
-        <Ionicons name="ellipsis-horizontal" size={21} color={MUTED} />
-      </View>
-
-      <View style={styles.photoCollage}>
-        <View style={styles.photoHero}>
-          <View style={styles.sun} />
-          <View style={styles.waterLine} />
-          <Text style={styles.photoLabel}>St. Johns River</Text>
-        </View>
-        <View style={styles.photoStack}>
-          <View style={[styles.photoSmall, styles.photoPeople]}>
-            <Ionicons name="people" size={31} color={TEXT} />
+          <View style={styles.authorLine}>
+            <Text style={styles.feedName} numberOfLines={1}>{post.author_name}</Text>
+            <Ionicons name={audienceIcon(post) as never} size={13} color={MUTED} />
           </View>
-          <View style={[styles.photoSmall, styles.photoTrail]}>
-            <Ionicons name="leaf" size={29} color={TEXT} />
-          </View>
+          <Text style={styles.feedMeta}>{relativeTime(post.created_at)} ago</Text>
         </View>
+        {badge ? <View style={styles.postTypeBadge}><Text style={styles.postTypeBadgeText}>{badge}</Text></View> : null}
       </View>
-
-      <Text style={styles.feedBody}>Sunset paddle on the St. Johns River never gets old 🌅 Perfect evening with a great crew.</Text>
+      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
+      <Text style={styles.feedBody}>{post.body}</Text>
       <View style={styles.engagementRow}>
         <View style={styles.engagementLeft}>
-          <Ionicons name="heart" size={19} color={GOLD} />
-          <Text style={styles.engagementText}>24 likes</Text>
-          <Text style={styles.engagementDot}>·</Text>
-          <Text style={styles.engagementText}>8 comments</Text>
+          <Ionicons name="heart-outline" size={18} color={GOLD_MUTED} />
+          <Text style={styles.engagementText}>{post.reaction_count || 0}</Text>
+          <Ionicons name="chatbubble-outline" size={17} color={MUTED} />
+          <Text style={styles.engagementText}>{post.comment_count || 0}</Text>
         </View>
-        <View style={styles.engagementActions}>
-          <Ionicons name="chatbubble-outline" size={21} color={TEXT} />
-          <Ionicons name="share-social-outline" size={22} color={TEXT} />
-        </View>
+        <Ionicons name="chevron-forward" size={18} color={MUTED} />
       </View>
-    </View>
-  );
-}
-
-function PartnerPost() {
-  return (
-    <View style={styles.feedCard}>
-      <View style={styles.feedHeader}>
-        <View style={[styles.memberAvatar, styles.memberAvatarWarm]}>
-          <Ionicons name="person" size={19} color={TEXT} />
-        </View>
-        <View style={styles.feedHeaderCopy}>
-          <Text style={styles.feedName}>Looking for hiking partners</Text>
-          <Text style={styles.feedMeta}>Alex R. · 1h ago · Jacksonville, FL</Text>
-        </View>
-        <Ionicons name="ellipsis-horizontal" size={21} color={MUTED} />
-      </View>
-      <Text style={styles.partnerBody}>New to the area and looking for friendly folks to hit some local trails with. Weekends work best for me!</Text>
-      <View style={styles.partnerFooter}>
-        <View style={styles.tagRow}>
-          <View style={styles.tag}><Ionicons name="trail-sign-outline" size={15} color={MUTED} /><Text style={styles.tagText}>Intermediate</Text></View>
-          <View style={styles.tag}><Ionicons name="people-outline" size={15} color={MUTED} /><Text style={styles.tagText}>Weekends</Text></View>
-        </View>
-        <Pressable style={styles.primaryButton}><Text style={styles.primaryButtonText}>I’m interested</Text></Pressable>
-      </View>
-      <Text style={styles.interestedCount}>12 interested</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -155,18 +136,15 @@ function NearbyEventCard({ location }: { location: string }) {
         <Pressable><Text style={styles.link}>View all</Text></Pressable>
       </View>
       <View style={styles.eventRow}>
-        <View style={styles.eventThumb}>
-          <Ionicons name="boat-outline" size={36} color={TEXT} />
-        </View>
+        <View style={styles.eventThumb}><Ionicons name="boat-outline" size={36} color={TEXT} /></View>
         <View style={styles.eventCopy}>
           <Text style={styles.eventTitle}>Sunrise Paddle on The St. Johns</Text>
           <View style={styles.metaLine}><Ionicons name="calendar-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>Sat, May 17 · 8:00 AM</Text></View>
           <View style={styles.metaLine}><Ionicons name="location-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>{location}</Text></View>
-          <View style={styles.metaLine}><Ionicons name="people-outline" size={15} color={MUTED} /><Text style={styles.metaLineText}>18 going · 4 spots left</Text></View>
         </View>
       </View>
-      <Pressable style={styles.fullButton} onPress={() => router.push('/local-events/create')}>
-        <Text style={styles.primaryButtonText}>View meetup</Text>
+      <Pressable style={styles.fullButton} onPress={() => router.push({ pathname: '/community/create', params: { type: 'meetup' } })}>
+        <Text style={styles.primaryButtonText}>Plan a meetup</Text>
       </Pressable>
     </View>
   );
@@ -174,6 +152,7 @@ function NearbyEventCard({ location }: { location: string }) {
 
 export default function CommunityScreen() {
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,8 +163,9 @@ export default function CommunityScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [nextGroups, basecamp] = await Promise.all([getGroups(), getMemberBasecamp()]);
+      const [nextGroups, nextPosts, basecamp] = await Promise.all([getGroups(), getCommunityFeed(), getMemberBasecamp()]);
       setGroups(nextGroups);
+      setPosts(nextPosts);
       setHomeCity(basecamp.profile?.home_city ?? null);
       setHomeState(basecamp.profile?.home_state ?? null);
       setError(null);
@@ -197,7 +177,7 @@ export default function CommunityScreen() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const yourGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const nearbyGroups = useMemo(
@@ -243,11 +223,7 @@ export default function CommunityScreen() {
         </View>
 
         <View style={styles.tabs}>
-          {([
-            ['for-you', 'For You'],
-            ['nearby', 'Nearby'],
-            ['groups', 'Groups'],
-          ] as const).map(([value, label]) => (
+          {([['for-you', 'For You'], ['nearby', 'Nearby'], ['groups', 'Groups']] as const).map(([value, label]) => (
             <Pressable key={value} style={[styles.tab, tab === value && styles.tabActive]} onPress={() => setTab(value)}>
               <Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{label}</Text>
             </Pressable>
@@ -267,18 +243,25 @@ export default function CommunityScreen() {
               </Pressable>
               <View style={styles.quickActionsRow}>
                 <QuickAction icon="images-outline" label="Photo" onPress={() => router.push({ pathname: '/community/create', params: { type: 'photo' } })} />
-                <QuickAction icon="calendar-outline" label="Meetup" onPress={() => router.push('/local-events/create')} />
+                <QuickAction icon="calendar-outline" label="Meetup" onPress={() => router.push({ pathname: '/community/create', params: { type: 'meetup' } })} />
                 <QuickAction icon="help-circle-outline" label="Ask" onPress={() => router.push({ pathname: '/community/create', params: { type: 'ask' } })} />
               </View>
             </View>
 
             <View style={styles.feedSectionHeader}>
               <Text style={styles.feedSectionLabel}>From your community</Text>
-              <Text style={styles.feedSectionHint}>Groups, meetups, and people you connect with</Text>
+              <Text style={styles.feedSectionHint}>Posts you’re allowed to see from Community, Connections, Circles, and Groups</Text>
             </View>
 
-            <FeedCard />
-            <PartnerPost />
+            {posts.map((post) => <CommunityPostCard key={post.id} post={post} />)}
+            {!posts.length && !loading ? (
+              <Pressable style={styles.emptyFeed} onPress={() => router.push('/community/create')}>
+                <Ionicons name="create-outline" size={24} color={GOLD} />
+                <Text style={styles.emptyFeedTitle}>Start the conversation</Text>
+                <Text style={styles.emptyFeedText}>Share an update, ask a question, post a photo, or find your next adventure buddy.</Text>
+              </Pressable>
+            ) : null}
+
             <NearbyEventCard location={locationLabel} />
             <CircleGateway />
 
@@ -288,9 +271,7 @@ export default function CommunityScreen() {
                 <Pressable onPress={() => setTab('groups')}><Text style={styles.link}>Manage</Text></Pressable>
               </View>
               <View style={styles.groupList}>
-                {yourGroups.slice(0, 3).map((group) => (
-                  <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />
-                ))}
+                {yourGroups.slice(0, 3).map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
                 {!yourGroups.length && !loading ? <Text style={styles.emptyText}>Join a few communities and they’ll live here.</Text> : null}
               </View>
             </View>
@@ -306,9 +287,7 @@ export default function CommunityScreen() {
             </View>
             {tab === 'groups' ? <CircleGateway compact /> : null}
             <View style={styles.groupList}>
-              {visibleGroupList.map((group) => (
-                <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />
-              ))}
+              {visibleGroupList.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
               {!visibleGroupList.length && !loading ? <Text style={styles.emptyText}>Nothing here yet. Pull to refresh or check back as the community grows.</Text> : null}
             </View>
           </View>
@@ -338,44 +317,32 @@ const styles = StyleSheet.create({
   composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 10, gap: 8 },
   composerPromptRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 2 },
   memberAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#294236' },
-  memberAvatarWarm: { backgroundColor: '#5E4A2B' },
   composerPrompt: { flex: 1, color: '#E4E8E5', fontSize: 15.5, fontWeight: '600' },
   quickActionsRow: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#37443C', paddingTop: 7 },
   quickAction: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, gap: 3 },
   quickActionText: { color: '#D8DED9', fontSize: 10.5, textAlign: 'center', fontWeight: '700' },
   feedSectionHeader: { paddingHorizontal: 2, paddingTop: 2, gap: 1 },
   feedSectionLabel: { color: TEXT, fontSize: 15, fontWeight: '900' },
-  feedSectionHint: { color: '#7F8B83', fontSize: 11.5 },
-  feedCard: { backgroundColor: 'transparent', paddingHorizontal: 2, paddingVertical: 8, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#26332C' },
+  feedSectionHint: { color: '#7F8B83', fontSize: 11.5, lineHeight: 16 },
+  feedCard: { backgroundColor: 'transparent', paddingHorizontal: 2, paddingVertical: 9, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#26332C' },
   feedHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   feedAvatar: { width: 41, height: 41, borderRadius: 21, borderWidth: 1, borderColor: '#738078', alignItems: 'center', justifyContent: 'center' },
   feedAvatarText: { color: TEXT, fontWeight: '900', fontSize: 15 },
   feedHeaderCopy: { flex: 1 },
-  feedName: { color: TEXT, fontSize: 15.5, fontWeight: '900' },
+  authorLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  feedName: { color: TEXT, fontSize: 15.5, fontWeight: '900', maxWidth: '88%' },
   feedMeta: { color: '#8F9B93', fontSize: 11.5, marginTop: 2 },
-  photoCollage: { flexDirection: 'row', gap: 5, height: 198, borderRadius: 14, overflow: 'hidden' },
-  photoHero: { flex: 1.65, backgroundColor: '#263E50', justifyContent: 'flex-end', padding: 10, overflow: 'hidden' },
-  photoStack: { flex: 1, gap: 5 },
-  photoSmall: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  photoPeople: { backgroundColor: '#5B5A34' },
-  photoTrail: { backgroundColor: '#2C4A33' },
-  sun: { position: 'absolute', right: 18, top: 34, width: 36, height: 36, borderRadius: 18, backgroundColor: '#E6A94C' },
-  waterLine: { position: 'absolute', left: 0, right: 0, bottom: 36, height: 36, backgroundColor: '#1B3040', opacity: 0.85 },
-  photoLabel: { color: TEXT, fontWeight: '900', fontSize: 13 },
+  postTypeBadge: { backgroundColor: '#1D2B24', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 5 },
+  postTypeBadgeText: { color: '#D6C28D', fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
+  postImage: { width: '100%', height: 230, borderRadius: 14, backgroundColor: '#101813' },
   feedBody: { color: '#E0E5E1', fontSize: 13.5, lineHeight: 19 },
   engagementRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   engagementLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  engagementText: { color: MUTED, fontSize: 12 },
-  engagementDot: { color: '#6E7A72' },
-  engagementActions: { flexDirection: 'row', alignItems: 'center', gap: 17 },
-  partnerBody: { color: '#D9DFDB', lineHeight: 19 },
-  partnerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
-  tagRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  tag: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#3B493F', borderRadius: 99, paddingHorizontal: 9, paddingVertical: 6 },
-  tagText: { color: MUTED, fontSize: 10.5 },
-  primaryButton: { backgroundColor: GOLD, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  engagementText: { color: MUTED, fontSize: 12, marginRight: 5 },
+  emptyFeed: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 16, padding: 18, alignItems: 'center', gap: 6 },
+  emptyFeedTitle: { color: TEXT, fontWeight: '900', fontSize: 16 },
+  emptyFeedText: { color: MUTED, textAlign: 'center', lineHeight: 18, fontSize: 12 },
   primaryButtonText: { color: '#101510', fontWeight: '900' },
-  interestedCount: { color: '#8F9B93', fontSize: 11, textAlign: 'right', marginTop: -4 },
   sectionCard: { backgroundColor: CARD, borderRadius: 17, padding: 12, gap: 11 },
   sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sectionHeading: { color: TEXT, fontSize: 17.5, fontWeight: '900' },
@@ -387,7 +354,7 @@ const styles = StyleSheet.create({
   circleGatewayTitle: { color: TEXT, fontSize: 14.5, fontWeight: '900' },
   circleGatewayCopy: { color: '#98A49C', fontSize: 11.5, lineHeight: 16, marginTop: 2 },
   eventRow: { flexDirection: 'row', gap: 11 },
-  eventThumb: { width: 104, minHeight: 110, borderRadius: 14, backgroundColor: '#294A3A', alignItems: 'center', justifyContent: 'center' },
+  eventThumb: { width: 104, minHeight: 96, borderRadius: 14, backgroundColor: '#294A3A', alignItems: 'center', justifyContent: 'center' },
   eventCopy: { flex: 1, gap: 5 },
   eventTitle: { color: TEXT, fontWeight: '900', fontSize: 14.5 },
   metaLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
