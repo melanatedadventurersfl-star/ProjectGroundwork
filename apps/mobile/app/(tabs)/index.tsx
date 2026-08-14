@@ -226,7 +226,7 @@ export default function TrailheadScreen() {
     }
   }
 
-  async function useDefaultCover() {
+  async function restoreDefaultCover() {
     setCoverBusy(true);
     try {
       await removeProfileCover();
@@ -246,7 +246,7 @@ export default function TrailheadScreen() {
     Alert.alert('Trailhead cover', 'Choose what you want to do.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Change photo', onPress: () => void chooseCoverPhoto() },
-      { text: 'Use default scenery', onPress: () => void useDefaultCover() },
+      { text: 'Use default scenery', onPress: () => void restoreDefaultCover() },
     ]);
   }
 
