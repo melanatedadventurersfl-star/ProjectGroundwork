@@ -22,7 +22,8 @@ import { getJourney, getMemberBadges, getPassportStamps } from '../../src/passpo
 import { getAdventureQueue } from '../../src/readiness/api';
 import type { AdventureQueueItem } from '../../src/readiness/types';
 import { AppIcon } from '../../src/ui/AppIcon';
-import { getWeather, type WeatherForecast } from '../../src/weather/api';
+import { getWeather } from '../../src/weather/api';
+import { WeatherScene } from '../../src/weather/WeatherScene';
 
 const CARD_WIDTH = Dimensions.get('window').width - 36;
 
@@ -45,16 +46,6 @@ function shortDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function weatherTheme(weather: WeatherForecast | null) {
-  const text = weather?.current.condition.text.toLowerCase() ?? '';
-  if (/thunder|storm/.test(text)) return { glyph: 'ϟ', background: '#26313A' };
-  if (/rain|drizzle|shower/.test(text)) return { glyph: '☂', background: '#20343A' };
-  if (/snow|sleet|ice/.test(text)) return { glyph: '✦', background: '#35464A' };
-  if (/cloud|overcast|mist|fog/.test(text)) return { glyph: '☁', background: '#34413B' };
-  if (/sun|clear/.test(text)) return { glyph: '☀', background: '#5A4622' };
-  return { glyph: '◌', background: '#1A2821' };
-}
-
 export default function TrailheadScreen() {
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
@@ -66,7 +57,7 @@ export default function TrailheadScreen() {
   const [journey, setJourney] = useState<any[]>([]);
   const [stampCount, setStampCount] = useState(0);
   const [badgeCount, setBadgeCount] = useState(0);
-  const [weather, setWeather] = useState<WeatherForecast | null>(null);
+  const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -164,7 +155,6 @@ export default function TrailheadScreen() {
   const statesVisited = new Set(journey.map((item: any) => item.state).filter(Boolean));
   const currentRank = rankFor(journey.length);
   const currentCommunityPost = communityPosts[communityIndex];
-  const weatherLook = weatherTheme(weather);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}>
@@ -180,9 +170,8 @@ export default function TrailheadScreen() {
 
       {featured.length ? <View style={styles.section}><View style={styles.sectionRow}><Text style={styles.sectionTitle}>Featured Adventures</Text><Text style={styles.count}>{featured.length > 1 ? `${Math.max(1, Math.min(featured.length, activeFeature))} of ${featured.length}` : '1 of 1'}</Text></View><FlatList ref={listRef} horizontal data={loop} keyExtractor={(item, index) => `${item.id}-${index}`} initialScrollIndex={featured.length > 1 ? 1 : 0} getItemLayout={(_, index) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * index, index })} pagingEnabled showsHorizontalScrollIndicator={false} onTouchStart={pauseCarousel} onScrollBeginDrag={pauseCarousel} onMomentumScrollEnd={(event) => settleCarousel(Math.round(event.nativeEvent.contentOffset.x / CARD_WIDTH))} renderItem={({ item }) => <Pressable style={{ width: CARD_WIDTH }} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}><ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.hero} imageStyle={styles.heroRadius}><View style={styles.heroShade} /><View style={styles.heroBody}><Text style={styles.eyebrow}>{item.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL MA ADVENTURE'}</Text><Text style={styles.heroTitle}>{item.title}</Text><Text style={styles.heroMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text><Text style={styles.link}>View Adventure →</Text></View></ImageBackground></Pressable>} /></View> : null}
 
-      <Pressable style={[styles.weatherCard, { backgroundColor: weatherLook.background }]} onPress={() => router.push('/member/weather' as never)}>
-        <Text style={styles.weatherBackdrop}>{weatherLook.glyph}</Text>
-        <View style={styles.weatherContent}><Text style={styles.eyebrow}>WEATHER</Text><Text style={styles.weatherTitle}>{weather ? `${weather.location.name}, ${weather.location.region} · ${Math.round(weather.current.temp_f)}°` : location || 'Set your location'}</Text><Text style={styles.weatherMuted}>{weather ? `${weather.current.condition.text} · Feels ${Math.round(weather.current.feelslike_f)}°` : 'Open Weather & Location'}</Text></View>
+      <Pressable onPress={() => router.push('/member/weather' as never)} accessibilityRole="button" accessibilityLabel="Open weather details">
+        <WeatherScene weather={weather} fallbackLocation={location} reduceMotion={reduceMotion} />
       </Pressable>
 
       <View style={styles.duo}>
