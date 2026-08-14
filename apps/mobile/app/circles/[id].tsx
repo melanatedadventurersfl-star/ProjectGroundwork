@@ -61,9 +61,9 @@ export default function CircleDetailScreen() {
       setMembers(nextMembers);
       setConnections(nextConnections);
       setName((current) => current || nextCircle?.name || '');
-      setError(nextCircle ? null : 'Circle not found.');
+      setError(nextCircle ? null : 'Crew not found.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load this circle.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load this crew.');
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export default function CircleDetailScreen() {
       await action();
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update this circle.');
+      setError(caught instanceof Error ? caught.message : 'Unable to update this crew.');
     } finally {
       setBusyId(null);
     }
@@ -93,7 +93,7 @@ export default function CircleDetailScreen() {
       await renameCircle(id, name);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to rename circle.');
+      setError(caught instanceof Error ? caught.message : 'Unable to rename crew.');
     } finally {
       setSaving(false);
     }
@@ -101,9 +101,9 @@ export default function CircleDetailScreen() {
 
   function confirmDelete() {
     if (!id) return;
-    Alert.alert('Delete this circle?', 'This only deletes your private circle. It will not remove any connections.', [
+    Alert.alert('Delete this crew?', 'This only deletes your private crew. It will not remove any connections.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void deleteCircle(id).then(() => router.back()).catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to delete circle.')) },
+      { text: 'Delete', style: 'destructive', onPress: () => void deleteCircle(id).then(() => router.back()).catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to delete crew.')) },
     ]);
   }
 
@@ -115,33 +115,33 @@ export default function CircleDetailScreen() {
         <View style={styles.topRow}>
           <Pressable style={styles.backButton} onPress={() => router.back()}><Ionicons name="chevron-back" size={22} color={TEXT} /></Pressable>
           <View style={styles.ring}><Ionicons name="people" size={24} color={GOLD} /></View>
-          <View style={styles.flex}><Text style={styles.eyebrow}>PRIVATE CIRCLE</Text><Text style={styles.title}>{circle?.name ?? 'Circle'}</Text></View>
+          <View style={styles.flex}><Text style={styles.eyebrow}>PRIVATE CREW</Text><Text style={styles.title}>{circle?.name ?? 'Crew'}</Text></View>
         </View>
 
-        <Text style={styles.intro}>Only you can see who is in this circle. Use it later for faster invites, sharing, and adventure planning.</Text>
+        <Text style={styles.intro}>Only you can see which Trailmates are in this crew. Use it for faster invites, sharing, and adventure planning.</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.renameCard}>
-          <Text style={styles.label}>Circle name</Text>
+          <Text style={styles.label}>Crew name</Text>
           <View style={styles.renameRow}>
             <TextInput value={name} onChangeText={setName} maxLength={60} style={styles.nameInput} />
             <Pressable disabled={!name.trim() || name.trim() === circle?.name || saving} style={[styles.saveButton, (!name.trim() || name.trim() === circle?.name || saving) && styles.disabled]} onPress={() => void saveName()}><Text style={styles.saveText}>{saving ? 'Saving…' : 'Save'}</Text></Pressable>
           </View>
         </View>
 
-        <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>In this circle</Text><Text style={styles.sectionHint}>{members.length} {members.length === 1 ? 'person' : 'people'}</Text></View></View>
+        <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Trailmates in this crew</Text><Text style={styles.sectionHint}>{members.length} {members.length === 1 ? 'Trailmate' : 'Trailmates'}</Text></View></View>
         <View style={styles.listCard}>
           {members.map((member) => (
             <View key={member.profile_id} style={styles.personRow}>
               <Avatar name={member.display_name} />
-              <View style={styles.flex}><Text style={styles.personName}>{member.display_name}</Text><Text style={styles.meta}>{[member.home_city, member.home_state].filter(Boolean).join(', ') || 'Connection'}</Text></View>
+              <View style={styles.flex}><Text style={styles.personName}>{member.display_name}</Text><Text style={styles.meta}>{[member.home_city, member.home_state].filter(Boolean).join(', ') || 'Trailmate'}</Text></View>
               <Pressable disabled={busyId === member.profile_id} onPress={() => id && void run(member.profile_id, () => removeCircleMember(id, member.profile_id))}><Text style={styles.remove}>Remove</Text></Pressable>
             </View>
           ))}
-          {!members.length ? <Text style={styles.empty}>Your circle is empty. Add some of your connections below.</Text> : null}
+          {!members.length ? <Text style={styles.empty}>This crew is empty. Add some of your Trailmates below.</Text> : null}
         </View>
 
-        <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Add connections</Text><Text style={styles.sectionHint}>People must be connected with you before they can join a circle.</Text></View></View>
+        <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Add Trailmates</Text><Text style={styles.sectionHint}>People must be connected with you before they can join one of your crews.</Text></View></View>
         <View style={styles.listCard}>
           {available.map((connection) => (
             <View key={connection.profile_id} style={styles.personRow}>
@@ -150,10 +150,10 @@ export default function CircleDetailScreen() {
               <Pressable disabled={busyId === connection.profile_id} style={styles.addPerson} onPress={() => id && void run(connection.profile_id, () => addCircleMember(id, connection.profile_id))}><Ionicons name="add" size={18} color="#101510" /><Text style={styles.addPersonText}>Add</Text></Pressable>
             </View>
           ))}
-          {!available.length ? <Text style={styles.empty}>{connections.some((item) => item.status === 'accepted') ? 'All of your connections are already in this circle.' : 'Connect with people first, then you can organize them here.'}</Text> : null}
+          {!available.length ? <Text style={styles.empty}>{connections.some((item) => item.status === 'accepted') ? 'All of your Trailmates are already in this crew.' : 'Connect with people first, then you can organize them into crews.'}</Text> : null}
         </View>
 
-        <Pressable style={styles.deleteButton} onPress={confirmDelete}><Ionicons name="trash-outline" size={18} color="#FFB4A9" /><Text style={styles.deleteText}>Delete circle</Text></Pressable>
+        <Pressable style={styles.deleteButton} onPress={confirmDelete}><Ionicons name="trash-outline" size={18} color="#FFB4A9" /><Text style={styles.deleteText}>Delete crew</Text></Pressable>
       </ScrollView>
     </SafeAreaView>
   );
