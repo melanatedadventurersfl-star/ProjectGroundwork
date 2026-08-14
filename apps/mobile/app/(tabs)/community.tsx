@@ -35,6 +35,13 @@ import {
   placeRecommendationMetadata,
   type PlaceRecommendationValue,
 } from '../../src/community/placeRecommendation';
+import {
+  EMPTY_POST_TAGGING,
+  PostTaggingFields,
+  PostTagSummary,
+  postTaggingMetadata,
+  type PostTaggingValue,
+} from '../../src/community/postTagging';
 import { getMemberBasecamp } from '../../src/member/api';
 
 type CommunityTab = 'for-you' | 'nearby' | 'groups';
@@ -165,6 +172,7 @@ function CommunityPostCard({ post }: { post: CommunityPost }) {
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       {post.post_type === 'recommendation' ? <PlaceRecommendationSummary metadata={post.metadata} /> : null}
       {post.body ? <Text style={styles.feedBody}>{post.body}</Text> : null}
+      <PostTagSummary metadata={post.metadata} />
       <View style={styles.engagementRow}>
         <View style={styles.engagementLeft}>
           <Ionicons name="heart-outline" size={18} color={GOLD_MUTED} />
@@ -219,6 +227,7 @@ export default function CommunityScreen() {
   const [composerGroupId, setComposerGroupId] = useState<string | null>(null);
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
   const [placeRecommendation, setPlaceRecommendation] = useState<PlaceRecommendationValue>(EMPTY_PLACE_RECOMMENDATION);
+  const [postTagging, setPostTagging] = useState<PostTaggingValue>(EMPTY_POST_TAGGING);
   const [typeOpen, setTypeOpen] = useState(false);
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
@@ -320,11 +329,15 @@ export default function CommunityScreen() {
         groupId: composerGroupId,
         adventureId: selectedGroup?.adventure_id ?? null,
         imagePath: uploadedPath,
-        metadata: composerType === 'recommendation' ? placeRecommendationMetadata(placeRecommendation) : {},
+        metadata: {
+          ...(composerType === 'recommendation' ? placeRecommendationMetadata(placeRecommendation) : {}),
+          ...postTaggingMetadata(postTagging),
+        },
       });
       setComposerBody('');
       setComposerPhoto(null);
       setPlaceRecommendation(EMPTY_PLACE_RECOMMENDATION);
+      setPostTagging(EMPTY_POST_TAGGING);
       setComposerType('update');
       setTypeOpen(false);
       await load();
@@ -398,6 +411,8 @@ export default function CommunityScreen() {
               {composerType === 'recommendation' ? (
                 <PlaceRecommendationFields value={placeRecommendation} onChange={setPlaceRecommendation} />
               ) : null}
+
+              <PostTaggingFields groups={groups} value={postTagging} onChange={setPostTagging} />
 
               <View style={styles.composerControls}>
                 <Pressable style={styles.compactControl} onPress={() => void choosePhoto()}>
