@@ -50,6 +50,17 @@ function toHeldQueueItem(order: HeldOrderRow): AdventureQueueItem | null {
   };
 }
 
+function isActiveUpcoming(item: AdventureQueueItem) {
+  if (['cancelled', 'refunded', 'expired'].includes(item.order_status)) return false;
+
+  const start = new Date(item.starts_at);
+  const now = new Date();
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  return startDay >= today;
+}
+
 export async function getAdventureQueue() {
   const [readinessResult, heldResult] = await Promise.all([
     supabase.from('member_adventure_queue').select('*').order('starts_at', { ascending: true }),
@@ -69,9 +80,9 @@ export async function getAdventureQueue() {
     .filter((item): item is AdventureQueueItem => Boolean(item))
     .filter((item) => !readinessOrderIds.has(item.order_id));
 
-  return [...readinessItems, ...heldItems].sort(
-    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
-  );
+  return [...readinessItems, ...heldItems]
+    .filter(isActiveUpcoming)
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 }
 
 export async function seedReadiness(orderId: string) {
