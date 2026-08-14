@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 export type WeatherCondition = {
   text: string;
   icon: string;
+  code?: number;
 };
 
 export type WeatherHour = {
@@ -19,6 +20,7 @@ export type WeatherHour = {
   humidity?: number;
   wind_mph?: number;
   uv?: number;
+  is_day?: number;
   condition: WeatherCondition;
 };
 
@@ -55,6 +57,7 @@ export type WeatherForecast = {
     wind_mph: number;
     uv?: number;
     precip_in?: number;
+    is_day?: number;
     condition: WeatherCondition;
   };
   forecast: {
@@ -85,6 +88,11 @@ export function getWeather(city: string, state: string, days = 3) {
   return invokeWeather<WeatherForecast>({ q: `${city},${state}`, days });
 }
 
+/** Load weather from a temporary city, ZIP code, or normalized location query. */
+export function getWeatherByQuery(query: string, days = 3) {
+  return invokeWeather<WeatherForecast>({ q: query.trim(), days });
+}
+
 /** Load weather by coordinates without changing the member profile. */
 export function getWeatherByCoordinates(latitude: number, longitude: number, days = 3) {
   return invokeWeather<WeatherForecast>({ q: `${latitude},${longitude}`, days });
@@ -103,10 +111,7 @@ export function getAdventureWeather(location: {
   return getWeather(location.city, location.state, days);
 }
 
-/**
- * Ask the weather proxy for normalized city suggestions.
- * Used by Edit Profile so values such as "JVille" never become profile data.
- */
+/** Ask the weather proxy for normalized city or ZIP-code suggestions. */
 export function searchWeatherLocations(query: string) {
   return invokeWeather<WeatherLocationSuggestion[]>({ mode: 'search', q: query });
 }
