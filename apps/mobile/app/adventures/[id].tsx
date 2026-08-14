@@ -15,6 +15,7 @@ import {
   type AdventureTicketType,
 } from '../../src/adventures/api';
 import type { AdventureDetail } from '../../src/adventures/types';
+import { AdventureWeatherPanel } from '../../src/weather/AdventureWeatherPanel';
 
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -101,7 +102,7 @@ export default function AdventureDetailScreen() {
   const soldOut = adventure.status === 'sold_out';
   const cancelled = adventure.status === 'cancelled';
   const closed = soldOut || cancelled || adventure.status === 'completed';
-  const publicLocation = [adventure.venue_name, `${adventure.city}, ${adventure.state}`].filter(Boolean).join(' · ');
+  const publicLocation = [adventure.venue_name, adventure.address, `${adventure.city}, ${adventure.state}`].filter(Boolean).join(' · ');
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -135,6 +136,8 @@ export default function AdventureDetailScreen() {
         </View>
 
         <View style={styles.chips}><Text style={styles.chip}>{titleCase(adventure.difficulty)}</Text><Text style={styles.chip}>{titleCase(adventure.category)}</Text></View>
+
+        <AdventureWeatherPanel adventure={adventure} />
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Community RSVP</Text>

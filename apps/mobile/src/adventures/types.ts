@@ -11,8 +11,12 @@ export type AdventureSummary = {
   status: AdventureStatus;
   starts_at: string;
   ends_at: string;
+  address: string | null;
   city: string;
   state: string;
+  latitude: number | null;
+  longitude: number | null;
+  timezone: string | null;
   venue_name: string | null;
   hero_image_url: string | null;
   capacity: number | null;
