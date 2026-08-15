@@ -46,6 +46,53 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Canonicalize mobile PNG assets before OTA export
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageFile
+
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
+          paths = [
+              Path('apps/mobile/assets/ma-app-icon.png'),
+              Path('apps/mobile/assets/ma-splash-icon.png'),
+              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
+          ]
+
+          for path in paths:
+              temp = path.with_name(path.stem + '.canonical.png')
+              with Image.open(path) as image:
+                  image.load()
+                  image.convert('RGBA').save(
+                      temp,
+                      format='PNG',
+                      optimize=False,
+                      compress_level=6,
+                  )
+              temp.replace(path)
+              print(f'Canonicalized {path}')
+          PY
+
+      - name: Strictly verify PNGs before OTA export
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+
+          for path in [
+              'apps/mobile/assets/ma-app-icon.png',
+              'apps/mobile/assets/ma-splash-icon.png',
+              'apps/mobile/assets/ma-pathfinder-mark.png',
+          ]:
+              with Image.open(path) as image:
+                  if image.format != 'PNG':
+                      raise RuntimeError(f'{path} is not a PNG.')
+                  image.verify()
+              with Image.open(path) as image:
+                  image.load()
+                  print(f'Valid PNG: {path} ({image.width}x{image.height})')
+          PY
+
       - name: Use vector fallback for invalid Wet & Wild raster
         run: |
           sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
