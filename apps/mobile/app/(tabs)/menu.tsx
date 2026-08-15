@@ -17,7 +17,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
   ['Membership', [
     ['Trips & Payments','/member/trips','trips'],
     ['Trail Family','/member/trail-family','community'],
-    ['Connections','/connections','connections'],
+    ['Trailmates & Circle','/circles','connections'],
   ]],
   ['Help', [
     ['App Guide · How It Works','/guide','guide'],
