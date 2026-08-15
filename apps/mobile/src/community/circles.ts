@@ -98,7 +98,7 @@ export async function getCircles(): Promise<CommunityCircle[]> {
 export async function createCircle(name: string) {
   const ownerId = await requireUserId();
   const trimmed = name.trim();
-  if (!trimmed) throw new Error('Give your circle a name.');
+  if (!trimmed) throw new Error('Give your crew a name.');
   const { data, error } = await supabase
     .from('community_circles')
     .insert({ owner_id: ownerId, name: trimmed })
@@ -110,7 +110,7 @@ export async function createCircle(name: string) {
 
 export async function renameCircle(circleId: string, name: string) {
   const trimmed = name.trim();
-  if (!trimmed) throw new Error('Circle name cannot be empty.');
+  if (!trimmed) throw new Error('Crew name cannot be empty.');
   const { error } = await supabase.from('community_circles').update({ name: trimmed }).eq('id', circleId);
   if (error) throw error;
 }
@@ -142,13 +142,16 @@ export async function removeCircleMember(circleId: string, profileId: string) {
 
 export async function getMyCircle() {
   const circles = await getCircles();
-  return circles.find((circle) => circle.name.trim().toLowerCase() === 'my circle') ?? null;
+  return circles.find((circle) => {
+    const name = circle.name.trim().toLowerCase();
+    return name === 'my crew' || name === 'my circle';
+  }) ?? null;
 }
 
 export async function ensureMyCircle() {
   const existing = await getMyCircle();
   if (existing) return existing.id;
-  return createCircle('My Circle');
+  return createCircle('My Crew');
 }
 
 export async function getMyCircleMembership(profileId: string) {
