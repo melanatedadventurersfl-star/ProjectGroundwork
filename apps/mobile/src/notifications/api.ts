@@ -24,6 +24,15 @@ export async function getUnreadNotificationCount(): Promise<number> {
   return count ?? 0;
 }
 
+export async function registerPushToken(expoPushToken: string, platform: string) {
+  const { data, error } = await supabase.rpc('register_device_push_token', {
+    expo_token: expoPushToken,
+    device_platform: platform,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
 export async function markNotificationRead(id: string) {
   const { error } = await supabase.rpc('mark_notification_read', { notification_uuid: id });
   if (error) throw error;

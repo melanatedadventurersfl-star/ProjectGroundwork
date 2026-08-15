@@ -18,6 +18,13 @@
       "expo-sqlite",
       "expo-status-bar",
       [
+        "expo-notifications",
+        {
+          "defaultChannel": "general",
+          "color": "#D7B45A"
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Allow Melanated Adventurers to use your location for nearby Adventures and local weather."
