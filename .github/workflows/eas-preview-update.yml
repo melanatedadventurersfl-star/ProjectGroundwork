@@ -36,7 +36,34 @@ jobs:
             exit 1
           fi
 
+      - name: Block OTA when native runtime changed
+        if: ${{ github.event_name == 'push' }}
+        id: runtime_guard
+        run: |
+          BASE_SHA="${{ github.event.before }}"
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="${GITHUB_SHA}^"
+          fi
+
+          NATIVE_CHANGES="$(git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}" -- \
+            apps/mobile/app.json \
+            apps/mobile/eas.json \
+            apps/mobile/package.json \
+            package-lock.json \
+            apps/mobile/android \
+            apps/mobile/ios)"
+
+          if [ -n "${NATIVE_CHANGES}" ]; then
+            echo "Native-runtime-sensitive files changed:"
+            echo "${NATIVE_CHANGES}"
+            echo "skip_ota=true" >> "${GITHUB_OUTPUT}"
+            echo "Skipping OTA. A fresh preview APK must establish the new native runtime first."
+          else
+            echo "skip_ota=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Set up Node
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -44,9 +71,11 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: npm ci
 
       - name: Canonicalize mobile PNG assets before OTA export
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           python3 -m pip install --quiet pillow
           python3 - <<'PY'
@@ -75,6 +104,7 @@ jobs:
           PY
 
       - name: Strictly verify PNGs before OTA export
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           python3 - <<'PY'
           from PIL import Image
@@ -94,10 +124,12 @@ jobs:
           PY
 
       - name: Use vector fallback for invalid Wet & Wild raster
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
 
       - name: Verify Expo authentication
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           if [ -z "${EXPO_TOKEN}" ]; then
             echo "EXPO_TOKEN repository secret is required."
@@ -107,6 +139,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Publish preview OTA update
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         working-directory: apps/mobile
         run: npx eas-cli@latest update --channel preview --platform android --message "main:${GITHUB_SHA::8} · ${{ github.event.head_commit.message || 'Manual preview update' }}" --non-interactive
         env:
