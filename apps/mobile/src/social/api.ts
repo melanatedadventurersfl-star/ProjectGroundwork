@@ -5,6 +5,7 @@ export type CommunityProfile = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  bio: string | null;
   home_city: string | null;
   home_state: string | null;
   profile_is_private: boolean;
@@ -13,17 +14,23 @@ export type CommunityProfile = {
   interests: string[] | null;
   pronouns: string | null;
   created_at: string;
+  can_see_full_profile: boolean;
+  adventures_visible: boolean;
+  badges_visible: boolean;
+  interests_visible: boolean;
+  trail_family_visible: boolean;
+  adventure_count: number;
+  stamp_count: number;
+  badge_count: number;
+  post_count: number;
 };
 
 export type ConnectionStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'declined' | 'blocked' | 'self';
 
 export async function getCommunityProfile(profileId: string): Promise<CommunityProfile> {
-  const { data, error } = await supabase
-    .from('community_profile_directory')
-    .select('*')
-    .eq('id', profileId)
-    .single();
+  const { data, error } = await supabase.rpc('get_public_member_profile', { target_profile: profileId });
   if (error) throw error;
+  if (!data) throw new Error('Profile not found.');
   return data as CommunityProfile;
 }
 
