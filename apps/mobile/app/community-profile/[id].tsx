@@ -124,7 +124,7 @@ export default function CommunityProfileScreen() {
 
       {!profile.can_see_full_profile ? <View style={styles.privateCard}><AppIcon name="privacy" color="#F5C341" size={22} /><Text style={styles.privateTitle}>Private account</Text><Text style={styles.stateBody}>Additional profile details are shared with approved Trailmates.</Text></View> : <>
         <View style={styles.tabs}>
-          {(['journey','posts','about'] as ProfileTab[]).map(value => <Pressable key={value} style={[styles.tab, tab === value && styles.tabActive]} onPress={() => setTab(value)}><Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{value[0].toUpperCase() + value.slice(1)}</Text></Pressable>)}
+          {(['journey','posts','about'] as ProfileTab[]).map(value => <Pressable key={value} style={[styles.tab, tab === value && styles.tabActive]} onPress={() => setTab(value)}><Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text></Pressable>)}
         </View>
 
         {tab === 'journey' ? <View style={styles.card}>
