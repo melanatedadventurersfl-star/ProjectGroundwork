@@ -25,7 +25,7 @@ const items: NavItem[] = [
     isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness'),
   },
   {
-    label: 'Community',
+    label: 'Campfire',
     icon: 'community',
     href: '/(tabs)/community',
     isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections'),
