@@ -20,8 +20,6 @@ import {
   type WeatherLocationSuggestion,
 } from '../../src/weather/api';
 
-type WeatherMode = 'current' | 'home' | 'adventures' | 'search';
-
 function hourLabel(value: string) {
   const time = value.split(' ')[1] ?? value;
   const [h = '0'] = time.split(':');
@@ -37,11 +35,9 @@ function hourDate(value: string) {
 function dayBreakLabel(value: string, currentDate: string) {
   const date = hourDate(value);
   if (!date || date === currentDate) return '';
-
   const current = new Date(`${currentDate}T12:00:00`);
   const target = new Date(`${date}T12:00:00`);
   const dayDifference = Math.round((target.getTime() - current.getTime()) / 86_400_000);
-
   if (dayDifference === 1) return 'Tomorrow';
   return target.toLocaleDateString(undefined, { weekday: 'short' });
 }
@@ -62,67 +58,46 @@ function adventureCondition(data: WeatherForecast) {
 function nextHours(data: WeatherForecast): WeatherHour[] {
   const allHours = data.forecast.forecastday.flatMap((day) => day.hour ?? []);
   if (!allHours.length) return [];
-
   const [localDate = '', localTime = '00:00'] = data.location.localtime.split(' ');
   const [localHour = '00'] = localTime.split(':');
   const startKey = `${localDate} ${localHour.padStart(2, '0')}:00`;
-
-  return allHours
-    .filter((hour) => hour.time >= startKey)
-    .slice(0, 12);
+  return allHours.filter((hour) => hour.time >= startKey).slice(0, 12);
 }
 
 export default function WeatherScreen() {
   const [data, setData] = useState<WeatherForecast | null>(null);
-  const [home, setHome] = useState<{ city: string; state: string } | null>(null);
   const [upcomingAdventures, setUpcomingAdventures] = useState<AdventureSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<WeatherMode>('current');
   const [error, setError] = useState('');
   const [searchText, setSearchText] = useState('');
   const [suggestions, setSuggestions] = useState<WeatherLocationSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const [locationSource, setLocationSource] = useState<'current' | 'home' | 'search'>('current');
 
-  async function loadHome() {
-    setLoading(true);
-    setError('');
-    setSuggestions([]);
-    try {
-      const basecamp = await getMemberBasecamp();
-      const city = basecamp.profile?.home_city;
-      const state = basecamp.profile?.home_state;
-      if (!city || !state) throw new Error('Set a city and state in Edit Profile first.');
-      setHome({ city, state });
-      setData(await getWeather(city, state));
-      setMode('home');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load weather.');
-    } finally {
-      setLoading(false);
-    }
+  async function loadHomeFallback() {
+    const basecamp = await getMemberBasecamp();
+    const city = basecamp.profile?.home_city;
+    const state = basecamp.profile?.home_state;
+    if (!city || !state) throw new Error('Location permission is needed, or set a home city and state in Edit Profile.');
+    setData(await getWeather(city, state));
+    setLocationSource('home');
   }
 
-  async function loadCurrent(fallbackToHome = false) {
+  async function loadCurrent() {
     setLoading(true);
     setError('');
     setSuggestions([]);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
-        if (fallbackToHome) {
-          await loadHome();
-          return;
-        }
-        throw new Error('Location permission is needed to use Current Location.');
+        await loadHomeFallback();
+        return;
       }
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setData(await getWeatherByCoordinates(location.coords.latitude, location.coords.longitude));
-      setMode('current');
+      setLocationSource('current');
+      setSearchText('');
     } catch (caught) {
-      if (fallbackToHome) {
-        await loadHome();
-        return;
-      }
       setError(caught instanceof Error ? caught.message : 'Unable to use current location.');
     } finally {
       setLoading(false);
@@ -137,7 +112,7 @@ export default function WeatherScreen() {
     setSuggestions([]);
     try {
       setData(await getWeatherByQuery(value));
-      setMode('search');
+      setLocationSource('search');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to find that location.');
     } finally {
@@ -152,7 +127,7 @@ export default function WeatherScreen() {
     setError('');
     try {
       setData(await getWeatherByCoordinates(item.lat, item.lon));
-      setMode('search');
+      setLocationSource('search');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load that location.');
     } finally {
@@ -178,7 +153,7 @@ export default function WeatherScreen() {
   }
 
   useEffect(() => {
-    void loadCurrent(true);
+    void loadCurrent();
     void listAdventures({ savedOnly: true })
       .then((items) => setUpcomingAdventures(items.filter((item) => new Date(item.ends_at).getTime() >= Date.now())))
       .catch(() => setUpcomingAdventures([]));
@@ -189,26 +164,15 @@ export default function WeatherScreen() {
   const days = data?.forecast?.forecastday ?? [];
   const today = days[0];
   const currentDate = data?.location.localtime.split(' ')[0] ?? '';
-  const showingAdventures = mode === 'adventures';
+  const activeLocation = data ? [data.location.name, data.location.region].filter(Boolean).join(', ') : '';
+  const sourceLabel = locationSource === 'current' ? 'Current Location' : locationSource === 'home' ? 'Home Location' : 'Searched Location';
 
   return <SafeAreaView style={s.safe}>
     <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
       <Pressable onPress={() => router.back()}><Text style={s.back}>‹ Back</Text></Pressable>
       <Text style={s.eyebrow}>WEATHER & LOCATION</Text>
       <Text style={s.title}>Trail weather</Text>
-      <Text style={s.intro}>See weather where you are, at home, for an upcoming adventure, or anywhere you search.</Text>
-
-      <View style={s.toggle}>
-        <Pressable style={[s.toggleBtn, mode === 'current' && s.active]} onPress={() => void loadCurrent()}>
-          <Text style={[s.toggleText, mode === 'current' && s.activeText]}>Current</Text>
-        </Pressable>
-        <Pressable style={[s.toggleBtn, mode === 'home' && s.active]} onPress={() => void loadHome()}>
-          <Text style={[s.toggleText, mode === 'home' && s.activeText]}>Home</Text>
-        </Pressable>
-        <Pressable style={[s.toggleBtn, mode === 'adventures' && s.active]} onPress={() => { setMode('adventures'); setError(''); setSuggestions([]); }}>
-          <Text style={[s.toggleText, mode === 'adventures' && s.activeText]}>Upcoming</Text>
-        </Pressable>
-      </View>
+      <Text style={s.intro}>Check the weather where you are, search anywhere, and see what conditions look like for upcoming events.</Text>
 
       <View style={s.searchBox}>
         <TextInput
@@ -229,11 +193,87 @@ export default function WeatherScreen() {
         </Pressable>)}
       </View> : null}
 
-      {showingAdventures ? <View style={s.savedSection}>
+      {data && !loading ? <Pressable style={s.locationRow} onPress={() => void loadCurrent()}>
+        <View style={s.locationPin}><Text style={s.locationPinText}>⌖</Text></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.locationSource}>{sourceLabel}</Text>
+          <Text style={s.locationName}>{activeLocation}</Text>
+        </View>
+        {locationSource !== 'current' ? <Text style={s.locationAction}>Use current</Text> : null}
+      </Pressable> : null}
+
+      {loading ? <ActivityIndicator color="#D7B45A" style={{ margin: 24 }} /> : null}
+      {error ? <View style={s.card}>
+        <Text style={s.error}>{error}</Text>
+        <Pressable onPress={() => router.push('/member/profile')}><Text style={s.link}>Edit Profile →</Text></Pressable>
+      </View> : null}
+
+      {data && !loading ? <>
+        <WeatherScene weather={data} />
+
+        {hours.length ? <>
+          <Text style={s.section}>Next 12 hours</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.hourlyRow}>
+            {hours.map((hour, index) => {
+              const previousDate = index > 0 ? hourDate(hours[index - 1].time) : hourDate(hour.time);
+              const dateChanged = index > 0 && hourDate(hour.time) !== previousDate;
+              const breakLabel = dateChanged ? dayBreakLabel(hour.time, currentDate) : '';
+              return <Fragment key={hour.time}>
+                {breakLabel ? <View style={s.dayBreak}>
+                  <View style={s.dayBreakLine} />
+                  <Text style={s.dayBreakText}>{breakLabel}</Text>
+                  <View style={s.dayBreakLine} />
+                </View> : null}
+                <View style={s.hourCard}>
+                  <MiniWeatherBackdrop condition={hour.condition} isDay={hour.is_day !== 0} />
+                  <View style={s.cardContent}>
+                    <Text style={s.hourTime}>{hourLabel(hour.time)}</Text>
+                    <Text style={s.hourTemp}>{Math.round(hour.temp_f)}°</Text>
+                    <Text style={s.hourCondition} numberOfLines={2}>{hour.condition.text}</Text>
+                    <Text style={s.hourRain}>{Math.round(hour.chance_of_rain ?? 0)}% rain</Text>
+                  </View>
+                </View>
+              </Fragment>;
+            })}
+          </ScrollView>
+        </> : null}
+
+        {conditions ? <View style={s.adventureCard}>
+          <View style={s.sectionRow}>
+            <Text style={s.adventureEyebrow}>ADVENTURE CONDITIONS</Text>
+            <Text style={s.conditionBadge}>{conditions.label}</Text>
+          </View>
+          <Text style={s.adventureNote}>{conditions.note}</Text>
+          <View style={s.metricRow}>
+            <View style={s.metric}><Text style={s.metricValue}>{Math.round(data.current.feelslike_f)}°</Text><Text style={s.metricLabel}>Feels</Text></View>
+            <View style={s.metric}><Text style={s.metricValue}>{today?.day.daily_chance_of_rain ?? 0}%</Text><Text style={s.metricLabel}>Rain</Text></View>
+            <View style={s.metric}><Text style={s.metricValue}>{Math.round(data.current.wind_mph)}</Text><Text style={s.metricLabel}>Wind mph</Text></View>
+            <View style={s.metric}><Text style={s.metricValue}>{Math.round(data.current.uv ?? today?.day.uv ?? 0)}</Text><Text style={s.metricLabel}>UV</Text></View>
+          </View>
+          {today?.astro?.sunrise || today?.astro?.sunset ? <Text style={s.sunLine}>Sunrise {today.astro?.sunrise ?? '—'} · Sunset {today.astro?.sunset ?? '—'}</Text> : null}
+        </View> : null}
+
+        <Text style={s.section}>3-day outlook</Text>
+        {days.map((day) => <View key={day.date} style={s.day}>
+          <MiniWeatherBackdrop condition={day.day.condition} isDay />
+          <View style={[s.cardContent, s.dayContent]}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.dayTitle}>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</Text>
+              <Text style={s.condition}>{day.day.condition.text}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.range}>{Math.round(day.day.maxtemp_f)}° / {Math.round(day.day.mintemp_f)}°</Text>
+              <Text style={s.rain}>{day.day.daily_chance_of_rain}% rain</Text>
+            </View>
+          </View>
+        </View>)}
+      </> : null}
+
+      <View style={s.eventsSection}>
         <View style={s.sectionRow}>
           <View style={{ flex: 1 }}>
-            <Text style={s.section}>Upcoming adventures</Text>
-            <Text style={s.savedIntro}>Weather follows each saved adventure&apos;s destination automatically.</Text>
+            <Text style={s.section}>Upcoming Events</Text>
+            <Text style={s.savedIntro}>Destination weather for adventures you&apos;ve saved.</Text>
           </View>
           <Text style={s.sectionMeta}>{upcomingAdventures.length}</Text>
         </View>
@@ -244,78 +284,10 @@ export default function WeatherScreen() {
           </View>
           <AdventureWeatherPanel adventure={adventure} />
         </Pressable>) : <View style={s.emptyCard}>
-          <Text style={s.emptyTitle}>No upcoming adventures yet</Text>
+          <Text style={s.emptyTitle}>No upcoming events yet</Text>
           <Text style={s.emptyBody}>Save an adventure and its destination weather will appear here automatically.</Text>
         </View>}
-      </View> : <>
-        {loading ? <ActivityIndicator color="#D7B45A" style={{ margin: 24 }} /> : null}
-        {error ? <View style={s.card}>
-          <Text style={s.error}>{error}</Text>
-          {!home ? <Pressable onPress={() => router.push('/member/profile')}><Text style={s.link}>Edit Profile →</Text></Pressable> : null}
-        </View> : null}
-
-        {data && !loading ? <>
-          <WeatherScene weather={data} />
-
-          {hours.length ? <>
-            <Text style={s.section}>Next 12 hours</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.hourlyRow}>
-              {hours.map((hour, index) => {
-                const previousDate = index > 0 ? hourDate(hours[index - 1].time) : hourDate(hour.time);
-                const dateChanged = index > 0 && hourDate(hour.time) !== previousDate;
-                const breakLabel = dateChanged ? dayBreakLabel(hour.time, currentDate) : '';
-
-                return <Fragment key={hour.time}>
-                  {breakLabel ? <View style={s.dayBreak}>
-                    <View style={s.dayBreakLine} />
-                    <Text style={s.dayBreakText}>{breakLabel}</Text>
-                    <View style={s.dayBreakLine} />
-                  </View> : null}
-                  <View style={s.hourCard}>
-                    <MiniWeatherBackdrop condition={hour.condition} isDay={hour.is_day !== 0} />
-                    <View style={s.cardContent}>
-                      <Text style={s.hourTime}>{hourLabel(hour.time)}</Text>
-                      <Text style={s.hourTemp}>{Math.round(hour.temp_f)}°</Text>
-                      <Text style={s.hourCondition} numberOfLines={2}>{hour.condition.text}</Text>
-                      <Text style={s.hourRain}>{Math.round(hour.chance_of_rain ?? 0)}% rain</Text>
-                    </View>
-                  </View>
-                </Fragment>;
-              })}
-            </ScrollView>
-          </> : null}
-
-          {conditions ? <View style={s.adventureCard}>
-            <View style={s.sectionRow}>
-              <Text style={s.adventureEyebrow}>ADVENTURE CONDITIONS</Text>
-              <Text style={s.conditionBadge}>{conditions.label}</Text>
-            </View>
-            <Text style={s.adventureNote}>{conditions.note}</Text>
-            <View style={s.metricRow}>
-              <View style={s.metric}><Text style={s.metricValue}>{Math.round(data.current.feelslike_f)}°</Text><Text style={s.metricLabel}>Feels</Text></View>
-              <View style={s.metric}><Text style={s.metricValue}>{today?.day.daily_chance_of_rain ?? 0}%</Text><Text style={s.metricLabel}>Rain</Text></View>
-              <View style={s.metric}><Text style={s.metricValue}>{Math.round(data.current.wind_mph)}</Text><Text style={s.metricLabel}>Wind mph</Text></View>
-              <View style={s.metric}><Text style={s.metricValue}>{Math.round(data.current.uv ?? today?.day.uv ?? 0)}</Text><Text style={s.metricLabel}>UV</Text></View>
-            </View>
-            {today?.astro?.sunrise || today?.astro?.sunset ? <Text style={s.sunLine}>Sunrise {today.astro?.sunrise ?? '—'} · Sunset {today.astro?.sunset ?? '—'}</Text> : null}
-          </View> : null}
-
-          <Text style={s.section}>3-day outlook</Text>
-          {days.map((day) => <View key={day.date} style={s.day}>
-            <MiniWeatherBackdrop condition={day.day.condition} isDay />
-            <View style={[s.cardContent, s.dayContent]}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.dayTitle}>{new Date(`${day.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</Text>
-                <Text style={s.condition}>{day.day.condition.text}</Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={s.range}>{Math.round(day.day.maxtemp_f)}° / {Math.round(day.day.mintemp_f)}°</Text>
-                <Text style={s.rain}>{day.day.daily_chance_of_rain}% rain</Text>
-              </View>
-            </View>
-          </View>)}
-        </> : null}
-      </>}
+      </View>
     </ScrollView>
   </SafeAreaView>;
 }
@@ -327,11 +299,6 @@ const s = StyleSheet.create({
   eyebrow:{color:'#D7B45A',fontSize:11,fontWeight:'900',letterSpacing:1.1,marginTop:8},
   title:{color:'#FFF8E8',fontSize:34,fontWeight:'900'},
   intro:{color:'#9DA8A1',lineHeight:21},
-  toggle:{flexDirection:'row',backgroundColor:'#151F1A',borderRadius:14,padding:4,gap:4},
-  toggleBtn:{flex:1,paddingVertical:10,paddingHorizontal:7,borderRadius:11,alignItems:'center'},
-  active:{backgroundColor:'#D7B45A'},
-  toggleText:{color:'#AAB4AE',fontWeight:'800',fontSize:12,textAlign:'center'},
-  activeText:{color:'#17211C'},
   searchBox:{position:'relative'},
   input:{backgroundColor:'#17211C',borderWidth:1,borderColor:'#2D3B33',borderRadius:14,paddingHorizontal:13,paddingVertical:12,paddingRight:42,color:'#FFF8E8'},
   searchSpinner:{position:'absolute',right:13,top:13},
@@ -339,6 +306,12 @@ const s = StyleSheet.create({
   suggestion:{paddingHorizontal:14,paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#26342C'},
   suggestionName:{color:'#FFF8E8',fontWeight:'800'},
   suggestionCountry:{color:'#859189',fontSize:11,marginTop:2},
+  locationRow:{flexDirection:'row',alignItems:'center',gap:10,backgroundColor:'#151F1A',borderRadius:14,borderWidth:1,borderColor:'#2D3B33',paddingHorizontal:12,paddingVertical:10},
+  locationPin:{width:30,height:30,borderRadius:15,backgroundColor:'#213129',alignItems:'center',justifyContent:'center'},
+  locationPinText:{color:'#D7B45A',fontSize:17,fontWeight:'900'},
+  locationSource:{color:'#D7B45A',fontSize:10,fontWeight:'900',textTransform:'uppercase',letterSpacing:0.7},
+  locationName:{color:'#FFF8E8',fontSize:14,fontWeight:'800',marginTop:1},
+  locationAction:{color:'#AAB4AE',fontSize:11,fontWeight:'800'},
   card:{backgroundColor:'#17211C',borderRadius:16,padding:16},
   error:{color:'#FFB4A9',lineHeight:20},
   link:{color:'#D7B45A',fontWeight:'900',marginTop:8},
@@ -370,7 +343,7 @@ const s = StyleSheet.create({
   dayTitle:{color:'#FFF8E8',fontWeight:'900'},
   range:{color:'#FFF8E8',fontSize:18,fontWeight:'900'},
   rain:{color:'#F0D083',fontSize:12,marginTop:3},
-  savedSection:{gap:10,marginTop:5},
+  eventsSection:{gap:10,marginTop:10,paddingTop:4},
   savedIntro:{color:'#87938B',fontSize:12,marginTop:3,maxWidth:290},
   savedWrap:{gap:7},
   savedHeader:{flexDirection:'row',justifyContent:'space-between',alignItems:'baseline',gap:12,paddingHorizontal:2},
