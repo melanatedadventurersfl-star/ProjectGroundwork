@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 import type { WeatherCondition } from './api';
-import { weatherVisualFor } from './weatherVisuals';
+import { weatherVisualFor, type WeatherVisualPhase } from './weatherVisuals';
 
 type Props = {
   condition: WeatherCondition;
   isDay?: boolean;
+  phase?: WeatherVisualPhase;
 };
 
 type MotionKind = 'clear' | 'cloud' | 'rain' | 'storm' | 'fog' | 'other';
@@ -21,9 +22,9 @@ function motionKind(condition: WeatherCondition): MotionKind {
   return 'other';
 }
 
-export function MiniWeatherBackdrop({ condition, isDay = true }: Props) {
+export function MiniWeatherBackdrop({ condition, isDay = true, phase }: Props) {
   const kind = motionKind(condition);
-  const visual = weatherVisualFor(condition.text, isDay);
+  const visual = weatherVisualFor(condition.text, isDay, phase);
   const [drift] = useState(() => new Animated.Value(0));
   const [rain] = useState(() => new Animated.Value(0));
   const [breathe] = useState(() => new Animated.Value(0));
