@@ -7,6 +7,7 @@ import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-nativ
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
 import { PersistentBottomNav } from '../src/navigation/PersistentBottomNav';
 import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
+import { PushNotificationsManager } from '../src/notifications/PushNotificationsManager';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
 
@@ -26,6 +27,7 @@ function AppShell() {
 
   return (
     <View style={styles.appShell}>
+      <PushNotificationsManager enabled={Boolean(session) && !isAuthFlow} />
       {hideTopNav ? null : <PersistentTopNav />}
       <View style={styles.stackArea}>
         <StatusBar style="light" />
