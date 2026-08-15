@@ -10,7 +10,7 @@ import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 const sections: readonly [string, readonly [string, string, AppIconName][]][] = [
   ['Account', [
     ['Edit Profile','/member/profile?edit=1','profile'],
-    ['Profile & Privacy','/member/profile','privacy'],
+    ['Profile & Privacy','/member/privacy','privacy'],
     ['Notifications','/notifications','notifications'],
     ['Weather & Location','/member/weather','weather'],
   ]],
