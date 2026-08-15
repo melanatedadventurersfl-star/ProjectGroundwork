@@ -19,9 +19,12 @@ async function signCommunityMedia(path: string | null) {
   return data.signedUrl;
 }
 
-async function getMyProfilePosts(): Promise<ProfilePost[]> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData.session?.user.id;
+async function getProfilePosts(profileId?: string): Promise<ProfilePost[]> {
+  let userId = profileId;
+  if (!userId) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    userId = sessionData.session?.user.id;
+  }
   if (!userId) return [];
 
   const { data, error } = await supabase
@@ -48,7 +51,7 @@ function formatPostDate(value: string) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
 }
 
-export function ProfilePosts() {
+export function ProfilePosts({ profileId }: { profileId?: string }) {
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,7 +59,7 @@ export function ProfilePosts() {
 
   const load = useCallback(async () => {
     try {
-      setPosts(await getMyProfilePosts());
+      setPosts(await getProfilePosts(profileId));
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load posts.');
@@ -64,7 +67,7 @@ export function ProfilePosts() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [profileId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -83,16 +86,10 @@ export function ProfilePosts() {
   return (
     <View style={styles.card}>
       <View style={styles.headingRow}><Text style={styles.title}>Posts</Text><Text style={styles.count}>{posts.length}</Text></View>
-      <ScrollView
-        scrollEnabled={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor="#F5C341" />}
-      >
+      <ScrollView scrollEnabled={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor="#F5C341" />}>
         {posts.map((post) => (
           <View key={post.id} style={styles.post}>
-            <View style={styles.metaRow}>
-              <Text style={styles.meta}>{post.post_type ? post.post_type.replace(/_/g, ' ') : 'Post'}</Text>
-              <Text style={styles.meta}>{formatPostDate(post.created_at)}</Text>
-            </View>
+            <View style={styles.metaRow}><Text style={styles.meta}>{post.post_type ? post.post_type.replace(/_/g, ' ') : 'Post'}</Text><Text style={styles.meta}>{formatPostDate(post.created_at)}</Text></View>
             <Text style={styles.body}>{post.body}</Text>
             {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.image} resizeMode="cover" /> : null}
           </View>
@@ -104,15 +101,6 @@ export function ProfilePosts() {
 
 const styles = StyleSheet.create({
   card:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16,gap:10},
-  headingRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
-  title:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},
-  count:{color:'#67CFC8',fontSize:12,fontWeight:'900'},
-  post:{paddingVertical:14,borderTopWidth:1,borderTopColor:'#26332C',gap:9},
-  metaRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10},
-  meta:{color:'#67CFC8',fontSize:11.5,fontWeight:'800',textTransform:'capitalize'},
-  body:{color:'#D4DBD7',fontSize:14.5,lineHeight:21},
-  image:{width:'100%',aspectRatio:1.45,borderRadius:14,backgroundColor:'#0C1411'},
-  empty:{backgroundColor:'#0C1411',borderRadius:14,padding:15,marginTop:4},
-  emptyTitle:{color:'#F7F8F3',fontWeight:'900'},
-  muted:{color:'#96A39B',lineHeight:20,marginTop:4},
+  headingRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},title:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},count:{color:'#67CFC8',fontSize:12,fontWeight:'900'},
+  post:{paddingVertical:14,borderTopWidth:1,borderTopColor:'#26332C',gap:9},metaRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10},meta:{color:'#67CFC8',fontSize:11.5,fontWeight:'800',textTransform:'capitalize'},body:{color:'#D4DBD7',fontSize:14.5,lineHeight:21},image:{width:'100%',aspectRatio:1.45,borderRadius:14,backgroundColor:'#0C1411'},empty:{backgroundColor:'#0C1411',borderRadius:14,padding:15,marginTop:4},emptyTitle:{color:'#F7F8F3',fontWeight:'900'},muted:{color:'#96A39B',lineHeight:20,marginTop:4},
 });
