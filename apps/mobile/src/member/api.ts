@@ -16,6 +16,20 @@ async function profileId() {
   return data.user.id;
 }
 
+function normalizeProfileDisplayName<T extends Record<string, any> | null>(profile: T): T {
+  if (!profile) return profile;
+  const displayName = String(profile.display_name ?? '').trim();
+  const username = String(profile.username ?? '').trim().replace(/^@/, '');
+  const email = String(profile.email ?? '').trim();
+  const emailLocal = email.split('@')[0] ?? '';
+  const looksEmailDerived = Boolean(displayName) && (displayName.toLowerCase() === email.toLowerCase() || displayName.toLowerCase() === emailLocal.toLowerCase());
+
+  if (username && (!displayName || looksEmailDerived)) {
+    return { ...profile, display_name: username } as T;
+  }
+  return profile;
+}
+
 function profileMediaPathFromUrl(url?: string | null) {
   if (!url) return null;
   const marker = '/profile-avatars/';
@@ -80,7 +94,7 @@ export async function getMemberBasecamp() {
     supabase.from('support_requests').select('*').order('created_at', { ascending: false }),
   ]);
   for (const result of [profile, settings, household, tickets, support]) if (result.error) throw result.error;
-  return { profile: profile.data, settings: settings.data, households: household.data ?? [], tickets: tickets.data ?? [], support: support.data ?? [] };
+  return { profile: normalizeProfileDisplayName(profile.data), settings: settings.data, households: household.data ?? [], tickets: tickets.data ?? [], support: support.data ?? [] };
 }
 
 export async function getMemberTrips(): Promise<MemberTrip[]> {
