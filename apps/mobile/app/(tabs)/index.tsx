@@ -377,7 +377,7 @@ export default function TrailheadScreen() {
             <Text style={styles.campfireTitle}>Around the Campfire</Text>
           </View>
           {circleCount > 0 ? <View style={styles.campfireBadge}>
-            <Text style={styles.campfireBadgeText}>{circleCount} {circleCount === 1 ? 'circle' : 'circles'}</Text>
+            <Text style={styles.campfireBadgeText}>{circleCount} {circleCount === 1 ? 'crew' : 'crews'}</Text>
           </View> : null}
         </View>
 
@@ -396,7 +396,7 @@ export default function TrailheadScreen() {
             style={[styles.campfireSwitchButton, campfireMode === 'circle' && styles.campfireSwitchActive]}
             onPress={() => setCampfireMode('circle')}
           >
-            <Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Circle</Text>
+            <Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Crew</Text>
           </Pressable>
         </View>
 
@@ -426,12 +426,12 @@ export default function TrailheadScreen() {
             </Pressable>
           )) : (
             <View style={styles.campfireEmpty}>
-              <Text style={styles.campfireEmptyTitle}>{campfireMode === 'circle' && circleCount === 0 ? 'Your Circle starts here.' : 'Quiet around the fire right now.'}</Text>
+              <Text style={styles.campfireEmptyTitle}>{campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.'}</Text>
               <Text style={styles.campfireEmptyText}>
                 {campfireMode === 'circle' && circleCount === 0
-                  ? 'Join or create a Circle to see your Circle posts here.'
+                  ? 'Join or create a Crew to see your Crew posts here.'
                   : campfireMode === 'circle'
-                    ? 'New posts from your Circles will show up here.'
+                    ? 'New posts from your Crews will show up here.'
                     : 'Recent community posts will show up here.'}
               </Text>
             </View>
