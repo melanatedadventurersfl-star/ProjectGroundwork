@@ -1,10 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, saveProfilePrivacy, uploadProfilePhoto } from '../../src/member/api';
+import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, uploadProfilePhoto } from '../../src/member/api';
 import { ProfilePosts } from '../../src/member/ProfilePosts';
 import { getJourney, getMemberBadges, getPassportStamps, type MemberBadge, type PassportStamp } from '../../src/passport/api';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
@@ -14,7 +14,6 @@ import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
 const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
-const privacy=[['profile_is_private','Private account'],['city_visible','Show city & state'],['badges_visible','Show badges'],['adventures_visible','Show completed adventures'],['interests_visible','Show interests'],['trail_family_visible','Show Trail Family summary']] as const;
 type ProfileTab='journey'|'posts'|'photos'|'about';
 
 function formatDate(value?:string|null){
@@ -66,6 +65,7 @@ export default function ProfileScreen(){
  const [username,setUsername]=useState('');
  const [bio,setBio]=useState('');
  const [state,setState]=useState('FL');
+ const [stateOpen,setStateOpen]=useState(false);
  const [city,setCity]=useState('');
  const [query,setQuery]=useState('');
  const [suggestions,setSuggestions]=useState<WeatherLocationSuggestion[]>([]);
@@ -92,10 +92,6 @@ export default function ProfileScreen(){
   try{await saveProfileDetails({display_name:name,username:username||null,bio:bio||null,home_city:city||null,home_state:state});setMessage('Profile saved.');await load();setEditing(false)}
   catch(error){setMessage(error instanceof Error?error.message:'Unable to save profile.')}
   finally{setSaving(false)}
- }
- async function toggle(key:string,value:boolean){
-  setData((current:any)=>({...current,profile:{...current.profile,[key]:value}}));
-  try{await saveProfilePrivacy({[key]:value})}catch{await load()}
  }
  async function chooseProfilePhoto(){
   setMessage('');
@@ -155,8 +151,20 @@ export default function ProfileScreen(){
     <View style={styles.photoCopy}><Text style={styles.editTitle}>Profile photo</Text><Text style={styles.muted}>Tap your photo to choose, change, or remove it.</Text><Pressable onPress={photoMenu} disabled={photoBusy}><Text style={styles.photoAction}>{profile.avatar_url?'Change photo':'Choose photo'}</Text></Pressable></View>
    </View>
    <View style={styles.card}><Text style={styles.label}>DISPLAY NAME</Text><TextInput value={name} onChangeText={setName} style={styles.input}/><Text style={styles.label}>USERNAME · OPTIONAL</Text><TextInput value={username} onChangeText={setUsername} autoCapitalize="none" placeholder="@trailname" placeholderTextColor="#66746B" style={styles.input}/><Text style={styles.label}>BIO</Text><TextInput value={bio} onChangeText={setBio} multiline maxLength={280} placeholder="Tell the community what kind of outside you love." placeholderTextColor="#66746B" style={[styles.input,styles.bio]}/></View>
-   <View style={styles.card}><Text style={styles.cardTitle}>Home location</Text><Text style={styles.muted}>Choose a state first, then select a verified city.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.states}>{states.map(code=><Pressable key={code} onPress={()=>{setState(code);setCity('');setQuery('')}} style={[styles.stateChip,state===code&&styles.stateActive]}><Text style={[styles.stateText,state===code&&styles.stateTextActive]}>{code}</Text></Pressable>)}</ScrollView><TextInput value={query} onChangeText={value=>{setQuery(value);if(value!==city)setCity('')}} placeholder={`Search cities in ${state}`} placeholderTextColor="#66746B" style={styles.input}/>{suggestions.map(item=><Pressable key={`${item.id}-${item.name}`} style={styles.suggestion} onPress={()=>{setCity(item.name);setQuery(item.name);setSuggestions([])}}><Text style={styles.suggestionTitle}>{item.name}</Text><Text style={styles.muted}>{item.region}</Text></Pressable>)}{city?<Text style={styles.gold}>Selected: {city}, {state}</Text>:<Text style={styles.muted}>Select a city result before saving.</Text>}</View>
-   <View style={styles.card}><Text style={styles.cardTitle}>Profile privacy</Text><Text style={styles.muted}>Exact address, phone, email, payment details, emergency information, and dependent details are never public.</Text>{privacy.map(([key,label])=><View key={key} style={styles.privacyRow}><Text style={styles.rowText}>{label}</Text><Switch value={Boolean(profile[key])} onValueChange={value=>void toggle(key,value)} trackColor={{false:'#435148',true:'#8C763F'}} thumbColor={profile[key]?'#F0D083':'#D9DED9'}/></View>)}</View>
+   <View style={styles.card}>
+    <Text style={styles.cardTitle}>Home location</Text>
+    <Text style={styles.muted}>Choose your state, then select a verified city.</Text>
+    <Text style={styles.label}>STATE</Text>
+    <Pressable style={styles.dropdownControl} onPress={()=>setStateOpen(open=>!open)}>
+     <Text style={styles.dropdownValue}>{state}</Text>
+     <AppIcon name="chevron-forward" color="#D7B45A" size={18} style={{transform:[{rotate:stateOpen?'270deg':'90deg'}]}}/>
+    </Pressable>
+    {stateOpen?<View style={styles.stateDropdown}>{states.map(code=><Pressable key={code} onPress={()=>{setState(code);setCity('');setQuery('');setStateOpen(false)}} style={[styles.stateOption,state===code&&styles.stateOptionActive]}><Text style={[styles.stateOptionText,state===code&&styles.stateOptionTextActive]}>{code}</Text>{state===code?<AppIcon name="checkmark" color="#17211C" size={16}/>:null}</Pressable>)}</View>:null}
+    <Text style={styles.label}>CITY</Text>
+    <TextInput value={query} onChangeText={value=>{setQuery(value);if(value!==city)setCity('')}} placeholder={`Search cities in ${state}`} placeholderTextColor="#66746B" style={styles.input}/>
+    {suggestions.map(item=><Pressable key={`${item.id}-${item.name}`} style={styles.suggestion} onPress={()=>{setCity(item.name);setQuery(item.name);setSuggestions([])}}><Text style={styles.suggestionTitle}>{item.name}</Text><Text style={styles.muted}>{item.region}</Text></Pressable>)}
+    {city?<Text style={styles.gold}>Selected: {city}, {state}</Text>:<Text style={styles.muted}>Select a city result before saving.</Text>}
+   </View>
   </ScrollView>
  </SafeAreaView>;
 
@@ -232,5 +240,5 @@ const styles=StyleSheet.create({
  sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:1},sectionTitle:{color:'#F7F8F3',fontSize:21,fontWeight:'900'},sectionLink:{color:'#67CFC8',fontSize:12.5,fontWeight:'800'},favoritesRow:{gap:10,paddingRight:8},favoriteCard:{width:128,minHeight:156,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#29342F',padding:11,alignItems:'center'},collectionCardPressed:{opacity:.62},favoriteArt:{height:78,alignItems:'center',justifyContent:'center'},favoriteTitle:{color:'#F7F8F3',fontWeight:'900',fontSize:13,textAlign:'center',marginTop:4},favoriteMeta:{color:'#60C9C3',fontSize:11,marginTop:4},genericStamp:{width:64,height:64,borderRadius:18,borderWidth:2,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center',transform:[{rotate:'3deg'}]},genericBadge:{width:64,height:64,borderRadius:32,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},
  timeline:{gap:0},timelineRow:{flexDirection:'row'},timelineRail:{width:45,alignItems:'center'},completeDot:{width:32,height:32,borderRadius:16,alignItems:'center',justifyContent:'center',zIndex:2},timelineLine:{width:2,backgroundColor:'#39473F',flex:1,minHeight:82},journeyCard:{flex:1,minHeight:100,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28332F',marginBottom:10,padding:12,flexDirection:'row',alignItems:'center',gap:11},journeyBadge:{width:44,height:44,borderRadius:12,backgroundColor:'#16302A',alignItems:'center',justifyContent:'center'},journeyCopy:{flex:1},journeyTitle:{color:'#F7F8F3',fontSize:15.5,fontWeight:'900'},journeyMeta:{color:'#AAB6B0',fontSize:12.5,marginTop:3},journeyStatusRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:7},journeyStatus:{color:'#67CFC8',fontSize:11.5,fontWeight:'800'},journeyDot:{color:'#67CFC8',fontSize:12},
  card:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16,gap:10},cardTitle:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},empty:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16},emptyInner:{backgroundColor:'#0C1411',borderRadius:14,padding:15,marginTop:4},emptyTitle:{color:'#F7F8F3',fontWeight:'900'},muted:{color:'#96A39B',lineHeight:20},body:{color:'#C8D0CB',lineHeight:22},
- editTitle:{fontSize:27,fontWeight:'900',color:'#FFF8E8'},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},gold:{color:'#D7B45A',fontWeight:'800',marginTop:2},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},states:{gap:7},stateChip:{borderWidth:1,borderColor:'#435148',borderRadius:999,paddingHorizontal:11,paddingVertical:7},stateActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},stateText:{color:'#C6CEC8',fontWeight:'800'},stateTextActive:{color:'#17211C'},suggestion:{paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},suggestionTitle:{color:'#FFF8E8',fontWeight:'800'},primary:{backgroundColor:'#D7B45A',borderRadius:14,padding:14,alignItems:'center'},primaryText:{color:'#17211C',fontWeight:'900'},disabled:{opacity:.45},message:{color:'#E4D7B0',textAlign:'center'},privacyRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12,paddingTop:9,borderTopWidth:1,borderTopColor:'#26332C'},rowText:{color:'#FFF8E8',fontWeight:'700',flex:1},listRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},listTitle:{color:'#FFF8E8',fontWeight:'800'},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{color:'#F0D083',backgroundColor:'#26372D',borderRadius:999,paddingHorizontal:10,paddingVertical:6,fontSize:12,fontWeight:'700'}
+ editTitle:{fontSize:27,fontWeight:'900',color:'#FFF8E8'},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},gold:{color:'#D7B45A',fontWeight:'800',marginTop:2},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},dropdownControl:{minHeight:46,borderRadius:12,borderWidth:1,borderColor:'#314039',backgroundColor:'#101813',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},dropdownValue:{color:'#FFF8E8',fontSize:15,fontWeight:'800'},stateDropdown:{flexDirection:'row',flexWrap:'wrap',gap:7,backgroundColor:'#0D1512',borderWidth:1,borderColor:'#314039',borderRadius:12,padding:9},stateOption:{width:'18%',minWidth:48,minHeight:38,borderRadius:10,borderWidth:1,borderColor:'#435148',alignItems:'center',justifyContent:'center',flexDirection:'row',gap:3},stateOptionActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},stateOptionText:{color:'#C6CEC8',fontWeight:'800',fontSize:12},stateOptionTextActive:{color:'#17211C'},suggestion:{paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},suggestionTitle:{color:'#FFF8E8',fontWeight:'800'},disabled:{opacity:.45},message:{color:'#E4D7B0',textAlign:'center'},listRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},listTitle:{color:'#FFF8E8',fontWeight:'800'},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{color:'#F0D083',backgroundColor:'#26372D',borderRadius:999,paddingHorizontal:10,paddingVertical:6,fontSize:12,fontWeight:'700'}
 });
