@@ -38,6 +38,10 @@ const categoryMeta: Record<NotificationKind, { icon: string; label: string }> = 
   system: { icon: '•', label: 'System' },
 };
 
+function notificationMeta(kind: NotificationKind) {
+  return categoryMeta[kind] ?? { icon: '•', label: 'Update' };
+}
+
 function relativeTime(value: string) {
   const timestamp = new Date(value).getTime();
   const elapsed = Math.max(0, Date.now() - timestamp);
@@ -246,7 +250,7 @@ export default function NotificationCenterScreen() {
               <Text style={styles.groupLabel}>{group.label}</Text>
               <View style={styles.list}>
                 {group.items.map((item) => {
-                  const meta = categoryMeta[item.kind];
+                  const meta = notificationMeta(item.kind);
                   const unread = !item.read_at;
                   return (
                     <View key={item.id} style={[styles.card, unread && styles.unreadCard, item.priority === 'critical' && styles.criticalCard]}>
