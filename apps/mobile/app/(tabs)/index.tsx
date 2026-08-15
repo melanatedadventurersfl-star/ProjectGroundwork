@@ -31,6 +31,8 @@ import { TrailheadCover } from '../../src/trailhead/TrailheadCover';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeather } from '../../src/weather/api';
 import type { WeatherForecast } from '../../src/weather/api';
+import { MiniWeatherBackdrop } from '../../src/weather/MiniWeatherBackdrop';
+import type { WeatherVisualPhase } from '../../src/weather/weatherVisuals';
 
 const CARD_WIDTH = Dimensions.get('window').width - 36;
 type CampfireMode = 'general' | 'circle';
@@ -69,6 +71,15 @@ function relativeTime(value: string) {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return days < 7 ? `${days}d` : shortDate(value);
+}
+
+function weatherPhase(localtime: string | undefined, isDay: boolean): WeatherVisualPhase {
+  const match = localtime?.match(/\s(\d{1,2}):/);
+  const hour = match ? Number(match[1]) : new Date().getHours();
+  if (hour >= 5 && hour < 8) return 'dawn';
+  if (hour >= 17 && hour < 20) return 'dusk';
+  if (!isDay) return 'night';
+  return 'day';
 }
 
 export default function TrailheadScreen() {
@@ -251,6 +262,8 @@ export default function TrailheadScreen() {
   }
 
   const todayForecast = weather?.forecast.forecastday[0]?.day;
+  const weatherIsDay = (weather?.current.is_day ?? 1) === 1;
+  const weatherScenePhase = weatherPhase(weather?.location.localtime, weatherIsDay);
 
   return (
     <ScrollView
@@ -331,15 +344,18 @@ export default function TrailheadScreen() {
           accessibilityRole="button"
           accessibilityLabel="Open weather details"
         >
-          <Text style={styles.utilityEyebrow}>WEATHER</Text>
-          <Text style={styles.utilityMeta} numberOfLines={1}>
-            {weather ? [weather.location.name, weather.location.region].filter(Boolean).join(', ') : location || 'Location unavailable'}
-          </Text>
-          <Text style={styles.weatherTemp}>{weather ? `${Math.round(weather.current.temp_f)}°` : '—'}</Text>
-          <Text style={styles.utilityTitle} numberOfLines={2}>{weather?.current.condition.text || 'Check the forecast'}</Text>
-          <Text style={styles.utilityMeta} numberOfLines={1}>
-            {todayForecast ? `H ${Math.round(todayForecast.maxtemp_f)}°  L ${Math.round(todayForecast.mintemp_f)}°` : location || 'Your local weather'}
-          </Text>
+          {weather ? <MiniWeatherBackdrop condition={weather.current.condition} isDay={weatherIsDay} phase={weatherScenePhase} /> : null}
+          <View style={styles.weatherContent}>
+            <Text style={styles.utilityEyebrow}>WEATHER</Text>
+            <Text style={styles.utilityMeta} numberOfLines={1}>
+              {weather ? [weather.location.name, weather.location.region].filter(Boolean).join(', ') : location || 'Location unavailable'}
+            </Text>
+            <Text style={styles.weatherTemp}>{weather ? `${Math.round(weather.current.temp_f)}°` : '—'}</Text>
+            <Text style={styles.utilityTitle} numberOfLines={2}>{weather?.current.condition.text || 'Check the forecast'}</Text>
+            <Text style={styles.utilityMeta} numberOfLines={1}>
+              {todayForecast ? `H ${Math.round(todayForecast.maxtemp_f)}°  L ${Math.round(todayForecast.mintemp_f)}°` : location || 'Your local weather'}
+            </Text>
+          </View>
         </Pressable>
 
         {nextReservation ? (
@@ -495,6 +511,7 @@ const styles = StyleSheet.create({
   utilityRow: { flexDirection: 'row', gap: 12 },
   utilityCard: { flex: 1, minHeight: 164, borderRadius: 20, borderWidth: 1, borderColor: '#324239', backgroundColor: '#17211C', padding: 16, overflow: 'hidden', justifyContent: 'flex-end' },
   weatherCard: { backgroundColor: '#1A2821' },
+  weatherContent: { zIndex: 1 },
   utilityEyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   weatherTemp: { color: '#FFF8E8', fontSize: 38, lineHeight: 42, fontWeight: '900', marginTop: 8 },
   utilityTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 20, fontWeight: '900', marginTop: 7 },
