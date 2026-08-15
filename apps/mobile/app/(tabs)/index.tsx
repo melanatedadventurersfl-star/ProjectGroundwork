@@ -332,6 +332,9 @@ export default function TrailheadScreen() {
           accessibilityLabel="Open weather details"
         >
           <Text style={styles.utilityEyebrow}>WEATHER</Text>
+          <Text style={styles.utilityMeta} numberOfLines={1}>
+            {weather ? [weather.location.name, weather.location.region].filter(Boolean).join(', ') : location || 'Location unavailable'}
+          </Text>
           <Text style={styles.weatherTemp}>{weather ? `${Math.round(weather.current.temp_f)}°` : '—'}</Text>
           <Text style={styles.utilityTitle} numberOfLines={2}>{weather?.current.condition.text || 'Check the forecast'}</Text>
           <Text style={styles.utilityMeta} numberOfLines={1}>
