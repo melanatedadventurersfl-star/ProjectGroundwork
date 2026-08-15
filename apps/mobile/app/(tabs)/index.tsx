@@ -392,7 +392,7 @@ export default function TrailheadScreen() {
       <View style={styles.campfireCard}>
         <View style={styles.campfireTopRow}>
           <View style={styles.campfireHeading}>
-            <Text style={styles.utilityEyebrow}>COMMUNITY</Text>
+            <Text style={styles.utilityEyebrow}>CAMPFIRE</Text>
             <Text style={styles.campfireTitle}>Around the Campfire</Text>
           </View>
           {circleCount > 0 ? <View style={styles.campfireBadge}>
@@ -438,10 +438,14 @@ export default function TrailheadScreen() {
                   <Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text>
                   <Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text>
                 </View>
-                <Text style={styles.campfirePostText} numberOfLines={2}>{post.body}</Text>
-                <Text style={styles.campfireEngagement}>{post.reaction_count || 0} reactions · {post.comment_count || 0} comments</Text>
+                <View style={styles.campfirePostContent}>
+                  <View style={styles.campfirePostCopy}>
+                    <Text style={styles.campfirePostText} numberOfLines={2}>{post.body}</Text>
+                    <Text style={styles.campfireEngagement}>{post.reaction_count || 0} reactions · {post.comment_count || 0} comments</Text>
+                  </View>
+                  {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.campfireMediaThumb} /> : null}
+                </View>
               </View>
-              <Text style={styles.campfireChevron}>›</Text>
             </Pressable>
           )) : (
             <View style={styles.campfireEmpty}>
@@ -460,7 +464,7 @@ export default function TrailheadScreen() {
         <View style={styles.campfireFooter}>
           <Text style={styles.campfirePrompt}>{campfireMode === 'circle' ? 'Catch up with your people.' : 'What’s happening on the trail?'}</Text>
           <Pressable onPress={() => router.push('/(tabs)/community')} accessibilityRole="button">
-            <Text style={styles.linkBare}>Open Campfire →</Text>
+            <Text style={styles.linkBare}>View Campfire →</Text>
           </Pressable>
         </View>
       </View>
@@ -533,18 +537,20 @@ const styles = StyleSheet.create({
   campfireSwitchText: { color: '#AFC0B6', fontSize: 12, fontWeight: '800' },
   campfireSwitchTextActive: { color: '#17211C' },
   campfireFeed: { gap: 2 },
-  campfirePost: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#314238' },
+  campfirePost: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderTopWidth: 1, borderTopColor: '#314238' },
   campfirePostPressed: { opacity: 0.72 },
-  campfireAvatar: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
+  campfireAvatar: { width: 38, height: 38, borderRadius: 19, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
   campfireAvatarImage: { width: '100%', height: '100%' },
   campfireAvatarText: { color: '#F0D083', fontSize: 11, fontWeight: '900' },
-  campfirePostBody: { flex: 1, gap: 2 },
+  campfirePostBody: { flex: 1, gap: 3 },
   campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   campfireAuthor: { color: '#FFF8E8', fontSize: 13, fontWeight: '900', flexShrink: 1 },
   campfireTime: { color: '#87968D', fontSize: 10, fontWeight: '700' },
+  campfirePostContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  campfirePostCopy: { flex: 1, gap: 2 },
   campfirePostText: { color: '#C8D1CC', fontSize: 12, lineHeight: 17 },
   campfireEngagement: { color: '#829087', fontSize: 10, marginTop: 2 },
-  campfireChevron: { color: '#7F9086', fontSize: 22, marginLeft: 2 },
+  campfireMediaThumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: '#26372D' },
   campfireEmpty: { borderTopWidth: 1, borderTopColor: '#314238', paddingVertical: 14, gap: 4 },
   campfireEmptyTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
   campfireEmptyText: { color: '#9FAAA4', fontSize: 12, lineHeight: 17 },
