@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/ma-splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#17211B"
+      "backgroundColor": "#0E0E10"
     },
     "plugins": [
       "expo-router",
@@ -54,7 +54,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "melanated-connection-mark-v1",
+      "nativeBuildAssetRevision": "melanated-connection-mark-v2",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
