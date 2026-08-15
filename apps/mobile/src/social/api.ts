@@ -51,12 +51,24 @@ export async function getConnectionStatus(profileId: string): Promise<{ status: 
 export async function requestConnection(profileId: string) {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
-  const { error } = await supabase.from('member_connections').insert({ requester_id: userData.user.id, addressee_id: profileId, status: 'pending' });
+  const userId = userData.user.id;
+  const { data: existing, error: lookupError } = await supabase
+    .from('member_connections')
+    .select('id,status')
+    .or(`and(requester_id.eq.${userId},addressee_id.eq.${profileId}),and(requester_id.eq.${profileId},addressee_id.eq.${userId})`)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (existing?.status === 'pending' || existing?.status === 'accepted') return;
+  if (existing?.id) {
+    const { error: deleteError } = await supabase.from('member_connections').delete().eq('id', existing.id);
+    if (deleteError) throw deleteError;
+  }
+  const { error } = await supabase.from('member_connections').insert({ requester_id: userId, addressee_id: profileId, status: 'pending' });
   if (error) throw error;
 }
 
 export async function respondToConnection(connectionId: string, status: 'accepted' | 'declined') {
-  const { error } = await supabase.from('member_connections').update({ status }).eq('id', connectionId);
+  const { error } = await supabase.rpc('respond_to_connection_request', { connection_id: connectionId, response: status });
   if (error) throw error;
 }
 

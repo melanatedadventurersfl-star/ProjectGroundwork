@@ -128,7 +128,7 @@ export async function getCircleMembers(circleId: string): Promise<CircleMember[]
 
 export async function addCircleMember(circleId: string, profileId: string) {
   const { error } = await supabase.from('community_circle_members').insert({ circle_id: circleId, profile_id: profileId });
-  if (error) throw error;
+  if (error && error.code !== '23505') throw error;
 }
 
 export async function removeCircleMember(circleId: string, profileId: string) {
@@ -138,4 +138,34 @@ export async function removeCircleMember(circleId: string, profileId: string) {
     .eq('circle_id', circleId)
     .eq('profile_id', profileId);
   if (error) throw error;
+}
+
+export async function getMyCircle() {
+  const circles = await getCircles();
+  return circles.find((circle) => circle.name.trim().toLowerCase() === 'my circle') ?? null;
+}
+
+export async function ensureMyCircle() {
+  const existing = await getMyCircle();
+  if (existing) return existing.id;
+  return createCircle('My Circle');
+}
+
+export async function getMyCircleMembership(profileId: string) {
+  const circle = await getMyCircle();
+  if (!circle) return { circleId: null, inCircle: false };
+  const members = await getCircleMembers(circle.id);
+  return { circleId: circle.id, inCircle: members.some((member) => member.profile_id === profileId) };
+}
+
+export async function addTrailmateToMyCircle(profileId: string) {
+  const circleId = await ensureMyCircle();
+  await addCircleMember(circleId, profileId);
+  return circleId;
+}
+
+export async function removeTrailmateFromMyCircle(profileId: string) {
+  const circle = await getMyCircle();
+  if (!circle) return;
+  await removeCircleMember(circle.id, profileId);
 }

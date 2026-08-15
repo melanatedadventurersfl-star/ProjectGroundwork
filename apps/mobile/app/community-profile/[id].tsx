@@ -4,6 +4,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  addTrailmateToMyCircle,
+  getMyCircleMembership,
+  removeTrailmateFromMyCircle,
+} from '../../src/community/circles';
+import {
   getCommunityProfile,
   getConnectionStatus,
   removeConnection,
@@ -18,8 +23,10 @@ export default function CommunityProfileScreen() {
   const [profile, setProfile] = useState<CommunityProfile | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('none');
   const [connectionId, setConnectionId] = useState<string | null>(null);
+  const [inCircle, setInCircle] = useState(false);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [circleWorking, setCircleWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -29,6 +36,12 @@ export default function CommunityProfileScreen() {
       setProfile(nextProfile);
       setConnectionStatus(connection.status);
       setConnectionId(connection.connectionId);
+      if (connection.status === 'accepted') {
+        const membership = await getMyCircleMembership(id);
+        setInCircle(membership.inCircle);
+      } else {
+        setInCircle(false);
+      }
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load this member profile.');
@@ -49,9 +62,23 @@ export default function CommunityProfileScreen() {
       if (action === 'remove' && connectionId) await removeConnection(connectionId);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update this connection.');
+      setError(caught instanceof Error ? caught.message : 'Unable to update this Trailmate connection.');
     } finally {
       setWorking(false);
+    }
+  }
+
+  async function toggleCircle() {
+    if (!id || connectionStatus !== 'accepted') return;
+    setCircleWorking(true);
+    try {
+      if (inCircle) await removeTrailmateFromMyCircle(id);
+      else await addTrailmateToMyCircle(id);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to update your Circle.');
+    } finally {
+      setCircleWorking(false);
     }
   }
 
@@ -79,15 +106,21 @@ export default function CommunityProfileScreen() {
           {profile.platform_role !== 'member' ? <Text style={styles.rolePill}>{profile.platform_role.replace('_', ' ').toUpperCase()}</Text> : null}
         </View>
 
-        {connectionStatus === 'none' || connectionStatus === 'declined' ? <Pressable disabled={working} style={styles.primaryButton} onPress={() => void act('request')}><Text style={styles.primaryButtonText}>{working ? 'Sending…' : 'Connect'}</Text></Pressable> : null}
-        {connectionStatus === 'pending_sent' ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Connection request sent</Text><Text style={styles.stateBody}>You’ll be connected when they accept.</Text></View> : null}
-        {connectionStatus === 'pending_received' ? <View style={styles.requestCard}><Text style={styles.stateTitle}>Connection request</Text><Text style={styles.stateBody}>This member would like to stay connected.</Text><View style={styles.buttonRow}><Pressable disabled={working} style={styles.primarySmall} onPress={() => void act('accept')}><Text style={styles.primaryButtonText}>Accept</Text></Pressable><Pressable disabled={working} style={styles.secondarySmall} onPress={() => void act('decline')}><Text style={styles.secondaryText}>Decline</Text></Pressable></View></View> : null}
-        {connectionStatus === 'accepted' ? <View style={styles.connectedRow}><Text style={styles.connectedText}>Connected</Text><Pressable disabled={working} onPress={() => void act('remove')}><Text style={styles.removeText}>Remove connection</Text></Pressable></View> : null}
+        {connectionStatus === 'none' || connectionStatus === 'declined' ? <Pressable disabled={working} style={styles.primaryButton} onPress={() => void act('request')}><Text style={styles.primaryButtonText}>{working ? 'Sending…' : 'Add Trailmate'}</Text></Pressable> : null}
+        {connectionStatus === 'pending_sent' ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Trailmate request sent</Text><Text style={styles.stateBody}>You’ll become Trailmates when they accept.</Text><Text style={styles.requestedLabel}>REQUESTED</Text></View> : null}
+        {connectionStatus === 'pending_received' ? <View style={styles.requestCard}><Text style={styles.stateTitle}>Trailmate request</Text><Text style={styles.stateBody}>This member wants to become a Trailmate.</Text><View style={styles.buttonRow}><Pressable disabled={working} style={styles.primarySmall} onPress={() => void act('accept')}><Text style={styles.primaryButtonText}>Accept</Text></Pressable><Pressable disabled={working} style={styles.secondarySmall} onPress={() => void act('decline')}><Text style={styles.secondaryText}>Decline</Text></Pressable></View></View> : null}
+        {connectionStatus === 'accepted' ? <View style={styles.relationshipCard}>
+          <View style={styles.relationshipTop}><View><Text style={styles.connectedText}>Trailmates ✓</Text><Text style={styles.relationshipHint}>You’re connected across the community.</Text></View><Pressable disabled={working} onPress={() => void act('remove')}><Text style={styles.removeText}>Remove</Text></Pressable></View>
+          <Pressable disabled={circleWorking} style={[styles.circleButton, inCircle && styles.circleButtonActive]} onPress={() => void toggleCircle()}>
+            <Text style={[styles.circleButtonText, inCircle && styles.circleButtonTextActive]}>{circleWorking ? 'Updating…' : inCircle ? '★ In Your Circle' : '☆ Add to Circle'}</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/circles' as never)}><Text style={styles.manageText}>Manage Trailmates & Circle →</Text></Pressable>
+        </View> : null}
 
         {profile.profile_is_private && !canSeeFullProfile ? (
           <View style={styles.privateCard}>
             <Text style={styles.privateTitle}>Private account</Text>
-            <Text style={styles.privateBody}>This member shares additional profile details with approved connections.</Text>
+            <Text style={styles.privateBody}>This member shares additional profile details with approved Trailmates.</Text>
           </View>
         ) : (
           <>
@@ -106,6 +139,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0F1713' }, center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center', padding: 24 }, content: { padding: 20, paddingBottom: 50, gap: 14 }, back: { color: '#D7B45A', fontWeight: '800', fontSize: 16 },
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6 }, avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: '#17211C', fontSize: 30, fontWeight: '900' }, identityText: { flex: 1 }, name: { color: '#FFF8E8', fontSize: 29, fontWeight: '900' }, username: { color: '#D7B45A', fontWeight: '800', marginTop: 2 }, location: { color: '#B6C0BA', marginTop: 5 },
   roleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, rolePill: { color: '#BFE2C9', backgroundColor: '#25372D', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-  primaryButton: { backgroundColor: '#D7B45A', borderRadius: 13, paddingVertical: 13, alignItems: 'center' }, primaryButtonText: { color: '#17211C', fontWeight: '900' }, stateCard: { backgroundColor: '#17211C', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#2E3D34' }, requestCard: { backgroundColor: '#1D2B24', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#3B5144', gap: 7 }, stateTitle: { color: '#FFF8E8', fontWeight: '900', fontSize: 17 }, stateBody: { color: '#AEB8B2', lineHeight: 20 }, buttonRow: { flexDirection: 'row', gap: 9, marginTop: 6 }, primarySmall: { flex: 1, backgroundColor: '#D7B45A', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, secondarySmall: { flex: 1, borderWidth: 1, borderColor: '#536159', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, secondaryText: { color: '#FFF8E8', fontWeight: '800' }, connectedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1C2B23', borderRadius: 14, padding: 14 }, connectedText: { color: '#BFE2C9', fontWeight: '900' }, removeText: { color: '#D7B45A', fontWeight: '700', fontSize: 12 },
+  primaryButton: { backgroundColor: '#D7B45A', borderRadius: 13, paddingVertical: 13, alignItems: 'center' }, primaryButtonText: { color: '#17211C', fontWeight: '900' }, stateCard: { backgroundColor: '#17211C', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#2E3D34' }, requestCard: { backgroundColor: '#1D2B24', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#3B5144', gap: 7 }, stateTitle: { color: '#FFF8E8', fontWeight: '900', fontSize: 17 }, stateBody: { color: '#AEB8B2', lineHeight: 20 }, requestedLabel: { color: '#D7B45A', fontSize: 10, fontWeight: '900', marginTop: 8, letterSpacing: 0.8 }, buttonRow: { flexDirection: 'row', gap: 9, marginTop: 6 }, primarySmall: { flex: 1, backgroundColor: '#D7B45A', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, secondarySmall: { flex: 1, borderWidth: 1, borderColor: '#536159', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, secondaryText: { color: '#FFF8E8', fontWeight: '800' },
+  relationshipCard: { backgroundColor: '#1C2B23', borderRadius: 16, padding: 14, gap: 11, borderWidth: 1, borderColor: '#395043' }, relationshipTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, connectedText: { color: '#BFE2C9', fontWeight: '900', fontSize: 16 }, relationshipHint: { color: '#94A198', fontSize: 11, marginTop: 2 }, removeText: { color: '#C8B986', fontWeight: '700', fontSize: 12 }, circleButton: { borderWidth: 1, borderColor: '#D7B45A', borderRadius: 12, paddingVertical: 11, alignItems: 'center' }, circleButtonActive: { backgroundColor: '#D7B45A' }, circleButtonText: { color: '#D7B45A', fontWeight: '900' }, circleButtonTextActive: { color: '#17211C' }, manageText: { color: '#D7B45A', fontWeight: '800', fontSize: 12, textAlign: 'center' },
   privateCard: { backgroundColor: '#17211C', borderRadius: 18, padding: 19, borderWidth: 1, borderColor: '#2D3B33' }, privateTitle: { color: '#FFF8E8', fontSize: 20, fontWeight: '900' }, privateBody: { color: '#AEB8B2', lineHeight: 21, marginTop: 6 }, card: { backgroundColor: '#17211C', borderRadius: 18, padding: 17, borderWidth: 1, borderColor: '#28362E' }, cardTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' }, body: { color: '#AEB8B2', marginTop: 6 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 }, chip: { color: '#F0D083', backgroundColor: '#26372D', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, fontWeight: '700' }, error: { color: '#FFB4A9' },
 });
