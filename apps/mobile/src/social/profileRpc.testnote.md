@@ -1,1 +1,0 @@
-Profile loading relies on the Supabase `get_public_member_profile(uuid)` RPC defined in migration `20260815043000_add_public_member_profile_rpc.sql`. The function returns privacy-aware public profile data and counts for the community profile screen.
