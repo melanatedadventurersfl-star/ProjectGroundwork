@@ -1,11 +1,42 @@
-import { router } from 'expo-router';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { router, usePathname } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getUnreadNotificationCount } from '../notifications/api';
 import { AppIcon } from '../ui/AppIcon';
 
 export function PersistentTopNav() {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const refreshUnreadCount = useCallback(async () => {
+    try {
+      setUnreadCount(await getUnreadNotificationCount());
+    } catch {
+      // Keep navigation usable if the notification count cannot be refreshed.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshUnreadCount();
+  }, [pathname, refreshUnreadCount]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshUnreadCount();
+    });
+    const interval = setInterval(() => { void refreshUnreadCount(); }, 30_000);
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, [refreshUnreadCount]);
+
+  const notificationLabel = unreadCount > 0
+    ? `Notifications, ${unreadCount} unread`
+    : 'Notifications';
 
   return (
     <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
@@ -27,11 +58,16 @@ export function PersistentTopNav() {
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Notifications"
+            accessibilityLabel={notificationLabel}
             onPress={() => router.navigate('/notifications' as never)}
             style={styles.iconButton}
           >
             <AppIcon name="notifications" color="#F6F4EE" size={21} />
+            {unreadCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            ) : null}
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -83,5 +119,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#17211C',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -5,
+    right: -7,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D3A94F',
+    borderWidth: 2,
+    borderColor: '#0F1713',
+  },
+  badgeText: {
+    color: '#0F1713',
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '900',
   },
 });
