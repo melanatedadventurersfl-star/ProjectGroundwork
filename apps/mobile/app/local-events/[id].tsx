@@ -18,7 +18,7 @@ export default function LocalEventDetailScreen() {
       setError(null);
       setEvent(await getLocalEvent(id));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load this local event.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load this Campfire.');
     } finally {
       setLoading(false);
     }
@@ -42,19 +42,19 @@ export default function LocalEventDetailScreen() {
   async function shareEvent() {
     if (!event) return;
     const when = new Date(event.starts_at).toLocaleString();
-    await Share.share({ message: `${event.title}\n${when}\n${event.city}, ${event.state}\nHosted by ${event.host_name}` });
+    await Share.share({ message: `${event.title}\n${when}\n${event.city}, ${event.state}\nCampfire hosted by ${event.host_name}` });
   }
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
-  if (!event) return <SafeAreaView style={styles.center}><Text style={styles.error}>{error ?? 'Local event not found.'}</Text></SafeAreaView>;
+  if (!event) return <SafeAreaView style={styles.center}><Text style={styles.error}>{error ?? 'Campfire not found.'}</Text></SafeAreaView>;
 
   const start = new Date(event.starts_at);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Explore</Text></Pressable>
-        <Text style={styles.badge}>LOCAL EVENT</Text>
+        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Outpost</Text></Pressable>
+        <Text style={styles.badge}>MEMBER-LED CAMPFIRE</Text>
         <Text style={styles.title}>{event.title}</Text>
         <Text style={styles.host}>Hosted by {event.host_name}</Text>
 
@@ -66,10 +66,10 @@ export default function LocalEventDetailScreen() {
           <Text style={styles.label}>Category</Text>
           <Text style={styles.value}>{event.category}</Text>
           <Text style={styles.label}>Cost</Text>
-          <Text style={styles.value}>{event.is_free ? 'Free' : 'Paid event'}</Text>
+          <Text style={styles.value}>{event.is_free ? 'Free' : 'Paid meetup'}</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>About this meetup</Text>
+        <Text style={styles.sectionTitle}>About this Campfire</Text>
         <Text style={styles.body}>{event.description}</Text>
         {event.meeting_details ? <Text style={styles.body}>{event.meeting_details}</Text> : null}
 
@@ -85,14 +85,14 @@ export default function LocalEventDetailScreen() {
           </View>
         </View>
 
-        <Pressable onPress={() => void shareEvent()} style={styles.shareButton}><Text style={styles.shareText}>Share event</Text></Pressable>
+        <Pressable onPress={() => void shareEvent()} style={styles.shareButton}><Text style={styles.shareText}>Share Campfire</Text></Pressable>
         {event.group_id ? (
           <Pressable onPress={() => router.push({ pathname: '/groups/[id]', params: { id: event.group_id! } })} style={styles.groupButton}>
-            <Text style={styles.groupText}>Open event group →</Text>
+            <Text style={styles.groupText}>Open Campfire group →</Text>
           </Pressable>
         ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Text style={styles.disclaimer}>Local Events are member-hosted unless specifically marked as an official Melanated Adventurers experience.</Text>
+        <Text style={styles.disclaimer}>Campfires are member-led meetups unless specifically marked as an official Melanated Adventurers experience.</Text>
       </ScrollView>
     </SafeAreaView>
   );

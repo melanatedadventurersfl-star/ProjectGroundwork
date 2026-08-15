@@ -76,7 +76,7 @@ export default function CreateLocalEventScreen() {
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to create this local event.');
+      setError(caught instanceof Error ? caught.message : 'Unable to create this Campfire.');
     } finally {
       setSaving(false);
     }
@@ -88,10 +88,10 @@ export default function CreateLocalEventScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
-          <Text style={styles.eyebrow}>LOCAL EVENTS</Text>
+          <Text style={styles.eyebrow}>CAMPFIRES</Text>
           <Text style={styles.title}>Hosting is invitation-based</Text>
-          <Text style={styles.body}>Trusted Hosts, Community Leads, and staff can publish Local Events. You can still browse, RSVP, save, and share events.</Text>
-          <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Back to Explore</Text></Pressable>
+          <Text style={styles.body}>Trusted Hosts, Community Leads, and staff can start Campfires. Everyone can browse, RSVP, save, and share them.</Text>
+          <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Back to Outpost</Text></Pressable>
         </View>
       </SafeAreaView>
     );
@@ -100,16 +100,16 @@ export default function CreateLocalEventScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Explore</Text></Pressable>
-        <Text style={styles.eyebrow}>TRUSTED HOST</Text>
-        <Text style={styles.title}>Create a local event</Text>
-        <Text style={styles.body}>Keep it lightweight. Official MA Adventures still use the full ticketing, waiver, payment, and readiness flow.</Text>
+        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Outpost</Text></Pressable>
+        <Text style={styles.eyebrow}>MEMBER-LED CAMPFIRE</Text>
+        <Text style={styles.title}>Start a Campfire</Text>
+        <Text style={styles.body}>Campfires are lightweight member-led meetups: a hike, park hang, paddle, brewery stop, trail walk, or anything else worth gathering for. Official MA Adventures still use the full ticketing, waiver, payment, and readiness flow.</Text>
 
-        <Text style={styles.label}>Event name</Text>
+        <Text style={styles.label}>Campfire name</Text>
         <TextInput value={title} onChangeText={setTitle} placeholder="Saturday morning trail walk" placeholderTextColor="#758179" style={styles.input} />
 
-        <Text style={styles.label}>Description</Text>
-        <TextInput value={description} onChangeText={setDescription} placeholder="What should members expect?" placeholderTextColor="#758179" multiline style={[styles.input, styles.multiline]} />
+        <Text style={styles.label}>What’s the plan?</Text>
+        <TextInput value={description} onChangeText={setDescription} placeholder="Tell everyone what to expect." placeholderTextColor="#758179" multiline style={[styles.input, styles.multiline]} />
 
         <Text style={styles.label}>Category</Text>
         <View style={styles.chips}>
@@ -131,7 +131,7 @@ export default function CreateLocalEventScreen() {
         />
         <Text style={styles.help}>Use YYYY-MM-DDTHH:MM in your local time.</Text>
 
-        <Text style={styles.label}>Meeting place</Text>
+        <Text style={styles.label}>Meet here</Text>
         <TextInput value={venueName} onChangeText={setVenueName} placeholder="Park, trailhead, or venue" placeholderTextColor="#758179" style={styles.input} />
 
         <Text style={styles.label}>State</Text>
@@ -162,9 +162,9 @@ export default function CreateLocalEventScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}>
-          <Text style={styles.primaryButtonText}>{saving ? 'Publishing…' : 'Publish local event'}</Text>
+          <Text style={styles.primaryButtonText}>{saving ? 'Starting…' : 'Start Campfire'}</Text>
         </Pressable>
-        <Text style={styles.disclaimer}>Local Events display the host’s name and are clearly marked as member-hosted, not official MA-operated adventures.</Text>
+        <Text style={styles.disclaimer}>Campfires display the host’s name and are clearly marked as member-led, not official Melanated Adventurers experiences.</Text>
       </ScrollView>
     </SafeAreaView>
   );
