@@ -83,7 +83,7 @@ export default function CommunityProfileScreen() {
       else await addTrailmateToMyCircle(id);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update your Circle.');
+      setError(caught instanceof Error ? caught.message : 'Unable to update your crew.');
     } finally { setCircleWorking(false); }
   }
 
@@ -128,7 +128,7 @@ export default function CommunityProfileScreen() {
         {(connectionStatus === 'none' || connectionStatus === 'declined') ? <Pressable disabled={working} style={styles.primaryButton} onPress={() => void act('request')}><Text style={styles.primaryButtonText}>{working ? 'Sending…' : 'Add Trailmate'}</Text></Pressable> : null}
         {connectionStatus === 'pending_sent' ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Trailmate request sent</Text><Text style={styles.stateBody}>You’ll become Trailmates when they accept.</Text><Text style={styles.requestedLabel}>REQUESTED</Text></View> : null}
         {connectionStatus === 'pending_received' ? <View style={styles.stateCard}><Text style={styles.stateTitle}>Trailmate request</Text><Text style={styles.stateBody}>This member wants to become a Trailmate.</Text><View style={styles.buttonRow}><Pressable disabled={working} style={styles.primarySmall} onPress={() => void act('accept')}><Text style={styles.primaryButtonText}>Accept</Text></Pressable><Pressable disabled={working} style={styles.secondarySmall} onPress={() => void act('decline')}><Text style={styles.secondaryText}>Decline</Text></Pressable></View></View> : null}
-        {connectionStatus === 'accepted' ? <View style={styles.relationshipCard}><View style={styles.relationshipTop}><View><Text style={styles.connectedText}>Trailmates ✓</Text><Text style={styles.stateBody}>Connected across the community.</Text></View><Pressable disabled={working} onPress={() => void act('remove')}><Text style={styles.removeText}>Remove</Text></Pressable></View><Pressable disabled={circleWorking} style={[styles.circleButton, inCircle && styles.circleButtonActive]} onPress={() => void toggleCircle()}><Text style={[styles.circleButtonText, inCircle && styles.circleButtonTextActive]}>{circleWorking ? 'Updating…' : inCircle ? '★ In Your Circle' : '☆ Add to Circle'}</Text></Pressable></View> : null}
+        {connectionStatus === 'accepted' ? <View style={styles.relationshipCard}><View style={styles.relationshipTop}><View><Text style={styles.connectedText}>Trailmates ✓</Text><Text style={styles.stateBody}>Connected across the community.</Text></View><Pressable disabled={working} onPress={() => void act('remove')}><Text style={styles.removeText}>Remove</Text></Pressable></View><Pressable disabled={circleWorking} style={[styles.circleButton, inCircle && styles.circleButtonActive]} onPress={() => void toggleCircle()}><Text style={[styles.circleButtonText, inCircle && styles.circleButtonTextActive]}>{circleWorking ? 'Updating…' : inCircle ? '★ In Your Crew' : '☆ Add to Crew'}</Text></Pressable></View> : null}
       </View> : null}
 
       {!profile.can_see_full_profile ? <View style={styles.privateCard}><AppIcon name="privacy" color="#F5C341" size={22} /><Text style={styles.privateTitle}>Private account</Text><Text style={styles.stateBody}>Additional profile details are shared with approved Trailmates.</Text></View> : <>
