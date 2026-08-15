@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
     .from('notifications')
     .select('id, recipient_id, kind, priority, title, body, action_url')
     .eq('id', notificationId)
-    .single<NotificationRecord>();
+    .single();
 
   if (notificationError || !notification) {
     return Response.json({ error: 'Notification not found.' }, { status: 404 });
