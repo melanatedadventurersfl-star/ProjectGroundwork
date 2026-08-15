@@ -41,3 +41,11 @@ export async function archiveNotification(id: string) {
     .eq('id', id);
   if (error) throw error;
 }
+
+export async function archiveAllNotifications() {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ archived_at: new Date().toISOString() })
+    .is('archived_at', null);
+  if (error) throw error;
+}
