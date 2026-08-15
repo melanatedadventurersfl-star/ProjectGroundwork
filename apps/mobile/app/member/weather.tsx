@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -30,6 +30,22 @@ function hourLabel(value: string) {
   return `${hour % 12 || 12} ${hour >= 12 ? 'PM' : 'AM'}`;
 }
 
+function hourDate(value: string) {
+  return value.split(' ')[0] ?? '';
+}
+
+function dayBreakLabel(value: string, currentDate: string) {
+  const date = hourDate(value);
+  if (!date || date === currentDate) return '';
+
+  const current = new Date(`${currentDate}T12:00:00`);
+  const target = new Date(`${date}T12:00:00`);
+  const dayDifference = Math.round((target.getTime() - current.getTime()) / 86_400_000);
+
+  if (dayDifference === 1) return 'Tomorrow';
+  return target.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
 function adventureCondition(data: WeatherForecast) {
   const feels = data.current.feelslike_f;
   const wind = data.current.wind_mph;
@@ -44,11 +60,16 @@ function adventureCondition(data: WeatherForecast) {
 }
 
 function nextHours(data: WeatherForecast): WeatherHour[] {
-  const today = data.forecast.forecastday[0];
-  if (!today?.hour?.length) return [];
-  const localHour = Number((data.location.localtime.split(' ')[1] ?? '').split(':')[0]);
-  const start = Number.isFinite(localHour) ? localHour : 0;
-  return today.hour.slice(start, start + 8);
+  const allHours = data.forecast.forecastday.flatMap((day) => day.hour ?? []);
+  if (!allHours.length) return [];
+
+  const [localDate = '', localTime = '00:00'] = data.location.localtime.split(' ');
+  const [localHour = '00'] = localTime.split(':');
+  const startKey = `${localDate} ${localHour.padStart(2, '0')}:00`;
+
+  return allHours
+    .filter((hour) => hour.time >= startKey)
+    .slice(0, 12);
 }
 
 export default function WeatherScreen() {
@@ -167,6 +188,7 @@ export default function WeatherScreen() {
   const conditions = useMemo(() => data ? adventureCondition(data) : null, [data]);
   const days = data?.forecast?.forecastday ?? [];
   const today = days[0];
+  const currentDate = data?.location.localtime.split(' ')[0] ?? '';
   const showingAdventures = mode === 'adventures';
 
   return <SafeAreaView style={s.safe}>
@@ -236,17 +258,30 @@ export default function WeatherScreen() {
           <WeatherScene weather={data} />
 
           {hours.length ? <>
-            <View style={s.sectionRow}><Text style={s.section}>Today by hour</Text><Text style={s.sectionMeta}>Next {hours.length} hours</Text></View>
+            <Text style={s.section}>Next 12 hours</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.hourlyRow}>
-              {hours.map((hour) => <View key={hour.time} style={s.hourCard}>
-                <MiniWeatherBackdrop condition={hour.condition} isDay={hour.is_day !== 0} />
-                <View style={s.cardContent}>
-                  <Text style={s.hourTime}>{hourLabel(hour.time)}</Text>
-                  <Text style={s.hourTemp}>{Math.round(hour.temp_f)}°</Text>
-                  <Text style={s.hourCondition} numberOfLines={2}>{hour.condition.text}</Text>
-                  <Text style={s.hourRain}>{Math.round(hour.chance_of_rain ?? 0)}% rain</Text>
-                </View>
-              </View>)}
+              {hours.map((hour, index) => {
+                const previousDate = index > 0 ? hourDate(hours[index - 1].time) : hourDate(hour.time);
+                const dateChanged = index > 0 && hourDate(hour.time) !== previousDate;
+                const breakLabel = dateChanged ? dayBreakLabel(hour.time, currentDate) : '';
+
+                return <Fragment key={hour.time}>
+                  {breakLabel ? <View style={s.dayBreak}>
+                    <View style={s.dayBreakLine} />
+                    <Text style={s.dayBreakText}>{breakLabel}</Text>
+                    <View style={s.dayBreakLine} />
+                  </View> : null}
+                  <View style={s.hourCard}>
+                    <MiniWeatherBackdrop condition={hour.condition} isDay={hour.is_day !== 0} />
+                    <View style={s.cardContent}>
+                      <Text style={s.hourTime}>{hourLabel(hour.time)}</Text>
+                      <Text style={s.hourTemp}>{Math.round(hour.temp_f)}°</Text>
+                      <Text style={s.hourCondition} numberOfLines={2}>{hour.condition.text}</Text>
+                      <Text style={s.hourRain}>{Math.round(hour.chance_of_rain ?? 0)}% rain</Text>
+                    </View>
+                  </View>
+                </Fragment>;
+              })}
             </ScrollView>
           </> : null}
 
@@ -310,7 +345,10 @@ const s = StyleSheet.create({
   sectionRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10},
   section:{color:'#FFF8E8',fontSize:21,fontWeight:'900',marginTop:7},
   sectionMeta:{color:'#7E8B83',fontSize:11,fontWeight:'700'},
-  hourlyRow:{gap:9,paddingRight:6},
+  hourlyRow:{gap:9,paddingRight:6,alignItems:'stretch'},
+  dayBreak:{width:54,minHeight:132,alignItems:'center',justifyContent:'center',gap:7},
+  dayBreakLine:{width:1,flex:1,backgroundColor:'#35473D'},
+  dayBreakText:{color:'#D7B45A',fontSize:10,fontWeight:'900',textTransform:'uppercase',letterSpacing:0.7,textAlign:'center'},
   hourCard:{width:108,minHeight:132,borderRadius:16,borderWidth:1,borderColor:'#35473D',overflow:'hidden'},
   cardContent:{position:'relative',zIndex:2,padding:12},
   hourTime:{color:'#D9E0DB',fontSize:11,fontWeight:'800'},
