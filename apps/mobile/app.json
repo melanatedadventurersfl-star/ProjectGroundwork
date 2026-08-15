@@ -45,7 +45,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/ma-pathfinder-mark.png",
         "monochromeImage": "./assets/ma-pathfinder-mark.png",
-        "backgroundColor": "#17211B"
+        "backgroundColor": "#0E0E10"
       }
     },
     "web": {
@@ -54,7 +54,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "repaired-native-assets-v3",
+      "nativeBuildAssetRevision": "melanated-connection-mark-v1",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
