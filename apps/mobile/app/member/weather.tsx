@@ -215,7 +215,7 @@ export default function WeatherScreen() {
           <Text style={s.section}>Next 12 hours</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.hourlyRow}>
             {hours.map((hour, index) => {
-              const previousDate = index > 0 ? hourDate(hours[index - 1].time) : hourDate(hour.time);
+              const previousDate = index > 0 ? hourDate(hours[index - 1]?.time ?? hour.time) : hourDate(hour.time);
               const dateChanged = index > 0 && hourDate(hour.time) !== previousDate;
               const breakLabel = dateChanged ? dayBreakLabel(hour.time, currentDate) : '';
               return <Fragment key={hour.time}>
