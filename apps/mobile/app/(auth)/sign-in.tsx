@@ -6,24 +6,47 @@ import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
 export default function SignInScreen() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const canSubmit = useMemo(() => Boolean(email.trim() && password), [email, password]);
+  const canSubmit = useMemo(() => Boolean(identifier.trim() && password), [identifier, password]);
 
   async function handleSignIn() {
     if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const normalized = identifier.trim();
 
-      if (error) {
-        Alert.alert('Unable to sign in', getFriendlyAuthError(error, 'Unable to sign in.'));
-        return;
+      if (normalized.includes('@')) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: normalized,
+          password,
+        });
+
+        if (error) {
+          Alert.alert('Unable to sign in', getFriendlyAuthError(error, 'Check your username/email and password, then try again.'));
+          return;
+        }
+      } else {
+        const { data, error } = await supabase.functions.invoke('username-login', {
+          body: { identifier: normalized, password },
+        });
+
+        if (error || !data?.access_token || !data?.refresh_token) {
+          Alert.alert('Unable to sign in', 'Check your username/email and password, then try again.');
+          return;
+        }
+
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        });
+
+        if (sessionError) {
+          Alert.alert('Unable to sign in', getFriendlyAuthError(sessionError, 'Unable to start your session.'));
+          return;
+        }
       }
 
       router.replace('/(tabs)');
@@ -39,16 +62,15 @@ export default function SignInScreen() {
       <View style={styles.card}>
         <Text style={styles.eyebrow}>MELANATED ADVENTURERS</Text>
         <Text style={styles.title}>Welcome back</Text>
-        <Text style={styles.body}>Sign in to continue your next adventure.</Text>
+        <Text style={styles.body}>Sign in with your username or email to continue your next adventure.</Text>
 
         <TextInput
           autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          onChangeText={setEmail}
-          placeholder="Email"
+          autoCorrect={false}
+          onChangeText={setIdentifier}
+          placeholder="Username or email"
           style={styles.input}
-          value={email}
+          value={identifier}
         />
         <TextInput
           autoCapitalize="none"
