@@ -6,15 +6,19 @@ import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
 const COMMUNITY_GUIDELINES_VERSION = '2026-08-16';
+const USERNAME_PATTERN = /^[a-zA-Z0-9._]{3,24}$/;
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [acceptedGuidelines, setAcceptedGuidelines] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const normalizedUsername = username.trim();
+  const usernameIsValid = USERNAME_PATTERN.test(normalizedUsername);
   const canSubmit = useMemo(
-    () => Boolean(email.trim() && password.length >= 6 && acceptedGuidelines),
-    [acceptedGuidelines, email, password],
+    () => Boolean(email.trim() && usernameIsValid && password.length >= 8 && acceptedGuidelines),
+    [acceptedGuidelines, email, password, usernameIsValid],
   );
 
   async function handleSignUp() {
@@ -22,12 +26,23 @@ export default function SignUpScreen() {
 
     setIsSubmitting(true);
     try {
+      const { data: available, error: availabilityError } = await supabase.rpc('username_available', {
+        p_username: normalizedUsername,
+      });
+      if (availabilityError) throw availabilityError;
+      if (!available) {
+        Alert.alert('Username unavailable', 'That username is already in use. Try another one.');
+        return;
+      }
+
       const acceptedAt = new Date().toISOString();
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
           data: {
+            username: normalizedUsername,
+            display_name: normalizedUsername,
             community_guidelines_accepted_at: acceptedAt,
             community_guidelines_version: COMMUNITY_GUIDELINES_VERSION,
           },
@@ -61,6 +76,17 @@ export default function SignUpScreen() {
 
         <TextInput
           autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setUsername}
+          placeholder="Username"
+          style={styles.input}
+          value={username}
+        />
+        {username.length > 0 && !usernameIsValid ? (
+          <Text style={styles.help}>Use 3–24 letters, numbers, periods, or underscores.</Text>
+        ) : null}
+        <TextInput
+          autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
           onChangeText={setEmail}
@@ -72,7 +98,7 @@ export default function SignUpScreen() {
           autoCapitalize="none"
           autoComplete="new-password"
           onChangeText={setPassword}
-          placeholder="Password (6+ characters)"
+          placeholder="Password (8+ characters)"
           secureTextEntry
           style={styles.input}
           value={password}
@@ -123,6 +149,7 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1.2, color: '#24543B' },
   title: { fontSize: 30, fontWeight: '800', color: '#17211B' },
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
+  help: { marginTop: -8, color: '#68736C', fontSize: 12, lineHeight: 17 },
   input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
   guidelinesCard: { gap: 8, borderWidth: 1, borderColor: '#CCD3CE', borderRadius: 12, backgroundColor: '#EEF2EE', padding: 14 },
   guidelinesEyebrow: { color: '#6D785F', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
