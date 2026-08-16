@@ -13,12 +13,14 @@ import { hasSeenGuestTutorialPrompt, markGuestTutorialPromptSeen } from '../src/
 const UPDATE_CHECK_THROTTLE_MS = 15000;
 
 function isGuestPublicPath(pathname: string) {
+  const isPublicLocalEvent = pathname.startsWith('/local-events/') && !pathname.startsWith('/local-events/create');
   return (
     pathname === '/' ||
     pathname === '/(tabs)' ||
     pathname === '/(tabs)/' ||
     pathname.includes('/explore') ||
     pathname.startsWith('/adventures') ||
+    isPublicLocalEvent ||
     pathname.startsWith('/guide') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
