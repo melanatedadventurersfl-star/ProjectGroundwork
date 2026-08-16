@@ -1,13 +1,15 @@
 import { router, usePathname } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '../auth/AuthProvider';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 
 type NavItem = {
   label: string;
   icon: AppIconName;
   href: string;
+  requiresAuth?: boolean;
   isActive: (pathname: string) => boolean;
 };
 
@@ -28,25 +30,41 @@ const items: NavItem[] = [
     label: 'Campfire',
     icon: 'community',
     href: '/(tabs)/community',
+    requiresAuth: true,
     isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections'),
   },
   {
     label: 'Passport',
     icon: 'passport',
     href: '/(tabs)/passport',
+    requiresAuth: true,
     isActive: (pathname) => pathname.includes('/passport'),
   },
   {
     label: 'Menu',
     icon: 'menu',
     href: '/(tabs)/menu',
+    requiresAuth: true,
     isActive: (pathname) => pathname.includes('/menu') || pathname.startsWith('/member') || pathname.startsWith('/notifications') || pathname.startsWith('/guide') || pathname.startsWith('/about') || pathname.startsWith('/host'),
   },
 ];
 
+function promptForAccount(destination: string) {
+  Alert.alert(
+    'Sign in to continue',
+    `${destination} is part of your member experience. Sign in or create an account to continue.`,
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Create account', onPress: () => router.push('/(auth)/sign-up' as never) },
+      { text: 'Sign in', onPress: () => router.push('/(auth)/sign-in' as never) },
+    ],
+  );
+}
+
 export function PersistentBottomNav() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
@@ -59,7 +77,13 @@ export function PersistentBottomNav() {
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={item.label}
-            onPress={() => router.navigate(item.href as never)}
+            onPress={() => {
+              if (item.requiresAuth && !session) {
+                promptForAccount(item.label);
+                return;
+              }
+              router.navigate(item.href as never);
+            }}
             style={styles.item}
           >
             <AppIcon name={item.icon} color={color} size={24} />
