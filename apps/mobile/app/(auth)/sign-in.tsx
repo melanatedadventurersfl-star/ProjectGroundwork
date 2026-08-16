@@ -60,6 +60,11 @@ export default function SignInScreen() {
           value={password}
         />
 
+        <View style={styles.recoveryRow}>
+          <Link href="/(auth)/forgot-username" style={styles.recoveryLink}>Forgot username?</Link>
+          <Link href="/(auth)/forgot-password" style={styles.recoveryLink}>Forgot password?</Link>
+        </View>
+
         <Pressable
           disabled={!canSubmit || isSubmitting}
           onPress={() => void handleSignIn()}
@@ -83,6 +88,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '800', color: '#17211B' },
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
   input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
+  recoveryRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: -4 },
+  recoveryLink: { color: '#24543B', fontSize: 13, fontWeight: '800' },
   button: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#24543B' },
   buttonDisabled: { opacity: 0.45 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
