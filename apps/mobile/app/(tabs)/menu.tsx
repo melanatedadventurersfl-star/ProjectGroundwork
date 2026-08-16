@@ -20,6 +20,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
     ['Trailmates & Crew','/circles','connections'],
   ]],
   ['Help', [
+    ['Trail Guide','/trail-guide','guide'],
     ['Show Tutorial','/guide','guide'],
     ['Support','/member','support'],
     ['About Melanated Adventurers','/about','about'],
