@@ -22,6 +22,7 @@ function isGuestPublicPath(pathname: string) {
     pathname.startsWith('/adventures') ||
     isPublicLocalEvent ||
     pathname.startsWith('/guide') ||
+    pathname.startsWith('/trail-guide') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up')
@@ -87,6 +88,7 @@ function AppShell() {
           <Stack.Screen name="passport" />
           <Stack.Screen name="member" />
           <Stack.Screen name="host" />
+          <Stack.Screen name="trail-guide" />
         </Stack>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
