@@ -25,6 +25,7 @@ function isGuestPublicPath(pathname: string) {
     isPublicLocalEvent ||
     pathname.startsWith('/guide') ||
     pathname.startsWith('/trail-guide') ||
+    pathname.startsWith('/community-guidelines') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up')
@@ -104,6 +105,7 @@ function AppShell() {
           <Stack.Screen name="member" />
           <Stack.Screen name="host" />
           <Stack.Screen name="trail-guide" />
+          <Stack.Screen name="community-guidelines" />
         </Stack>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
@@ -127,17 +129,13 @@ export default function RootLayout() {
   useEffect(() => {
     async function checkForUpdate(force = false) {
       if (!Updates.isEnabled || checkingRef.current) return;
-
       const now = Date.now();
       if (!force && now - lastCheckRef.current < UPDATE_CHECK_THROTTLE_MS) return;
-
       checkingRef.current = true;
       lastCheckRef.current = now;
-
       try {
         const result = await Updates.checkForUpdateAsync();
         if (!result.isAvailable) return;
-
         setApplyingUpdate(true);
         const fetched = await Updates.fetchUpdateAsync();
         if (fetched.isNew) await Updates.reloadAsync();
@@ -148,7 +146,6 @@ export default function RootLayout() {
         checkingRef.current = false;
       }
     }
-
     void checkForUpdate(true);
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void checkForUpdate();
