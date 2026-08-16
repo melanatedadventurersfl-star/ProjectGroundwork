@@ -53,7 +53,8 @@ type Props = {
 };
 
 export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }: Props) {
-  const current = steps[Math.max(0, Math.min(steps.length - 1, step))];
+  const currentIndex = Math.max(0, Math.min(steps.length - 1, step));
+  const current = steps[currentIndex]!;
 
   function goTo(nextStep: number) {
     const next = steps[nextStep];
@@ -93,10 +94,10 @@ export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }
 
             <View style={styles.progressRow}>
               <View style={styles.dots}>
-                {steps.map((_, index) => <View key={index} style={[styles.dot, index === step && styles.dotActive]} />)}
+                {steps.map((_, index) => <View key={index} style={[styles.dot, index === currentIndex && styles.dotActive]} />)}
               </View>
-              <Pressable style={styles.primary} accessibilityRole="button" onPress={() => goTo(step + 1)}>
-                <Text style={styles.primaryText}>{current.action}{step === steps.length - 1 ? '  🌲' : ''}</Text>
+              <Pressable style={styles.primary} accessibilityRole="button" onPress={() => goTo(currentIndex + 1)}>
+                <Text style={styles.primaryText}>{current.action}{currentIndex === steps.length - 1 ? '  🌲' : ''}</Text>
               </Pressable>
             </View>
           </View>
@@ -116,7 +117,7 @@ const focusStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  shade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3, 8, 5, 0.62)' },
+  shade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3, 8, 5, 0.62)' },
   focusRing: { position: 'absolute', borderRadius: 24, borderWidth: 2, borderColor: '#E4C66E', backgroundColor: 'rgba(215,180,90,0.05)', shadowColor: '#D7B45A', shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 0 }, elevation: 8 },
   trailStem: { position: 'absolute', left: 34, bottom: 280, width: 2, height: 64, backgroundColor: '#D7B45A', opacity: 0.9 },
   cardWrap: { paddingHorizontal: 16, paddingBottom: 28 },
