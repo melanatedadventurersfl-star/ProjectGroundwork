@@ -8,5 +8,7 @@ export function startGuidedTutorial() {
 
 export function subscribeGuidedTutorial(listener: TutorialListener) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
