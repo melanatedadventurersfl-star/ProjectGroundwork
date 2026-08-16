@@ -41,8 +41,9 @@ function AppShell() {
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
+  const isCommunityHub = pathname === '/community' || pathname === '/(tabs)/community';
   const hideBottomNav = isLoading || isAuthScreen;
-  const hideTopNav = isLoading || isAuthScreen || isTrailhead;
+  const hideTopNav = isLoading || isAuthScreen || isTrailhead || isCommunityHub;
 
   useEffect(() => {
     if (isLoading || session || isGuestPublicPath(pathname)) return;
