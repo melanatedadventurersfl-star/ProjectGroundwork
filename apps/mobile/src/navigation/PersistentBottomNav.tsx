@@ -24,7 +24,7 @@ const items: NavItem[] = [
     label: 'Explore',
     icon: 'explore',
     href: '/(tabs)/explore',
-    isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness'),
+    isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness') || pathname.startsWith('/trail-guide'),
   },
   {
     label: 'Campfire',
