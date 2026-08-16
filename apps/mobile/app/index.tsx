@@ -20,7 +20,7 @@ function BrandedLoadingScreen() {
 
 export default function IndexScreen() {
   const { session, isLoading } = useAuth();
-  const [isCheckingProfile, setIsCheckingProfile] = useState(true);
+  const [isCheckingProfile, setIsCheckingProfile] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function IndexScreen() {
   }, [session?.user.id]);
 
   if (isLoading || isCheckingProfile) return <BrandedLoadingScreen />;
-  if (!session) return <Redirect href="/(auth)/sign-in" />;
+  if (!session) return <Redirect href="/(tabs)" />;
   return <Redirect href={hasCompletedOnboarding ? '/(tabs)' : '/onboarding'} />;
 }
 
