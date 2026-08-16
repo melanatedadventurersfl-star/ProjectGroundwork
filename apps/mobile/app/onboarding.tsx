@@ -201,10 +201,19 @@ export default function OnboardingScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>State</Text>
             <TextInput
+              autoCapitalize="words"
+              autoCorrect={false}
               style={styles.input}
-              placeholder="Search for your state"
+              placeholder="Start typing your state"
               placeholderTextColor="#7B827D"
               value={stateSearch}
+              onFocus={() => {
+                if (form.homeState) {
+                  setStateSearch('');
+                  setCitySearch('');
+                  setForm((current) => ({ ...current, homeState: '', homeCity: '' }));
+                }
+              }}
               onChangeText={(value) => {
                 setStateSearch(value);
                 update('homeState', '');
@@ -212,22 +221,39 @@ export default function OnboardingScreen() {
                 setCitySearch('');
               }}
             />
-            {stateOptions.map((state) => (
-              <Pressable key={state.abbreviation} style={styles.searchOption} onPress={() => selectState(state.abbreviation)}>
-                <Text style={styles.searchOptionText}>{state.name}</Text>
-                <Text style={styles.searchOptionMeta}>{state.abbreviation}</Text>
-              </Pressable>
-            ))}
+            {stateOptions.length ? (
+              <View style={styles.autocompleteMenu}>
+                {stateOptions.map((state, index) => (
+                  <Pressable
+                    key={state.abbreviation}
+                    style={[styles.searchOption, index > 0 && styles.searchOptionDivider]}
+                    onPress={() => selectState(state.abbreviation)}
+                  >
+                    <Text style={styles.searchOptionText}>{state.name}</Text>
+                    <Text style={styles.searchOptionMeta}>{state.abbreviation}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {!form.homeState && stateSearch.trim() ? <Text style={styles.help}>Choose a state from the suggestions.</Text> : null}
           </View>
 
           <View style={styles.field}>
             <Text style={styles.label}>City</Text>
             <TextInput
+              autoCapitalize="words"
+              autoCorrect={false}
               editable={Boolean(form.homeState) && !citiesLoading}
               style={[styles.input, (!form.homeState || citiesLoading) && styles.inputDisabled]}
-              placeholder={form.homeState ? 'Search official cities' : 'Select a state first'}
+              placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'}
               placeholderTextColor="#7B827D"
               value={citySearch}
+              onFocus={() => {
+                if (form.homeCity) {
+                  setCitySearch('');
+                  update('homeCity', '');
+                }
+              }}
               onChangeText={(value) => {
                 setCitySearch(value);
                 update('homeCity', '');
@@ -235,18 +261,23 @@ export default function OnboardingScreen() {
             />
             {citiesLoading ? <Text style={styles.help}>Loading cities…</Text> : null}
             {citiesError ? <Text style={styles.errorText}>{citiesError}</Text> : null}
-            {cityOptions.map((city) => (
-              <Pressable
-                key={city}
-                style={styles.searchOption}
-                onPress={() => {
-                  setCitySearch(city);
-                  update('homeCity', city);
-                }}
-              >
-                <Text style={styles.searchOptionText}>{city}</Text>
-              </Pressable>
-            ))}
+            {cityOptions.length ? (
+              <View style={styles.autocompleteMenu}>
+                {cityOptions.map((city, index) => (
+                  <Pressable
+                    key={city}
+                    style={[styles.searchOption, index > 0 && styles.searchOptionDivider]}
+                    onPress={() => {
+                      setCitySearch(city);
+                      update('homeCity', city);
+                    }}
+                  >
+                    <Text style={styles.searchOptionText}>{city}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {form.homeState && !form.homeCity && citySearch.trim() && !citiesLoading ? <Text style={styles.help}>Choose a city from the suggestions.</Text> : null}
           </View>
 
           <View style={styles.field}>
@@ -445,12 +476,14 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, backgroundColor: '#FFFFFF', color: '#17211B' },
   inputDisabled: { opacity: 0.55 },
   multiline: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' },
+  autocompleteMenu: { borderWidth: 1, borderColor: '#D8D2C6', borderRadius: 10, overflow: 'hidden', backgroundColor: '#FFFFFF', marginTop: -2 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   choice: { paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 999, backgroundColor: '#FFFFFF' },
   choiceSelected: { borderColor: '#24543B', backgroundColor: '#24543B' },
   choiceText: { color: '#17211B', fontWeight: '600' },
   choiceTextSelected: { color: '#FFFFFF' },
-  searchOption: { minHeight: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E3DED3', backgroundColor: '#FFFFFF' },
+  searchOption: { minHeight: 46, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF' },
+  searchOptionDivider: { borderTopWidth: 1, borderTopColor: '#EEE9DF' },
   searchOptionText: { color: '#17211B', fontWeight: '700' },
   searchOptionMeta: { color: '#56615A' },
   toggleRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#FFFFFF' },
