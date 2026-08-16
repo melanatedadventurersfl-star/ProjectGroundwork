@@ -19,6 +19,7 @@ import {
 
 import { listAdventures } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
+import { useAuth } from '../../src/auth/AuthProvider';
 import { getCommunityFeed, type CommunityPost } from '../../src/community/api';
 import { getCircles } from '../../src/community/circles';
 import { removeProfileCover, uploadProfileCover } from '../../src/member/api';
@@ -82,7 +83,20 @@ function weatherPhase(localtime: string | undefined, isDay: boolean): WeatherVis
   return 'day';
 }
 
+function promptForAccount(destination: string) {
+  Alert.alert(
+    'Sign in to continue',
+    `${destination} is part of your member experience. Sign in or create an account to continue.`,
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Create account', onPress: () => router.push('/(auth)/sign-up' as never) },
+      { text: 'Sign in', onPress: () => router.push('/(auth)/sign-in' as never) },
+    ],
+  );
+}
+
 export default function TrailheadScreen() {
+  const { session } = useAuth();
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [displayName, setDisplayName] = useState('Adventurer');
@@ -104,10 +118,7 @@ export default function TrailheadScreen() {
   const listRef = useRef<FlatList<AdventureSummary>>(null);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeAdventures = useMemo(
-    () => adventures.filter((item) => item.status !== 'cancelled'),
-    [adventures],
-  );
+  const activeAdventures = useMemo(() => adventures.filter((item) => item.status !== 'cancelled'), [adventures]);
   const featured = useMemo(() => activeAdventures.slice(0, 5), [activeAdventures]);
   const adventureById = useMemo(() => new Map(adventures.map((item) => [item.id, item])), [adventures]);
   const nextReservation = queue[0];
@@ -132,17 +143,14 @@ export default function TrailheadScreen() {
     else setLoading(true);
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData.session?.user.id;
+      const userId = session?.user.id;
       const [nextQueue, nextJourney, nextAdventures, profileResult, nextPosts, nextCircles] = await Promise.all([
-        getAdventureQueue(),
-        getJourney(),
+        userId ? getAdventureQueue() : Promise.resolve([] as AdventureQueueItem[]),
+        userId ? getJourney() : Promise.resolve([]),
         listAdventures(),
-        userId
-          ? supabase.from('profiles').select('*').eq('id', userId).single()
-          : Promise.resolve({ data: null, error: null }),
-        getCommunityFeed().catch(() => [] as CommunityPost[]),
-        getCircles().catch(() => []),
+        userId ? supabase.from('profiles').select('*').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
+        userId ? getCommunityFeed().catch(() => [] as CommunityPost[]) : Promise.resolve([] as CommunityPost[]),
+        userId ? getCircles().catch(() => []) : Promise.resolve([]),
       ]);
 
       setQueue(nextQueue);
@@ -161,11 +169,8 @@ export default function TrailheadScreen() {
       setLocation([profile?.home_city, profile?.home_state].filter(Boolean).join(', '));
       setCoverUrl(profile?.cover_url ?? null);
       if (profile?.home_city && profile?.home_state) {
-        try {
-          setWeather(await getWeather(profile.home_city, profile.home_state));
-        } catch {
-          setWeather(null);
-        }
+        try { setWeather(await getWeather(profile.home_city, profile.home_state)); }
+        catch { setWeather(null); }
       } else {
         setWeather(null);
       }
@@ -176,7 +181,7 @@ export default function TrailheadScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [session?.user.id]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion); }, []);
@@ -212,19 +217,14 @@ export default function TrailheadScreen() {
   }
 
   async function chooseCoverPhoto() {
+    if (!session) { promptForAccount('Trailhead personalization'); return; }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Photo access needed', 'Allow photo library access to choose a Trailhead cover.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [16, 6],
-      quality: 0.85,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [16, 6], quality: 0.85 });
     if (result.canceled || !result.assets?.[0]) return;
-
     setCoverBusy(true);
     try {
       const asset = result.assets[0];
@@ -232,28 +232,20 @@ export default function TrailheadScreen() {
       setCoverUrl(nextCoverUrl);
     } catch (caught) {
       Alert.alert('Cover photo', caught instanceof Error ? caught.message : 'Unable to update your Trailhead cover.');
-    } finally {
-      setCoverBusy(false);
-    }
+    } finally { setCoverBusy(false); }
   }
 
   async function restoreDefaultCover() {
+    if (!session) { promptForAccount('Trailhead personalization'); return; }
     setCoverBusy(true);
-    try {
-      await removeProfileCover();
-      setCoverUrl(null);
-    } catch (caught) {
-      Alert.alert('Cover photo', caught instanceof Error ? caught.message : 'Unable to restore the default cover.');
-    } finally {
-      setCoverBusy(false);
-    }
+    try { await removeProfileCover(); setCoverUrl(null); }
+    catch (caught) { Alert.alert('Cover photo', caught instanceof Error ? caught.message : 'Unable to restore the default cover.'); }
+    finally { setCoverBusy(false); }
   }
 
   function coverMenu() {
-    if (!coverUrl) {
-      void chooseCoverPhoto();
-      return;
-    }
+    if (!session) { promptForAccount('Trailhead personalization'); return; }
+    if (!coverUrl) { void chooseCoverPhoto(); return; }
     Alert.alert('Trailhead cover', 'Choose what you want to do.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Change photo', onPress: () => void chooseCoverPhoto() },
@@ -266,37 +258,16 @@ export default function TrailheadScreen() {
   const weatherScenePhase = weatherPhase(weather?.location.localtime, weatherIsDay);
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}
-    >
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}>
       <View style={styles.topRow}>
-        <ImageBackground
-          source={require('../../assets/ma-pathfinder-mark.png')}
-          style={{ width: 56, height: 56 }}
-          resizeMode="contain"
-          accessibilityLabel="Melanated Adventurers"
-        />
+        <ImageBackground source={require('../../assets/ma-pathfinder-mark.png')} style={{ width: 56, height: 56 }} resizeMode="contain" accessibilityLabel="Melanated Adventurers" />
         <View style={styles.topActions}>
-          <Pressable accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} style={styles.iconButton}>
-            <AppIcon name="notifications" color="#F6F4EE" size={22} />
-          </Pressable>
-          <Pressable accessibilityLabel="Profile" onPress={() => router.push('/member/profile')} style={styles.iconButton}>
-            <AppIcon name="profile" color="#F6F4EE" size={22} />
-          </Pressable>
+          <Pressable accessibilityLabel="Notifications" onPress={() => session ? router.push('/notifications') : promptForAccount('Notifications')} style={styles.iconButton}><AppIcon name="notifications" color="#F6F4EE" size={22} /></Pressable>
+          <Pressable accessibilityLabel="Profile" onPress={() => session ? router.push('/member/profile') : promptForAccount('Profile')} style={styles.iconButton}><AppIcon name="profile" color="#F6F4EE" size={22} /></Pressable>
         </View>
       </View>
 
-      <TrailheadCover
-        coverUrl={coverUrl}
-        displayName={displayName}
-        greeting={greeting(new Date().getHours())}
-        rank={memberRank}
-        busy={coverBusy}
-        onEdit={coverMenu}
-        onRankPress={() => router.push('/member/profile')}
-      />
+      <TrailheadCover coverUrl={coverUrl} displayName={displayName} greeting={greeting(new Date().getHours())} rank={memberRank} busy={coverBusy} onEdit={coverMenu} onRankPress={() => session ? router.push('/member/profile') : promptForAccount('Profile')} />
 
       <Text style={styles.title}>What’s next on your trail?</Text>
       {loading ? <ActivityIndicator color="#D7B45A" style={styles.loader} /> : null}
@@ -304,10 +275,7 @@ export default function TrailheadScreen() {
 
       {featured.length ? (
         <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Featured Adventures</Text>
-            <Text style={styles.count}>{featured.length > 1 ? `${Math.max(1, Math.min(featured.length, activeFeature))} of ${featured.length}` : '1 of 1'}</Text>
-          </View>
+          <View style={styles.sectionRow}><Text style={styles.sectionTitle}>Featured Adventures</Text><Text style={styles.count}>{featured.length > 1 ? `${Math.max(1, Math.min(featured.length, activeFeature))} of ${featured.length}` : '1 of 1'}</Text></View>
           <FlatList
             ref={listRef}
             horizontal
@@ -323,13 +291,7 @@ export default function TrailheadScreen() {
             renderItem={({ item }) => (
               <Pressable style={{ width: CARD_WIDTH }} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
                 <ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.hero} imageStyle={styles.heroRadius}>
-                  <View style={styles.heroShade} />
-                  <View style={styles.heroBody}>
-                    <Text style={styles.eyebrow}>{item.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL MA ADVENTURE'}</Text>
-                    <Text style={styles.heroTitle}>{item.title}</Text>
-                    <Text style={styles.heroMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text>
-                    <Text style={styles.link}>View Adventure →</Text>
-                  </View>
+                  <View style={styles.heroShade} /><View style={styles.heroBody}><Text style={styles.eyebrow}>{item.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL MA ADVENTURE'}</Text><Text style={styles.heroTitle}>{item.title}</Text><Text style={styles.heroMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text><Text style={styles.link}>View Adventure →</Text></View>
                 </ImageBackground>
               </Pressable>
             )}
@@ -338,149 +300,41 @@ export default function TrailheadScreen() {
       ) : null}
 
       <View style={styles.utilityRow}>
-        <Pressable
-          style={[styles.utilityCard, styles.weatherCard]}
-          onPress={() => router.push('/member/weather' as never)}
-          accessibilityRole="button"
-          accessibilityLabel="Open weather details"
-        >
+        <Pressable style={[styles.utilityCard, styles.weatherCard]} onPress={() => session ? router.push('/member/weather' as never) : promptForAccount('Personal weather')} accessibilityRole="button" accessibilityLabel="Open weather details">
           {weather ? <MiniWeatherBackdrop condition={weather.current.condition} isDay={weatherIsDay} phase={weatherScenePhase} /> : null}
-          <View style={styles.weatherContent}>
-            <Text style={styles.utilityEyebrow}>WEATHER</Text>
-            <Text style={styles.utilityMeta} numberOfLines={1}>
-              {weather ? [weather.location.name, weather.location.region].filter(Boolean).join(', ') : location || 'Location unavailable'}
-            </Text>
-            <Text style={styles.weatherTemp}>{weather ? `${Math.round(weather.current.temp_f)}°` : '—'}</Text>
-            <Text style={styles.utilityTitle} numberOfLines={2}>{weather?.current.condition.text || 'Check the forecast'}</Text>
-            <Text style={styles.utilityMeta} numberOfLines={1}>
-              {todayForecast ? `H ${Math.round(todayForecast.maxtemp_f)}°  L ${Math.round(todayForecast.mintemp_f)}°` : location || 'Your local weather'}
-            </Text>
-          </View>
+          <View style={styles.weatherContent}><Text style={styles.utilityEyebrow}>WEATHER</Text><Text style={styles.utilityMeta} numberOfLines={1}>{weather ? [weather.location.name, weather.location.region].filter(Boolean).join(', ') : location || 'Sign in for local weather'}</Text><Text style={styles.weatherTemp}>{weather ? `${Math.round(weather.current.temp_f)}°` : '—'}</Text><Text style={styles.utilityTitle} numberOfLines={2}>{weather?.current.condition.text || 'Your forecast lives here'}</Text><Text style={styles.utilityMeta} numberOfLines={1}>{todayForecast ? `H ${Math.round(todayForecast.maxtemp_f)}°  L ${Math.round(todayForecast.mintemp_f)}°` : session ? location || 'Your local weather' : 'Add your location after signing in'}</Text></View>
         </Pressable>
 
         {nextReservation ? (
-          <Pressable
-            style={styles.utilityCard}
-            accessibilityRole="button"
-            accessibilityLabel={`Get ready for ${nextReservation.title}`}
-            onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: nextReservation.order_id } })}
-          >
-            <ImageBackground
-              source={nextReservationAdventure?.hero_image_url ? { uri: nextReservationAdventure.hero_image_url } : undefined}
-              style={styles.utilityImage}
-              imageStyle={styles.utilityImageRadius}
-            >
-              <View style={styles.utilityShade} />
-              <View style={styles.utilityImageBody}>
-                <Text style={styles.utilityEyebrow}>NEXT ADVENTURE</Text>
-                <Text style={styles.countdownSmall}>{countdown(nextReservation.starts_at)}</Text>
-                <Text style={styles.utilityTitle} numberOfLines={2}>{nextReservation.title}</Text>
-                <Text style={styles.utilityMeta} numberOfLines={1}>{nextReservation.city}, {nextReservation.state}</Text>
-              </View>
-            </ImageBackground>
+          <Pressable style={styles.utilityCard} accessibilityRole="button" accessibilityLabel={`Get ready for ${nextReservation.title}`} onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: nextReservation.order_id } })}>
+            <ImageBackground source={nextReservationAdventure?.hero_image_url ? { uri: nextReservationAdventure.hero_image_url } : undefined} style={styles.utilityImage} imageStyle={styles.utilityImageRadius}><View style={styles.utilityShade} /><View style={styles.utilityImageBody}><Text style={styles.utilityEyebrow}>NEXT ADVENTURE</Text><Text style={styles.countdownSmall}>{countdown(nextReservation.starts_at)}</Text><Text style={styles.utilityTitle} numberOfLines={2}>{nextReservation.title}</Text><Text style={styles.utilityMeta} numberOfLines={1}>{nextReservation.city}, {nextReservation.state}</Text></View></ImageBackground>
           </Pressable>
         ) : (
-          <Pressable style={styles.utilityCard} onPress={() => router.push('/(tabs)/explore')}>
-            <Text style={styles.utilityEyebrow}>NEXT ADVENTURE</Text>
-            <Text style={styles.utilityTitle}>Your next trail is waiting.</Text>
-            <Text style={styles.utilityMeta}>Explore upcoming adventures</Text>
-            <Text style={styles.link}>Find one →</Text>
-          </Pressable>
+          <Pressable style={styles.utilityCard} onPress={() => router.push('/(tabs)/explore')}><Text style={styles.utilityEyebrow}>NEXT ADVENTURE</Text><Text style={styles.utilityTitle}>Your next trail is waiting.</Text><Text style={styles.utilityMeta}>Explore upcoming adventures</Text><Text style={styles.link}>Find one →</Text></Pressable>
         )}
       </View>
 
       <View style={styles.campfireCard}>
-        <View style={styles.campfireTopRow}>
-          <View style={styles.campfireHeading}>
-            <Text style={styles.utilityEyebrow}>CAMPFIRE</Text>
-            <Text style={styles.campfireTitle}>Around the Campfire</Text>
-          </View>
-          {circleCount > 0 ? <View style={styles.campfireBadge}>
-            <Text style={styles.campfireBadgeText}>{circleCount} {circleCount === 1 ? 'crew' : 'crews'}</Text>
-          </View> : null}
-        </View>
-
-        <View style={styles.campfireSwitch} accessibilityRole="tablist">
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: campfireMode === 'general' }}
-            style={[styles.campfireSwitchButton, campfireMode === 'general' && styles.campfireSwitchActive]}
-            onPress={() => setCampfireMode('general')}
-          >
-            <Text style={[styles.campfireSwitchText, campfireMode === 'general' && styles.campfireSwitchTextActive]}>General</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: campfireMode === 'circle' }}
-            style={[styles.campfireSwitchButton, campfireMode === 'circle' && styles.campfireSwitchActive]}
-            onPress={() => setCampfireMode('circle')}
-          >
-            <Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Crew</Text>
-          </Pressable>
-        </View>
-
+        <View style={styles.campfireTopRow}><View style={styles.campfireHeading}><Text style={styles.utilityEyebrow}>CAMPFIRE</Text><Text style={styles.campfireTitle}>Around the Campfire</Text></View>{circleCount > 0 ? <View style={styles.campfireBadge}><Text style={styles.campfireBadgeText}>{circleCount} {circleCount === 1 ? 'crew' : 'crews'}</Text></View> : null}</View>
+        {session ? <View style={styles.campfireSwitch} accessibilityRole="tablist"><Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'general' }} style={[styles.campfireSwitchButton, campfireMode === 'general' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('general')}><Text style={[styles.campfireSwitchText, campfireMode === 'general' && styles.campfireSwitchTextActive]}>General</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'circle' }} style={[styles.campfireSwitchButton, campfireMode === 'circle' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('circle')}><Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Crew</Text></Pressable></View> : null}
         <View style={styles.campfireFeed}>
-          {campfirePosts.length ? campfirePosts.map((post) => (
-            <Pressable
-              key={post.id}
-              style={({ pressed }) => [styles.campfirePost, pressed && styles.campfirePostPressed]}
-              onPress={() => router.push(`/community/${post.id}`)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open post from ${post.author_name}`}
-            >
-              <View style={styles.campfireAvatar}>
-                {post.avatar_url
-                  ? <Image source={{ uri: post.avatar_url }} style={styles.campfireAvatarImage} />
-                  : <Text style={styles.campfireAvatarText}>{initials(post.author_name)}</Text>}
-              </View>
-              <View style={styles.campfirePostBody}>
-                <View style={styles.campfireAuthorRow}>
-                  <Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text>
-                  <Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text>
-                </View>
-                <View style={styles.campfirePostContent}>
-                  <View style={styles.campfirePostCopy}>
-                    <Text style={styles.campfirePostText} numberOfLines={2}>{post.body}</Text>
-                    <Text style={styles.campfireEngagement}>{post.reaction_count || 0} reactions · {post.comment_count || 0} comments</Text>
-                  </View>
-                  {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.campfireMediaThumb} /> : null}
-                </View>
-              </View>
+          {session && campfirePosts.length ? campfirePosts.map((post) => (
+            <Pressable key={post.id} style={({ pressed }) => [styles.campfirePost, pressed && styles.campfirePostPressed]} onPress={() => router.push(`/community/${post.id}`)} accessibilityRole="button" accessibilityLabel={`Open post from ${post.author_name}`}>
+              <View style={styles.campfireAvatar}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.campfireAvatarImage} /> : <Text style={styles.campfireAvatarText}>{initials(post.author_name)}</Text>}</View>
+              <View style={styles.campfirePostBody}><View style={styles.campfireAuthorRow}><Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text><Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text></View><View style={styles.campfirePostContent}><View style={styles.campfirePostCopy}><Text style={styles.campfirePostText} numberOfLines={2}>{post.body}</Text><Text style={styles.campfireEngagement}>{post.reaction_count || 0} reactions · {post.comment_count || 0} comments</Text></View>{post.image_url ? <Image source={{ uri: post.image_url }} style={styles.campfireMediaThumb} /> : null}</View></View>
             </Pressable>
           )) : (
-            <View style={styles.campfireEmpty}>
-              <Text style={styles.campfireEmptyTitle}>{campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.'}</Text>
-              <Text style={styles.campfireEmptyText}>
-                {campfireMode === 'circle' && circleCount === 0
-                  ? 'Join or create a Crew to see your Crew posts here.'
-                  : campfireMode === 'circle'
-                    ? 'New posts from your Crews will show up here.'
-                    : 'Recent community posts will show up here.'}
-              </Text>
-            </View>
+            <View style={styles.campfireEmpty}><Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.') : 'Meet your outdoor community.'}</Text><Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see your Crew posts here.' : campfireMode === 'circle' ? 'New posts from your Crews will show up here.' : 'Recent community posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text></View>
           )}
         </View>
-
-        <View style={styles.campfireFooter}>
-          <Text style={styles.campfirePrompt}>{campfireMode === 'circle' ? 'Catch up with your people.' : 'What’s happening on the trail?'}</Text>
-          <Pressable onPress={() => router.push('/(tabs)/community')} accessibilityRole="button">
-            <Text style={styles.linkBare}>View Campfire →</Text>
-          </Pressable>
-        </View>
+        <View style={styles.campfireFooter}><Text style={styles.campfirePrompt}>{session ? (campfireMode === 'circle' ? 'Catch up with your people.' : 'What’s happening on the trail?') : 'Your people are around the fire.'}</Text><Pressable onPress={() => session ? router.push('/(tabs)/community') : promptForAccount('Campfire')} accessibilityRole="button"><Text style={styles.linkBare}>{session ? 'View Campfire →' : 'Sign in to join →'}</Text></Pressable></View>
       </View>
 
       <View style={styles.section}>
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Upcoming Adventures</Text>
-          <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.linkBare}>Explore</Text></Pressable>
-        </View>
+        <View style={styles.sectionRow}><Text style={styles.sectionTitle}>Upcoming Adventures</Text><Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.linkBare}>Explore</Text></Pressable></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalGap}>
           {activeAdventures.slice(0, 5).map((item) => (
-            <Pressable key={item.id} style={styles.upcomingCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
-              <ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.thumbnail} imageStyle={styles.thumbnailRadius} />
-              <Text style={styles.upcomingTitle} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.muted}>{shortDate(item.starts_at)} · {item.city}</Text>
-            </Pressable>
+            <Pressable key={item.id} style={styles.upcomingCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}><ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.thumbnail} imageStyle={styles.thumbnailRadius} /><Text style={styles.upcomingTitle} numberOfLines={2}>{item.title}</Text><Text style={styles.muted}>{shortDate(item.starts_at)} · {item.city}</Text></Pressable>
           ))}
         </ScrollView>
       </View>
