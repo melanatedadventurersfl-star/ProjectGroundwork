@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
+import { startGuidedTutorial } from '../../src/onboarding/tutorialController';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
 const sections: readonly [string, readonly [string, string, AppIconName][]][] = [
@@ -21,7 +22,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
   ]],
   ['Help', [
     ['Trail Guide','/trail-guide','guide'],
-    ['Show Tutorial','/guide','guide'],
+    ['Replay Tutorial','tutorial://replay','guide'],
     ['Support','/member','support'],
     ['About Melanated Adventurers','/about','about'],
   ]],
@@ -49,10 +50,18 @@ export default function MenuScreen() {
     }
   }
 
+  function openMenuRoute(route: string) {
+    if (route === 'tutorial://replay') {
+      startGuidedTutorial();
+      return;
+    }
+    router.push(route as never);
+  }
+
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.eyebrow}>MEMBER HUB</Text><Text style={styles.title}>Menu</Text>
     {sections.map(([title, rows]) => <View key={title} style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><View style={styles.card}>
-      {rows.map(([label, route, icon], index) => <Pressable key={label} style={[styles.row,index>0&&styles.divider]} onPress={()=>router.push(route as never)}><View style={styles.rowLead}><AppIcon name={icon} color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>{label}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={20} /></Pressable>)}
+      {rows.map(([label, route, icon], index) => <Pressable key={label} style={[styles.row,index>0&&styles.divider]} onPress={()=>openMenuRoute(route)}><View style={styles.rowLead}><AppIcon name={icon} color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>{label}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={20} /></Pressable>)}
     </View></View>)}
     {showPreviewBuild ? <View style={styles.buildCard}>
       <Text style={styles.buildLabel}>PREVIEW BUILD</Text>

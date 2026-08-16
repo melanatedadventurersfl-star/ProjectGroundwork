@@ -2,13 +2,15 @@ import * as Updates from 'expo-updates';
 import { router, Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
 import { PersistentBottomNav } from '../src/navigation/PersistentBottomNav';
 import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
 import { PushNotificationsManager } from '../src/notifications/PushNotificationsManager';
-import { hasSeenGuestTutorialPrompt, markGuestTutorialPromptSeen } from '../src/onboarding/tutorialPreference';
+import { GuidedTutorial } from '../src/onboarding/GuidedTutorial';
+import { subscribeGuidedTutorial } from '../src/onboarding/tutorialController';
+import { hasCompletedGuidedTutorial, markGuidedTutorialCompleted } from '../src/onboarding/tutorialPreference';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
 
@@ -32,7 +34,8 @@ function isGuestPublicPath(pathname: string) {
 function AppShell() {
   const { session, isLoading } = useAuth();
   const pathname = usePathname();
-  const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
+  const [tutorialVisible, setTutorialVisible] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
   const tutorialCheckedRef = useRef(false);
 
   const isAuthScreen =
@@ -51,24 +54,35 @@ function AppShell() {
   }, [isLoading, pathname, session]);
 
   useEffect(() => {
-    if (isLoading || session || !isTrailhead || tutorialCheckedRef.current) return;
+    if (isLoading || !session || !isTrailhead || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
-      if (!hasSeenGuestTutorialPrompt()) setShowTutorialPrompt(true);
+      if (!hasCompletedGuidedTutorial()) {
+        setTutorialStep(0);
+        setTutorialVisible(true);
+      }
     } catch (error) {
-      console.warn('[tutorial] Unable to read tutorial preference', error);
-      setShowTutorialPrompt(true);
+      console.warn('[tutorial] Unable to read guided tutorial preference', error);
+      setTutorialStep(0);
+      setTutorialVisible(true);
     }
   }, [isLoading, isTrailhead, session]);
 
-  function finishTutorialPrompt(openTutorial: boolean) {
+  useEffect(() => subscribeGuidedTutorial(() => {
+    setTutorialStep(0);
+    setTutorialVisible(true);
+    router.replace('/(tabs)' as never);
+  }), []);
+
+  function closeTutorial() {
     try {
-      markGuestTutorialPromptSeen();
+      markGuidedTutorialCompleted();
     } catch (error) {
-      console.warn('[tutorial] Unable to save tutorial preference', error);
+      console.warn('[tutorial] Unable to save guided tutorial preference', error);
     }
-    setShowTutorialPrompt(false);
-    if (openTutorial) router.push('/guide' as never);
+    setTutorialVisible(false);
+    setTutorialStep(0);
+    router.replace('/(tabs)' as never);
   }
 
   return (
@@ -94,21 +108,13 @@ function AppShell() {
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
 
-      <Modal visible={showTutorialPrompt} transparent animationType="fade" onRequestClose={() => finishTutorialPrompt(false)}>
-        <View style={styles.modalShade}>
-          <View style={styles.tutorialCard}>
-            <Text style={styles.tutorialEyebrow}>WELCOME OUTSIDE</Text>
-            <Text style={styles.tutorialTitle}>Want a quick tour?</Text>
-            <Text style={styles.tutorialCopy}>See how Trailhead, Explore, Campfire, Passport, stamps, badges, and your member profile fit together.</Text>
-            <Pressable style={styles.tutorialPrimary} onPress={() => finishTutorialPrompt(true)}>
-              <Text style={styles.tutorialPrimaryText}>Show Tutorial</Text>
-            </Pressable>
-            <Pressable style={styles.tutorialSecondary} onPress={() => finishTutorialPrompt(false)}>
-              <Text style={styles.tutorialSecondaryText}>Skip for now</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      <GuidedTutorial
+        visible={tutorialVisible}
+        step={tutorialStep}
+        onStepChange={setTutorialStep}
+        onFinish={closeTutorial}
+        onSkip={closeTutorial}
+      />
     </View>
   );
 }
@@ -167,15 +173,6 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   appShell: { flex: 1, backgroundColor: '#0F1713' },
   stackArea: { flex: 1 },
-  modalShade: { flex: 1, backgroundColor: 'rgba(4,8,6,.76)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  tutorialCard: { width: '100%', maxWidth: 430, borderRadius: 24, borderWidth: 1, borderColor: '#3A4A41', backgroundColor: '#17211C', padding: 22, gap: 12 },
-  tutorialEyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
-  tutorialTitle: { color: '#FFF8E8', fontSize: 29, lineHeight: 33, fontWeight: '900' },
-  tutorialCopy: { color: '#AEB8B2', fontSize: 15, lineHeight: 22, marginBottom: 4 },
-  tutorialPrimary: { backgroundColor: '#D7B45A', borderRadius: 14, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  tutorialPrimaryText: { color: '#17211C', fontSize: 15, fontWeight: '900' },
-  tutorialSecondary: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  tutorialSecondaryText: { color: '#D5DDD8', fontSize: 14, fontWeight: '800' },
   updateScreen: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 10 },
   updateEyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginTop: 12 },
   updateTitle: { color: '#FFF8E8', fontSize: 26, lineHeight: 31, fontWeight: '900', textAlign: 'center' },
