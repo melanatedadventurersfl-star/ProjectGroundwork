@@ -5,20 +5,33 @@ import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } fro
 import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
+const COMMUNITY_GUIDELINES_VERSION = '2026-08-16';
+
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [acceptedGuidelines, setAcceptedGuidelines] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const canSubmit = useMemo(() => Boolean(email.trim() && password.length >= 6), [email, password]);
+  const canSubmit = useMemo(
+    () => Boolean(email.trim() && password.length >= 6 && acceptedGuidelines),
+    [acceptedGuidelines, email, password],
+  );
 
   async function handleSignUp() {
     if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
+      const acceptedAt = new Date().toISOString();
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          data: {
+            community_guidelines_accepted_at: acceptedAt,
+            community_guidelines_version: COMMUNITY_GUIDELINES_VERSION,
+          },
+        },
       });
 
       if (error) {
@@ -65,6 +78,29 @@ export default function SignUpScreen() {
           value={password}
         />
 
+        <View style={styles.guidelinesCard}>
+          <Text style={styles.guidelinesEyebrow}>BEFORE YOU JOIN</Text>
+          <Text style={styles.guidelinesTitle}>This community has a trail code.</Text>
+          <Text style={styles.guidelinesBody}>
+            Help keep Melanated safe, welcoming, respectful, and responsible outdoors.
+          </Text>
+          <Pressable onPress={() => router.push('/community-guidelines' as never)} hitSlop={6}>
+            <Text style={styles.guidelinesLink}>Read the Community Guidelines →</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: acceptedGuidelines }}
+            onPress={() => setAcceptedGuidelines((value) => !value)}
+            style={styles.agreementRow}
+          >
+            <View style={[styles.checkbox, acceptedGuidelines && styles.checkboxChecked]}>
+              <Text style={[styles.checkmark, !acceptedGuidelines && styles.checkmarkHidden]}>✓</Text>
+            </View>
+            <Text style={styles.agreementText}>I have read and agree to follow the Community Guidelines.</Text>
+          </Pressable>
+        </View>
+
         <Pressable
           disabled={!canSubmit || isSubmitting}
           onPress={() => void handleSignUp()}
@@ -88,6 +124,17 @@ const styles = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '800', color: '#17211B' },
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
   input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
+  guidelinesCard: { gap: 8, borderWidth: 1, borderColor: '#CCD3CE', borderRadius: 12, backgroundColor: '#EEF2EE', padding: 14 },
+  guidelinesEyebrow: { color: '#6D785F', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  guidelinesTitle: { color: '#17211B', fontSize: 17, fontWeight: '800' },
+  guidelinesBody: { color: '#56615A', fontSize: 14, lineHeight: 20 },
+  guidelinesLink: { color: '#24543B', fontSize: 14, fontWeight: '800' },
+  agreementRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 4 },
+  checkbox: { width: 23, height: 23, borderRadius: 6, borderWidth: 2, borderColor: '#708077', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  checkboxChecked: { backgroundColor: '#24543B', borderColor: '#24543B' },
+  checkmark: { color: '#FFFFFF', fontSize: 15, lineHeight: 17, fontWeight: '900' },
+  checkmarkHidden: { opacity: 0 },
+  agreementText: { flex: 1, color: '#334039', fontSize: 13, lineHeight: 19, fontWeight: '700' },
   button: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#24543B' },
   buttonDisabled: { opacity: 0.45 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
