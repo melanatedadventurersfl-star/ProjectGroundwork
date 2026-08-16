@@ -26,6 +26,7 @@ function isGuestPublicPath(pathname: string) {
     pathname.startsWith('/guide') ||
     pathname.startsWith('/trail-guide') ||
     pathname.startsWith('/community-guidelines') ||
+    pathname.startsWith('/reset-password') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up')
@@ -41,6 +42,7 @@ function AppShell() {
 
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
+    pathname.startsWith('/reset-password') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up');
@@ -97,6 +99,7 @@ function AppShell() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(auth)" />
+          <Stack.Screen name="reset-password" />
           <Stack.Screen name="adventures" />
           <Stack.Screen name="checkout" />
           <Stack.Screen name="readiness" />
