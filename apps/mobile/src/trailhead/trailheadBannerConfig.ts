@@ -10,7 +10,7 @@ import overcast from '../weather/assets/overcast';
 import partlyCloudy from '../weather/assets/partlyCloudy';
 import storm from '../weather/assets/storm';
 import { trailheadBackgroundFor } from './bannerAssets';
-import explorerHighRes from './assets/explorerHighRes';
+import explorerShoreMorning from './assets/explorerShoreMorning';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
@@ -50,6 +50,6 @@ function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
   if(rank==='Pathfinder') return pathfinderBackground(w,p);
-  if(rank==='Explorer') return {uri: explorerHighRes};
+  if(rank==='Explorer') return {uri: explorerShoreMorning};
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
