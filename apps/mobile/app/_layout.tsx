@@ -10,7 +10,13 @@ import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
 import { PushNotificationsManager } from '../src/notifications/PushNotificationsManager';
 import { GuidedTutorial } from '../src/onboarding/GuidedTutorial';
 import { subscribeGuidedTutorial } from '../src/onboarding/tutorialController';
-import { hasCompletedGuidedTutorial, markGuidedTutorialCompleted } from '../src/onboarding/tutorialPreference';
+import {
+  hasCompletedGuidedTutorial,
+  hasFinishedGuidedTutorial,
+  markGuidedTutorialCompleted,
+  markGuidedTutorialFinished,
+} from '../src/onboarding/tutorialPreference';
+import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
 
@@ -63,6 +69,10 @@ function AppShell() {
       if (!hasCompletedGuidedTutorial()) {
         setTutorialStep(0);
         setTutorialVisible(true);
+      } else if (hasFinishedGuidedTutorial()) {
+        void awardTutorialCompletionStamp().catch((error) => {
+          console.warn('[tutorial] Unable to sync tutorial completion stamp', error);
+        });
       }
     } catch (error) {
       console.warn('[tutorial] Unable to read guided tutorial preference', error);
@@ -78,14 +88,30 @@ function AppShell() {
   }), []);
 
   function closeTutorial() {
+    setTutorialVisible(false);
+    setTutorialStep(0);
+    router.replace('/(tabs)' as never);
+  }
+
+  function skipTutorial() {
     try {
       markGuidedTutorialCompleted();
     } catch (error) {
       console.warn('[tutorial] Unable to save guided tutorial preference', error);
     }
-    setTutorialVisible(false);
-    setTutorialStep(0);
-    router.replace('/(tabs)' as never);
+    closeTutorial();
+  }
+
+  function finishTutorial() {
+    try {
+      markGuidedTutorialFinished();
+    } catch (error) {
+      console.warn('[tutorial] Unable to save guided tutorial completion', error);
+    }
+    void awardTutorialCompletionStamp().catch((error) => {
+      console.warn('[tutorial] Unable to award tutorial completion stamp', error);
+    });
+    closeTutorial();
   }
 
   return (
@@ -117,8 +143,8 @@ function AppShell() {
         visible={tutorialVisible}
         step={tutorialStep}
         onStepChange={setTutorialStep}
-        onFinish={closeTutorial}
-        onSkip={closeTutorial}
+        onFinish={finishTutorial}
+        onSkip={skipTutorial}
       />
     </View>
   );
