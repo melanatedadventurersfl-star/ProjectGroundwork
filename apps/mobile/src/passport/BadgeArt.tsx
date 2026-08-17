@@ -1,9 +1,13 @@
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { tenureBadgeDataUris } from './TenureBadgeDataUris';
 
 export type BadgeArtName =
   | 'Trailhead'
   | 'Year 1'
   | 'Year 2'
+  | 'Year 3'
+  | 'Year 4'
+  | 'Year 5'
   | 'First Adventure'
   | 'Trail Regular'
   | 'Wayfinder Five'
@@ -12,10 +16,13 @@ export type BadgeArtName =
   | 'Camp Crew'
   | 'Water Wayfinder';
 
-const badgeAssets: Record<BadgeArtName, number> = {
+const badgeAssets: Record<BadgeArtName, ImageSourcePropType> = {
   Trailhead: require('../../assets/badges/trailhead.png'),
   'Year 1': require('../../assets/badges/year-1.png'),
   'Year 2': require('../../assets/badges/year-2.png'),
+  'Year 3': { uri: tenureBadgeDataUris['Year 3'] },
+  'Year 4': { uri: tenureBadgeDataUris['Year 4'] },
+  'Year 5': { uri: tenureBadgeDataUris['Year 5'] },
   'First Adventure': require('../../assets/badges/first-adventure.jpg'),
   'Trail Regular': require('../../assets/badges/trail-regular.jpg'),
   'Wayfinder Five': require('../../assets/badges/wayfinder-five.jpg'),
