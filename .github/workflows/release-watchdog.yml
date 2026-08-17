@@ -1,0 +1,58 @@
+name: Release Watchdog
+
+on:
+  workflow_run:
+    workflows:
+      - Mobile CI
+      - EAS Preview OTA Update
+      - EAS Android Preview
+    types:
+      - completed
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  recover:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retry first failure automatically
+        if: ${{ github.event.workflow_run.run_attempt < 2 }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          echo "Automatically retrying failed workflow run ${RUN_ID}."
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/rerun-failed-jobs"
+
+      - name: Escalate repeated failure
+        if: ${{ github.event.workflow_run.run_attempt >= 2 }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          TITLE="Release blocker: ${WORKFLOW_NAME} failed twice"
+          BODY=$(cat <<EOF
+          The automated release watchdog detected a repeated failure.
+
+          - Workflow: ${WORKFLOW_NAME}
+          - Commit: ${HEAD_SHA}
+          - Run: ${RUN_URL}
+          - Attempts: 2+
+
+          The first failure was retried automatically. This issue exists so the blocker cannot disappear silently and should be fixed before the release is considered ready.
+          EOF
+          )
+
+          EXISTING=$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search "${TITLE} in:title" --json number --jq '.[0].number // empty')
+          if [ -n "${EXISTING}" ]; then
+            gh issue comment "${EXISTING}" --repo "${GITHUB_REPOSITORY}" --body "Repeated failure on commit ${HEAD_SHA}: ${RUN_URL}"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${TITLE}" --body "${BODY}" --label "bug" || gh issue create --repo "${GITHUB_REPOSITORY}" --title "${TITLE}" --body "${BODY}"
+          fi
