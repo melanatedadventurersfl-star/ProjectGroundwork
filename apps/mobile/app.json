@@ -50,9 +50,9 @@
       "package": "com.melanatedadventurers.app",
       "icon": "./assets/ma-app-icon.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/ma-pathfinder-mark.png",
+        "foregroundImage": "./assets/ma-app-icon.png",
         "monochromeImage": "./assets/ma-pathfinder-mark.png",
-        "backgroundColor": "#0E0E10"
+        "backgroundColor": "#FFFFFF"
       }
     },
     "web": {
@@ -61,7 +61,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "melanated-brand-assets-v3",
+      "nativeBuildAssetRevision": "melanated-brand-assets-v4",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
