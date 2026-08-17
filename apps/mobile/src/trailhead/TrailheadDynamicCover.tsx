@@ -74,8 +74,8 @@ export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null
         <Pressable accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} style={styles.headerButton}>
           <AppIcon name="notifications" color="#FFF8E8" size={17} />
         </Pressable>
-        <Pressable accessibilityLabel="Profile" onPress={() => router.push('/member/profile')} style={styles.headerButton}>
-          <AppIcon name="profile" color="#FFF8E8" size={17} />
+        <Pressable accessibilityLabel="Menu" onPress={() => router.push('/menu')} style={styles.headerButton}>
+          <AppIcon name="menu" color="#FFF8E8" size={19} />
         </Pressable>
       </View>
 
