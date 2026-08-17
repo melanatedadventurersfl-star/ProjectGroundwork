@@ -1,6 +1,7 @@
 import { Image, StyleSheet, View } from 'react-native';
 
 export type BadgeArtName =
+  | 'Trailhead'
   | 'First Adventure'
   | 'Trail Regular'
   | 'Wayfinder Five'
@@ -10,6 +11,7 @@ export type BadgeArtName =
   | 'Water Wayfinder';
 
 const badgeAssets: Record<BadgeArtName, number> = {
+  Trailhead: require('../../assets/badges/trailhead.png'),
   'First Adventure': require('../../assets/badges/first-adventure.jpg'),
   'Trail Regular': require('../../assets/badges/trail-regular.jpg'),
   'Wayfinder Five': require('../../assets/badges/wayfinder-five.jpg'),
