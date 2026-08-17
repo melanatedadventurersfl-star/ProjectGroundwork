@@ -5,7 +5,6 @@ import clearDay from '../weather/assets/clearDay';
 import clearNight from '../weather/assets/clearNight';
 import dawn from '../weather/assets/dawn';
 import drizzle from '../weather/assets/drizzle';
-import fog from '../weather/assets/fog';
 import overcast from '../weather/assets/overcast';
 import partlyCloudy from '../weather/assets/partlyCloudy';
 import storm from '../weather/assets/storm';
