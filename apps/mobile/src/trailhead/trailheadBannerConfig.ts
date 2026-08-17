@@ -2,6 +2,7 @@ import type { ImageSourcePropType } from 'react-native';
 import type { RankName } from '../passport/RankEmblem';
 import type { WeatherForecast } from '../weather/api';
 import { trailheadBackgroundFor } from './bannerAssets';
+import explorerHighRes from './assets/explorerHighRes';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
@@ -17,9 +18,7 @@ export function greetingFor(p:DayPhase){return p==='morning'?'Good morning':p===
 export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Storms nearby · use caution outdoors.';if(w==='rain')return'Rain nearby · pack a shell.';if(w==='snow')return'Snowy conditions · tread carefully.';if(w==='fog')return'Low visibility · stay aware.';if(w==='windy')return'Windy on the trail · secure loose gear.';if(w==='cloudy')return'Cloud cover makes for a cooler outing.';if(w==='partly-cloudy')return p==='evening'?'Golden hour on the trail.':'Clouds drifting across the trail.';return p==='night'?'The mountain calls.':p==='evening'?'Perfect evening for a local hike.':p==='morning'?'Fresh air. New day. New trails.':'Perfect weather for a local adventure.'}
 export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
-const explorerHighRes = require('../../assets/trailhead-banners/explorer-clear-morning.jpg') as ImageSourcePropType;
-
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
-  if(rank==='Explorer') return explorerHighRes;
-  return{uri:trailheadBackgroundFor(rank,w,p)};
+  if(rank==='Explorer') return {uri: explorerHighRes};
+  return {uri: trailheadBackgroundFor(rank,w,p)};
 }
