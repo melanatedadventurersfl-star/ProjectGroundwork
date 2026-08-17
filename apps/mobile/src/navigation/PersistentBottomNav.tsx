@@ -34,18 +34,18 @@ const items: NavItem[] = [
     isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections') || pathname.startsWith('/local-events'),
   },
   {
-    label: 'Passport',
-    icon: 'passport',
-    href: '/(tabs)/passport',
+    label: 'Reservations',
+    icon: 'trips',
+    href: '/member/trips',
     requiresAuth: true,
-    isActive: (pathname) => pathname.includes('/passport'),
+    isActive: (pathname) => pathname.startsWith('/member/trips') || pathname.startsWith('/readiness'),
   },
   {
     label: 'Profile',
     icon: 'profile',
     href: '/member/profile',
     requiresAuth: true,
-    isActive: (pathname) => pathname === '/member/profile',
+    isActive: (pathname) => pathname.startsWith('/member/profile') || pathname.startsWith('/member/stamps') || pathname.startsWith('/member/badges') || pathname.startsWith('/past-adventures') || pathname.startsWith('/passport'),
   },
 ];
 
