@@ -55,7 +55,10 @@ export default function SignUpScreen() {
       }
 
       if (data.session) {
-        router.replace('/');
+        // A brand-new signed-in member always starts onboarding immediately.
+        // Going through the public root first can briefly see the old auth state
+        // and route to Trailhead until the app is relaunched.
+        router.replace('/onboarding');
         return;
       }
 
