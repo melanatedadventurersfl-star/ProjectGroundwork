@@ -1,10 +1,48 @@
 import { router } from 'expo-router';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { AdventureSummary } from './types';
 
 type Props = { adventure: AdventureSummary; onToggleSaved: (adventure: AdventureSummary) => void };
-function cap(v:string){return v ? v.charAt(0).toUpperCase()+v.slice(1) : ''}
-function label(a:AdventureSummary){if(a.status==='sold_out')return'SOLD OUT';if(a.status==='cancelled')return'CANCELLED';if(a.status==='completed')return'PAST ADVENTURE';if(a.spots_remaining!=null&&a.spots_remaining<=3)return'ALMOST FULL';return a.is_featured?'FEATURED':'OFFICIAL MA ADVENTURE'}
 
-export function AdventureCard({adventure,onToggleSaved}:Props){const start=new Date(adventure.starts_at);const price=adventure.starting_price_cents===0?'Free':`$${Math.round(adventure.starting_price_cents/100)}`;return <View style={s.card}><Pressable onPress={()=>router.push({pathname:'/adventures/[id]',params:{id:adventure.id}})}><ImageBackground source={adventure.hero_image_url?{uri:adventure.hero_image_url}:undefined} style={s.image} imageStyle={s.radius}><View style={s.shade}/><View style={s.top}><Text style={s.badge}>{label(adventure)}</Text><Pressable style={s.star} onPress={()=>onToggleSaved(adventure)}><Text style={s.starText}>{adventure.is_saved?'★':'☆'}</Text></Pressable></View><View style={s.bottom}><Text style={s.title}>{adventure.title}</Text><Text style={s.meta}>{start.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})} · {adventure.city}, {adventure.state}</Text></View></ImageBackground><View style={s.body}><Text style={s.summary} numberOfLines={2}>{adventure.summary}</Text><View style={s.row}><View style={s.chips}><Text style={s.chip}>{cap(adventure.difficulty)}</Text><Text style={s.chip}>{adventure.category}</Text></View><Text style={s.price}>{price}</Text></View>{adventure.spots_remaining!=null&&adventure.status==='published'?<Text style={s.spots}>{adventure.spots_remaining} spots remaining</Text>:null}</View></Pressable></View>}
-const s=StyleSheet.create({card:{backgroundColor:'#17211C',borderRadius:20,overflow:'hidden',borderWidth:1,borderColor:'#28362E'},image:{height:205,justifyContent:'space-between',backgroundColor:'#293B31'},radius:{borderTopLeftRadius:20,borderTopRightRadius:20},shade:{...StyleSheet.absoluteFill,backgroundColor:'rgba(8,13,10,.34)'},top:{flexDirection:'row',justifyContent:'space-between',padding:13},badge:{color:'#F0D083',fontSize:10,fontWeight:'900',letterSpacing:.8,backgroundColor:'rgba(16,24,20,.82)',paddingHorizontal:10,paddingVertical:6,borderRadius:999,overflow:'hidden'},star:{width:38,height:38,borderRadius:19,backgroundColor:'rgba(16,24,20,.82)',alignItems:'center',justifyContent:'center'},starText:{color:'#FFF8E8',fontSize:23},bottom:{padding:16},title:{color:'#FFF8E8',fontSize:24,lineHeight:28,fontWeight:'900'},meta:{color:'#E3E8E4',marginTop:5,fontWeight:'600'},body:{padding:14,gap:9},summary:{color:'#D4D8D5',lineHeight:21},row:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10},chips:{flexDirection:'row',gap:6,flexWrap:'wrap',flex:1},chip:{color:'#D6DFD9',fontSize:11,fontWeight:'700',borderWidth:1,borderColor:'#3B4B42',paddingHorizontal:8,paddingVertical:5,borderRadius:999},price:{color:'#FFF8E8',fontWeight:'900',fontSize:16},spots:{color:'#D7B45A',fontWeight:'800',fontSize:12}});
+function priceLabel(adventure: AdventureSummary) {
+  return adventure.starting_price_cents === 0 ? 'Free' : `From $${Math.round(adventure.starting_price_cents / 100)}`;
+}
+
+export function AdventureCard({ adventure, onToggleSaved }: Props) {
+  const start = new Date(adventure.starts_at);
+  return (
+    <Pressable style={s.card} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}>
+      <View style={s.media}>
+        {adventure.hero_image_url ? <Image source={{ uri: adventure.hero_image_url }} style={s.image} /> : <View style={s.fallback}><Text style={s.fallbackIcon}>↗</Text></View>}
+      </View>
+      <View style={s.copy}>
+        <View style={s.topRow}>
+          <Text style={s.category}>{adventure.category.toUpperCase()}</Text>
+          <Pressable hitSlop={8} onPress={(event) => { event.stopPropagation(); onToggleSaved(adventure); }}>
+            <Text style={s.star}>{adventure.is_saved ? '★' : '☆'}</Text>
+          </Pressable>
+        </View>
+        <Text style={s.title} numberOfLines={2}>{adventure.title}</Text>
+        <Text style={s.meta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state}</Text>
+        <Text style={s.meta}>▣ {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+        <Text style={[s.price, adventure.starting_price_cents === 0 && s.free]}>{priceLabel(adventure)}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+const s = StyleSheet.create({
+  card: { minHeight: 138, flexDirection: 'row', backgroundColor: '#121A18', borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#2E3A35' },
+  media: { width: 128, backgroundColor: '#23312B' },
+  image: { width: '100%', height: '100%' },
+  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#19372E' },
+  fallbackIcon: { color: '#F5C542', fontSize: 28, fontWeight: '900' },
+  copy: { flex: 1, padding: 13, paddingLeft: 14 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  category: { color: '#76D1B7', fontSize: 9, fontWeight: '900', letterSpacing: .7, backgroundColor: '#183029', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
+  star: { color: '#F7F7F4', fontSize: 20 },
+  title: { color: '#F7F7F4', fontSize: 17, lineHeight: 21, fontWeight: '900', marginTop: 5 },
+  meta: { color: '#ABB5B0', fontSize: 11, marginTop: 4 },
+  price: { color: '#F5C542', fontWeight: '900', fontSize: 15, marginTop: 'auto', paddingTop: 7, alignSelf: 'flex-end' },
+  free: { color: '#76D1B7' },
+});
