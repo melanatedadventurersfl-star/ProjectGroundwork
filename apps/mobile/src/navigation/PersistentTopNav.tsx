@@ -75,11 +75,11 @@ export function PersistentTopNav() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Profile"
-            onPress={() => session ? router.navigate('/member/profile' as never) : promptForAccount('Profile')}
+            accessibilityLabel="Menu"
+            onPress={() => session ? router.navigate('/(tabs)/menu' as never) : promptForAccount('Menu')}
             style={styles.iconButton}
           >
-            <AppIcon name="profile" color="#F6F4EE" size={21} />
+            <AppIcon name="menu" color="#F6F4EE" size={21} />
           </Pressable>
         </View>
       </View>
