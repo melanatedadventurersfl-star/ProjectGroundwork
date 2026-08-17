@@ -41,7 +41,6 @@ function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   if (p === 'night') return { uri: clearNight };
   if (w === 'storm') return { uri: storm };
   if (w === 'rain') return { uri: drizzle };
-  if (w === 'fog') return { uri: fog };
   if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
   if (w === 'partly-cloudy') return { uri: partlyCloudy };
   if (p === 'morning') return { uri: dawn };
