@@ -27,7 +27,7 @@ export default function ProfileStampsScreen() {
       <View>
         <Text style={styles.eyebrow}>PASSPORT COLLECTION</Text>
         <Text style={styles.title}>Stamps</Text>
-        <Text style={styles.copy}>Every official adventure leaves another mark in your collection.</Text>
+        <Text style={styles.copy}>Tutorial milestones and official adventures leave permanent marks in your collection.</Text>
       </View>
 
       {loading ? <ActivityIndicator color="#F5C341" style={styles.loader} /> : null}
@@ -37,7 +37,7 @@ export default function ProfileStampsScreen() {
         <View style={styles.empty}>
           <AppIcon name="stamp" color="#F5C341" size={34} />
           <Text style={styles.emptyTitle}>Your stamp book is waiting.</Text>
-          <Text style={styles.copy}>Complete an official adventure to earn your first stamp.</Text>
+          <Text style={styles.copy}>Finish the guided tutorial or complete an official adventure to earn your first stamp.</Text>
         </View>
       ) : null}
 
