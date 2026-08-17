@@ -20,6 +20,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: mobile-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -42,42 +46,26 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           from PIL import Image, ImageFile
-
-          # Only main may self-heal legacy/truncated source artwork. PRs must
-          # provide valid images and are rejected by the strict check below.
           ImageFile.LOAD_TRUNCATED_IMAGES = True
           paths = [
               Path('apps/mobile/assets/ma-app-icon.png'),
               Path('apps/mobile/assets/ma-splash-icon.png'),
               Path('apps/mobile/assets/ma-pathfinder-mark.png'),
           ]
-
           for path in paths:
               temp = path.with_name(path.stem + '.repaired.png')
               with Image.open(path) as image:
                   image.load()
-                  image.convert('RGBA').save(
-                      temp,
-                      format='PNG',
-                      optimize=False,
-                      compress_level=6,
-                  )
+                  image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
               temp.replace(path)
               print(f'Re-encoded native asset: {path}')
           PY
-
-          if git diff --quiet -- \
-            apps/mobile/assets/ma-app-icon.png \
-            apps/mobile/assets/ma-splash-icon.png \
-            apps/mobile/assets/ma-pathfinder-mark.png; then
+          if git diff --quiet -- apps/mobile/assets/ma-app-icon.png apps/mobile/assets/ma-splash-icon.png apps/mobile/assets/ma-pathfinder-mark.png; then
             echo "Native assets already have canonical PNG encoding."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add \
-              apps/mobile/assets/ma-app-icon.png \
-              apps/mobile/assets/ma-splash-icon.png \
-              apps/mobile/assets/ma-pathfinder-mark.png
+            git add apps/mobile/assets/ma-app-icon.png apps/mobile/assets/ma-splash-icon.png apps/mobile/assets/ma-pathfinder-mark.png
             git commit -m "Repair native PNG asset encoding"
             git push
           fi
@@ -88,29 +76,18 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           from PIL import Image
-
-          paths = [
-              Path('apps/mobile/assets/ma-app-icon.png'),
-              Path('apps/mobile/assets/ma-splash-icon.png'),
-              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
-          ]
-
-          for path in paths:
+          for path in [Path('apps/mobile/assets/ma-app-icon.png'), Path('apps/mobile/assets/ma-splash-icon.png'), Path('apps/mobile/assets/ma-pathfinder-mark.png')]:
               with Image.open(path) as image:
                   if image.format != 'PNG':
                       raise RuntimeError(f'{path} must be a PNG, got {image.format}.')
                   image.verify()
               with Image.open(path) as image:
                   image.load()
-                  width, height = image.size
-                  if width <= 0 or height <= 0:
+                  if image.width <= 0 or image.height <= 0:
                       raise RuntimeError(f'{path} has invalid dimensions {image.size}.')
-              print(f'Validated PNG: {path} ({width}x{height})')
+              print(f'Validated PNG: {path}')
           PY
 
-      # This preview branch added one Expo native dependency. npm install is
-      # used once here so CI can refresh the committed lockfile on the PR.
-      # After the generated lockfile lands, this step returns to npm ci.
       - name: Install dependencies
         run: npm install
 
@@ -136,6 +113,15 @@ jobs:
       - name: Type-check mobile app
         run: npm run mobile:typecheck
         env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+
+      - name: Expo Android release preflight
+        working-directory: apps/mobile
+        run: npx expo export --platform android --output-dir /tmp/mobile-export-preflight
+        env:
+          EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
 
