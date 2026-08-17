@@ -1,12 +1,9 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { RankName } from '../passport/RankEmblem';
 import type { WeatherForecast } from '../weather/api';
-import clearDay from '../weather/assets/clearDay';
 import clearNight from '../weather/assets/clearNight';
-import dawn from '../weather/assets/dawn';
 import drizzle from '../weather/assets/drizzle';
 import overcast from '../weather/assets/overcast';
-import partlyCloudy from '../weather/assets/partlyCloudy';
 import storm from '../weather/assets/storm';
 import { trailheadBackgroundFor } from './bannerAssets';
 
@@ -38,20 +35,7 @@ function explorerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   return require('../../assets/trailhead/explorer/explorer-clear-morning.jpg');
 }
 
-function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
-  if (w === 'fog') return { uri: trailheadBackgroundFor('Pathfinder', 'fog', p) };
-  if (w === 'clear' && p === 'evening') return { uri: trailheadBackgroundFor('Pathfinder', 'clear', 'evening') };
-  if (p === 'night') return { uri: clearNight };
-  if (w === 'storm') return { uri: storm };
-  if (w === 'rain') return { uri: drizzle };
-  if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
-  if (w === 'partly-cloudy') return { uri: partlyCloudy };
-  if (p === 'morning') return { uri: dawn };
-  return { uri: clearDay };
-}
-
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
   if(rank==='Explorer') return explorerBackground(w,p);
-  if(rank==='Pathfinder') return pathfinderBackground(w,p);
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
