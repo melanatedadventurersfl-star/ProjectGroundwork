@@ -50,16 +50,21 @@ export function trailheadBackgroundFor(
 ) {
   const displayRank = trailheadDisplayRank(rank);
 
-  if (displayRank === 'Pathfinder' && weather === 'fog') return trailheadBannerAssets.pathfinderFogMorning;
+  if (displayRank === 'Pathfinder') {
+    if (weather === 'fog' || weather === 'rain' || weather === 'storm' || weather === 'cloudy' || weather === 'snow') {
+      return trailheadBannerAssets.pathfinderFogMorning;
+    }
+    return trailheadBannerAssets.pathfinderClearEvening;
+  }
   if (displayRank === 'Trailblazer' && (weather === 'rain' || weather === 'storm')) return trailheadBannerAssets.trailblazerRain;
   if (displayRank === 'Ascendant' && weather === 'snow') return trailheadBannerAssets.ascendantSnowNight;
 
   switch (displayRank) {
     case 'Explorer': return trailheadBannerAssets.explorerClearMorning;
-    case 'Pathfinder': return trailheadBannerAssets.pathfinderClearEvening;
     case 'Trailblazer': return trailheadBannerAssets.trailblazerRain;
     case 'Adventurer': return trailheadBannerAssets.adventurerEvening;
     case 'Summit Seeker': return trailheadBannerAssets.summitSeekerMorning;
     case 'Ascendant': return trailheadBannerAssets.ascendantSnowNight;
+    case 'Pathfinder': return trailheadBannerAssets.pathfinderClearEvening;
   }
 }
