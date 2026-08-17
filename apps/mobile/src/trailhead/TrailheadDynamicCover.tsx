@@ -8,7 +8,7 @@ import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
 import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, weatherCopy } from './trailheadBannerConfig';
 import { styles } from './trailheadBannerStyles';
 
-export function TrailheadCover({ displayName, rank, onRankPress }: { coverUrl?: string | null; displayName: string; rank: RankName; greeting: string; busy?: boolean; onEdit?: () => void; onRankPress: () => void }) {
+export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null; displayName: string; rank: RankName; greeting: string; busy?: boolean; onEdit?: () => void; onRankPress?: () => void }) {
   const { width } = useWindowDimensions();
   const compact = width < 420;
   const veryCompact = width < 370;
@@ -47,6 +47,7 @@ export function TrailheadCover({ displayName, rank, onRankPress }: { coverUrl?: 
   const condition = weatherData?.current.condition.text ? weather.replace('-', ' ') : 'Local weather';
   const location = locationLabel || 'Current location';
   const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
+  const openRankJourney = () => router.push('/member/rank-progress');
 
   return (
     <ImageBackground
@@ -63,7 +64,7 @@ export function TrailheadCover({ displayName, rank, onRankPress }: { coverUrl?: 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View ${displayRank} rank progress`}
-        onPress={onRankPress}
+        onPress={openRankJourney}
         style={[styles.primaryEmblem, compact && styles.primaryEmblemCompact]}
       >
         <RankEmblem rank={rank} size={compact ? 74 : 92} />
@@ -81,7 +82,7 @@ export function TrailheadCover({ displayName, rank, onRankPress }: { coverUrl?: 
       <View style={[styles.titleBlock, compact && styles.titleBlockCompact, veryCompact && styles.titleBlockVeryCompact]}>
         <Text style={[styles.greeting, compact && styles.greetingCompact]}>{greeting},</Text>
         <Text style={[styles.name, compact && styles.nameCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{displayName}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={`View ${displayRank} rank progress`} onPress={onRankPress} style={styles.rankInline}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`View ${displayRank} rank progress`} onPress={openRankJourney} style={styles.rankInline}>
           <Text style={[styles.rankGlyph, { color: theme.accent }]}>✥</Text>
           <Text style={[styles.rankText, { color: theme.accent }]}>{displayRank.toUpperCase()}</Text>
         </Pressable>
