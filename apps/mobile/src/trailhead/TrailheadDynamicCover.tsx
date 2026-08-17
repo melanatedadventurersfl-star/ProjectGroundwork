@@ -2,13 +2,28 @@ import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
 import { ImageBackground, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
+import type { MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
 import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, trailheadDebugOverride, weatherCopy } from './trailheadBannerConfig';
 import { styles } from './trailheadBannerStyles';
 
-export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null; displayName: string; rank: RankName; greeting: string; busy?: boolean; onEdit?: () => void; onRankPress?: () => void }) {
+export function TrailheadCover({
+  displayName,
+  rank,
+  badges = [],
+}: {
+  coverUrl?: string | null;
+  displayName: string;
+  rank: RankName;
+  badges?: MemberBadge[];
+  greeting: string;
+  busy?: boolean;
+  onEdit?: () => void;
+  onRankPress?: () => void;
+}) {
   const { width } = useWindowDimensions();
   const compact = width < 420;
   const veryCompact = width < 370;
@@ -50,6 +65,8 @@ export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null
   const location = locationLabel || 'Current location';
   const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
   const openRankJourney = () => router.push('/member/rank-progress');
+  const visibleBadges = badges.slice(0, compact ? 2 : 3);
+  const overflowBadges = Math.max(0, badges.length - visibleBadges.length);
 
   return (
     <ImageBackground
@@ -89,6 +106,28 @@ export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null
           <Text style={[styles.rankText, { color: theme.accent }]}>{displayRank.toUpperCase()}</Text>
         </Pressable>
       </View>
+
+      {visibleBadges.length ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${badges.length} earned achievement badge${badges.length === 1 ? '' : 's'}. Open Passport.`}
+          onPress={() => router.push('/(tabs)/passport')}
+          style={[styles.badgeRail, { borderColor: theme.accent, shadowColor: theme.accent }]}
+        >
+          {visibleBadges.map((badge) => (
+            <View key={badge.badge_id} style={styles.badgeSlot}>
+              {hasBadgeArt(badge.title) ? (
+                <BadgeArt title={badge.title} size={30} />
+              ) : (
+                <View style={[styles.badgeFallback, { borderColor: theme.accent }]}> 
+                  <AppIcon name="badge" color={theme.soft} size={17} />
+                </View>
+              )}
+            </View>
+          ))}
+          {overflowBadges > 0 ? <Text style={[styles.badgeOverflow, { color: theme.soft }]}>+{overflowBadges}</Text> : null}
+        </Pressable>
+      ) : null}
 
       <View style={[styles.metaBlock, compact && styles.metaBlockCompact]}>
         <View style={styles.weatherRow}>
