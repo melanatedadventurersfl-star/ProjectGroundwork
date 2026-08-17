@@ -17,6 +17,9 @@ import {
   markGuidedTutorialFinished,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
+import { currentReleaseNotes } from '../src/updates/releaseNotes';
+import { hasSeenRelease, markReleaseSeen } from '../src/updates/releasePreference';
+import { WhatsNewModal } from '../src/updates/WhatsNewModal';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
 
@@ -44,7 +47,9 @@ function AppShell() {
   const pathname = usePathname();
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [whatsNewVisible, setWhatsNewVisible] = useState(false);
   const tutorialCheckedRef = useRef(false);
+  const whatsNewCheckedRef = useRef(false);
 
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
@@ -81,7 +86,19 @@ function AppShell() {
     }
   }, [isLoading, isTrailhead, session]);
 
+  useEffect(() => {
+    if (isLoading || isAuthScreen || !isTrailhead || tutorialVisible || whatsNewCheckedRef.current) return;
+    whatsNewCheckedRef.current = true;
+    try {
+      setWhatsNewVisible(!hasSeenRelease(currentReleaseNotes.id));
+    } catch (error) {
+      console.warn('[updates] Unable to read release-note preference', error);
+      setWhatsNewVisible(true);
+    }
+  }, [isAuthScreen, isLoading, isTrailhead, tutorialVisible]);
+
   useEffect(() => subscribeGuidedTutorial(() => {
+    setWhatsNewVisible(false);
     setTutorialStep(0);
     setTutorialVisible(true);
     router.replace('/(tabs)' as never);
@@ -90,6 +107,7 @@ function AppShell() {
   function closeTutorial() {
     setTutorialVisible(false);
     setTutorialStep(0);
+    whatsNewCheckedRef.current = false;
     router.replace('/(tabs)' as never);
   }
 
@@ -112,6 +130,15 @@ function AppShell() {
       console.warn('[tutorial] Unable to award tutorial completion stamp', error);
     });
     closeTutorial();
+  }
+
+  function dismissWhatsNew() {
+    try {
+      markReleaseSeen(currentReleaseNotes.id);
+    } catch (error) {
+      console.warn('[updates] Unable to save release-note preference', error);
+    }
+    setWhatsNewVisible(false);
   }
 
   return (
@@ -146,6 +173,7 @@ function AppShell() {
         onFinish={finishTutorial}
         onSkip={skipTutorial}
       />
+      <WhatsNewModal visible={whatsNewVisible} release={currentReleaseNotes} onDismiss={dismissWhatsNew} />
     </View>
   );
 }
