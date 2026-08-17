@@ -9,7 +9,6 @@ import overcast from '../weather/assets/overcast';
 import partlyCloudy from '../weather/assets/partlyCloudy';
 import storm from '../weather/assets/storm';
 import { trailheadBackgroundFor } from './bannerAssets';
-import explorerHighRes from './assets/explorerHighRes';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
@@ -30,6 +29,15 @@ export function greetingFor(p:DayPhase){return p==='morning'?'Good morning':p===
 export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Storms nearby · use caution outdoors.';if(w==='rain')return'Rain nearby · pack a shell.';if(w==='snow')return'Snowy conditions · tread carefully.';if(w==='fog')return'Low visibility · stay aware.';if(w==='windy')return'Windy on the trail · secure loose gear.';if(w==='cloudy')return'Cloud cover makes for a cooler outing.';if(w==='partly-cloudy')return p==='evening'?'Golden hour on the trail.':'Clouds drifting across the trail.';return p==='night'?'The mountain calls.':p==='evening'?'Perfect evening for a local hike.':p==='morning'?'Fresh air. New day. New trails.':'Perfect weather for a local adventure.'}
 export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
+function explorerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  if (p === 'night') return { uri: clearNight };
+  if (w === 'partly-cloudy') return require('../../assets/trailhead/explorer/explorer-partly-cloudy-afternoon.jpg');
+  if (w === 'storm') return { uri: storm };
+  if (w === 'rain' || w === 'fog') return { uri: drizzle };
+  if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
+  return require('../../assets/trailhead/explorer/explorer-clear-morning.jpg');
+}
+
 function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   if (w === 'fog') return { uri: trailheadBackgroundFor('Pathfinder', 'fog', p) };
   if (w === 'clear' && p === 'evening') return { uri: trailheadBackgroundFor('Pathfinder', 'clear', 'evening') };
@@ -43,7 +51,7 @@ function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
+  if(rank==='Explorer') return explorerBackground(w,p);
   if(rank==='Pathfinder') return pathfinderBackground(w,p);
-  if(rank==='Explorer') return {uri: explorerHighRes};
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
