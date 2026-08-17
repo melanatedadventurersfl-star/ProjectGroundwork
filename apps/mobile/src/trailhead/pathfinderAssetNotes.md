@@ -1,1 +1,0 @@
-Generated Pathfinder production backgrounds are ingested as binary JPEGs through the Git Data API. This file is a temporary marker for the asset rollout and can be removed once the binary tree commit is complete.
