@@ -6,13 +6,13 @@ export type ReleaseNotes = {
 };
 
 export const currentReleaseNotes: ReleaseNotes = {
-  id: '2026-08-17-whats-new-v1',
+  id: '2026-08-17-pathfinder-dynamic-v2',
   title: "What's New",
-  intro: 'A few fresh trail markers just landed.',
+  intro: 'The Trailhead just got a more responsive sky.',
   items: [
-    'New Explorer shoreline backgrounds that respond to time and weather.',
-    'A cleaner Trailhead layout with improved adventure hierarchy.',
-    "A new What's New message so future updates explain themselves when they arrive.",
-    'Stability fixes for the Trailhead image and update pipeline.',
+    'Pathfinder scenery now stays rank-specific while adapting to live weather and time of day.',
+    'Morning, afternoon, evening, and night now apply distinct atmosphere treatments to the Trailhead banner.',
+    'Rain, fog, storms, clouds, and clear conditions now shift the Pathfinder scene instead of falling back to generic art.',
+    'Update delivery and release notes have been refreshed for preview testing.',
   ],
 };
