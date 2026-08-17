@@ -1,1 +1,1 @@
-export { default } from '../../src/community/CampfireScreen';
+export { default } from '../../src/community/OutpostScreen';
