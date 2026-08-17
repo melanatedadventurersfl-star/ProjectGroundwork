@@ -27,12 +27,17 @@ export const styles = StyleSheet.create({
   rankGlyph: { fontSize: 12, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
   rankText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.55, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
 
-  metaBlock: { position: 'absolute', left: 16, right: 16, bottom: 15 },
-  metaBlockCompact: { left: 12, right: 12, bottom: 12 },
+  badgeRail: { position: 'absolute', right: 12, bottom: 10, zIndex: 4, minHeight: 38, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 19, borderWidth: 1, backgroundColor: 'rgba(4,9,8,0.52)', flexDirection: 'row', alignItems: 'center', gap: 4, shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
+  badgeSlot: { width: 30, height: 30, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
+  badgeFallback: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.24)', alignItems: 'center', justifyContent: 'center' },
+  badgeOverflow: { minWidth: 24, textAlign: 'center', fontSize: 10.5, fontWeight: '900', paddingHorizontal: 2, textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+
+  metaBlock: { position: 'absolute', left: 16, right: 112, bottom: 15 },
+  metaBlockCompact: { left: 12, right: 94, bottom: 12 },
   weatherRow: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
   weatherIcon: { color: '#FFF8E8', fontSize: 13, textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
   weatherText: { color: '#FFF8E8', fontSize: 11.5, fontWeight: '800', textTransform: 'capitalize', textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
   weatherDivider: { color: 'rgba(255,248,232,0.82)', fontSize: 11, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
   location: { color: '#FFF8E8', fontSize: 10.5, fontWeight: '700', flexShrink: 1, textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
-  weatherCopy: { fontSize: 10.5, lineHeight: 14, fontWeight: '800', marginTop: 7, maxWidth: '78%', textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
+  weatherCopy: { fontSize: 10.5, lineHeight: 14, fontWeight: '800', marginTop: 7, textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
 });
