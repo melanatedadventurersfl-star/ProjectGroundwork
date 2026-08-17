@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
 import { ImageBackground, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
-import type { MemberBadge } from '../passport/api';
+import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
@@ -29,6 +29,15 @@ export function TrailheadCover({
   const veryCompact = width < 370;
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
+  const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
+
+  useEffect(() => {
+    let active = true;
+    void getMemberBadges()
+      .then((next) => { if (active) setEarnedBadges(next); })
+      .catch(() => { if (active) setEarnedBadges(badges); });
+    return () => { active = false; };
+  }, [badges]);
 
   useEffect(() => {
     let active = true;
@@ -65,8 +74,8 @@ export function TrailheadCover({
   const location = locationLabel || 'Current location';
   const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
   const openRankJourney = () => router.push('/member/rank-progress');
-  const visibleBadges = badges.slice(0, compact ? 2 : 3);
-  const overflowBadges = Math.max(0, badges.length - visibleBadges.length);
+  const visibleBadges = earnedBadges.slice(0, compact ? 2 : 3);
+  const overflowBadges = Math.max(0, earnedBadges.length - visibleBadges.length);
 
   return (
     <ImageBackground
@@ -110,7 +119,7 @@ export function TrailheadCover({
       {visibleBadges.length ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${badges.length} earned achievement badge${badges.length === 1 ? '' : 's'}. Open Passport.`}
+          accessibilityLabel={`${earnedBadges.length} earned achievement badge${earnedBadges.length === 1 ? '' : 's'}. Open Passport.`}
           onPress={() => router.push('/(tabs)/passport')}
           style={[styles.badgeRail, { borderColor: theme.accent, shadowColor: theme.accent }]}
         >
