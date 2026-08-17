@@ -159,6 +159,50 @@ jobs:
             exit 1
           fi
 
+      - name: Cancel stale Expo preview builds
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          : > /tmp/stale-eas-builds.txt
+
+          for STATUS in new in-queue in-progress; do
+            npx eas-cli@latest build:list \
+              --platform android \
+              --build-profile preview \
+              --status "${STATUS}" \
+              --limit 50 \
+              --json > "/tmp/eas-${STATUS}.json"
+
+            node - "/tmp/eas-${STATUS}.json" <<'NODE' >> /tmp/stale-eas-builds.txt
+          const fs = require('fs');
+          const path = process.argv[2];
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const builds = Array.isArray(data) ? data : [];
+          for (const build of builds) {
+            if (build?.id && build?.gitCommitHash) {
+              console.log(`${build.id} ${build.gitCommitHash}`);
+            }
+          }
+          NODE
+          done
+
+          sort -u /tmp/stale-eas-builds.txt -o /tmp/stale-eas-builds.txt
+
+          while read -r BUILD_ID BUILD_SHA; do
+            [ -n "${BUILD_ID}" ] || continue
+            [ -n "${BUILD_SHA}" ] || continue
+            [ "${BUILD_SHA}" != "${CURRENT_SHA}" ] || continue
+
+            if git cat-file -e "${BUILD_SHA}^{commit}" 2>/dev/null && git merge-base --is-ancestor "${BUILD_SHA}" "${CURRENT_SHA}"; then
+              echo "Cancelling stale Expo build ${BUILD_ID} from ${BUILD_SHA}; newest main is ${CURRENT_SHA}."
+              npx eas-cli@latest build:cancel "${BUILD_ID}" --non-interactive
+            else
+              echo "Leaving Expo build ${BUILD_ID} (${BUILD_SHA}) alone because it is not a confirmed older ancestor of current main."
+            fi
+          done < /tmp/stale-eas-builds.txt
+
       - name: Build installable Android preview
         working-directory: apps/mobile
         run: npx eas-cli@latest build --platform android --profile preview --non-interactive --clear-cache
