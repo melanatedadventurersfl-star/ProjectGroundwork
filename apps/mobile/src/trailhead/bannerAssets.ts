@@ -65,6 +65,5 @@ export function trailheadBackgroundFor(
     case 'Adventurer': return trailheadBannerAssets.adventurerEvening;
     case 'Summit Seeker': return trailheadBannerAssets.summitSeekerMorning;
     case 'Ascendant': return trailheadBannerAssets.ascendantSnowNight;
-    case 'Pathfinder': return trailheadBannerAssets.pathfinderClearEvening;
   }
 }
