@@ -16,6 +16,7 @@ import {
   type CommunityPost,
   type CommunityPostType,
 } from './api';
+import { PostEngagementBar } from './PostEngagementBar';
 import { getCircles, searchCommunityMembers, type CommunityCircle, type CommunityPerson } from './circles';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
@@ -94,10 +95,11 @@ function PostCard({ post }: { post: CommunityPost }) {
       </View>
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
-      <View style={styles.engagementRow}>
-        <View style={styles.engagementItem}><Ionicons name="heart-outline" size={18} color={GOLD} /><Text style={styles.engagementText}>{post.reaction_count || 0}</Text></View>
-        <View style={styles.engagementItem}><Ionicons name="chatbubble-outline" size={17} color={MUTED} /><Text style={styles.engagementText}>{post.comment_count || 0}</Text></View>
-      </View>
+      <PostEngagementBar
+        postId={post.id}
+        initialReactionCount={post.reaction_count || 0}
+        commentCount={post.comment_count || 0}
+      />
     </Pressable>
   );
 }
@@ -213,26 +215,14 @@ export default function OutpostScreen() {
   }
 
   async function submitPost() {
-    if (composerType === 'meetup') {
-      router.push('/local-events/create');
-      return;
-    }
+    if (composerType === 'meetup') { router.push('/local-events/create'); return; }
     if ((!composerBody.trim() && !composerPhoto) || submitting) return;
     setSubmitting(true);
     setError(null);
     let uploadedPath: string | null = null;
     try {
       if (composerPhoto) uploadedPath = await uploadCommunityPostImage(composerPhoto);
-      await createPost({
-        body: composerBody,
-        postType: composerType,
-        audience: 'everyone',
-        circleId: null,
-        groupId: null,
-        adventureId: null,
-        imagePath: uploadedPath,
-        metadata: {},
-      });
+      await createPost({ body: composerBody, postType: composerType, audience: 'everyone', circleId: null, groupId: null, adventureId: null, imagePath: uploadedPath, metadata: {} });
       setComposerBody('');
       setComposerPhoto(null);
       setComposerType('update');
@@ -371,9 +361,6 @@ const styles = StyleSheet.create({
   badgeText: { color: '#D6C28D', fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
   postImage: { width: '100%', height: 230, borderRadius: 14, backgroundColor: '#101813' },
   postBody: { color: '#E0E5E1', fontSize: 13.5, lineHeight: 20 },
-  engagementRow: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-  engagementItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  engagementText: { color: MUTED, fontSize: 12 },
   list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
   listRow: { minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
