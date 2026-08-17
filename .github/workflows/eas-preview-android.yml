@@ -13,6 +13,7 @@ on:
       - 'package-lock.json'
       - 'apps/mobile/android/**'
       - 'apps/mobile/ios/**'
+      - 'apps/mobile/plugins/**'
       - 'apps/mobile/assets/ma-app-icon.png'
       - 'apps/mobile/assets/ma-splash-icon.png'
       - 'apps/mobile/assets/ma-pathfinder-mark.png'
@@ -43,7 +44,20 @@ jobs:
             echo "Checked out ${CHECKED_OUT}, but current main is ${CURRENT_MAIN}."
             exit 1
           fi
-          echo "Building current main: ${CURRENT_MAIN}"
+          echo "APK candidate is current main: ${CURRENT_MAIN}"
+
+      - name: Debounce rapid main updates before expensive build
+        run: sleep 25
+
+      - name: Re-check newest main before setup
+        run: |
+          git fetch origin main
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          if [ "${CHECKED_OUT}" != "${CURRENT_MAIN}" ]; then
+            echo "Refusing stale APK build. Checked out ${CHECKED_OUT}, latest main is ${CURRENT_MAIN}."
+            exit 1
+          fi
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -104,11 +118,11 @@ jobs:
                   print(f'Valid PNG: {path} ({image.width}x{image.height})')
           PY
 
-      - name: Stamp preview APK with current main commit
+      - name: Stamp preview APK with checked-out main commit
         working-directory: apps/mobile
-        env:
-          BUILD_GIT_SHA: ${{ github.sha }}
         run: |
+          BUILD_GIT_SHA="$(git rev-parse HEAD)"
+          export BUILD_GIT_SHA
           node <<'NODE'
           const fs = require('fs');
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
@@ -134,6 +148,16 @@ jobs:
         working-directory: apps/mobile
         run: |
           node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) { console.error('Missing expo.extra.eas.projectId. Run eas init once and commit the generated project ID.'); process.exit(1); }"
+
+      - name: Final newest-main gate before EAS build
+        run: |
+          git fetch origin main
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          if [ "${CHECKED_OUT}" != "${CURRENT_MAIN}" ]; then
+            echo "Refusing stale APK build. Checked out ${CHECKED_OUT}, latest main is ${CURRENT_MAIN}."
+            exit 1
+          fi
 
       - name: Build installable Android preview
         working-directory: apps/mobile
