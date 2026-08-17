@@ -4,7 +4,7 @@ export const styles = StyleSheet.create({
   cover: { height: 212, marginTop: -72, borderRadius: 22, overflow: 'hidden', backgroundColor: '#07100D', borderWidth: 1.4, shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   coverCompact: { height: 198 },
   imageRadius: { borderRadius: 22 },
-  baseScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,7,6,0.10)' },
+  baseScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,7,6,0.10)' },
   rankGlow: { position: 'absolute', left: -64, top: -42, width: 260, height: 260, borderRadius: 130 },
   leftScrim: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '62%', backgroundColor: 'rgba(3,8,6,0.48)' },
   leftScrimCompact: { width: '78%' },
