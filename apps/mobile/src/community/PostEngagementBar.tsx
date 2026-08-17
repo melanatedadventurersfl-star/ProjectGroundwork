@@ -14,26 +14,20 @@ const BORDER = '#334139';
 
 export type CommunityReaction = 'like' | 'love' | 'celebrate' | 'support';
 
-type ReactionSummary = {
-  reaction: CommunityReaction;
-  count: number;
-};
+type ReactionMeta = { value: CommunityReaction; emoji: string; label: string };
+type ReactionSummary = { reaction: CommunityReaction; count: number };
+type Reactor = { profile_id: string; reaction: CommunityReaction; name: string };
 
-type Reactor = {
-  profile_id: string;
-  reaction: CommunityReaction;
-  name: string;
-};
-
-const reactions: { value: CommunityReaction; emoji: string; label: string }[] = [
-  { value: 'like', emoji: '👍🏾', label: 'Like' },
+const DEFAULT_REACTION: ReactionMeta = { value: 'like', emoji: '👍🏾', label: 'Like' };
+const reactions: ReactionMeta[] = [
+  DEFAULT_REACTION,
   { value: 'love', emoji: '❤️', label: 'Love' },
   { value: 'celebrate', emoji: '🙌🏾', label: 'Celebrate' },
   { value: 'support', emoji: '🤎', label: 'Support' },
 ];
 
-function reactionMeta(value: CommunityReaction | null) {
-  return reactions.find((item) => item.value === value) ?? reactions[0];
+function reactionMeta(value: CommunityReaction | null): ReactionMeta {
+  return reactions.find((item) => item.value === value) ?? DEFAULT_REACTION;
 }
 
 export function PostEngagementBar({
