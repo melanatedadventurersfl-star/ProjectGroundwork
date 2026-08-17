@@ -11,15 +11,32 @@ export default function SignInScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const canSubmit = useMemo(() => Boolean(identifier.trim() && password), [identifier, password]);
 
+  async function routeAfterSignIn(userId: string) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('onboarding_completed_at')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.warn('[auth] Unable to check onboarding status after sign in', error.message);
+      router.replace('/');
+      return;
+    }
+
+    router.replace(data?.onboarding_completed_at ? '/(tabs)' : '/onboarding');
+  }
+
   async function handleSignIn() {
     if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
       const normalized = identifier.trim();
+      let userId: string | null = null;
 
       if (normalized.includes('@')) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: normalized,
           password,
         });
@@ -28,6 +45,7 @@ export default function SignInScreen() {
           Alert.alert('Unable to sign in', getFriendlyAuthError(error, 'Check your username/email and password, then try again.'));
           return;
         }
+        userId = data.user?.id ?? null;
       } else {
         const { data, error } = await supabase.functions.invoke('username-login', {
           body: { identifier: normalized, password },
@@ -38,7 +56,7 @@ export default function SignInScreen() {
           return;
         }
 
-        const { error: sessionError } = await supabase.auth.setSession({
+        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
           access_token: data.access_token,
           refresh_token: data.refresh_token,
         });
@@ -47,9 +65,14 @@ export default function SignInScreen() {
           Alert.alert('Unable to sign in', getFriendlyAuthError(sessionError, 'Unable to start your session.'));
           return;
         }
+        userId = sessionData.user?.id ?? null;
       }
 
-      router.replace('/(tabs)');
+      if (userId) {
+        await routeAfterSignIn(userId);
+      } else {
+        router.replace('/');
+      }
     } catch (caught) {
       Alert.alert('Unable to sign in', getFriendlyAuthError(caught, 'Unable to sign in.'));
     } finally {
