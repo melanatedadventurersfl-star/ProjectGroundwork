@@ -1,7 +1,14 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { RankName } from '../passport/RankEmblem';
 import type { WeatherForecast } from '../weather/api';
+import clearDay from '../weather/assets/clearDay';
 import clearNight from '../weather/assets/clearNight';
+import dawn from '../weather/assets/dawn';
+import drizzle from '../weather/assets/drizzle';
+import fog from '../weather/assets/fog';
+import overcast from '../weather/assets/overcast';
+import partlyCloudy from '../weather/assets/partlyCloudy';
+import storm from '../weather/assets/storm';
 import { trailheadBackgroundFor } from './bannerAssets';
 import explorerHighRes from './assets/explorerHighRes';
 
@@ -10,9 +17,9 @@ export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
 type RankTheme={accent:string;soft:string;glow:string};
 
+// Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
-  enabled: true,
-  phase: 'night',
+  enabled: false,
 };
 
 export const displayRankByRank:Record<RankName,DisplayRank>={Explorer:'Explorer',Pathfinder:'Pathfinder',Trailblazer:'Trailblazer',Wayfinder:'Adventurer',Summiteer:'Summit Seeker','Legacy Pathfinder':'Ascendant'};
@@ -24,8 +31,25 @@ export function greetingFor(p:DayPhase){return p==='morning'?'Good morning':p===
 export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Storms nearby · use caution outdoors.';if(w==='rain')return'Rain nearby · pack a shell.';if(w==='snow')return'Snowy conditions · tread carefully.';if(w==='fog')return'Low visibility · stay aware.';if(w==='windy')return'Windy on the trail · secure loose gear.';if(w==='cloudy')return'Cloud cover makes for a cooler outing.';if(w==='partly-cloudy')return p==='evening'?'Golden hour on the trail.':'Clouds drifting across the trail.';return p==='night'?'The mountain calls.':p==='evening'?'Perfect evening for a local hike.':p==='morning'?'Fresh air. New day. New trails.':'Perfect weather for a local adventure.'}
 export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
+function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  // Use the approved Pathfinder-specific scenes whenever we have an exact asset.
+  if (w === 'fog') return { uri: trailheadBackgroundFor('Pathfinder', 'fog', p) };
+  if (w === 'clear' && p === 'evening') return { uri: trailheadBackgroundFor('Pathfinder', 'clear', 'evening') };
+
+  // Complete live-condition coverage so the banner always reflects weather/time.
+  // These slots can be replaced one-for-one with rank-specific art without changing resolver logic.
+  if (p === 'night') return { uri: clearNight };
+  if (w === 'storm') return { uri: storm };
+  if (w === 'rain') return { uri: drizzle };
+  if (w === 'fog') return { uri: fog };
+  if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
+  if (w === 'partly-cloudy') return { uri: partlyCloudy };
+  if (p === 'morning') return { uri: dawn };
+  return { uri: clearDay };
+}
+
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
-  if(rank==='Pathfinder' && p==='night') return {uri: clearNight};
+  if(rank==='Pathfinder') return pathfinderBackground(w,p);
   if(rank==='Explorer') return {uri: explorerHighRes};
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
