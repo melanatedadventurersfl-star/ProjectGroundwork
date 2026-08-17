@@ -1,6 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { RankName } from '../passport/RankEmblem';
 import type { WeatherForecast } from '../weather/api';
+import clearNight from '../weather/assets/clearNight';
 import { trailheadBackgroundFor } from './bannerAssets';
 import explorerHighRes from './assets/explorerHighRes';
 
@@ -8,6 +9,11 @@ export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
 type RankTheme={accent:string;soft:string;glow:string};
+
+export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
+  enabled: true,
+  phase: 'night',
+};
 
 export const displayRankByRank:Record<RankName,DisplayRank>={Explorer:'Explorer',Pathfinder:'Pathfinder',Trailblazer:'Trailblazer',Wayfinder:'Adventurer',Summiteer:'Summit Seeker','Legacy Pathfinder':'Ascendant'};
 export const rankThemes:Record<DisplayRank,RankTheme>={Explorer:{accent:'#37AFFF',soft:'#D9F3FF',glow:'rgba(55,175,255,0.26)'},Pathfinder:{accent:'#9BE33D',soft:'#E7FFC5',glow:'rgba(155,227,61,0.24)'},Trailblazer:{accent:'#FF453A',soft:'#FFD1CD',glow:'rgba(255,69,58,0.24)'},Adventurer:{accent:'#D88A34',soft:'#FFE0B8',glow:'rgba(216,138,52,0.24)'},'Summit Seeker':{accent:'#F2C34B',soft:'#FFF0A6',glow:'rgba(242,195,75,0.24)'},Ascendant:{accent:'#B65CFF',soft:'#F0D5FF',glow:'rgba(182,92,255,0.26)'}};
@@ -19,6 +25,7 @@ export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Sto
 export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
+  if(rank==='Pathfinder' && p==='night') return {uri: clearNight};
   if(rank==='Explorer') return {uri: explorerHighRes};
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
