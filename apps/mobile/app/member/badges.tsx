@@ -1,22 +1,31 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
-import { getMemberBadges, type MemberBadge } from '../../src/passport/api';
+import { getJourney, getMemberBadges, type MemberBadge } from '../../src/passport/api';
+import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 export default function ProfileBadgesScreen() {
   const [badges, setBadges] = useState<MemberBadge[]>([]);
+  const [completedAdventures, setCompletedAdventures] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void getMemberBadges()
-      .then(setBadges)
+    void Promise.all([getMemberBadges(), getJourney()])
+      .then(([nextBadges, journey]) => {
+        setBadges(nextBadges);
+        setCompletedAdventures(journey.length);
+      })
       .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load badges.'))
       .finally(() => setLoading(false));
   }, []);
+
+  const currentRank = useMemo(() => rankFor(completedAdventures), [completedAdventures]);
+  const nextRank = useMemo(() => rankLadder.find(([, minimum]) => minimum > completedAdventures), [completedAdventures]);
+  const remaining = nextRank ? Math.max(0, nextRank[1] - completedAdventures) : 0;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -29,6 +38,25 @@ export default function ProfileBadgesScreen() {
         <Text style={styles.title}>Badges</Text>
         <Text style={styles.copy}>Milestones you’ve earned across your Melanated Adventurers journey.</Text>
       </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="View rank progression"
+        onPress={() => router.push('/member/rank-progress' as never)}
+        style={({ pressed }) => [styles.rankCard, pressed && styles.rankCardPressed]}
+      >
+        <View style={styles.rankArt}>
+          <RankEmblem rank={currentRank} size={76} />
+        </View>
+        <View style={styles.rankCopy}>
+          <Text style={styles.rankEyebrow}>RANK PROGRESSION</Text>
+          <Text style={styles.rankTitle}>{currentRank}</Text>
+          <Text style={styles.rankMeta}>
+            {nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}
+          </Text>
+          <Text style={styles.rankLink}>View your Rank Journey →</Text>
+        </View>
+      </Pressable>
 
       {loading ? <ActivityIndicator color="#F5C341" style={styles.loader} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -65,6 +93,14 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#67CFC8', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: '#F7F8F3', fontSize: 32, lineHeight: 37, fontWeight: '900', marginTop: 3 },
   copy: { color: '#98A59E', fontSize: 14, lineHeight: 20, marginTop: 4 },
+  rankCard: { flexDirection: 'row', alignItems: 'center', gap: 15, backgroundColor: '#111A17', borderRadius: 20, borderWidth: 1, borderColor: '#3E5148', padding: 15 },
+  rankCardPressed: { opacity: 0.68 },
+  rankArt: { width: 88, minHeight: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: '#0D1713' },
+  rankCopy: { flex: 1, minWidth: 0 },
+  rankEyebrow: { color: '#67CFC8', fontSize: 9.5, fontWeight: '900', letterSpacing: 1.1 },
+  rankTitle: { color: '#F7F8F3', fontSize: 21, fontWeight: '900', marginTop: 3 },
+  rankMeta: { color: '#A9B5AE', fontSize: 12.5, lineHeight: 17, marginTop: 3 },
+  rankLink: { color: '#F5C341', fontSize: 12.5, fontWeight: '900', marginTop: 8 },
   loader: { marginTop: 24 },
   error: { color: '#FFB4A9' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
