@@ -5,7 +5,7 @@ import { ImageBackground, Pressable, Text, useWindowDimensions, View } from 'rea
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
-import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, weatherCopy } from './trailheadBannerConfig';
+import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, trailheadDebugOverride, weatherCopy } from './trailheadBannerConfig';
 import { styles } from './trailheadBannerStyles';
 
 export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null; displayName: string; rank: RankName; greeting: string; busy?: boolean; onEdit?: () => void; onRankPress?: () => void }) {
@@ -39,8 +39,10 @@ export function TrailheadCover({ displayName, rank }: { coverUrl?: string | null
 
   const displayRank = displayRankByRank[rank];
   const theme = rankThemes[displayRank];
-  const weather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData?.current.condition.text]);
-  const phase = useMemo(() => dayPhaseFor(weatherData), [weatherData]);
+  const liveWeather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData?.current.condition.text]);
+  const livePhase = useMemo(() => dayPhaseFor(weatherData), [weatherData]);
+  const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
+  const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
