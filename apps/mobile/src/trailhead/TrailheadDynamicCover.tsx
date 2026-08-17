@@ -7,8 +7,19 @@ import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
-import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, trailheadDebugOverride, weatherCopy } from './trailheadBannerConfig';
+import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, trailheadDebugOverride, weatherCopy, type DayPhase, type WeatherTheme } from './trailheadBannerConfig';
 import { styles } from './trailheadBannerStyles';
+
+function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
+  if (phase === 'night') return 'rgba(4, 13, 28, 0.48)';
+  if (weather === 'storm') return 'rgba(18, 24, 31, 0.34)';
+  if (weather === 'rain') return 'rgba(16, 31, 39, 0.24)';
+  if (weather === 'fog') return 'rgba(214, 225, 220, 0.14)';
+  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.16)';
+  if (phase === 'morning') return 'rgba(255, 224, 168, 0.08)';
+  if (phase === 'evening') return 'rgba(255, 150, 76, 0.07)';
+  return 'transparent';
+}
 
 export function TrailheadCover({
   displayName,
@@ -68,6 +79,7 @@ export function TrailheadCover({
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
+  const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
   const condition = weatherData?.current.condition.text ? weather.replace('-', ' ') : 'Local weather';
@@ -84,6 +96,7 @@ export function TrailheadCover({
       imageStyle={styles.imageRadius}
       style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}
     >
+      <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
       <View style={styles.baseScrim} />
       <View style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
       <View style={[styles.leftScrim, compact && styles.leftScrimCompact]} />
@@ -128,7 +141,7 @@ export function TrailheadCover({
               {hasBadgeArt(badge.title) ? (
                 <BadgeArt title={badge.title} size={30} />
               ) : (
-                <View style={[styles.badgeFallback, { borderColor: theme.accent }]}> 
+                <View style={[styles.badgeFallback, { borderColor: theme.accent }]}>
                   <AppIcon name="badge" color={theme.soft} size={17} />
                 </View>
               )}
