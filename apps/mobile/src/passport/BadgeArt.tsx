@@ -1,4 +1,5 @@
 import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { adventureBadgeDataUris } from './AdventureBadgeDataUris';
 import { tenureBadgeDataUris } from './TenureBadgeDataUris';
 
 export type BadgeArtName =
@@ -23,13 +24,13 @@ const badgeAssets: Record<BadgeArtName, ImageSourcePropType> = {
   'Year 3': { uri: tenureBadgeDataUris['Year 3'] },
   'Year 4': { uri: tenureBadgeDataUris['Year 4'] },
   'Year 5': { uri: tenureBadgeDataUris['Year 5'] },
-  'First Adventure': require('../../assets/badges/first-adventure.jpg'),
-  'Trail Regular': require('../../assets/badges/trail-regular.jpg'),
-  'Wayfinder Five': require('../../assets/badges/wayfinder-five.jpg'),
-  'Summit Ten': require('../../assets/badges/summit-ten.jpg'),
-  'Legacy Twenty': require('../../assets/badges/legacy-twenty.jpg'),
-  'Camp Crew': require('../../assets/badges/camp-crew.jpg'),
-  'Water Wayfinder': require('../../assets/badges/water-wayfinder.jpg'),
+  'First Adventure': { uri: adventureBadgeDataUris['First Adventure'] },
+  'Trail Regular': { uri: adventureBadgeDataUris['Trail Regular'] },
+  'Wayfinder Five': { uri: adventureBadgeDataUris['Wayfinder Five'] },
+  'Summit Ten': { uri: adventureBadgeDataUris['Summit Ten'] },
+  'Legacy Twenty': { uri: adventureBadgeDataUris['Legacy Twenty'] },
+  'Camp Crew': { uri: adventureBadgeDataUris['Camp Crew'] },
+  'Water Wayfinder': { uri: adventureBadgeDataUris['Water Wayfinder'] },
 };
 
 const supported = new Set<BadgeArtName>(Object.keys(badgeAssets) as BadgeArtName[]);
