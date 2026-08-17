@@ -41,11 +41,11 @@ const items: NavItem[] = [
     isActive: (pathname) => pathname.includes('/passport'),
   },
   {
-    label: 'Menu',
-    icon: 'menu',
-    href: '/(tabs)/menu',
+    label: 'Profile',
+    icon: 'profile',
+    href: '/member/profile',
     requiresAuth: true,
-    isActive: (pathname) => pathname.includes('/menu') || pathname.startsWith('/member') || pathname.startsWith('/notifications') || pathname.startsWith('/guide') || pathname.startsWith('/about') || pathname.startsWith('/host'),
+    isActive: (pathname) => pathname === '/member/profile',
   },
 ];
 
