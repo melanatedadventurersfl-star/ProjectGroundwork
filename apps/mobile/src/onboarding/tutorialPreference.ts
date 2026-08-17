@@ -3,6 +3,7 @@ import * as SQLite from 'expo-sqlite';
 const db = SQLite.openDatabaseSync('ma-local.db');
 const GUEST_PROMPT_KEY = 'guest_tutorial_prompt_seen';
 const GUIDED_TUTORIAL_KEY = 'guided_tutorial_completed_v1';
+const GUIDED_TUTORIAL_FINISHED_KEY = 'guided_tutorial_finished_v1';
 
 function ensureTable() {
   db.execSync('CREATE TABLE IF NOT EXISTS app_preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);');
@@ -31,10 +32,20 @@ export function hasCompletedGuidedTutorial() {
   return getFlag(GUIDED_TUTORIAL_KEY);
 }
 
+export function hasFinishedGuidedTutorial() {
+  return getFlag(GUIDED_TUTORIAL_FINISHED_KEY);
+}
+
 export function markGuidedTutorialCompleted() {
   setFlag(GUIDED_TUTORIAL_KEY, true);
 }
 
+export function markGuidedTutorialFinished() {
+  setFlag(GUIDED_TUTORIAL_KEY, true);
+  setFlag(GUIDED_TUTORIAL_FINISHED_KEY, true);
+}
+
 export function resetGuidedTutorial() {
   setFlag(GUIDED_TUTORIAL_KEY, false);
+  setFlag(GUIDED_TUTORIAL_FINISHED_KEY, false);
 }
