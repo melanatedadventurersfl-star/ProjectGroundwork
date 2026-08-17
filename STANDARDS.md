@@ -385,3 +385,13 @@ Groundwork should be built with the same care it promises to give its users.
 The product exists to reduce confusion, preserve knowledge, and make meaningful work easier to manage.
 
 The way we build Groundwork should reflect that same philosophy.
+
+---
+
+# 16. Badge Design Standard
+
+Achievement badges are governed by `docs/Badge Design System.md`.
+
+Any request to create, add, redesign, or generate a badge must follow that document by default. Do not establish a new badge aesthetic ad hoc in chat or substitute generic iconography when a production badge is required.
+
+The established embroidered outdoor-patch family is the canonical visual language. New badge artwork must be evaluated for consistency with the existing collection before it is considered complete.
