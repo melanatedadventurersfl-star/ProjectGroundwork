@@ -10,7 +10,7 @@ import overcast from '../weather/assets/overcast';
 import partlyCloudy from '../weather/assets/partlyCloudy';
 import storm from '../weather/assets/storm';
 import { trailheadBackgroundFor } from './bannerAssets';
-import explorerShoreMorning from './assets/explorerShoreMorning';
+import explorerHighRes from './assets/explorerHighRes';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
@@ -32,16 +32,11 @@ export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Sto
 export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
 function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
-  // Use the approved Pathfinder-specific scenes whenever we have an exact asset.
   if (w === 'fog') return { uri: trailheadBackgroundFor('Pathfinder', 'fog', p) };
   if (w === 'clear' && p === 'evening') return { uri: trailheadBackgroundFor('Pathfinder', 'clear', 'evening') };
-
-  // Complete live-condition coverage so the banner always reflects weather/time.
-  // These slots can be replaced one-for-one with rank-specific art without changing resolver logic.
   if (p === 'night') return { uri: clearNight };
   if (w === 'storm') return { uri: storm };
   if (w === 'rain') return { uri: drizzle };
-  if (w === 'fog') return { uri: fog };
   if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
   if (w === 'partly-cloudy') return { uri: partlyCloudy };
   if (p === 'morning') return { uri: dawn };
@@ -50,6 +45,6 @@ function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
   if(rank==='Pathfinder') return pathfinderBackground(w,p);
-  if(rank==='Explorer') return {uri: explorerShoreMorning};
+  if(rank==='Explorer') return {uri: explorerHighRes};
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
