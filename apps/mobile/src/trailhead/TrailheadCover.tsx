@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
@@ -81,6 +81,8 @@ export function TrailheadCover({ displayName, rank, greeting, onRankPress }: {
   onEdit?: () => void;
   onRankPress: () => void;
 }) {
+  const { width } = useWindowDimensions();
+  const compact = width < 420;
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
 
@@ -127,7 +129,7 @@ export function TrailheadCover({ displayName, rank, greeting, onRankPress }: {
       source={{ uri: background }}
       resizeMode="cover"
       imageStyle={styles.imageRadius}
-      style={[styles.cover, { borderColor: theme.accent, shadowColor: theme.accent }]}
+      style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}
     >
       <View style={styles.baseScrim} />
       <View style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
@@ -138,9 +140,9 @@ export function TrailheadCover({ displayName, rank, greeting, onRankPress }: {
         accessibilityRole="button"
         accessibilityLabel={`View ${rank} rank progress`}
         onPress={onRankPress}
-        style={styles.primaryEmblem}
+        style={[styles.primaryEmblem, compact && styles.primaryEmblemCompact]}
       >
-        <RankEmblem rank={rank} size={108} />
+        <RankEmblem rank={rank} size={compact ? 84 : 108} />
       </Pressable>
 
       <View style={styles.headerActions}>
@@ -152,10 +154,19 @@ export function TrailheadCover({ displayName, rank, greeting, onRankPress }: {
         </Pressable>
       </View>
 
-      <View style={styles.copyBlock}>
-        <Text style={styles.greeting}>{greeting},</Text>
-        <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{displayName}</Text>
+      <View style={[styles.titleBlock, compact && styles.titleBlockCompact]}>
+        <Text style={[styles.greeting, compact && styles.greetingCompact]}>{greeting},</Text>
+        <Text
+          style={[styles.name, compact && styles.nameCompact]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.62}
+        >
+          {displayName}
+        </Text>
+      </View>
 
+      <View style={[styles.metaBlock, compact && styles.metaBlockCompact]}>
         <View style={styles.statusRow}>
           <Pressable
             accessibilityRole="button"
@@ -180,17 +191,19 @@ export function TrailheadCover({ displayName, rank, greeting, onRankPress }: {
         </View>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`View ${rank} rank progress`}
-        onPress={onRankPress}
-        style={styles.secondaryRank}
-      >
-        <RankEmblem rank={rank} size={72} />
-        <View style={[styles.rankPill, { borderColor: theme.accent }]}>
-          <Text style={[styles.rankPillText, { color: theme.soft }]} numberOfLines={1}>{rank.toUpperCase()}</Text>
-        </View>
-      </Pressable>
+      {!compact ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View ${rank} rank progress`}
+          onPress={onRankPress}
+          style={styles.secondaryRank}
+        >
+          <RankEmblem rank={rank} size={72} />
+          <View style={[styles.rankPill, { borderColor: theme.accent }]}>
+            <Text style={[styles.rankPillText, { color: theme.soft }]} numberOfLines={1}>{rank.toUpperCase()}</Text>
+          </View>
+        </Pressable>
+      ) : null}
     </ImageBackground>
   );
 }
@@ -208,26 +221,33 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
+  coverCompact: { height: 196 },
   imageRadius: { borderRadius: 22 },
   baseScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,7,6,0.18)' },
   rankGlow: { position: 'absolute', left: -64, top: -42, width: 260, height: 260, borderRadius: 130 },
-  leftScrim: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '69%', backgroundColor: 'rgba(3,8,6,0.48)' },
-  bottomScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 86, backgroundColor: 'rgba(2,6,5,0.38)' },
+  leftScrim: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '74%', backgroundColor: 'rgba(3,8,6,0.50)' },
+  bottomScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 82, backgroundColor: 'rgba(2,6,5,0.46)' },
   primaryEmblem: { position: 'absolute', left: 10, top: 20, width: 112, height: 112, alignItems: 'center', justifyContent: 'center' },
+  primaryEmblemCompact: { left: 8, top: 18, width: 88, height: 88 },
   headerActions: { position: 'absolute', right: 12, top: 11, flexDirection: 'row', gap: 8, zIndex: 5 },
-  headerButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(5,10,9,0.72)', borderWidth: 1, borderColor: 'rgba(255,248,232,0.28)', alignItems: 'center', justifyContent: 'center' },
-  copyBlock: { position: 'absolute', left: 126, right: 98, top: 24, bottom: 17, justifyContent: 'center' },
+  headerButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(5,10,9,0.72)', borderWidth: 1, borderColor: 'rgba(255,248,232,0.28)', alignItems: 'center', justifyContent: 'center' },
+  titleBlock: { position: 'absolute', left: 126, right: 98, top: 30 },
+  titleBlockCompact: { left: 102, right: 14, top: 28 },
   greeting: { color: '#FFF8E8', fontSize: 15, lineHeight: 19, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.82)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
+  greetingCompact: { fontSize: 14, lineHeight: 17 },
   name: { color: '#FFFDF5', fontSize: 27, lineHeight: 32, fontWeight: '900', marginTop: 1, textShadowColor: 'rgba(0,0,0,0.88)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, flexWrap: 'wrap' },
-  rankInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  nameCompact: { fontSize: 25, lineHeight: 29 },
+  metaBlock: { position: 'absolute', left: 126, right: 98, bottom: 18 },
+  metaBlockCompact: { left: 14, right: 14, bottom: 14 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'nowrap' },
+  rankInline: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   rankGlyph: { fontSize: 13, fontWeight: '900' },
   rankText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.45 },
   dot: { color: 'rgba(255,248,232,0.7)', fontSize: 11, fontWeight: '900' },
   statusIcon: { color: '#FFF8E8', fontSize: 12 },
-  statusText: { color: '#FFF8E8', fontSize: 11.5, fontWeight: '850' },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 9 },
-  location: { color: 'rgba(255,248,232,0.78)', fontSize: 10.5, fontWeight: '700', maxWidth: '43%' },
+  statusText: { color: '#FFF8E8', fontSize: 11.5, fontWeight: '800' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  location: { color: 'rgba(255,248,232,0.78)', fontSize: 10.5, fontWeight: '700', maxWidth: '42%' },
   weatherCopy: { fontSize: 10.5, fontWeight: '800', flexShrink: 1 },
   secondaryRank: { position: 'absolute', right: 12, bottom: 12, width: 82, alignItems: 'center', gap: 4 },
   rankPill: { minWidth: 74, maxWidth: 86, minHeight: 22, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, borderWidth: 1, backgroundColor: 'rgba(4,9,7,0.74)', alignItems: 'center', justifyContent: 'center' },
