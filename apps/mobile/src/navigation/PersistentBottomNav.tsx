@@ -27,11 +27,11 @@ const items: NavItem[] = [
     isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness') || pathname.startsWith('/trail-guide'),
   },
   {
-    label: 'Campfire',
+    label: 'Outpost',
     icon: 'community',
     href: '/(tabs)/community',
     requiresAuth: true,
-    isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections'),
+    isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections') || pathname.startsWith('/local-events'),
   },
   {
     label: 'Passport',
