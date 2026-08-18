@@ -4,6 +4,7 @@ export const styles = StyleSheet.create({
   cover: { height: 224, marginTop: -72, borderRadius: 22, overflow: 'hidden', backgroundColor: '#07100D', borderWidth: 1.4, shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   coverCompact: { height: 212 },
   imageRadius: { borderRadius: 22 },
+  animatedBackground: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   atmosphereOverlay: { ...StyleSheet.absoluteFill },
   baseScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,7,6,0.01)' },
   rankGlow: { position: 'absolute', left: -72, top: -48, width: 250, height: 250, borderRadius: 125, opacity: 0.34 },
