@@ -69,11 +69,14 @@ jobs:
       - name: Install image validator
         run: python3 -m pip install --quiet pillow
 
-      - name: Strictly validate every Trailhead image
+      - name: Validate every Trailhead image through production canonicalization
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          from PIL import Image
+          from tempfile import TemporaryDirectory
+          from PIL import Image, ImageFile
+
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
 
           root = Path('apps/mobile/assets/trailhead')
           images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
@@ -81,26 +84,53 @@ jobs:
               raise RuntimeError('No native Trailhead image assets were found.')
 
           failures = []
-          for path in images:
-              try:
-                  with Image.open(path) as image:
-                      image.verify()
-                  with Image.open(path) as image:
-                      image.load()
-                      width, height = image.size
-                      image_format = image.format
-                      if width < 480 or height < 180:
-                          raise RuntimeError(f'image is too small: {width}x{height}')
-                      if path.suffix.lower() in {'.jpg', '.jpeg'} and image_format != 'JPEG':
-                          raise RuntimeError(f'extension says JPEG but file format is {image_format}')
-                      if path.suffix.lower() == '.png' and image_format != 'PNG':
-                          raise RuntimeError(f'extension says PNG but file format is {image_format}')
-                      print(f'Validated Trailhead asset: {path} ({width}x{height}, {image_format})')
-              except Exception as exc:
-                  failures.append(f'{path}: {exc}')
+          recovered = []
+
+          with TemporaryDirectory() as temp_dir:
+              temp_root = Path(temp_dir)
+
+              for index, path in enumerate(images):
+                  try:
+                      suffix = path.suffix.lower()
+                      if suffix not in {'.jpg', '.jpeg', '.png'}:
+                          raise RuntimeError(f'unsupported extension: {suffix}')
+
+                      with Image.open(path) as source:
+                          source.load()
+                          width, height = source.size
+                          source_format = source.format
+
+                          if width < 480 or height < 180:
+                              raise RuntimeError(f'image is too small: {width}x{height}')
+                          if suffix in {'.jpg', '.jpeg'} and source_format != 'JPEG':
+                              raise RuntimeError(f'extension says JPEG but file format is {source_format}')
+                          if suffix == '.png' and source_format != 'PNG':
+                              raise RuntimeError(f'extension says PNG but file format is {source_format}')
+
+                          clean_path = temp_root / f'{index}{suffix}'
+                          if suffix in {'.jpg', '.jpeg'}:
+                              source.convert('RGB').save(clean_path, format='JPEG', quality=92, optimize=False)
+                          else:
+                              source.convert('RGBA').save(clean_path, format='PNG', optimize=False, compress_level=6)
+
+                      with Image.open(clean_path) as clean:
+                          clean.verify()
+                      with Image.open(clean_path) as clean:
+                          clean.load()
+                          if clean.width != width or clean.height != height:
+                              raise RuntimeError(
+                                  f'canonicalization changed dimensions: {width}x{height} -> {clean.width}x{clean.height}'
+                              )
+
+                      recovered.append(str(path))
+                      print(f'Validated recoverable Trailhead asset: {path} ({width}x{height}, {source_format})')
+                  except Exception as exc:
+                      failures.append(f'{path}: {exc}')
 
           if failures:
               raise RuntimeError('Trailhead asset validation failed:\n' + '\n'.join(failures))
+
+          print(f'Validated {len(recovered)} Trailhead image(s) through the same recovery path used before EAS upload.')
           PY
 
       - name: Lint mobile app
