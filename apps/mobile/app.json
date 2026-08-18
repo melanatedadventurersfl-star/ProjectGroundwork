@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Melanated Adventurers",
+    "name": "Melanated",
     "slug": "melanated-adventurers",
     "description": "Melanated Adventurers mobile app",
     "version": "0.3.0",
@@ -52,7 +52,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/ma-app-icon.png",
         "monochromeImage": "./assets/ma-pathfinder-mark.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#151A1A"
       }
     },
     "web": {
@@ -61,7 +61,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "melanated-brand-assets-v7-profile-nav-delivery",
+      "nativeBuildAssetRevision": "melanated-brand-assets-v8-melanated-icon",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
