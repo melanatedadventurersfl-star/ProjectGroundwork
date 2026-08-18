@@ -41,6 +41,7 @@ const BADGE_CATALOG: BadgeDefinition[] = [
 ];
 
 const FILTERS: BadgeFilter[] = ['All', 'Tenure', 'Adventure', 'Activity'];
+const FAMILIES: BadgeFamily[] = ['Tenure', 'Adventure', 'Activity'];
 
 const FAMILY_COPY: Record<BadgeFamily, { icon: string; subtitle: string }> = {
   Tenure: { icon: '◷', subtitle: 'Time spent growing with the community.' },
@@ -86,7 +87,6 @@ export default function ProfileBadgesScreen() {
 
     return BADGE_CATALOG.map((definition) => {
       const directlyEarned = earnedByTitle.get(definition.title);
-
       if (directlyEarned) {
         return {
           ...definition,
@@ -115,24 +115,19 @@ export default function ProfileBadgesScreen() {
           ...definition,
           earned,
           earnedAt: earned ? anniversary.toISOString() : null,
-          progressLabel: earned ? `Earned ${formatMonthYear(anniversary.toISOString())}` : `Stay ${definition.tenureYears} year${definition.tenureYears === 1 ? '' : 's'}`,
+          progressLabel: earned
+            ? `Earned ${formatMonthYear(anniversary.toISOString())}`
+            : `Stay ${definition.tenureYears} year${definition.tenureYears === 1 ? '' : 's'}`,
         };
       }
 
-      return {
-        ...definition,
-        earned: false,
-        earnedAt: null,
-        progressLabel: definition.requirement,
-      };
+      return { ...definition, earned: false, earnedAt: null, progressLabel: definition.requirement };
     });
   }, [earnedBadges, completedAdventures]);
 
   const earnedCount = collection.filter((badge) => badge.earned).length;
   const completion = collection.length ? Math.round((earnedCount / collection.length) * 100) : 0;
-  const visibleFamilies = (['Tenure', 'Adventure', 'Activity'] as BadgeFamily[]).filter(
-    (family) => activeFilter === 'All' || activeFilter === family,
-  );
+  const visibleFamilies = FAMILIES.filter((family) => activeFilter === 'All' || activeFilter === family);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -211,28 +206,41 @@ export default function ProfileBadgesScreen() {
             </View>
 
             <View style={styles.grid}>
-              {familyBadges.map((badge) => (
-                <View key={badge.title} style={[styles.card, !badge.earned && styles.cardLocked]}>
-                  <View style={styles.art}>
-                    <View style={!badge.earned ? styles.lockedArt : undefined}>
-                      {hasBadgeArt(badge.title) ? (
-                        <BadgeArt title={badge.title} size={88} />
-                      ) : (
-                        <AppIcon name="badge" color={badge.earned ? '#F5C341' : '#7E8983'} size={44} />
-                      )}
-                    </View>
+              {familyBadges.map((badge) => {
+                const progressPercent = badge.adventureTarget
+                  ? Math.min(100, Math.round((completedAdventures / badge.adventureTarget) * 100))
+                  : 0;
+                return (
+                  <View key={badge.title} style={[styles.card, !badge.earned && styles.cardLocked]}>
                     {!badge.earned ? (
                       <View style={styles.lockPill}>
                         <Text style={styles.lockText}>LOCKED</Text>
                       </View>
                     ) : null}
+
+                    <View style={styles.art}>
+                      <View style={!badge.earned ? styles.lockedArt : undefined}>
+                        {hasBadgeArt(badge.title) ? (
+                          <BadgeArt title={badge.title} size={98} />
+                        ) : (
+                          <AppIcon name="badge" color={badge.earned ? '#F5C341' : '#7E8983'} size={48} />
+                        )}
+                      </View>
+                    </View>
+
+                    <Text style={[styles.cardTitle, !badge.earned && styles.cardTitleLocked]}>{badge.title}</Text>
+                    <Text style={[styles.status, badge.earned ? styles.statusEarned : styles.statusLocked]} numberOfLines={2}>
+                      {badge.progressLabel}
+                    </Text>
+
+                    {!badge.earned && badge.adventureTarget ? (
+                      <View style={styles.cardProgressTrack}>
+                        <View style={[styles.cardProgressFill, { width: `${progressPercent}%` }]} />
+                      </View>
+                    ) : null}
                   </View>
-                  <Text style={[styles.cardTitle, !badge.earned && styles.cardTitleLocked]}>{badge.title}</Text>
-                  <Text style={[styles.status, badge.earned ? styles.statusEarned : styles.statusLocked]} numberOfLines={2}>
-                    {badge.progressLabel}
-                  </Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
         );
@@ -243,7 +251,7 @@ export default function ProfileBadgesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#07100E' },
-  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 92, gap: 18 },
+  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 92, gap: 16 },
   back: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginLeft: -5 },
   backText: { color: '#F5C341', fontWeight: '800', fontSize: 15 },
   headerRow: { flexDirection: 'row', gap: 12, alignItems: 'stretch' },
@@ -275,22 +283,24 @@ const styles = StyleSheet.create({
   filterTextActive: { color: '#4ED9A1' },
   loader: { marginTop: 18 },
   error: { color: '#FFB4A9' },
-  section: { gap: 11 },
+  section: { gap: 9, marginTop: 2 },
   sectionHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   sectionIcon: { color: '#4ED9A1', fontSize: 22, lineHeight: 24, fontWeight: '900' },
   sectionCopy: { flex: 1 },
   sectionTitle: { color: '#F7F8F3', fontSize: 18, fontWeight: '900' },
   sectionSubtitle: { color: '#8E9C95', fontSize: 12, lineHeight: 16, marginTop: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  card: { width: '48.5%', minHeight: 152, backgroundColor: '#111B18', borderRadius: 16, borderWidth: 1, borderColor: '#304039', padding: 10, alignItems: 'center', justifyContent: 'flex-start' },
-  cardLocked: { backgroundColor: '#0D1513', borderColor: '#26312D' },
-  art: { height: 92, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  lockedArt: { opacity: 0.28 },
-  lockPill: { position: 'absolute', top: 5, right: -2, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8, backgroundColor: '#26312D', borderWidth: 1, borderColor: '#46534D' },
-  lockText: { color: '#A6B0AB', fontSize: 7.5, letterSpacing: 0.7, fontWeight: '900' },
-  cardTitle: { color: '#F7F8F3', fontSize: 13, lineHeight: 16, fontWeight: '900', textAlign: 'center', marginTop: 3 },
-  cardTitleLocked: { color: '#A4ADA8' },
-  status: { fontSize: 10.5, lineHeight: 14, textAlign: 'center', marginTop: 5, minHeight: 28 },
+  card: { width: '48.5%', minHeight: 142, backgroundColor: '#111B18', borderRadius: 16, borderWidth: 1, borderColor: '#304039', paddingHorizontal: 10, paddingTop: 10, paddingBottom: 11, alignItems: 'center', justifyContent: 'flex-start', position: 'relative' },
+  cardLocked: { backgroundColor: '#0B1210', borderColor: '#222D29' },
+  art: { height: 96, alignItems: 'center', justifyContent: 'center' },
+  lockedArt: { opacity: 0.42 },
+  lockPill: { position: 'absolute', top: 8, right: 8, zIndex: 2, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: '#202A26', borderWidth: 1, borderColor: '#52605A' },
+  lockText: { color: '#BBC4BF', fontSize: 7.5, letterSpacing: 0.7, fontWeight: '900' },
+  cardTitle: { color: '#F7F8F3', fontSize: 13, lineHeight: 16, fontWeight: '900', textAlign: 'center', marginTop: 1 },
+  cardTitleLocked: { color: '#B2BBB6' },
+  status: { fontSize: 10.5, lineHeight: 14, textAlign: 'center', marginTop: 4, minHeight: 14 },
   statusEarned: { color: '#4ED9A1', fontWeight: '800' },
-  statusLocked: { color: '#76827C' },
+  statusLocked: { color: '#7F8B85' },
+  cardProgressTrack: { width: '82%', height: 4, borderRadius: 99, backgroundColor: '#222D29', overflow: 'hidden', marginTop: 7 },
+  cardProgressFill: { height: '100%', borderRadius: 99, backgroundColor: '#4ED9A1' },
 });
