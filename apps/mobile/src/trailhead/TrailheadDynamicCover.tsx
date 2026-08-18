@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { getMemberBadges, type MemberBadge } from '../passport/api';
@@ -41,8 +41,8 @@ export function TrailheadCover({
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
-  const backgroundMotion = useRef(new Animated.Value(0)).current;
-  const backgroundFade = useRef(new Animated.Value(1)).current;
+  const [backgroundMotion] = useState(() => new Animated.Value(0));
+  const [backgroundFade] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     let active = true;
@@ -82,6 +82,8 @@ export function TrailheadCover({
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
+  const backgroundScale = useMemo(() => backgroundMotion.interpolate({ inputRange: [0, 1], outputRange: [1.015, 1.035] }), [backgroundMotion]);
+  const backgroundTranslateX = useMemo(() => backgroundMotion.interpolate({ inputRange: [0, 1], outputRange: [-3, 3] }), [backgroundMotion]);
 
   useEffect(() => {
     backgroundFade.setValue(0);
@@ -133,23 +135,7 @@ export function TrailheadCover({
         resizeMode="cover"
         style={[
           styles.animatedBackground,
-          {
-            opacity: backgroundFade,
-            transform: [
-              {
-                scale: backgroundMotion.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1.015, 1.035],
-                }),
-              },
-              {
-                translateX: backgroundMotion.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-3, 3],
-                }),
-              },
-            ],
-          },
+          { opacity: backgroundFade, transform: [{ scale: backgroundScale }, { translateX: backgroundTranslateX }] },
         ]}
       />
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
