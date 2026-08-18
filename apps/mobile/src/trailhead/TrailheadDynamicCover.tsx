@@ -1,8 +1,7 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useState } from 'react';
-import { AppState, Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
-import { getAppMediaUrl } from '../lib/appMediaManifest';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, AppState, Easing, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
@@ -13,16 +12,17 @@ import { styles } from './trailheadBannerStyles';
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
-const PATHFINDER_MEDIA_KEY = 'trailhead.pathfinder.clear.afternoon';
+const RAIN_DROPS = Array.from({ length: 18 }, (_, index) => index);
+const NIGHT_STARS = [12, 22, 34, 48, 62, 74, 86] as const;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
-  if (phase === 'night') return 'rgba(4, 13, 28, 0.58)';
-  if (weather === 'storm') return 'rgba(18, 24, 31, 0.42)';
-  if (weather === 'rain') return 'rgba(16, 31, 39, 0.32)';
-  if (weather === 'fog') return 'rgba(214, 225, 220, 0.20)';
-  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.24)';
-  if (phase === 'morning') return 'rgba(255, 224, 168, 0.14)';
-  if (phase === 'evening') return 'rgba(255, 150, 76, 0.14)';
+  if (phase === 'night') return 'rgba(4, 13, 28, 0.42)';
+  if (weather === 'storm') return 'rgba(18, 24, 31, 0.26)';
+  if (weather === 'rain') return 'rgba(16, 31, 39, 0.20)';
+  if (weather === 'fog') return 'rgba(214, 225, 220, 0.14)';
+  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.16)';
+  if (phase === 'morning') return 'rgba(255, 224, 168, 0.10)';
+  if (phase === 'evening') return 'rgba(255, 150, 76, 0.08)';
   return 'transparent';
 }
 
@@ -47,7 +47,13 @@ export function TrailheadCover({
   const [locationLabel, setLocationLabel] = useState('');
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
   const [clockNow, setClockNow] = useState(() => new Date());
-  const [pathfinderRemoteBackground, setPathfinderRemoteBackground] = useState<string | null>(null);
+
+  const pan = useRef(new Animated.Value(0)).current;
+  const zoom = useRef(new Animated.Value(0)).current;
+  const haze = useRef(new Animated.Value(0)).current;
+  const rainFall = useRef(new Animated.Value(0)).current;
+  const lightning = useRef(new Animated.Value(0)).current;
+  const stars = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let active = true;
@@ -56,35 +62,6 @@ export function TrailheadCover({
       .catch(() => { if (active) setEarnedBadges(badges); });
     return () => { active = false; };
   }, [badges]);
-
-  useEffect(() => {
-    let active = true;
-
-    const refreshPathfinderBackground = async () => {
-      if (rank !== 'Pathfinder') {
-        if (active) setPathfinderRemoteBackground(null);
-        return;
-      }
-
-      try {
-        const url = await getAppMediaUrl(PATHFINDER_MEDIA_KEY);
-        if (active) setPathfinderRemoteBackground(url);
-      } catch {
-        // Keep the bundled background as a fail-safe when Storage or the
-        // manifest is temporarily unavailable.
-      }
-    };
-
-    void refreshPathfinderBackground();
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshPathfinderBackground();
-    });
-
-    return () => {
-      active = false;
-      appStateSubscription.remove();
-    };
-  }, [rank]);
 
   useEffect(() => {
     let active = true;
@@ -137,11 +114,76 @@ export function TrailheadCover({
   const livePhase = useMemo(() => dayPhaseFor(weatherData, clockNow), [weatherData, clockNow]);
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
-  const bundledBackground = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
-  const background = rank === 'Pathfinder' && pathfinderRemoteBackground
-    ? { uri: pathfinderRemoteBackground }
-    : bundledBackground;
+  const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
+
+  useEffect(() => {
+    const drift = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pan, { toValue: 1, duration: 14000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pan, { toValue: 0, duration: 14000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    const zoomLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(zoom, { toValue: 1, duration: 18000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(zoom, { toValue: 0, duration: 18000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    const hazeLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(haze, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(haze, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    const rainLoop = weather === 'rain' || weather === 'storm'
+      ? Animated.loop(Animated.timing(rainFall, { toValue: 1, duration: 1400, easing: Easing.linear, useNativeDriver: true }))
+      : null;
+    const starLoop = phase === 'night'
+      ? Animated.loop(
+          Animated.sequence([
+            Animated.timing(stars, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(stars, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ]),
+        )
+      : null;
+    const lightningLoop = weather === 'storm'
+      ? Animated.loop(
+          Animated.sequence([
+            Animated.delay(4200),
+            Animated.timing(lightning, { toValue: 1, duration: 90, useNativeDriver: true }),
+            Animated.timing(lightning, { toValue: 0, duration: 170, useNativeDriver: true }),
+            Animated.delay(140),
+            Animated.timing(lightning, { toValue: 0.55, duration: 70, useNativeDriver: true }),
+            Animated.timing(lightning, { toValue: 0, duration: 220, useNativeDriver: true }),
+            Animated.delay(2400),
+          ]),
+        )
+      : null;
+
+    pan.setValue(0);
+    zoom.setValue(0);
+    haze.setValue(0);
+    rainFall.setValue(0);
+    lightning.setValue(0);
+    stars.setValue(0);
+
+    drift.start();
+    zoomLoop.start();
+    hazeLoop.start();
+    rainLoop?.start();
+    starLoop?.start();
+    lightningLoop?.start();
+
+    return () => {
+      drift.stop();
+      zoomLoop.stop();
+      hazeLoop.stop();
+      rainLoop?.stop();
+      starLoop?.stop();
+      lightningLoop?.stop();
+    };
+  }, [weather, phase, pan, zoom, haze, rainFall, lightning, stars]);
 
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
@@ -154,14 +196,68 @@ export function TrailheadCover({
 
   return (
     <View style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}>
-      <Image
+      <Animated.Image
         source={background}
         resizeMode="cover"
-        style={styles.animatedBackground}
-        onError={() => {
-          if (pathfinderRemoteBackground) setPathfinderRemoteBackground(null);
-        }}
+        style={[
+          styles.animatedBackground,
+          {
+            transform: [
+              { translateX: pan.interpolate({ inputRange: [0, 1], outputRange: [-6, 6] }) },
+              { scale: zoom.interpolate({ inputRange: [0, 1], outputRange: [1.025, 1.055] }) },
+            ],
+          },
+        ]}
       />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.hazeOverlay,
+          {
+            opacity: haze.interpolate({ inputRange: [0, 1], outputRange: [0.02, 0.08] }),
+            transform: [{ translateX: haze.interpolate({ inputRange: [0, 1], outputRange: [-18, 18] }) }],
+          },
+        ]}
+      />
+      {(weather === 'rain' || weather === 'storm') ? (
+        <View pointerEvents="none" style={styles.rainLayer}>
+          {RAIN_DROPS.map((drop) => (
+            <Animated.View
+              key={drop}
+              style={[
+                styles.raindrop,
+                {
+                  left: `${(drop * 5.3) % 100}%`,
+                  opacity: weather === 'storm' ? 0.38 : 0.24,
+                  transform: [
+                    { translateY: rainFall.interpolate({ inputRange: [0, 1], outputRange: [-50 - drop * 5, 260 + drop * 4] }) },
+                    { rotate: '-18deg' },
+                  ],
+                },
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
+      {weather === 'storm' ? <Animated.View pointerEvents="none" style={[styles.lightningFlash, { opacity: lightning }]} /> : null}
+      {phase === 'night' ? (
+        <View pointerEvents="none" style={styles.starLayer}>
+          {NIGHT_STARS.map((left, index) => (
+            <Animated.View
+              key={left}
+              style={[
+                styles.star,
+                {
+                  left: `${left}%`,
+                  top: 14 + (index % 3) * 10,
+                  opacity: stars.interpolate({ inputRange: [0, 1], outputRange: [0.18 + (index % 2) * 0.08, 0.68] }),
+                  transform: [{ scale: stars.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] }) }],
+                },
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.baseScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
