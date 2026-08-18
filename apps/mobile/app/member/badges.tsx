@@ -39,6 +39,8 @@ const BADGE_CATALOG: BadgeDefinition[] = [
   { title: 'Camp Crew', family: 'Activity', requirement: 'Join a qualifying group camping adventure.' },
   { title: 'Water Wayfinder', family: 'Activity', requirement: 'Complete a qualifying water-based adventure.' },
   { title: 'Group Explorer', family: 'Community', requirement: 'Join your first community group.' },
+  { title: 'First Post', family: 'Community', requirement: 'Publish your first community post.' },
+  { title: 'Campfire Contributor', family: 'Community', requirement: 'Make 5 published community contributions.' },
 ];
 
 const FILTERS: BadgeFilter[] = ['All', 'Tenure', 'Adventure', 'Activity', 'Community'];
@@ -150,13 +152,9 @@ export default function ProfileBadgesScreen() {
               <Text style={styles.summaryCount}>{earnedCount} / {collection.length}</Text>
               <Text style={styles.summaryLabel}>Earned</Text>
             </View>
-            <View style={styles.percentRing}>
-              <Text style={styles.percentText}>{completion}%</Text>
-            </View>
+            <View style={styles.percentRing}><Text style={styles.percentText}>{completion}%</Text></View>
           </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${completion}%` }]} />
-          </View>
+          <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${completion}%` }]} /></View>
         </View>
       </View>
 
@@ -166,17 +164,11 @@ export default function ProfileBadgesScreen() {
         onPress={() => router.push('/member/rank-progress' as never)}
         style={({ pressed }) => [styles.rankCard, pressed && styles.rankCardPressed]}
       >
-        <View style={styles.rankArt}>
-          <RankEmblem rank={currentRank} size={66} />
-        </View>
+        <View style={styles.rankArt}><RankEmblem rank={currentRank} size={66} /></View>
         <View style={styles.rankCopy}>
           <Text style={styles.rankTitle}>{currentRank}</Text>
-          <Text style={styles.rankMeta}>
-            {nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}
-          </Text>
-          <View style={styles.rankProgressTrack}>
-            <View style={styles.rankProgressFill} />
-          </View>
+          <Text style={styles.rankMeta}>{nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}</Text>
+          <View style={styles.rankProgressTrack}><View style={styles.rankProgressFill} /></View>
         </View>
         <Text style={styles.rankLink}>View Rank Journey →</Text>
       </Pressable>
@@ -214,12 +206,7 @@ export default function ProfileBadgesScreen() {
                   : 0;
                 return (
                   <View key={badge.title} style={[styles.card, !badge.earned && styles.cardLocked]}>
-                    {!badge.earned ? (
-                      <View style={styles.lockPill}>
-                        <Text style={styles.lockText}>LOCKED</Text>
-                      </View>
-                    ) : null}
-
+                    {!badge.earned ? <View style={styles.lockPill}><Text style={styles.lockText}>LOCKED</Text></View> : null}
                     <View style={styles.art}>
                       <View style={!badge.earned ? styles.lockedArt : undefined}>
                         {hasBadgeArt(badge.title) ? (
@@ -229,16 +216,10 @@ export default function ProfileBadgesScreen() {
                         )}
                       </View>
                     </View>
-
                     <Text style={[styles.cardTitle, !badge.earned && styles.cardTitleLocked]}>{badge.title}</Text>
-                    <Text style={[styles.status, badge.earned ? styles.statusEarned : styles.statusLocked]} numberOfLines={2}>
-                      {badge.progressLabel}
-                    </Text>
-
+                    <Text style={[styles.status, badge.earned ? styles.statusEarned : styles.statusLocked]} numberOfLines={2}>{badge.progressLabel}</Text>
                     {!badge.earned && badge.adventureTarget ? (
-                      <View style={styles.cardProgressTrack}>
-                        <View style={[styles.cardProgressFill, { width: `${progressPercent}%` }]} />
-                      </View>
+                      <View style={styles.cardProgressTrack}><View style={[styles.cardProgressFill, { width: `${progressPercent}%` }]} /></View>
                     ) : null}
                   </View>
                 );
