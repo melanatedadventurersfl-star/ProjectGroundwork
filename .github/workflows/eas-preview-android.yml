@@ -1,52 +1,51 @@
 name: EAS Android Preview
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/mobile/app.json'
-      - 'apps/mobile/eas.json'
-      - 'apps/mobile/package.json'
-      - 'package-lock.json'
-      - 'apps/mobile/android/**'
-      - 'apps/mobile/ios/**'
-      - 'apps/mobile/plugins/**'
-      - 'apps/mobile/assets/ma-app-icon.png'
-      - 'apps/mobile/assets/ma-splash-icon.png'
-      - 'apps/mobile/assets/ma-pathfinder-mark.png'
-      - 'apps/mobile/assets/trailhead/**'
-      - '.github/workflows/eas-preview-android.yml'
+  workflow_run:
+    workflows:
+      - Mobile CI
+    types:
+      - completed
   workflow_dispatch:
 
-# A newer native/runtime build supersedes an older native/runtime build. Unrelated
-# commits must not invalidate a build that is already in flight.
+# Preview builds are delivery jobs, not disposable validation jobs. Once a
+# validated build starts, later commits wait their turn instead of cancelling it.
 concurrency:
   group: eas-preview-android-main
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
     steps:
-      - name: Check out triggering native commit
+      - name: Check out validated delivery commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
 
       - name: Verify build target
         run: |
           CHECKED_OUT="$(git rev-parse HEAD)"
-          echo "event_sha=${GITHUB_SHA}"
+          echo "event=${GITHUB_EVENT_NAME}"
+          echo "target_sha=${TARGET_SHA}"
           echo "checked_out=${CHECKED_OUT}"
-          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
-            echo "Checked-out commit does not match the workflow event SHA."
+          test "${CHECKED_OUT}" = "${TARGET_SHA}" || {
+            echo "Checked-out commit does not match the validated delivery SHA."
             exit 1
           }
-
-      - name: Debounce rapid native updates before expensive build
-        run: sleep 25
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -111,37 +110,33 @@ jobs:
               print(f'Canonicalized Trailhead asset: {path}')
           PY
 
-      - name: Strictly verify PNGs before EAS upload
+      - name: Re-verify all native image assets before EAS upload
         run: |
           python3 - <<'PY'
+          from pathlib import Path
           from PIL import Image
 
-          for path in [
-              'apps/mobile/assets/ma-app-icon.png',
-              'apps/mobile/assets/ma-splash-icon.png',
-              'apps/mobile/assets/ma-pathfinder-mark.png',
-          ]:
+          native_pngs = [
+              Path('apps/mobile/assets/ma-app-icon.png'),
+              Path('apps/mobile/assets/ma-splash-icon.png'),
+              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
+          ]
+          trailhead_root = Path('apps/mobile/assets/trailhead')
+          trailhead_images = sorted([*trailhead_root.rglob('*.jpg'), *trailhead_root.rglob('*.jpeg'), *trailhead_root.rglob('*.png')])
+
+          for path in native_pngs:
               with Image.open(path) as image:
                   if image.format != 'PNG':
                       raise RuntimeError(f'{path} is not a PNG.')
                   image.verify()
               with Image.open(path) as image:
                   image.load()
-                  print(f'Valid PNG: {path} ({image.width}x{image.height})')
-          PY
+                  print(f'Valid native PNG: {path} ({image.width}x{image.height})')
 
-      - name: Strictly verify Trailhead image assets before EAS upload
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image
-
-          root = Path('apps/mobile/assets/trailhead')
-          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
-          if not images:
+          if not trailhead_images:
               raise RuntimeError('No native Trailhead image assets were found.')
 
-          for path in images:
+          for path in trailhead_images:
               with Image.open(path) as image:
                   image.verify()
               with Image.open(path) as image:
@@ -151,7 +146,7 @@ jobs:
                   print(f'Valid Trailhead asset: {path} ({image.width}x{image.height}, {image.format})')
           PY
 
-      - name: Stamp preview APK with triggering commit
+      - name: Stamp preview APK with validated commit
         working-directory: apps/mobile
         run: |
           BUILD_GIT_SHA="$(git rev-parse HEAD)"
@@ -185,54 +180,10 @@ jobs:
       - name: Re-verify pinned delivery target
         run: |
           CHECKED_OUT="$(git rev-parse HEAD)"
-          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
+          test "${CHECKED_OUT}" = "${TARGET_SHA}" || {
             echo "Build target changed unexpectedly."
             exit 1
           }
-
-      - name: Cancel older Expo preview builds
-        working-directory: apps/mobile
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          : > /tmp/stale-eas-builds.txt
-
-          for STATUS in new in-queue in-progress; do
-            npx eas-cli@latest build:list \
-              --platform android \
-              --build-profile preview \
-              --status "${STATUS}" \
-              --limit 50 \
-              --json > "/tmp/eas-${STATUS}.json"
-
-            node - "/tmp/eas-${STATUS}.json" <<'NODE' >> /tmp/stale-eas-builds.txt
-          const fs = require('fs');
-          const path = process.argv[2];
-          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-          const builds = Array.isArray(data) ? data : [];
-          for (const build of builds) {
-            if (build?.id && build?.gitCommitHash) {
-              console.log(`${build.id} ${build.gitCommitHash}`);
-            }
-          }
-          NODE
-          done
-
-          sort -u /tmp/stale-eas-builds.txt -o /tmp/stale-eas-builds.txt
-
-          while read -r BUILD_ID BUILD_SHA; do
-            [ -n "${BUILD_ID}" ] || continue
-            [ -n "${BUILD_SHA}" ] || continue
-            [ "${BUILD_SHA}" != "${CURRENT_SHA}" ] || continue
-
-            if git cat-file -e "${BUILD_SHA}^{commit}" 2>/dev/null && git merge-base --is-ancestor "${BUILD_SHA}" "${CURRENT_SHA}"; then
-              echo "Cancelling older Expo build ${BUILD_ID} from ${BUILD_SHA}; delivery target is ${CURRENT_SHA}."
-              npx eas-cli@latest build:cancel "${BUILD_ID}" --non-interactive
-            else
-              echo "Leaving Expo build ${BUILD_ID} (${BUILD_SHA}) alone because it is not a confirmed older ancestor of this delivery target."
-            fi
-          done < /tmp/stale-eas-builds.txt
 
       - name: Build installable Android preview
         working-directory: apps/mobile
