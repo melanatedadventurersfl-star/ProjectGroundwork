@@ -18,7 +18,8 @@ on:
       - '.github/workflows/mobile-ci.yml'
 
 # Never silently discard a validation run. Rapid pushes to the same ref wait
-# their turn instead of cancelling each other.
+# their turn instead of cancelling each other. A successful push validation is
+# the gate that releases the matching commit to the Android preview workflow.
 concurrency:
   group: mobile-ci-${{ github.ref }}
   cancel-in-progress: false
