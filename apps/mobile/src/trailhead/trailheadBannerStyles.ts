@@ -11,7 +11,7 @@ export const styles = StyleSheet.create({
   rankGlow: { position: 'absolute', left: -72, top: -48, width: 250, height: 250, borderRadius: 125, opacity: 0.34 },
   leftScrim: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 0, backgroundColor: 'transparent' },
   leftScrimCompact: { width: 0 },
-  bottomScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 74, backgroundColor: 'rgba(2,6,5,0.16)' },
+  bottomScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 0, backgroundColor: 'transparent' },
 
   primaryEmblem: { position: 'absolute', left: 10, top: 26, width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
   primaryEmblemCompact: { left: 8, top: 31, width: 80, height: 80 },
