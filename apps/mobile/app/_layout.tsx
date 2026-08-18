@@ -50,6 +50,7 @@ function AppShell() {
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
   const tutorialCheckedRef = useRef(false);
   const whatsNewCheckedRef = useRef(false);
+  const releaseSeenKey = `${currentReleaseNotes.id}:${Updates.updateId ?? 'embedded'}`;
 
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
@@ -90,12 +91,12 @@ function AppShell() {
     if (isLoading || isAuthScreen || !isTrailhead || tutorialVisible || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
-      setWhatsNewVisible(!hasSeenRelease(currentReleaseNotes.id));
+      setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
     } catch (error) {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, isTrailhead, tutorialVisible]);
+  }, [isAuthScreen, isLoading, isTrailhead, releaseSeenKey, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
     setWhatsNewVisible(false);
@@ -134,7 +135,7 @@ function AppShell() {
 
   function dismissWhatsNew() {
     try {
-      markReleaseSeen(currentReleaseNotes.id);
+      markReleaseSeen(releaseSeenKey);
     } catch (error) {
       console.warn('[updates] Unable to save release-note preference', error);
     }
