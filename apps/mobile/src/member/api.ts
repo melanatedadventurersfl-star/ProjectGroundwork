@@ -10,10 +10,29 @@ export type MemberTrip = {
   adventures: { id: string; title: string; starts_at: string; city: string; state: string; hero_image_url: string | null; status: string } | null;
 };
 
+type ProfileAvatarListener = (avatarUrl: string | null) => void;
+const profileAvatarListeners = new Set<ProfileAvatarListener>();
+
+function emitProfileAvatar(avatarUrl: string | null) {
+  for (const listener of profileAvatarListeners) listener(avatarUrl);
+}
+
+export function subscribeProfileAvatar(listener: ProfileAvatarListener) {
+  profileAvatarListeners.add(listener);
+  return () => profileAvatarListeners.delete(listener);
+}
+
 async function profileId() {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) throw error ?? new Error('Sign in required.');
   return data.user.id;
+}
+
+export async function getProfileAvatarUrl() {
+  const id = await profileId();
+  const { data, error } = await supabase.from('profiles').select('avatar_url').eq('id', id).single();
+  if (error) throw error;
+  return (data?.avatar_url as string | null | undefined) ?? null;
 }
 
 function normalizeProfileDisplayName<T extends Record<string, any> | null>(profile: T): T {
@@ -69,6 +88,7 @@ async function uploadProfileMedia(input: { uri: string; mimeType?: string | null
   const oldUrl = (current as Record<string, string | null> | null)?.[column] ?? null;
   const oldPath = profileMediaPathFromUrl(oldUrl);
   if (oldPath && oldPath !== path) await supabase.storage.from('profile-avatars').remove([oldPath]);
+  if (input.kind === 'avatar') emitProfileAvatar(publicUrl);
   return publicUrl;
 }
 
@@ -82,6 +102,7 @@ async function removeProfileMedia(kind: 'avatar' | 'cover') {
   const oldUrl = (current as Record<string, string | null> | null)?.[column] ?? null;
   const oldPath = profileMediaPathFromUrl(oldUrl);
   if (oldPath) await supabase.storage.from('profile-avatars').remove([oldPath]);
+  if (kind === 'avatar') emitProfileAvatar(null);
 }
 
 export async function getMemberBasecamp() {
