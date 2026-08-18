@@ -20,15 +20,15 @@ const rankCopy: Record<RankName, { motto: string; description: string }> = {
     motto: 'Carve your path. Inspire others.',
     description: 'A growing adventure story built through three completed adventures.',
   },
-  Wayfinder: {
+  Adventurer: {
     motto: 'Guided by purpose. Driven by vision.',
-    description: 'Five completed adventures mark a member who knows the way outside.',
+    description: 'Five completed adventures mark a member growing into a seasoned adventurer.',
   },
-  Summiteer: {
+  'Summit Seeker': {
     motto: 'Rise higher. Reach further.',
     description: 'Ten completed adventures recognize sustained exploration and achievement.',
   },
-  'Legacy Pathfinder': {
+  Ascendant: {
     motto: 'Leave a legacy. Forever part of the trail.',
     description: 'Twenty completed adventures unlock the highest rank in the journey.',
   },

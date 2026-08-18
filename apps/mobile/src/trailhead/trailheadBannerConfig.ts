@@ -9,12 +9,9 @@ import { trailheadBackgroundFor } from './bannerAssets';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
-export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
+export type DisplayRank=RankName;
 type RankTheme={accent:string;soft:string;glow:string};
 
-// These PNGs were uploaded directly to GitHub and verified against the original
-// generated files before wiring them into the banner. Keep Pathfinder on these
-// bundled native assets so the background does not depend on data URIs or legacy JPGs.
 const pathfinderClearMorning = require('../../assets/trailhead/pathfinder/pathfinder-clear-morning.png') as ImageSourcePropType;
 const pathfinderClearAfternoon = require('../../assets/trailhead/pathfinder/pathfinder-clear-afternoon.png') as ImageSourcePropType;
 const pathfinderClearEvening = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.png') as ImageSourcePropType;
@@ -23,12 +20,11 @@ const pathfinderCloudy = require('../../assets/trailhead/pathfinder/pathfinder-c
 const pathfinderRain = require('../../assets/trailhead/pathfinder/pathfinder-rain.png') as ImageSourcePropType;
 const pathfinderStorm = require('../../assets/trailhead/pathfinder/pathfinder-storm.png') as ImageSourcePropType;
 
-// Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
   enabled: false,
 };
 
-export const displayRankByRank:Record<RankName,DisplayRank>={Explorer:'Explorer',Pathfinder:'Pathfinder',Trailblazer:'Trailblazer',Wayfinder:'Adventurer',Summiteer:'Summit Seeker','Legacy Pathfinder':'Ascendant'};
+export const displayRankByRank:Record<RankName,DisplayRank>={Explorer:'Explorer',Pathfinder:'Pathfinder',Trailblazer:'Trailblazer',Adventurer:'Adventurer','Summit Seeker':'Summit Seeker',Ascendant:'Ascendant'};
 export const rankThemes:Record<DisplayRank,RankTheme>={Explorer:{accent:'#37AFFF',soft:'#D9F3FF',glow:'rgba(55,175,255,0.26)'},Pathfinder:{accent:'#9BE33D',soft:'#E7FFC5',glow:'rgba(155,227,61,0.24)'},Trailblazer:{accent:'#FF453A',soft:'#FFD1CD',glow:'rgba(255,69,58,0.24)'},Adventurer:{accent:'#D88A34',soft:'#FFE0B8',glow:'rgba(216,138,52,0.24)'},'Summit Seeker':{accent:'#F2C34B',soft:'#FFF0A6',glow:'rgba(242,195,75,0.24)'},Ascendant:{accent:'#B65CFF',soft:'#F0D5FF',glow:'rgba(182,92,255,0.26)'}};
 
 export function normalizeWeather(text=''):WeatherTheme{const v=text.toLowerCase();if(/thunder|storm|lightning|torrential/.test(v))return'storm';if(/snow|sleet|blizzard|ice|freezing/.test(v))return'snow';if(/rain|drizzle|shower/.test(v))return'rain';if(/fog|mist|haze|smoke|dust|sand/.test(v))return'fog';if(/wind/.test(v))return'windy';if(/overcast/.test(v))return'cloudy';if(/partly|partially|cloud/.test(v))return'partly-cloudy';return'clear'}

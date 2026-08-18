@@ -20,7 +20,7 @@ import ascendant3 from './assets/ascendantSnowNight.n3';
 
 export type TrailheadWeatherTheme = 'clear' | 'partly-cloudy' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'fog' | 'windy';
 export type TrailheadPhase = 'morning' | 'afternoon' | 'evening' | 'night';
-export type TrailheadDisplayRank = 'Explorer' | 'Pathfinder' | 'Trailblazer' | 'Adventurer' | 'Summit Seeker' | 'Ascendant';
+export type TrailheadDisplayRank = RankName;
 
 const jpg = (payload: string) => `data:image/jpeg;base64,${payload}`;
 
@@ -35,12 +35,7 @@ export const trailheadBannerAssets = {
 } as const;
 
 export function trailheadDisplayRank(rank: RankName): TrailheadDisplayRank {
-  switch (rank) {
-    case 'Wayfinder': return 'Adventurer';
-    case 'Summiteer': return 'Summit Seeker';
-    case 'Legacy Pathfinder': return 'Ascendant';
-    default: return rank;
-  }
+  return rank;
 }
 
 export function trailheadBackgroundFor(
@@ -48,18 +43,16 @@ export function trailheadBackgroundFor(
   weather: TrailheadWeatherTheme,
   phase: TrailheadPhase,
 ) {
-  const displayRank = trailheadDisplayRank(rank);
-
-  if (displayRank === 'Pathfinder') {
+  if (rank === 'Pathfinder') {
     if (weather === 'fog' || weather === 'rain' || weather === 'storm' || weather === 'cloudy' || weather === 'snow') {
       return trailheadBannerAssets.pathfinderFogMorning;
     }
     return trailheadBannerAssets.pathfinderClearEvening;
   }
-  if (displayRank === 'Trailblazer' && (weather === 'rain' || weather === 'storm')) return trailheadBannerAssets.trailblazerRain;
-  if (displayRank === 'Ascendant' && weather === 'snow') return trailheadBannerAssets.ascendantSnowNight;
+  if (rank === 'Trailblazer' && (weather === 'rain' || weather === 'storm')) return trailheadBannerAssets.trailblazerRain;
+  if (rank === 'Ascendant' && weather === 'snow') return trailheadBannerAssets.ascendantSnowNight;
 
-  switch (displayRank) {
+  switch (rank) {
     case 'Explorer': return trailheadBannerAssets.explorerClearMorning;
     case 'Trailblazer': return trailheadBannerAssets.trailblazerRain;
     case 'Adventurer': return trailheadBannerAssets.adventurerEvening;

@@ -1,12 +1,12 @@
 {
   "system": "Melanated Adventurers Passport Ranks",
-  "version": 2,
+  "version": 3,
   "ranks": [
     {"rank": 1, "name": "Explorer", "minCompletedAdventures": 0, "color": "steel", "asset": "explorer.png", "natureTheme": "water-ice", "motto": "The journey begins."},
     {"rank": 2, "name": "Pathfinder", "minCompletedAdventures": 1, "color": "crimson", "asset": "pathfinder.png", "natureTheme": "desert-sun", "motto": "Find the trail. Lead the way."},
     {"rank": 3, "name": "Trailblazer", "minCompletedAdventures": 3, "color": "bronze", "asset": "trailblazer.png", "natureTheme": "earth-stone", "motto": "Carve your path. Inspire others."},
-    {"rank": 4, "name": "Wayfinder", "minCompletedAdventures": 5, "color": "forest-green", "asset": "wayfinder.png", "natureTheme": "forest-growth", "motto": "Guided by purpose. Driven by vision."},
-    {"rank": 5, "name": "Summiteer", "minCompletedAdventures": 10, "color": "gold", "asset": "summiteer.png", "natureTheme": "sky-height", "motto": "Rise higher. Reach further."},
-    {"rank": 6, "name": "Legacy Pathfinder", "minCompletedAdventures": 20, "color": "royal-purple", "asset": "legacy-pathfinder.png", "natureTheme": "night-cosmos", "motto": "Leave a legacy. Forever part of the trail."}
+    {"rank": 4, "name": "Adventurer", "minCompletedAdventures": 5, "color": "forest-green", "asset": "adventurer.png", "natureTheme": "forest-growth", "motto": "Guided by purpose. Driven by vision."},
+    {"rank": 5, "name": "Summit Seeker", "minCompletedAdventures": 10, "color": "gold", "asset": "summit-seeker.png", "natureTheme": "sky-height", "motto": "Rise higher. Reach further."},
+    {"rank": 6, "name": "Ascendant", "minCompletedAdventures": 20, "color": "royal-purple", "asset": "ascendant.png", "natureTheme": "night-cosmos", "motto": "Leave a legacy. Forever part of the trail."}
   ]
 }
