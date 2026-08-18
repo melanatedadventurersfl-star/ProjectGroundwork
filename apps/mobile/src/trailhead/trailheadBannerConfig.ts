@@ -5,7 +5,6 @@ import clearNight from '../weather/assets/clearNight';
 import drizzle from '../weather/assets/drizzle';
 import overcast from '../weather/assets/overcast';
 import storm from '../weather/assets/storm';
-import pathfinderClearNight from './assets/pathfinderClearNight';
 import { trailheadBackgroundFor } from './bannerAssets';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
@@ -13,8 +12,7 @@ export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
 type RankTheme={accent:string;soft:string;glow:string};
 
-const embeddedJpeg = (payload: string): ImageSourcePropType => ({ uri: `data:image/jpeg;base64,${payload}` });
-const pathfinderEveningForest = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
+const pathfinderNativeScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
 
 // Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
@@ -39,12 +37,10 @@ function explorerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   return require('../../assets/trailhead/explorer/explorer-clear-morning.jpg');
 }
 
-function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
-  if (p === 'night') return embeddedJpeg(pathfinderClearNight);
-  if (w === 'fog' || w === 'rain' || w === 'storm' || w === 'cloudy' || w === 'snow') {
-    return { uri: trailheadBackgroundFor('Pathfinder', w, p) };
-  }
-  return pathfinderEveningForest;
+function pathfinderBackground(_w:WeatherTheme,_p:DayPhase):ImageSourcePropType {
+  // Stability rule: Pathfinder never routes through data URIs or generated base64 modules.
+  // Weather and time still drive greeting/copy/atmosphere while the native scene remains reliable.
+  return pathfinderNativeScene;
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
