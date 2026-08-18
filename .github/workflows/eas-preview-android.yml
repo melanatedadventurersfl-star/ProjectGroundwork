@@ -1,15 +1,27 @@
 name: EAS Android Preview
 
 on:
-  workflow_run:
-    workflows:
-      - Mobile CI
-    types:
-      - completed
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/app.config.js'
+      - 'apps/mobile/app.config.ts'
+      - 'apps/mobile/eas.json'
+      - 'apps/mobile/package.json'
+      - 'package-lock.json'
+      - 'apps/mobile/android/**'
+      - 'apps/mobile/ios/**'
+      - 'apps/mobile/plugins/**'
+      - 'apps/mobile/assets/ma-app-icon.png'
+      - 'apps/mobile/assets/ma-splash-icon.png'
+      - 'apps/mobile/assets/ma-pathfinder-mark.png'
+      - '.github/workflows/eas-preview-android.yml'
   workflow_dispatch:
 
-# Preview builds are delivery jobs, not disposable validation jobs. Once a
-# validated build starts, later commits wait their turn instead of cancelling it.
+# APK builds are reserved for native/runtime changes. Once one starts, later
+# native builds queue instead of cancelling it.
 concurrency:
   group: eas-preview-android-main
   cancel-in-progress: false
@@ -19,31 +31,23 @@ permissions:
 
 jobs:
   build:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
-      - name: Check out validated delivery commit
+      - name: Check out native delivery commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.TARGET_SHA }}
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
       - name: Verify build target
         run: |
           CHECKED_OUT="$(git rev-parse HEAD)"
-          echo "event=${GITHUB_EVENT_NAME}"
-          echo "target_sha=${TARGET_SHA}"
+          echo "event_sha=${GITHUB_SHA}"
           echo "checked_out=${CHECKED_OUT}"
-          test "${CHECKED_OUT}" = "${TARGET_SHA}" || {
-            echo "Checked-out commit does not match the validated delivery SHA."
+          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
+            echo "Checked-out commit does not match the native delivery SHA."
             exit 1
           }
 
@@ -75,56 +79,22 @@ jobs:
               temp = path.with_name(path.stem + '.canonical.png')
               with Image.open(path) as image:
                   image.load()
-                  image.convert('RGBA').save(
-                      temp,
-                      format='PNG',
-                      optimize=False,
-                      compress_level=6,
-                  )
+                  image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
               temp.replace(path)
               print(f'Canonicalized {path}')
           PY
 
-      - name: Canonicalize Trailhead image assets
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image, ImageFile
-
-          ImageFile.LOAD_TRUNCATED_IMAGES = True
-          root = Path('apps/mobile/assets/trailhead')
-          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
-          if not images:
-              raise RuntimeError('No native Trailhead image assets were found.')
-
-          for path in images:
-              suffix = path.suffix.lower()
-              temp = path.with_name(f'{path.stem}.canonical{suffix}')
-              with Image.open(path) as image:
-                  image.load()
-                  if suffix in {'.jpg', '.jpeg'}:
-                      image.convert('RGB').save(temp, format='JPEG', quality=92, optimize=False)
-                  else:
-                      image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
-              temp.replace(path)
-              print(f'Canonicalized Trailhead asset: {path}')
-          PY
-
-      - name: Re-verify all native image assets before EAS upload
+      - name: Strictly verify native PNGs before EAS upload
         run: |
           python3 - <<'PY'
           from pathlib import Path
           from PIL import Image
 
-          native_pngs = [
+          for path in [
               Path('apps/mobile/assets/ma-app-icon.png'),
               Path('apps/mobile/assets/ma-splash-icon.png'),
               Path('apps/mobile/assets/ma-pathfinder-mark.png'),
-          ]
-          trailhead_root = Path('apps/mobile/assets/trailhead')
-          trailhead_images = sorted([*trailhead_root.rglob('*.jpg'), *trailhead_root.rglob('*.jpeg'), *trailhead_root.rglob('*.png')])
-
-          for path in native_pngs:
+          ]:
               with Image.open(path) as image:
                   if image.format != 'PNG':
                       raise RuntimeError(f'{path} is not a PNG.')
@@ -132,21 +102,9 @@ jobs:
               with Image.open(path) as image:
                   image.load()
                   print(f'Valid native PNG: {path} ({image.width}x{image.height})')
-
-          if not trailhead_images:
-              raise RuntimeError('No native Trailhead image assets were found.')
-
-          for path in trailhead_images:
-              with Image.open(path) as image:
-                  image.verify()
-              with Image.open(path) as image:
-                  image.load()
-                  if image.width < 480 or image.height < 180:
-                      raise RuntimeError(f'Trailhead asset is too small: {path} ({image.width}x{image.height})')
-                  print(f'Valid Trailhead asset: {path} ({image.width}x{image.height}, {image.format})')
           PY
 
-      - name: Stamp preview APK with validated commit
+      - name: Stamp preview APK with triggering commit
         working-directory: apps/mobile
         run: |
           BUILD_GIT_SHA="$(git rev-parse HEAD)"
@@ -175,15 +133,7 @@ jobs:
       - name: Verify EAS project link
         working-directory: apps/mobile
         run: |
-          node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) { console.error('Missing expo.extra.eas.projectId. Run eas init once and commit the generated project ID.'); process.exit(1); }"
-
-      - name: Re-verify pinned delivery target
-        run: |
-          CHECKED_OUT="$(git rev-parse HEAD)"
-          test "${CHECKED_OUT}" = "${TARGET_SHA}" || {
-            echo "Build target changed unexpectedly."
-            exit 1
-          }
+          node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) { console.error('Missing expo.extra.eas.projectId.'); process.exit(1); }"
 
       - name: Build installable Android preview
         working-directory: apps/mobile
