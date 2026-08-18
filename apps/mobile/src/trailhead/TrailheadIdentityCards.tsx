@@ -14,7 +14,17 @@ type Props = {
 };
 
 function normalizeRank(rank: string): RankName {
-  return rank === 'Legacy Adventurer' ? 'Legacy Pathfinder' : rank as RankName;
+  const legacyRankMap: Record<string, RankName> = {
+    Wayfinder: 'Adventurer',
+    Summiteer: 'Summit Seeker',
+    'Legacy Pathfinder': 'Ascendant',
+    'Legacy Adventurer': 'Ascendant',
+  };
+
+  if (rank in legacyRankMap) return legacyRankMap[rank];
+
+  const currentRanks: RankName[] = ['Explorer', 'Pathfinder', 'Trailblazer', 'Adventurer', 'Summit Seeker', 'Ascendant'];
+  return currentRanks.includes(rank as RankName) ? rank as RankName : 'Explorer';
 }
 
 export function TrailheadIdentityCards({
