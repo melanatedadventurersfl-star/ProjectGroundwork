@@ -36,6 +36,7 @@ export default function MenuScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
   const [inviteCount, setInviteCount] = useState<number | null>(null);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const gitSha = process.env.EXPO_PUBLIC_GIT_SHA?.slice(0, 8);
   const updateId = Updates.updateId?.slice(0, 8);
   const runtimeVersion = Updates.runtimeVersion || 'embedded';
@@ -44,19 +45,30 @@ export default function MenuScreen() {
   useEffect(() => {
     if (!session?.user.id) return;
     let active = true;
-    void supabase
-      .from('member_invites')
-      .select('id', { count: 'exact', head: true })
-      .eq('sender_profile_id', session.user.id)
-      .eq('status', 'available')
-      .then(({ count, error: inviteError }) => {
-        if (!active) return;
-        if (inviteError) {
-          console.warn('Unable to load invite count', inviteError.message);
-          return;
-        }
-        setInviteCount(count ?? 0);
-      });
+
+    void Promise.all([
+      supabase
+        .from('member_invites')
+        .select('id', { count: 'exact', head: true })
+        .eq('sender_profile_id', session.user.id)
+        .eq('status', 'available'),
+      supabase.rpc('is_platform_admin'),
+    ]).then(([inviteResult, adminResult]) => {
+      if (!active) return;
+
+      if (inviteResult.error) {
+        console.warn('Unable to load invite count', inviteResult.error.message);
+      } else {
+        setInviteCount(inviteResult.count ?? 0);
+      }
+
+      if (adminResult.error) {
+        console.warn('Unable to resolve admin status', adminResult.error.message);
+      } else {
+        setIsPlatformAdmin(adminResult.data === true);
+      }
+    });
+
     return () => { active = false; };
   }, [session?.user.id]);
 
@@ -89,6 +101,15 @@ export default function MenuScreen() {
         return <Pressable key={label} style={[styles.row,index>0&&styles.divider]} onPress={()=>openMenuRoute(route)}><View style={styles.rowLead}><AppIcon name={icon} color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>{rowLabel}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={20} /></Pressable>;
       })}
     </View></View>)}
+    {isPlatformAdmin ? <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Admin</Text>
+      <View style={styles.card}>
+        <Pressable style={styles.row} onPress={()=>openMenuRoute('/admin-media')}>
+          <View style={styles.rowLead}><AppIcon name="guide" color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>App Media</Text></View>
+          <AppIcon name="chevron-forward" color="#D7B45A" size={20} />
+        </Pressable>
+      </View>
+    </View> : null}
     {showPreviewBuild ? <View style={styles.buildCard}>
       <Text style={styles.buildLabel}>PREVIEW BUILD</Text>
       <Text style={styles.buildValue}>Main {gitSha || 'unknown'} · OTA {updateId || 'embedded'}</Text>
