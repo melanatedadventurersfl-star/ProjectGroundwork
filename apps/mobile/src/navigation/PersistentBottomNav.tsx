@@ -1,8 +1,10 @@
 import { router, usePathname } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
+import { getProfileAvatarUrl, subscribeProfileAvatar } from '../member/api';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 
 type NavItem = {
@@ -65,12 +67,38 @@ export function PersistentBottomNav() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const unsubscribe = subscribeProfileAvatar((nextAvatarUrl) => {
+      if (!cancelled) setAvatarUrl(nextAvatarUrl);
+    });
+
+    if (!session) {
+      setAvatarUrl(null);
+    } else {
+      getProfileAvatarUrl()
+        .then((nextAvatarUrl) => {
+          if (!cancelled) setAvatarUrl(nextAvatarUrl);
+        })
+        .catch(() => {
+          if (!cancelled) setAvatarUrl(null);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [session?.user.id]);
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {items.map((item) => {
         const active = item.isActive(pathname);
         const color = active ? '#D7B45A' : '#E7DFCF';
+        const showAvatar = item.label === 'Profile' && Boolean(session && avatarUrl);
         return (
           <Pressable
             key={item.label}
@@ -86,7 +114,13 @@ export function PersistentBottomNav() {
             }}
             style={styles.item}
           >
-            <AppIcon name={item.icon} color={color} size={24} />
+            {showAvatar ? (
+              <View style={[styles.avatarFrame, active && styles.avatarFrameActive]}>
+                <Image source={{ uri: avatarUrl! }} style={styles.avatar} resizeMode="cover" />
+              </View>
+            ) : (
+              <AppIcon name={item.icon} color={color} size={24} />
+            )}
             <Text style={[styles.label, active && styles.labelActive]}>{item.label}</Text>
           </Pressable>
         );
@@ -111,6 +145,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 1,
     gap: 2,
+  },
+  avatarFrame: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: '#E7DFCF',
+    overflow: 'hidden',
+  },
+  avatarFrameActive: {
+    borderColor: '#D7B45A',
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
   },
   label: {
     color: '#E7DFCF',
