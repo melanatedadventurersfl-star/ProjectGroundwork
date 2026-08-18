@@ -1,13 +1,25 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, Easing, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, AppState, Easing, Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
+
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
-import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, trailheadDebugOverride, weatherCopy, type DayPhase, type WeatherTheme } from './trailheadBannerConfig';
+import {
+  backgroundFor,
+  dayPhaseFor,
+  glyph,
+  greetingFor,
+  normalizeWeather,
+  rankThemes,
+  trailheadDebugOverride,
+  weatherCopy,
+  type DayPhase,
+  type WeatherTheme,
+} from './trailheadBannerConfig';
 import { styles } from './trailheadBannerStyles';
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
@@ -48,8 +60,6 @@ export function TrailheadCover({
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
   const [clockNow, setClockNow] = useState(() => new Date());
 
-  const pan = useRef(new Animated.Value(0)).current;
-  const zoom = useRef(new Animated.Value(0)).current;
   const haze = useRef(new Animated.Value(0)).current;
   const rainFall = useRef(new Animated.Value(0)).current;
   const lightning = useRef(new Animated.Value(0)).current;
@@ -69,20 +79,19 @@ export function TrailheadCover({
 
     const refreshWeather = async () => {
       try {
-        let p = await Location.getForegroundPermissionsAsync();
-        if (p.status === 'undetermined') p = await Location.requestForegroundPermissionsAsync();
-        if (!active || p.status !== 'granted') return;
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (permission.status === 'undetermined') permission = await Location.requestForegroundPermissionsAsync();
+        if (!active || permission.status !== 'granted') return;
 
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const next = await getWeatherByCoordinates(pos.coords.latitude, pos.coords.longitude);
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const next = await getWeatherByCoordinates(position.coords.latitude, position.coords.longitude);
         if (!active) return;
 
         setWeatherData(next);
         setLocationLabel([next.location.name, next.location.region].filter(Boolean).join(', '));
         setClockNow(new Date());
       } catch {
-        // Keep the last successful weather snapshot instead of blanking the banner
-        // when a refresh temporarily fails.
+        // Preserve the last successful weather snapshot if a refresh fails.
       }
     };
 
@@ -108,8 +117,7 @@ export function TrailheadCover({
     return () => clearInterval(clockTimer);
   }, []);
 
-  const displayRank = displayRankByRank[rank];
-  const theme = rankThemes[displayRank];
+  const theme = rankThemes[rank];
   const liveWeather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData?.current.condition.text]);
   const livePhase = useMemo(() => dayPhaseFor(weatherData, clockNow), [weatherData, clockNow]);
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
@@ -118,18 +126,6 @@ export function TrailheadCover({
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
 
   useEffect(() => {
-    const drift = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pan, { toValue: 1, duration: 14000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(pan, { toValue: 0, duration: 14000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]),
-    );
-    const zoomLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(zoom, { toValue: 1, duration: 18000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(zoom, { toValue: 0, duration: 18000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]),
-    );
     const hazeLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(haze, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -161,29 +157,23 @@ export function TrailheadCover({
         )
       : null;
 
-    pan.setValue(0);
-    zoom.setValue(0);
     haze.setValue(0);
     rainFall.setValue(0);
     lightning.setValue(0);
     stars.setValue(0);
 
-    drift.start();
-    zoomLoop.start();
     hazeLoop.start();
     rainLoop?.start();
     starLoop?.start();
     lightningLoop?.start();
 
     return () => {
-      drift.stop();
-      zoomLoop.stop();
       hazeLoop.stop();
       rainLoop?.stop();
       starLoop?.stop();
       lightningLoop?.stop();
     };
-  }, [weather, phase, pan, zoom, haze, rainFall, lightning, stars]);
+  }, [weather, phase, haze, rainFall, lightning, stars]);
 
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
@@ -196,29 +186,19 @@ export function TrailheadCover({
 
   return (
     <View style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}>
-      <Animated.Image
-        source={background}
-        resizeMode="cover"
-        style={[
-          styles.animatedBackground,
-          {
-            transform: [
-              { translateX: pan.interpolate({ inputRange: [0, 1], outputRange: [-6, 6] }) },
-              { scale: zoom.interpolate({ inputRange: [0, 1], outputRange: [1.025, 1.055] }) },
-            ],
-          },
-        ]}
-      />
+      <Image source={background} resizeMode="cover" style={styles.animatedBackground} />
+
       <Animated.View
         pointerEvents="none"
         style={[
           styles.hazeOverlay,
           {
-            opacity: haze.interpolate({ inputRange: [0, 1], outputRange: [0.02, 0.08] }),
+            opacity: haze.interpolate({ inputRange: [0, 1], outputRange: [0.01, 0.045] }),
             transform: [{ translateX: haze.interpolate({ inputRange: [0, 1], outputRange: [-18, 18] }) }],
           },
         ]}
       />
+
       {(weather === 'rain' || weather === 'storm') ? (
         <View pointerEvents="none" style={styles.rainLayer}>
           {RAIN_DROPS.map((drop) => (
@@ -239,7 +219,9 @@ export function TrailheadCover({
           ))}
         </View>
       ) : null}
+
       {weather === 'storm' ? <Animated.View pointerEvents="none" style={[styles.lightningFlash, { opacity: lightning }]} /> : null}
+
       {phase === 'night' ? (
         <View pointerEvents="none" style={styles.starLayer}>
           {NIGHT_STARS.map((left, index) => (
@@ -258,6 +240,7 @@ export function TrailheadCover({
           ))}
         </View>
       ) : null}
+
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.baseScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
@@ -266,7 +249,7 @@ export function TrailheadCover({
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`View ${displayRank} rank progress`}
+        accessibilityLabel={`View ${rank} rank progress`}
         onPress={openRankJourney}
         style={[styles.primaryEmblem, compact && styles.primaryEmblemCompact]}
       >
@@ -285,9 +268,9 @@ export function TrailheadCover({
       <View style={[styles.titleBlock, compact && styles.titleBlockCompact, veryCompact && styles.titleBlockVeryCompact]}>
         <Text style={[styles.greeting, compact && styles.greetingCompact]}>{greeting},</Text>
         <Text style={[styles.name, compact && styles.nameCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{displayName}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={`View ${displayRank} rank progress`} onPress={openRankJourney} style={styles.rankInline}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`View ${rank} rank progress`} onPress={openRankJourney} style={styles.rankInline}>
           <Text style={[styles.rankGlyph, { color: theme.accent }]}>✥</Text>
-          <Text style={[styles.rankText, { color: theme.accent }]}>{displayRank.toUpperCase()}</Text>
+          <Text style={[styles.rankText, { color: theme.accent }]}>{rank.toUpperCase()}</Text>
         </Pressable>
       </View>
 
