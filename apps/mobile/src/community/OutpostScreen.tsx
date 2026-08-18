@@ -95,7 +95,7 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
         </Pressable>
         <View style={styles.postHeaderActions}>
           {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
-          <PostOptionsButton postId={post.id} />
+          <PostOptionsButton postId={post.id} authorId={post.author_id} body={post.body} />
         </View>
       </View>
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
@@ -277,7 +277,7 @@ export default function OutpostScreen() {
           </View>
           <View style={styles.headerActions}>
             <Pressable onPress={() => router.push('/notifications')}><Ionicons name="notifications-outline" size={23} color={TEXT} /></Pressable>
-            <Pressable style={styles.profileButton} onPress={() => router.push('/member/profile')}><Ionicons name="person" size={17} color={TEXT} /></Pressable>
+            <Pressable style={styles.profileButton} onPress={() => router.push('/member')} accessibilityRole="button" accessibilityLabel="Open account menu"><Ionicons name="menu" size={21} color={TEXT} /></Pressable>
           </View>
         </View>
 
