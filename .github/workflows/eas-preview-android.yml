@@ -86,6 +86,31 @@ jobs:
               print(f'Canonicalized {path}')
           PY
 
+      - name: Canonicalize Trailhead image assets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageFile
+
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
+          root = Path('apps/mobile/assets/trailhead')
+          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
+          if not images:
+              raise RuntimeError('No native Trailhead image assets were found.')
+
+          for path in images:
+              suffix = path.suffix.lower()
+              temp = path.with_name(f'{path.stem}.canonical{suffix}')
+              with Image.open(path) as image:
+                  image.load()
+                  if suffix in {'.jpg', '.jpeg'}:
+                      image.convert('RGB').save(temp, format='JPEG', quality=92, optimize=False)
+                  else:
+                      image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
+              temp.replace(path)
+              print(f'Canonicalized Trailhead asset: {path}')
+          PY
+
       - name: Strictly verify PNGs before EAS upload
         run: |
           python3 - <<'PY'
