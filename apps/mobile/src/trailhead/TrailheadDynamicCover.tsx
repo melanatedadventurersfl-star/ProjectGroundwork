@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, ImageBackground, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
@@ -41,7 +41,6 @@ export function TrailheadCover({
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
-  const [ambientPulse] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     let active = true;
@@ -81,29 +80,6 @@ export function TrailheadCover({
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
-  const ambientOpacity = useMemo(() => ambientPulse.interpolate({ inputRange: [0, 1], outputRange: [0.12, 0.38] }), [ambientPulse]);
-  const ambientScale = useMemo(() => ambientPulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.08] }), [ambientPulse]);
-
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ambientPulse, {
-          toValue: 1,
-          duration: 6500,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(ambientPulse, {
-          toValue: 0,
-          duration: 6500,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [ambientPulse]);
 
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
@@ -115,22 +91,13 @@ export function TrailheadCover({
   const overflowBadges = Math.max(0, earnedBadges.length - visibleBadges.length);
 
   return (
-    <ImageBackground
-      source={background}
-      resizeMode="cover"
-      imageStyle={styles.imageRadius}
-      style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}
-    >
+    <View style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}>
+      <Image pointerEvents="none" source={background} resizeMode="cover" style={styles.animatedBackground} />
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
-      <View pointerEvents="none" style={styles.atmosphereOverlay}>
-        <Animated.View
-          style={[styles.ambientLight, { opacity: ambientOpacity, transform: [{ scale: ambientScale }] }]}
-        />
-      </View>
-      <View style={styles.baseScrim} />
-      <View style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
-      <View style={[styles.leftScrim, compact && styles.leftScrimCompact]} />
-      <View style={styles.bottomScrim} />
+      <View pointerEvents="none" style={styles.baseScrim} />
+      <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
+      <View pointerEvents="none" style={[styles.leftScrim, compact && styles.leftScrimCompact]} />
+      <View pointerEvents="none" style={styles.bottomScrim} />
 
       <Pressable
         accessibilityRole="button"
@@ -190,6 +157,6 @@ export function TrailheadCover({
         </View>
         <Text style={[styles.weatherCopy, { color: theme.soft }]} numberOfLines={veryCompact ? 1 : 2}>{detail}</Text>
       </View>
-    </ImageBackground>
+    </View>
   );
 }
