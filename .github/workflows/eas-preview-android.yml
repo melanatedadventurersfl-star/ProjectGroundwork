@@ -17,6 +17,7 @@ on:
       - 'apps/mobile/assets/ma-app-icon.png'
       - 'apps/mobile/assets/ma-splash-icon.png'
       - 'apps/mobile/assets/ma-pathfinder-mark.png'
+      - 'apps/mobile/assets/trailhead/**'
       # A workflow repair should be able to produce a fresh APK immediately.
       - '.github/workflows/eas-preview-android.yml'
   workflow_dispatch:
@@ -116,6 +117,27 @@ jobs:
               with Image.open(path) as image:
                   image.load()
                   print(f'Valid PNG: {path} ({image.width}x{image.height})')
+          PY
+
+      - name: Strictly verify Trailhead image assets before EAS upload
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path('apps/mobile/assets/trailhead')
+          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
+          if not images:
+              raise RuntimeError('No native Trailhead image assets were found.')
+
+          for path in images:
+              with Image.open(path) as image:
+                  image.verify()
+              with Image.open(path) as image:
+                  image.load()
+                  if image.width < 480 or image.height < 180:
+                      raise RuntimeError(f'Trailhead asset is too small: {path} ({image.width}x{image.height})')
+                  print(f'Valid Trailhead asset: {path} ({image.width}x{image.height}, {image.format})')
           PY
 
       - name: Stamp preview APK with checked-out main commit
