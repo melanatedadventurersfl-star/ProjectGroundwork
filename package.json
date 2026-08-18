@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "postinstall": "python3 -m pip install --quiet pillow && python3 apps/mobile/scripts/generate_melanated_icon.py",
+    "generate:icon": "python3 -m pip install --quiet pillow && python3 apps/mobile/scripts/generate_melanated_icon.py",
     "bootstrap": "npm install && npm run check",
     "mobile:start": "npm --workspace @ma/mobile run start",
     "mobile:lint": "npm --workspace @ma/mobile run lint",
