@@ -7,7 +7,7 @@ import { getJourney, getMemberBadges, type MemberBadge } from '../../src/passpor
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { AppIcon } from '../../src/ui/AppIcon';
 
-type BadgeFamily = 'Tenure' | 'Adventure' | 'Activity' | 'Community';
+type BadgeFamily = 'Tenure' | 'Adventure' | 'Community' | 'Activity';
 type BadgeFilter = 'All' | BadgeFamily;
 
 type BadgeDefinition = {
@@ -36,21 +36,20 @@ const BADGE_CATALOG: BadgeDefinition[] = [
   { title: 'Wayfinder Five', family: 'Adventure', requirement: 'Complete 5 official adventures.', adventureTarget: 5 },
   { title: 'Summit Ten', family: 'Adventure', requirement: 'Complete 10 official adventures.', adventureTarget: 10 },
   { title: 'Legacy Twenty', family: 'Adventure', requirement: 'Complete 20 official adventures.', adventureTarget: 20 },
-  { title: 'Camp Crew', family: 'Activity', requirement: 'Join a qualifying group camping adventure.' },
-  { title: 'Water Wayfinder', family: 'Activity', requirement: 'Complete a qualifying water-based adventure.' },
   { title: 'Group Explorer', family: 'Community', requirement: 'Join your first community group.' },
   { title: 'First Post', family: 'Community', requirement: 'Publish your first community post.' },
-  { title: 'Campfire Contributor', family: 'Community', requirement: 'Make 5 published community contributions.' },
+  { title: 'Camp Crew', family: 'Activity', requirement: 'Join a qualifying group camping adventure.' },
+  { title: 'Water Wayfinder', family: 'Activity', requirement: 'Complete a qualifying water-based adventure.' },
 ];
 
-const FILTERS: BadgeFilter[] = ['All', 'Tenure', 'Adventure', 'Activity', 'Community'];
-const FAMILIES: BadgeFamily[] = ['Tenure', 'Adventure', 'Activity', 'Community'];
+const FILTERS: BadgeFilter[] = ['All', 'Tenure', 'Adventure', 'Community', 'Activity'];
+const FAMILIES: BadgeFamily[] = ['Tenure', 'Adventure', 'Community', 'Activity'];
 
 const FAMILY_COPY: Record<BadgeFamily, { icon: string; subtitle: string }> = {
   Tenure: { icon: '◷', subtitle: 'Time spent growing with the community.' },
   Adventure: { icon: '△', subtitle: 'Badges earned by completing adventures.' },
-  Activity: { icon: '≈', subtitle: 'Badges tied to the kind of adventure you joined.' },
   Community: { icon: '◎', subtitle: 'Badges earned by connecting and participating with others.' },
+  Activity: { icon: '≈', subtitle: 'Badges tied to the kind of adventure you joined.' },
 };
 
 function addYears(iso: string, years: number) {
@@ -190,11 +189,11 @@ export default function ProfileBadgesScreen() {
       {!loading ? visibleFamilies.map((family) => {
         const familyBadges = collection.filter((badge) => badge.family === family);
         return (
-          <View key={family} style={styles.section}>
+          <View key={family} style={[styles.section, family === 'Community' && styles.communitySection]}>
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionIcon}>{FAMILY_COPY[family].icon}</Text>
               <View style={styles.sectionCopy}>
-                <Text style={styles.sectionTitle}>{family}</Text>
+                <Text style={[styles.sectionTitle, family === 'Community' && styles.communityTitle]}>{family}</Text>
                 <Text style={styles.sectionSubtitle}>{FAMILY_COPY[family].subtitle}</Text>
               </View>
             </View>
@@ -267,10 +266,12 @@ const styles = StyleSheet.create({
   loader: { marginTop: 18 },
   error: { color: '#FFB4A9' },
   section: { gap: 9, marginTop: 2 },
+  communitySection: { marginTop: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#2F4A40' },
   sectionHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   sectionIcon: { color: '#4ED9A1', fontSize: 22, lineHeight: 24, fontWeight: '900' },
   sectionCopy: { flex: 1 },
   sectionTitle: { color: '#F7F8F3', fontSize: 18, fontWeight: '900' },
+  communityTitle: { color: '#C5A8FF' },
   sectionSubtitle: { color: '#8E9C95', fontSize: 12, lineHeight: 16, marginTop: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   card: { width: '48.5%', minHeight: 142, backgroundColor: '#111B18', borderRadius: 16, borderWidth: 1, borderColor: '#304039', paddingHorizontal: 10, paddingTop: 10, paddingBottom: 11, alignItems: 'center', justifyContent: 'flex-start', position: 'relative' },
