@@ -18,7 +18,7 @@ import {
 } from './api';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
-import { getCircles, searchCommunityMembers, type CommunityCircle, type CommunityPerson } from './circles';
+import { getCircles, getConnections, searchCommunityMembers, type CommunityCircle, type CommunityPerson, type Connection } from './circles';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
 
@@ -63,7 +63,7 @@ function relativeTime(value: string) {
   return days < 7 ? `${days}d ago` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function PostCard({ post }: { post: CommunityPost }) {
+function PostCard({ post, reason }: { post: CommunityPost; reason?: string | null }) {
   const badge = post.post_type === 'ask'
     ? 'ASK'
     : post.post_type === 'buddy'
@@ -76,6 +76,7 @@ function PostCard({ post }: { post: CommunityPost }) {
 
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
+      {reason ? <View style={styles.feedReasonRow}><Ionicons name="sparkles-outline" size={12} color={GOLD} /><Text style={styles.feedReason}>{reason}</Text></View> : null}
       <View style={styles.postHeader}>
         <Pressable
           style={styles.authorTarget}
@@ -161,6 +162,7 @@ export default function OutpostScreen() {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [crews, setCrews] = useState<CommunityCircle[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [members, setMembers] = useState<CommunityPerson[]>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
@@ -177,10 +179,11 @@ export default function OutpostScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [nextPosts, nextGroups, nextCrews, nextMembers, nextCampfires, basecamp] = await Promise.all([
+      const [nextPosts, nextGroups, nextCrews, nextConnections, nextMembers, nextCampfires, basecamp] = await Promise.all([
         getCommunityFeed(),
         getGroups(),
         getCircles(),
+        getConnections().catch(() => []),
         searchCommunityMembers('').catch(() => []),
         listLocalEvents().catch(() => []),
         getMemberBasecamp(),
@@ -188,6 +191,7 @@ export default function OutpostScreen() {
       setPosts(nextPosts);
       setGroups(nextGroups);
       setCrews(nextCrews);
+      setConnections(nextConnections);
       setMembers(nextMembers);
       setCampfires(nextCampfires);
       setHomeCity(basecamp.profile?.home_city ?? null);
@@ -204,12 +208,24 @@ export default function OutpostScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : homeCity || homeState || 'Your area';
+  const acceptedConnections = useMemo(() => connections.filter((connection) => connection.status === 'accepted'), [connections]);
+  const acceptedConnectionIds = useMemo(() => new Set(acceptedConnections.map((connection) => connection.profile_id)), [acceptedConnections]);
   const nearbyPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState && (!homeCity || !person.home_city || person.home_city === homeCity)), [members, homeCity, homeState]);
   const nearbyIds = useMemo(() => new Set(nearbyPeople.map((person) => person.id)), [nearbyPeople]);
   const nearbyPosts = useMemo(() => posts.filter((post) => nearbyIds.has(post.author_id)).slice(0, 8), [posts, nearbyIds]);
   const nearbyGroups = useMemo(() => groups.filter((group) => homeState && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [groups, homeCity, homeState]);
   const nearbyCampfires = useMemo(() => campfires.filter((event) => homeState && event.state === homeState && (!homeCity || event.city === homeCity)).slice(0, 4), [campfires, homeCity, homeState]);
+  const myGroupNames = useMemo(() => new Map(groups.filter((group) => group.is_member).map((group) => [group.id, group.name])), [groups]);
+  const crewPosts = useMemo(() => posts.filter((post) => acceptedConnectionIds.has(post.author_id)).slice(0, 12), [posts, acceptedConnectionIds]);
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
+
+  const reasonForPost = useCallback((post: CommunityPost) => {
+    if (post.group_id && myGroupNames.has(post.group_id)) return `From ${myGroupNames.get(post.group_id)}`;
+    if (acceptedConnectionIds.has(post.author_id)) return 'From a Trailmate';
+    if (nearbyIds.has(post.author_id)) return `From around ${locationLabel}`;
+    if ((post.reaction_count || 0) + (post.comment_count || 0) >= 3) return 'Popular in the Outpost';
+    return 'Discover from across the Outpost';
+  }, [acceptedConnectionIds, locationLabel, myGroupNames, nearbyIds]);
 
   async function choosePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -283,15 +299,20 @@ export default function OutpostScreen() {
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>For You</Text><Text style={styles.sectionCopy}>Posts, questions, people, and ideas from across the Outpost.</Text></View>
-          {posts.map((post) => <PostCard key={post.id} post={post} />)}
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>For You</Text><Text style={styles.sectionCopy}>A mix of your Trailmates, groups, nearby activity, and broader Outpost discoveries.</Text></View>
+          {posts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
 
-        {tab === 'crew' ? <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}><View style={styles.flex}><Text style={styles.sectionTitle}>Your Crew</Text><Text style={styles.sectionCopy}>The Trailmates you adventure with most.</Text></View><Pressable onPress={() => router.push('/circles')}><Text style={styles.link}>Manage</Text></Pressable></View>
-          <View style={styles.list}>{crews.map((crew) => <CrewRow key={crew.id} crew={crew} />)}{!crews.length ? <Text style={styles.emptyText}>Create a Crew to organize your Trailmates.</Text> : null}</View>
-        </View> : null}
+        {tab === 'crew' ? <>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}><View style={styles.flex}><Text style={styles.sectionTitle}>Your Crew</Text><Text style={styles.sectionCopy}>The Trailmates you adventure with most.</Text></View><Pressable onPress={() => router.push('/circles')}><Text style={styles.link}>Manage</Text></Pressable></View>
+            <View style={styles.list}>{crews.map((crew) => <CrewRow key={crew.id} crew={crew} />)}{!crews.length ? <Text style={styles.emptyText}>Create a Crew to organize your Trailmates.</Text> : null}</View>
+          </View>
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>From Your Trailmates</Text><Text style={styles.sectionCopy}>Posts from people you’re connected with.</Text></View>
+          {crewPosts.map((post) => <PostCard key={post.id} post={post} />)}
+          {!crewPosts.length && !loading ? <Text style={styles.emptyText}>Connect with Trailmates and their posts will show up here.</Text> : null}
+        </> : null}
 
         {tab === 'nearby' ? <>
           <View style={styles.nearbyHero}><View style={styles.nearbyIcon}><Ionicons name="navigate" size={22} color="#101510" /></View><View style={styles.flex}><Text style={styles.eyebrow}>AROUND YOU</Text><Text style={styles.nearbyTitle}>Near {locationLabel}</Text><Text style={styles.sectionCopy}>{nearbyPeople.length} adventurer{nearbyPeople.length === 1 ? '' : 's'} · {nearbyGroups.length} group{nearbyGroups.length === 1 ? '' : 's'} · {nearbyCampfires.length} Campfire{nearbyCampfires.length === 1 ? '' : 's'}</Text></View></View>
@@ -354,6 +375,8 @@ const styles = StyleSheet.create({
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   link: { color: GOLD, fontSize: 12, fontWeight: '900' },
   postCard: { paddingHorizontal: 2, paddingVertical: 11, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#26332C' },
+  feedReasonRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: -2 },
+  feedReason: { color: '#B9A56F', fontSize: 10.5, fontWeight: '800' },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   postHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
