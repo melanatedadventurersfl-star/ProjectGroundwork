@@ -1,10 +1,11 @@
 import * as Updates from 'expo-updates';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
+import { supabase } from '../../src/lib/supabase';
 import { startGuidedTutorial } from '../../src/onboarding/tutorialController';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
@@ -12,6 +13,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
   ['Account', [
     ['Edit Profile','/member/profile?edit=1','profile'],
     ['Profile & Privacy','/member/privacy','privacy'],
+    ['Invite Friends','/member/invites','connections'],
     ['Notifications','/notifications','notifications'],
     ['Weather & Location','/member/weather','weather'],
   ]],
@@ -30,13 +32,33 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
 ] as const;
 
 export default function MenuScreen() {
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
+  const [inviteCount, setInviteCount] = useState<number | null>(null);
   const gitSha = process.env.EXPO_PUBLIC_GIT_SHA?.slice(0, 8);
   const updateId = Updates.updateId?.slice(0, 8);
   const runtimeVersion = Updates.runtimeVersion || 'embedded';
   const showPreviewBuild = process.env.EXPO_PUBLIC_APP_ENV === 'preview';
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    let active = true;
+    void supabase
+      .from('member_invites')
+      .select('id', { count: 'exact', head: true })
+      .eq('sender_profile_id', session.user.id)
+      .eq('status', 'available')
+      .then(({ count, error: inviteError }) => {
+        if (!active) return;
+        if (inviteError) {
+          console.warn('Unable to load invite count', inviteError.message);
+          return;
+        }
+        setInviteCount(count ?? 0);
+      });
+    return () => { active = false; };
+  }, [session?.user.id]);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -62,7 +84,10 @@ export default function MenuScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.eyebrow}>MEMBER HUB</Text><Text style={styles.title}>Menu</Text>
     {sections.map(([title, rows]) => <View key={title} style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><View style={styles.card}>
-      {rows.map(([label, route, icon], index) => <Pressable key={label} style={[styles.row,index>0&&styles.divider]} onPress={()=>openMenuRoute(route)}><View style={styles.rowLead}><AppIcon name={icon} color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>{label}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={20} /></Pressable>)}
+      {rows.map(([label, route, icon], index) => {
+        const rowLabel = label === 'Invite Friends' && inviteCount !== null ? `${label} · ${inviteCount} available` : label;
+        return <Pressable key={label} style={[styles.row,index>0&&styles.divider]} onPress={()=>openMenuRoute(route)}><View style={styles.rowLead}><AppIcon name={icon} color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>{rowLabel}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={20} /></Pressable>;
+      })}
     </View></View>)}
     {showPreviewBuild ? <View style={styles.buildCard}>
       <Text style={styles.buildLabel}>PREVIEW BUILD</Text>
