@@ -1,13 +1,10 @@
 name: EAS Android Preview
 
-# Manual trigger marker: Pathfinder native Trailhead verification build.
 on:
   push:
     branches:
       - main
     paths:
-      # Only changes that can affect the installed/native app should
-      # automatically consume an EAS Android build.
       - 'apps/mobile/app.json'
       - 'apps/mobile/eas.json'
       - 'apps/mobile/package.json'
@@ -19,10 +16,11 @@ on:
       - 'apps/mobile/assets/ma-splash-icon.png'
       - 'apps/mobile/assets/ma-pathfinder-mark.png'
       - 'apps/mobile/assets/trailhead/**'
-      # A workflow repair should be able to produce a fresh APK immediately.
       - '.github/workflows/eas-preview-android.yml'
   workflow_dispatch:
 
+# A newer native/runtime build supersedes an older native/runtime build. Unrelated
+# commits must not invalidate a build that is already in flight.
 concurrency:
   group: eas-preview-android-main
   cancel-in-progress: true
@@ -31,35 +29,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out triggering native commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Verify build is using current main
+      - name: Verify build target
         run: |
-          git fetch origin main
-          CURRENT_MAIN="$(git rev-parse origin/main)"
           CHECKED_OUT="$(git rev-parse HEAD)"
-          if [ "${CHECKED_OUT}" != "${CURRENT_MAIN}" ]; then
-            echo "Checked out ${CHECKED_OUT}, but current main is ${CURRENT_MAIN}."
+          echo "event_sha=${GITHUB_SHA}"
+          echo "checked_out=${CHECKED_OUT}"
+          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
+            echo "Checked-out commit does not match the workflow event SHA."
             exit 1
-          fi
-          echo "APK candidate is current main: ${CURRENT_MAIN}"
+          }
 
-      - name: Debounce rapid main updates before expensive build
+      - name: Debounce rapid native updates before expensive build
         run: sleep 25
-
-      - name: Re-check newest main before setup
-        run: |
-          git fetch origin main
-          CURRENT_MAIN="$(git rev-parse origin/main)"
-          CHECKED_OUT="$(git rev-parse HEAD)"
-          if [ "${CHECKED_OUT}" != "${CURRENT_MAIN}" ]; then
-            echo "Refusing stale APK build. Checked out ${CHECKED_OUT}, latest main is ${CURRENT_MAIN}."
-            exit 1
-          fi
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -78,8 +65,6 @@ jobs:
           from pathlib import Path
           from PIL import Image, ImageFile
 
-          # Temporary compatibility for any legacy truncated PNG already in
-          # history. Mobile CI repairs and recommits these files on main.
           ImageFile.LOAD_TRUNCATED_IMAGES = True
           paths = [
               Path('apps/mobile/assets/ma-app-icon.png'),
@@ -141,7 +126,7 @@ jobs:
                   print(f'Valid Trailhead asset: {path} ({image.width}x{image.height}, {image.format})')
           PY
 
-      - name: Stamp preview APK with checked-out main commit
+      - name: Stamp preview APK with triggering commit
         working-directory: apps/mobile
         run: |
           BUILD_GIT_SHA="$(git rev-parse HEAD)"
@@ -172,17 +157,15 @@ jobs:
         run: |
           node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) { console.error('Missing expo.extra.eas.projectId. Run eas init once and commit the generated project ID.'); process.exit(1); }"
 
-      - name: Final newest-main gate before EAS build
+      - name: Re-verify pinned delivery target
         run: |
-          git fetch origin main
-          CURRENT_MAIN="$(git rev-parse origin/main)"
           CHECKED_OUT="$(git rev-parse HEAD)"
-          if [ "${CHECKED_OUT}" != "${CURRENT_MAIN}" ]; then
-            echo "Refusing stale APK build. Checked out ${CHECKED_OUT}, latest main is ${CURRENT_MAIN}."
+          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
+            echo "Build target changed unexpectedly."
             exit 1
-          fi
+          }
 
-      - name: Cancel stale Expo preview builds
+      - name: Cancel older Expo preview builds
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -219,10 +202,10 @@ jobs:
             [ "${BUILD_SHA}" != "${CURRENT_SHA}" ] || continue
 
             if git cat-file -e "${BUILD_SHA}^{commit}" 2>/dev/null && git merge-base --is-ancestor "${BUILD_SHA}" "${CURRENT_SHA}"; then
-              echo "Cancelling stale Expo build ${BUILD_ID} from ${BUILD_SHA}; newest main is ${CURRENT_SHA}."
+              echo "Cancelling older Expo build ${BUILD_ID} from ${BUILD_SHA}; delivery target is ${CURRENT_SHA}."
               npx eas-cli@latest build:cancel "${BUILD_ID}" --non-interactive
             else
-              echo "Leaving Expo build ${BUILD_ID} (${BUILD_SHA}) alone because it is not a confirmed older ancestor of current main."
+              echo "Leaving Expo build ${BUILD_ID} (${BUILD_SHA}) alone because it is not a confirmed older ancestor of this delivery target."
             fi
           done < /tmp/stale-eas-builds.txt
 
