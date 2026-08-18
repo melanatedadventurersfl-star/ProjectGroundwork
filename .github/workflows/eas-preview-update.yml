@@ -94,7 +94,8 @@ jobs:
               apps/mobile/plugins \
               apps/mobile/assets/ma-app-icon.png \
               apps/mobile/assets/ma-splash-icon.png \
-              apps/mobile/assets/ma-pathfinder-mark.png)"
+              apps/mobile/assets/ma-pathfinder-mark.png \
+              apps/mobile/assets/trailhead)"
 
             if [ -n "${NATIVE_CHANGES}" ]; then
               echo "Current main contains runtime-sensitive changes not present in the installed APK baseline:"
