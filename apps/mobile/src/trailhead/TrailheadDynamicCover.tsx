@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
 import { AppState, Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { getAppMediaUrl } from '../lib/appMediaManifest';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
@@ -12,6 +13,7 @@ import { styles } from './trailheadBannerStyles';
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
+const PATHFINDER_MEDIA_KEY = 'trailhead.pathfinder.clear.afternoon';
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
   if (phase === 'night') return 'rgba(4, 13, 28, 0.58)';
@@ -45,6 +47,7 @@ export function TrailheadCover({
   const [locationLabel, setLocationLabel] = useState('');
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
   const [clockNow, setClockNow] = useState(() => new Date());
+  const [pathfinderRemoteBackground, setPathfinderRemoteBackground] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -53,6 +56,35 @@ export function TrailheadCover({
       .catch(() => { if (active) setEarnedBadges(badges); });
     return () => { active = false; };
   }, [badges]);
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshPathfinderBackground = async () => {
+      if (rank !== 'Pathfinder') {
+        if (active) setPathfinderRemoteBackground(null);
+        return;
+      }
+
+      try {
+        const url = await getAppMediaUrl(PATHFINDER_MEDIA_KEY);
+        if (active) setPathfinderRemoteBackground(url);
+      } catch {
+        // Keep the bundled background as a fail-safe when Storage or the
+        // manifest is temporarily unavailable.
+      }
+    };
+
+    void refreshPathfinderBackground();
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshPathfinderBackground();
+    });
+
+    return () => {
+      active = false;
+      appStateSubscription.remove();
+    };
+  }, [rank]);
 
   useEffect(() => {
     let active = true;
@@ -105,7 +137,10 @@ export function TrailheadCover({
   const livePhase = useMemo(() => dayPhaseFor(weatherData, clockNow), [weatherData, clockNow]);
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
-  const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
+  const bundledBackground = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
+  const background = rank === 'Pathfinder' && pathfinderRemoteBackground
+    ? { uri: pathfinderRemoteBackground }
+    : bundledBackground;
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
 
   const greeting = greetingFor(phase);
@@ -119,7 +154,14 @@ export function TrailheadCover({
 
   return (
     <View style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}>
-      <Image source={background} resizeMode="cover" style={styles.animatedBackground} />
+      <Image
+        source={background}
+        resizeMode="cover"
+        style={styles.animatedBackground}
+        onError={() => {
+          if (pathfinderRemoteBackground) setPathfinderRemoteBackground(null);
+        }}
+      />
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.baseScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
