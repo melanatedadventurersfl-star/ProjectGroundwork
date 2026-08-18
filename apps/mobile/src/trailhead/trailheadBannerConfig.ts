@@ -5,7 +5,6 @@ import clearNight from '../weather/assets/clearNight';
 import drizzle from '../weather/assets/drizzle';
 import overcast from '../weather/assets/overcast';
 import storm from '../weather/assets/storm';
-import pathfinderClearEveningV2 from './assets/pathfinderClearEveningV2';
 import pathfinderClearNight from './assets/pathfinderClearNight';
 import { trailheadBackgroundFor } from './bannerAssets';
 
@@ -15,6 +14,7 @@ export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summ
 type RankTheme={accent:string;soft:string;glow:string};
 
 const embeddedJpeg = (payload: string): ImageSourcePropType => ({ uri: `data:image/jpeg;base64,${payload}` });
+const pathfinderClearEvening = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
 
 // Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
@@ -44,7 +44,7 @@ function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   if (w === 'fog' || w === 'rain' || w === 'storm' || w === 'cloudy' || w === 'snow') {
     return { uri: trailheadBackgroundFor('Pathfinder', w, p) };
   }
-  return embeddedJpeg(pathfinderClearEveningV2);
+  return pathfinderClearEvening;
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
