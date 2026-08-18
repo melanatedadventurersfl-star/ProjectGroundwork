@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Animated, AppState, Easing, Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
 
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
@@ -60,10 +60,10 @@ export function TrailheadCover({
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
   const [clockNow, setClockNow] = useState(() => new Date());
 
-  const haze = useRef(new Animated.Value(0)).current;
-  const rainFall = useRef(new Animated.Value(0)).current;
-  const lightning = useRef(new Animated.Value(0)).current;
-  const stars = useRef(new Animated.Value(0)).current;
+  const [haze] = useState(() => new Animated.Value(0));
+  const [rainFall] = useState(() => new Animated.Value(0));
+  const [lightning] = useState(() => new Animated.Value(0));
+  const [stars] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     let active = true;
@@ -118,7 +118,7 @@ export function TrailheadCover({
   }, []);
 
   const theme = rankThemes[rank];
-  const liveWeather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData?.current.condition.text]);
+  const liveWeather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData]);
   const livePhase = useMemo(() => dayPhaseFor(weatherData, clockNow), [weatherData, clockNow]);
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
