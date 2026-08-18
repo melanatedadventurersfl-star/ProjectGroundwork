@@ -12,7 +12,9 @@ export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
 type RankTheme={accent:string;soft:string;glow:string};
 
-const pathfinderNativeScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
+const pathfinderMorningScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-morning-test.jpg') as ImageSourcePropType;
+const pathfinderAfternoonScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-afternoon-test.jpg') as ImageSourcePropType;
+const pathfinderEveningScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
 
 // Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
@@ -52,10 +54,24 @@ function explorerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   return require('../../assets/trailhead/explorer/explorer-clear-morning.jpg');
 }
 
-function pathfinderBackground(_w:WeatherTheme,_p:DayPhase):ImageSourcePropType {
-  // Stability rule: Pathfinder never routes through data URIs or generated base64 modules.
-  // Weather and time still drive greeting/copy/atmosphere while the native scene remains reliable.
-  return pathfinderNativeScene;
+function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  // Weather conditions take visual priority over time of day so the banner
+  // immediately reflects unsafe or noticeably different conditions.
+  if (w === 'storm') return { uri: storm };
+  if (w === 'rain') return { uri: drizzle };
+  if (w === 'fog') return { uri: overcast };
+  if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
+  if (w === 'partly-cloudy') {
+    if (p === 'night') return { uri: clearNight };
+    if (p === 'morning') return pathfinderMorningScene;
+    if (p === 'afternoon') return pathfinderAfternoonScene;
+    return pathfinderEveningScene;
+  }
+
+  if (p === 'night') return { uri: clearNight };
+  if (p === 'morning') return pathfinderMorningScene;
+  if (p === 'afternoon') return pathfinderAfternoonScene;
+  return pathfinderEveningScene;
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
