@@ -12,11 +12,16 @@ export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
 type RankTheme={accent:string;soft:string;glow:string};
 
-// Pathfinder intentionally uses one known-good bundled native JPEG here.
-// Do not route this rank through generated data URIs or legacy truncated assets.
-// Once every weather variant is committed as a verified native image, this selector
-// can fan back out by weather/time without risking a blank banner.
-const pathfinderNativeBackground = require('../../assets/trailhead/pathfinder/pathfinder-clear-afternoon.jpg') as ImageSourcePropType;
+// These PNGs were uploaded directly to GitHub and verified against the original
+// generated files before wiring them into the banner. Keep Pathfinder on these
+// bundled native assets so the background does not depend on data URIs or legacy JPGs.
+const pathfinderClearMorning = require('../../assets/trailhead/pathfinder/pathfinder-clear-morning.png') as ImageSourcePropType;
+const pathfinderClearAfternoon = require('../../assets/trailhead/pathfinder/pathfinder-clear-afternoon.png') as ImageSourcePropType;
+const pathfinderClearEvening = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.png') as ImageSourcePropType;
+const pathfinderClearNight = require('../../assets/trailhead/pathfinder/pathfinder-clear-night.png') as ImageSourcePropType;
+const pathfinderCloudy = require('../../assets/trailhead/pathfinder/pathfinder-cloudy.png') as ImageSourcePropType;
+const pathfinderRain = require('../../assets/trailhead/pathfinder/pathfinder-rain.png') as ImageSourcePropType;
+const pathfinderStorm = require('../../assets/trailhead/pathfinder/pathfinder-storm.png') as ImageSourcePropType;
 
 // Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
@@ -56,8 +61,15 @@ function explorerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   return require('../../assets/trailhead/explorer/explorer-clear-morning.jpg');
 }
 
-function pathfinderBackground(_w:WeatherTheme,_p:DayPhase):ImageSourcePropType {
-  return pathfinderNativeBackground;
+function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  if (w === 'storm') return pathfinderStorm;
+  if (w === 'rain') return pathfinderRain;
+  if (w === 'cloudy' || w === 'partly-cloudy' || w === 'fog' || w === 'windy' || w === 'snow') return pathfinderCloudy;
+
+  if (p === 'morning') return pathfinderClearMorning;
+  if (p === 'afternoon') return pathfinderClearAfternoon;
+  if (p === 'evening') return pathfinderClearEvening;
+  return pathfinderClearNight;
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
