@@ -151,6 +151,32 @@ jobs:
               print(f'Canonicalized {path}')
           PY
 
+      - name: Canonicalize Trailhead image assets before OTA export
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageFile
+
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
+          root = Path('apps/mobile/assets/trailhead')
+          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
+          if not images:
+              raise RuntimeError('No native Trailhead image assets were found.')
+
+          for path in images:
+              suffix = path.suffix.lower()
+              temp = path.with_name(f'{path.stem}.canonical{suffix}')
+              with Image.open(path) as image:
+                  image.load()
+                  if suffix in {'.jpg', '.jpeg'}:
+                      image.convert('RGB').save(temp, format='JPEG', quality=92, optimize=False)
+                  else:
+                      image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
+              temp.replace(path)
+              print(f'Canonicalized Trailhead asset: {path}')
+          PY
+
       - name: Strictly verify PNGs before OTA export
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
@@ -168,6 +194,27 @@ jobs:
               with Image.open(path) as image:
                   image.load()
                   print(f'Valid PNG: {path} ({image.width}x{image.height})')
+          PY
+
+      - name: Strictly verify Trailhead image assets before OTA export
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path('apps/mobile/assets/trailhead')
+          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
+          if not images:
+              raise RuntimeError('No native Trailhead image assets were found.')
+          for path in images:
+              with Image.open(path) as image:
+                  image.verify()
+              with Image.open(path) as image:
+                  image.load()
+                  if image.width < 480 or image.height < 180:
+                      raise RuntimeError(f'Trailhead asset is too small: {path} ({image.width}x{image.height})')
+                  print(f'Valid Trailhead asset: {path} ({image.width}x{image.height}, {image.format})')
           PY
 
       - name: Use vector fallback for invalid Wet & Wild raster
