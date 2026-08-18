@@ -12,8 +12,8 @@ export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summit Seeker'|'Ascendant';
 type RankTheme={accent:string;soft:string;glow:string};
 
-const pathfinderMorningScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-morning-test.jpg') as ImageSourcePropType;
-const pathfinderAfternoonScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-afternoon-test.jpg') as ImageSourcePropType;
+const pathfinderMorningScene = require('../../assets/trailhead/explorer/explorer-clear-morning.jpg') as ImageSourcePropType;
+const pathfinderAfternoonScene = require('../../assets/trailhead/explorer/explorer-partly-cloudy-afternoon.jpg') as ImageSourcePropType;
 const pathfinderEveningScene = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
 
 // Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
