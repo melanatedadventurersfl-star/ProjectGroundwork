@@ -202,6 +202,22 @@ export async function createPost(inputOrBody: CreateCommunityPostInput | string,
   if (error) throw error;
 }
 
+export async function updatePost(postId: string, body: string) {
+  const userId = await currentUserId();
+  const nextBody = body.trim();
+  if (!nextBody) throw new Error('Post text cannot be empty.');
+
+  const { data, error } = await supabase
+    .from('community_posts')
+    .update({ body: nextBody })
+    .eq('id', postId)
+    .eq('author_id', userId)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('You can only edit posts you created.');
+}
+
 export async function setReaction(postId: string, reaction: 'like' | 'love' | 'celebrate' | 'support' | null) {
   const userId = await currentUserId();
   if (!reaction) {
