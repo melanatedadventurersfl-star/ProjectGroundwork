@@ -1,10 +1,9 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { setReaction } from './api';
-import { COMMUNITY_REPORT_REASONS, reportCommunityContent } from './reporting';
 import { supabase } from '../lib/supabase';
 
 const GOLD = '#D7B45A';
@@ -47,11 +46,6 @@ export function PostEngagementBar({
   const [reactors, setReactors] = useState<Reactor[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState<string | null>(null);
-  const [reportDetails, setReportDetails] = useState('');
-  const [reporting, setReporting] = useState(false);
-  const [reportStatus, setReportStatus] = useState<string | null>(null);
   const [reacting, setReacting] = useState(false);
 
   useEffect(() => {
@@ -146,22 +140,6 @@ export function PostEngagementBar({
     }
   }
 
-  async function submitReport() {
-    if (!reportReason || reporting) return;
-    setReporting(true);
-    setReportStatus(null);
-    try {
-      await reportCommunityContent({ kind: 'post', id: postId }, reportReason, reportDetails);
-      setReportStatus('Report submitted. Thank you for helping keep the Outpost safe.');
-      setReportReason(null);
-      setReportDetails('');
-    } catch (caught) {
-      setReportStatus(caught instanceof Error ? caught.message : 'Unable to submit this report.');
-    } finally {
-      setReporting(false);
-    }
-  }
-
   return (
     <>
       <View style={styles.row}>
@@ -210,15 +188,6 @@ export function PostEngagementBar({
             </View>
           ))}
         </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-          onPress={(event) => { event.stopPropagation(); setReportStatus(null); setReportOpen(true); }}
-          accessibilityRole="button"
-          accessibilityLabel="Post options"
-        >
-          <Ionicons name="ellipsis-horizontal" size={17} color={MUTED} />
-        </Pressable>
       </View>
 
       <Modal transparent visible={pickerOpen} animationType="fade" onRequestClose={() => setPickerOpen(false)}>
@@ -248,50 +217,6 @@ export function PostEngagementBar({
           </Pressable>
         </Pressable>
       </Modal>
-
-      <Modal transparent visible={reportOpen} animationType="slide" onRequestClose={() => setReportOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setReportOpen(false)}>
-          <Pressable style={styles.reportSheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Report post</Text>
-            <Text style={styles.reportCopy}>Choose the reason that best describes the issue.</Text>
-            <View style={styles.reasonList}>
-              {COMMUNITY_REPORT_REASONS.map((reason) => (
-                <Pressable
-                  key={reason}
-                  style={[styles.reasonRow, reportReason === reason && styles.reasonRowActive]}
-                  onPress={() => setReportReason(reason)}
-                >
-                  <Text style={[styles.reasonText, reportReason === reason && styles.reasonTextActive]}>{reason}</Text>
-                  {reportReason === reason ? <Ionicons name="checkmark-circle" size={18} color={GOLD} /> : null}
-                </Pressable>
-              ))}
-            </View>
-            <TextInput
-              value={reportDetails}
-              onChangeText={setReportDetails}
-              placeholder="Add details (optional)"
-              placeholderTextColor="#75847B"
-              multiline
-              maxLength={600}
-              style={styles.reportInput}
-            />
-            {reportStatus ? <Text style={styles.reportStatus}>{reportStatus}</Text> : null}
-            <View style={styles.reportActions}>
-              <Pressable style={styles.cancelButton} onPress={() => setReportOpen(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.reportButton, (!reportReason || reporting) && styles.disabled]}
-                disabled={!reportReason || reporting}
-                onPress={() => void submitReport()}
-              >
-                <Text style={styles.reportButtonText}>{reporting ? 'Submitting…' : 'Submit report'}</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </>
   );
 }
@@ -302,11 +227,10 @@ const styles = StyleSheet.create({
   reactionEmoji: { fontSize: 17, lineHeight: 21, color: GOLD },
   count: { color: MUTED, fontSize: 12.5, fontWeight: '700' },
   activeCount: { color: GOLD },
-  summary: { marginLeft: 'auto', minWidth: 28, minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingLeft: 4 },
+  summary: { marginLeft: 'auto', minWidth: 32, minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingLeft: 6 },
   summaryBubble: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#223028', borderWidth: 1.5, borderColor: PANEL, alignItems: 'center', justifyContent: 'center' },
   summaryOverlap: { marginLeft: -6 },
   summaryEmoji: { fontSize: 11 },
-  moreButton: { width: 30, minHeight: 30, alignItems: 'flex-end', justifyContent: 'center', paddingLeft: 5 },
   pressed: { opacity: 0.62 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'flex-end', padding: 18 },
   picker: { alignSelf: 'center', flexDirection: 'row', backgroundColor: '#213028', borderWidth: 1, borderColor: BORDER, borderRadius: 28, paddingHorizontal: 7, paddingVertical: 6, marginBottom: 90, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, elevation: 8 },
@@ -314,23 +238,8 @@ const styles = StyleSheet.create({
   choiceEmoji: { fontSize: 27 },
   choiceLabel: { color: TEXT, fontSize: 10, fontWeight: '800' },
   sheet: { maxHeight: '65%', backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 28 },
-  reportSheet: { maxHeight: '84%', backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 22, gap: 10 },
   sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#607067', marginBottom: 14 },
-  sheetTitle: { color: TEXT, fontSize: 20, fontWeight: '900', marginBottom: 6 },
+  sheetTitle: { color: TEXT, fontSize: 20, fontWeight: '900', marginBottom: 10 },
   reactorRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
   reactorName: { color: TEXT, fontSize: 14, fontWeight: '700' },
-  reportCopy: { color: MUTED, fontSize: 12.5, lineHeight: 18 },
-  reasonList: { borderWidth: 1, borderColor: BORDER, borderRadius: 14, overflow: 'hidden' },
-  reasonRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
-  reasonRowActive: { backgroundColor: '#203027' },
-  reasonText: { color: '#D7DED9', fontSize: 12.5, fontWeight: '700' },
-  reasonTextActive: { color: TEXT },
-  reportInput: { minHeight: 72, maxHeight: 120, borderWidth: 1, borderColor: BORDER, borderRadius: 13, backgroundColor: '#121C17', color: TEXT, paddingHorizontal: 12, paddingVertical: 10, textAlignVertical: 'top', fontSize: 13 },
-  reportStatus: { color: '#D8C686', fontSize: 12, lineHeight: 17 },
-  reportActions: { flexDirection: 'row', gap: 8 },
-  cancelButton: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { color: MUTED, fontSize: 12.5, fontWeight: '800' },
-  reportButton: { flex: 1.4, minHeight: 42, borderRadius: 12, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
-  reportButtonText: { color: '#111711', fontSize: 12.5, fontWeight: '900' },
-  disabled: { opacity: 0.45 },
 });
