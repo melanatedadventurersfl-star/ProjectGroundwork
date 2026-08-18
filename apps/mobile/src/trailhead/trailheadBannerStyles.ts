@@ -6,6 +6,7 @@ export const styles = StyleSheet.create({
   imageRadius: { borderRadius: 22 },
   animatedBackground: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   atmosphereOverlay: { ...StyleSheet.absoluteFill },
+  ambientLight: { position: 'absolute', right: -74, top: -88, width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,238,186,0.18)' },
   baseScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,7,6,0.01)' },
   rankGlow: { position: 'absolute', left: -72, top: -48, width: 250, height: 250, borderRadius: 125, opacity: 0.34 },
   leftScrim: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 0, backgroundColor: 'transparent' },
