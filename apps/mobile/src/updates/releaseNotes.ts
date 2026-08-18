@@ -6,13 +6,13 @@ export type ReleaseNotes = {
 };
 
 export const currentReleaseNotes: ReleaseNotes = {
-  id: '2026-08-17-pathfinder-dynamic-v2',
+  id: '2026-08-17-pathfinder-evening-animated-v1',
   title: "What's New",
-  intro: 'The Trailhead just got a more responsive sky.',
+  intro: 'Pathfinder has a new trail to follow.',
   items: [
-    'Pathfinder scenery now stays rank-specific while adapting to live weather and time of day.',
-    'Morning, afternoon, evening, and night now apply distinct atmosphere treatments to the Trailhead banner.',
-    'Rain, fog, storms, clouds, and clear conditions now shift the Pathfinder scene instead of falling back to generic art.',
-    'Update delivery and release notes have been refreshed for preview testing.',
+    'Pathfinder evening scenery now uses the new wooded trail artwork instead of the mountain-heavy scene.',
+    'Trailhead backgrounds now use a subtle living-photo animation with a gentle drift and zoom.',
+    'Scene changes now crossfade smoothly while your crest, weather, badges, and text stay fixed in place.',
+    'Update delivery and release-note behavior were tightened so new app updates can surface their changes again.',
   ],
 };
