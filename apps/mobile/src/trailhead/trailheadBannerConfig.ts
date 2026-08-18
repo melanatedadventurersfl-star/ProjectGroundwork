@@ -6,13 +6,6 @@ import drizzle from '../weather/assets/drizzle';
 import overcast from '../weather/assets/overcast';
 import storm from '../weather/assets/storm';
 import pathfinderClearNight from './assets/pathfinderClearNight';
-import pathfinderEvening0 from './assets/pathfinderEveningForest.g0';
-import pathfinderEvening1 from './assets/pathfinderEveningForest.g1';
-import pathfinderEvening2 from './assets/pathfinderEveningForest.g2';
-import pathfinderEvening3 from './assets/pathfinderEveningForest.g3';
-import pathfinderEvening4 from './assets/pathfinderEveningForest.g4';
-import pathfinderEvening5 from './assets/pathfinderEveningForest.g5';
-import pathfinderEvening6 from './assets/pathfinderEveningForest.g6';
 import { trailheadBackgroundFor } from './bannerAssets';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
@@ -21,15 +14,7 @@ export type DisplayRank='Explorer'|'Pathfinder'|'Trailblazer'|'Adventurer'|'Summ
 type RankTheme={accent:string;soft:string;glow:string};
 
 const embeddedJpeg = (payload: string): ImageSourcePropType => ({ uri: `data:image/jpeg;base64,${payload}` });
-const pathfinderEveningForest = embeddedJpeg(
-  pathfinderEvening0 +
-    pathfinderEvening1 +
-    pathfinderEvening2 +
-    pathfinderEvening3 +
-    pathfinderEvening4 +
-    pathfinderEvening5 +
-    pathfinderEvening6,
-);
+const pathfinderEveningForest = require('../../assets/trailhead/pathfinder/pathfinder-clear-evening.jpg') as ImageSourcePropType;
 
 // Kept as a QA hook, but production uses live GPS/weather/time unless explicitly enabled.
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
