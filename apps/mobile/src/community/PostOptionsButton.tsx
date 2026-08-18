@@ -1,4 +1,5 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,6 +63,14 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
 
   const isOwner = Boolean(resolvedAuthorId && currentUserId && resolvedAuthorId === currentUserId);
 
+  async function refreshPostView() {
+    if (onUpdated) {
+      await onUpdated();
+      return;
+    }
+    router.replace('/community');
+  }
+
   async function saveEdit() {
     if (!editBody.trim() || savingEdit) return;
     setSavingEdit(true);
@@ -69,8 +78,8 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
     try {
       await updatePost(postId, editBody);
       setResolvedBody(editBody.trim());
-      if (onUpdated) await onUpdated();
       setEditOpen(false);
+      await refreshPostView();
     } catch (caught) {
       setEditStatus(caught instanceof Error ? caught.message : 'Unable to update this post.');
     } finally {
@@ -109,7 +118,7 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
               Alert.alert('Could not delete post', 'You can only delete posts you created.');
               return;
             }
-            if (onUpdated) await onUpdated();
+            await refreshPostView();
           })();
         },
       },
