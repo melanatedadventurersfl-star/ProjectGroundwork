@@ -1,6 +1,7 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { updatePost } from './api';
 import { COMMUNITY_REPORT_REASONS, reportCommunityContent } from './reporting';
@@ -11,8 +12,17 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#17211C';
 const BORDER = '#334139';
+const DANGER = '#FF8F87';
 
-export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postId: string; authorId?: string; body?: string; onUpdated?: () => void | Promise<void> }) {
+type Props = {
+  postId: string;
+  authorId?: string;
+  body?: string;
+  onUpdated?: () => void | Promise<void>;
+};
+
+export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) {
+  const insets = useSafeAreaInsets();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [resolvedAuthorId, setResolvedAuthorId] = useState(authorId ?? null);
   const [resolvedBody, setResolvedBody] = useState(body ?? '');
@@ -58,9 +68,7 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
     setEditStatus(null);
     try {
       await updatePost(postId, editBody);
-      const nextBody = editBody.trim();
-      setResolvedBody(nextBody);
-      setEditStatus('Post updated.');
+      setResolvedBody(editBody.trim());
       if (onUpdated) await onUpdated();
       setEditOpen(false);
     } catch (caught) {
@@ -68,6 +76,44 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
     } finally {
       setSavingEdit(false);
     }
+  }
+
+  async function sharePost() {
+    setOptionsOpen(false);
+    const url = `melanatedadventurers://community/${postId}`;
+    await Share.share({ message: resolvedBody ? `${resolvedBody}\n\n${url}` : url, url }).catch(() => undefined);
+  }
+
+  function confirmDelete() {
+    setOptionsOpen(false);
+    Alert.alert('Delete post?', 'This permanently removes the post and cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            if (!currentUserId) return;
+            const { data, error } = await supabase
+              .from('community_posts')
+              .delete()
+              .eq('id', postId)
+              .eq('author_id', currentUserId)
+              .select('id')
+              .maybeSingle();
+            if (error) {
+              Alert.alert('Could not delete post', error.message);
+              return;
+            }
+            if (!data) {
+              Alert.alert('Could not delete post', 'You can only delete posts you created.');
+              return;
+            }
+            if (onUpdated) await onUpdated();
+          })();
+        },
+      },
+    ]);
   }
 
   async function submitReport() {
@@ -97,10 +143,7 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
     <>
       <Pressable
         style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-        onPress={(event) => {
-          event.stopPropagation();
-          openOptions();
-        }}
+        onPress={(event) => { event.stopPropagation(); openOptions(); }}
         accessibilityRole="button"
         accessibilityLabel="Post options"
         hitSlop={8}
@@ -110,103 +153,65 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
 
       <Modal transparent visible={optionsOpen} animationType="fade" onRequestClose={() => setOptionsOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOptionsOpen(false)}>
-          <Pressable style={styles.optionsSheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Post options</Text>
-            <Pressable
-              style={styles.optionRow}
-              onPress={() => {
-                setOptionsOpen(false);
-                setEditBody(resolvedBody);
-                setEditStatus(null);
-                setEditOpen(true);
-              }}
-            >
-              <View style={styles.optionIcon}><Ionicons name="create-outline" size={18} color={GOLD} /></View>
-              <View style={styles.optionCopy}>
+          <Pressable style={[styles.optionsSheet, { paddingBottom: Math.max(16, insets.bottom + 8) }]} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.sheetTopRow}>
+              <Text style={styles.sheetTitle}>Post options</Text>
+              <Pressable style={styles.closeButton} onPress={() => setOptionsOpen(false)} accessibilityLabel="Close post options">
+                <Ionicons name="close" size={19} color={MUTED} />
+              </Pressable>
+            </View>
+            <View style={styles.optionList}>
+              <Pressable style={styles.optionRow} onPress={() => { setOptionsOpen(false); setEditBody(resolvedBody); setEditStatus(null); setEditOpen(true); }}>
+                <Ionicons name="create-outline" size={20} color={GOLD} />
                 <Text style={styles.optionTitle}>Edit post</Text>
-                <Text style={styles.optionDescription}>Update the text in this post.</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={MUTED} />
-            </Pressable>
-            <Pressable style={styles.cancelWide} onPress={() => setOptionsOpen(false)}><Text style={styles.cancelText}>Cancel</Text></Pressable>
+              </Pressable>
+              <Pressable style={styles.optionRow} onPress={() => void sharePost()}>
+                <Ionicons name="share-outline" size={20} color={TEXT} />
+                <Text style={styles.optionTitle}>Share post</Text>
+              </Pressable>
+              <Pressable style={styles.optionRow} onPress={confirmDelete}>
+                <Ionicons name="trash-outline" size={20} color={DANGER} />
+                <Text style={styles.dangerText}>Delete post</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
 
       <Modal transparent visible={editOpen} animationType="slide" onRequestClose={() => !savingEdit && setEditOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => !savingEdit && setEditOpen(false)}>
-          <Pressable style={styles.reportSheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Edit post</Text>
-            <Text style={styles.reportCopy}>Make your changes, then save.</Text>
-            <TextInput
-              value={editBody}
-              onChangeText={setEditBody}
-              multiline
-              maxLength={2000}
-              autoFocus
-              placeholder="Write your post..."
-              placeholderTextColor="#75847B"
-              style={styles.editInput}
-            />
-            {editStatus ? <Text style={styles.reportStatus}>{editStatus}</Text> : null}
-            <View style={styles.reportActions}>
-              <Pressable style={styles.cancelButton} disabled={savingEdit} onPress={() => setEditOpen(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.reportButton, (!editBody.trim() || savingEdit) && styles.disabled]}
-                disabled={!editBody.trim() || savingEdit}
-                onPress={() => void saveEdit()}
-              >
-                <Text style={styles.reportButtonText}>{savingEdit ? 'Saving…' : 'Save changes'}</Text>
-              </Pressable>
+          <Pressable style={[styles.editSheet, { paddingBottom: Math.max(18, insets.bottom + 10) }]} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.sheetTopRow}>
+              <Text style={styles.sheetTitle}>Edit post</Text>
+              <Pressable style={styles.closeButton} disabled={savingEdit} onPress={() => setEditOpen(false)}><Ionicons name="close" size={19} color={MUTED} /></Pressable>
             </View>
+            <TextInput value={editBody} onChangeText={setEditBody} multiline maxLength={2000} autoFocus placeholder="Write your post..." placeholderTextColor="#75847B" style={styles.editInput} />
+            {editStatus ? <Text style={styles.status}>{editStatus}</Text> : null}
+            <Pressable style={[styles.saveButton, (!editBody.trim() || savingEdit) && styles.disabled]} disabled={!editBody.trim() || savingEdit} onPress={() => void saveEdit()}>
+              <Text style={styles.saveButtonText}>{savingEdit ? 'Saving…' : 'Save changes'}</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
 
       <Modal transparent visible={reportOpen} animationType="slide" onRequestClose={() => setReportOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setReportOpen(false)}>
-          <Pressable style={styles.reportSheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Report post</Text>
+          <Pressable style={[styles.reportSheet, { paddingBottom: Math.max(18, insets.bottom + 10) }]} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.sheetTopRow}><Text style={styles.sheetTitle}>Report post</Text><Pressable style={styles.closeButton} onPress={() => setReportOpen(false)}><Ionicons name="close" size={19} color={MUTED} /></Pressable></View>
             <Text style={styles.reportCopy}>Choose the reason that best describes the issue.</Text>
             <View style={styles.reasonList}>
               {COMMUNITY_REPORT_REASONS.map((reason) => (
-                <Pressable
-                  key={reason}
-                  style={[styles.reasonRow, reportReason === reason && styles.reasonRowActive]}
-                  onPress={() => setReportReason(reason)}
-                >
+                <Pressable key={reason} style={[styles.reasonRow, reportReason === reason && styles.reasonRowActive]} onPress={() => setReportReason(reason)}>
                   <Text style={[styles.reasonText, reportReason === reason && styles.reasonTextActive]}>{reason}</Text>
                   {reportReason === reason ? <Ionicons name="checkmark-circle" size={18} color={GOLD} /> : null}
                 </Pressable>
               ))}
             </View>
-            <TextInput
-              value={reportDetails}
-              onChangeText={setReportDetails}
-              placeholder="Add details (optional)"
-              placeholderTextColor="#75847B"
-              multiline
-              maxLength={600}
-              style={styles.reportInput}
-            />
-            {reportStatus ? <Text style={styles.reportStatus}>{reportStatus}</Text> : null}
-            <View style={styles.reportActions}>
-              <Pressable style={styles.cancelButton} onPress={() => setReportOpen(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.reportButton, (!reportReason || reporting) && styles.disabled]}
-                disabled={!reportReason || reporting}
-                onPress={() => void submitReport()}
-              >
-                <Text style={styles.reportButtonText}>{reporting ? 'Submitting…' : 'Submit report'}</Text>
-              </Pressable>
-            </View>
+            <TextInput value={reportDetails} onChangeText={setReportDetails} placeholder="Add details (optional)" placeholderTextColor="#75847B" multiline maxLength={600} style={styles.reportInput} />
+            {reportStatus ? <Text style={styles.status}>{reportStatus}</Text> : null}
+            <Pressable style={[styles.saveButton, (!reportReason || reporting) && styles.disabled]} disabled={!reportReason || reporting} onPress={() => void submitReport()}>
+              <Text style={styles.saveButtonText}>{reporting ? 'Submitting…' : 'Submit report'}</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -217,30 +222,27 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
 const styles = StyleSheet.create({
   moreButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 15 },
   pressed: { opacity: 0.58 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'flex-end', padding: 18 },
-  optionsSheet: { backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 22, gap: 10 },
-  reportSheet: { maxHeight: '84%', backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 22, gap: 10 },
-  sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#607067', marginBottom: 14 },
-  sheetTitle: { color: TEXT, fontSize: 20, fontWeight: '900', marginBottom: 6 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'flex-end' },
+  optionsSheet: { backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 12, gap: 10 },
+  editSheet: { backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 14, gap: 12 },
+  reportSheet: { maxHeight: '88%', backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 14, gap: 10 },
+  sheetTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sheetTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
+  closeButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#202B25' },
+  optionList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
+  optionRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER, paddingHorizontal: 2 },
+  optionTitle: { color: TEXT, fontSize: 15, fontWeight: '800' },
+  dangerText: { color: DANGER, fontSize: 15, fontWeight: '800' },
+  editInput: { minHeight: 126, maxHeight: 250, borderWidth: 1, borderColor: BORDER, borderRadius: 14, backgroundColor: '#121C17', color: TEXT, paddingHorizontal: 12, paddingVertical: 12, textAlignVertical: 'top', fontSize: 15, lineHeight: 22 },
   reportCopy: { color: MUTED, fontSize: 12.5, lineHeight: 18 },
-  optionRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: BORDER, borderRadius: 14, backgroundColor: '#121C17', paddingHorizontal: 12, paddingVertical: 10 },
-  optionIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#26372E', alignItems: 'center', justifyContent: 'center' },
-  optionCopy: { flex: 1, gap: 2 },
-  optionTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
-  optionDescription: { color: MUTED, fontSize: 11.5, lineHeight: 16 },
-  cancelWide: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   reasonList: { borderWidth: 1, borderColor: BORDER, borderRadius: 14, overflow: 'hidden' },
   reasonRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
   reasonRowActive: { backgroundColor: '#203027' },
   reasonText: { color: '#D7DED9', fontSize: 12.5, fontWeight: '700' },
   reasonTextActive: { color: TEXT },
-  editInput: { minHeight: 140, maxHeight: 260, borderWidth: 1, borderColor: BORDER, borderRadius: 13, backgroundColor: '#121C17', color: TEXT, paddingHorizontal: 12, paddingVertical: 12, textAlignVertical: 'top', fontSize: 15, lineHeight: 22 },
   reportInput: { minHeight: 72, maxHeight: 120, borderWidth: 1, borderColor: BORDER, borderRadius: 13, backgroundColor: '#121C17', color: TEXT, paddingHorizontal: 12, paddingVertical: 10, textAlignVertical: 'top', fontSize: 13 },
-  reportStatus: { color: '#D8C686', fontSize: 12, lineHeight: 17 },
-  reportActions: { flexDirection: 'row', gap: 8 },
-  cancelButton: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { color: MUTED, fontSize: 12.5, fontWeight: '800' },
-  reportButton: { flex: 1.4, minHeight: 42, borderRadius: 12, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
-  reportButtonText: { color: '#111711', fontSize: 12.5, fontWeight: '900' },
+  status: { color: '#D8C686', fontSize: 12, lineHeight: 17 },
+  saveButton: { minHeight: 44, borderRadius: 13, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  saveButtonText: { color: '#111711', fontSize: 13, fontWeight: '900' },
   disabled: { opacity: 0.45 },
 });
