@@ -1,5 +1,6 @@
 name: EAS Android Preview
 
+# Manual trigger marker: Pathfinder native Trailhead verification build.
 on:
   push:
     branches:
