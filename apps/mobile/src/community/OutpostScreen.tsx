@@ -17,6 +17,7 @@ import {
   type CommunityPostType,
 } from './api';
 import { PostEngagementBar } from './PostEngagementBar';
+import { PostOptionsButton } from './PostOptionsButton';
 import { getCircles, searchCommunityMembers, type CommunityCircle, type CommunityPerson } from './circles';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
@@ -91,7 +92,10 @@ function PostCard({ post }: { post: CommunityPost }) {
             <Text style={styles.postMeta}>{relativeTime(post.created_at)}</Text>
           </View>
         </Pressable>
-        {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
+        <View style={styles.postHeaderActions}>
+          {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
+          <PostOptionsButton postId={post.id} />
+        </View>
       </View>
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
@@ -351,6 +355,7 @@ const styles = StyleSheet.create({
   link: { color: GOLD, fontSize: 12, fontWeight: '900' },
   postCard: { paddingHorizontal: 2, paddingVertical: 11, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#26332C' },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  postHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
   avatar: { width: 41, height: 41, borderRadius: 21, borderWidth: 1, borderColor: '#738078', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
