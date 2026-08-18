@@ -17,70 +17,53 @@ on:
       - 'package-lock.json'
       - '.github/workflows/mobile-ci.yml'
 
+# Never silently discard a validation run. Rapid pushes to the same ref wait
+# their turn instead of cancelling each other.
+concurrency:
+  group: mobile-ci-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
+    name: Validate mobile
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
-      - name: Check out repository branch
+      # The default checkout pins this run to the event SHA. Do not checkout
+      # the moving branch name here; queued runs must validate the commit that
+      # actually triggered them.
+      - name: Check out triggering commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 1
+
+      - name: Show validation target
+        run: |
+          echo "event=${GITHUB_EVENT_NAME}"
+          echo "ref=${GITHUB_REF}"
+          echo "sha=${GITHUB_SHA}"
+          echo "checked_out=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}" || {
+            echo "Checked-out commit does not match the workflow event SHA."
+            exit 1
+          }
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Repair legacy native PNGs on main
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          python3 -m pip install --quiet pillow
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image, ImageFile
+      - name: Verify lockfile exists
+        run: test -f package-lock.json
 
-          # Only main may self-heal legacy/truncated source artwork. PRs must
-          # provide valid images and are rejected by the strict check below.
-          ImageFile.LOAD_TRUNCATED_IMAGES = True
-          paths = [
-              Path('apps/mobile/assets/ma-app-icon.png'),
-              Path('apps/mobile/assets/ma-splash-icon.png'),
-              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
-          ]
-
-          for path in paths:
-              temp = path.with_name(path.stem + '.repaired.png')
-              with Image.open(path) as image:
-                  image.load()
-                  image.convert('RGBA').save(
-                      temp,
-                      format='PNG',
-                      optimize=False,
-                      compress_level=6,
-                  )
-              temp.replace(path)
-              print(f'Re-encoded native asset: {path}')
-          PY
-
-          if git diff --quiet -- \
-            apps/mobile/assets/ma-app-icon.png \
-            apps/mobile/assets/ma-splash-icon.png \
-            apps/mobile/assets/ma-pathfinder-mark.png; then
-            echo "Native assets already have canonical PNG encoding."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add \
-              apps/mobile/assets/ma-app-icon.png \
-              apps/mobile/assets/ma-splash-icon.png \
-              apps/mobile/assets/ma-pathfinder-mark.png
-            git commit -m "Repair native PNG asset encoding"
-            git push
-          fi
+      - name: Install exact dependencies
+        run: npm ci
 
       - name: Strictly validate native image assets
         run: |
@@ -108,28 +91,6 @@ jobs:
               print(f'Validated PNG: {path} ({width}x{height})')
           PY
 
-      # This preview branch added one Expo native dependency. npm install is
-      # used once here so CI can refresh the committed lockfile on the PR.
-      # After the generated lockfile lands, this step returns to npm ci.
-      - name: Install dependencies
-        run: npm install
-
-      - name: Verify lockfile exists
-        run: test -f package-lock.json
-
-      - name: Commit generated lockfile
-        if: github.event_name == 'pull_request'
-        run: |
-          if git diff --quiet -- package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
-            echo "package-lock.json is already committed."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          git commit -m "Add generated dependency lockfile"
-          git push
-
       - name: Lint mobile app
         run: npm run mobile:lint
 
@@ -139,10 +100,10 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
 
-      - name: Upload generated lockfile
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-lock
-          path: package-lock.json
-          if-no-files-found: error
+      - name: Verify repository stayed clean
+        run: |
+          if ! git diff --quiet; then
+            echo "CI changed tracked files. Validation must be read-only."
+            git diff --stat
+            exit 1
+          fi
