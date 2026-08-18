@@ -1,5 +1,6 @@
 name: EAS Preview OTA Update
 
+# Delivery retrigger marker: member invite UI rollout.
 on:
   push:
     branches:
