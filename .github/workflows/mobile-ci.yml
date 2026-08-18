@@ -33,9 +33,6 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      # The default checkout pins this run to the event SHA. Do not checkout
-      # the moving branch name here; queued runs must validate the commit that
-      # actually triggered them.
       - name: Check out triggering commit
         uses: actions/checkout@v4
         with:
@@ -66,30 +63,7 @@ jobs:
         run: npm ci
 
       - name: Strictly validate native image assets
-        run: |
-          python3 -m pip install --quiet pillow
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image
-
-          paths = [
-              Path('apps/mobile/assets/ma-app-icon.png'),
-              Path('apps/mobile/assets/ma-splash-icon.png'),
-              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
-          ]
-
-          for path in paths:
-              with Image.open(path) as image:
-                  if image.format != 'PNG':
-                      raise RuntimeError(f'{path} must be a PNG, got {image.format}.')
-                  image.verify()
-              with Image.open(path) as image:
-                  image.load()
-                  width, height = image.size
-                  if width <= 0 or height <= 0:
-                      raise RuntimeError(f'{path} has invalid dimensions {image.size}.')
-              print(f'Validated PNG: {path} ({width}x{height})')
-          PY
+        run: node apps/mobile/scripts/validate_native_assets.mjs
 
       - name: Lint mobile app
         run: npm run mobile:lint
@@ -102,9 +76,6 @@ jobs:
 
       - name: Verify repository stayed clean
         run: |
-          # ma-app-icon.png is intentionally materialized from the deterministic
-          # source generator during npm ci. Restore the checkout copy before the
-          # read-only cleanliness assertion.
           git restore -- apps/mobile/assets/ma-app-icon.png
           if ! git diff --quiet; then
             echo "CI changed tracked files. Validation must be read-only."
