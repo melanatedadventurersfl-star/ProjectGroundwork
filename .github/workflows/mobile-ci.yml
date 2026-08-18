@@ -102,6 +102,10 @@ jobs:
 
       - name: Verify repository stayed clean
         run: |
+          # ma-app-icon.png is intentionally materialized from the deterministic
+          # source generator during npm ci. Restore the checkout copy before the
+          # read-only cleanliness assertion.
+          git restore -- apps/mobile/assets/ma-app-icon.png
           if ! git diff --quiet; then
             echo "CI changed tracked files. Validation must be read-only."
             git diff --stat
