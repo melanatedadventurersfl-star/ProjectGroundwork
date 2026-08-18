@@ -161,7 +161,7 @@ export function PostEngagementBar({
           accessibilityRole="button"
           accessibilityLabel={`${commentCount} comments`}
         >
-          <Ionicons name="chatbubble-outline" size={20} color={MUTED} />
+          <Ionicons name="chatbubble-outline" size={17} color={MUTED} />
           <Text style={styles.count}>{commentCount}</Text>
         </Pressable>
 
@@ -171,7 +171,7 @@ export function PostEngagementBar({
           accessibilityRole="button"
           accessibilityLabel={`Share post. ${shareCount} shares`}
         >
-          <Ionicons name="arrow-redo-outline" size={22} color={MUTED} />
+          <Ionicons name="arrow-redo-outline" size={18} color={MUTED} />
           <Text style={styles.count}>{shareCount}</Text>
         </Pressable>
 
@@ -222,15 +222,15 @@ export function PostEngagementBar({
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 8 },
-  action: { minHeight: 38, minWidth: 66, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 7, paddingHorizontal: 6 },
-  reactionEmoji: { fontSize: 21, lineHeight: 25, color: GOLD },
-  count: { color: MUTED, fontSize: 15, fontWeight: '700' },
+  row: { minHeight: 34, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 4 },
+  action: { minHeight: 32, minWidth: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 5, paddingHorizontal: 4 },
+  reactionEmoji: { fontSize: 17, lineHeight: 21, color: GOLD },
+  count: { color: MUTED, fontSize: 12.5, fontWeight: '700' },
   activeCount: { color: GOLD },
-  summary: { marginLeft: 'auto', minWidth: 44, minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingLeft: 8 },
-  summaryBubble: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#223028', borderWidth: 2, borderColor: PANEL, alignItems: 'center', justifyContent: 'center' },
-  summaryOverlap: { marginLeft: -8 },
-  summaryEmoji: { fontSize: 14 },
+  summary: { marginLeft: 'auto', minWidth: 32, minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingLeft: 6 },
+  summaryBubble: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#223028', borderWidth: 1.5, borderColor: PANEL, alignItems: 'center', justifyContent: 'center' },
+  summaryOverlap: { marginLeft: -6 },
+  summaryEmoji: { fontSize: 11 },
   pressed: { opacity: 0.62 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'flex-end', padding: 18 },
   picker: { alignSelf: 'center', flexDirection: 'row', backgroundColor: '#213028', borderWidth: 1, borderColor: BORDER, borderRadius: 28, paddingHorizontal: 7, paddingVertical: 6, marginBottom: 90, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, elevation: 8 },
