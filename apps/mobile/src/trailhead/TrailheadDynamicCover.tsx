@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { AppState, Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { getMemberBadges, type MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
@@ -10,14 +10,17 @@ import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
 import { backgroundFor, dayPhaseFor, displayRankByRank, glyph, greetingFor, normalizeWeather, rankThemes, trailheadDebugOverride, weatherCopy, type DayPhase, type WeatherTheme } from './trailheadBannerConfig';
 import { styles } from './trailheadBannerStyles';
 
+const WEATHER_REFRESH_MS = 10 * 60 * 1000;
+const CLOCK_REFRESH_MS = 60 * 1000;
+
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
-  if (phase === 'night') return 'rgba(4, 13, 28, 0.48)';
-  if (weather === 'storm') return 'rgba(18, 24, 31, 0.34)';
-  if (weather === 'rain') return 'rgba(16, 31, 39, 0.24)';
-  if (weather === 'fog') return 'rgba(214, 225, 220, 0.14)';
-  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.16)';
-  if (phase === 'morning') return 'rgba(255, 224, 168, 0.08)';
-  if (phase === 'evening') return 'rgba(255, 150, 76, 0.07)';
+  if (phase === 'night') return 'rgba(4, 13, 28, 0.58)';
+  if (weather === 'storm') return 'rgba(18, 24, 31, 0.42)';
+  if (weather === 'rain') return 'rgba(16, 31, 39, 0.32)';
+  if (weather === 'fog') return 'rgba(214, 225, 220, 0.20)';
+  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.24)';
+  if (phase === 'morning') return 'rgba(255, 224, 168, 0.14)';
+  if (phase === 'evening') return 'rgba(255, 150, 76, 0.14)';
   return 'transparent';
 }
 
@@ -41,6 +44,7 @@ export function TrailheadCover({
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
+  const [clockNow, setClockNow] = useState(() => new Date());
 
   useEffect(() => {
     let active = true;
@@ -52,30 +56,53 @@ export function TrailheadCover({
 
   useEffect(() => {
     let active = true;
-    (async () => {
+    let weatherTimer: ReturnType<typeof setInterval> | null = null;
+
+    const refreshWeather = async () => {
       try {
         let p = await Location.getForegroundPermissionsAsync();
         if (p.status === 'undetermined') p = await Location.requestForegroundPermissionsAsync();
         if (!active || p.status !== 'granted') return;
+
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const next = await getWeatherByCoordinates(pos.coords.latitude, pos.coords.longitude);
         if (!active) return;
+
         setWeatherData(next);
         setLocationLabel([next.location.name, next.location.region].filter(Boolean).join(', '));
+        setClockNow(new Date());
       } catch {
-        if (active) {
-          setWeatherData(null);
-          setLocationLabel('');
-        }
+        // Keep the last successful weather snapshot instead of blanking the banner
+        // when a refresh temporarily fails.
       }
-    })();
-    return () => { active = false; };
+    };
+
+    void refreshWeather();
+    weatherTimer = setInterval(() => { void refreshWeather(); }, WEATHER_REFRESH_MS);
+
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setClockNow(new Date());
+        void refreshWeather();
+      }
+    });
+
+    return () => {
+      active = false;
+      if (weatherTimer) clearInterval(weatherTimer);
+      appStateSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const clockTimer = setInterval(() => setClockNow(new Date()), CLOCK_REFRESH_MS);
+    return () => clearInterval(clockTimer);
   }, []);
 
   const displayRank = displayRankByRank[rank];
   const theme = rankThemes[displayRank];
   const liveWeather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData?.current.condition.text]);
-  const livePhase = useMemo(() => dayPhaseFor(weatherData), [weatherData]);
+  const livePhase = useMemo(() => dayPhaseFor(weatherData, clockNow), [weatherData, clockNow]);
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
