@@ -130,7 +130,6 @@ export function TrailheadCover({
   return (
     <View style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}>
       <Animated.Image
-        pointerEvents="none"
         source={background}
         resizeMode="cover"
         style={[
