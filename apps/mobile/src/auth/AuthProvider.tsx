@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
+import { redeemPendingInvite } from '../referrals/pendingInvite';
 
 type AuthContextValue = {
   session: Session | null;
@@ -35,6 +36,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    let cancelled = false;
+    const delays = [250, 1000, 2500];
+    const timers = delays.map((delay) => setTimeout(() => {
+      if (cancelled) return;
+      void redeemPendingInvite().then((result) => {
+        if (result.status === 'redeemed') console.info('[referral] Invite attribution completed');
+      }).catch((error) => {
+        console.warn('[referral] Unable to redeem pending invite yet', error instanceof Error ? error.message : error);
+      });
+    }, delay));
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+  }, [session?.user.id]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
