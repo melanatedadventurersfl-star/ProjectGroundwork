@@ -2,16 +2,16 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BadgeArt, hasBadgeArt, type BadgeArtName } from '../../src/passport/BadgeArt';
+import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { getJourney, getMemberBadges, type MemberBadge } from '../../src/passport/api';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { AppIcon } from '../../src/ui/AppIcon';
 
-type BadgeFamily = 'Tenure' | 'Adventure' | 'Activity';
+type BadgeFamily = 'Tenure' | 'Adventure' | 'Activity' | 'Community';
 type BadgeFilter = 'All' | BadgeFamily;
 
 type BadgeDefinition = {
-  title: BadgeArtName;
+  title: string;
   family: BadgeFamily;
   requirement: string;
   adventureTarget?: number;
@@ -38,15 +38,17 @@ const BADGE_CATALOG: BadgeDefinition[] = [
   { title: 'Legacy Twenty', family: 'Adventure', requirement: 'Complete 20 official adventures.', adventureTarget: 20 },
   { title: 'Camp Crew', family: 'Activity', requirement: 'Join a qualifying group camping adventure.' },
   { title: 'Water Wayfinder', family: 'Activity', requirement: 'Complete a qualifying water-based adventure.' },
+  { title: 'Group Explorer', family: 'Community', requirement: 'Join your first community group.' },
 ];
 
-const FILTERS: BadgeFilter[] = ['All', 'Tenure', 'Adventure', 'Activity'];
-const FAMILIES: BadgeFamily[] = ['Tenure', 'Adventure', 'Activity'];
+const FILTERS: BadgeFilter[] = ['All', 'Tenure', 'Adventure', 'Activity', 'Community'];
+const FAMILIES: BadgeFamily[] = ['Tenure', 'Adventure', 'Activity', 'Community'];
 
 const FAMILY_COPY: Record<BadgeFamily, { icon: string; subtitle: string }> = {
   Tenure: { icon: '◷', subtitle: 'Time spent growing with the community.' },
   Adventure: { icon: '△', subtitle: 'Badges earned by completing adventures.' },
   Activity: { icon: '≈', subtitle: 'Badges tied to the kind of adventure you joined.' },
+  Community: { icon: '◎', subtitle: 'Badges earned by connecting and participating with others.' },
 };
 
 function addYears(iso: string, years: number) {
