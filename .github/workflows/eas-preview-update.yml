@@ -1,6 +1,5 @@
 name: EAS Preview OTA Update
 
-# Delivery retrigger marker: community badges rollout 2026-08-18.
 on:
   push:
     branches:
@@ -16,6 +15,8 @@ permissions:
   contents: read
   actions: write
 
+# A newer mobile update supersedes an older mobile update. Unrelated commits do
+# not invalidate the commit this workflow was created to deliver.
 concurrency:
   group: eas-preview-ota-main
   cancel-in-progress: true
@@ -25,22 +26,21 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ota]') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out triggering mobile commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Verify this is still the latest main commit
+      - name: Verify delivery target
         run: |
-          git fetch origin main
-          LATEST_MAIN="$(git rev-parse origin/main)"
           CHECKED_OUT="$(git rev-parse HEAD)"
-          if [ "${CHECKED_OUT}" != "${LATEST_MAIN}" ]; then
-            echo "Stale OTA run. Checked out ${CHECKED_OUT}, latest main is ${LATEST_MAIN}."
+          echo "event_sha=${GITHUB_SHA}"
+          echo "checked_out=${CHECKED_OUT}"
+          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
+            echo "Checked-out commit does not match the workflow event SHA."
             exit 1
-          fi
-          echo "OTA candidate is current main: ${CHECKED_OUT}"
+          }
 
       - name: Find last successfully built preview APK baseline
         id: baseline
@@ -55,7 +55,6 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/eas-preview-android.yml/runs?branch=main&status=success&per_page=1" \
             | python3 -c "import json,sys; data=json.load(sys.stdin); runs=data.get('workflow_runs', []); print(runs[0]['head_sha'] if runs else '')"
           )"
-
           echo "baseline_sha=${BASELINE_SHA}" >> "${GITHUB_OUTPUT}"
           if [ -n "${BASELINE_SHA}" ]; then
             echo "Last successful preview APK baseline: ${BASELINE_SHA}"
@@ -78,7 +77,7 @@ jobs:
           fi
 
           if [ "${REQUEST_APK}" = false ] && ! git merge-base --is-ancestor "${BASELINE_SHA}" HEAD; then
-            echo "Preview APK baseline ${BASELINE_SHA} is not an ancestor of current main."
+            echo "Preview APK baseline ${BASELINE_SHA} is not an ancestor of delivery target ${GITHUB_SHA}."
             REQUEST_APK=true
           fi
 
@@ -97,9 +96,8 @@ jobs:
               apps/mobile/assets/ma-splash-icon.png \
               apps/mobile/assets/ma-pathfinder-mark.png \
               apps/mobile/assets/trailhead)"
-
             if [ -n "${NATIVE_CHANGES}" ]; then
-              echo "Current main contains runtime-sensitive changes not present in the installed APK baseline:"
+              echo "Delivery target contains runtime-sensitive changes not present in the installed APK baseline:"
               echo "${NATIVE_CHANGES}"
               REQUEST_APK=true
             fi
@@ -107,7 +105,7 @@ jobs:
 
           if [ "${REQUEST_APK}" = true ]; then
             echo "skip_ota=true" >> "${GITHUB_OUTPUT}"
-            echo "A matching preview APK is required. Dispatching an APK build for the newest main."
+            echo "A matching preview APK is required. Dispatching an APK build from main."
             curl -fsSL -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
@@ -138,24 +136,17 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           from PIL import Image, ImageFile
-
           ImageFile.LOAD_TRUNCATED_IMAGES = True
           paths = [
               Path('apps/mobile/assets/ma-app-icon.png'),
               Path('apps/mobile/assets/ma-splash-icon.png'),
               Path('apps/mobile/assets/ma-pathfinder-mark.png'),
           ]
-
           for path in paths:
               temp = path.with_name(path.stem + '.canonical.png')
               with Image.open(path) as image:
                   image.load()
-                  image.convert('RGBA').save(
-                      temp,
-                      format='PNG',
-                      optimize=False,
-                      compress_level=6,
-                  )
+                  image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
               temp.replace(path)
               print(f'Canonicalized {path}')
           PY
@@ -165,7 +156,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from PIL import Image
-
           for path in [
               'apps/mobile/assets/ma-app-icon.png',
               'apps/mobile/assets/ma-splash-icon.png',
@@ -182,8 +172,7 @@ jobs:
 
       - name: Use vector fallback for invalid Wet & Wild raster
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
-        run: |
-          sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
+        run: sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
 
       - name: Verify Expo authentication
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
@@ -195,22 +184,19 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Debounce rapid main updates
+      - name: Debounce rapid mobile updates
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: sleep 20
 
-      - name: Publish preview OTA update only from newest main
+      - name: Publish preview OTA for triggering commit
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         working-directory: apps/mobile
         run: |
-          git fetch origin main
-          LATEST_MAIN="$(git rev-parse origin/main)"
           CHECKED_OUT="$(git rev-parse HEAD)"
-          if [ "${CHECKED_OUT}" != "${LATEST_MAIN}" ]; then
-            echo "Refusing stale OTA publish. Checked out ${CHECKED_OUT}, latest main is ${LATEST_MAIN}."
+          test "${CHECKED_OUT}" = "${GITHUB_SHA}" || {
+            echo "Delivery target changed unexpectedly."
             exit 1
-          fi
-
+          }
           npx eas-cli@latest update \
             --channel preview \
             --platform android \
