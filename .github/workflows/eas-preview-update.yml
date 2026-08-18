@@ -15,8 +15,8 @@ permissions:
   contents: read
   actions: write
 
-# A newer mobile update supersedes an older mobile update. Unrelated commits do
-# not invalidate the commit this workflow was created to deliver.
+# A newer mobile update supersedes an older mobile update. Normal JS/UI/image
+# changes are delivered OTA; only native/runtime changes request a fresh APK.
 concurrency:
   group: eas-preview-ota-main
   cancel-in-progress: true
@@ -94,10 +94,9 @@ jobs:
               apps/mobile/plugins \
               apps/mobile/assets/ma-app-icon.png \
               apps/mobile/assets/ma-splash-icon.png \
-              apps/mobile/assets/ma-pathfinder-mark.png \
-              apps/mobile/assets/trailhead)"
+              apps/mobile/assets/ma-pathfinder-mark.png)"
             if [ -n "${NATIVE_CHANGES}" ]; then
-              echo "Delivery target contains runtime-sensitive changes not present in the installed APK baseline:"
+              echo "Delivery target contains native/runtime changes not present in the installed APK baseline:"
               echo "${NATIVE_CHANGES}"
               REQUEST_APK=true
             fi
@@ -105,7 +104,7 @@ jobs:
 
           if [ "${REQUEST_APK}" = true ]; then
             echo "skip_ota=true" >> "${GITHUB_OUTPUT}"
-            echo "A matching preview APK is required. Dispatching an APK build from main."
+            echo "A matching preview APK is required. Dispatching one native build."
             curl -fsSL -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
@@ -177,26 +176,7 @@ jobs:
               print(f'Canonicalized Trailhead asset: {path}')
           PY
 
-      - name: Strictly verify PNGs before OTA export
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
-        run: |
-          python3 - <<'PY'
-          from PIL import Image
-          for path in [
-              'apps/mobile/assets/ma-app-icon.png',
-              'apps/mobile/assets/ma-splash-icon.png',
-              'apps/mobile/assets/ma-pathfinder-mark.png',
-          ]:
-              with Image.open(path) as image:
-                  if image.format != 'PNG':
-                      raise RuntimeError(f'{path} is not a PNG.')
-                  image.verify()
-              with Image.open(path) as image:
-                  image.load()
-                  print(f'Valid PNG: {path} ({image.width}x{image.height})')
-          PY
-
-      - name: Strictly verify Trailhead image assets before OTA export
+      - name: Strictly verify Trailhead images before OTA export
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           python3 - <<'PY'
