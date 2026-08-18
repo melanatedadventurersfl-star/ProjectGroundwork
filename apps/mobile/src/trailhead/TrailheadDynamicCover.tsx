@@ -92,7 +92,7 @@ export function TrailheadCover({
 
   return (
     <View style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}>
-      <Image pointerEvents="none" source={background} resizeMode="cover" style={styles.animatedBackground} />
+      <Image source={background} resizeMode="cover" style={styles.animatedBackground} />
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.baseScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
