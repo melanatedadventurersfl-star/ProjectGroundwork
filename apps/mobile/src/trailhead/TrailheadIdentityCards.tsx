@@ -21,7 +21,8 @@ function normalizeRank(rank: string): RankName {
     'Legacy Adventurer': 'Ascendant',
   };
 
-  if (rank in legacyRankMap) return legacyRankMap[rank];
+  const mappedLegacyRank = legacyRankMap[rank];
+  if (mappedLegacyRank) return mappedLegacyRank;
 
   const currentRanks: RankName[] = ['Explorer', 'Pathfinder', 'Trailblazer', 'Adventurer', 'Summit Seeker', 'Ascendant'];
   return currentRanks.includes(rank as RankName) ? rank as RankName : 'Explorer';
