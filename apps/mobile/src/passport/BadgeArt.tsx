@@ -1,5 +1,6 @@
 import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 import { adventureBadgeDataUris } from './AdventureBadgeDataUris';
+import { communityBadgeDataUris } from './CommunityBadgeDataUris';
 import { tenureBadgeDataUris } from './TenureBadgeDataUris';
 
 export type BadgeArtName =
@@ -15,7 +16,9 @@ export type BadgeArtName =
   | 'Summit Ten'
   | 'Legacy Twenty'
   | 'Camp Crew'
-  | 'Water Wayfinder';
+  | 'Water Wayfinder'
+  | 'Group Explorer'
+  | 'First Post';
 
 const badgeAssets: Record<BadgeArtName, ImageSourcePropType> = {
   Trailhead: require('../../assets/badges/trailhead.png'),
@@ -31,6 +34,8 @@ const badgeAssets: Record<BadgeArtName, ImageSourcePropType> = {
   'Legacy Twenty': { uri: adventureBadgeDataUris['Legacy Twenty'] },
   'Camp Crew': { uri: adventureBadgeDataUris['Camp Crew'] },
   'Water Wayfinder': { uri: adventureBadgeDataUris['Water Wayfinder'] },
+  'Group Explorer': { uri: communityBadgeDataUris['Group Explorer'] },
+  'First Post': { uri: communityBadgeDataUris['First Post'] },
 };
 
 const supported = new Set<BadgeArtName>(Object.keys(badgeAssets) as BadgeArtName[]);
