@@ -1,6 +1,7 @@
 import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 import { adventureBadgeDataUris } from './AdventureBadgeDataUris';
 import { communityBadgeDataUris } from './CommunityBadgeDataUris';
+import { groupExplorerBadgeDataUri } from './GroupExplorerBadgeDataUri';
 import { tenureBadgeDataUris } from './TenureBadgeDataUris';
 
 export type BadgeArtName =
@@ -34,7 +35,7 @@ const badgeAssets: Record<BadgeArtName, ImageSourcePropType> = {
   'Legacy Twenty': { uri: adventureBadgeDataUris['Legacy Twenty'] },
   'Camp Crew': { uri: adventureBadgeDataUris['Camp Crew'] },
   'Water Wayfinder': { uri: adventureBadgeDataUris['Water Wayfinder'] },
-  'Group Explorer': { uri: communityBadgeDataUris['Group Explorer'] },
+  'Group Explorer': { uri: groupExplorerBadgeDataUri },
   'First Post': { uri: communityBadgeDataUris['First Post'] },
 };
 
