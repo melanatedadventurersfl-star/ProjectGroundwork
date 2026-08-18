@@ -14,6 +14,8 @@ const BORDER = '#334139';
 
 export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postId: string; authorId?: string; body?: string; onUpdated?: () => void | Promise<void> }) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [resolvedAuthorId, setResolvedAuthorId] = useState(authorId ?? null);
+  const [resolvedBody, setResolvedBody] = useState(body ?? '');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editBody, setEditBody] = useState(body ?? '');
@@ -26,14 +28,29 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
   const [reportStatus, setReportStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setCurrentUserId(data.session?.user.id ?? null));
-  }, []);
+    let cancelled = false;
+    void Promise.all([
+      supabase.auth.getSession(),
+      authorId && body !== undefined
+        ? Promise.resolve({ data: { author_id: authorId, body }, error: null })
+        : supabase.from('community_posts').select('author_id,body').eq('id', postId).maybeSingle(),
+    ]).then(([sessionResult, postResult]) => {
+      if (cancelled) return;
+      setCurrentUserId(sessionResult.data.session?.user.id ?? null);
+      if (postResult.data) {
+        setResolvedAuthorId(postResult.data.author_id ?? null);
+        setResolvedBody(postResult.data.body ?? '');
+        setEditBody(postResult.data.body ?? '');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [postId, authorId, body]);
 
   useEffect(() => {
-    if (!editOpen) setEditBody(body ?? '');
-  }, [body, editOpen]);
+    if (!editOpen) setEditBody(resolvedBody);
+  }, [resolvedBody, editOpen]);
 
-  const isOwner = Boolean(authorId && currentUserId && authorId === currentUserId);
+  const isOwner = Boolean(resolvedAuthorId && currentUserId && resolvedAuthorId === currentUserId);
 
   async function saveEdit() {
     if (!editBody.trim() || savingEdit) return;
@@ -41,6 +58,8 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
     setEditStatus(null);
     try {
       await updatePost(postId, editBody);
+      const nextBody = editBody.trim();
+      setResolvedBody(nextBody);
       setEditStatus('Post updated.');
       if (onUpdated) await onUpdated();
       setEditOpen(false);
@@ -98,7 +117,7 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: { postI
               style={styles.optionRow}
               onPress={() => {
                 setOptionsOpen(false);
-                setEditBody(body ?? '');
+                setEditBody(resolvedBody);
                 setEditStatus(null);
                 setEditOpen(true);
               }}
