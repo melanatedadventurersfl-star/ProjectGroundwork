@@ -59,7 +59,7 @@ export function PersistentTopNav() {
   return (
     <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
       <View style={styles.bar}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Trailhead" onPress={() => router.navigate('/(tabs)' as never)} hitSlop={8} style={styles.logoButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Melanated home" onPress={() => router.navigate('/(tabs)' as never)} hitSlop={8} style={styles.logoButton}>
           <Image source={require('../../assets/ma-app-icon.png')} style={styles.logo} resizeMode="cover" />
         </Pressable>
 
