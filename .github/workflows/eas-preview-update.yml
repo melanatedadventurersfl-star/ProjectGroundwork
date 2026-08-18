@@ -1,6 +1,6 @@
 name: EAS Preview OTA Update
 
-# Delivery retrigger marker: member invite UI rollout.
+# Delivery retrigger marker: community badges rollout 2026-08-18.
 on:
   push:
     branches:
