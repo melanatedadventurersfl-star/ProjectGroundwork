@@ -122,10 +122,11 @@ export function TrailheadCover({
       style={[styles.cover, compact && styles.coverCompact, { borderColor: theme.accent, shadowColor: theme.accent }]}
     >
       <View pointerEvents="none" style={[styles.atmosphereOverlay, { backgroundColor: atmosphere }]} />
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.ambientLight, { opacity: ambientOpacity, transform: [{ scale: ambientScale }] }]}
-      />
+      <View pointerEvents="none" style={styles.atmosphereOverlay}>
+        <Animated.View
+          style={[styles.ambientLight, { opacity: ambientOpacity, transform: [{ scale: ambientScale }] }]}
+        />
+      </View>
       <View style={styles.baseScrim} />
       <View style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
       <View style={[styles.leftScrim, compact && styles.leftScrimCompact]} />
