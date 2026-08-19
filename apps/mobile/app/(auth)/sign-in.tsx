@@ -5,7 +5,7 @@ import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } fro
 import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
-const PASSWORD_RESET_REDIRECT = 'melanatedadventurers://auth/callback';
+const PASSWORD_RESET_REDIRECT = 'https://hqndxityqrdiiwqyjagu.supabase.co/functions/v1/password-reset';
 
 export default function SignInScreen() {
   const [identifier, setIdentifier] = useState('');
@@ -104,7 +104,7 @@ export default function SignInScreen() {
 
       Alert.alert(
         'Check your email',
-        'If an account matches that email, we sent a password reset link. Open it on this device to choose a new password.',
+        'If an account matches that email, we sent a password reset link. Open the newest reset email to continue.',
       );
     } catch (caught) {
       Alert.alert('Unable to send reset link', getFriendlyAuthError(caught, 'Unable to send a reset link right now.'));
