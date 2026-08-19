@@ -97,12 +97,13 @@ export default function ProfileScreen(){
   setMessage('');
   const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();
   if(!permission.granted){setMessage('Photo library access is needed to choose a profile picture.');return}
-  const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],quality:.85});
+  const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],base64:true,quality:.85});
   if(result.canceled||!result.assets?.[0])return;
   setPhotoBusy(true);
   try{
    const asset=result.assets[0];
-   const avatarUrl=await uploadProfilePhoto({uri:asset.uri,mimeType:asset.mimeType});
+   if(!asset.base64)throw new Error('That photo could not be prepared safely. Please choose it again.');
+   const avatarUrl=await uploadProfilePhoto({uri:asset.uri,base64:asset.base64,mimeType:asset.mimeType});
    setData((current:any)=>({...current,profile:{...current.profile,avatar_url:avatarUrl}}));
    setMessage('Profile photo updated.');
   }catch(error){setMessage(error instanceof Error?error.message:'Unable to update profile photo.')}
