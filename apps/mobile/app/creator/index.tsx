@@ -22,6 +22,7 @@ type ToolRow = {
 
 const tools: ToolRow[] = [
   { title: 'Members & Roles', subtitle: 'Manage member, host, and admin access.', route: '/creator/members', icon: 'community' },
+  { title: 'Member Insights', subtitle: 'Review login timing, interests, discovery area, and member activity.', route: '/creator/member-insights', icon: 'profile' },
   { title: 'Passport & Recognition', subtitle: 'Change ranks, badges, stamps, and review Founder history.', route: '/creator/passport', icon: 'passport' },
   { title: 'Adventures & Events', subtitle: 'Review and operate the adventure catalog.', route: '/adventures', icon: 'adventure' },
   { title: 'Groups', subtitle: 'Open community group management.', route: '/groups', icon: 'connections' },
