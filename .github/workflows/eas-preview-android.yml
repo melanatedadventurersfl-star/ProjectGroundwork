@@ -60,28 +60,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Canonicalize native Android PNG assets
+      - name: Repair recoverable bundled raster assets before EAS upload
         run: |
           python3 -m pip install --quiet pillow
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image, ImageFile
-
-          ImageFile.LOAD_TRUNCATED_IMAGES = True
-          paths = [
-              Path('apps/mobile/assets/ma-app-icon.png'),
-              Path('apps/mobile/assets/ma-splash-icon.png'),
-              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
-          ]
-
-          for path in paths:
-              temp = path.with_name(path.stem + '.canonical.png')
-              with Image.open(path) as image:
-                  image.load()
-                  image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
-              temp.replace(path)
-              print(f'Canonicalized {path}')
-          PY
+          python3 apps/mobile/scripts/prepare_image_assets.py
 
       - name: Strictly verify native PNGs before EAS upload
         run: |
@@ -102,6 +84,9 @@ jobs:
                   image.load()
                   print(f'Valid native PNG: {path} ({image.width}x{image.height})')
           PY
+
+      - name: Validate every bundled raster image before EAS upload
+        run: python3 apps/mobile/scripts/validate_image_assets.py
 
       - name: Stamp preview APK with triggering commit
         working-directory: apps/mobile

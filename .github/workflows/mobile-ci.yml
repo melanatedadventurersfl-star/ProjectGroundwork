@@ -69,8 +69,8 @@ jobs:
       - name: Install image validator
         run: python3 -m pip install --quiet pillow
 
-      - name: Validate every bundled raster image
-        run: python3 apps/mobile/scripts/validate_image_assets.py
+      - name: Verify every bundled raster image is build-recoverable
+        run: python3 apps/mobile/scripts/prepare_image_assets.py --check
 
       - name: Validate every Trailhead image through production canonicalization
         run: |

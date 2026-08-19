@@ -8,6 +8,7 @@ on:
       - 'apps/mobile/app/**'
       - 'apps/mobile/src/**'
       - 'apps/mobile/assets/**'
+      - 'apps/mobile/scripts/**'
       - '.github/workflows/eas-preview-update.yml'
   workflow_dispatch:
 
@@ -128,53 +129,11 @@ jobs:
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: npm ci
 
-      - name: Canonicalize mobile PNG assets before OTA export
+      - name: Repair recoverable bundled raster assets before OTA export
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           python3 -m pip install --quiet pillow
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image, ImageFile
-          ImageFile.LOAD_TRUNCATED_IMAGES = True
-          paths = [
-              Path('apps/mobile/assets/ma-app-icon.png'),
-              Path('apps/mobile/assets/ma-splash-icon.png'),
-              Path('apps/mobile/assets/ma-pathfinder-mark.png'),
-          ]
-          for path in paths:
-              temp = path.with_name(path.stem + '.canonical.png')
-              with Image.open(path) as image:
-                  image.load()
-                  image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
-              temp.replace(path)
-              print(f'Canonicalized {path}')
-          PY
-
-      - name: Canonicalize Trailhead image assets before OTA export
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image, ImageFile
-
-          ImageFile.LOAD_TRUNCATED_IMAGES = True
-          root = Path('apps/mobile/assets/trailhead')
-          images = sorted([*root.rglob('*.jpg'), *root.rglob('*.jpeg'), *root.rglob('*.png')])
-          if not images:
-              raise RuntimeError('No native Trailhead image assets were found.')
-
-          for path in images:
-              suffix = path.suffix.lower()
-              temp = path.with_name(f'{path.stem}.canonical{suffix}')
-              with Image.open(path) as image:
-                  image.load()
-                  if suffix in {'.jpg', '.jpeg'}:
-                      image.convert('RGB').save(temp, format='JPEG', quality=92, optimize=False)
-                  else:
-                      image.convert('RGBA').save(temp, format='PNG', optimize=False, compress_level=6)
-              temp.replace(path)
-              print(f'Canonicalized Trailhead asset: {path}')
-          PY
+          python3 apps/mobile/scripts/prepare_image_assets.py
 
       - name: Strictly verify Trailhead images before OTA export
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
