@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 
 import { listAdventures } from '../../src/adventures/api';
+import { AdventureImageBackground } from '../../src/adventures/AdventureImage';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { getCommunityFeed, type CommunityPost } from '../../src/community/api';
@@ -160,12 +161,13 @@ export default function TrailheadScreen() {
       Alert.alert('Photo access needed', 'Allow photo library access to choose a Trailhead cover.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [16, 6], quality: 0.85 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [16, 6], base64: true, quality: 0.85 });
     if (result.canceled || !result.assets?.[0]) return;
     setCoverBusy(true);
     try {
       const asset = result.assets[0];
-      const nextCoverUrl = await uploadProfileCover({ uri: asset.uri, mimeType: asset.mimeType });
+      if (!asset.base64) throw new Error('That photo could not be prepared safely. Please choose it again.');
+      const nextCoverUrl = await uploadProfileCover({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType });
       setCoverUrl(nextCoverUrl);
     } catch (caught) {
       Alert.alert('Cover photo', caught instanceof Error ? caught.message : 'Unable to update your Trailhead cover.');
@@ -222,7 +224,7 @@ export default function TrailheadScreen() {
                   accessibilityLabel={`Open ${item.title}`}
                   onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: item.order_id } })}
                 >
-                  <ImageBackground source={adventure?.hero_image_url ? { uri: adventure.hero_image_url } : undefined} style={styles.wideImage} imageStyle={styles.wideRadius}>
+                  <AdventureImageBackground uri={adventure?.hero_image_url} style={styles.wideImage} imageStyle={styles.wideRadius}>
                     <View style={styles.wideShade} />
                     <View style={styles.wideBody}>
                       <View style={styles.wideTopRow}>
@@ -236,7 +238,7 @@ export default function TrailheadScreen() {
                         <Text style={styles.wideLink}>View Adventure →</Text>
                       </View>
                     </View>
-                  </ImageBackground>
+                  </AdventureImageBackground>
                 </Pressable>
               );
             })}
@@ -259,14 +261,14 @@ export default function TrailheadScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compactRow}>
             {featured.map((item) => (
               <Pressable key={item.id} style={styles.compactCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
-                <ImageBackground source={item.hero_image_url ? { uri: item.hero_image_url } : undefined} style={styles.compactImage} imageStyle={styles.compactRadius}>
+                <AdventureImageBackground uri={item.hero_image_url} style={styles.compactImage} imageStyle={styles.compactRadius}>
                   <View style={styles.compactShade} />
                   <View style={styles.compactBody}>
                     {item.is_featured ? <Text style={styles.compactEyebrow}>FEATURED</Text> : null}
                     <Text style={styles.compactTitle} numberOfLines={2}>{item.title}</Text>
                     <Text style={styles.compactMeta} numberOfLines={1}>{shortDate(item.starts_at)} · {item.city}</Text>
                   </View>
-                </ImageBackground>
+                </AdventureImageBackground>
               </Pressable>
             ))}
           </ScrollView>
