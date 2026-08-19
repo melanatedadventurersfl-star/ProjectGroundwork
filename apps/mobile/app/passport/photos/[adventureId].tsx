@@ -24,7 +24,7 @@ export default function AddAdventurePhotoScreen() {
   const { adventureId } = useLocalSearchParams<{ adventureId: string }>();
   const [photo, setPhoto] = useState<SelectedPhoto | null>(null);
   const [caption, setCaption] = useState('');
-  const [visibility, setVisibility] = useState<'private' | 'group'>('group');
+  const [visibility, setVisibility] = useState<'private' | 'group'>('private');
   const [uploading, setUploading] = useState(false);
 
   async function chooseFromLibrary() {
@@ -81,10 +81,10 @@ export default function AddAdventurePhotoScreen() {
       });
 
       Alert.alert(
-        'Photo added',
+        'Photo added to memory',
         visibility === 'group'
-          ? 'Your photo was uploaded and sent through moderation. Approved photos will appear in the Event Gallery.'
-          : 'Your photo was uploaded as a private adventure memory.',
+          ? 'Your photo was uploaded and sent through moderation. Approved photos can appear in the Event Gallery.'
+          : 'Your photo was saved as a private Passport memory.',
         [{ text: 'Done', onPress: () => router.back() }],
       );
     } catch (caught) {
@@ -101,14 +101,14 @@ export default function AddAdventurePhotoScreen() {
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Text style={styles.back}>‹</Text>
           </Pressable>
-          <Text style={styles.topTitle}>ADD PHOTOS</Text>
+          <Text style={styles.topTitle}>ADD TO MEMORY</Text>
           <View style={styles.spacer} />
         </View>
 
         <View style={styles.intro}>
-          <Text style={styles.eyebrow}>ADD TO THE MEMORY</Text>
-          <Text style={styles.title}>Share a moment from the adventure.</Text>
-          <Text style={styles.body}>Choose a photo from your library or take one now. Shared photos are reviewed before they appear in the Event Gallery.</Text>
+          <Text style={styles.eyebrow}>PHOTOS FROM THIS ADVENTURE</Text>
+          <Text style={styles.title}>Save a moment you want to keep.</Text>
+          <Text style={styles.body}>Choose a photo from your library or take one now. Photos stay private unless you explicitly share them with the Event Gallery.</Text>
         </View>
 
         {photo ? (
@@ -145,6 +145,16 @@ export default function AddAdventurePhotoScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Who can see it?</Text>
           <Pressable
+            style={[styles.visibilityCard, visibility === 'private' && styles.visibilitySelected]}
+            onPress={() => setVisibility('private')}
+          >
+            <View style={styles.radio}>{visibility === 'private' ? <View style={styles.radioDot} /> : null}</View>
+            <View style={styles.visibilityCopy}>
+              <Text style={styles.visibilityTitle}>Only Me</Text>
+              <Text style={styles.visibilityBody}>Keep this photo as a private part of your Passport memory.</Text>
+            </View>
+          </Pressable>
+          <Pressable
             style={[styles.visibilityCard, visibility === 'group' && styles.visibilitySelected]}
             onPress={() => setVisibility('group')}
           >
@@ -154,16 +164,6 @@ export default function AddAdventurePhotoScreen() {
               <Text style={styles.visibilityBody}>After moderation, attendees can see this photo with the adventure memories.</Text>
             </View>
           </Pressable>
-          <Pressable
-            style={[styles.visibilityCard, visibility === 'private' && styles.visibilitySelected]}
-            onPress={() => setVisibility('private')}
-          >
-            <View style={styles.radio}>{visibility === 'private' ? <View style={styles.radioDot} /> : null}</View>
-            <View style={styles.visibilityCopy}>
-              <Text style={styles.visibilityTitle}>Only Me</Text>
-              <Text style={styles.visibilityBody}>Keep this photo as a private part of your adventure memory.</Text>
-            </View>
-          </Pressable>
         </View>
 
         <Pressable
@@ -171,7 +171,7 @@ export default function AddAdventurePhotoScreen() {
           disabled={!photo || uploading}
           onPress={() => void upload()}
         >
-          <Text style={styles.uploadText}>{uploading ? 'Uploading…' : 'Add Photo to Adventure'}</Text>
+          <Text style={styles.uploadText}>{uploading ? 'Saving…' : 'Save Photo to Memory'}</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
