@@ -197,6 +197,10 @@ jobs:
                   print(f'Valid Trailhead asset: {path} ({image.width}x{image.height}, {image.format})')
           PY
 
+      - name: Validate every bundled raster image before OTA export
+        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
+        run: python3 apps/mobile/scripts/validate_image_assets.py
+
       - name: Use vector fallback for invalid Wet & Wild raster
         if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
