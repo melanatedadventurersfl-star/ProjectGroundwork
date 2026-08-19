@@ -4,13 +4,14 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getJourney } from '../../src/passport/api';
-import { RankEmblem, rankFor, rankLadder, type RankName } from '../../src/passport/RankEmblem';
+import { getMyPassportRank, type PassportRankState } from '../../src/passport/rankApi';
+import { RankEmblem, rankLadder, type RankName } from '../../src/passport/RankEmblem';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 const rankCopy: Record<RankName, { motto: string; description: string }> = {
   Explorer: {
     motto: 'The journey begins.',
-    description: 'Your first step into the Melanated Adventurers journey.',
+    description: 'Your first step into the Melanated journey.',
   },
   Pathfinder: {
     motto: 'Find the trail. Lead the way.',
@@ -36,15 +37,17 @@ const rankCopy: Record<RankName, { motto: string; description: string }> = {
 
 export default function RankProgressScreen() {
   const [completed, setCompleted] = useState(0);
+  const [rankState, setRankState] = useState<PassportRankState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void getJourney()
-      .then((rows) => {
+    void Promise.all([getJourney(), getMyPassportRank()])
+      .then(([rows, nextRankState]) => {
         if (!active) return;
         setCompleted(rows.length);
+        setRankState(nextRankState);
         setError(null);
       })
       .catch((caught) => {
@@ -57,14 +60,21 @@ export default function RankProgressScreen() {
     return () => { active = false; };
   }, []);
 
-  const currentRank = useMemo(() => rankFor(completed), [completed]);
-  const currentIndex = rankLadder.findIndex(([name]) => name === currentRank);
+  const calculatedRank = rankState?.calculated_rank ?? 'Explorer';
+  const currentRank = rankState?.effective_rank ?? calculatedRank;
+  const calculatedIndex = rankLadder.findIndex(([name]) => name === calculatedRank);
   const nextRank = rankLadder.find(([, minimum]) => minimum > completed);
-  const currentMinimum = rankLadder[currentIndex]?.[1] ?? 0;
-  const nextMinimum = nextRank?.[1] ?? currentMinimum;
-  const tierSpan = Math.max(1, nextMinimum - currentMinimum);
-  const progress = nextRank ? Math.max(0, Math.min(1, (completed - currentMinimum) / tierSpan)) : 1;
+  const calculatedMinimum = rankLadder[calculatedIndex]?.[1] ?? 0;
+  const nextMinimum = nextRank?.[1] ?? calculatedMinimum;
+  const tierSpan = Math.max(1, nextMinimum - calculatedMinimum);
+  const progress = nextRank ? Math.max(0, Math.min(1, (completed - calculatedMinimum) / tierSpan)) : 1;
   const remaining = nextRank ? Math.max(0, nextRank[1] - completed) : 0;
+  const hasOverride = Boolean(rankState?.rank_override);
+
+  const rankSummary = useMemo(() => {
+    if (!hasOverride) return rankCopy[currentRank].motto;
+    return `Displayed by Founder override. Your earned progression is currently ${calculatedRank}.`;
+  }, [calculatedRank, currentRank, hasOverride]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -82,7 +92,7 @@ export default function RankProgressScreen() {
         {loading ? <ActivityIndicator color="#F5C341" style={styles.loader} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {!loading ? (
+        {!loading && rankState ? (
           <>
             <View style={styles.heroCard}>
               <View style={styles.heroTop}>
@@ -90,22 +100,30 @@ export default function RankProgressScreen() {
                   <RankEmblem rank={currentRank} size={104} />
                 </View>
                 <View style={styles.heroCopy}>
-                  <Text style={styles.currentLabel}>CURRENT RANK</Text>
+                  <Text style={styles.currentLabel}>{hasOverride ? 'DISPLAYED RANK' : 'CURRENT RANK'}</Text>
                   <Text style={styles.currentRank}>{currentRank}</Text>
-                  <Text style={styles.motto}>{rankCopy[currentRank].motto}</Text>
+                  <Text style={styles.motto}>{rankSummary}</Text>
+                  {hasOverride ? <Text style={styles.overridePill}>FOUNDER OVERRIDE</Text> : null}
                 </View>
               </View>
 
               <View style={styles.progressHeader}>
                 <Text style={styles.progressLabel}>{completed} adventure{completed === 1 ? '' : 's'} completed</Text>
-                {nextRank ? <Text style={styles.progressTarget}>{nextRank[0]} at {nextRank[1]}</Text> : <Text style={styles.progressTarget}>Top rank reached</Text>}
+                {nextRank ? <Text style={styles.progressTarget}>{nextRank[0]} at {nextRank[1]}</Text> : <Text style={styles.progressTarget}>Top earned rank reached</Text>}
               </View>
               <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress * 100}%` }]} /></View>
               {nextRank ? (
-                <Text style={styles.progressCopy}><Text style={styles.gold}>{remaining}</Text> more adventure{remaining === 1 ? '' : 's'} to unlock <Text style={styles.gold}>{nextRank[0]}</Text>.</Text>
+                <Text style={styles.progressCopy}><Text style={styles.gold}>{remaining}</Text> more adventure{remaining === 1 ? '' : 's'} to earn <Text style={styles.gold}>{nextRank[0]}</Text>.</Text>
               ) : (
-                <Text style={styles.progressCopy}>You have reached the highest rank in the current journey.</Text>
+                <Text style={styles.progressCopy}>You have reached the highest earned rank in the current journey.</Text>
               )}
+              {hasOverride ? (
+                <View style={styles.calculatedStrip}>
+                  <Text style={styles.calculatedLabel}>EARNED PROGRESSION</Text>
+                  <Text style={styles.calculatedValue}>{calculatedRank}</Text>
+                  <Text style={styles.calculatedCopy}>Your adventure history and automatic progression remain unchanged.</Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.sectionHeader}>
@@ -115,25 +133,34 @@ export default function RankProgressScreen() {
 
             <View style={styles.ladder}>
               {rankLadder.map(([name, minimum], index) => {
-                const isCurrent = name === currentRank;
+                const displayed = name === currentRank;
+                const earnedCurrent = name === calculatedRank;
                 const unlocked = completed >= minimum;
-                const completedTier = unlocked && index < currentIndex;
-                const status = isCurrent ? 'CURRENT' : completedTier ? 'COMPLETED' : unlocked ? 'UNLOCKED' : 'LOCKED';
+                const completedTier = unlocked && index < calculatedIndex;
+                const status = displayed && hasOverride
+                  ? 'DISPLAYED'
+                  : earnedCurrent
+                    ? 'EARNED'
+                    : completedTier
+                      ? 'COMPLETED'
+                      : unlocked
+                        ? 'UNLOCKED'
+                        : 'LOCKED';
 
                 return (
-                  <View key={name} style={[styles.rankCard, isCurrent && styles.rankCardCurrent, !unlocked && styles.rankCardLocked]}>
+                  <View key={name} style={[styles.rankCard, displayed && styles.rankCardCurrent, !unlocked && !displayed && styles.rankCardLocked]}>
                     <View style={styles.rankArtWrap}>
-                      <RankEmblem rank={name} size={78} muted={!unlocked} />
+                      <RankEmblem rank={name} size={78} muted={!unlocked && !displayed} />
                       {completedTier ? <View style={styles.checkBadge}><AppIcon name="checkmark" color="#111A17" size={13} /></View> : null}
                     </View>
                     <View style={styles.rankBody}>
                       <View style={styles.rankTitleRow}>
-                        <Text style={[styles.rankName, !unlocked && styles.rankNameLocked]}>{name}</Text>
-                        <Text style={[styles.statusPill, isCurrent && styles.statusCurrent, completedTier && styles.statusComplete]}>{status}</Text>
+                        <Text style={[styles.rankName, !unlocked && !displayed && styles.rankNameLocked]}>{name}</Text>
+                        <Text style={[styles.statusPill, displayed && styles.statusDisplayed, earnedCurrent && !hasOverride && styles.statusCurrent, completedTier && styles.statusComplete]}>{status}</Text>
                       </View>
                       <Text style={styles.requirement}>{minimum === 0 ? 'Starting rank' : `${minimum} completed adventure${minimum === 1 ? '' : 's'}`}</Text>
-                      <Text style={[styles.rankMotto, !unlocked && styles.rankCopyLocked]}>{rankCopy[name].motto}</Text>
-                      <Text style={[styles.rankDescription, !unlocked && styles.rankCopyLocked]}>{rankCopy[name].description}</Text>
+                      <Text style={[styles.rankMotto, !unlocked && !displayed && styles.rankCopyLocked]}>{rankCopy[name].motto}</Text>
+                      <Text style={[styles.rankDescription, !unlocked && !displayed && styles.rankCopyLocked]}>{rankCopy[name].description}</Text>
                     </View>
                   </View>
                 );
@@ -144,7 +171,7 @@ export default function RankProgressScreen() {
               <AppIcon name="adventure" color="#67CFC8" size={22} />
               <View style={styles.noteCopy}>
                 <Text style={styles.noteTitle}>How ranks work</Text>
-                <Text style={styles.noteText}>Ranks advance automatically as you complete official Melanated Adventurers adventures. Badges and stamps remain separate collectibles.</Text>
+                <Text style={styles.noteText}>Ranks advance automatically from completed official Melanated adventures. A Founder override only changes the displayed rank and can be removed without altering that history.</Text>
               </View>
             </View>
           </>
@@ -171,6 +198,7 @@ const styles = StyleSheet.create({
   currentLabel: { color: '#67CFC8', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   currentRank: { color: '#F7F8F3', fontSize: 26, lineHeight: 30, fontWeight: '900', marginTop: 3 },
   motto: { color: '#C9D2CD', fontSize: 13, lineHeight: 18, marginTop: 4 },
+  overridePill: { alignSelf: 'flex-start', color: '#F5C341', fontSize: 8, fontWeight: '900', letterSpacing: .7, borderWidth: 1, borderColor: '#6C5728', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 4, marginTop: 7 },
   progressHeader: { marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   progressLabel: { color: '#D6DEDA', fontSize: 11.5, fontWeight: '800' },
   progressTarget: { color: '#67CFC8', fontSize: 11, fontWeight: '800' },
@@ -178,6 +206,10 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', borderRadius: 99, backgroundColor: '#F5C341' },
   progressCopy: { color: '#9FB0A7', fontSize: 12.5, lineHeight: 18, marginTop: 8 },
   gold: { color: '#F5C341', fontWeight: '900' },
+  calculatedStrip: { marginTop: 13, borderRadius: 14, borderWidth: 1, borderColor: '#2B4943', backgroundColor: '#10221E', padding: 11 },
+  calculatedLabel: { color: '#67CFC8', fontSize: 8.5, fontWeight: '900', letterSpacing: .8 },
+  calculatedValue: { color: '#F7F8F3', fontSize: 16, fontWeight: '900', marginTop: 2 },
+  calculatedCopy: { color: '#87968E', fontSize: 10.5, lineHeight: 15, marginTop: 2 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
   sectionTitle: { color: '#F7F8F3', fontSize: 22, fontWeight: '900' },
   sectionMeta: { color: '#83938A', fontSize: 12, fontWeight: '800' },
@@ -192,7 +224,8 @@ const styles = StyleSheet.create({
   rankName: { flex: 1, color: '#F7F8F3', fontSize: 17, fontWeight: '900' },
   rankNameLocked: { color: '#748078' },
   statusPill: { color: '#7F8D85', fontSize: 8, fontWeight: '900', letterSpacing: .65, borderRadius: 999, borderWidth: 1, borderColor: '#39453F', paddingHorizontal: 7, paddingVertical: 4 },
-  statusCurrent: { color: '#111A17', backgroundColor: '#F5C341', borderColor: '#F5C341' },
+  statusDisplayed: { color: '#111A17', backgroundColor: '#F5C341', borderColor: '#F5C341' },
+  statusCurrent: { color: '#111A17', backgroundColor: '#67CFC8', borderColor: '#67CFC8' },
   statusComplete: { color: '#67CFC8', borderColor: '#34675F' },
   requirement: { color: '#67CFC8', fontSize: 10.5, fontWeight: '800', marginTop: 3 },
   rankMotto: { color: '#D5DDD9', fontSize: 12.5, fontWeight: '800', marginTop: 5 },
