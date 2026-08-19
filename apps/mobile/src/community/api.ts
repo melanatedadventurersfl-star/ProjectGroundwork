@@ -1,3 +1,4 @@
+import { prepareLocalImage } from '../lib/imageUpload';
 import { supabase } from '../lib/supabase';
 
 export type CommunityPostType = 'update' | 'photo' | 'ask' | 'meetup' | 'buddy' | 'recommendation';
@@ -145,15 +146,12 @@ export async function getCommunityFeed(adventureId?: string, groupId?: string) {
   return Promise.all(rows.map(async (post) => ({ ...post, image_url: await signCommunityMedia(post.image_url) })));
 }
 
-export async function uploadCommunityPostImage(input: { uri: string; mimeType?: string | null }) {
+export async function uploadCommunityPostImage(input: { uri: string; base64?: string | null; mimeType?: string | null }) {
   const userId = await currentUserId();
-  const response = await fetch(input.uri);
-  const bytes = await response.arrayBuffer();
-  const mimeType = input.mimeType || 'image/jpeg';
-  const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
-  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extension}`;
-  const { error } = await supabase.storage.from('community-media').upload(path, bytes, {
-    contentType: mimeType,
+  const prepared = await prepareLocalImage({ uri: input.uri, base64: input.base64 });
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${prepared.extension}`;
+  const { error } = await supabase.storage.from('community-media').upload(path, prepared.bytes, {
+    contentType: prepared.contentType,
     cacheControl: '3600',
     upsert: false,
   });
