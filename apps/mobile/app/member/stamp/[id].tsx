@@ -37,7 +37,6 @@ import { STAMP_CATALOG } from '../../../src/passport/StampCatalog';
 import { AppIcon } from '../../../src/ui/AppIcon';
 
 type HubTab = 'memory' | 'event';
-
 type MemoryVisibility = 'private' | 'community';
 
 function personName(person: AdventureEventPerson) {
@@ -289,7 +288,7 @@ export default function StampDetailScreen() {
                     <View style={styles.inlineStars}>
                       {[1, 2, 3, 4, 5].map((value) => (
                         <Pressable key={value} disabled={savingRating} onPress={() => void saveRating(value)} hitSlop={6}>
-                          <Text style={[styles.inlineStar, rating && value <= rating && styles.inlineStarFilled]}>★</Text>
+                          <Text style={[styles.inlineStar, rating !== null && value <= rating ? styles.inlineStarFilled : null]}>★</Text>
                         </Pressable>
                       ))}
                       <Pressable onPress={() => setRatingOpen(false)} hitSlop={8}><Text style={styles.cancelTiny}>CANCEL</Text></Pressable>
@@ -614,7 +613,7 @@ const styles = StyleSheet.create({
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
   missingTitle: { color: '#F7F8F3', fontSize: 22, fontWeight: '900' },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.58)' },
+  modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.58)' },
   memorySheet: { backgroundColor: '#101916', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#2D3B34', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, gap: 11, maxHeight: '88%' },
   sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: '#425048', alignSelf: 'center', marginBottom: 3 },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
