@@ -106,8 +106,22 @@ export default function SignInScreen() {
         />
 
         <View style={styles.recoveryRow}>
-          <Link href="/(auth)/forgot-username" style={styles.recoveryLink}>Forgot username?</Link>
-          <Link href="/(auth)/forgot-password" style={styles.recoveryLink}>Forgot password?</Link>
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => router.push('/(auth)/forgot-username' as never)}
+            style={styles.recoveryTap}
+          >
+            <Text style={styles.recoveryLink}>Forgot username?</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => router.push('/(auth)/forgot-password' as never)}
+            style={styles.recoveryTap}
+          >
+            <Text style={styles.recoveryLink}>Forgot password?</Text>
+          </Pressable>
         </View>
 
         <Pressable
@@ -134,6 +148,7 @@ const styles = StyleSheet.create({
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
   input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
   recoveryRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: -4 },
+  recoveryTap: { minHeight: 44, justifyContent: 'center' },
   recoveryLink: { color: '#24543B', fontSize: 13, fontWeight: '800' },
   button: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#24543B' },
   buttonDisabled: { opacity: 0.45 },
