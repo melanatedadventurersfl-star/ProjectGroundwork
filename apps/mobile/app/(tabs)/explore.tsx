@@ -560,7 +560,7 @@ const s = StyleSheet.create({
   emptyTitle: { color: '#F7F7F4', fontSize: 18, fontWeight: '900' },
   emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5 },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.62)' },
+  modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.62)' },
   filterSheet: { maxHeight: '66%', backgroundColor: '#111816', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderColor: '#303B36', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 13 },
   sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 4 },
   filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
