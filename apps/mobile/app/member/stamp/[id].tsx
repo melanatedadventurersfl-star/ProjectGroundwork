@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +20,7 @@ import {
   getOwnedMemoryPhotos,
   getPassportStamps,
   saveEventGalleryPhoto,
+  saveReflection,
   type JourneyItem,
   type MemoryPhoto,
   type PassportStamp,
@@ -27,10 +29,12 @@ import {
   getAdventureEventPeople,
   type AdventureEventPerson,
 } from '../../../src/passport/EventHubApi';
+import { requestConnection } from '../../../src/social/api';
 import { STAMP_CATALOG } from '../../../src/passport/StampCatalog';
 import { AppIcon } from '../../../src/ui/AppIcon';
 
 type HubTab = 'memory' | 'event';
+type ReflectionVisibility = 'private' | 'community';
 
 function personName(person: AdventureEventPerson) {
   return person.display_name?.trim() || person.username?.trim() || 'Adventurer';
@@ -58,6 +62,14 @@ export default function StampDetailScreen() {
   const [eventPeople, setEventPeople] = useState<AdventureEventPerson[]>([]);
   const [communityMoments, setCommunityMoments] = useState<CommunityPost[]>([]);
   const [activeTab, setActiveTab] = useState<HubTab>('memory');
+  const [ratingEditing, setRatingEditing] = useState(false);
+  const [savingRating, setSavingRating] = useState(false);
+  const [memoryEditing, setMemoryEditing] = useState(false);
+  const [draftHighlight, setDraftHighlight] = useState('');
+  const [draftReflection, setDraftReflection] = useState('');
+  const [draftVisibility, setDraftVisibility] = useState<ReflectionVisibility>('private');
+  const [savingMemory, setSavingMemory] = useState(false);
+  const [requestedPeople, setRequestedPeople] = useState<Set<string>>(new Set());
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,7 +93,11 @@ export default function StampDetailScreen() {
           getJourney(),
           getOwnedMemoryPhotos(adventureId),
         ]);
-        setJourneyItem(journey.find((item) => item.adventure_id === adventureId) ?? null);
+        const nextJourney = journey.find((item) => item.adventure_id === adventureId) ?? null;
+        setJourneyItem(nextJourney);
+        setDraftHighlight(nextJourney?.highlight ?? '');
+        setDraftReflection(nextJourney?.reflection ?? '');
+        setDraftVisibility(nextJourney?.visibility ?? 'private');
         setPhotos(memoryPhotos);
 
         const [peopleResult, galleryResult, feedResult] = await Promise.allSettled([
@@ -119,10 +135,7 @@ export default function StampDetailScreen() {
   const adventureId = earned?.adventure_id ?? null;
   const rating = journeyItem?.rating ?? 0;
   const hasNotes = Boolean(journeyItem?.highlight || journeyItem?.reflection);
-  const connectedPeople = useMemo(
-    () => eventPeople.filter((person) => person.is_connected),
-    [eventPeople],
-  );
+  const visibility = journeyItem?.visibility ?? 'private';
 
   const savedSourceIds = useMemo(() => {
     const ids = new Set<string>();
@@ -152,6 +165,73 @@ export default function StampDetailScreen() {
     }
   }, [adventureId, savedSourceIds, savingPhotoId]);
 
+  const chooseRating = useCallback(async (value: number) => {
+    if (!adventureId || savingRating) return;
+    setSavingRating(true);
+    try {
+      await saveReflection({
+        adventureId,
+        rating: value,
+        highlight: journeyItem?.highlight ?? '',
+        reflection: journeyItem?.reflection ?? '',
+        visibility,
+      });
+      setJourneyItem((current) => current ? { ...current, rating: value } : current);
+      setRatingEditing(false);
+      setError(null);
+      if (!journeyItem) void load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to save your rating.');
+    } finally {
+      setSavingRating(false);
+    }
+  }, [adventureId, journeyItem, load, savingRating, visibility]);
+
+  const beginMemoryEdit = useCallback(() => {
+    setDraftHighlight(journeyItem?.highlight ?? '');
+    setDraftReflection(journeyItem?.reflection ?? '');
+    setDraftVisibility(journeyItem?.visibility ?? 'private');
+    setMemoryEditing(true);
+  }, [journeyItem]);
+
+  const saveMemory = useCallback(async () => {
+    if (!adventureId || savingMemory) return;
+    setSavingMemory(true);
+    try {
+      await saveReflection({
+        adventureId,
+        rating: journeyItem?.rating ?? null,
+        highlight: draftHighlight,
+        reflection: draftReflection,
+        visibility: draftVisibility,
+      });
+      setJourneyItem((current) => current ? {
+        ...current,
+        highlight: draftHighlight.trim() || null,
+        reflection: draftReflection.trim() || null,
+        visibility: draftVisibility,
+      } : current);
+      setMemoryEditing(false);
+      setError(null);
+      if (!journeyItem) void load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to save your memory.');
+    } finally {
+      setSavingMemory(false);
+    }
+  }, [adventureId, draftHighlight, draftReflection, draftVisibility, journeyItem, load, savingMemory]);
+
+  const addConnection = useCallback(async (profileId: string) => {
+    if (requestedPeople.has(profileId)) return;
+    try {
+      await requestConnection(profileId);
+      setRequestedPeople((current) => new Set(current).add(profileId));
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to send that connection request.');
+    }
+  }, [requestedPeople]);
+
   if (!stamp) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -175,19 +255,12 @@ export default function StampDetailScreen() {
     );
   }
 
-  const openMemoryEditor = () => {
-    if (adventureId) router.push(`/passport/reflection/edit/${adventureId}`);
-  };
-
-  const openAdventure = () => {
-    if (adventureId) router.push(`/adventures/${adventureId}`);
-  };
-
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={(
           <RefreshControl
             refreshing={refreshing}
@@ -221,15 +294,40 @@ export default function StampDetailScreen() {
               </View>
 
               {earned && adventureId ? (
-                <Pressable onPress={openMemoryEditor} style={({ pressed }) => [styles.ratingRow, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Edit your adventure rating">
-                  <View style={styles.headerStars}>
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <Text key={value} style={[styles.headerStar, value <= rating && styles.headerStarFilled]}>★</Text>
-                    ))}
+                <View style={styles.ratingArea}>
+                  <View style={styles.ratingSummaryRow}>
+                    {rating ? (
+                      <View style={styles.currentRating}>
+                        <Text style={styles.currentRatingStar}>★</Text>
+                        <Text style={styles.currentRatingText}>{rating}/5</Text>
+                      </View>
+                    ) : null}
+                    <Pressable
+                      onPress={() => setRatingEditing((current) => !current)}
+                      style={({ pressed }) => [styles.rateButton, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Rate this adventure"
+                    >
+                      <Text style={styles.rateButtonText}>RATE</Text>
+                    </Pressable>
                   </View>
-                  <Text style={styles.ratingValue}>{rating ? rating.toFixed(1) : 'Rate'}</Text>
-                  <Text style={styles.ratingEdit}>{rating ? 'Edit' : 'Add'}</Text>
-                </Pressable>
+                  {ratingEditing ? (
+                    <View style={styles.inlineRatingPicker}>
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <Pressable
+                          key={value}
+                          disabled={savingRating}
+                          onPress={() => void chooseRating(value)}
+                          style={styles.ratingStarButton}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${value} star${value === 1 ? '' : 's'}`}
+                        >
+                          <Text style={[styles.ratingPickerStar, value <= rating && styles.ratingPickerStarSelected]}>★</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
               ) : null}
             </View>
           </View>
@@ -271,67 +369,130 @@ export default function StampDetailScreen() {
               <>
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View>
+                    <View style={styles.headingCopy}>
                       <Text style={styles.cardEyebrow}>YOUR MEMORY</Text>
                       <Text style={styles.cardTitle}>{hasNotes ? 'What you want to remember' : 'Make this stamp yours'}</Text>
                     </View>
-                    <Pressable onPress={openMemoryEditor} hitSlop={10}>
-                      <Text style={styles.actionText}>{hasNotes ? 'EDIT' : 'ADD'}</Text>
+                    <Pressable onPress={memoryEditing ? () => setMemoryEditing(false) : beginMemoryEdit} hitSlop={10}>
+                      <Text style={styles.actionText}>{memoryEditing ? 'CANCEL' : 'EDIT'}</Text>
                     </Pressable>
                   </View>
 
-                  {journeyItem?.highlight ? (
-                    <View style={styles.memoryQuote}>
-                      <Text style={styles.quoteMark}>“</Text>
-                      <Text style={styles.highlight}>{journeyItem.highlight}</Text>
+                  {memoryEditing ? (
+                    <View style={styles.memoryEditor}>
+                      <Text style={styles.fieldLabel}>Favorite moment</Text>
+                      <TextInput
+                        value={draftHighlight}
+                        onChangeText={setDraftHighlight}
+                        maxLength={180}
+                        placeholder="One moment you want to keep…"
+                        placeholderTextColor="#6F7D75"
+                        style={styles.input}
+                      />
+                      <Text style={styles.fieldLabel}>Your memory</Text>
+                      <TextInput
+                        value={draftReflection}
+                        onChangeText={setDraftReflection}
+                        multiline
+                        maxLength={5000}
+                        placeholder="What do you want to remember about this adventure?"
+                        placeholderTextColor="#6F7D75"
+                        style={[styles.input, styles.memoryInput]}
+                      />
+                      <Text style={styles.fieldLabel}>Who can see it?</Text>
+                      <View style={styles.visibilityRow}>
+                        <Pressable
+                          onPress={() => setDraftVisibility('private')}
+                          style={[styles.visibilityChoice, draftVisibility === 'private' && styles.visibilityChoiceActive]}
+                        >
+                          <AppIcon name="privacy" color={draftVisibility === 'private' ? '#17211C' : '#9BA69F'} size={15} />
+                          <Text style={[styles.visibilityChoiceText, draftVisibility === 'private' && styles.visibilityChoiceTextActive]}>Private</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setDraftVisibility('community')}
+                          style={[styles.visibilityChoice, draftVisibility === 'community' && styles.visibilityChoiceActive]}
+                        >
+                          <AppIcon name="community" color={draftVisibility === 'community' ? '#17211C' : '#9BA69F'} size={15} />
+                          <Text style={[styles.visibilityChoiceText, draftVisibility === 'community' && styles.visibilityChoiceTextActive]}>Public</Text>
+                        </Pressable>
+                      </View>
+                      <Pressable
+                        disabled={savingMemory}
+                        onPress={() => void saveMemory()}
+                        style={[styles.saveMemoryButton, savingMemory && styles.disabled]}
+                      >
+                        <Text style={styles.saveMemoryButtonText}>{savingMemory ? 'SAVING…' : 'SAVE MEMORY'}</Text>
+                      </Pressable>
                     </View>
-                  ) : null}
-                  {journeyItem?.reflection ? <Text style={styles.reflection}>{journeyItem.reflection}</Text> : null}
-                  {!hasNotes ? (
-                    <Text style={styles.emptyBody}>Save a favorite moment or a private note from this adventure. Your rating already lives with the event at the top.</Text>
-                  ) : null}
-                  <View style={styles.privateLine}>
-                    <AppIcon name="privacy" color="#67CFC8" size={13} />
-                    <Text style={styles.privateLineText}>{journeyItem?.reflection ? 'Your saved reflection' : 'Private memory by default'}</Text>
-                  </View>
+                  ) : (
+                    <>
+                      {journeyItem?.highlight ? (
+                        <View style={styles.memoryQuote}>
+                          <Text style={styles.quoteMark}>“</Text>
+                          <Text style={styles.highlight}>{journeyItem.highlight}</Text>
+                        </View>
+                      ) : null}
+                      {journeyItem?.reflection ? <Text style={styles.reflection}>{journeyItem.reflection}</Text> : null}
+                      {!hasNotes ? (
+                        <Text style={styles.emptyBody}>Add a favorite moment or reflection, then choose whether it stays private or is shared publicly.</Text>
+                      ) : null}
+                      <View style={styles.privateLine}>
+                        <AppIcon name={visibility === 'private' ? 'privacy' : 'community'} color="#67CFC8" size={13} />
+                        <Text style={styles.privateLineText}>{visibility === 'private' ? 'Private memory' : 'Public memory'}</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
 
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View>
-                      <Text style={styles.cardEyebrow}>PEOPLE I CONNECTED WITH</Text>
-                      <Text style={styles.cardTitle}>{connectedPeople.length ? `${connectedPeople.length} from this adventure` : 'Connections from this adventure'}</Text>
+                    <View style={styles.headingCopy}>
+                      <Text style={styles.cardEyebrow}>PEOPLE FROM THIS ADVENTURE</Text>
+                      <Text style={styles.cardTitle}>{eventPeople.length ? 'Reconnect with people who were there' : 'Suggested connections'}</Text>
                     </View>
-                    {connectedPeople.length ? <Text style={styles.actionText}>SEE ALL</Text> : null}
                   </View>
 
-                  {connectedPeople.length ? (
+                  {eventPeople.length ? (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>
-                      {connectedPeople.map((person) => (
-                        <Pressable
-                          key={person.profile_id}
-                          onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: person.profile_id } })}
-                          style={({ pressed }) => [styles.personCard, pressed && styles.pressed]}
-                        >
-                          <View style={styles.avatarWrap}>
-                            {person.avatar_url ? (
-                              <Image source={{ uri: person.avatar_url }} style={styles.avatar} />
+                      {eventPeople.map((person) => {
+                        const requested = requestedPeople.has(person.profile_id);
+                        return (
+                          <View key={person.profile_id} style={styles.personCard}>
+                            <Pressable
+                              onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: person.profile_id } })}
+                              style={({ pressed }) => [styles.personProfile, pressed && styles.pressed]}
+                            >
+                              <View style={styles.avatarWrap}>
+                                {person.avatar_url ? (
+                                  <Image source={{ uri: person.avatar_url }} style={styles.avatar} />
+                                ) : (
+                                  <View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarInitial}>{personInitial(person)}</Text></View>
+                                )}
+                                {person.is_connected ? <View style={styles.connectedDot}><AppIcon name="checkmark" color="#08201D" size={12} /></View> : null}
+                              </View>
+                              <Text style={styles.personName} numberOfLines={1}>{personName(person)}</Text>
+                            </Pressable>
+                            {person.is_connected ? (
+                              <Text style={styles.connectedLabel}>CONNECTED</Text>
                             ) : (
-                              <View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarInitial}>{personInitial(person)}</Text></View>
+                              <Pressable
+                                disabled={requested}
+                                onPress={() => void addConnection(person.profile_id)}
+                                style={[styles.connectButton, requested && styles.connectButtonRequested]}
+                              >
+                                <Text style={[styles.connectButtonText, requested && styles.connectButtonTextRequested]}>{requested ? 'REQUESTED' : 'ADD'}</Text>
+                              </Pressable>
                             )}
-                            <View style={styles.connectedDot}><AppIcon name="checkmark" color="#08201D" size={12} /></View>
                           </View>
-                          <Text style={styles.personName} numberOfLines={1}>{personName(person)}</Text>
-                          <Text style={styles.personMeta}>Connected</Text>
-                        </Pressable>
-                      ))}
+                        );
+                      })}
                     </ScrollView>
                   ) : (
                     <View style={styles.inlineEmpty}>
                       <AppIcon name="connections" color="#67CFC8" size={23} />
                       <View style={styles.inlineEmptyCopy}>
-                        <Text style={styles.emptyTitle}>No event connections yet.</Text>
-                        <Text style={styles.emptyBody}>When you connect with someone from this adventure, they can live here as part of the memory.</Text>
+                        <Text style={styles.emptyTitle}>No people available to recommend yet.</Text>
+                        <Text style={styles.emptyBody}>As discoverable attendees are linked to this event, they’ll appear here with an option to connect.</Text>
                       </View>
                     </View>
                   )}
@@ -339,7 +500,7 @@ export default function StampDetailScreen() {
 
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View>
+                    <View style={styles.headingCopy}>
                       <Text style={styles.cardEyebrow}>PHOTO MEMORY</Text>
                       <Text style={styles.cardTitle}>{photos.length ? `${photos.length} saved ${photos.length === 1 ? 'moment' : 'moments'}` : 'Build your photo memory'}</Text>
                     </View>
@@ -371,38 +532,12 @@ export default function StampDetailScreen() {
                     </Pressable>
                   )}
                 </View>
-
-                <View style={styles.sectionCard}>
-                  <Text style={styles.cardEyebrow}>FROM THE EVENT</Text>
-                  <Pressable onPress={() => setActiveTab('event')} style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}>
-                    <View style={styles.linkIcon}><AppIcon name="photos" color="#67CFC8" size={20} /></View>
-                    <View style={styles.linkCopy}>
-                      <Text style={styles.linkTitle}>Event Gallery</Text>
-                      <Text style={styles.linkBody}>{eventPhotos.length ? `${eventPhotos.length} shared ${eventPhotos.length === 1 ? 'photo' : 'photos'} available` : 'See photos shared from this adventure'}</Text>
-                    </View>
-                    <AppIcon name="chevron-forward" color="#7E8B84" size={18} />
-                  </Pressable>
-                  <Pressable onPress={() => setActiveTab('event')} style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}>
-                    <View style={styles.linkIcon}><AppIcon name="community" color="#67CFC8" size={20} /></View>
-                    <View style={styles.linkCopy}>
-                      <Text style={styles.linkTitle}>Community Moments</Text>
-                      <Text style={styles.linkBody}>{communityMoments.length ? `${communityMoments.length} event ${communityMoments.length === 1 ? 'moment' : 'moments'}` : 'See reflections and posts from others'}</Text>
-                    </View>
-                    <AppIcon name="chevron-forward" color="#7E8B84" size={18} />
-                  </Pressable>
-                </View>
-
-                <Pressable onPress={openAdventure} style={({ pressed }) => [styles.adventureButton, pressed && styles.pressed]}>
-                  <AppIcon name="adventure" color="#F5C341" size={19} />
-                  <Text style={styles.adventureButtonText}>View Original Adventure</Text>
-                  <AppIcon name="chevron-forward" color="#F5C341" size={18} />
-                </Pressable>
               </>
             ) : (
               <>
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View>
+                    <View style={styles.headingCopy}>
                       <Text style={styles.cardEyebrow}>EVENT GALLERY</Text>
                       <Text style={styles.cardTitle}>{eventPhotos.length ? `${eventPhotos.length} shared ${eventPhotos.length === 1 ? 'photo' : 'photos'}` : 'Shared moments from the event'}</Text>
                     </View>
@@ -440,7 +575,7 @@ export default function StampDetailScreen() {
 
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View>
+                    <View style={styles.headingCopy}>
                       <Text style={styles.cardEyebrow}>PEOPLE FROM THIS ADVENTURE</Text>
                       <Text style={styles.cardTitle}>{eventPeople.length ? `${eventPeople.length} discoverable ${eventPeople.length === 1 ? 'person' : 'people'}` : 'People you can reconnect with'}</Text>
                     </View>
@@ -480,7 +615,7 @@ export default function StampDetailScreen() {
 
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View>
+                    <View style={styles.headingCopy}>
                       <Text style={styles.cardEyebrow}>COMMUNITY MOMENTS</Text>
                       <Text style={styles.cardTitle}>{communityMoments.length ? `${communityMoments.length} from this adventure` : 'The shared story'}</Text>
                     </View>
@@ -516,12 +651,6 @@ export default function StampDetailScreen() {
                     </View>
                   )}
                 </View>
-
-                <Pressable onPress={openAdventure} style={({ pressed }) => [styles.adventureButton, pressed && styles.pressed]}>
-                  <AppIcon name="adventure" color="#F5C341" size={19} />
-                  <Text style={styles.adventureButtonText}>View Original Adventure</Text>
-                  <AppIcon name="chevron-forward" color="#F5C341" size={18} />
-                </Pressable>
               </>
             )}
           </>
@@ -556,12 +685,17 @@ const styles = StyleSheet.create({
   title: { color: '#F7F8F3', fontSize: 22, lineHeight: 26, fontWeight: '900' },
   metaItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   meta: { flex: 1, color: '#B6C1BB', fontSize: 12, lineHeight: 17 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  headerStars: { flexDirection: 'row', gap: 2 },
-  headerStar: { color: '#46524C', fontSize: 20, lineHeight: 23 },
-  headerStarFilled: { color: '#F5C341' },
-  ratingValue: { color: '#F7F8F3', fontSize: 11.5, fontWeight: '900' },
-  ratingEdit: { color: '#F5C341', fontSize: 10, fontWeight: '900', marginLeft: 4 },
+  ratingArea: { gap: 5, marginTop: 1 },
+  ratingSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  currentRating: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  currentRatingStar: { color: '#F5C341', fontSize: 17, lineHeight: 19 },
+  currentRatingText: { color: '#F7F8F3', fontSize: 11.5, fontWeight: '900' },
+  rateButton: { borderWidth: 1, borderColor: '#D7B45A', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  rateButtonText: { color: '#F5C341', fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
+  inlineRatingPicker: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingStarButton: { width: 31, height: 31, alignItems: 'center', justifyContent: 'center' },
+  ratingPickerStar: { color: '#46524C', fontSize: 25, lineHeight: 28 },
+  ratingPickerStarSelected: { color: '#F5C341' },
   heroStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
   statusPillEarned: { backgroundColor: '#7EDB80' },
@@ -577,9 +711,21 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#F5C341' },
   sectionCard: { backgroundColor: '#111A17', borderWidth: 1, borderColor: '#29342F', borderRadius: 18, padding: 15, gap: 12 },
   cardHeadingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  headingCopy: { flex: 1 },
   cardEyebrow: { color: '#67CFC8', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   cardTitle: { color: '#F7F8F3', fontSize: 16, lineHeight: 20, fontWeight: '900', marginTop: 3 },
   actionText: { color: '#F5C341', fontSize: 9.5, fontWeight: '900', letterSpacing: 0.55, paddingTop: 2 },
+  memoryEditor: { gap: 8 },
+  fieldLabel: { color: '#A8B3AC', fontSize: 10.5, fontWeight: '900', marginTop: 2 },
+  input: { backgroundColor: '#0D1512', borderWidth: 1, borderColor: '#33423B', borderRadius: 12, color: '#F7F8F3', paddingHorizontal: 12, paddingVertical: 11, fontSize: 13.5 },
+  memoryInput: { minHeight: 110, textAlignVertical: 'top' },
+  visibilityRow: { flexDirection: 'row', gap: 8 },
+  visibilityChoice: { flex: 1, minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: '#3B4942', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  visibilityChoiceActive: { backgroundColor: '#F5C341', borderColor: '#F5C341' },
+  visibilityChoiceText: { color: '#A0ACA5', fontSize: 11, fontWeight: '900' },
+  visibilityChoiceTextActive: { color: '#17211C' },
+  saveMemoryButton: { minHeight: 44, borderRadius: 12, backgroundColor: '#F5C341', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  saveMemoryButtonText: { color: '#17211C', fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
   memoryQuote: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
   quoteMark: { color: '#F5C341', fontSize: 35, lineHeight: 31, fontWeight: '900' },
   highlight: { flex: 1, color: '#F7F8F3', fontSize: 17, lineHeight: 23, fontWeight: '900' },
@@ -587,7 +733,8 @@ const styles = StyleSheet.create({
   privateLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 3 },
   privateLineText: { color: '#829088', fontSize: 10.5, fontWeight: '700' },
   peopleRow: { gap: 13, paddingRight: 4 },
-  personCard: { width: 82, alignItems: 'center', gap: 5 },
+  personCard: { width: 92, alignItems: 'center', gap: 6 },
+  personProfile: { width: '100%', alignItems: 'center', gap: 5 },
   avatarWrap: { width: 58, height: 58, position: 'relative' },
   avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#1C2822', borderWidth: 1, borderColor: '#D7B45A' },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -596,6 +743,11 @@ const styles = StyleSheet.create({
   personName: { color: '#F7F8F3', width: '100%', textAlign: 'center', fontSize: 11.5, fontWeight: '900' },
   personMeta: { color: '#8B9790', width: '100%', textAlign: 'center', fontSize: 9.5, lineHeight: 12 },
   personMetaConnected: { color: '#67CFC8' },
+  connectedLabel: { color: '#67CFC8', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.45 },
+  connectButton: { minWidth: 64, minHeight: 27, borderRadius: 999, backgroundColor: '#F5C341', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
+  connectButtonRequested: { backgroundColor: '#24312B' },
+  connectButtonText: { color: '#17211C', fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
+  connectButtonTextRequested: { color: '#8FD4C7' },
   inlineEmpty: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 5 },
   inlineEmptyCopy: { flex: 1, gap: 4 },
   emptyTitle: { color: '#F7F8F3', fontSize: 14, lineHeight: 18, fontWeight: '900' },
@@ -608,13 +760,6 @@ const styles = StyleSheet.create({
   addPhotoTile: { width: 118, height: 118, borderRadius: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#48564F', alignItems: 'center', justifyContent: 'center', gap: 6 },
   addPhotoTileText: { color: '#B7C1BB', fontSize: 11, fontWeight: '800' },
   photoEmpty: { minHeight: 112, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#34423B', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 5 },
-  linkRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#25312C', paddingTop: 10 },
-  linkIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#18241F', alignItems: 'center', justifyContent: 'center' },
-  linkCopy: { flex: 1, gap: 2 },
-  linkTitle: { color: '#F7F8F3', fontSize: 13.5, fontWeight: '900' },
-  linkBody: { color: '#8E9A93', fontSize: 11.5, lineHeight: 16 },
-  adventureButton: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: '#D7B45A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 15 },
-  adventureButtonText: { flex: 1, color: '#F5C341', textAlign: 'center', fontSize: 13.5, fontWeight: '900' },
   eventPhotoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   eventPhotoCard: { width: '31.6%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#18231E' },
   eventPhoto: { width: '100%', aspectRatio: 1, backgroundColor: '#1A2520' },
@@ -637,6 +782,7 @@ const styles = StyleSheet.create({
   lockedCopy: { flex: 1, gap: 5 },
   primaryButton: { minHeight: 50, borderRadius: 15, backgroundColor: '#F5C341', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   primaryButtonText: { color: '#17211C', fontSize: 14, fontWeight: '900' },
+  disabled: { opacity: 0.5 },
   pressed: { opacity: 0.72 },
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
   missingTitle: { color: '#F7F8F3', fontSize: 22, fontWeight: '900' },
