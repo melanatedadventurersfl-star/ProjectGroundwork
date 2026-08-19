@@ -161,6 +161,13 @@ export default function AdminProfileScreen() {
               </View>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
+            <Pressable style={[styles.row, styles.divider]} onPress={() => router.push('/onboarding-v2' as never)}>
+              <View style={styles.rowCopy}>
+                <Text style={styles.rowTitle}>Replay First-Run Onboarding</Text>
+                <Text style={styles.rowSubtitle}>Test the complete onboarding flow from this admin account. Your onboarding-complete status stays intact.</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
           </View>
         </View>
 
