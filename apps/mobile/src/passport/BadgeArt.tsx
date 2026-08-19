@@ -54,7 +54,7 @@ const badgeAssets: Record<BadgeArtName, ImageSourcePropType> = {
   'Adventure Companion': require('../../assets/badges/community/adventure_companion.png'),
   'Community Builder': require('../../assets/badges/community/community_builder.png'),
   'Trusted Host': require('../../assets/badges/community/trusted_host.png'),
-  'Trail Guide': require('../../assets/badges/community/trail_guide.png'),
+  'Trail Guide': require('../../assets/badges/community/trail_guide.jpg'),
   'Founding Member': require('../../assets/badges/community/founding_member.png'),
 };
 
