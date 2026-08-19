@@ -5,15 +5,9 @@ import { ActivityIndicator, Alert, Image, Pressable, SafeAreaView, ScrollView, S
 
 import { uploadVerifiedAppImage } from '../src/lib/appMedia';
 import { publishAppMedia } from '../src/lib/appMediaManifest';
+import { prepareLocalImage } from '../src/lib/imageUpload';
 
 const PATHFINDER_MEDIA_KEY = 'trailhead.pathfinder.clear.afternoon';
-
-type AllowedContentType = 'image/jpeg' | 'image/png' | 'image/webp';
-
-function normalizeContentType(value?: string | null): AllowedContentType {
-  if (value === 'image/png' || value === 'image/webp') return value;
-  return 'image/jpeg';
-}
 
 export default function AdminMediaScreen() {
   const [busy, setBusy] = useState(false);
@@ -32,8 +26,10 @@ export default function AdminMediaScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 1,
+        base64: true,
+        quality: 0.88,
       });
 
       if (result.canceled || !result.assets[0]) {
@@ -43,29 +39,21 @@ export default function AdminMediaScreen() {
 
       const asset = result.assets[0];
       setPreviewUri(asset.uri);
-      setStatus('Reading image bytes…');
+      setStatus('Preparing image safely…');
 
-      const response = await fetch(asset.uri);
-      if (!response.ok && response.status !== 0) {
-        throw new Error(`Could not read selected image (${response.status}).`);
-      }
+      const prepared = await prepareLocalImage({ uri: asset.uri, base64: asset.base64 });
+      const bytes = new Uint8Array(prepared.bytes);
+      const objectPath = `trailhead/pathfinder-clear-afternoon-${Date.now()}.${prepared.extension}`;
 
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!bytes.byteLength) throw new Error('Selected image is empty.');
-
-      const contentType = normalizeContentType(asset.mimeType);
-      const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
-      const objectPath = `trailhead/pathfinder-clear-afternoon-${Date.now()}.${extension}`;
-
-      setStatus(`Uploading and verifying ${bytes.byteLength.toLocaleString()} bytes…`);
-      await uploadVerifiedAppImage({ path: objectPath, bytes, contentType });
+      setStatus(`Uploading and verifying ${prepared.byteLength.toLocaleString()} bytes…`);
+      await uploadVerifiedAppImage({ path: objectPath, bytes, contentType: prepared.contentType });
 
       setStatus('Publishing verified image…');
       const publicUrl = await publishAppMedia({
         mediaKey: PATHFINDER_MEDIA_KEY,
         objectPath,
-        contentType,
-        byteSize: bytes.byteLength,
+        contentType: prepared.contentType,
+        byteSize: prepared.byteLength,
       });
 
       setStatus('Published. The Trailhead will pick it up automatically.');
@@ -88,7 +76,7 @@ export default function AdminMediaScreen() {
           </Pressable>
           <Text style={styles.eyebrow}>APP MEDIA</Text>
           <Text style={styles.title}>Trailhead Background</Text>
-          <Text style={styles.copy}>Uploads go directly to Supabase Storage, are downloaded again, and must match byte-for-byte before they can become live.</Text>
+          <Text style={styles.copy}>Uploads are normalized by the picker, validated from their actual bytes, uploaded to Supabase Storage, downloaded again, and must match byte-for-byte before becoming live.</Text>
         </View>
 
         <View style={styles.preview}>
