@@ -1,10 +1,11 @@
-import * as Linking from 'expo-linking';
 import { Link } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
+
+const PASSWORD_RESET_REDIRECT = 'melanatedadventurers://reset-password';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -16,8 +17,9 @@ export default function ForgotPasswordScreen() {
 
     setIsSubmitting(true);
     try {
-      const redirectTo = Linking.createURL('/reset-password');
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: PASSWORD_RESET_REDIRECT,
+      });
       if (error) throw error;
 
       Alert.alert(
