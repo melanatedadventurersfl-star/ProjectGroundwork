@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, uploadProfilePhoto } from '../../src/member/api';
@@ -13,7 +13,19 @@ import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
-const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','MS','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const states=[
+ {code:'AL',name:'Alabama'},{code:'AK',name:'Alaska'},{code:'AZ',name:'Arizona'},{code:'AR',name:'Arkansas'},{code:'CA',name:'California'},
+ {code:'CO',name:'Colorado'},{code:'CT',name:'Connecticut'},{code:'DE',name:'Delaware'},{code:'FL',name:'Florida'},{code:'GA',name:'Georgia'},
+ {code:'HI',name:'Hawaii'},{code:'ID',name:'Idaho'},{code:'IL',name:'Illinois'},{code:'IN',name:'Indiana'},{code:'IA',name:'Iowa'},
+ {code:'KS',name:'Kansas'},{code:'KY',name:'Kentucky'},{code:'LA',name:'Louisiana'},{code:'ME',name:'Maine'},{code:'MD',name:'Maryland'},
+ {code:'MA',name:'Massachusetts'},{code:'MI',name:'Michigan'},{code:'MN',name:'Minnesota'},{code:'MS',name:'Mississippi'},{code:'MO',name:'Missouri'},
+ {code:'MT',name:'Montana'},{code:'NE',name:'Nebraska'},{code:'NV',name:'Nevada'},{code:'NH',name:'New Hampshire'},{code:'NJ',name:'New Jersey'},
+ {code:'NM',name:'New Mexico'},{code:'NY',name:'New York'},{code:'NC',name:'North Carolina'},{code:'ND',name:'North Dakota'},{code:'OH',name:'Ohio'},
+ {code:'OK',name:'Oklahoma'},{code:'OR',name:'Oregon'},{code:'PA',name:'Pennsylvania'},{code:'RI',name:'Rhode Island'},{code:'SC',name:'South Carolina'},
+ {code:'SD',name:'South Dakota'},{code:'TN',name:'Tennessee'},{code:'TX',name:'Texas'},{code:'UT',name:'Utah'},{code:'VT',name:'Vermont'},
+ {code:'VA',name:'Virginia'},{code:'WA',name:'Washington'},{code:'WV',name:'West Virginia'},{code:'WI',name:'Wisconsin'},{code:'WY',name:'Wyoming'},
+] as const;
+
 type ProfileTab='journey'|'posts'|'photos'|'about';
 
 function formatDate(value?:string|null){
@@ -51,6 +63,7 @@ function Avatar({url,name,size=76}:{url?:string|null;name?:string|null;size?:num
 
 export default function ProfileScreen(){
  const params=useLocalSearchParams<{edit?:string}>();
+ const editScrollRef=useRef<ScrollView>(null);
  const [editing,setEditing]=useState(params.edit==='1');
  const [tab,setTab]=useState<ProfileTab>('journey');
  const [data,setData]=useState<any>(null);
@@ -69,6 +82,8 @@ export default function ProfileScreen(){
  const [city,setCity]=useState('');
  const [query,setQuery]=useState('');
  const [suggestions,setSuggestions]=useState<WeatherLocationSuggestion[]>([]);
+ const [citySearching,setCitySearching]=useState(false);
+ const selectedState=states.find(item=>item.code===state)??states[8];
 
  async function load(){
   setLoading(true);
@@ -82,10 +97,23 @@ export default function ProfileScreen(){
  }
  useEffect(()=>{void load()},[]);
  useEffect(()=>{
-  if(!editing||query.trim().length<2||query===city){setSuggestions([]);return}
-  const timer=setTimeout(()=>{void searchWeatherLocations(`${query}, ${state}`).then(rows=>setSuggestions(rows.filter(row=>row.country==='United States').slice(0,6))).catch(()=>setSuggestions([]))},350);
-  return()=>clearTimeout(timer)
- },[editing,query,state,city]);
+  if(!editing||query.trim().length<2||query===city){setSuggestions([]);setCitySearching(false);return}
+  let active=true;
+  setCitySearching(true);
+  const timer=setTimeout(()=>{
+   void searchWeatherLocations(`${query.trim()}, ${selectedState.name}`)
+    .then(rows=>{
+     if(!active)return;
+     const inState=rows.filter(row=>row.country==='United States'&&row.region.toLowerCase()===selectedState.name.toLowerCase());
+     const next=(inState.length?inState:rows.filter(row=>row.country==='United States')).slice(0,6);
+     setSuggestions(next);
+     setTimeout(()=>editScrollRef.current?.scrollToEnd({animated:true}),80);
+    })
+    .catch(()=>{if(active)setSuggestions([])})
+    .finally(()=>{if(active)setCitySearching(false)});
+  },300);
+  return()=>{active=false;clearTimeout(timer)}
+ },[editing,query,state,city,selectedState.name]);
 
  async function save(){
   setSaving(true);setMessage('');
@@ -141,7 +169,7 @@ export default function ProfileScreen(){
    <Pressable onPress={()=>setEditing(false)} style={styles.editBack}><AppIcon name="chevron-forward" color="#F5C341" size={24} style={{transform:[{rotate:'180deg'}]}}/><Text style={styles.editBackText}>Profile</Text></Pressable>
    <Pressable disabled={saving||!name.trim()||!city} onPress={()=>void save()} style={[styles.saveTopButton,(saving||!name.trim()||!city)&&styles.disabled]}><Text style={styles.saveTopButtonText}>{saving?'Saving…':'Save'}</Text></Pressable>
   </View>
-  <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled">
+  <ScrollView ref={editScrollRef} contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
    {message?<Text style={styles.message}>{message}</Text>:null}
    <View style={styles.photoEditor}>
     <Pressable onPress={photoMenu} disabled={photoBusy} style={styles.photoPressable}>
@@ -156,15 +184,22 @@ export default function ProfileScreen(){
     <Text style={styles.cardTitle}>Home location</Text>
     <Text style={styles.muted}>Choose your state, then select a verified city.</Text>
     <Text style={styles.label}>STATE</Text>
-    <Pressable style={styles.dropdownControl} onPress={()=>setStateOpen(open=>!open)}>
-     <Text style={styles.dropdownValue}>{state}</Text>
+    <Pressable style={styles.dropdownControl} onPress={()=>{Keyboard.dismiss();setStateOpen(open=>!open);setTimeout(()=>editScrollRef.current?.scrollToEnd({animated:true}),80)}}>
+     <Text style={styles.dropdownValue}>{selectedState.name} ({state})</Text>
      <AppIcon name="chevron-forward" color="#D7B45A" size={18} style={{transform:[{rotate:stateOpen?'270deg':'90deg'}]}}/>
     </Pressable>
-    {stateOpen?<View style={styles.stateDropdown}>{states.map(code=><Pressable key={code} onPress={()=>{setState(code);setCity('');setQuery('');setStateOpen(false)}} style={[styles.stateOption,state===code&&styles.stateOptionActive]}><Text style={[styles.stateOptionText,state===code&&styles.stateOptionTextActive]}>{code}</Text>{state===code?<AppIcon name="checkmark" color="#17211C" size={16}/>:null}</Pressable>)}</View>:null}
+    {stateOpen?<ScrollView style={styles.stateDropdown} contentContainerStyle={styles.stateDropdownContent} nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+     {states.map(item=><Pressable key={item.code} onPress={()=>{setState(item.code);setCity('');setQuery('');setSuggestions([]);setStateOpen(false)}} style={[styles.stateOption,state===item.code&&styles.stateOptionActive]}>
+      <Text style={[styles.stateOptionText,state===item.code&&styles.stateOptionTextActive]}>{item.name}</Text>
+      <View style={styles.stateCodeRow}><Text style={[styles.stateCode,state===item.code&&styles.stateOptionTextActive]}>{item.code}</Text>{state===item.code?<AppIcon name="checkmark" color="#17211C" size={16}/>:null}</View>
+     </Pressable>)}
+    </ScrollView>:null}
     <Text style={styles.label}>CITY</Text>
-    <TextInput value={query} onChangeText={value=>{setQuery(value);if(value!==city)setCity('')}} placeholder={`Search cities in ${state}`} placeholderTextColor="#66746B" style={styles.input}/>
-    {suggestions.map(item=><Pressable key={`${item.id}-${item.name}`} style={styles.suggestion} onPress={()=>{setCity(item.name);setQuery(item.name);setSuggestions([])}}><Text style={styles.suggestionTitle}>{item.name}</Text><Text style={styles.muted}>{item.region}</Text></Pressable>)}
-    {city?<Text style={styles.gold}>Selected: {city}, {state}</Text>:<Text style={styles.muted}>Select a city result before saving.</Text>}
+    <TextInput value={query} onFocus={()=>{setStateOpen(false);setTimeout(()=>editScrollRef.current?.scrollToEnd({animated:true}),160)}} onChangeText={value=>{setQuery(value);if(value!==city)setCity('')}} placeholder={`Search cities in ${selectedState.name}`} placeholderTextColor="#66746B" style={styles.input} autoCorrect={false}/>
+    {citySearching?<View style={styles.citySearchStatus}><ActivityIndicator size="small" color="#D7B45A"/><Text style={styles.muted}>Finding cities…</Text></View>:null}
+    {suggestions.length?<View style={styles.suggestionList}>{suggestions.map(item=><Pressable key={`${item.id}-${item.name}`} style={styles.suggestion} onPress={()=>{setCity(item.name);setQuery(item.name);setSuggestions([]);Keyboard.dismiss()}}><View><Text style={styles.suggestionTitle}>{item.name}</Text><Text style={styles.muted}>{item.region}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={18}/></Pressable>)}</View>:null}
+    {!citySearching&&query.trim().length>=2&&!city&&!suggestions.length?<Text style={styles.muted}>No matching city yet. Keep typing or check the selected state.</Text>:null}
+    {city?<Text style={styles.gold}>Selected: {city}, {state}</Text>:<Text style={styles.muted}>Tap a city result to confirm it before saving.</Text>}
    </View>
   </ScrollView>
  </SafeAreaView>;
@@ -231,7 +266,7 @@ export default function ProfileScreen(){
 }
 
 const styles=StyleSheet.create({
- safe:{flex:1,backgroundColor:'#09110F'},center:{flex:1,backgroundColor:'#09110F',alignItems:'center',justifyContent:'center'},content:{paddingHorizontal:18,paddingTop:8,paddingBottom:72,gap:15},editContent:{padding:20,paddingBottom:60,gap:14},
+ safe:{flex:1,backgroundColor:'#09110F'},center:{flex:1,backgroundColor:'#09110F',alignItems:'center',justifyContent:'center'},content:{paddingHorizontal:18,paddingTop:8,paddingBottom:72,gap:15},editContent:{padding:20,paddingBottom:160,gap:14},
  topBar:{minHeight:38,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},editPill:{flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'#171D1B',borderWidth:1,borderColor:'#252E2A',borderRadius:999,paddingHorizontal:11,paddingVertical:7,minWidth:64,justifyContent:'center'},editPillText:{color:'#F5C341',fontWeight:'800',fontSize:13},editTopBar:{minHeight:54,flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:20,borderBottomWidth:1,borderBottomColor:'#24302B',backgroundColor:'#09110F'},editBack:{flexDirection:'row',alignItems:'center',alignSelf:'flex-start'},editBackText:{color:'#F5C341',fontWeight:'800'},saveTopButton:{minWidth:72,minHeight:36,borderRadius:999,paddingHorizontal:16,alignItems:'center',justifyContent:'center',backgroundColor:'#D7B45A'},saveTopButtonText:{color:'#17211C',fontSize:13,fontWeight:'900'},
  profileHeaderCard:{backgroundColor:'#111A17',borderWidth:1,borderColor:'#27332F',borderRadius:22,padding:16},identityRankRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},identityCluster:{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:10},avatarWrap:{width:68,height:68,position:'relative',flexShrink:0},mainCameraBadge:{position:'absolute',right:-1,bottom:1,width:23,height:23,borderRadius:12,backgroundColor:'#F5C341',borderWidth:2,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},heroCopy:{flex:1,minWidth:0,gap:2},name:{fontSize:25,fontWeight:'900',lineHeight:28,color:'#F7F8F3',letterSpacing:-.45,flexShrink:1},handle:{color:'#F5C341',fontSize:14.5,fontWeight:'800',flexShrink:1},locationRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:2,minWidth:0},location:{color:'#AEB9B4',fontSize:13,flexShrink:1},rankIdentity:{width:104,flexShrink:0,alignItems:'center',justifyContent:'center',paddingLeft:9,borderLeftWidth:1,borderLeftColor:'rgba(93,113,103,.26)'},rankCompact:{width:'100%',color:'#F7F8F3',fontSize:11,fontWeight:'900',letterSpacing:.2,marginTop:3,textAlign:'center'},rankCount:{color:'#6FD3CF',fontSize:11,fontWeight:'800',marginTop:1},bioText:{color:'#D4DBD7',fontSize:14.5,lineHeight:20,marginTop:11},
  progressTrack:{height:7,borderRadius:99,backgroundColor:'#194B4B',overflow:'hidden',marginTop:10},progressFill:{height:'100%',backgroundColor:'#F5C341',borderRadius:99},progressText:{color:'#80CDC9',fontSize:11.5,marginTop:6},progressNumber:{color:'#F5C341',fontWeight:'900'},progressNext:{color:'#F5C341',fontWeight:'900'},
@@ -241,5 +276,5 @@ const styles=StyleSheet.create({
  sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:1},sectionTitle:{color:'#F7F8F3',fontSize:21,fontWeight:'900'},sectionLink:{color:'#67CFC8',fontSize:12.5,fontWeight:'800'},favoritesRow:{gap:10,paddingRight:8},favoriteCard:{width:138,minHeight:190,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#29342F',padding:10,alignItems:'center'},collectionCardPressed:{opacity:.62},favoriteArt:{width:'100%',height:118,alignItems:'center',justifyContent:'center'},featuredStampImage:{width:'100%',height:'100%'},favoriteTitle:{color:'#F7F8F3',fontWeight:'900',fontSize:12.5,lineHeight:16,textAlign:'center',marginTop:3},favoriteMeta:{color:'#60C9C3',fontSize:9.5,marginTop:4,textAlign:'center'},genericBadge:{width:64,height:64,borderRadius:32,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},
  timeline:{gap:0},timelineRow:{flexDirection:'row'},timelineRail:{width:45,alignItems:'center'},completeDot:{width:32,height:32,borderRadius:16,alignItems:'center',justifyContent:'center',zIndex:2},timelineLine:{width:2,backgroundColor:'#39473F',flex:1,minHeight:82},journeyCard:{flex:1,minHeight:100,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28332F',marginBottom:10,padding:12,flexDirection:'row',alignItems:'center',gap:11},journeyBadge:{width:44,height:44,borderRadius:12,backgroundColor:'#16302A',alignItems:'center',justifyContent:'center'},journeyCopy:{flex:1},journeyTitle:{color:'#F7F8F3',fontSize:15.5,fontWeight:'900'},journeyMeta:{color:'#AAB6B0',fontSize:12.5,marginTop:3},journeyStatusRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:7},journeyStatus:{color:'#67CFC8',fontSize:11.5,fontWeight:'800'},journeyDot:{color:'#67CFC8',fontSize:12},
  card:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16,gap:10},cardTitle:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},empty:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16},emptyInner:{backgroundColor:'#0C1411',borderRadius:14,padding:15,marginTop:4},emptyTitle:{color:'#F7F8F3',fontWeight:'900'},muted:{color:'#96A39B',lineHeight:20},body:{color:'#C8D0CB',lineHeight:22},
- editTitle:{fontSize:27,fontWeight:'900',color:'#FFF8E8'},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},gold:{color:'#D7B45A',fontWeight:'800',marginTop:2},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},dropdownControl:{minHeight:46,borderRadius:12,borderWidth:1,borderColor:'#314039',backgroundColor:'#101813',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},dropdownValue:{color:'#FFF8E8',fontSize:15,fontWeight:'800'},stateDropdown:{flexDirection:'row',flexWrap:'wrap',gap:7,backgroundColor:'#0D1512',borderWidth:1,borderColor:'#314039',borderRadius:12,padding:9},stateOption:{width:'18%',minWidth:48,minHeight:38,borderRadius:10,borderWidth:1,borderColor:'#435148',alignItems:'center',justifyContent:'center',flexDirection:'row',gap:3},stateOptionActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},stateOptionText:{color:'#C6CEC8',fontWeight:'800',fontSize:12},stateOptionTextActive:{color:'#17211C'},suggestion:{paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},suggestionTitle:{color:'#FFF8E8',fontWeight:'800'},disabled:{opacity:.45},message:{color:'#E4D7B0',textAlign:'center'},listRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},listTitle:{color:'#FFF8E8',fontWeight:'800'},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{color:'#F0D083',backgroundColor:'#26372D',borderRadius:999,paddingHorizontal:10,paddingVertical:6,fontSize:12,fontWeight:'700'}
+ editTitle:{fontSize:27,fontWeight:'900',color:'#FFF8E8'},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},gold:{color:'#D7B45A',fontWeight:'800',marginTop:2},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},dropdownControl:{minHeight:46,borderRadius:12,borderWidth:1,borderColor:'#314039',backgroundColor:'#101813',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},dropdownValue:{color:'#FFF8E8',fontSize:15,fontWeight:'800'},stateDropdown:{maxHeight:260,backgroundColor:'#0D1512',borderWidth:1,borderColor:'#314039',borderRadius:12},stateDropdownContent:{padding:6},stateOption:{minHeight:46,borderRadius:10,paddingHorizontal:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},stateOptionActive:{backgroundColor:'#D7B45A'},stateOptionText:{color:'#D7DED9',fontWeight:'800',fontSize:14},stateOptionTextActive:{color:'#17211C'},stateCodeRow:{flexDirection:'row',alignItems:'center',gap:6},stateCode:{color:'#839088',fontWeight:'900',fontSize:12},citySearchStatus:{flexDirection:'row',alignItems:'center',gap:8,paddingVertical:4},suggestionList:{borderWidth:1,borderColor:'#314039',borderRadius:12,overflow:'hidden',backgroundColor:'#0D1512'},suggestion:{minHeight:58,paddingHorizontal:12,paddingVertical:9,borderBottomWidth:1,borderBottomColor:'#26332C',flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},suggestionTitle:{color:'#FFF8E8',fontWeight:'900'},disabled:{opacity:.45},message:{color:'#E4D7B0',textAlign:'center'},listRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},listTitle:{color:'#FFF8E8',fontWeight:'800'},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{color:'#F0D083',backgroundColor:'#26372D',borderRadius:999,paddingHorizontal:10,paddingVertical:6,fontSize:12,fontWeight:'700'}
 });
