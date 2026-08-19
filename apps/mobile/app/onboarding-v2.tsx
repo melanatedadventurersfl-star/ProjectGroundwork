@@ -1,7 +1,7 @@
+import Ionicons from '@react-native-vector-icons/ionicons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
-import Ionicons from '@react-native-vector-icons/ionicons';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../src/auth/AuthProvider';
+import { getGroups, joinGroup, type CommunityGroup } from '../src/community/api';
 import { supabase } from '../src/lib/supabase';
 import { getStateOption, loadCitiesForState, US_STATES } from '../src/onboarding/locations';
 import { completeOnboarding, loadOnboardingProfile } from '../src/onboarding/onboardingService';
@@ -40,7 +41,7 @@ const CARD_ALT = '#18231D';
 const BORDER = '#2A3730';
 const TEXT = '#FFF8E8';
 const MUTED = '#9AA59E';
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 11;
 
 const EXPERIENCE_COPY: Record<ExperienceLevel, string> = {
   new: 'Just getting started',
@@ -57,6 +58,7 @@ const STEP_META = [
   ['COMMUNITY', 'Your people are already here.', 'See a live glimpse of members around your area before you ever reach the feed.'],
   ['PROFILE', 'How should people know you?', 'Give the community a name to call you and enough context to make your profile feel human.'],
   ['YOUR CIRCLE', 'Start with a few Trailmates.', 'Connection requests are optional. We recommend people based on location and the community directory.'],
+  ['COMMUNITIES', 'Pick a few campfires.', 'Join communities that match your interests so your Campfire has useful conversations from day one.'],
   ['INVITES', 'Outside is better with your people.', 'Every member starts with unique invites. Bring someone along now or come back to this later.'],
   ['STAY IN THE LOOP', 'Do not miss the plan.', 'Choose what matters. We keep notification choices useful instead of turning every tap into a buzz.'],
   ['READY', 'You are in. Let us get outside.', 'Your Home experience is ready with your interests, nearby discovery, and community context.'],
@@ -92,6 +94,22 @@ function Avatar({ person, size = 48 }: { person: CommunitySuggestion; size?: num
   );
 }
 
+function rankGroups(groups: CommunityGroup[], interests: string[], city: string, state: string) {
+  const needles = interests.map((value) => value.toLowerCase());
+  return [...groups]
+    .sort((a, b) => {
+      const score = (group: CommunityGroup) => {
+        const haystack = `${group.name} ${group.description ?? ''}`.toLowerCase();
+        const interestScore = needles.reduce((total, needle) => total + (haystack.includes(needle) ? 4 : 0), 0);
+        const locationScore = (group.state === state ? 2 : 0) + (group.city?.toLowerCase() === city.toLowerCase() ? 3 : 0);
+        const curatedScore = group.kind === 'interest' ? 2 : group.kind === 'local' ? 1 : 0;
+        return interestScore + locationScore + curatedScore + Math.min(group.member_count, 20) / 20;
+      };
+      return score(b) - score(a);
+    })
+    .slice(0, 6);
+}
+
 export default function OnboardingV2Screen() {
   const { session } = useAuth();
   const [step, setStep] = useState(1);
@@ -110,6 +128,9 @@ export default function OnboardingV2Screen() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [connectionSentIds, setConnectionSentIds] = useState<Set<string>>(new Set());
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [groupSuggestions, setGroupSuggestions] = useState<CommunityGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupBusyId, setGroupBusyId] = useState<string | null>(null);
   const [inviteCount, setInviteCount] = useState(0);
   const [openInvitesAfterFinish, setOpenInvitesAfterFinish] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<string | null>(null);
@@ -235,6 +256,23 @@ export default function OnboardingV2Screen() {
     };
   }, [form.homeState, session?.user.id, step]);
 
+  useEffect(() => {
+    if (step < 8) return;
+    let active = true;
+    setGroupsLoading(true);
+    void getGroups()
+      .then((groups) => {
+        if (active) setGroupSuggestions(rankGroups(groups, form.interests, form.homeCity, form.homeState));
+      })
+      .catch((error) => console.warn('[onboarding] Unable to load group suggestions', error instanceof Error ? error.message : error))
+      .finally(() => {
+        if (active) setGroupsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.homeCity, form.homeState, form.interests, step]);
+
   const update = <K extends keyof OnboardingForm>(key: K, value: OnboardingForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
@@ -322,8 +360,32 @@ export default function OnboardingV2Screen() {
     }
   }
 
+  async function joinSuggestedGroup(group: CommunityGroup) {
+    if (group.is_member || groupBusyId) return;
+    setGroupBusyId(group.id);
+    try {
+      await joinGroup(group.id);
+      setGroupSuggestions((current) => current.map((item) => (
+        item.id === group.id ? { ...item, is_member: true, member_count: item.member_count + 1 } : item
+      )));
+    } catch (error) {
+      Alert.alert('Unable to join group', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setGroupBusyId(null);
+    }
+  }
+
   async function requestNotificationPermission() {
     try {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('general', {
+          name: 'General',
+          importance: Notifications.AndroidImportance.HIGH,
+          sound: 'default',
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: GOLD,
+        });
+      }
       const permission = await Notifications.requestPermissionsAsync();
       setNotificationPermission(permission.status);
       update('pushEnabled', permission.status === 'granted');
@@ -400,6 +462,7 @@ export default function OnboardingV2Screen() {
   const meta = STEP_META[step - 1]!;
   const locationLabel = [form.homeCity, form.homeState].filter(Boolean).join(', ');
   const selectedExperience = EXPERIENCE_COPY[form.experienceLevel];
+  const joinedGroupCount = groupSuggestions.filter((group) => group.is_member).length;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -699,6 +762,40 @@ export default function OnboardingV2Screen() {
 
           {step === 8 ? (
             <View style={styles.stack}>
+              <Text style={styles.microLabel}>RECOMMENDED FOR YOUR OUTSIDE</Text>
+              {groupsLoading ? <ActivityIndicator color={GOLD} /> : null}
+              {groupSuggestions.map((group) => (
+                <View key={group.id} style={styles.groupCard}>
+                  <View style={styles.groupIcon}>
+                    <Ionicons name={group.kind === 'local' ? 'location-outline' : group.kind === 'adventure' ? 'trail-sign-outline' : 'people-outline'} size={22} color={GOLD} />
+                  </View>
+                  <View style={styles.flex}>
+                    <Text style={styles.personName}>{group.name}</Text>
+                    <Text style={styles.personMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'} · {group.kind === 'interest' ? 'Curated group' : group.kind}</Text>
+                    {group.description ? <Text style={styles.groupDescription} numberOfLines={2}>{group.description}</Text> : null}
+                  </View>
+                  <Pressable
+                    disabled={group.is_member || groupBusyId === group.id}
+                    style={[styles.connectButton, group.is_member && styles.connectButtonSent]}
+                    onPress={() => void joinSuggestedGroup(group)}
+                  >
+                    <Text style={[styles.connectButtonText, group.is_member && styles.connectButtonTextSent]}>
+                      {group.is_member ? 'Joined ✓' : groupBusyId === group.id ? 'Joining…' : 'Join'}
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+              {!groupsLoading && !groupSuggestions.length ? (
+                <View style={styles.infoCard}>
+                  <Text style={styles.cardTitle}>Campfires are still taking shape.</Text>
+                  <Text style={styles.cardCopy}>You can continue now. New curated groups will appear in Melanated as they become available.</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {step === 9 ? (
+            <View style={styles.stack}>
               <View style={styles.inviteHero}>
                 <Image source={require('../assets/ma-pathfinder-mark.png')} style={styles.inviteLogo} resizeMode="contain" />
                 <Text style={styles.inviteCount}>{inviteCount}</Text>
@@ -719,7 +816,7 @@ export default function OnboardingV2Screen() {
             </View>
           ) : null}
 
-          {step === 9 ? (
+          {step === 10 ? (
             <View style={styles.stack}>
               <View style={styles.notificationCard}>
                 {[
@@ -741,14 +838,14 @@ export default function OnboardingV2Screen() {
                   <Text style={styles.preferenceTitle}>Push notifications</Text>
                   <Text style={styles.helper}>Messages, adventure changes, invites, and relevant community activity.</Text>
                 </View>
-                <Switch value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} trackColor={{ true: '#6D7B3D' }} />
+                <Switch value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} trackColor={{ false: '#344139', true: '#6D7B3D' }} />
               </View>
               <View style={styles.preferenceRow}>
                 <View style={styles.flex}>
                   <Text style={styles.preferenceTitle}>Email updates</Text>
                   <Text style={styles.helper}>Useful account and community updates without duplicating every push.</Text>
                 </View>
-                <Switch value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} trackColor={{ true: '#6D7B3D' }} />
+                <Switch value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} trackColor={{ false: '#344139', true: '#6D7B3D' }} />
               </View>
               <Pressable style={styles.primaryInline} onPress={() => void requestNotificationPermission()}>
                 <Text style={styles.primaryInlineText}>
@@ -758,7 +855,7 @@ export default function OnboardingV2Screen() {
             </View>
           ) : null}
 
-          {step === 10 ? (
+          {step === 11 ? (
             <View style={styles.stack}>
               <View style={styles.readyHero}>
                 <View style={styles.readyIcon}><Ionicons name="checkmark" size={34} color={BG} /></View>
@@ -770,6 +867,7 @@ export default function OnboardingV2Screen() {
                   [`${form.interests.length} interests selected`, selectedExperience],
                   ['Nearby discovery', locationLabel || 'Your selected home area'],
                   [`${connectionSentIds.size} Trailmate request${connectionSentIds.size === 1 ? '' : 's'} sent`, 'Completely optional'],
+                  [`${joinedGroupCount} campfire${joinedGroupCount === 1 ? '' : 's'} joined`, 'Your community feed starts with context'],
                   ['Invites', openInvitesAfterFinish ? 'Open after setup' : `${inviteCount} available later`],
                 ].map(([heading, copy]) => (
                   <View key={heading} style={styles.readyRow}>
@@ -889,6 +987,9 @@ const styles = StyleSheet.create({
   connectButtonSent: { backgroundColor: '#26322B' },
   connectButtonText: { color: BG, fontWeight: '900', fontSize: 11 },
   connectButtonTextSent: { color: '#B9C5BD' },
+  groupCard: { minHeight: 82, borderRadius: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  groupIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#202923', alignItems: 'center', justifyContent: 'center' },
+  groupDescription: { color: '#87948C', fontSize: 10.5, lineHeight: 15, marginTop: 4 },
   inviteHero: { backgroundColor: CARD, borderRadius: 22, borderWidth: 1, borderColor: BORDER, padding: 22, alignItems: 'center', gap: 7 },
   inviteLogo: { width: 70, height: 70, marginBottom: 6 },
   inviteCount: { color: GOLD, fontSize: 42, fontWeight: '900' },
