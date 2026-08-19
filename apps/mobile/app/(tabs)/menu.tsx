@@ -121,6 +121,10 @@ export default function MenuScreen() {
           <View style={styles.rowLead}><AppIcon name="profile" color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>Admin Profile</Text></View>
           <AppIcon name="chevron-forward" color="#D7B45A" size={20} />
         </Pressable>
+        <Pressable style={[styles.row,styles.divider]} onPress={()=>openMenuRoute('/onboarding-v2')}>
+          <View style={styles.rowLead}><AppIcon name="guide" color="#F6F4EE" size={21} /><View><Text style={styles.rowTitle}>Onboarding v2 Preview</Text><Text style={styles.creatorMeta}>ADMIN TEST ONLY</Text></View></View>
+          <AppIcon name="chevron-forward" color="#D7B45A" size={20} />
+        </Pressable>
         <Pressable style={[styles.row,styles.divider]} onPress={()=>openMenuRoute('/admin-media')}>
           <View style={styles.rowLead}><AppIcon name="guide" color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>App Media</Text></View>
           <AppIcon name="chevron-forward" color="#D7B45A" size={20} />
