@@ -30,6 +30,7 @@ export type AppIconName =
   | 'edit'
   | 'camera'
   | 'checkmark'
+  | 'search'
   | 'badge';
 
 const icons: Record<AppIconName, IoniconName> = {
@@ -58,6 +59,7 @@ const icons: Record<AppIconName, IoniconName> = {
   edit: 'pencil-outline',
   camera: 'camera-outline',
   checkmark: 'checkmark-circle',
+  search: 'search-outline',
   badge: 'medal-outline',
 };
 
