@@ -80,7 +80,9 @@ export default function AdminProfileScreen() {
   const displayName = profile?.display_name?.trim() || profile?.username?.trim() || 'Administrator';
   const initials = useMemo(() => {
     const parts = displayName.split(/\s+/).filter(Boolean);
-    return (parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : displayName.slice(0, 2)).toUpperCase();
+    const firstInitial = parts[0]?.[0] ?? '';
+    const lastInitial = parts.at(-1)?.[0] ?? '';
+    return (parts.length > 1 ? `${firstInitial}${lastInitial}` : displayName.slice(0, 2)).toUpperCase();
   }, [displayName]);
   const handle = profile?.username ? `@${profile.username.replace(/^@/, '')}` : session?.user.email ?? 'Melanated administrator';
   const location = [profile?.home_city, profile?.home_state].filter(Boolean).join(', ');
