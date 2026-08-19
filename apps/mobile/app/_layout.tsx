@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
+import { supabase } from '../src/lib/supabase';
 import { PersistentBottomNav } from '../src/navigation/PersistentBottomNav';
 import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
 import { PushNotificationsManager } from '../src/notifications/PushNotificationsManager';
@@ -69,6 +70,24 @@ function AppShell() {
     if (isLoading || session || isGuestPublicPath(pathname)) return;
     router.replace('/(auth)/sign-in' as never);
   }, [isLoading, pathname, session]);
+
+  useEffect(() => {
+    if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
+
+    let active = true;
+    void supabase.rpc('is_platform_admin').then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        console.warn('[onboarding-v2] Unable to verify preview handoff', error.message);
+        return;
+      }
+      if (data === true) router.replace('/onboarding-v2' as never);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isLoading, pathname, session?.user.id]);
 
   useEffect(() => {
     if (isLoading || !session || !isTrailhead || tutorialCheckedRef.current) return;
