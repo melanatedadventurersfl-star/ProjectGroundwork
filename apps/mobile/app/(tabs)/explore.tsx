@@ -1,10 +1,11 @@
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   ImageBackground,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -23,6 +24,7 @@ import { supabase } from '../../src/lib/supabase';
 
 type SortMode = 'soonest' | 'closest' | 'newest' | 'price';
 type Point = { latitude: number; longitude: number };
+type ExpandedSection = 'featured' | 'events' | 'popular' | null;
 
 const categories = ['Camping', 'Hiking', 'Water', 'Fishing', 'Cycling'];
 const categoryIcons: Record<string, string> = {
@@ -32,8 +34,9 @@ const categoryIcons: Record<string, string> = {
   Fishing: '◌',
   Cycling: '◉',
 };
-const quickTags = ['Upcoming', 'Family Friendly', 'Beginner Friendly', 'Weekend', 'Gear Provided', 'Accessible'];
-const radii = ['25', '50', '100', '250', 'Anywhere'];
+const quickTags = ['Weekend', 'Family Friendly', 'Beginner Friendly', 'Accessible'];
+const radii = ['25', '50', '100', 'Anywhere'];
+const DEFAULT_EVENT_IMAGE = require('../../assets/explore/default-event.jpg');
 
 function promptForAccount(destination: string) {
   Alert.alert('Sign in to continue', `${destination} is available to members. Sign in or create an account to continue.`, [
@@ -48,7 +51,6 @@ function inferredTags(value: { title: string; description?: string | null; categ
   const tags: string[] = [];
   if (/family|kid|children|all ages/.test(text)) tags.push('Family Friendly');
   if (/beginner|easy|intro|first[- ]timer/.test(text)) tags.push('Beginner Friendly');
-  if (/gear provided|equipment provided|gear included/.test(text)) tags.push('Gear Provided');
   if (/accessible|wheelchair|ada/.test(text)) tags.push('Accessible');
   return tags;
 }
@@ -61,34 +63,33 @@ function isWeekend(date: string) {
 function matchesQuickTags(item: { title: string; description?: string | null; category?: string | null; starts_at: string }, tags: string[]) {
   if (!tags.length) return true;
   const tagsForItem = inferredTags(item);
-  return tags.every((tag) => tag === 'Upcoming'
-    ? new Date(item.starts_at).getTime() >= Date.now()
-    : tag === 'Weekend'
-      ? isWeekend(item.starts_at)
-      : tagsForItem.includes(tag));
+  return tags.every((tag) => tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag));
 }
 
-function SectionHeader({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
+function SectionHeader({ title, expanded, onPress }: { title: string; expanded: boolean; onPress: () => void }) {
   return (
     <View style={s.sectionHeader}>
       <Text style={s.sectionTitle}>{title}</Text>
-      {action && onPress ? <Pressable onPress={onPress}><Text style={s.sectionAction}>{action}  ›</Text></Pressable> : null}
+      <Pressable onPress={onPress} hitSlop={8}>
+        <Text style={s.sectionAction}>{expanded ? 'Show less' : 'See all'}  ›</Text>
+      </Pressable>
     </View>
   );
 }
 
-function AdventureTile({ adventure, distance, onToggleSaved }: {
+function AdventureTile({ adventure, distance, onToggleSaved, wide = false }: {
   adventure: AdventureSummary;
   distance?: number | null;
   onToggleSaved: (adventure: AdventureSummary) => void;
+  wide?: boolean;
 }) {
   return (
     <Pressable
-      style={s.adventureTile}
+      style={[s.adventureTile, wide && s.adventureTileWide]}
       onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
     >
       {adventure.hero_image_url ? (
-        <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.tileImage} imageStyle={s.tileImageCorners}>
+        <ImageBackground source={{ uri: adventure.hero_image_url }} style={[s.tileImage, wide && s.tileImageWide]} imageStyle={s.tileImageCorners}>
           <View style={s.tileShade}>
             <View style={s.tileTopRow}>
               {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : <View />}
@@ -105,10 +106,10 @@ function AdventureTile({ adventure, distance, onToggleSaved }: {
           </View>
         </ImageBackground>
       ) : (
-        <View style={[s.tileImage, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>
+        <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>
       )}
       <View style={s.tileCopy}>
-        <Text style={s.tileTitle} numberOfLines={1}>{adventure.title}</Text>
+        <Text style={s.tileTitle} numberOfLines={wide ? 2 : 1}>{adventure.title}</Text>
         <Text style={s.tileMeta} numberOfLines={1}>{adventure.category} · {adventure.city}, {adventure.state}</Text>
         <Text style={s.tileDate}>{new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
       </View>
@@ -116,11 +117,13 @@ function AdventureTile({ adventure, distance, onToggleSaved }: {
   );
 }
 
-function EventCard({ event, distance }: { event: LocalEvent; distance?: number | null }) {
+function EventCard({ event, distance, wide = false }: { event: LocalEvent; distance?: number | null; wide?: boolean }) {
   const date = new Date(event.starts_at);
+  const imageSource = event.image_url ? { uri: event.image_url } : DEFAULT_EVENT_IMAGE;
+
   return (
     <Pressable
-      style={s.eventCard}
+      style={[s.eventCard, wide && s.eventCardWide]}
       onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}
     >
       <View style={s.eventDateBlock}>
@@ -128,7 +131,9 @@ function EventCard({ event, distance }: { event: LocalEvent; distance?: number |
         <Text style={s.eventDay}>{date.getDate()}</Text>
         <Text style={s.eventWeekday}>{date.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</Text>
       </View>
-      <View style={s.eventVisual}><Text style={s.eventVisualIcon}>↗</Text></View>
+      <ImageBackground source={imageSource} style={s.eventVisual} imageStyle={s.eventVisualImage}>
+        <View style={s.eventVisualShade} />
+      </ImageBackground>
       <View style={s.eventCopy}>
         <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>
         <Text style={s.eventMeta} numberOfLines={1}>{event.city}, {event.state}</Text>
@@ -140,6 +145,7 @@ function EventCard({ event, distance }: { event: LocalEvent; distance?: number |
 
 export default function ExploreScreen() {
   const { session } = useAuth();
+  const pageRef = useRef<ScrollView>(null);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [events, setEvents] = useState<LocalEvent[]>([]);
   const [search, setSearch] = useState('');
@@ -148,6 +154,8 @@ export default function ExploreScreen() {
   const [sort, setSort] = useState<SortMode>('closest');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null);
+  const [featuredY, setFeaturedY] = useState(0);
   const [homeCity, setHomeCity] = useState('');
   const [homeState, setHomeState] = useState('');
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
@@ -212,10 +220,10 @@ export default function ExploreScreen() {
 
   const visibleAdventures = useMemo(() => adventures
     .filter((item) => category === 'All' || item.category === category)
-    .filter((item) => matchesQuickTags(item, selectedTags))
+    .filter((item) => matchesQuickTags({ ...item, description: item.summary }, selectedTags))
     .filter((item) => {
       const query = search.trim().toLowerCase();
-      const searchable = `${item.title} ${item.city} ${item.state} ${item.category} ${item.summary ?? ''}`.toLowerCase();
+      const searchable = `${item.title} ${item.city} ${item.state} ${item.category} ${item.summary}`.toLowerCase();
       if (query && !searchable.includes(query) && !savedCenter) return false;
       if (!searchCenter || item.latitude == null || item.longitude == null || radius === 'Anywhere') return true;
       return distanceMiles(searchCenter, { latitude: item.latitude, longitude: item.longitude }) <= radiusLimit;
@@ -238,7 +246,7 @@ export default function ExploreScreen() {
     const query = search.trim().toLowerCase();
     const searchable = `${event.title} ${event.host_name} ${event.city} ${event.state} ${event.category} ${event.description}`.toLowerCase();
     const textMatch = !query || searchable.includes(query) || savedCenter != null;
-    const distanceMatch = distance == null || distance <= Math.min(50, radiusLimit);
+    const distanceMatch = distance == null || distance <= Math.min(100, radiusLimit);
     return textMatch && distanceMatch && matchesQuickTags(event, selectedTags);
   }).sort((a, b) => sort === 'closest'
     ? (a.distance ?? 9999) - (b.distance ?? 9999)
@@ -261,6 +269,7 @@ export default function ExploreScreen() {
 
   function chooseCategory(next: string) {
     setCategory((current) => current === next ? 'All' : next);
+    setExpandedSection(null);
   }
 
   function toggleTag(tag: string) {
@@ -272,9 +281,28 @@ export default function ExploreScreen() {
     return distanceMiles(searchCenter, { latitude: adventure.latitude, longitude: adventure.longitude });
   }
 
-  const featured = visibleAdventures.filter((item) => item.is_featured).concat(visibleAdventures.filter((item) => !item.is_featured)).slice(0, 6);
-  const popular = visibleAdventures.slice(6, 12).length ? visibleAdventures.slice(6, 12) : visibleAdventures.slice(0, 6);
-  const nearby = localEvents.slice(0, 4);
+  function showIdeas() {
+    setSort('closest');
+    setExpandedSection(null);
+    requestAnimationFrame(() => pageRef.current?.scrollTo({ y: Math.max(0, featuredY - 16), animated: true }));
+  }
+
+  function toggleExpanded(section: Exclude<ExpandedSection, null>) {
+    setExpandedSection((current) => current === section ? null : section);
+  }
+
+  function resetFilters() {
+    setSort('closest');
+    setSelectedTags([]);
+    setRadius('50');
+  }
+
+  const featured = visibleAdventures.filter((item) => item.is_featured).concat(visibleAdventures.filter((item) => !item.is_featured));
+  const featuredPreview = featured.slice(0, 6);
+  const popular = visibleAdventures.slice(6, 18).length ? visibleAdventures.slice(6, 18) : visibleAdventures;
+  const popularPreview = popular.slice(0, 6);
+  const nearby = localEvents;
+  const nearbyPreview = nearby.slice(0, 4);
 
   const timeOfDay = new Date().getHours();
   const daypart = timeOfDay >= 17 ? 'evening' : timeOfDay >= 12 ? 'afternoon' : 'morning';
@@ -286,16 +314,28 @@ export default function ExploreScreen() {
   return (
     <SafeAreaView style={s.safe} edges={['left', 'right']}>
       <ScrollView
+        ref={pageRef}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#F5C542" />}
       >
         <View style={s.hero}>
           <Text style={s.title}>Explore</Text>
-          <Pressable style={s.locationRow} onPress={() => setShowFilters(true)}>
+          <View style={s.locationRow}>
             <Text style={s.locationMarker}>✦</Text>
             <Text style={s.location}>{currentLocationLabel}</Text>
             <Text style={s.locationChevron}>⌄</Text>
-          </Pressable>
+          </View>
+
+          <View style={s.conditionCard}>
+            <View style={s.conditionIconWrap}><Text style={s.conditionIcon}>☀</Text></View>
+            <View style={s.conditionCopy}>
+              <Text style={s.conditionTitle}>{conditionTitle}</Text>
+              <Text style={s.conditionBody}>{conditionBody}</Text>
+            </View>
+            <Pressable style={s.conditionButton} onPress={showIdeas}>
+              <Text style={s.conditionButtonText}>See ideas  ›</Text>
+            </Pressable>
+          </View>
 
           <View style={s.searchWrap}>
             <Text style={s.searchIcon}>⌕</Text>
@@ -306,7 +346,7 @@ export default function ExploreScreen() {
               placeholderTextColor="#909A95"
               style={s.input}
             />
-            <Pressable style={s.filterIconButton} onPress={() => setShowFilters((value) => !value)}>
+            <Pressable style={s.filterIconButton} onPress={() => setShowFilters(true)}>
               <Text style={s.filterIcon}>☷</Text>
             </Pressable>
           </View>
@@ -321,83 +361,63 @@ export default function ExploreScreen() {
           </ScrollView>
         </View>
 
-        <View style={s.conditionCard}>
-          <View style={s.conditionIconWrap}><Text style={s.conditionIcon}>☀</Text></View>
-          <View style={s.conditionCopy}>
-            <Text style={s.conditionTitle}>{conditionTitle}</Text>
-            <Text style={s.conditionBody}>{conditionBody}</Text>
-          </View>
-          <Pressable style={s.conditionButton} onPress={() => setSort('closest')}><Text style={s.conditionButtonText}>See ideas  ›</Text></Pressable>
-        </View>
-
-        {showFilters ? (
-          <View style={s.filterPanel}>
-            <View style={s.filterPanelTop}>
-              <Text style={s.filterPanelTitle}>Refine Explore</Text>
-              <Pressable onPress={() => setShowFilters(false)}><Text style={s.closeFilter}>×</Text></Pressable>
-            </View>
-            <Text style={s.filterLabel}>SORT</Text>
-            <View style={s.filterChips}>
-              {(['closest', 'soonest', 'newest', 'price'] as SortMode[]).map((value) => (
-                <Pressable key={value} onPress={() => setSort(value)} style={[s.filterChip, sort === value && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, sort === value && s.filterChipTextActive]}>{value === 'price' ? 'Price' : value.charAt(0).toUpperCase() + value.slice(1)}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={s.filterLabel}>QUICK FILTERS</Text>
-            <View style={s.filterChips}>
-              {quickTags.map((tag) => (
-                <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.filterChip, selectedTags.includes(tag) && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, selectedTags.includes(tag) && s.filterChipTextActive]}>{tag}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={s.filterLabel}>RADIUS</Text>
-            <View style={s.filterChips}>
-              {radii.map((value) => (
-                <Pressable key={value} onPress={() => setRadius(value)} style={[s.filterChip, radius === value && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, radius === value && s.filterChipTextActive]}>{value === 'Anywhere' ? value : `${value} mi`}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
         {error ? <Text style={s.error}>{error}</Text> : null}
         {loading ? <ActivityIndicator color="#F5C542" style={s.loader} /> : null}
 
-        {!loading && featured.length ? (
-          <View style={s.section}>
-            <SectionHeader title="Featured Adventures" action="See all" onPress={() => { setCategory('All'); setSort('soonest'); }} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
-              {featured.map((adventure) => (
-                <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
-              ))}
-            </ScrollView>
+        {!loading && featuredPreview.length ? (
+          <View style={s.section} onLayout={(event) => setFeaturedY(event.nativeEvent.layout.y)}>
+            <SectionHeader title="Featured Adventures" expanded={expandedSection === 'featured'} onPress={() => toggleExpanded('featured')} />
+            {expandedSection === 'featured' ? (
+              <View style={s.expandedList}>
+                {featured.map((adventure) => (
+                  <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} wide />
+                ))}
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
+                {featuredPreview.map((adventure) => (
+                  <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
+                ))}
+              </ScrollView>
+            )}
           </View>
         ) : null}
 
-        {!loading && nearby.length ? (
+        {!loading && nearbyPreview.length ? (
           <View style={s.section}>
-            <SectionHeader title="Happening Near You" action="See all" onPress={() => router.push('/local-events' as never)} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
-              {nearby.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} />)}
-            </ScrollView>
+            <SectionHeader title="Happening Near You" expanded={expandedSection === 'events'} onPress={() => toggleExpanded('events')} />
+            {expandedSection === 'events' ? (
+              <View style={s.expandedList}>
+                {nearby.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} wide />)}
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
+                {nearbyPreview.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} />)}
+              </ScrollView>
+            )}
           </View>
         ) : null}
 
-        {!loading && popular.length ? (
+        {!loading && popularPreview.length ? (
           <View style={s.section}>
-            <SectionHeader title={`Popular Around ${currentLocationLabel.split(',')[0]}`} action="See all" onPress={() => setSort('closest')} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
-              {popular.map((adventure) => (
-                <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
-              ))}
-            </ScrollView>
+            <SectionHeader title={`Popular Around ${currentLocationLabel.split(',')[0] ?? currentLocationLabel}`} expanded={expandedSection === 'popular'} onPress={() => toggleExpanded('popular')} />
+            {expandedSection === 'popular' ? (
+              <View style={s.expandedList}>
+                {popular.map((adventure) => (
+                  <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} wide />
+                ))}
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
+                {popularPreview.map((adventure) => (
+                  <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
+                ))}
+              </ScrollView>
+            )}
           </View>
         ) : null}
 
-        {!loading && !featured.length && !nearby.length ? (
+        {!loading && !featuredPreview.length && !nearbyPreview.length ? (
           <View style={s.empty}>
             <Text style={s.emptyTitle}>Nothing nearby yet</Text>
             <Text style={s.emptyBody}>Try widening your radius or clearing a filter.</Text>
@@ -414,6 +434,52 @@ export default function ExploreScreen() {
           <Text style={s.learnArrow}>›</Text>
         </Pressable>
       </ScrollView>
+
+      <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
+        <View style={s.modalRoot}>
+          <Pressable style={s.modalBackdrop} onPress={() => setShowFilters(false)} />
+          <View style={s.filterSheet}>
+            <View style={s.sheetHandle} />
+            <View style={s.filterPanelTop}>
+              <Text style={s.filterPanelTitle}>Refine Explore</Text>
+              <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.resetFilter}>Reset</Text></Pressable>
+            </View>
+
+            <Text style={s.filterLabel}>SORT</Text>
+            <View style={s.filterChips}>
+              {(['closest', 'soonest', 'newest', 'price'] as SortMode[]).map((value) => (
+                <Pressable key={value} onPress={() => setSort(value)} style={[s.filterChip, sort === value && s.filterChipActive]}>
+                  <Text style={[s.filterChipText, sort === value && s.filterChipTextActive]}>
+                    {value === 'price' ? 'Price' : value.charAt(0).toUpperCase() + value.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={s.filterLabel}>QUICK FILTERS</Text>
+            <View style={s.filterChips}>
+              {quickTags.map((tag) => (
+                <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.filterChip, selectedTags.includes(tag) && s.filterChipActive]}>
+                  <Text style={[s.filterChipText, selectedTags.includes(tag) && s.filterChipTextActive]}>{tag}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={s.filterLabel}>RADIUS</Text>
+            <View style={s.filterChips}>
+              {radii.map((value) => (
+                <Pressable key={value} onPress={() => setRadius(value)} style={[s.filterChip, radius === value && s.filterChipActive]}>
+                  <Text style={[s.filterChipText, radius === value && s.filterChipTextActive]}>{value === 'Anywhere' ? value : `${value} mi`}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable style={s.showResultsButton} onPress={() => setShowFilters(false)}>
+              <Text style={s.showResultsText}>Show results</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -427,6 +493,14 @@ const s = StyleSheet.create({
   locationMarker: { color: '#F5C542', fontSize: 15, fontWeight: '900' },
   location: { color: '#F5C542', fontSize: 16, fontWeight: '900' },
   locationChevron: { color: '#A7B0AB', fontSize: 16, fontWeight: '900' },
+  conditionCard: { minHeight: 90, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 18, borderWidth: 1, borderColor: '#39463F', backgroundColor: '#13201C' },
+  conditionIconWrap: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A2924' },
+  conditionIcon: { color: '#F5C542', fontSize: 28 },
+  conditionCopy: { flex: 1 },
+  conditionTitle: { color: '#F8F8F4', fontSize: 15, lineHeight: 19, fontWeight: '900' },
+  conditionBody: { color: '#AFBAB4', fontSize: 10, lineHeight: 14, marginTop: 3 },
+  conditionButton: { borderRadius: 999, borderWidth: 1, borderColor: '#F5C542', paddingHorizontal: 12, paddingVertical: 8 },
+  conditionButtonText: { color: '#F5C542', fontSize: 10, fontWeight: '900' },
   searchWrap: { height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#151C1A', paddingLeft: 15 },
   searchIcon: { color: '#C7CECA', fontSize: 26, marginRight: 7, marginTop: -2 },
   input: { flex: 1, color: '#F7F7F4', fontSize: 15, paddingVertical: 13 },
@@ -438,24 +512,6 @@ const s = StyleSheet.create({
   categoryIcon: { color: '#E5E9E6', fontSize: 15, fontWeight: '900' },
   categoryText: { color: '#E5E9E6', fontSize: 13, fontWeight: '800' },
   categoryTextActive: { color: '#121816' },
-  conditionCard: { marginHorizontal: 18, marginTop: 16, minHeight: 104, flexDirection: 'row', alignItems: 'center', gap: 11, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#39463F', backgroundColor: '#13201C' },
-  conditionIconWrap: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A2924' },
-  conditionIcon: { color: '#F5C542', fontSize: 31 },
-  conditionCopy: { flex: 1 },
-  conditionTitle: { color: '#F8F8F4', fontSize: 16, lineHeight: 20, fontWeight: '900' },
-  conditionBody: { color: '#AFBAB4', fontSize: 11, lineHeight: 15, marginTop: 4 },
-  conditionButton: { borderRadius: 999, borderWidth: 1, borderColor: '#F5C542', paddingHorizontal: 13, paddingVertical: 9 },
-  conditionButtonText: { color: '#F5C542', fontSize: 11, fontWeight: '900' },
-  filterPanel: { marginHorizontal: 18, marginTop: 12, padding: 15, borderRadius: 18, borderWidth: 1, borderColor: '#303B36', backgroundColor: '#111816', gap: 10 },
-  filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  filterPanelTitle: { color: '#F7F7F4', fontSize: 17, fontWeight: '900' },
-  closeFilter: { color: '#AEB8B2', fontSize: 25, lineHeight: 25 },
-  filterLabel: { color: '#839088', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 3 },
-  filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  filterChip: { borderRadius: 999, borderWidth: 1, borderColor: '#46544C', paddingHorizontal: 10, paddingVertical: 7 },
-  filterChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
-  filterChipText: { color: '#D6DDD9', fontSize: 11, fontWeight: '800' },
-  filterChipTextActive: { color: '#151B18' },
   loader: { marginTop: 28 },
   error: { color: '#FF9B8F', paddingHorizontal: 18, paddingTop: 14, fontWeight: '700' },
   section: { marginTop: 25 },
@@ -463,8 +519,11 @@ const s = StyleSheet.create({
   sectionTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900', letterSpacing: -.3 },
   sectionAction: { color: '#F5C542', fontSize: 12, fontWeight: '900' },
   horizontalContent: { paddingHorizontal: 18, gap: 11 },
+  expandedList: { paddingHorizontal: 18, gap: 12 },
   adventureTile: { width: 220, overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
+  adventureTileWide: { width: '100%' },
   tileImage: { height: 150 },
+  tileImageWide: { height: 190 },
   tileImageCorners: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   tileShade: { flex: 1, backgroundColor: 'rgba(0,0,0,.16)', padding: 9 },
   tileTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
@@ -478,12 +537,14 @@ const s = StyleSheet.create({
   tileMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 4 },
   tileDate: { color: '#F5C542', fontSize: 10, fontWeight: '800', marginTop: 6 },
   eventCard: { width: 306, minHeight: 126, flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
+  eventCardWide: { width: '100%' },
   eventDateBlock: { width: 62, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151E1B' },
   eventMonth: { color: '#F5C542', fontSize: 9, fontWeight: '900' },
   eventDay: { color: '#F8F8F4', fontSize: 29, lineHeight: 31, fontWeight: '900' },
   eventWeekday: { color: '#AAB4AE', fontSize: 9, fontWeight: '800' },
-  eventVisual: { width: 82, backgroundColor: '#22463B', alignItems: 'center', justifyContent: 'center' },
-  eventVisualIcon: { color: '#F5C542', fontSize: 30, fontWeight: '900' },
+  eventVisual: { width: 92, alignSelf: 'stretch' },
+  eventVisualImage: { resizeMode: 'cover' },
+  eventVisualShade: { flex: 1, backgroundColor: 'rgba(8,13,12,.14)' },
   eventCopy: { flex: 1, justifyContent: 'center', padding: 12 },
   eventTitle: { color: '#F7F7F4', fontSize: 15, lineHeight: 19, fontWeight: '900' },
   eventMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 5 },
@@ -498,4 +559,19 @@ const s = StyleSheet.create({
   empty: { marginHorizontal: 18, marginTop: 28, padding: 20, borderRadius: 18, borderWidth: 1, borderColor: '#2E3934', backgroundColor: '#111715', alignItems: 'center' },
   emptyTitle: { color: '#F7F7F4', fontSize: 18, fontWeight: '900' },
   emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5 },
+  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.62)' },
+  filterSheet: { maxHeight: '66%', backgroundColor: '#111816', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderColor: '#303B36', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 13 },
+  sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 4 },
+  filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  filterPanelTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900' },
+  resetFilter: { color: '#F5C542', fontSize: 12, fontWeight: '900' },
+  filterLabel: { color: '#839088', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 3 },
+  filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: { borderRadius: 999, borderWidth: 1, borderColor: '#46544C', paddingHorizontal: 12, paddingVertical: 8 },
+  filterChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
+  filterChipText: { color: '#D6DDD9', fontSize: 11, fontWeight: '800' },
+  filterChipTextActive: { color: '#151B18' },
+  showResultsButton: { marginTop: 6, borderRadius: 16, backgroundColor: '#F5C542', alignItems: 'center', paddingVertical: 14 },
+  showResultsText: { color: '#111816', fontSize: 14, fontWeight: '900' },
 });
