@@ -112,6 +112,7 @@ function rankGroups(groups: CommunityGroup[], interests: string[], city: string,
 
 export default function OnboardingV2Screen() {
   const { session } = useAuth();
+  const userId = session?.user.id;
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<OnboardingForm>(INITIAL_ONBOARDING_FORM);
   const [loading, setLoading] = useState(true);
@@ -138,17 +139,17 @@ export default function OnboardingV2Screen() {
   useEffect(() => {
     let active = true;
     async function load() {
-      if (!session?.user.id) {
+      if (!userId) {
         if (active) setLoading(false);
         return;
       }
       const [profile, identity, invites] = await Promise.all([
-        loadOnboardingProfile(session.user.id),
-        supabase.from('profiles').select('username').eq('id', session.user.id).single(),
+        loadOnboardingProfile(userId),
+        supabase.from('profiles').select('username').eq('id', userId).single(),
         supabase
           .from('member_invites')
           .select('id', { count: 'exact', head: true })
-          .eq('sender_profile_id', session.user.id)
+          .eq('sender_profile_id', userId)
           .eq('status', 'available'),
       ]);
       if (!active) return;
@@ -198,7 +199,7 @@ export default function OnboardingV2Screen() {
     return () => {
       active = false;
     };
-  }, [session?.user.id]);
+  }, [userId]);
 
   useEffect(() => {
     if (!form.homeState) {
@@ -223,7 +224,7 @@ export default function OnboardingV2Screen() {
   }, [form.homeState]);
 
   useEffect(() => {
-    if (!session?.user.id || step < 5) return;
+    if (!userId || step < 5) return;
     let active = true;
     setSuggestionsLoading(true);
 
@@ -231,7 +232,7 @@ export default function OnboardingV2Screen() {
       let query = supabase
         .from('community_profile_directory')
         .select('*')
-        .neq('id', session!.user.id)
+        .neq('id', userId)
         .limit(6);
       if (form.homeState) query = query.eq('home_state', form.homeState);
       let result = await query;
@@ -239,7 +240,7 @@ export default function OnboardingV2Screen() {
         result = await supabase
           .from('community_profile_directory')
           .select('*')
-          .neq('id', session!.user.id)
+          .neq('id', userId)
           .limit(6);
       }
       if (result.error) throw result.error;
@@ -254,7 +255,7 @@ export default function OnboardingV2Screen() {
     return () => {
       active = false;
     };
-  }, [form.homeState, session?.user.id, step]);
+  }, [form.homeState, userId, step]);
 
   useEffect(() => {
     if (step < 8) return;
@@ -312,7 +313,7 @@ export default function OnboardingV2Screen() {
     return true;
   }, [form, step]);
 
-  async function useCurrentLocation() {
+  async function requestCurrentLocation() {
     setLocating(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
@@ -399,7 +400,7 @@ export default function OnboardingV2Screen() {
   }
 
   async function saveReplayProfile() {
-    if (!session?.user.id) return;
+    if (!userId) return;
     const { error } = await supabase
       .from('profiles')
       .update({
@@ -418,7 +419,7 @@ export default function OnboardingV2Screen() {
           discovery_intents: form.intents,
         },
       })
-      .eq('id', session.user.id);
+      .eq('id', userId);
     if (error) throw error;
   }
 
@@ -581,7 +582,7 @@ export default function OnboardingV2Screen() {
                 <Ionicons name="location" size={34} color={GOLD} />
                 <Text style={styles.cardTitle}>Use your location for nearby discovery</Text>
                 <Text style={styles.cardCopy}>We use this to make Nearby useful. You can choose a city instead and change it later.</Text>
-                <Pressable style={styles.primaryInline} disabled={locating} onPress={() => void useCurrentLocation()}>
+                <Pressable style={styles.primaryInline} disabled={locating} onPress={() => void requestCurrentLocation()}>
                   <Text style={styles.primaryInlineText}>{locating ? 'Finding you…' : 'Use my location'}</Text>
                 </Pressable>
               </View>
