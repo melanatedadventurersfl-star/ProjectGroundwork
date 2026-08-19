@@ -26,7 +26,7 @@ const items: NavItem[] = [
     label: 'Explore',
     icon: 'explore',
     href: '/(tabs)/explore',
-    isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness') || pathname.startsWith('/trail-guide'),
+    isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness'),
   },
   {
     label: 'Outpost',
@@ -36,11 +36,10 @@ const items: NavItem[] = [
     isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections') || pathname.startsWith('/local-events'),
   },
   {
-    label: 'Reservations',
-    icon: 'trips',
-    href: '/member/trips',
-    requiresAuth: true,
-    isActive: (pathname) => pathname.startsWith('/member/trips') || pathname.startsWith('/readiness'),
+    label: 'Trail Guide',
+    icon: 'guide',
+    href: '/trail-guide',
+    isActive: (pathname) => pathname.startsWith('/trail-guide'),
   },
   {
     label: 'Profile',
