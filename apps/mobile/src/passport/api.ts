@@ -15,6 +15,7 @@ export type JourneyItem = {
   rating: number | null;
   highlight: string | null;
   reflection: string | null;
+  visibility: 'private' | 'community';
   stamp_count: number;
   photo_count: number;
 };
@@ -354,7 +355,7 @@ export async function removeMemoryPhoto(memoryId: string) {
 
 export async function saveReflection(input: {
   adventureId: string;
-  rating: number;
+  rating: number | null;
   highlight: string;
   reflection: string;
   visibility: 'private' | 'community';
