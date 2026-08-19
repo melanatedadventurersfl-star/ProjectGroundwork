@@ -18,7 +18,7 @@ import { getCircles, type CommunityCircle } from '../../src/community/circles';
 
 type PostType = CommunityPostType;
 type Audience = CommunityAudience;
-type PickedPhoto = { uri: string; mimeType?: string | null };
+type PickedPhoto = { uri: string; base64: string; mimeType?: string | null };
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -91,10 +91,14 @@ export default function CreateCommunityPostScreen() {
       setError('Photo library access is needed to share a photo.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.88 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], base64: true, quality: 0.88 });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    setPhoto({ uri: asset.uri, mimeType: asset.mimeType });
+    if (!asset.base64) {
+      setError('That photo could not be prepared safely. Please choose it again.');
+      return;
+    }
+    setPhoto({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType });
     setType('photo');
   }
 
