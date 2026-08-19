@@ -8,11 +8,11 @@ import { AppIcon } from '../../src/ui/AppIcon';
 
 // Temporary showcase mode. Switch this off once stamp ownership is fully linked to event completion.
 const SHOW_ALL_STAMPS = true;
-type YearFilter = 'all' | 2026 | 2025;
+type YearFilter = 'all' | 2025 | 2026;
 const FILTER_OPTIONS: readonly { value: YearFilter; label: string }[] = [
   { value: 'all', label: 'All Years' },
-  { value: 2026, label: '2026' },
   { value: 2025, label: '2025' },
+  { value: 2026, label: '2026' },
 ];
 
 function StampCard({ stamp, collected }: { stamp: StampCatalogItem; collected: boolean }) {
@@ -148,36 +148,36 @@ export default function ProfileStampsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#09110F' },
-  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 90, gap: 18 },
+  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 90, gap: 16 },
   back: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginLeft: -5 },
   backText: { color: '#F5C341', fontWeight: '800' },
   hero: { gap: 3 },
   eyebrow: { color: '#67CFC8', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: '#F7F8F3', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 2 },
   copy: { color: '#98A59E', fontSize: 14, lineHeight: 20, marginTop: 3, maxWidth: 440 },
-  filterWrap: { gap: 10, zIndex: 4 },
-  filterButton: { minHeight: 62, borderRadius: 18, borderWidth: 1, borderColor: '#324038', backgroundColor: '#111A17', paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  filterWrap: { gap: 7, zIndex: 4 },
+  filterButton: { minHeight: 52, borderRadius: 17, borderWidth: 1, borderColor: '#324038', backgroundColor: '#111A17', paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   filterButtonPressed: { opacity: 0.72 },
-  filterEyebrow: { color: '#75827B', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  filterValue: { color: '#F7F8F3', fontSize: 17, lineHeight: 22, fontWeight: '900', marginTop: 2 },
+  filterEyebrow: { color: '#75827B', fontSize: 8.25, fontWeight: '900', letterSpacing: 1 },
+  filterValue: { color: '#F7F8F3', fontSize: 17, lineHeight: 21, fontWeight: '900', marginTop: 1 },
   filterMenu: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#34423B', backgroundColor: '#121B18' },
-  filterOption: { minHeight: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  filterOption: { minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   filterOptionBorder: { borderTopWidth: 1, borderTopColor: '#26312C' },
   filterOptionActive: { backgroundColor: '#D7B45A' },
   filterOptionPressed: { opacity: 0.72 },
   filterOptionText: { color: '#D0D7D3', fontSize: 14, fontWeight: '800' },
   filterOptionTextActive: { color: '#17211C', fontWeight: '900' },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  summaryPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#39453F', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#111A17' },
-  summaryText: { color: '#B8C2BD', fontSize: 10.5, fontWeight: '900', letterSpacing: 0.5 },
-  summaryDot: { color: '#58655F', fontSize: 12 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 },
+  summaryPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#39453F', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: '#111A17' },
+  summaryText: { color: '#B8C2BD', fontSize: 10.25, fontWeight: '900', letterSpacing: 0.45 },
+  summaryDot: { color: '#58655F', fontSize: 11 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  card: { width: '48%', minHeight: 258, backgroundColor: '#111A17', borderRadius: 20, borderWidth: 1, borderColor: '#29342F', paddingHorizontal: 10, paddingTop: 10, paddingBottom: 13, alignItems: 'center' },
+  card: { width: '48%', minHeight: 264, backgroundColor: '#111A17', borderRadius: 20, borderWidth: 1, borderColor: '#29342F', paddingHorizontal: 10, paddingTop: 11, paddingBottom: 14, alignItems: 'center' },
   cardPressed: { opacity: 0.68, transform: [{ scale: 0.985 }] },
-  art: { width: '100%', height: 184, alignItems: 'center', justifyContent: 'center' },
-  artTall: { height: 200 },
+  art: { width: '100%', height: 188, alignItems: 'center', justifyContent: 'center' },
+  artTall: { height: 204 },
   stampImage: { width: '100%', height: '100%' },
-  cardTitle: { color: '#F7F8F3', fontSize: 13.5, lineHeight: 17, fontWeight: '900', textAlign: 'center', marginTop: 5 },
+  cardTitle: { color: '#F7F8F3', fontSize: 13.5, lineHeight: 17, fontWeight: '900', textAlign: 'center', marginTop: 6 },
   date: { color: '#67CFC8', fontSize: 10.5, fontWeight: '800', marginTop: 6, textAlign: 'center' },
   collected: { color: '#F5C341', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.9, marginTop: 6 },
 });
