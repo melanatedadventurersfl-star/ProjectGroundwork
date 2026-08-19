@@ -16,6 +16,7 @@ import {
 } from '../../src/passport/api';
 import { AdventureJourney } from '../../src/passport/AdventureJourney';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
+import { getMyPassportRank, type PassportRankState } from '../../src/passport/rankApi';
 import { RankEmblem, rankFor, rankLadder, type RankName } from '../../src/passport/RankEmblem';
 import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 
@@ -34,6 +35,7 @@ export default function PassportScreen() {
   const [badges, setBadges] = useState<MemberBadge[]>([]);
   const [photos, setPhotos] = useState<MemoryPhoto[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [rankState, setRankState] = useState<PassportRankState | null>(null);
   const [showAllStamps, setShowAllStamps] = useState(false);
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -42,18 +44,20 @@ export default function PassportScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [nextJourney, nextStamps, nextBadges, nextPhotos, base] = await Promise.all([
+      const [nextJourney, nextStamps, nextBadges, nextPhotos, base, nextRankState] = await Promise.all([
         getJourney(),
         getPassportStamps(),
         getMemberBadges(),
         getAllMemoryPhotos(),
         getMemberBasecamp(),
+        getMyPassportRank(),
       ]);
       setJourney(nextJourney);
       setStamps(nextStamps);
       setBadges(nextBadges);
       setPhotos(nextPhotos);
       setProfile(base.profile);
+      setRankState(nextRankState);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load Passport.');
@@ -65,7 +69,9 @@ export default function PassportScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const currentRank = useMemo(() => rankFor(journey.length), [journey.length]);
+  const calculatedRank = useMemo(() => rankState?.calculated_rank ?? rankFor(journey.length), [journey.length, rankState?.calculated_rank]);
+  const currentRank = useMemo(() => rankState?.effective_rank ?? calculatedRank, [calculatedRank, rankState?.effective_rank]);
+  const hasRankOverride = Boolean(rankState?.rank_override);
   const nextRank = useMemo(() => nextRankProgress(journey.length), [journey.length]);
   const name = profile?.display_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.username || 'Member';
   const joined = profile?.created_at
@@ -106,11 +112,12 @@ export default function PassportScreen() {
               <Text style={styles.name}>{name}</Text>
               {profile?.username ? <Text style={styles.username}>@{profile.username}</Text> : null}
               <Text style={styles.rank}>{currentRank}</Text>
+              {hasRankOverride ? <Text style={styles.rankOverride}>FOUNDER OVERRIDE · EARNED {calculatedRank.toUpperCase()}</Text> : null}
               <Text style={styles.joined}>Member since {joined}{profile?.home_city ? ` · ${profile.home_city}, ${profile.home_state}` : ''}</Text>
               {nextRank ? (
-                <Text style={styles.rankProgress}>{nextRank.remaining} adventure{nextRank.remaining === 1 ? '' : 's'} to {nextRank.rank}</Text>
+                <Text style={styles.rankProgress}>{nextRank.remaining} adventure{nextRank.remaining === 1 ? '' : 's'} to earn {nextRank.rank}</Text>
               ) : (
-                <Text style={styles.rankProgress}>Highest Passport rank achieved.</Text>
+                <Text style={styles.rankProgress}>Highest earned Passport rank achieved.</Text>
               )}
             </View>
             <View style={styles.heroEmblem}><RankEmblem rank={currentRank} size={112} /></View>
@@ -143,7 +150,7 @@ export default function PassportScreen() {
               return (
                 <View key={rankName} style={styles.rankStep}>
                   <View style={[styles.rankEmblemShell, selected && styles.rankEmblemCurrent]}>
-                    <RankEmblem rank={rankName as RankName} size={58} muted={!reached} />
+                    <RankEmblem rank={rankName as RankName} size={58} muted={!reached && !selected} />
                   </View>
                   <Text style={[styles.rankLabel, reached && styles.rankDone, selected && styles.rankCurrent]} numberOfLines={2}>{rankName}</Text>
                   <Text style={[styles.rankMin, selected && styles.rankMinCurrent]}>{minimum === 0 ? 'Start' : `${minimum}`}</Text>
@@ -151,7 +158,7 @@ export default function PassportScreen() {
               );
             })}
           </View>
-          <Pressable onPress={() => router.push('/guide')}><Text style={styles.link}>About Ranks & Passport</Text></Pressable>
+          <Pressable onPress={() => router.push('/member/rank-progress')}><Text style={styles.link}>View Rank Journey</Text></Pressable>
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -328,6 +335,7 @@ const styles = StyleSheet.create({
   name: { color: '#FFF8E8', fontSize: 24, fontWeight: '900' },
   username: { color: '#A4B0A8', marginTop: 3 },
   rank: { color: '#F0D083', fontWeight: '900', marginTop: 9, fontSize: 16 },
+  rankOverride: { color: '#67CFC8', fontSize: 8.5, fontWeight: '900', letterSpacing: .7, marginTop: 3 },
   joined: { color: '#87948B', fontSize: 11, marginTop: 4, lineHeight: 16 },
   rankProgress: { color: '#C7B77F', fontSize: 11, fontWeight: '800', marginTop: 8 },
   identityStats: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#35483C', flexDirection: 'row', alignItems: 'center' },
