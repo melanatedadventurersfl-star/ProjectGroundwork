@@ -24,7 +24,8 @@ import { styles } from './trailheadBannerStyles';
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
-const RAIN_DROPS = Array.from({ length: 18 }, (_, index) => index);
+const RAIN_DROPS = Array.from({ length: 12 }, (_, index) => index);
+const RAIN_BANDS = [-224, 0, 224] as const;
 const NIGHT_STARS = [12, 22, 34, 48, 62, 74, 86] as const;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
@@ -133,7 +134,14 @@ export function TrailheadCover({
       ]),
     );
     const rainLoop = weather === 'rain' || weather === 'storm'
-      ? Animated.loop(Animated.timing(rainFall, { toValue: 1, duration: 1400, easing: Easing.linear, useNativeDriver: true }))
+      ? Animated.loop(
+          Animated.timing(rainFall, {
+            toValue: 1,
+            duration: weather === 'storm' ? 900 : 1200,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+        )
       : null;
     const starLoop = phase === 'night'
       ? Animated.loop(
@@ -201,21 +209,34 @@ export function TrailheadCover({
 
       {(weather === 'rain' || weather === 'storm') ? (
         <View pointerEvents="none" style={styles.rainLayer}>
-          {RAIN_DROPS.map((drop) => (
-            <Animated.View
-              key={drop}
-              style={[
-                styles.raindrop,
-                {
-                  left: `${(drop * 5.3) % 100}%`,
-                  opacity: weather === 'storm' ? 0.38 : 0.24,
-                  transform: [
-                    { translateY: rainFall.interpolate({ inputRange: [0, 1], outputRange: [-50 - drop * 5, 260 + drop * 4] }) },
-                    { rotate: '-18deg' },
-                  ],
-                },
-              ]}
-            />
+          {RAIN_BANDS.map((bandTop) => (
+            <View key={bandTop} style={styles.rainBand}>
+              {RAIN_DROPS.map((drop) => {
+                const dropHeight = 14 + ((drop * 7) % 14);
+                const dropOpacity = (weather === 'storm' ? 0.28 : 0.16) + (drop % 4) * 0.035;
+                const dropTop = bandTop + ((drop * 41 + (drop % 3) * 17) % 224) - 26;
+                const dropLeft = `${(drop * 8.3 + (drop % 4) * 3.7) % 100}%`;
+
+                return (
+                  <Animated.View
+                    key={`${bandTop}-${drop}`}
+                    style={[
+                      styles.raindrop,
+                      {
+                        top: dropTop,
+                        left: dropLeft,
+                        height: dropHeight,
+                        opacity: dropOpacity,
+                        transform: [
+                          { translateY: rainFall.interpolate({ inputRange: [0, 1], outputRange: [0, 224] }) },
+                          { rotate: '-18deg' },
+                        ],
+                      },
+                    ]}
+                  />
+                );
+              })}
+            </View>
           ))}
         </View>
       ) : null}
