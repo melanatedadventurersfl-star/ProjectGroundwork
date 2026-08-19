@@ -49,6 +49,7 @@
     "android": {
       "package": "com.melanatedadventurers.app",
       "icon": "./assets/ma-app-icon.png",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/ma-app-icon.png",
         "monochromeImage": "./assets/ma-pathfinder-mark.png",
