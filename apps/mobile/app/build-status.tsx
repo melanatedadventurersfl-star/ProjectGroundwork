@@ -113,7 +113,7 @@ export default function BuildStatusScreen() {
           <InfoRow label="Update ID" value={info.updateId ? info.updateId.slice(0, 12) : 'Embedded'} last />
         </View>
 
-        <Text style={styles.sectionTitle}>WHAT'S NEW</Text>
+        <Text style={styles.sectionTitle}>WHAT&apos;S NEW</Text>
         <View style={styles.card}>
           <View style={styles.notesHeader}>
             <Text style={styles.notesTitle}>{currentReleaseNotes.title}</Text>
