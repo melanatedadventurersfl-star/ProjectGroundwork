@@ -119,7 +119,11 @@ export function TrailheadCover({
   }, []);
 
   const theme = rankThemes[rank];
-  const liveWeather = useMemo(() => normalizeWeather(weatherData?.current.condition.text), [weatherData]);
+  const liveWeather = useMemo(() => {
+    const normalized = normalizeWeather(weatherData?.current.condition.text);
+    if (normalized === 'rain' && weatherData?.current.precip_in === 0) return 'cloudy';
+    return normalized;
+  }, [weatherData]);
   const livePhase = useMemo(() => dayPhaseFor(weatherData, clockNow), [weatherData, clockNow]);
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
