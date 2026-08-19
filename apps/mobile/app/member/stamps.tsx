@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { getPassportStamps, type PassportStamp } from '../../src/passport/api';
 import { STAMP_CATALOG, type StampCatalogItem } from '../../src/passport/StampCatalog';
@@ -15,28 +15,57 @@ const FILTER_OPTIONS: readonly { value: YearFilter; label: string }[] = [
   { value: 2026, label: '2026' },
 ];
 
-function StampCard({ stamp, collected }: { stamp: StampCatalogItem; collected: boolean }) {
+function StampCard({
+  stamp,
+  collected,
+  cardWidth,
+  tablet,
+}: {
+  stamp: StampCatalogItem;
+  collected: boolean;
+  cardWidth: number;
+  tablet: boolean;
+}) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [
+        styles.card,
+        { width: cardWidth },
+        tablet && styles.cardTablet,
+        pressed && styles.cardPressed,
+      ]}
       onPress={() => router.push(`/member/stamp/${stamp.id}`)}
       accessibilityRole="button"
       accessibilityLabel={`Open ${stamp.title} stamp`}
     >
-      <View style={[styles.art, stamp.year === 2026 && styles.artTall]}>
+      <View
+        style={[
+          styles.art,
+          tablet && styles.artTablet,
+          stamp.year === 2026 && styles.artTall,
+          stamp.year === 2026 && tablet && styles.artTallTablet,
+        ]}
+      >
         <Image source={stamp.source} style={styles.stampImage} resizeMode="contain" />
       </View>
-      <Text style={styles.cardTitle} numberOfLines={2}>{stamp.title}</Text>
-      <Text style={styles.date}>{stamp.dateLabel}</Text>
-      {collected ? <Text style={styles.collected}>COLLECTED</Text> : null}
+      <Text style={[styles.cardTitle, tablet && styles.cardTitleTablet]} numberOfLines={2}>{stamp.title}</Text>
+      <Text style={[styles.date, tablet && styles.dateTablet]}>{stamp.dateLabel}</Text>
+      {collected ? <Text style={[styles.collected, tablet && styles.collectedTablet]}>COLLECTED</Text> : null}
     </Pressable>
   );
 }
 
 export default function ProfileStampsScreen() {
+  const { width: viewportWidth } = useWindowDimensions();
   const [earnedStamps, setEarnedStamps] = useState<PassportStamp[]>([]);
   const [filter, setFilter] = useState<YearFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
+
+  const tabletGrid = viewportWidth >= 600;
+  const gridColumns = tabletGrid ? 3 : 2;
+  const gridGap = tabletGrid ? 9 : 10;
+  const gridWidth = Math.max(0, viewportWidth - 36);
+  const cardWidth = Math.floor((gridWidth - gridGap * (gridColumns - 1)) / gridColumns);
 
   useEffect(() => {
     void getPassportStamps().then(setEarnedStamps).catch(() => setEarnedStamps([]));
@@ -133,12 +162,14 @@ export default function ProfileStampsScreen() {
         </View>
       </View>
 
-      <View style={styles.grid}>
+      <View style={[styles.grid, { columnGap: gridGap, rowGap: gridGap }]}> 
         {visibleStamps.map((stamp) => (
           <StampCard
             key={stamp.id}
             stamp={stamp}
             collected={Boolean(stamp.code && earnedByCode.has(stamp.code))}
+            cardWidth={cardWidth}
+            tablet={tabletGrid}
           />
         ))}
       </View>
@@ -171,13 +202,19 @@ const styles = StyleSheet.create({
   summaryPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#39453F', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#111A17' },
   summaryText: { color: '#B8C2BD', fontSize: 9.75, fontWeight: '900', letterSpacing: 0.4 },
   summaryDot: { color: '#58655F', fontSize: 10.5 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  card: { width: '48%', minHeight: 230, backgroundColor: '#111A17', borderRadius: 18, borderWidth: 1, borderColor: '#29342F', paddingHorizontal: 9, paddingTop: 9, paddingBottom: 11, alignItems: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  card: { minHeight: 230, backgroundColor: '#111A17', borderRadius: 18, borderWidth: 1, borderColor: '#29342F', paddingHorizontal: 9, paddingTop: 9, paddingBottom: 11, alignItems: 'center' },
+  cardTablet: { minHeight: 196, borderRadius: 16, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 9 },
   cardPressed: { opacity: 0.68, transform: [{ scale: 0.985 }] },
   art: { width: '100%', height: 156, alignItems: 'center', justifyContent: 'center' },
   artTall: { height: 170 },
+  artTablet: { height: 124 },
+  artTallTablet: { height: 136 },
   stampImage: { width: '100%', height: '100%' },
   cardTitle: { color: '#F7F8F3', fontSize: 12.5, lineHeight: 16, fontWeight: '900', textAlign: 'center', marginTop: 4 },
+  cardTitleTablet: { fontSize: 11.25, lineHeight: 14, marginTop: 3 },
   date: { color: '#67CFC8', fontSize: 10, fontWeight: '800', marginTop: 4, textAlign: 'center' },
+  dateTablet: { fontSize: 9, marginTop: 3 },
   collected: { color: '#F5C341', fontSize: 8, fontWeight: '900', letterSpacing: 0.85, marginTop: 4 },
+  collectedTablet: { fontSize: 7.5, marginTop: 3 },
 });
