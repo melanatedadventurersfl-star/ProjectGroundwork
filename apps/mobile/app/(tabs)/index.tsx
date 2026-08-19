@@ -234,7 +234,6 @@ export default function TrailheadScreen() {
                       <Text style={styles.wideTitle} numberOfLines={2}>{item.title}</Text>
                       <Text style={styles.wideMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text>
                       <View style={styles.wideFooter}>
-                        <Text style={styles.reservedPill}>CONFIRMED</Text>
                         <Text style={styles.wideLink}>View Adventure →</Text>
                       </View>
                     </View>
@@ -334,8 +333,7 @@ const styles = StyleSheet.create({
   wideCountdown: { color: '#FFF8E8', fontSize: 11, fontWeight: '800', backgroundColor: 'rgba(10,16,13,0.72)', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 5 },
   wideTitle: { color: '#FFF8E8', fontSize: 23, lineHeight: 26, fontWeight: '900' },
   wideMeta: { color: '#D8E0DB', fontSize: 12, fontWeight: '700' },
-  wideFooter: { marginTop: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  reservedPill: { color: '#F0D083', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  wideFooter: { marginTop: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
   wideLink: { color: '#F0D083', fontSize: 12, fontWeight: '900' },
   emptyAdventureCard: { minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: '#34463C', backgroundColor: '#17211C', paddingHorizontal: 18, paddingVertical: 16, justifyContent: 'center' },
   emptyAdventureTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900' },
