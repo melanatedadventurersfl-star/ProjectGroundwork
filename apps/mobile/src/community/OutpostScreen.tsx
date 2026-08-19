@@ -33,10 +33,10 @@ type OutpostTab = 'for-you' | 'crew' | 'nearby' | 'groups' | 'campfires';
 type PickedPhoto = { uri: string; mimeType?: string | null };
 
 const tabs: { value: OutpostTab; label: string }[] = [
-  { value: 'for-you', label: 'For You' },
+  { value: 'for-you', label: 'Basecamp' },
   { value: 'crew', label: 'Crew' },
   { value: 'nearby', label: 'Nearby' },
-  { value: 'groups', label: 'Groups' },
+  { value: 'groups', label: 'Circles' },
   { value: 'campfires', label: 'Campfires' },
 ];
 
@@ -299,7 +299,7 @@ export default function OutpostScreen() {
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>For You</Text><Text style={styles.sectionCopy}>A mix of your Trailmates, groups, nearby activity, and broader Outpost discoveries.</Text></View>
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Basecamp</Text><Text style={styles.sectionCopy}>A mix of your Trailmates, circles, nearby activity, and broader Outpost discoveries.</Text></View>
           {posts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
@@ -315,7 +315,7 @@ export default function OutpostScreen() {
         </> : null}
 
         {tab === 'nearby' ? <>
-          <View style={styles.nearbyHero}><View style={styles.nearbyIcon}><Ionicons name="navigate" size={22} color="#101510" /></View><View style={styles.flex}><Text style={styles.eyebrow}>AROUND YOU</Text><Text style={styles.nearbyTitle}>Near {locationLabel}</Text><Text style={styles.sectionCopy}>{nearbyPeople.length} adventurer{nearbyPeople.length === 1 ? '' : 's'} · {nearbyGroups.length} group{nearbyGroups.length === 1 ? '' : 's'} · {nearbyCampfires.length} Campfire{nearbyCampfires.length === 1 ? '' : 's'}</Text></View></View>
+          <View style={styles.nearbyHero}><View style={styles.nearbyIcon}><Ionicons name="navigate" size={22} color="#101510" /></View><View style={styles.flex}><Text style={styles.eyebrow}>AROUND YOU</Text><Text style={styles.nearbyTitle}>Near {locationLabel}</Text><Text style={styles.sectionCopy}>{nearbyPeople.length} adventurer{nearbyPeople.length === 1 ? '' : 's'} · {nearbyGroups.length} circle{nearbyGroups.length === 1 ? '' : 's'} · {nearbyCampfires.length} Campfire{nearbyCampfires.length === 1 ? '' : 's'}</Text></View></View>
           {nearbyPeople.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{nearbyPeople.slice(0, 12).map((person) => <PersonChip key={person.id} person={person} />)}</ScrollView> : null}
           {nearbyCampfires.length ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Campfires Nearby</Text>{nearbyCampfires.map((event) => <CampfireCard key={event.id} event={event} />)}</View> : null}
           <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Local Posts</Text><Text style={styles.sectionCopy}>What adventurers around you are sharing.</Text></View>
@@ -323,7 +323,7 @@ export default function OutpostScreen() {
           {!nearbyPosts.length && !loading ? <Text style={styles.emptyText}>Local activity will show here as the Outpost grows.</Text> : null}
         </> : null}
 
-        {tab === 'groups' ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Groups</Text><Text style={styles.sectionCopy}>Ongoing communities built around shared interests and adventures.</Text><View style={styles.list}>{groups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!groups.length ? <Text style={styles.emptyText}>No groups yet.</Text> : null}</View></View> : null}
+        {tab === 'groups' ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Circles</Text><Text style={styles.sectionCopy}>Ongoing communities built around shared interests and adventures.</Text><View style={styles.list}>{groups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!groups.length ? <Text style={styles.emptyText}>No circles yet.</Text> : null}</View></View> : null}
 
         {tab === 'campfires' ? <>
           <View style={styles.campfireHero}><View style={styles.campfireHeroIcon}><Ionicons name="bonfire-outline" size={26} color={GOLD} /></View><View style={styles.flex}><Text style={styles.sectionTitle}>Campfires</Text><Text style={styles.sectionCopy}>Casual member-led meetups. Hikes, paddles, park hangs, brewery stops, trail walks, and whatever else gets people together.</Text></View></View>
