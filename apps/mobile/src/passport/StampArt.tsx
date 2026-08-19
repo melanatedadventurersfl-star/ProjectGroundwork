@@ -14,49 +14,38 @@ export type LegacyStampCode =
 
 type StampAsset = {
   source: ImageSourcePropType;
-  aspectRatio: number;
 };
 
 const stampAssets: Record<LegacyStampCode, StampAsset> = {
   'legacy-event-2025-group-launch': {
-    source: require('../../assets/stamps/2025-group-launch.jpg'),
-    aspectRatio: 80 / 102,
+    source: require('../../assets/stamps/2025-group-launch.png'),
   },
   'legacy-event-2025-huguenot-camping': {
-    source: require('../../assets/stamps/2025-huguenot-camping.jpg'),
-    aspectRatio: 80 / 101,
+    source: require('../../assets/stamps/2025-huguenot-camping.png'),
   },
   'legacy-event-2025-float-out': {
-    source: require('../../assets/stamps/2025-float-out.jpg'),
-    aspectRatio: 80 / 101,
+    source: require('../../assets/stamps/2025-float-out.png'),
   },
   'legacy-event-2025-black-breezy': {
-    source: require('../../assets/stamps/2025-black-breezy.jpg'),
-    aspectRatio: 80 / 104,
+    source: require('../../assets/stamps/2025-black-breezy.png'),
   },
   'legacy-event-2025-fire-dragon': {
-    source: require('../../assets/stamps/2025-fire-dragon.jpg'),
-    aspectRatio: 80 / 98,
+    source: require('../../assets/stamps/2025-fire-dragon.png'),
   },
   'legacy-event-2025-wet-wild': {
-    source: require('../../assets/stamps/2025-wet-wild.jpg'),
-    aspectRatio: 80 / 96,
+    source: require('../../assets/stamps/2025-wet-wild.png'),
   },
   'legacy-event-2026-beach-escape': {
-    source: require('../../assets/stamps/2026-beach-escape.jpg'),
-    aspectRatio: 68 / 125,
+    source: require('../../assets/stamps/2026-beach-escape.png'),
   },
   'legacy-event-2026-float-out-juneteenth': {
-    source: require('../../assets/stamps/2026-float-out-juneteenth.jpg'),
-    aspectRatio: 68 / 125,
+    source: require('../../assets/stamps/2026-float-out-juneteenth.png'),
   },
   'legacy-event-2026-champs': {
-    source: require('../../assets/stamps/2026-champs.jpg'),
-    aspectRatio: 68 / 126,
+    source: require('../../assets/stamps/2026-champs-summer-session.png'),
   },
   'legacy-event-2026-splash-after-dark': {
-    source: require('../../assets/stamps/2026-splash-after-dark.jpg'),
-    aspectRatio: 68 / 125,
+    source: require('../../assets/stamps/2026-splash-after-dark.png'),
   },
 };
 
@@ -69,7 +58,7 @@ export function StampArt({ code, width = 150 }: { code: LegacyStampCode; width?:
   return (
     <Image
       source={stamp.source}
-      style={{ width, aspectRatio: stamp.aspectRatio }}
+      style={{ width, height: width * 1.28 }}
       resizeMode="contain"
     />
   );
