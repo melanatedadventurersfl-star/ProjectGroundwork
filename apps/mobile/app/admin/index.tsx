@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, Pressable, SafeAreaView, ScrollView, StyleShe
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
+import { getBuildFingerprint } from '../../src/updates/buildInfo';
 
 type AdminProfile = {
   display_name: string | null;
@@ -20,6 +21,7 @@ export default function AdminProfileScreen() {
   const [authorized, setAuthorized] = useState(false);
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [error, setError] = useState('');
+  const buildFingerprint = useMemo(() => getBuildFingerprint(), []);
 
   useEffect(() => {
     let active = true;
@@ -154,7 +156,17 @@ export default function AdminProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ADMIN TOOLS</Text>
           <View style={styles.card}>
-            <Pressable style={styles.row} onPress={() => router.push('/admin-media' as never)}>
+            <Pressable style={styles.row} onPress={() => router.push('/build-status' as never)}>
+              <View style={styles.rowCopy}>
+                <View style={styles.rowTitleLine}>
+                  <Text style={styles.rowTitle}>Build Status</Text>
+                  <View style={styles.liveBadge}><Text style={styles.liveBadgeText}>LIVE</Text></View>
+                </View>
+                <Text style={styles.rowSubtitle}>Verify version, build, commit, update channel, and whether a newer update exists.</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+            <Pressable style={[styles.row, styles.divider]} onPress={() => router.push('/admin-media' as never)}>
               <View style={styles.rowCopy}>
                 <Text style={styles.rowTitle}>App Media</Text>
                 <Text style={styles.rowSubtitle}>Publish verified imagery used across the app.</Text>
@@ -185,6 +197,10 @@ export default function AdminProfileScreen() {
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <View style={styles.buildFooter}>
+          <Text style={styles.buildFooterLabel}>RUNNING</Text>
+          <Text style={styles.buildFooterValue}>{buildFingerprint}</Text>
+        </View>
         <Text style={styles.note}>Admin status is evaluated from the signed-in account every time this screen loads.</Text>
       </ScrollView>
     </SafeAreaView>
@@ -229,9 +245,15 @@ const styles = StyleSheet.create({
   row: { minHeight: 66, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   divider: { borderTopWidth: 1, borderTopColor: '#26332C' },
   rowCopy: { flex: 1, gap: 3 },
+  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   rowTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '800' },
   rowSubtitle: { color: '#87938C', fontSize: 12, lineHeight: 17 },
+  liveBadge: { borderRadius: 999, borderWidth: 1, borderColor: '#5F7534', backgroundColor: '#243019', paddingHorizontal: 6, paddingVertical: 2 },
+  liveBadgeText: { color: '#CDE96D', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
   chevron: { color: '#D7B45A', fontSize: 28, lineHeight: 28, fontWeight: '500' },
-  note: { color: '#718078', fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 2 },
+  buildFooter: { alignItems: 'center', gap: 4, borderTopWidth: 1, borderTopColor: '#26332C', paddingTop: 15, marginTop: 2 },
+  buildFooterLabel: { color: '#718078', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  buildFooterValue: { color: '#9EAAA3', fontSize: 11, fontWeight: '800' },
+  note: { color: '#718078', fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 8 },
   errorText: { color: '#FFB4A9', fontSize: 12, lineHeight: 18 },
 });
