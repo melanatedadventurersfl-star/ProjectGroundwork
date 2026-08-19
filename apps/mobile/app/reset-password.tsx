@@ -24,13 +24,18 @@ export default function ResetPasswordScreen() {
   );
 
   useEffect(() => {
-    async function establishRecoverySession(url: string | null) {
-      if (!url) {
-        setIsPreparing(false);
-        return;
-      }
+    let active = true;
 
+    async function establishRecoverySession(url: string | null) {
       try {
+        const { data: existingSession } = await supabase.auth.getSession();
+        if (existingSession.session) {
+          if (active) setHasRecoverySession(true);
+          return;
+        }
+
+        if (!url) return;
+
         const params = getParams(url);
         const code = params.get('code');
         const accessToken = params.get('access_token');
@@ -39,7 +44,7 @@ export default function ResetPasswordScreen() {
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
-          setHasRecoverySession(true);
+          if (active) setHasRecoverySession(true);
           return;
         }
 
@@ -49,18 +54,21 @@ export default function ResetPasswordScreen() {
             refresh_token: refreshToken,
           });
           if (error) throw error;
-          setHasRecoverySession(true);
+          if (active) setHasRecoverySession(true);
         }
       } catch (caught) {
         Alert.alert('Reset link problem', getFriendlyAuthError(caught, 'This reset link could not be opened. Request a new one and try again.'));
       } finally {
-        setIsPreparing(false);
+        if (active) setIsPreparing(false);
       }
     }
 
     void Linking.getInitialURL().then(establishRecoverySession);
     const subscription = Linking.addEventListener('url', ({ url }) => void establishRecoverySession(url));
-    return () => subscription.remove();
+    return () => {
+      active = false;
+      subscription.remove();
+    };
   }, []);
 
   async function handleUpdatePassword() {
