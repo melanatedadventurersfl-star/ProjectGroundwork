@@ -35,6 +35,7 @@ function isGuestPublicPath(pathname: string) {
     pathname.startsWith('/guide') ||
     pathname.startsWith('/trail-guide') ||
     pathname.startsWith('/community-guidelines') ||
+    pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
@@ -54,6 +55,7 @@ function AppShell() {
 
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
+    pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
@@ -153,6 +155,7 @@ function AppShell() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(auth)" />
+          <Stack.Screen name="auth" />
           <Stack.Screen name="reset-password" />
           <Stack.Screen name="adventures" />
           <Stack.Screen name="checkout" />
