@@ -1,9 +1,19 @@
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AdventureCard } from '../../src/adventures/AdventureCard';
 import { listAdventures, setAdventureSaved } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { useAuth } from '../../src/auth/AuthProvider';
@@ -11,22 +21,19 @@ import { distanceMiles, pointForCity, resolveSearchCenter } from '../../src/expl
 import { listLocalEvents, type LocalEvent } from '../../src/local-events/api';
 import { supabase } from '../../src/lib/supabase';
 
-type Mode = 'adventures' | 'local' | 'saved';
 type SortMode = 'soonest' | 'closest' | 'newest' | 'price';
 type Point = { latitude: number; longitude: number };
 
-const categories = ['All', 'Camping', 'Hiking', 'Water', 'Fishing', 'Cycling', 'Travel', 'Culture'];
-const visibleCategories = ['Camping', 'Hiking', 'Water', 'Fishing', 'Cycling'];
-const categoryIcons: Record<string, string> = { Camping: '⛺', Hiking: '🥾', Water: '≋', Fishing: '◌', Cycling: '◉' };
-const adventureRadii = ['25', '50', '100', '250', 'Anywhere'];
-const localRadii = ['10', '25', '50'];
+const categories = ['Camping', 'Hiking', 'Water', 'Fishing', 'Cycling'];
+const categoryIcons: Record<string, string> = {
+  Camping: '⛺',
+  Hiking: '🥾',
+  Water: '≋',
+  Fishing: '◌',
+  Cycling: '◉',
+};
 const quickTags = ['Upcoming', 'Family Friendly', 'Beginner Friendly', 'Weekend', 'Gear Provided', 'Accessible'];
-const sortOptions: { value: SortMode; label: string }[] = [
-  { value: 'soonest', label: 'Soonest' },
-  { value: 'closest', label: 'Closest' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'price', label: 'Price: Low to High' },
-];
+const radii = ['25', '50', '100', '250', 'Anywhere'];
 
 function promptForAccount(destination: string) {
   Alert.alert('Sign in to continue', `${destination} is available to members. Sign in or create an account to continue.`, [
@@ -54,33 +61,91 @@ function isWeekend(date: string) {
 function matchesQuickTags(item: { title: string; description?: string | null; category?: string | null; starts_at: string }, tags: string[]) {
   if (!tags.length) return true;
   const tagsForItem = inferredTags(item);
-  return tags.every((tag) => tag === 'Upcoming' ? new Date(item.starts_at).getTime() >= Date.now() : tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag));
+  return tags.every((tag) => tag === 'Upcoming'
+    ? new Date(item.starts_at).getTime() >= Date.now()
+    : tag === 'Weekend'
+      ? isWeekend(item.starts_at)
+      : tagsForItem.includes(tag));
 }
 
-function LocalCard({ event, distance }: { event: LocalEvent; distance?: number | null }) {
+function SectionHeader({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
   return (
-    <Pressable style={s.compactEvent} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
-      <View style={s.eventThumb}><Text style={s.eventThumbIcon}>↗</Text></View>
-      <View style={s.eventCopy}>
-        <Text style={s.eventEyebrow}>LOCAL EVENT</Text>
-        <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>
-        <Text style={s.eventMeta}>{distance != null ? `${distance.toFixed(1)} mi away · ` : ''}{event.city}, {event.state}</Text>
-        <Text style={s.eventMeta}>{new Date(event.starts_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+    <View style={s.sectionHeader}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      {action && onPress ? <Pressable onPress={onPress}><Text style={s.sectionAction}>{action}  ›</Text></Pressable> : null}
+    </View>
+  );
+}
+
+function AdventureTile({ adventure, distance, onToggleSaved }: {
+  adventure: AdventureSummary;
+  distance?: number | null;
+  onToggleSaved: (adventure: AdventureSummary) => void;
+}) {
+  return (
+    <Pressable
+      style={s.adventureTile}
+      onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
+    >
+      {adventure.hero_image_url ? (
+        <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.tileImage} imageStyle={s.tileImageCorners}>
+          <View style={s.tileShade}>
+            <View style={s.tileTopRow}>
+              {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : <View />}
+              <Pressable
+                style={s.heartButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onToggleSaved(adventure);
+                }}
+              >
+                <Text style={s.heart}>{adventure.is_saved ? '★' : '☆'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={[s.tileImage, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>
+      )}
+      <View style={s.tileCopy}>
+        <Text style={s.tileTitle} numberOfLines={1}>{adventure.title}</Text>
+        <Text style={s.tileMeta} numberOfLines={1}>{adventure.category} · {adventure.city}, {adventure.state}</Text>
+        <Text style={s.tileDate}>{new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
       </View>
-      <Text style={s.eventArrow}>›</Text>
+    </Pressable>
+  );
+}
+
+function EventCard({ event, distance }: { event: LocalEvent; distance?: number | null }) {
+  const date = new Date(event.starts_at);
+  return (
+    <Pressable
+      style={s.eventCard}
+      onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}
+    >
+      <View style={s.eventDateBlock}>
+        <Text style={s.eventMonth}>{date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text>
+        <Text style={s.eventDay}>{date.getDate()}</Text>
+        <Text style={s.eventWeekday}>{date.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</Text>
+      </View>
+      <View style={s.eventVisual}><Text style={s.eventVisualIcon}>↗</Text></View>
+      <View style={s.eventCopy}>
+        <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>
+        <Text style={s.eventMeta} numberOfLines={1}>{event.city}, {event.state}</Text>
+        <Text style={s.eventMeta}>{date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}{distance != null ? ` · ${distance.toFixed(0)} mi` : ''}</Text>
+      </View>
     </Pressable>
   );
 }
 
 export default function ExploreScreen() {
   const { session } = useAuth();
-  const [mode, setMode] = useState<Mode>('adventures');
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [events, setEvents] = useState<LocalEvent[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [radius, setRadius] = useState('50');
-  const [sort, setSort] = useState<SortMode>('soonest');
+  const [sort, setSort] = useState<SortMode>('closest');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [homeCity, setHomeCity] = useState('');
@@ -90,12 +155,6 @@ export default function ExploreScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const filters = useMemo(() => ({
-    search: search || undefined,
-    category: category === 'All' ? undefined : category,
-    savedOnly: session && mode === 'saved' ? true : undefined,
-  }), [search, category, mode, session]);
 
   useEffect(() => {
     let active = true;
@@ -115,7 +174,7 @@ export default function ExploreScreen() {
         if (city && state) setCurrentLocationLabel(`${city}, ${state}`);
         else if (city) setCurrentLocationLabel(city);
       } catch {
-        // Explore uses the member's saved-location fallback when device location is unavailable.
+        // Saved profile location remains the fallback when device location is unavailable.
       }
     })();
     return () => { active = false; };
@@ -126,9 +185,11 @@ export default function ExploreScreen() {
     try {
       const userId = session?.user.id;
       const [nextAdventures, nextEvents, profile] = await Promise.all([
-        listAdventures(filters),
+        listAdventures({}),
         listLocalEvents(),
-        userId ? supabase.from('profiles').select('home_city,home_state').eq('id', userId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+        userId
+          ? supabase.from('profiles').select('home_city,home_state').eq('id', userId).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
       setAdventures(nextAdventures);
       setEvents(nextEvents);
@@ -141,24 +202,48 @@ export default function ExploreScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filters, session?.user.id]);
+  }, [session?.user.id]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => void load(), 200);
-    return () => clearTimeout(timer);
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    if (mode === 'local' && (radius === '100' || radius === '250' || radius === 'Anywhere')) setRadius('50');
-  }, [mode, radius]);
+  const savedCenter = useMemo(() => resolveSearchCenter(search, homeCity, homeState), [search, homeCity, homeState]);
+  const searchCenter = search.trim() ? savedCenter : currentPoint ?? savedCenter;
+  const radiusLimit = radius === 'Anywhere' ? Number.POSITIVE_INFINITY : Number(radius);
 
-  function chooseMode(next: Mode) {
-    if (!session && next === 'saved') {
-      promptForAccount('Saved adventures');
-      return;
-    }
-    setMode(next);
-  }
+  const visibleAdventures = useMemo(() => adventures
+    .filter((item) => category === 'All' || item.category === category)
+    .filter((item) => matchesQuickTags(item, selectedTags))
+    .filter((item) => {
+      const query = search.trim().toLowerCase();
+      const searchable = `${item.title} ${item.city} ${item.state} ${item.category} ${item.description ?? ''}`.toLowerCase();
+      if (query && !searchable.includes(query) && !savedCenter) return false;
+      if (!searchCenter || item.latitude == null || item.longitude == null || radius === 'Anywhere') return true;
+      return distanceMiles(searchCenter, { latitude: item.latitude, longitude: item.longitude }) <= radiusLimit;
+    })
+    .sort((a, b) => {
+      if (sort === 'newest') return b.id.localeCompare(a.id);
+      if (sort === 'price') return a.starting_price_cents - b.starting_price_cents;
+      if (sort === 'closest' && searchCenter) {
+        const ad = a.latitude == null || a.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: a.latitude, longitude: a.longitude });
+        const bd = b.latitude == null || b.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: b.latitude, longitude: b.longitude });
+        return ad - bd;
+      }
+      return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+    }), [adventures, category, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
+
+  const localEvents = useMemo(() => events.map((event) => {
+    const point = pointForCity(event.city, event.state);
+    return { event, distance: searchCenter && point ? distanceMiles(searchCenter, point) : null };
+  }).filter(({ event, distance }) => {
+    const query = search.trim().toLowerCase();
+    const searchable = `${event.title} ${event.host_name} ${event.city} ${event.state} ${event.category} ${event.description}`.toLowerCase();
+    const textMatch = !query || searchable.includes(query) || savedCenter != null;
+    const distanceMatch = distance == null || distance <= Math.min(50, radiusLimit);
+    return textMatch && distanceMatch && matchesQuickTags(event, selectedTags);
+  }).sort((a, b) => sort === 'closest'
+    ? (a.distance ?? 9999) - (b.distance ?? 9999)
+    : new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime()),
+  [events, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
 
   async function toggle(adventure: AdventureSummary) {
     if (!session) {
@@ -174,267 +259,243 @@ export default function ExploreScreen() {
     }
   }
 
-  const savedCenter = useMemo(() => resolveSearchCenter(search, homeCity, homeState), [search, homeCity, homeState]);
-  const searchCenter = search.trim() ? savedCenter : currentPoint ?? savedCenter;
-  const radiusLimit = radius === 'Anywhere' ? Number.POSITIVE_INFINITY : Number(radius);
-
-  const localWithDistance = useMemo(() => events.map((event) => {
-    const point = pointForCity(event.city, event.state);
-    return { event, distance: searchCenter && point ? distanceMiles(searchCenter, point) : null };
-  }).filter(({ event, distance }) => {
-    const query = search.trim().toLowerCase();
-    const searchable = `${event.title} ${event.host_name} ${event.city} ${event.state} ${event.category} ${event.description}`.toLowerCase();
-    const textMatch = !query || searchable.includes(query) || (searchCenter != null && query.includes(event.city.toLowerCase()));
-    const distanceMatch = distance == null || distance <= Math.min(50, radiusLimit);
-    return textMatch && distanceMatch && matchesQuickTags(event, selectedTags);
-  }), [events, radiusLimit, search, searchCenter, selectedTags]);
-
-  const sortedLocal = useMemo(() => [...localWithDistance].sort((a, b) => sort === 'closest'
-    ? (a.distance ?? 9999) - (b.distance ?? 9999)
-    : sort === 'newest'
-      ? b.event.id.localeCompare(a.event.id)
-      : new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime()), [localWithDistance, sort]);
-
-  const filteredAdventures = useMemo(() => adventures
-    .filter((item) => matchesQuickTags(item, selectedTags))
-    .filter((item) => {
-      if (!searchCenter || item.latitude == null || item.longitude == null || radius === 'Anywhere') return true;
-      return distanceMiles(searchCenter, { latitude: item.latitude, longitude: item.longitude }) <= radiusLimit;
-    })
-    .sort((a, b) => {
-      if (sort === 'newest') return b.id.localeCompare(a.id);
-      if (sort === 'price') return a.starting_price_cents - b.starting_price_cents;
-      if (sort === 'closest' && searchCenter) {
-        const aDistance = a.latitude == null || a.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: a.latitude, longitude: a.longitude });
-        const bDistance = b.latitude == null || b.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: b.latitude, longitude: b.longitude });
-        return aDistance - bDistance;
-      }
-      return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
-    }), [adventures, radius, radiusLimit, searchCenter, selectedTags, sort]);
-
-  const featuredAdventure = mode === 'adventures' ? filteredAdventures.find((item) => item.is_featured) ?? filteredAdventures[0] : undefined;
-  const nearbyEvent = sortedLocal[0];
-  const adventureRows = featuredAdventure ? filteredAdventures.filter((item) => item.id !== featuredAdventure.id) : filteredAdventures;
-  const rows: any[] = mode === 'local' ? sortedLocal : adventureRows;
-  const radii = mode === 'local' ? localRadii : adventureRadii;
+  function chooseCategory(next: string) {
+    setCategory((current) => current === next ? 'All' : next);
+  }
 
   function toggleTag(tag: string) {
     setSelectedTags((current) => current.includes(tag) ? current.filter((value) => value !== tag) : [...current, tag]);
   }
 
-  function chooseCategory(next: string) {
-    setCategory((current) => current === next ? 'All' : next);
-    setMode('adventures');
+  function distanceFor(adventure: AdventureSummary) {
+    if (!searchCenter || adventure.latitude == null || adventure.longitude == null) return null;
+    return distanceMiles(searchCenter, { latitude: adventure.latitude, longitude: adventure.longitude });
   }
 
-  const featuredDistance = featuredAdventure && searchCenter && featuredAdventure.latitude != null && featuredAdventure.longitude != null
-    ? distanceMiles(searchCenter, { latitude: featuredAdventure.latitude, longitude: featuredAdventure.longitude })
-    : null;
+  const featured = visibleAdventures.filter((item) => item.is_featured).concat(visibleAdventures.filter((item) => !item.is_featured)).slice(0, 6);
+  const popular = visibleAdventures.slice(6, 12).length ? visibleAdventures.slice(6, 12) : visibleAdventures.slice(0, 6);
+  const nearby = localEvents.slice(0, 4);
 
-  const todayMessage = category === 'All'
-    ? `Explore what is happening near ${currentLocationLabel}.`
-    : `A good day to discover ${category.toLowerCase()} near ${currentLocationLabel}.`;
-
-  const header = (
-    <View style={s.header}>
-      <Text style={s.title}>Explore</Text>
-      <Text style={s.location}>⌖  {currentLocationLabel}  ⌄</Text>
-
-      <TextInput
-        value={search}
-        onChangeText={setSearch}
-        placeholder={mode === 'local' ? 'Search events, hosts or places' : 'Where do you want to go outside?'}
-        placeholderTextColor="#7F8A84"
-        style={s.input}
-      />
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
-        {visibleCategories.map((item) => (
-          <Pressable key={item} onPress={() => chooseCategory(item)} style={[s.categoryChip, category === item && s.categoryChipActive]}>
-            <Text style={[s.categoryIcon, category === item && s.categoryTextActive]}>{categoryIcons[item]}</Text>
-            <Text style={[s.categoryText, category === item && s.categoryTextActive]}>{item}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {mode === 'adventures' ? (
-        <View style={s.todayCard}>
-          <View style={s.todayIconWrap}><Text style={s.todayIcon}>☀</Text></View>
-          <View style={s.todayCopy}>
-            <Text style={s.todayEyebrow}>GOOD DAY TO GET OUTSIDE</Text>
-            <Text style={s.todayTitle}>{todayMessage}</Text>
-          </View>
-          <Pressable style={s.todayButton} onPress={() => setSort('closest')}><Text style={s.todayButtonText}>See ideas</Text></Pressable>
-        </View>
-      ) : null}
-
-      <View style={s.tabs}>
-        {([['adventures', 'Adventures'], ['local', 'Events'], ['saved', 'Saved']] as [Mode, string][]).map(([value, label]) => (
-          <Pressable key={value} onPress={() => chooseMode(value)} style={[s.tab, mode === value && s.tabActive]}>
-            <Text style={[s.tabText, mode === value && s.tabTextActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {featuredAdventure ? (
-        <>
-          <Text style={s.sectionEyebrow}>FEATURED ADVENTURE</Text>
-          <Pressable style={s.featuredCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: featuredAdventure.id } })}>
-            {featuredAdventure.hero_image_url ? (
-              <ImageBackground source={{ uri: featuredAdventure.hero_image_url }} style={s.featuredImage} imageStyle={s.featuredImageCorners}>
-                <View style={s.featuredOverlay}>
-                  <View style={s.featuredTopRow}>
-                    <Text style={s.featuredBadge}>FEATURED</Text>
-                    <Pressable style={s.saveButton} onPress={(event) => { event.stopPropagation(); void toggle(featuredAdventure); }}><Text style={s.saveIcon}>{featuredAdventure.is_saved ? '★' : '☆'}</Text></Pressable>
-                  </View>
-                  <View>
-                    <Text style={s.featuredTitle}>{featuredAdventure.title}</Text>
-                    <Text style={s.featuredMeta}>⌖ {featuredDistance != null ? `${featuredDistance.toFixed(1)} mi away · ` : ''}{featuredAdventure.city}, {featuredAdventure.state}</Text>
-                    <Text style={s.featuredMeta}>▣ {new Date(featuredAdventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · {featuredAdventure.category}</Text>
-                  </View>
-                </View>
-              </ImageBackground>
-            ) : <View style={[s.featuredImage, s.featuredFallback]}><Text style={s.featuredTitle}>{featuredAdventure.title}</Text></View>}
-            <View style={s.featuredFooter}>
-              <Text style={s.fromPrice}>{featuredAdventure.starting_price_cents === 0 ? <Text style={s.freePrice}>Free</Text> : <>From <Text style={s.price}>${Math.round(featuredAdventure.starting_price_cents / 100)}</Text></>}</Text>
-              <Text style={s.trusted}>✓ Trusted Host</Text>
-            </View>
-          </Pressable>
-        </>
-      ) : null}
-
-      {mode === 'adventures' && nearbyEvent ? (
-        <View>
-          <View style={s.sectionHeadingRow}>
-            <Text style={s.sectionTitle}>Happening near you</Text>
-            <Pressable onPress={() => setMode('local')}><Text style={s.sectionLink}>View all ›</Text></Pressable>
-          </View>
-          <LocalCard event={nearbyEvent.event} distance={nearbyEvent.distance} />
-        </View>
-      ) : null}
-
-      <View style={s.controlRow}>
-        <Pressable style={s.controlButton} onPress={() => setShowFilters((value) => !value)}><Text style={s.controlText}>☷  Filter{selectedTags.length ? ` · ${selectedTags.length}` : ''}</Text></Pressable>
-        <Pressable style={s.controlButton} onPress={() => Alert.alert('Map view', 'Map discovery is next in the Explore rollout.')}><Text style={s.controlText}>⌖  Map View</Text></Pressable>
-      </View>
-
-      {showFilters ? (
-        <View style={s.panel}>
-          <Text style={s.filterLabel}>SORT</Text>
-          <View style={s.chips}>{sortOptions.map((option) => <Pressable key={option.value} onPress={() => setSort(option.value)} style={[s.chip, sort === option.value && s.chipActive]}><Text style={[s.chipText, sort === option.value && s.chipTextActive]}>{option.label}</Text></Pressable>)}</View>
-          <Text style={s.filterLabel}>QUICK FILTERS</Text>
-          <View style={s.chips}>{quickTags.map((tag) => <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.chip, selectedTags.includes(tag) && s.chipActive]}><Text style={[s.chipText, selectedTags.includes(tag) && s.chipTextActive]}>{tag}</Text></Pressable>)}</View>
-          <Text style={s.filterLabel}>RADIUS{mode === 'local' ? ' · MAX 50 MI' : ''}</Text>
-          <View style={s.chips}>{radii.map((value) => <Pressable key={value} onPress={() => setRadius(value)} style={[s.chip, radius === value && s.chipActive]}><Text style={[s.chipText, radius === value && s.chipTextActive]}>{value === 'Anywhere' ? value : `${value} mi`}</Text></Pressable>)}</View>
-          {mode !== 'local' ? <><Text style={s.filterLabel}>ADVENTURE TYPE</Text><View style={s.chips}>{categories.map((value) => <Pressable key={value} onPress={() => setCategory(value)} style={[s.chip, category === value && s.chipActive]}><Text style={[s.chipText, category === value && s.chipTextActive]}>{value}</Text></Pressable>)}</View></> : null}
-        </View>
-      ) : null}
-
-      {mode === 'adventures' ? (
-        <Pressable style={s.learnCard} onPress={() => router.push('/groups' as never)}>
-          <View style={s.learnIcon}><Text style={s.learnIconText}>🎒</Text></View>
-          <View style={s.learnCopy}><Text style={s.learnEyebrow}>LEARN</Text><Text style={s.learnTitle}>{category === 'Camping' ? 'New to camping?' : 'Build your outdoor confidence'}</Text><Text style={s.learnBody}>{category === 'Camping' ? 'Start with our beginner-friendly camping guides and tips.' : 'Gear, safety, skills and practical guides for your next adventure.'}</Text></View>
-          <Text style={s.learnArrow}>›</Text>
-        </Pressable>
-      ) : null}
-
-      {error ? <Text style={s.error}>{error}</Text> : null}
-      {loading ? <ActivityIndicator color="#F5C542" /> : null}
-      {!loading && rows.length > 0 ? <Text style={s.listHeading}>{mode === 'local' ? 'Local events' : 'More to explore'}</Text> : null}
-    </View>
-  );
+  const timeOfDay = new Date().getHours();
+  const daypart = timeOfDay >= 17 ? 'evening' : timeOfDay >= 12 ? 'afternoon' : 'morning';
+  const conditionTitle = `A good ${daypart} to get outside`;
+  const conditionBody = category === 'All'
+    ? `Discover something nearby in ${currentLocationLabel}.`
+    : `Find ${category.toLowerCase()} ideas around ${currentLocationLabel}.`;
 
   return (
-    <SafeAreaView style={s.safe}>
-      <FlatList
-        data={rows}
-        keyExtractor={(item: any) => item.id ?? item.event?.id}
+    <SafeAreaView style={s.safe} edges={['left', 'right']}>
+      <ScrollView
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#F5C542" />}
-        ListHeaderComponent={header}
-        renderItem={({ item }) => mode === 'local' ? <LocalCard event={item.event as LocalEvent} distance={item.distance} /> : <AdventureCard adventure={item as AdventureSummary} onToggleSaved={toggle} />}
-        ItemSeparatorComponent={() => <View style={{ height: 11 }} />}
-        ListEmptyComponent={!loading ? <View style={s.empty}><Text style={s.emptyTitle}>Nothing here yet</Text><Text style={s.body}>Try widening your radius or clearing a filter.</Text></View> : null}
-      />
+      >
+        <View style={s.hero}>
+          <Text style={s.title}>Explore</Text>
+          <Pressable style={s.locationRow} onPress={() => setShowFilters(true)}>
+            <Text style={s.locationMarker}>✦</Text>
+            <Text style={s.location}>{currentLocationLabel}</Text>
+            <Text style={s.locationChevron}>⌄</Text>
+          </Pressable>
+
+          <View style={s.searchWrap}>
+            <Text style={s.searchIcon}>⌕</Text>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search places, adventures & events"
+              placeholderTextColor="#909A95"
+              style={s.input}
+            />
+            <Pressable style={s.filterIconButton} onPress={() => setShowFilters((value) => !value)}>
+              <Text style={s.filterIcon}>☷</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
+            {categories.map((item) => (
+              <Pressable key={item} onPress={() => chooseCategory(item)} style={[s.categoryChip, category === item && s.categoryChipActive]}>
+                <Text style={[s.categoryIcon, category === item && s.categoryTextActive]}>{categoryIcons[item]}</Text>
+                <Text style={[s.categoryText, category === item && s.categoryTextActive]}>{item}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={s.conditionCard}>
+          <View style={s.conditionIconWrap}><Text style={s.conditionIcon}>☀</Text></View>
+          <View style={s.conditionCopy}>
+            <Text style={s.conditionTitle}>{conditionTitle}</Text>
+            <Text style={s.conditionBody}>{conditionBody}</Text>
+          </View>
+          <Pressable style={s.conditionButton} onPress={() => setSort('closest')}><Text style={s.conditionButtonText}>See ideas  ›</Text></Pressable>
+        </View>
+
+        {showFilters ? (
+          <View style={s.filterPanel}>
+            <View style={s.filterPanelTop}>
+              <Text style={s.filterPanelTitle}>Refine Explore</Text>
+              <Pressable onPress={() => setShowFilters(false)}><Text style={s.closeFilter}>×</Text></Pressable>
+            </View>
+            <Text style={s.filterLabel}>SORT</Text>
+            <View style={s.filterChips}>
+              {(['closest', 'soonest', 'newest', 'price'] as SortMode[]).map((value) => (
+                <Pressable key={value} onPress={() => setSort(value)} style={[s.filterChip, sort === value && s.filterChipActive]}>
+                  <Text style={[s.filterChipText, sort === value && s.filterChipTextActive]}>{value === 'price' ? 'Price' : value[0].toUpperCase() + value.slice(1)}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={s.filterLabel}>QUICK FILTERS</Text>
+            <View style={s.filterChips}>
+              {quickTags.map((tag) => (
+                <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.filterChip, selectedTags.includes(tag) && s.filterChipActive]}>
+                  <Text style={[s.filterChipText, selectedTags.includes(tag) && s.filterChipTextActive]}>{tag}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={s.filterLabel}>RADIUS</Text>
+            <View style={s.filterChips}>
+              {radii.map((value) => (
+                <Pressable key={value} onPress={() => setRadius(value)} style={[s.filterChip, radius === value && s.filterChipActive]}>
+                  <Text style={[s.filterChipText, radius === value && s.filterChipTextActive]}>{value === 'Anywhere' ? value : `${value} mi`}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {error ? <Text style={s.error}>{error}</Text> : null}
+        {loading ? <ActivityIndicator color="#F5C542" style={s.loader} /> : null}
+
+        {!loading && featured.length ? (
+          <View style={s.section}>
+            <SectionHeader title="Featured Adventures" action="See all" onPress={() => { setCategory('All'); setSort('soonest'); }} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
+              {featured.map((adventure) => (
+                <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {!loading && nearby.length ? (
+          <View style={s.section}>
+            <SectionHeader title="Happening Near You" action="See all" onPress={() => router.push('/local-events' as never)} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
+              {nearby.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} />)}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {!loading && popular.length ? (
+          <View style={s.section}>
+            <SectionHeader title={`Popular Around ${currentLocationLabel.split(',')[0]}`} action="See all" onPress={() => setSort('closest')} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
+              {popular.map((adventure) => (
+                <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {!loading && !featured.length && !nearby.length ? (
+          <View style={s.empty}>
+            <Text style={s.emptyTitle}>Nothing nearby yet</Text>
+            <Text style={s.emptyBody}>Try widening your radius or clearing a filter.</Text>
+          </View>
+        ) : null}
+
+        <Pressable style={s.learnCard} onPress={() => router.push('/groups' as never)}>
+          <View style={s.learnIconWrap}><Text style={s.learnIcon}>🎒</Text></View>
+          <View style={s.learnCopy}>
+            <Text style={s.learnEyebrow}>LEARN & PREP</Text>
+            <Text style={s.learnTitle}>{category === 'Camping' ? 'New to camping?' : 'Build your outdoor confidence'}</Text>
+            <Text style={s.learnBody}>Gear, safety, skills and practical tips for your next adventure.</Text>
+          </View>
+          <Text style={s.learnArrow}>›</Text>
+        </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0B1110' },
-  content: { padding: 18, paddingBottom: 120 },
-  header: { gap: 11, marginBottom: 14 },
-  title: { color: '#F7F7F4', fontSize: 38, lineHeight: 42, fontWeight: '900' },
-  location: { color: '#D8DED9', fontWeight: '700', fontSize: 15, marginTop: -3 },
-  input: { backgroundColor: '#151D1B', borderWidth: 1, borderColor: '#343D39', borderRadius: 17, color: '#F7F7F4', paddingHorizontal: 16, paddingVertical: 13, fontSize: 15 },
-  categoryRow: { gap: 8, paddingRight: 8 },
-  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#3B4842', backgroundColor: '#111816', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
+  safe: { flex: 1, backgroundColor: '#090F0E' },
+  content: { paddingBottom: 120 },
+  hero: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
+  title: { color: '#F8F8F4', fontSize: 42, lineHeight: 46, fontWeight: '900', letterSpacing: -1.2 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 },
+  locationMarker: { color: '#F5C542', fontSize: 15, fontWeight: '900' },
+  location: { color: '#F5C542', fontSize: 16, fontWeight: '900' },
+  locationChevron: { color: '#A7B0AB', fontSize: 16, fontWeight: '900' },
+  searchWrap: { height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#151C1A', paddingLeft: 15 },
+  searchIcon: { color: '#C7CECA', fontSize: 26, marginRight: 7, marginTop: -2 },
+  input: { flex: 1, color: '#F7F7F4', fontSize: 15, paddingVertical: 13 },
+  filterIconButton: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  filterIcon: { color: '#C7CECA', fontSize: 20, fontWeight: '900' },
+  categoryRow: { gap: 9, paddingRight: 18, paddingBottom: 2 },
+  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#111715', paddingHorizontal: 15, paddingVertical: 10 },
   categoryChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
-  categoryIcon: { color: '#E1E7E3', fontSize: 15, fontWeight: '900' },
-  categoryText: { color: '#E1E7E3', fontSize: 13, fontWeight: '800' },
-  categoryTextActive: { color: '#111A17' },
-  todayCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12201C', borderWidth: 1, borderColor: '#33433C', borderRadius: 18, padding: 13, gap: 11 },
-  todayIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1B2924' },
-  todayIcon: { color: '#F5C542', fontSize: 27 },
-  todayCopy: { flex: 1 },
-  todayEyebrow: { color: '#F5C542', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  todayTitle: { color: '#F7F7F4', fontSize: 14, lineHeight: 18, fontWeight: '800', marginTop: 3 },
-  todayButton: { borderWidth: 1, borderColor: '#F5C542', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  todayButtonText: { color: '#F5C542', fontSize: 11, fontWeight: '900' },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#2A3530' },
-  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: '#F5C542' },
-  tabText: { color: '#9DA8A2', fontSize: 13, fontWeight: '800' },
-  tabTextActive: { color: '#F7F7F4' },
-  sectionEyebrow: { color: '#F5C542', fontSize: 10, fontWeight: '900', letterSpacing: 1, marginTop: 4 },
-  featuredCard: { overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: '#3E4944', backgroundColor: '#111A17' },
-  featuredImage: { minHeight: 255, justifyContent: 'space-between' },
-  featuredImageCorners: { borderTopLeftRadius: 19, borderTopRightRadius: 19 },
-  featuredOverlay: { flex: 1, justifyContent: 'space-between', padding: 15, backgroundColor: 'rgba(0,0,0,0.38)' },
-  featuredFallback: { padding: 16, backgroundColor: '#183128', justifyContent: 'flex-end' },
-  featuredTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  featuredBadge: { color: '#111A17', backgroundColor: '#F5C542', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, fontWeight: '900', fontSize: 9, letterSpacing: .8 },
-  saveButton: { width: 39, height: 39, borderRadius: 20, borderWidth: 1, borderColor: '#C6CECA', backgroundColor: 'rgba(8,13,12,.68)', alignItems: 'center', justifyContent: 'center' },
-  saveIcon: { color: '#FFFFFF', fontSize: 21 },
-  featuredTitle: { color: '#FFFFFF', fontSize: 26, lineHeight: 30, fontWeight: '900' },
-  featuredMeta: { color: '#E2E7E4', fontSize: 12, fontWeight: '700', marginTop: 5 },
-  featuredFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingVertical: 12, backgroundColor: '#101714' },
-  fromPrice: { color: '#E5EAE7', fontSize: 14 },
-  price: { color: '#F5C542', fontSize: 23, fontWeight: '900' },
-  freePrice: { color: '#76D1B7', fontSize: 18, fontWeight: '900' },
-  trusted: { color: '#75D2C0', backgroundColor: '#153128', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 10, fontWeight: '900' },
-  sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 5, marginBottom: 7 },
-  sectionTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900' },
-  sectionLink: { color: '#F5C542', fontSize: 12, fontWeight: '900' },
-  compactEvent: { minHeight: 104, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', borderRadius: 17, backgroundColor: '#121A18', borderWidth: 1, borderColor: '#2E3A35' },
-  eventThumb: { width: 92, alignSelf: 'stretch', backgroundColor: '#224B40', alignItems: 'center', justifyContent: 'center' },
-  eventThumbIcon: { color: '#F5C542', fontSize: 27, fontWeight: '900' },
-  eventCopy: { flex: 1, paddingHorizontal: 13, paddingVertical: 11 },
-  eventEyebrow: { color: '#76D1B7', fontSize: 9, fontWeight: '900', letterSpacing: .8 },
-  eventTitle: { color: '#F7F7F4', fontSize: 16, lineHeight: 20, fontWeight: '900', marginTop: 3 },
-  eventMeta: { color: '#ABB5B0', fontSize: 10, marginTop: 3 },
-  eventArrow: { color: '#F5C542', fontSize: 28, paddingRight: 13 },
-  controlRow: { flexDirection: 'row', gap: 9 },
-  controlButton: { flex: 1, backgroundColor: '#141D1A', borderWidth: 1, borderColor: '#3B4842', borderRadius: 13, paddingVertical: 11, alignItems: 'center' },
-  controlText: { color: '#E4E9E6', fontWeight: '900', fontSize: 12 },
-  panel: { backgroundColor: '#121B18', borderWidth: 1, borderColor: '#29372F', borderRadius: 16, padding: 13, gap: 10 },
-  filterLabel: { color: '#849188', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 2 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  chip: { borderWidth: 1, borderColor: '#46554C', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  chipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
-  chipText: { color: '#D2D8D4', fontWeight: '700', fontSize: 11 },
-  chipTextActive: { color: '#17211C' },
-  learnCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 17, borderWidth: 1, borderColor: '#315248', backgroundColor: '#10241F', padding: 13 },
-  learnIcon: { width: 52, height: 52, borderRadius: 14, backgroundColor: '#203329', alignItems: 'center', justifyContent: 'center' },
-  learnIconText: { fontSize: 25 },
+  categoryIcon: { color: '#E5E9E6', fontSize: 15, fontWeight: '900' },
+  categoryText: { color: '#E5E9E6', fontSize: 13, fontWeight: '800' },
+  categoryTextActive: { color: '#121816' },
+  conditionCard: { marginHorizontal: 18, marginTop: 16, minHeight: 104, flexDirection: 'row', alignItems: 'center', gap: 11, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#39463F', backgroundColor: '#13201C' },
+  conditionIconWrap: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A2924' },
+  conditionIcon: { color: '#F5C542', fontSize: 31 },
+  conditionCopy: { flex: 1 },
+  conditionTitle: { color: '#F8F8F4', fontSize: 16, lineHeight: 20, fontWeight: '900' },
+  conditionBody: { color: '#AFBAB4', fontSize: 11, lineHeight: 15, marginTop: 4 },
+  conditionButton: { borderRadius: 999, borderWidth: 1, borderColor: '#F5C542', paddingHorizontal: 13, paddingVertical: 9 },
+  conditionButtonText: { color: '#F5C542', fontSize: 11, fontWeight: '900' },
+  filterPanel: { marginHorizontal: 18, marginTop: 12, padding: 15, borderRadius: 18, borderWidth: 1, borderColor: '#303B36', backgroundColor: '#111816', gap: 10 },
+  filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  filterPanelTitle: { color: '#F7F7F4', fontSize: 17, fontWeight: '900' },
+  closeFilter: { color: '#AEB8B2', fontSize: 25, lineHeight: 25 },
+  filterLabel: { color: '#839088', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 3 },
+  filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  filterChip: { borderRadius: 999, borderWidth: 1, borderColor: '#46544C', paddingHorizontal: 10, paddingVertical: 7 },
+  filterChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
+  filterChipText: { color: '#D6DDD9', fontSize: 11, fontWeight: '800' },
+  filterChipTextActive: { color: '#151B18' },
+  loader: { marginTop: 28 },
+  error: { color: '#FF9B8F', paddingHorizontal: 18, paddingTop: 14, fontWeight: '700' },
+  section: { marginTop: 25 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 10 },
+  sectionTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900', letterSpacing: -.3 },
+  sectionAction: { color: '#F5C542', fontSize: 12, fontWeight: '900' },
+  horizontalContent: { paddingHorizontal: 18, gap: 11 },
+  adventureTile: { width: 220, overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
+  tileImage: { height: 150 },
+  tileImageCorners: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  tileShade: { flex: 1, backgroundColor: 'rgba(0,0,0,.16)', padding: 9 },
+  tileTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  distanceBadge: { color: '#FFFFFF', backgroundColor: 'rgba(8,13,12,.72)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, fontSize: 10, fontWeight: '900' },
+  heartButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(8,13,12,.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,.5)', alignItems: 'center', justifyContent: 'center' },
+  heart: { color: '#FFFFFF', fontSize: 18 },
+  tileFallback: { backgroundColor: '#1E3A31', alignItems: 'center', justifyContent: 'center' },
+  tileFallbackIcon: { color: '#F5C542', fontSize: 35, fontWeight: '900' },
+  tileCopy: { padding: 11 },
+  tileTitle: { color: '#F7F7F4', fontSize: 15, fontWeight: '900' },
+  tileMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 4 },
+  tileDate: { color: '#F5C542', fontSize: 10, fontWeight: '800', marginTop: 6 },
+  eventCard: { width: 306, minHeight: 126, flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
+  eventDateBlock: { width: 62, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151E1B' },
+  eventMonth: { color: '#F5C542', fontSize: 9, fontWeight: '900' },
+  eventDay: { color: '#F8F8F4', fontSize: 29, lineHeight: 31, fontWeight: '900' },
+  eventWeekday: { color: '#AAB4AE', fontSize: 9, fontWeight: '800' },
+  eventVisual: { width: 82, backgroundColor: '#22463B', alignItems: 'center', justifyContent: 'center' },
+  eventVisualIcon: { color: '#F5C542', fontSize: 30, fontWeight: '900' },
+  eventCopy: { flex: 1, justifyContent: 'center', padding: 12 },
+  eventTitle: { color: '#F7F7F4', fontSize: 15, lineHeight: 19, fontWeight: '900' },
+  eventMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 5 },
+  learnCard: { marginHorizontal: 18, marginTop: 27, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#315248', backgroundColor: '#10241F' },
+  learnIconWrap: { width: 52, height: 52, borderRadius: 15, backgroundColor: '#203329', alignItems: 'center', justifyContent: 'center' },
+  learnIcon: { fontSize: 26 },
   learnCopy: { flex: 1 },
   learnEyebrow: { color: '#F5C542', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  learnTitle: { color: '#F7F7F4', fontSize: 15, fontWeight: '900', marginTop: 2 },
-  learnBody: { color: '#AEBAB4', fontSize: 11, lineHeight: 15, marginTop: 2 },
-  learnArrow: { color: '#F5C542', fontSize: 27, fontWeight: '900' },
-  listHeading: { color: '#F7F7F4', fontSize: 20, fontWeight: '900', marginTop: 4 },
-  error: { color: '#FFB4A9' },
-  empty: { backgroundColor: '#121B18', borderRadius: 18, padding: 20, borderWidth: 1, borderColor: '#28332E' },
-  emptyTitle: { color: '#F7F7F4', fontWeight: '900', fontSize: 18 },
-  body: { color: '#AEB8B2', lineHeight: 20, marginTop: 5 },
+  learnTitle: { color: '#F7F7F4', fontSize: 16, fontWeight: '900', marginTop: 2 },
+  learnBody: { color: '#A9B6AF', fontSize: 10, lineHeight: 14, marginTop: 3 },
+  learnArrow: { color: '#F5C542', fontSize: 28 },
+  empty: { marginHorizontal: 18, marginTop: 28, padding: 20, borderRadius: 18, borderWidth: 1, borderColor: '#2E3934', backgroundColor: '#111715', alignItems: 'center' },
+  emptyTitle: { color: '#F7F7F4', fontSize: 18, fontWeight: '900' },
+  emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5 },
 });
