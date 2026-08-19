@@ -27,6 +27,7 @@ const CLOCK_REFRESH_MS = 60 * 1000;
 const RAIN_DROPS = Array.from({ length: 12 }, (_, index) => index);
 const RAIN_BANDS = [-224, 0, 224] as const;
 const NIGHT_STARS = [12, 22, 34, 48, 62, 74, 86] as const;
+const TRAILBLAZER_DUST = [10, 22, 36, 51, 68, 82] as const;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
   if (phase === 'night') return 'rgba(4, 13, 28, 0.42)';
@@ -62,6 +63,7 @@ export function TrailheadCover({
   const [clockNow, setClockNow] = useState(() => new Date());
 
   const [haze] = useState(() => new Animated.Value(0));
+  const [ambient] = useState(() => new Animated.Value(0));
   const [rainFall] = useState(() => new Animated.Value(0));
   const [lightning] = useState(() => new Animated.Value(0));
   const [stars] = useState(() => new Animated.Value(0));
@@ -129,6 +131,7 @@ export function TrailheadCover({
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
+  const dryDaytime = phase !== 'night' && weather !== 'rain' && weather !== 'storm';
 
   useEffect(() => {
     const hazeLoop = Animated.loop(
@@ -137,6 +140,14 @@ export function TrailheadCover({
         Animated.timing(haze, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ]),
     );
+    const ambientLoop = dryDaytime && (rank === 'Explorer' || rank === 'Trailblazer')
+      ? Animated.loop(
+          Animated.sequence([
+            Animated.timing(ambient, { toValue: 1, duration: 7000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(ambient, { toValue: 0, duration: 7000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ]),
+        )
+      : null;
     const rainLoop = weather === 'rain' || weather === 'storm'
       ? Animated.loop(
           Animated.timing(rainFall, {
@@ -170,22 +181,25 @@ export function TrailheadCover({
       : null;
 
     haze.setValue(0);
+    ambient.setValue(0);
     rainFall.setValue(0);
     lightning.setValue(0);
     stars.setValue(0);
 
     hazeLoop.start();
+    ambientLoop?.start();
     rainLoop?.start();
     starLoop?.start();
     lightningLoop?.start();
 
     return () => {
       hazeLoop.stop();
+      ambientLoop?.stop();
       rainLoop?.stop();
       starLoop?.stop();
       lightningLoop?.stop();
     };
-  }, [weather, phase, haze, rainFall, lightning, stars]);
+  }, [weather, phase, rank, dryDaytime, haze, ambient, rainFall, lightning, stars]);
 
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
@@ -210,6 +224,52 @@ export function TrailheadCover({
           },
         ]}
       />
+
+      {rank === 'Explorer' && dryDaytime ? (
+        <View pointerEvents="none" style={styles.explorerShimmerLayer}>
+          <Animated.View
+            style={[
+              styles.explorerShimmer,
+              {
+                opacity: ambient.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.06, 0.42, 0.10] }),
+                transform: [{ translateX: ambient.interpolate({ inputRange: [0, 1], outputRange: [0, 180] }) }],
+              },
+            ]}
+          />
+        </View>
+      ) : null}
+
+      {rank === 'Trailblazer' && dryDaytime ? (
+        <View pointerEvents="none" style={styles.trailblazerHeatLayer}>
+          <Animated.View
+            style={[
+              styles.trailblazerHeatBand,
+              {
+                top: 18,
+                opacity: ambient.interpolate({ inputRange: [0, 1], outputRange: [0.16, 0.58] }),
+                transform: [{ translateY: ambient.interpolate({ inputRange: [0, 1], outputRange: [-4, 8] }) }],
+              },
+            ]}
+          />
+          {TRAILBLAZER_DUST.map((left, index) => (
+            <Animated.View
+              key={left}
+              style={[
+                styles.trailblazerDust,
+                {
+                  left: `${left}%` as `${number}%`,
+                  top: 14 + (index % 3) * 16,
+                  opacity: ambient.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.08, 0.46, 0.14] }),
+                  transform: [
+                    { translateX: ambient.interpolate({ inputRange: [0, 1], outputRange: [-10 - index, 18 + index * 2] }) },
+                    { translateY: ambient.interpolate({ inputRange: [0, 1], outputRange: [6, -10 - (index % 2) * 4] }) },
+                  ],
+                },
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
 
       {(weather === 'rain' || weather === 'storm') ? (
         <View pointerEvents="none" style={styles.rainLayer}>
