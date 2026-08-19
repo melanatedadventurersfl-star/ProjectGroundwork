@@ -1,11 +1,12 @@
 import { router, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
 import { getProfileAvatarUrl, subscribeProfileAvatar } from '../member/api';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
+import { layout } from '../ui/layout';
 
 type NavItem = {
   label: string;
@@ -66,8 +67,10 @@ function promptForAccount(destination: string) {
 export function PersistentBottomNav() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { session } = useAuth();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const compact = width < layout.compactBreakpoint;
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +108,7 @@ export function PersistentBottomNav() {
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={item.label}
+            hitSlop={2}
             onPress={() => {
               if (item.requiresAuth && !session) {
                 promptForAccount(item.label);
@@ -119,9 +123,16 @@ export function PersistentBottomNav() {
                 <Image source={{ uri: avatarUrl! }} style={styles.avatar} resizeMode="cover" />
               </View>
             ) : (
-              <AppIcon name={item.icon} color={color} size={24} />
+              <AppIcon name={item.icon} color={color} size={compact ? 22 : 24} />
             )}
-            <Text style={[styles.label, active && styles.labelActive]}>{item.label}</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              style={[styles.label, compact && styles.labelCompact, active && styles.labelActive]}
+            >
+              {item.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -131,7 +142,7 @@ export function PersistentBottomNav() {
 
 const styles = StyleSheet.create({
   bar: {
-    minHeight: 60,
+    minHeight: 64,
     paddingTop: 6,
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -140,10 +151,13 @@ const styles = StyleSheet.create({
     borderTopColor: '#26332B',
   },
   item: {
+    minWidth: 0,
+    minHeight: layout.navTouchTarget,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 1,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
     gap: 2,
   },
   avatarFrame: {
@@ -162,9 +176,15 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   label: {
+    maxWidth: '100%',
     color: '#E7DFCF',
     fontSize: 10,
+    lineHeight: 12,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  labelCompact: {
+    fontSize: 9.5,
   },
   labelActive: {
     color: '#D7B45A',
