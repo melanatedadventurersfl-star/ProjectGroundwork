@@ -1,8 +1,11 @@
+import { Image } from 'react-native';
+
 import { supabase } from '../lib/supabase';
 import type { AdventureDetail, AdventureSummary } from './types';
 
-const DEFAULT_ADVENTURE_IMAGE_URL =
-  'https://raw.githubusercontent.com/melanatedadventurersfl-star/ProjectGroundwork/main/apps/mobile/assets/explore/default-event.jpg';
+const DEFAULT_ADVENTURE_IMAGE_URL = Image.resolveAssetSource(
+  require('../../assets/explore/default-event.jpg'),
+).uri;
 
 export type AdventureFilters = {
   search?: string;
