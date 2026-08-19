@@ -56,27 +56,28 @@ function relativeTime(value: string) {
   const diff = Math.max(0, Date.now() - new Date(value).getTime());
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return 'Now';
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  return days < 7 ? `${days}d ago` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return days < 7 ? `${days}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function PostCard({ post, reason }: { post: CommunityPost; reason?: string | null }) {
   const badge = post.post_type === 'ask'
-    ? 'ASK'
+    ? 'Ask'
     : post.post_type === 'buddy'
-      ? 'ADVENTURE BUDDY'
+      ? 'Adventure Buddy'
       : post.post_type === 'recommendation'
-        ? 'PLACE'
+        ? 'Place'
         : post.post_type === 'meetup'
-          ? 'CAMPFIRE'
+          ? 'Campfire'
           : null;
+
+  const contextIcon = reason?.startsWith('Near') || reason?.startsWith('Around') ? 'location-outline' : reason?.includes('Popular') ? 'flame-outline' : 'sparkles-outline';
 
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
-      {reason ? <View style={styles.feedReasonRow}><Ionicons name="sparkles-outline" size={12} color={GOLD} /><Text style={styles.feedReason}>{reason}</Text></View> : null}
       <View style={styles.postHeader}>
         <Pressable
           style={styles.authorTarget}
@@ -89,22 +90,30 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
             {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(post.author_name)}</Text>}
           </View>
           <View style={styles.flex}>
-            <Text style={styles.authorName}>{post.author_name}</Text>
-            <Text style={styles.postMeta}>{relativeTime(post.created_at)}</Text>
+            <View style={styles.authorLine}>
+              <Text style={styles.authorName} numberOfLines={1}>{post.author_name}</Text>
+              {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
+            </View>
+            <View style={styles.metaLine}>
+              <Text style={styles.postMeta}>{relativeTime(post.created_at)}</Text>
+              {reason ? <>
+                <Text style={styles.metaDot}>·</Text>
+                <View style={styles.contextChip}><Ionicons name={contextIcon as never} size={11} color={GOLD} /><Text style={styles.contextText} numberOfLines={1}>{reason}</Text></View>
+              </> : null}
+            </View>
           </View>
         </Pressable>
-        <View style={styles.postHeaderActions}>
-          {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
-          <PostOptionsButton postId={post.id} authorId={post.author_id} body={post.body} />
-        </View>
+        <PostOptionsButton postId={post.id} authorId={post.author_id} body={post.body} />
       </View>
-      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
-      <PostEngagementBar
-        postId={post.id}
-        initialReactionCount={post.reaction_count || 0}
-        commentCount={post.comment_count || 0}
-      />
+      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
+      <View style={styles.engagementWrap}>
+        <PostEngagementBar
+          postId={post.id}
+          initialReactionCount={post.reaction_count || 0}
+          commentCount={post.comment_count || 0}
+        />
+      </View>
     </Pressable>
   );
 }
@@ -220,11 +229,11 @@ export default function OutpostScreen() {
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
 
   const reasonForPost = useCallback((post: CommunityPost) => {
-    if (post.group_id && myGroupNames.has(post.group_id)) return `From ${myGroupNames.get(post.group_id)}`;
-    if (acceptedConnectionIds.has(post.author_id)) return 'From a Trailmate';
-    if (nearbyIds.has(post.author_id)) return `From around ${locationLabel}`;
-    if ((post.reaction_count || 0) + (post.comment_count || 0) >= 3) return 'Popular in the Outpost';
-    return 'Discover from across the Outpost';
+    if (post.group_id && myGroupNames.has(post.group_id)) return myGroupNames.get(post.group_id) ?? 'Your Circle';
+    if (acceptedConnectionIds.has(post.author_id)) return 'Trailmate';
+    if (nearbyIds.has(post.author_id)) return `Near ${locationLabel}`;
+    if ((post.reaction_count || 0) + (post.comment_count || 0) >= 3) return 'Popular';
+    return 'Discover';
   }, [acceptedConnectionIds, locationLabel, myGroupNames, nearbyIds]);
 
   async function choosePhoto() {
@@ -258,7 +267,7 @@ export default function OutpostScreen() {
 
   async function handleJoin(group: CommunityGroup) {
     setJoiningId(group.id);
-    try { await joinGroup(group.id); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to join this group.'); } finally { setJoiningId(null); }
+    try { await joinGroup(group.id); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to join this circle.'); } finally { setJoiningId(null); }
   }
 
   return (
@@ -273,10 +282,10 @@ export default function OutpostScreen() {
         <View style={styles.headerRow}>
           <View style={styles.flex}>
             <Text style={styles.title}>Outpost</Text>
-            <View style={styles.locationRow}><Ionicons name="location-outline" size={14} color={MUTED} /><Text style={styles.subtitle}>{locationLabel}</Text></View>
+            <View style={styles.locationRow}><Ionicons name="location-outline" size={14} color={GOLD} /><Text style={styles.subtitle}>{locationLabel}</Text></View>
           </View>
           <View style={styles.headerActions}>
-            <Pressable onPress={() => router.push('/notifications')}><Ionicons name="notifications-outline" size={23} color={TEXT} /></Pressable>
+            <Pressable style={styles.headerIconButton} onPress={() => router.push('/notifications')}><Ionicons name="notifications-outline" size={22} color={TEXT} /></Pressable>
             <Pressable style={styles.profileButton} onPress={() => router.push('/member')} accessibilityRole="button" accessibilityLabel="Open account menu"><Ionicons name="menu" size={21} color={TEXT} /></Pressable>
           </View>
         </View>
@@ -291,15 +300,46 @@ export default function OutpostScreen() {
         {tab === 'for-you' ? <>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
-            <TextInput value={composerBody} onChangeText={setComposerBody} placeholder={composerType === 'ask' ? 'What do you want to ask everyone?' : composerType === 'buddy' ? 'What do you want to do, where, and when?' : 'What’s happening outside?'} placeholderTextColor="#7F8B83" multiline maxLength={4000} style={styles.composerInput} />
+            <View style={styles.composerPromptRow}>
+              <View style={styles.composerAvatar}><Ionicons name="person" size={19} color={GOLD} /></View>
+              <TextInput
+                value={composerBody}
+                onChangeText={setComposerBody}
+                placeholder={composerType === 'ask' ? 'Ask the Outpost…' : composerType === 'buddy' ? 'Find an adventure buddy…' : 'What’s happening outside?'}
+                placeholderTextColor="#7F8B83"
+                multiline
+                maxLength={4000}
+                style={styles.composerInput}
+              />
+            </View>
             <View style={styles.composerActions}>
-              <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={18} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
-              <Pressable style={styles.actionButton} onPress={() => setTypeOpen((value) => !value)}><Ionicons name={selectedType.icon as never} size={18} color={GOLD} /><Text style={styles.actionText}>{selectedType.label}</Text><Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={14} color={MUTED} /></Pressable>
-              <Pressable disabled={submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)} style={[styles.postButton, submitting && styles.disabled]} onPress={() => void submitPost()}><Text style={styles.postButtonText}>{composerType === 'meetup' ? 'Set up' : submitting ? 'Posting…' : 'Post'}</Text></Pressable>
+              <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={17} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
+              <Pressable style={styles.actionButton} onPress={() => setTypeOpen((value) => !value)}><Ionicons name={selectedType.icon as never} size={17} color={GOLD} /><Text style={styles.actionText}>{selectedType.label}</Text><Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={13} color={MUTED} /></Pressable>
+              <Pressable disabled={submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)} style={[styles.postButton, (submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)) && styles.disabled]} onPress={() => void submitPost()}><Text style={styles.postButtonText}>{composerType === 'meetup' ? 'Set up' : submitting ? 'Posting…' : 'Post'}</Text></Pressable>
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Basecamp</Text><Text style={styles.sectionCopy}>A mix of your Trailmates, circles, nearby activity, and broader Outpost discoveries.</Text></View>
+
+          <View style={styles.discoveryHeader}><Text style={styles.discoveryTitle}>Around you</Text><Pressable onPress={() => setTab('nearby')}><Text style={styles.link}>See all</Text></Pressable></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoveryRail}>
+            <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => setTab('nearby')}>
+              <View style={styles.discoveryIcon}><Ionicons name="people-outline" size={20} color={GOLD} /></View>
+              <Text style={styles.discoveryCardTitle}>{nearbyPeople.length} adventurer{nearbyPeople.length === 1 ? '' : 's'}</Text>
+              <Text style={styles.discoveryCardMeta}>near {locationLabel}</Text>
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => setTab('campfires')}>
+              <View style={styles.discoveryIcon}><Ionicons name="bonfire-outline" size={20} color={GOLD} /></View>
+              <Text style={styles.discoveryCardTitle}>{nearbyCampfires.length ? nearbyCampfires[0]?.title ?? 'Campfires nearby' : 'Campfires nearby'}</Text>
+              <Text style={styles.discoveryCardMeta}>{nearbyCampfires.length ? `${nearbyCampfires.length} happening nearby` : 'Start the first one'}</Text>
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => setTab('groups')}>
+              <View style={styles.discoveryIcon}><Ionicons name="ellipse-outline" size={20} color={GOLD} /></View>
+              <Text style={styles.discoveryCardTitle}>{nearbyGroups.length} local circle{nearbyGroups.length === 1 ? '' : 's'}</Text>
+              <Text style={styles.discoveryCardMeta}>find your people</Text>
+            </Pressable>
+          </ScrollView>
+
+          <View style={styles.feedHeader}><Text style={styles.feedTitle}>From the Outpost</Text></View>
           {posts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
@@ -319,7 +359,7 @@ export default function OutpostScreen() {
           {nearbyPeople.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{nearbyPeople.slice(0, 12).map((person) => <PersonChip key={person.id} person={person} />)}</ScrollView> : null}
           {nearbyCampfires.length ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Campfires Nearby</Text>{nearbyCampfires.map((event) => <CampfireCard key={event.id} event={event} />)}</View> : null}
           <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Local Posts</Text><Text style={styles.sectionCopy}>What adventurers around you are sharing.</Text></View>
-          {nearbyPosts.map((post) => <PostCard key={post.id} post={post} />)}
+          {nearbyPosts.map((post) => <PostCard key={post.id} post={post} reason={`Near ${locationLabel}`} />)}
           {!nearbyPosts.length && !loading ? <Text style={styles.emptyText}>Local activity will show here as the Outpost grows.</Text> : null}
         </> : null}
 
@@ -338,57 +378,72 @@ export default function OutpostScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: BG },
-  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 52, gap: 12 },
+  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 52, gap: 13 },
   flex: { flex: 1 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   title: { color: TEXT, fontSize: 32, lineHeight: 36, fontWeight: '900' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  subtitle: { color: MUTED, fontSize: 12 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 13 },
-  profileButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: GOLD, backgroundColor: CARD, alignItems: 'center', justifyContent: 'center' },
-  tabs: { gap: 7, paddingVertical: 2 },
-  tab: { minHeight: 38, minWidth: 72, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#18211D' },
-  tabActive: { backgroundColor: '#2A2D28', borderWidth: 1, borderColor: '#4A493C' },
-  tabText: { color: '#A4ADA7', fontWeight: '800', fontSize: 12 },
+  subtitle: { color: MUTED, fontSize: 12, fontWeight: '700' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerIconButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  profileButton: { width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: GOLD, backgroundColor: CARD, alignItems: 'center', justifyContent: 'center' },
+  tabs: { gap: 6, paddingVertical: 2 },
+  tab: { minHeight: 36, minWidth: 68, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  tabActive: { backgroundColor: '#252D27', borderWidth: 1, borderColor: '#4A493C' },
+  tabText: { color: '#9DA8A1', fontWeight: '800', fontSize: 12 },
   tabTextActive: { color: GOLD },
   loader: { marginVertical: 4 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
-  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 11, gap: 9 },
-  composerInput: { minHeight: 74, maxHeight: 170, color: TEXT, fontSize: 15, lineHeight: 21, paddingHorizontal: 3, paddingVertical: 5, textAlignVertical: 'top' },
+  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 11, gap: 9 },
+  composerPromptRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
+  composerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#34443A', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  composerInput: { flex: 1, minHeight: 42, maxHeight: 130, color: TEXT, fontSize: 14.5, lineHeight: 20, paddingHorizontal: 0, paddingVertical: 9, textAlignVertical: 'top' },
   photoWrap: { position: 'relative' },
   composerPhoto: { width: '100%', height: 180, borderRadius: 13, backgroundColor: '#101813' },
   removePhoto: { position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(15,23,19,0.88)', alignItems: 'center', justifyContent: 'center' },
-  composerActions: { flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#37443C', paddingTop: 9 },
-  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 38, paddingHorizontal: 9, borderWidth: 1, borderColor: '#34423A', borderRadius: 11 },
+  composerActions: { flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#334139', paddingTop: 8 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 34, paddingHorizontal: 9, borderRadius: 10 },
   actionText: { color: '#D8DED9', fontSize: 11.5, fontWeight: '800' },
-  postButton: { marginLeft: 'auto', minHeight: 38, paddingHorizontal: 15, borderRadius: 11, backgroundColor: GOLD, justifyContent: 'center' },
+  postButton: { marginLeft: 'auto', minHeight: 34, paddingHorizontal: 15, borderRadius: 10, backgroundColor: GOLD, justifyContent: 'center' },
   postButtonText: { color: '#101510', fontWeight: '900', fontSize: 12 },
-  disabled: { opacity: 0.45 },
+  disabled: { opacity: 0.42 },
   typeMenu: { borderWidth: 1, borderColor: '#38473E', borderRadius: 12, overflow: 'hidden', backgroundColor: '#121C17' },
   typeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#344239' },
   typeText: { color: '#CED6D0', fontSize: 12.5, fontWeight: '700' },
   typeTextActive: { color: GOLD },
+  discoveryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 1 },
+  discoveryTitle: { color: TEXT, fontSize: 17, fontWeight: '900' },
+  discoveryRail: { gap: 9, paddingBottom: 2 },
+  discoveryCard: { width: 156, minHeight: 108, backgroundColor: '#152019', borderWidth: 1, borderColor: '#2C3B32', borderRadius: 16, padding: 12, justifyContent: 'space-between' },
+  discoveryIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#252A21', alignItems: 'center', justifyContent: 'center' },
+  discoveryCardTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 8 },
+  discoveryCardMeta: { color: MUTED, fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  feedHeader: { marginTop: 1 },
+  feedTitle: { color: TEXT, fontSize: 17, fontWeight: '900' },
   sectionHeading: { gap: 2, paddingTop: 3 },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
   sectionCard: { backgroundColor: CARD, borderRadius: 17, padding: 12, gap: 11 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   link: { color: GOLD, fontSize: 12, fontWeight: '900' },
-  postCard: { paddingHorizontal: 2, paddingVertical: 11, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#26332C' },
-  feedReasonRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: -2 },
-  feedReason: { color: '#B9A56F', fontSize: 10.5, fontWeight: '800' },
-  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  postHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  postCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 12, gap: 10 },
+  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  avatar: { width: 41, height: 41, borderRadius: 21, borderWidth: 1, borderColor: '#738078', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  authorLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
+  avatar: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#526158', backgroundColor: '#202B25', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: TEXT, fontWeight: '900', fontSize: 11 },
-  authorName: { color: TEXT, fontSize: 15.5, fontWeight: '900' },
-  postMeta: { color: '#8F9B93', fontSize: 11.5, marginTop: 2 },
-  badge: { backgroundColor: '#1D2B24', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 5 },
-  badgeText: { color: '#D6C28D', fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
-  postImage: { width: '100%', height: 230, borderRadius: 14, backgroundColor: '#101813' },
-  postBody: { color: '#E0E5E1', fontSize: 13.5, lineHeight: 20 },
+  authorName: { color: TEXT, fontSize: 15, fontWeight: '900', flexShrink: 1 },
+  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, minWidth: 0 },
+  postMeta: { color: '#8F9B93', fontSize: 11 },
+  metaDot: { color: '#657168', fontSize: 11 },
+  contextChip: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  contextText: { color: '#C6B77E', fontSize: 10.5, fontWeight: '800', flexShrink: 1 },
+  badge: { backgroundColor: '#202B24', borderRadius: 99, paddingHorizontal: 7, paddingVertical: 3 },
+  badgeText: { color: '#D7C792', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.2 },
+  postBody: { color: '#E5E9E6', fontSize: 14, lineHeight: 20 },
+  postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
+  engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 3 },
   list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
   listRow: { minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
