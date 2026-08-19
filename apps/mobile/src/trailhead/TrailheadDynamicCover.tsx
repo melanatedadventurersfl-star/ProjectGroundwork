@@ -215,7 +215,7 @@ export function TrailheadCover({
                 const dropHeight = 14 + ((drop * 7) % 14);
                 const dropOpacity = (weather === 'storm' ? 0.28 : 0.16) + (drop % 4) * 0.035;
                 const dropTop = bandTop + ((drop * 41 + (drop % 3) * 17) % 224) - 26;
-                const dropLeft = `${(drop * 8.3 + (drop % 4) * 3.7) % 100}%`;
+                const dropLeft = `${(drop * 8.3 + (drop % 4) * 3.7) % 100}%` as `${number}%`;
 
                 return (
                   <Animated.View
