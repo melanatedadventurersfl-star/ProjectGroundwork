@@ -1,16 +1,20 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { RankName } from '../passport/RankEmblem';
 import type { WeatherForecast } from '../weather/api';
-import clearNight from '../weather/assets/clearNight';
-import drizzle from '../weather/assets/drizzle';
-import overcast from '../weather/assets/overcast';
-import storm from '../weather/assets/storm';
 import { trailheadBackgroundFor } from './bannerAssets';
 
 export type WeatherTheme='clear'|'partly-cloudy'|'cloudy'|'rain'|'storm'|'snow'|'fog'|'windy';
 export type DayPhase='morning'|'afternoon'|'evening'|'night';
 export type DisplayRank=RankName;
 type RankTheme={accent:string;soft:string;glow:string};
+
+const explorerClearMorning = require('../../assets/trailhead/explorer/explorer_clear_morning.png') as ImageSourcePropType;
+const explorerClearAfternoon = require('../../assets/trailhead/explorer/explorer_clear_afternoon.png') as ImageSourcePropType;
+const explorerClearEvening = require('../../assets/trailhead/explorer/explorer_clear_evening.png') as ImageSourcePropType;
+const explorerClearNight = require('../../assets/trailhead/explorer/explorer_clear_night.png') as ImageSourcePropType;
+const explorerCloudy = require('../../assets/trailhead/explorer/explorer_cloudy_daytime.png') as ImageSourcePropType;
+const explorerRain = require('../../assets/trailhead/explorer/explorer_rain_daytime.png') as ImageSourcePropType;
+const explorerStorm = require('../../assets/trailhead/explorer/explorer_storm_daytime.png') as ImageSourcePropType;
 
 const pathfinderClearMorning = require('../../assets/trailhead/pathfinder/pathfinder-clear-morning.png') as ImageSourcePropType;
 const pathfinderClearAfternoon = require('../../assets/trailhead/pathfinder/pathfinder-clear-afternoon.png') as ImageSourcePropType;
@@ -19,6 +23,14 @@ const pathfinderClearNight = require('../../assets/trailhead/pathfinder/pathfind
 const pathfinderCloudy = require('../../assets/trailhead/pathfinder/pathfinder-cloudy.png') as ImageSourcePropType;
 const pathfinderRain = require('../../assets/trailhead/pathfinder/pathfinder-rain.png') as ImageSourcePropType;
 const pathfinderStorm = require('../../assets/trailhead/pathfinder/pathfinder-storm.png') as ImageSourcePropType;
+
+const trailblazerClearMorning = require('../../assets/trailhead/Trailblazer/trailblazer_clear_morning.png') as ImageSourcePropType;
+const trailblazerClearAfternoon = require('../../assets/trailhead/Trailblazer/trailblazer_clear_afternoon.png') as ImageSourcePropType;
+const trailblazerClearEvening = require('../../assets/trailhead/Trailblazer/trailblazer_clear_evening.png') as ImageSourcePropType;
+const trailblazerClearNight = require('../../assets/trailhead/Trailblazer/trailblazer_clear_night.png') as ImageSourcePropType;
+const trailblazerCloudy = require('../../assets/trailhead/Trailblazer/trailblazer_cloudy_daytime.png') as ImageSourcePropType;
+const trailblazerRain = require('../../assets/trailhead/Trailblazer/trailblazer_rain_daytime.png') as ImageSourcePropType;
+const trailblazerStorm = require('../../assets/trailhead/Trailblazer/trailblazer_storm_daytime.png') as ImageSourcePropType;
 
 export const trailheadDebugOverride: { enabled: boolean; phase?: DayPhase; weather?: WeatherTheme } = {
   enabled: false,
@@ -48,28 +60,67 @@ export function greetingFor(p:DayPhase){return p==='morning'?'Good morning':p===
 export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Storms nearby · use caution outdoors.';if(w==='rain')return'Rain nearby · pack a shell.';if(w==='snow')return'Snowy conditions · tread carefully.';if(w==='fog')return'Low visibility · stay aware.';if(w==='windy')return'Windy on the trail · secure loose gear.';if(w==='cloudy')return'Cloud cover makes for a cooler outing.';if(w==='partly-cloudy')return p==='evening'?'Golden hour on the trail.':'Clouds drifting across the trail.';return p==='night'?'The trail settles under moonlight.':p==='evening'?'Perfect evening for a local hike.':p==='morning'?'Fresh air. New day. New trails.':'Perfect weather for a local adventure.'}
 export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
+function curatedRankBackground(
+  w:WeatherTheme,
+  p:DayPhase,
+  assets:{
+    morning:ImageSourcePropType;
+    afternoon:ImageSourcePropType;
+    evening:ImageSourcePropType;
+    night:ImageSourcePropType;
+    cloudy:ImageSourcePropType;
+    rain:ImageSourcePropType;
+    storm:ImageSourcePropType;
+  },
+):ImageSourcePropType {
+  if (w === 'storm') return assets.storm;
+  if (w === 'rain') return assets.rain;
+  if (w === 'cloudy' || w === 'partly-cloudy' || w === 'fog' || w === 'windy' || w === 'snow') return assets.cloudy;
+  if (p === 'morning') return assets.morning;
+  if (p === 'afternoon') return assets.afternoon;
+  if (p === 'evening') return assets.evening;
+  return assets.night;
+}
+
 function explorerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
-  if (p === 'night') return { uri: clearNight };
-  if (w === 'partly-cloudy') return require('../../assets/trailhead/explorer/explorer-partly-cloudy-afternoon.jpg');
-  if (w === 'storm') return { uri: storm };
-  if (w === 'rain' || w === 'fog') return { uri: drizzle };
-  if (w === 'cloudy' || w === 'windy' || w === 'snow') return { uri: overcast };
-  return require('../../assets/trailhead/explorer/explorer-clear-morning.jpg');
+  return curatedRankBackground(w,p,{
+    morning: explorerClearMorning,
+    afternoon: explorerClearAfternoon,
+    evening: explorerClearEvening,
+    night: explorerClearNight,
+    cloudy: explorerCloudy,
+    rain: explorerRain,
+    storm: explorerStorm,
+  });
 }
 
 function pathfinderBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
-  if (w === 'storm') return pathfinderStorm;
-  if (w === 'rain') return pathfinderRain;
-  if (w === 'cloudy' || w === 'partly-cloudy' || w === 'fog' || w === 'windy' || w === 'snow') return pathfinderCloudy;
+  return curatedRankBackground(w,p,{
+    morning: pathfinderClearMorning,
+    afternoon: pathfinderClearAfternoon,
+    evening: pathfinderClearEvening,
+    night: pathfinderClearNight,
+    cloudy: pathfinderCloudy,
+    rain: pathfinderRain,
+    storm: pathfinderStorm,
+  });
+}
 
-  if (p === 'morning') return pathfinderClearMorning;
-  if (p === 'afternoon') return pathfinderClearAfternoon;
-  if (p === 'evening') return pathfinderClearEvening;
-  return pathfinderClearNight;
+function trailblazerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  return curatedRankBackground(w,p,{
+    morning: trailblazerClearMorning,
+    afternoon: trailblazerClearAfternoon,
+    evening: trailblazerClearEvening,
+    night: trailblazerClearNight,
+    cloudy: trailblazerCloudy,
+    rain: trailblazerRain,
+    storm: trailblazerStorm,
+  });
 }
 
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
   if(rank==='Explorer') return explorerBackground(w,p);
   if(rank==='Pathfinder') return pathfinderBackground(w,p);
+  if(rank==='Trailblazer') return trailblazerBackground(w,p);
   return {uri: trailheadBackgroundFor(rank,w,p)};
 }
