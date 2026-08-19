@@ -73,15 +73,14 @@ function detectImageType(bytes: Uint8Array): Pick<PreparedImageUpload, 'contentT
   return null;
 }
 
-function validatePreparedImage(bytes: ArrayBuffer, declaredJpeg = false, maxBytes = MAX_IMAGE_UPLOAD_BYTES): PreparedImageUpload {
+function validatePreparedImage(bytes: ArrayBuffer, maxBytes = MAX_IMAGE_UPLOAD_BYTES): PreparedImageUpload {
   if (!bytes.byteLength) throw new Error('Selected image is empty.');
   if (bytes.byteLength > maxBytes) throw new Error(`Photos must be ${Math.round(maxBytes / 1024 / 1024)} MB or smaller.`);
 
   const typed = new Uint8Array(bytes);
-  const detected = detectImageType(typed);
-  const format = detected ?? (declaredJpeg ? { contentType: 'image/jpeg' as const, extension: 'jpg' as const } : null);
+  const format = detectImageType(typed);
   if (!format) {
-    throw new Error('That image format could not be prepared safely. Choose a JPG, PNG, or WebP image and try again.');
+    throw new Error('That image format could not be prepared safely. Choose the photo again so the app can convert it to JPEG.');
   }
 
   return {
@@ -93,10 +92,7 @@ function validatePreparedImage(bytes: ArrayBuffer, declaredJpeg = false, maxByte
 }
 
 export function preparePickerBase64Image(base64: string, maxBytes = MAX_IMAGE_UPLOAD_BYTES): PreparedImageUpload {
-  // Expo ImagePicker returns JPEG data when base64 is requested, so this path
-  // gives uploads one predictable format even when the original library asset
-  // was HEIC/HEIF or another phone-native format.
-  return validatePreparedImage(decodeImageBase64(base64), true, maxBytes);
+  return validatePreparedImage(decodeImageBase64(base64), maxBytes);
 }
 
 export async function prepareLocalImage(input: {
@@ -108,5 +104,5 @@ export async function prepareLocalImage(input: {
 
   const response = await fetch(input.uri);
   if (!response.ok && response.status !== 0) throw new Error(`Unable to read the selected image (${response.status}).`);
-  return validatePreparedImage(await response.arrayBuffer(), false, input.maxBytes);
+  return validatePreparedImage(await response.arrayBuffer(), input.maxBytes);
 }
