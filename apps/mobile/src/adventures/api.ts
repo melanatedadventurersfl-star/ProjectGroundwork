@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase';
 import type { AdventureDetail, AdventureSummary } from './types';
 
+const DEFAULT_ADVENTURE_IMAGE_URL =
+  'https://raw.githubusercontent.com/melanatedadventurersfl-star/ProjectGroundwork/main/apps/mobile/assets/explore/default-event.jpg';
+
 export type AdventureFilters = {
   search?: string;
   category?: string;
@@ -65,7 +68,13 @@ export async function listAdventures(filters: AdventureFilters = {}): Promise<Ad
 
   const { data, error } = await query;
   if (error) throw error;
-  return attachSavedState((data ?? []) as AdventureSummary[], filters.savedOnly);
+
+  const adventures = ((data ?? []) as AdventureSummary[]).map((adventure) => ({
+    ...adventure,
+    hero_image_url: adventure.hero_image_url || DEFAULT_ADVENTURE_IMAGE_URL,
+  }));
+
+  return attachSavedState(adventures, filters.savedOnly);
 }
 
 export async function listPastAdventures(): Promise<AdventureSummary[]> {
