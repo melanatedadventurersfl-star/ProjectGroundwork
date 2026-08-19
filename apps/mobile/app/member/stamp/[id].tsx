@@ -50,7 +50,7 @@ export default function StampDetailScreen() {
           <Text style={styles.collection}>{stamp.year} COLLECTION</Text>
           <Text style={styles.title}>{stamp.title}</Text>
           <View style={styles.metaRow}>
-            <AppIcon name="calendar" color="#67CFC8" size={15} />
+            <AppIcon name="adventure" color="#67CFC8" size={15} />
             <Text style={styles.meta}>{stamp.dateLabel}</Text>
           </View>
           <View style={styles.metaRow}>
