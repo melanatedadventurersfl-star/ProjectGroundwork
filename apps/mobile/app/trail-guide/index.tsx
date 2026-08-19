@@ -92,7 +92,7 @@ export default function TrailGuideScreen() {
     [guideCategory],
   );
 
-  async function useCurrentLocation() {
+  async function requestCurrentLocation() {
     setLocationBusy(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
@@ -159,7 +159,7 @@ export default function TrailGuideScreen() {
             <Text style={styles.sectionTitle}>Explore Nearby</Text>
             <Text style={styles.sectionSubtitle}>Outdoor places around your current area.</Text>
           </View>
-          <Pressable onPress={() => void useCurrentLocation()} style={styles.locationButton}>
+          <Pressable onPress={() => void requestCurrentLocation()} style={styles.locationButton}>
             <AppIcon name="location" color="#D7B45A" size={16} />
             <Text style={styles.locationButtonText}>{locationBusy ? 'Locating…' : locationLabel}</Text>
           </Pressable>
