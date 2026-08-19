@@ -8,12 +8,12 @@ import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, uploadProfil
 import { ProfilePosts } from '../../src/member/ProfilePosts';
 import { getJourney, getMemberBadges, getPassportStamps, type MemberBadge, type PassportStamp } from '../../src/passport/api';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
+import { FEATURED_STAMPS, type StampCatalogItem } from '../../src/passport/StampCatalog';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
-import { isLegacyStampCode, StampArt } from '../../src/passport/StampArt';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
 
-const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const states=['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','MS','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
 type ProfileTab='journey'|'posts'|'photos'|'about';
 
 function formatDate(value?:string|null){
@@ -27,11 +27,11 @@ function Stat({icon,value,label,last=false,onPress}:{icon:AppIconName;value:numb
  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${label}`} onPress={onPress} style={({pressed})=>[styles.statCell,last&&styles.statCellLast,pressed&&styles.statCellPressed]}><AppIcon name={icon} color="#F5C341" size={18}/><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></Pressable>;
 }
 
-function FeaturedStamp({stamp}:{stamp:PassportStamp}){
- return <Pressable style={({pressed})=>[styles.favoriteCard,pressed&&styles.collectionCardPressed]} onPress={()=>stamp.adventure_id?router.push(`/passport/reflection/${stamp.adventure_id}`):router.push('/member/stamps')}>
-  <View style={styles.favoriteArt}>{isLegacyStampCode(stamp.code)?<StampArt code={stamp.code} width={68}/>:<View style={styles.genericStamp}><AppIcon name="stamp" color="#F5C341" size={28}/></View>}</View>
+function FeaturedStamp({stamp}:{stamp:StampCatalogItem}){
+ return <Pressable style={({pressed})=>[styles.favoriteCard,pressed&&styles.collectionCardPressed]} onPress={()=>router.push('/member/stamps')}>
+  <View style={styles.favoriteArt}><Image source={stamp.source} style={styles.featuredStampImage} resizeMode="contain"/></View>
   <Text style={styles.favoriteTitle} numberOfLines={2}>{stamp.title}</Text>
-  <Text style={styles.favoriteMeta}>Earned</Text>
+  <Text style={styles.favoriteMeta}>{stamp.dateLabel}</Text>
  </Pressable>;
 }
 
@@ -131,7 +131,7 @@ export default function ProfileScreen(){
  const remaining=nextRank?Math.max(0,nextRank[1]-journey.length):0;
  const location=[profile.home_city,profile.home_state].filter(Boolean).join(', ');
  const totalPhotos=journey.reduce((sum,item)=>sum+(Number(item.photo_count)||0),0);
- const featuredStamps=stamps.slice(0,3);
+ const featuredStamps=FEATURED_STAMPS;
  const featuredBadges=badges.slice(0,3);
  if(loading)return <SafeAreaView style={styles.center}><ActivityIndicator color="#F5C341"/></SafeAreaView>;
 
@@ -209,7 +209,7 @@ export default function ProfileScreen(){
 
   {tab==='journey'?<>
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={()=>router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View>
-   {featuredStamps.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredStamps.map(stamp=><FeaturedStamp key={stamp.stamp_id} stamp={stamp}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your earned stamps will live here</Text><Text style={styles.muted}>Complete official adventures to start building your collection.</Text></View>}
+   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredStamps.map(stamp=><FeaturedStamp key={stamp.id} stamp={stamp}/>)}</ScrollView>
 
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Achievement Badges</Text><Pressable onPress={()=>router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable></View>
    {featuredBadges.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredBadges.map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your achievement case is waiting</Text><Text style={styles.muted}>Milestone badges you earn will appear here alongside your stamps.</Text></View>}
@@ -237,7 +237,7 @@ const styles=StyleSheet.create({
  statsCard:{flexDirection:'row',marginTop:12,paddingTop:12,borderTopWidth:1,borderTopColor:'#25322D'},statCell:{flex:1,alignItems:'center',paddingHorizontal:2,paddingVertical:3,borderRightWidth:1,borderRightColor:'#29332F'},statCellLast:{borderRightWidth:0},statCellPressed:{opacity:.55},statValue:{color:'#F7F8F3',fontSize:20,fontWeight:'900',marginTop:2},statLabel:{color:'#AAB5B0',fontSize:8.8,marginTop:1,textAlign:'center'},
  photoEditor:{flexDirection:'row',alignItems:'center',gap:14,backgroundColor:'#111A17',borderRadius:20,borderWidth:1,borderColor:'#28362E',padding:15},photoPressable:{width:84,height:84,borderRadius:42,position:'relative'},photoCopy:{flex:1,gap:5},photoAction:{color:'#F5C341',fontWeight:'900',marginTop:2},cameraBadge:{position:'absolute',right:-1,bottom:2,width:28,height:28,borderRadius:14,backgroundColor:'#F5C341',borderWidth:3,borderColor:'#111A17',alignItems:'center',justifyContent:'center'},photoBusy:{position:'absolute',left:0,right:0,top:0,bottom:0,borderRadius:42,backgroundColor:'rgba(9,17,15,.68)',alignItems:'center',justifyContent:'center'},
  tabs:{flexDirection:'row',backgroundColor:'#121A18',borderRadius:17,borderWidth:1,borderColor:'#28322E',overflow:'hidden'},tab:{flex:1,alignItems:'center',paddingTop:12,paddingBottom:9,position:'relative'},tabText:{color:'#A8B2AD',fontSize:13,fontWeight:'800'},tabTextActive:{color:'#F5C341'},tabUnderline:{height:3,backgroundColor:'#F5C341',position:'absolute',bottom:0,left:18,right:18,borderRadius:4},
- sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:1},sectionTitle:{color:'#F7F8F3',fontSize:21,fontWeight:'900'},sectionLink:{color:'#67CFC8',fontSize:12.5,fontWeight:'800'},favoritesRow:{gap:10,paddingRight:8},favoriteCard:{width:128,minHeight:156,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#29342F',padding:11,alignItems:'center'},collectionCardPressed:{opacity:.62},favoriteArt:{height:78,alignItems:'center',justifyContent:'center'},favoriteTitle:{color:'#F7F8F3',fontWeight:'900',fontSize:13,textAlign:'center',marginTop:4},favoriteMeta:{color:'#60C9C3',fontSize:11,marginTop:4},genericStamp:{width:64,height:64,borderRadius:18,borderWidth:2,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center',transform:[{rotate:'3deg'}]},genericBadge:{width:64,height:64,borderRadius:32,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},
+ sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:1},sectionTitle:{color:'#F7F8F3',fontSize:21,fontWeight:'900'},sectionLink:{color:'#67CFC8',fontSize:12.5,fontWeight:'800'},favoritesRow:{gap:10,paddingRight:8},favoriteCard:{width:138,minHeight:190,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#29342F',padding:10,alignItems:'center'},collectionCardPressed:{opacity:.62},favoriteArt:{width:'100%',height:118,alignItems:'center',justifyContent:'center'},featuredStampImage:{width:'100%',height:'100%'},favoriteTitle:{color:'#F7F8F3',fontWeight:'900',fontSize:12.5,lineHeight:16,textAlign:'center',marginTop:3},favoriteMeta:{color:'#60C9C3',fontSize:9.5,marginTop:4,textAlign:'center'},genericBadge:{width:64,height:64,borderRadius:32,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},
  timeline:{gap:0},timelineRow:{flexDirection:'row'},timelineRail:{width:45,alignItems:'center'},completeDot:{width:32,height:32,borderRadius:16,alignItems:'center',justifyContent:'center',zIndex:2},timelineLine:{width:2,backgroundColor:'#39473F',flex:1,minHeight:82},journeyCard:{flex:1,minHeight:100,backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28332F',marginBottom:10,padding:12,flexDirection:'row',alignItems:'center',gap:11},journeyBadge:{width:44,height:44,borderRadius:12,backgroundColor:'#16302A',alignItems:'center',justifyContent:'center'},journeyCopy:{flex:1},journeyTitle:{color:'#F7F8F3',fontSize:15.5,fontWeight:'900'},journeyMeta:{color:'#AAB6B0',fontSize:12.5,marginTop:3},journeyStatusRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:7},journeyStatus:{color:'#67CFC8',fontSize:11.5,fontWeight:'800'},journeyDot:{color:'#67CFC8',fontSize:12},
  card:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16,gap:10},cardTitle:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},empty:{backgroundColor:'#111A17',borderRadius:18,borderWidth:1,borderColor:'#28362E',padding:16},emptyInner:{backgroundColor:'#0C1411',borderRadius:14,padding:15,marginTop:4},emptyTitle:{color:'#F7F8F3',fontWeight:'900'},muted:{color:'#96A39B',lineHeight:20},body:{color:'#C8D0CB',lineHeight:22},
  editTitle:{fontSize:27,fontWeight:'900',color:'#FFF8E8'},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1},gold:{color:'#D7B45A',fontWeight:'800',marginTop:2},input:{backgroundColor:'#101813',borderWidth:1,borderColor:'#314039',borderRadius:12,color:'#FFF8E8',paddingHorizontal:13,paddingVertical:12},bio:{minHeight:100,textAlignVertical:'top'},dropdownControl:{minHeight:46,borderRadius:12,borderWidth:1,borderColor:'#314039',backgroundColor:'#101813',paddingHorizontal:13,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},dropdownValue:{color:'#FFF8E8',fontSize:15,fontWeight:'800'},stateDropdown:{flexDirection:'row',flexWrap:'wrap',gap:7,backgroundColor:'#0D1512',borderWidth:1,borderColor:'#314039',borderRadius:12,padding:9},stateOption:{width:'18%',minWidth:48,minHeight:38,borderRadius:10,borderWidth:1,borderColor:'#435148',alignItems:'center',justifyContent:'center',flexDirection:'row',gap:3},stateOptionActive:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},stateOptionText:{color:'#C6CEC8',fontWeight:'800',fontSize:12},stateOptionTextActive:{color:'#17211C'},suggestion:{paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},suggestionTitle:{color:'#FFF8E8',fontWeight:'800'},disabled:{opacity:.45},message:{color:'#E4D7B0',textAlign:'center'},listRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:10,borderTopWidth:1,borderTopColor:'#26332C'},listTitle:{color:'#FFF8E8',fontWeight:'800'},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{color:'#F0D083',backgroundColor:'#26372D',borderRadius:999,paddingHorizontal:10,paddingVertical:6,fontSize:12,fontWeight:'700'}
