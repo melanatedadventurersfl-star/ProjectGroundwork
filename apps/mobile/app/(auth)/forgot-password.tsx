@@ -5,7 +5,7 @@ import { Alert, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } fro
 import { getFriendlyAuthError } from '../../src/lib/errors';
 import { supabase } from '../../src/lib/supabase';
 
-const PASSWORD_RESET_REDIRECT = 'melanatedadventurers://reset-password';
+const PASSWORD_RESET_REDIRECT = 'melanatedadventurers://auth/callback';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
