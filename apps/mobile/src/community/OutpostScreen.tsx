@@ -74,7 +74,8 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
           ? 'Campfire'
           : null;
 
-  const contextIcon = reason?.startsWith('Near') || reason?.startsWith('Around') ? 'location-outline' : reason?.includes('Popular') ? 'flame-outline' : 'sparkles-outline';
+  const isPopular = reason === 'Popular';
+  const contextIcon = reason?.startsWith('Near') || reason?.startsWith('Around') ? 'location-outline' : isPopular ? 'flame-outline' : 'sparkles-outline';
 
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
@@ -98,7 +99,10 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
               <Text style={styles.postMeta}>{relativeTime(post.created_at)}</Text>
               {reason ? <>
                 <Text style={styles.metaDot}>·</Text>
-                <View style={styles.contextChip}><Ionicons name={contextIcon as never} size={11} color={GOLD} /><Text style={styles.contextText} numberOfLines={1}>{reason}</Text></View>
+                <View style={[styles.contextChip, isPopular && styles.contextChipPopular]}>
+                  <Ionicons name={contextIcon as never} size={11} color={isPopular ? '#F2CE65' : GOLD} />
+                  <Text style={[styles.contextText, isPopular && styles.contextTextPopular]} numberOfLines={1}>{reason}</Text>
+                </View>
               </> : null}
             </View>
           </View>
@@ -301,7 +305,7 @@ export default function OutpostScreen() {
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
-              <View style={styles.composerAvatar}><Ionicons name="person" size={19} color={GOLD} /></View>
+              <View style={styles.composerAvatar}><Ionicons name="person" size={18} color={GOLD} /></View>
               <TextInput
                 value={composerBody}
                 onChangeText={setComposerBody}
@@ -313,8 +317,8 @@ export default function OutpostScreen() {
               />
             </View>
             <View style={styles.composerActions}>
-              <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={17} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
-              <Pressable style={styles.actionButton} onPress={() => setTypeOpen((value) => !value)}><Ionicons name={selectedType.icon as never} size={17} color={GOLD} /><Text style={styles.actionText}>{selectedType.label}</Text><Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={13} color={MUTED} /></Pressable>
+              <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={16} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
+              <Pressable style={styles.actionButton} onPress={() => setTypeOpen((value) => !value)}><Ionicons name={selectedType.icon as never} size={16} color={GOLD} /><Text style={styles.actionText}>{selectedType.label}</Text><Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={12} color={MUTED} /></Pressable>
               <Pressable disabled={submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)} style={[styles.postButton, (submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)) && styles.disabled]} onPress={() => void submitPost()}><Text style={styles.postButtonText}>{composerType === 'meetup' ? 'Set up' : submitting ? 'Posting…' : 'Post'}</Text></Pressable>
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
@@ -322,24 +326,23 @@ export default function OutpostScreen() {
 
           <View style={styles.discoveryHeader}><Text style={styles.discoveryTitle}>Around you</Text><Pressable onPress={() => setTab('nearby')}><Text style={styles.link}>See all</Text></Pressable></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoveryRail}>
-            <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => setTab('nearby')}>
-              <View style={styles.discoveryIcon}><Ionicons name="people-outline" size={20} color={GOLD} /></View>
-              <Text style={styles.discoveryCardTitle}>{nearbyPeople.length} adventurer{nearbyPeople.length === 1 ? '' : 's'}</Text>
-              <Text style={styles.discoveryCardMeta}>near {locationLabel}</Text>
+            <Pressable style={({ pressed }) => [styles.discoveryCard, styles.discoveryPeople, pressed && styles.pressed]} onPress={() => setTab('nearby')}>
+              <View style={[styles.discoveryIcon, styles.discoveryPeopleIcon]}><Ionicons name="people-outline" size={20} color="#DCE9DF" /></View>
+              <Text style={styles.discoveryCardTitle}>{nearbyPeople.length ? `${nearbyPeople.length} adventurer${nearbyPeople.length === 1 ? '' : 's'} nearby` : 'Find nearby adventurers'}</Text>
+              <Text style={styles.discoveryCardMeta}>{nearbyPeople.length ? locationLabel : 'Expand your local network'}</Text>
             </Pressable>
-            <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => setTab('campfires')}>
-              <View style={styles.discoveryIcon}><Ionicons name="bonfire-outline" size={20} color={GOLD} /></View>
-              <Text style={styles.discoveryCardTitle}>{nearbyCampfires.length ? nearbyCampfires[0]?.title ?? 'Campfires nearby' : 'Campfires nearby'}</Text>
-              <Text style={styles.discoveryCardMeta}>{nearbyCampfires.length ? `${nearbyCampfires.length} happening nearby` : 'Start the first one'}</Text>
+            <Pressable style={({ pressed }) => [styles.discoveryCard, styles.discoveryCampfire, pressed && styles.pressed]} onPress={() => setTab('campfires')}>
+              <View style={[styles.discoveryIcon, styles.discoveryCampfireIcon]}><Ionicons name="bonfire-outline" size={20} color="#F2CE65" /></View>
+              <Text style={styles.discoveryCardTitle}>{nearbyCampfires.length ? nearbyCampfires[0]?.title ?? 'Campfires nearby' : 'Start a Campfire'}</Text>
+              <Text style={styles.discoveryCardMeta}>{nearbyCampfires.length ? `${nearbyCampfires.length} happening nearby` : 'Bring people together'}</Text>
             </Pressable>
-            <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => setTab('groups')}>
-              <View style={styles.discoveryIcon}><Ionicons name="ellipse-outline" size={20} color={GOLD} /></View>
-              <Text style={styles.discoveryCardTitle}>{nearbyGroups.length} local circle{nearbyGroups.length === 1 ? '' : 's'}</Text>
-              <Text style={styles.discoveryCardMeta}>find your people</Text>
+            <Pressable style={({ pressed }) => [styles.discoveryCard, styles.discoveryCircles, pressed && styles.pressed]} onPress={() => setTab('groups')}>
+              <View style={[styles.discoveryIcon, styles.discoveryCirclesIcon]}><Ionicons name="ellipse-outline" size={20} color="#C9B7F5" /></View>
+              <Text style={styles.discoveryCardTitle}>{nearbyGroups.length ? `${nearbyGroups.length} local circle${nearbyGroups.length === 1 ? '' : 's'}` : 'Discover Circles'}</Text>
+              <Text style={styles.discoveryCardMeta}>{nearbyGroups.length ? 'Communities near you' : 'Find your people'}</Text>
             </Pressable>
           </ScrollView>
 
-          <View style={styles.feedHeader}><Text style={styles.feedTitle}>From the Outpost</Text></View>
           {posts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
@@ -378,7 +381,7 @@ export default function OutpostScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: BG },
-  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 52, gap: 13 },
+  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 112, gap: 14 },
   flex: { flex: 1 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   title: { color: TEXT, fontSize: 32, lineHeight: 36, fontWeight: '900' },
@@ -394,18 +397,18 @@ const styles = StyleSheet.create({
   tabTextActive: { color: GOLD },
   loader: { marginVertical: 4 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
-  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 11, gap: 9 },
-  composerPromptRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
-  composerAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#34443A', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  composerInput: { flex: 1, minHeight: 42, maxHeight: 130, color: TEXT, fontSize: 14.5, lineHeight: 20, paddingHorizontal: 0, paddingVertical: 9, textAlignVertical: 'top' },
+  composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 9, gap: 7 },
+  composerPromptRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  composerAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#34443A', alignItems: 'center', justifyContent: 'center' },
+  composerInput: { flex: 1, minHeight: 36, maxHeight: 120, color: TEXT, fontSize: 14.5, lineHeight: 20, paddingHorizontal: 0, paddingVertical: 6, textAlignVertical: 'top' },
   photoWrap: { position: 'relative' },
   composerPhoto: { width: '100%', height: 180, borderRadius: 13, backgroundColor: '#101813' },
   removePhoto: { position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(15,23,19,0.88)', alignItems: 'center', justifyContent: 'center' },
-  composerActions: { flexDirection: 'row', alignItems: 'center', gap: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#334139', paddingTop: 8 },
-  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 34, paddingHorizontal: 9, borderRadius: 10 },
-  actionText: { color: '#D8DED9', fontSize: 11.5, fontWeight: '800' },
-  postButton: { marginLeft: 'auto', minHeight: 34, paddingHorizontal: 15, borderRadius: 10, backgroundColor: GOLD, justifyContent: 'center' },
-  postButtonText: { color: '#101510', fontWeight: '900', fontSize: 12 },
+  composerActions: { flexDirection: 'row', alignItems: 'center', gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#334139', paddingTop: 6 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 31, paddingHorizontal: 8, borderRadius: 9 },
+  actionText: { color: '#D8DED9', fontSize: 11, fontWeight: '800' },
+  postButton: { marginLeft: 'auto', minHeight: 31, paddingHorizontal: 14, borderRadius: 9, backgroundColor: GOLD, justifyContent: 'center' },
+  postButtonText: { color: '#101510', fontWeight: '900', fontSize: 11.5 },
   disabled: { opacity: 0.42 },
   typeMenu: { borderWidth: 1, borderColor: '#38473E', borderRadius: 12, overflow: 'hidden', backgroundColor: '#121C17' },
   typeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#344239' },
@@ -414,19 +417,23 @@ const styles = StyleSheet.create({
   discoveryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 1 },
   discoveryTitle: { color: TEXT, fontSize: 17, fontWeight: '900' },
   discoveryRail: { gap: 9, paddingBottom: 2 },
-  discoveryCard: { width: 156, minHeight: 108, backgroundColor: '#152019', borderWidth: 1, borderColor: '#2C3B32', borderRadius: 16, padding: 12, justifyContent: 'space-between' },
-  discoveryIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#252A21', alignItems: 'center', justifyContent: 'center' },
+  discoveryCard: { width: 158, minHeight: 106, borderWidth: 1, borderRadius: 16, padding: 12, justifyContent: 'space-between' },
+  discoveryPeople: { backgroundColor: '#15231C', borderColor: '#2E4538' },
+  discoveryCampfire: { backgroundColor: '#241F16', borderColor: '#4C4028' },
+  discoveryCircles: { backgroundColor: '#1C1A25', borderColor: '#3D3650' },
+  discoveryIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  discoveryPeopleIcon: { backgroundColor: '#253A2E' },
+  discoveryCampfireIcon: { backgroundColor: '#3B3020' },
+  discoveryCirclesIcon: { backgroundColor: '#302943' },
   discoveryCardTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 8 },
   discoveryCardMeta: { color: MUTED, fontSize: 10.5, lineHeight: 14, marginTop: 2 },
-  feedHeader: { marginTop: 1 },
-  feedTitle: { color: TEXT, fontSize: 17, fontWeight: '900' },
   sectionHeading: { gap: 2, paddingTop: 3 },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
   sectionCard: { backgroundColor: CARD, borderRadius: 17, padding: 12, gap: 11 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   link: { color: GOLD, fontSize: 12, fontWeight: '900' },
-  postCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 12, gap: 10 },
+  postCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 12 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
   authorLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
@@ -434,16 +441,18 @@ const styles = StyleSheet.create({
   avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: TEXT, fontWeight: '900', fontSize: 11 },
   authorName: { color: TEXT, fontSize: 15, fontWeight: '900', flexShrink: 1 },
-  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, minWidth: 0 },
+  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3, minWidth: 0 },
   postMeta: { color: '#8F9B93', fontSize: 11 },
   metaDot: { color: '#657168', fontSize: 11 },
-  contextChip: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  contextChip: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1, paddingHorizontal: 2, paddingVertical: 1 },
+  contextChipPopular: { backgroundColor: '#342D17', borderWidth: 1, borderColor: '#5A4A21', borderRadius: 99, paddingHorizontal: 7, paddingVertical: 3 },
   contextText: { color: '#C6B77E', fontSize: 10.5, fontWeight: '800', flexShrink: 1 },
+  contextTextPopular: { color: '#F2CE65' },
   badge: { backgroundColor: '#202B24', borderRadius: 99, paddingHorizontal: 7, paddingVertical: 3 },
   badgeText: { color: '#D7C792', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.2 },
-  postBody: { color: '#E5E9E6', fontSize: 14, lineHeight: 20 },
+  postBody: { color: '#E5E9E6', fontSize: 14, lineHeight: 21 },
   postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
-  engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 3 },
+  engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
   list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
   listRow: { minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
