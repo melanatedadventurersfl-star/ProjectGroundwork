@@ -1,11 +1,12 @@
 import { router, usePathname } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
 import { getUnreadNotificationCount } from '../notifications/api';
 import { AppIcon } from '../ui/AppIcon';
+import { horizontalGutter, layout } from '../ui/layout';
 
 function promptForAccount(destination: string) {
   Alert.alert(
@@ -21,6 +22,7 @@ function promptForAccount(destination: string) {
 
 export function PersistentTopNav() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const pathname = usePathname();
   const { session } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -55,9 +57,10 @@ export function PersistentTopNav() {
   const notificationLabel = unreadCount > 0
     ? `Notifications, ${unreadCount} unread`
     : 'Notifications';
+  const gutter = horizontalGutter(width);
 
   return (
-    <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
+    <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8), paddingHorizontal: gutter }]}>
       <View style={styles.bar}>
         <Pressable accessibilityRole="button" accessibilityLabel="Melanated home" onPress={() => router.navigate('/(tabs)' as never)} hitSlop={8} style={styles.logoButton}>
           <Image source={require('../../assets/ma-app-icon.png')} style={styles.logo} resizeMode="cover" />
@@ -88,12 +91,12 @@ export function PersistentTopNav() {
 }
 
 const styles = StyleSheet.create({
-  shell: { backgroundColor: '#0F1713', borderBottomWidth: 1, borderBottomColor: '#243129', paddingHorizontal: 18 },
-  bar: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  logoButton: { width: 48, height: 48, alignItems: 'flex-start', justifyContent: 'center' },
+  shell: { backgroundColor: '#0F1713', borderBottomWidth: 1, borderBottomColor: '#243129' },
+  bar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  logoButton: { width: layout.navTouchTarget, height: layout.navTouchTarget, alignItems: 'flex-start', justifyContent: 'center' },
   logo: { width: 40, height: 40, borderRadius: 10 },
-  actions: { flexDirection: 'row', gap: 9 },
-  iconButton: { width: 39, height: 39, borderRadius: 20, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: -5, right: -7, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D3A94F', borderWidth: 2, borderColor: '#0F1713' },
+  actions: { flexDirection: 'row', gap: 8 },
+  iconButton: { width: layout.navTouchTarget, height: layout.navTouchTarget, borderRadius: layout.navTouchTarget / 2, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', top: -3, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D3A94F', borderWidth: 2, borderColor: '#0F1713' },
   badgeText: { color: '#0F1713', fontSize: 9, lineHeight: 11, fontWeight: '900' },
 });
