@@ -2,7 +2,7 @@ import * as Updates from 'expo-updates';
 import { router, Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
 import { supabase } from '../src/lib/supabase';
@@ -50,6 +50,7 @@ function AppShell() {
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const tutorialCheckedRef = useRef(false);
   const whatsNewCheckedRef = useRef(false);
   const releaseSeenKey = `${currentReleaseNotes.id}:${Updates.updateId ?? 'embedded'}`;
@@ -63,8 +64,19 @@ function AppShell() {
     pathname.startsWith('/sign-up');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
-  const hideBottomNav = isLoading || isAuthScreen;
+  const hideBottomNav = isLoading || isAuthScreen || keyboardVisible;
   const hideTopNav = isLoading || isAuthScreen || isTrailhead || isCommunityHub;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (isLoading || session || isGuestPublicPath(pathname)) return;
@@ -167,7 +179,11 @@ function AppShell() {
     <View style={styles.appShell}>
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen} />
       {hideTopNav ? null : <PersistentTopNav />}
-      <View style={styles.stackArea}>
+      <KeyboardAvoidingView
+        style={styles.stackArea}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
+      >
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
@@ -187,7 +203,7 @@ function AppShell() {
           <Stack.Screen name="trail-guide" />
           <Stack.Screen name="community-guidelines" />
         </Stack>
-      </View>
+      </KeyboardAvoidingView>
       {hideBottomNav ? null : <PersistentBottomNav />}
 
       <GuidedTutorial
