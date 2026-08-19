@@ -104,7 +104,11 @@ export default function MenuScreen() {
     {isPlatformAdmin ? <View style={styles.section}>
       <Text style={styles.sectionTitle}>Admin</Text>
       <View style={styles.card}>
-        <Pressable style={styles.row} onPress={()=>openMenuRoute('/admin-media')}>
+        <Pressable style={styles.row} onPress={()=>openMenuRoute('/admin')}>
+          <View style={styles.rowLead}><AppIcon name="profile" color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>Admin Profile</Text></View>
+          <AppIcon name="chevron-forward" color="#D7B45A" size={20} />
+        </Pressable>
+        <Pressable style={[styles.row,styles.divider]} onPress={()=>openMenuRoute('/admin-media')}>
           <View style={styles.rowLead}><AppIcon name="guide" color="#F6F4EE" size={21} /><Text style={styles.rowTitle}>App Media</Text></View>
           <AppIcon name="chevron-forward" color="#D7B45A" size={20} />
         </Pressable>
