@@ -153,6 +153,7 @@ function AppShell() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />
+          <Stack.Screen name="onboarding-v2" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="auth" />
