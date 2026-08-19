@@ -181,8 +181,8 @@ function AppShell() {
       {hideTopNav ? null : <PersistentTopNav />}
       <KeyboardAvoidingView
         style={styles.stackArea}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        enabled={Platform.OS === 'ios'}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        enabled
       >
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false }}>
