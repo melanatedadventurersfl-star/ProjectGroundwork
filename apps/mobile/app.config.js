@@ -7,13 +7,11 @@ const buildCommit =
   'local';
 
 module.exports = {
-  expo: {
-    ...base,
-    extra: {
-      ...base.extra,
-      buildCommit,
-      buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
-      buildProfile: process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_BUILD_PROFILE || 'local',
-    },
+  ...base,
+  extra: {
+    ...base.extra,
+    buildCommit,
+    buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
+    buildProfile: process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_BUILD_PROFILE || 'local',
   },
 };
