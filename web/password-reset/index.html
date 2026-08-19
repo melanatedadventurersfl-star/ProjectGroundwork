@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex,nofollow" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://hqndxityqrdiiwqyjagu.supabase.co; base-uri 'none'; form-action 'self'" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Reset your password · Melanated</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #101914; color: #17211b; display: grid; place-items: center; padding: 24px; }
+    .card { width: min(100%, 470px); background: #f7f3ea; border-radius: 22px; padding: 28px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+    .eyebrow { color: #24543b; font-size: 12px; font-weight: 900; letter-spacing: 1.3px; margin: 0 0 12px; }
+    h1 { margin: 0 0 12px; font-size: 32px; line-height: 1.05; }
+    .copy { margin: 0 0 22px; color: #56615a; line-height: 1.5; }
+    label { display: block; font-size: 13px; font-weight: 800; margin: 14px 0 7px; }
+    input { width: 100%; min-height: 52px; border-radius: 10px; border: 1px solid #b8beb9; background: #fff; color: #17211b; padding: 0 14px; font: inherit; }
+    button { width: 100%; min-height: 52px; border: 0; border-radius: 10px; background: #24543b; color: white; font: inherit; font-weight: 800; margin-top: 18px; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: default; }
+    .status { border-radius: 10px; padding: 12px 14px; margin: 0 0 18px; background: #e6efe9; color: #24543b; line-height: 1.4; font-size: 14px; }
+    .status.error { background: #f7e9e7; color: #8b322a; }
+    .hidden { display: none; }
+    .success { text-align: center; }
+    .success h1 { margin-top: 8px; }
+    .mark { width: 54px; height: 54px; border-radius: 50%; background: #24543b; color: #fff; display: grid; place-items: center; margin: 0 auto 16px; font-size: 28px; font-weight: 900; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <section id="resetView">
+      <p class="eyebrow">MELANATED</p>
+      <h1>Choose a new password</h1>
+      <p class="copy">This secure page works on any phone, tablet, or computer. Your password is updated directly with Melanated's authentication service.</p>
+      <div id="status" class="status">Checking your secure reset link…</div>
+      <form id="form" class="hidden">
+        <label for="password">New password</label>
+        <input id="password" type="password" minlength="8" autocomplete="new-password" required />
+        <label for="confirm">Confirm new password</label>
+        <input id="confirm" type="password" minlength="8" autocomplete="new-password" required />
+        <button id="submit" type="submit">Update password</button>
+      </form>
+    </section>
+    <section id="successView" class="success hidden">
+      <div class="mark">✓</div>
+      <p class="eyebrow">PASSWORD UPDATED</p>
+      <h1>You're all set</h1>
+      <p class="copy">Your Melanated password has been changed. Return to the app and sign in with your new password.</p>
+    </section>
+  </main>
+<script>
+(() => {
+  const SUPABASE_URL = 'https://hqndxityqrdiiwqyjagu.supabase.co';
+  const API_KEY = 'sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K';
+  const status = document.getElementById('status');
+  const form = document.getElementById('form');
+  const submit = document.getElementById('submit');
+  const password = document.getElementById('password');
+  const confirm = document.getElementById('confirm');
+  const resetView = document.getElementById('resetView');
+  const successView = document.getElementById('successView');
+
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const query = new URLSearchParams(location.search);
+  const accessToken = hash.get('access_token') || query.get('access_token');
+  const errorDescription = hash.get('error_description') || query.get('error_description');
+  const type = hash.get('type') || query.get('type');
+
+  function fail(message) {
+    status.textContent = message;
+    status.classList.add('error');
+    form.classList.add('hidden');
+  }
+
+  if (errorDescription) {
+    fail(errorDescription);
+  } else if (!accessToken) {
+    fail('This reset link is missing or has expired. Return to Melanated and request a new password reset email.');
+  } else if (type && type !== 'recovery') {
+    fail('This link is not a password recovery link. Return to Melanated and request a new one.');
+  } else {
+    status.textContent = 'Secure link verified. Enter your new password below.';
+    form.classList.remove('hidden');
+    history.replaceState({}, document.title, location.pathname);
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!accessToken) return;
+    if (password.value.length < 8) {
+      fail('Use at least 8 characters for your new password.');
+      form.classList.remove('hidden');
+      return;
+    }
+    if (password.value !== confirm.value) {
+      fail('The passwords do not match.');
+      form.classList.remove('hidden');
+      return;
+    }
+
+    submit.disabled = true;
+    submit.textContent = 'Updating…';
+    status.classList.remove('error');
+    status.textContent = 'Updating your password…';
+
+    try {
+      const response = await fetch(SUPABASE_URL + '/auth/v1/user', {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Bearer ' + accessToken,
+          'apikey': API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: password.value })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.msg || payload.message || payload.error_description || 'Unable to update your password.');
+      resetView.classList.add('hidden');
+      successView.classList.remove('hidden');
+    } catch (error) {
+      fail(error instanceof Error ? error.message : 'Unable to update your password. Request a new reset email and try again.');
+      form.classList.remove('hidden');
+      submit.disabled = false;
+      submit.textContent = 'Update password';
+    }
+  });
+})();
+</script>
+</body>
+</html>
