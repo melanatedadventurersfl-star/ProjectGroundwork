@@ -7,6 +7,13 @@ const DEFAULT_ADVENTURE_IMAGE_URL = Image.resolveAssetSource(
   require('../../assets/explore/default-event.jpg'),
 ).uri;
 
+function withAdventureImage<T extends AdventureSummary>(adventure: T): T {
+  return {
+    ...adventure,
+    hero_image_url: adventure.hero_image_url || DEFAULT_ADVENTURE_IMAGE_URL,
+  };
+}
+
 export type AdventureFilters = {
   search?: string;
   category?: string;
@@ -72,11 +79,7 @@ export async function listAdventures(filters: AdventureFilters = {}): Promise<Ad
   const { data, error } = await query;
   if (error) throw error;
 
-  const adventures = ((data ?? []) as AdventureSummary[]).map((adventure) => ({
-    ...adventure,
-    hero_image_url: adventure.hero_image_url || DEFAULT_ADVENTURE_IMAGE_URL,
-  }));
-
+  const adventures = ((data ?? []) as AdventureSummary[]).map(withAdventureImage);
   return attachSavedState(adventures, filters.savedOnly);
 }
 
@@ -86,7 +89,7 @@ export async function listPastAdventures(): Promise<AdventureSummary[]> {
     .select('*')
     .order('starts_at', { ascending: false });
   if (error) throw error;
-  return attachSavedState((data ?? []) as AdventureSummary[]);
+  return attachSavedState(((data ?? []) as AdventureSummary[]).map(withAdventureImage));
 }
 
 export async function getAdventure(id: string): Promise<AdventureDetail> {
@@ -96,8 +99,9 @@ export async function getAdventure(id: string): Promise<AdventureDetail> {
   ]);
   if (error) throw error;
 
+  const adventure = withAdventureImage(data as AdventureDetail);
   const profileId = sessionData.session?.user.id;
-  if (!profileId) return data as AdventureDetail;
+  if (!profileId) return adventure;
 
   const { data: saved, error: savedError } = await supabase
     .from('saved_adventures')
@@ -107,7 +111,7 @@ export async function getAdventure(id: string): Promise<AdventureDetail> {
     .maybeSingle();
   if (savedError) throw savedError;
 
-  return { ...(data as AdventureDetail), is_saved: Boolean(saved) };
+  return { ...adventure, is_saved: Boolean(saved) };
 }
 
 export async function listAdventureTicketTypes(adventureId: string): Promise<AdventureTicketType[]> {
