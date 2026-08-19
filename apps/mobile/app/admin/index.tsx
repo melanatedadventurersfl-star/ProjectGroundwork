@@ -81,7 +81,7 @@ export default function AdminProfileScreen() {
   const initials = useMemo(() => {
     const parts = displayName.split(/\s+/).filter(Boolean);
     const firstInitial = parts[0]?.[0] ?? '';
-    const lastInitial = parts.at(-1)?.[0] ?? '';
+    const lastInitial = parts[parts.length - 1]?.[0] ?? '';
     return (parts.length > 1 ? `${firstInitial}${lastInitial}` : displayName.slice(0, 2)).toUpperCase();
   }, [displayName]);
   const handle = profile?.username ? `@${profile.username.replace(/^@/, '')}` : session?.user.email ?? 'Melanated administrator';
