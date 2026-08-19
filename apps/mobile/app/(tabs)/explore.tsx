@@ -215,7 +215,7 @@ export default function ExploreScreen() {
     .filter((item) => matchesQuickTags(item, selectedTags))
     .filter((item) => {
       const query = search.trim().toLowerCase();
-      const searchable = `${item.title} ${item.city} ${item.state} ${item.category} ${item.description ?? ''}`.toLowerCase();
+      const searchable = `${item.title} ${item.city} ${item.state} ${item.category} ${item.summary ?? ''}`.toLowerCase();
       if (query && !searchable.includes(query) && !savedCenter) return false;
       if (!searchCenter || item.latitude == null || item.longitude == null || radius === 'Anywhere') return true;
       return distanceMiles(searchCenter, { latitude: item.latitude, longitude: item.longitude }) <= radiusLimit;
@@ -340,7 +340,7 @@ export default function ExploreScreen() {
             <View style={s.filterChips}>
               {(['closest', 'soonest', 'newest', 'price'] as SortMode[]).map((value) => (
                 <Pressable key={value} onPress={() => setSort(value)} style={[s.filterChip, sort === value && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, sort === value && s.filterChipTextActive]}>{value === 'price' ? 'Price' : value[0].toUpperCase() + value.slice(1)}</Text>
+                  <Text style={[s.filterChipText, sort === value && s.filterChipTextActive]}>{value === 'price' ? 'Price' : value.charAt(0).toUpperCase() + value.slice(1)}</Text>
                 </Pressable>
               ))}
             </View>
