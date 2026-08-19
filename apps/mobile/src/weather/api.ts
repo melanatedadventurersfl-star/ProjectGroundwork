@@ -112,6 +112,10 @@ export function getAdventureWeather(location: {
 }
 
 /** Ask the weather proxy for normalized city or ZIP-code suggestions. */
-export function searchWeatherLocations(query: string) {
-  return invokeWeather<WeatherLocationSuggestion[]>({ mode: 'search', q: query });
+export async function searchWeatherLocations(query: string) {
+  const rows = await invokeWeather<WeatherLocationSuggestion[]>({ mode: 'search', q: query });
+  return rows.map((row) => ({
+    ...row,
+    country: /united states|u\.s\.|usa/i.test(row.country) ? 'United States' : row.country,
+  }));
 }
