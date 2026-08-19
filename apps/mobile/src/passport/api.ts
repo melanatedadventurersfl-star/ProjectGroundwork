@@ -1,3 +1,4 @@
+import { prepareLocalImage, preparePickerBase64Image } from '../lib/imageUpload';
 import { supabase } from '../lib/supabase';
 
 const MEMORY_BUCKET = 'adventure-photos';
@@ -92,36 +93,6 @@ async function hydrateMemoryPhotos(rows: any[]): Promise<MemoryPhoto[]> {
   return Promise.all(rows.map(hydrateMemoryPhoto));
 }
 
-function decodeBase64(base64: string): ArrayBuffer {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const clean = base64.replace(/^data:[^,]+,/, '').replace(/\s/g, '').replace(/=+$/, '');
-  const outputLength = Math.floor((clean.length * 6) / 8);
-  const bytes = new Uint8Array(outputLength);
-  let buffer = 0;
-  let bits = 0;
-  let offset = 0;
-  for (const char of clean) {
-    const value = alphabet.indexOf(char);
-    if (value < 0) continue;
-    buffer = (buffer << 6) | value;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes[offset++] = (buffer >> bits) & 0xff;
-    }
-  }
-  return bytes.buffer;
-}
-
-function extensionFor(mimeType?: string | null, fileName?: string | null) {
-  const fromName = fileName?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (fromName && fromName.length <= 5) return fromName;
-  if (mimeType === 'image/png') return 'png';
-  if (mimeType === 'image/heic' || mimeType === 'image/heif') return 'heic';
-  if (mimeType === 'image/webp') return 'webp';
-  return 'jpg';
-}
-
 async function invokePhotoModeration(photoId: string) {
   const { error } = await supabase.functions.invoke('moderate-adventure-photo', { body: { photoId } });
   if (error) console.warn('Photo uploaded but automated moderation could not run.', error);
@@ -134,11 +105,11 @@ export async function uploadMemoryImage(input: {
   fileName?: string | null;
 }) {
   const userId = await requireUserId();
-  const ext = extensionFor(input.mimeType, input.fileName);
-  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const prepared = preparePickerBase64Image(input.base64);
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${prepared.extension}`;
   const path = `${userId}/${input.adventureId}/${fileName}`;
-  const { error } = await supabase.storage.from(MEMORY_BUCKET).upload(path, decodeBase64(input.base64), {
-    contentType: input.mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+  const { error } = await supabase.storage.from(MEMORY_BUCKET).upload(path, prepared.bytes, {
+    contentType: prepared.contentType,
     cacheControl: '3600',
     upsert: false,
   });
@@ -308,15 +279,12 @@ export async function uploadMemoryPhoto(input: {
   visibility: 'private' | 'group';
 }) {
   const userId = await requireUserId();
-  const response = await fetch(input.localUri);
-  if (!response.ok) throw new Error('Unable to read the selected photo.');
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Photos must be 10 MB or smaller.');
-  const extension = extensionFor(input.mimeType, input.localUri);
-  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+  const prepared = await prepareLocalImage({ uri: input.localUri });
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${prepared.extension}`;
   const path = `${userId}/${input.adventureId}/${fileName}`;
-  const { error: uploadError } = await supabase.storage.from(MEMORY_BUCKET).upload(path, bytes, {
-    contentType: input.mimeType || 'image/jpeg',
+  const { error: uploadError } = await supabase.storage.from(MEMORY_BUCKET).upload(path, prepared.bytes, {
+    contentType: prepared.contentType,
+    cacheControl: '3600',
     upsert: false,
   });
   if (uploadError) throw uploadError;
