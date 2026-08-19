@@ -1,3 +1,4 @@
+import { prepareLocalImage } from '../lib/imageUpload';
 import { supabase } from '../lib/supabase';
 
 export type MemberTrip = {
@@ -58,20 +59,17 @@ function profileMediaPathFromUrl(url?: string | null) {
   return path ? decodeURIComponent(path) : null;
 }
 
-async function uploadProfileMedia(input: { uri: string; mimeType?: string | null; kind: 'avatar' | 'cover' }) {
+async function uploadProfileMedia(input: { uri: string; base64?: string | null; mimeType?: string | null; kind: 'avatar' | 'cover' }) {
   const id = await profileId();
   const column = input.kind === 'avatar' ? 'avatar_url' : 'cover_url';
   const { data: current, error: currentError } = await supabase.from('profiles').select(column).eq('id', id).single();
   if (currentError) throw currentError;
 
-  const response = await fetch(input.uri);
-  const bytes = await response.arrayBuffer();
-  const mimeType = input.mimeType || 'image/jpeg';
-  const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
-  const path = `${id}/${input.kind}-${Date.now()}.${extension}`;
+  const prepared = await prepareLocalImage({ uri: input.uri, base64: input.base64 });
+  const path = `${id}/${input.kind}-${Date.now()}.${prepared.extension}`;
 
-  const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, bytes, {
-    contentType: mimeType,
+  const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, prepared.bytes, {
+    contentType: prepared.contentType,
     cacheControl: '3600',
     upsert: false,
   });
@@ -133,7 +131,7 @@ export async function saveProfileDetails(values: { display_name: string; usernam
   }
 }
 
-export function uploadProfilePhoto(input: { uri: string; mimeType?: string | null }) {
+export function uploadProfilePhoto(input: { uri: string; base64?: string | null; mimeType?: string | null }) {
   return uploadProfileMedia({ ...input, kind: 'avatar' });
 }
 
@@ -141,7 +139,7 @@ export function removeProfilePhoto() {
   return removeProfileMedia('avatar');
 }
 
-export function uploadProfileCover(input: { uri: string; mimeType?: string | null }) {
+export function uploadProfileCover(input: { uri: string; base64?: string | null; mimeType?: string | null }) {
   return uploadProfileMedia({ ...input, kind: 'cover' });
 }
 
