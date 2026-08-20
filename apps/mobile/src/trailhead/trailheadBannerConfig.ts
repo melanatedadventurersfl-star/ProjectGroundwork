@@ -118,9 +118,21 @@ function trailblazerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
   });
 }
 
+function legacyRankBackground(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  return { uri: trailheadBackgroundFor(rank,w,p) };
+}
+
+function adventurerBackground(w:WeatherTheme,p:DayPhase):ImageSourcePropType {
+  // Keep Adventurer on its own rank art instead of letting it disappear into the
+  // generic fallback path. The atmosphere/weather layers still react live while
+  // dedicated Adventurer variants are added to the native asset bundle.
+  return legacyRankBackground('Adventurer',w,p);
+}
+
 export function backgroundFor(rank:RankName,w:WeatherTheme,p:DayPhase):ImageSourcePropType{
   if(rank==='Explorer') return explorerBackground(w,p);
   if(rank==='Pathfinder') return pathfinderBackground(w,p);
   if(rank==='Trailblazer') return trailblazerBackground(w,p);
-  return {uri: trailheadBackgroundFor(rank,w,p)};
+  if(rank==='Adventurer') return adventurerBackground(w,p);
+  return legacyRankBackground(rank,w,p);
 }
