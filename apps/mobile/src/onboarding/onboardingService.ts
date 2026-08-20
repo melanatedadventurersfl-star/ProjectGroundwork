@@ -12,6 +12,7 @@ function communicationPreferences(form: OnboardingForm) {
     email: form.emailEnabled,
     sms: form.smsEnabled,
     discovery_intents: form.intents,
+    adventure_preferences: form.adventurePreferences,
   };
 }
 
