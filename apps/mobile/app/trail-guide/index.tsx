@@ -1,226 +1,292 @@
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon } from '../../src/ui/AppIcon';
 
-type GuideCategory = 'Getting Started' | 'Camping' | 'Hiking' | 'Gear' | 'Safety';
-type DiscoveryCategory = 'Hiking' | 'Camping' | 'Parks' | 'Water' | 'Scenic';
+type DiscoveryCategory = 'All' | 'Hiking' | 'Camping' | 'Parks' | 'Water' | 'Scenic';
 
-type GuideArticle = {
+type NearbyPlace = {
   id: string;
-  category: GuideCategory;
-  title: string;
-  summary: string;
-  readTime: string;
-  level?: string;
-  bullets: string[];
+  category: Exclude<DiscoveryCategory, 'All'>;
+  name: string;
+  distance: string;
+  type: string;
+  tags: string[];
+  meta: string;
+  image: string;
+  availability?: string;
+  availabilityTone?: 'good' | 'warning';
 };
 
-const discoveryCategories: { label: DiscoveryCategory; query: string }[] = [
-  { label: 'Hiking', query: 'hiking trails' },
-  { label: 'Camping', query: 'campgrounds' },
-  { label: 'Parks', query: 'parks' },
-  { label: 'Water', query: 'lakes beaches kayaking' },
-  { label: 'Scenic', query: 'scenic outdoor places' },
-];
+type GuideCard = {
+  id: string;
+  title: string;
+  image: string;
+};
 
-const nearbyIdeas = [
-  { title: 'Parks & trails near you', subtitle: 'Find a quick hike, greenway, or nature preserve.', query: 'parks hiking trails' },
-  { title: 'Campgrounds near you', subtitle: 'Scout tent camping, cabins, and weekend base camps.', query: 'campgrounds camping' },
-  { title: 'Water days near you', subtitle: 'Explore lakes, beaches, paddling, and swimming spots.', query: 'lakes beaches kayaking swimming' },
-];
+const discoveryCategories: DiscoveryCategory[] = ['All', 'Hiking', 'Camping', 'Parks', 'Water', 'Scenic'];
 
-const guideCategories: GuideCategory[] = ['Getting Started', 'Camping', 'Hiking', 'Gear', 'Safety'];
-
-const articles: GuideArticle[] = [
+const nearbyPlaces: NearbyPlace[] = [
   {
-    id: 'camping-beginners',
-    category: 'Getting Started',
-    title: 'Camping for Beginners',
-    summary: 'Everything you need to know for a comfortable and memorable first trip.',
-    readTime: '7 min read',
-    level: 'Beginner',
-    bullets: ['Choose a campground with simple amenities for your first trip.', 'Set up shelter before unpacking the rest of camp.', 'Keep food and scented items secured away from your sleeping area.'],
+    id: 'hanna',
+    category: 'Parks',
+    name: 'Kathryn Abbey Hanna Park',
+    distance: '5.2 mi away',
+    type: 'Park',
+    tags: ['Trails', 'Beach'],
+    meta: 'Easy–Moderate  •  7 trails',
+    image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 'camp-setup',
-    category: 'Camping',
-    title: 'Camp Setup Basics',
-    summary: 'A simple setup order that keeps camp comfortable before the sun disappears.',
-    readTime: '4 min read',
-    bullets: ['Choose level, well-drained ground.', 'Pitch shelter before organizing camp furniture and food.', 'Create clear zones for sleeping, cooking, and hanging out.'],
-  },
-  {
-    id: 'trail-etiquette',
+    id: 'baldwin',
     category: 'Hiking',
-    title: 'Trail Etiquette 101',
-    summary: 'Share the trail respectfully, safely, and without making the woods weird.',
-    readTime: '3 min read',
-    bullets: ['Stay on marked trails whenever possible.', 'Yield according to local trail guidance and communicate when passing.', 'Pack out trash and leave natural objects where you found them.'],
+    name: 'Jacksonville-Baldwin Rail Trail',
+    distance: '8.7 mi away',
+    type: 'Paved Trail',
+    tags: ['Walking', 'Cycling'],
+    meta: '14.5 miles  •  Paved  •  Easy',
+    image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 'day-hike',
-    category: 'Gear',
-    title: 'Day Hike Essentials',
-    summary: 'The gear you actually need for a safe, comfortable day outside.',
-    readTime: '5 min read',
-    bullets: ['Bring water, snacks, navigation, and sun protection.', 'Carry a light weather layer and a small first-aid kit.', 'Start with what you own before buying specialty gear.'],
+    id: 'timucuan',
+    category: 'Scenic',
+    name: 'Timucuan Preserve',
+    distance: '11 mi away',
+    type: 'Nature Preserve',
+    tags: ['Nature Preserve', 'Kayaking'],
+    meta: 'Trails  •  Historic Sites',
+    image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 'trip-plan',
-    category: 'Safety',
-    title: 'Leave a Simple Trip Plan',
-    summary: 'Someone should know where you are going and when to expect you back.',
-    readTime: '3 min read',
-    bullets: ['Share the park, trail, or campground name.', 'Include your expected return time.', 'Update your contact if the plan changes.'],
+    id: 'little-talbot-camp',
+    category: 'Camping',
+    name: 'Little Talbot Island Campground',
+    distance: '6.1 mi away',
+    type: 'Campground',
+    tags: ['Tent', 'RV', 'Cabins'],
+    meta: 'Restrooms  •  Showers  •  Fire Rings',
+    availability: 'Available',
+    availabilityTone: 'good',
+    image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 'huguenot',
+    category: 'Camping',
+    name: 'Huguenot Memorial Park',
+    distance: '9.3 mi away',
+    type: 'Campground',
+    tags: ['Tent', 'RV'],
+    meta: 'Picnic Tables  •  Restrooms  •  Fire Rings',
+    availability: '2 sites left',
+    availabilityTone: 'warning',
+    image: 'https://images.unsplash.com/photo-1478131143081-80f7f84ca84d?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 'talbot-water',
+    category: 'Water',
+    name: 'Little Talbot Island Beach',
+    distance: '6.3 mi away',
+    type: 'Beach',
+    tags: ['Swimming', 'Surfing'],
+    meta: 'Showers  •  Wildlife  •  Easy Access',
+    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80',
+  },
+];
+
+const guides: GuideCard[] = [
+  {
+    id: 'camping-essentials',
+    title: 'Camping Essentials Checklist',
+    image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: 'hiking-safety',
+    title: 'Hiking Safety Tips',
+    image: 'https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: 'leave-no-trace',
+    title: 'Leave No Trace Principles',
+    image: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80',
   },
 ];
 
 export default function TrailGuideScreen() {
   const [search, setSearch] = useState('');
-  const [guideCategory, setGuideCategory] = useState<GuideCategory>('Getting Started');
-  const [openArticle, setOpenArticle] = useState<string | null>('camping-beginners');
+  const [category, setCategory] = useState<DiscoveryCategory>('All');
   const [locationLabel, setLocationLabel] = useState('Near me');
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
 
-  const visibleArticles = useMemo(
-    () => articles.filter((article) => article.category === guideCategory),
-    [guideCategory],
-  );
+  const visiblePlaces = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return nearbyPlaces.filter((place) => {
+      const matchesCategory = category === 'All' || place.category === category;
+      const haystack = `${place.name} ${place.type} ${place.tags.join(' ')} ${place.meta}`.toLowerCase();
+      return matchesCategory && (!query || haystack.includes(query));
+    });
+  }, [category, search]);
+
+  const parksAndTrails = visiblePlaces.filter((place) => place.category === 'Parks' || place.category === 'Hiking' || place.category === 'Scenic');
+  const campgrounds = visiblePlaces.filter((place) => place.category === 'Camping');
+  const water = visiblePlaces.filter((place) => place.category === 'Water');
 
   async function requestCurrentLocation() {
     setLocationBusy(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
-        setLocationLabel('Search an area');
+        setLocationLabel('Location off');
         return;
       }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-      setLocationLabel('Using your location');
+      await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setLocationLabel('Near me');
     } finally {
       setLocationBusy(false);
     }
   }
 
-  async function openNearbySearch(query: string) {
-    const locationSuffix = coords ? ` near ${coords.latitude},${coords.longitude}` : ' near me';
-    await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${query}${locationSuffix}`)}`);
-  }
-
-  async function runSearch() {
-    const query = search.trim();
-    if (!query) return;
-    await openNearbySearch(query);
+  function renderPlace(place: NearbyPlace) {
+    return (
+      <View key={place.id} style={styles.placeCard}>
+        <Image source={{ uri: place.image }} style={styles.placeImage} />
+        <View style={styles.placeCopy}>
+          <View style={styles.placeTitleRow}>
+            <Text numberOfLines={2} style={styles.placeName}>{place.name}</Text>
+            <AppIcon name="guide" color="#F5C400" size={19} />
+          </View>
+          <Text style={styles.distance}>{place.distance}</Text>
+          <View style={styles.tagRow}>
+            {place.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}
+          </View>
+          <View style={styles.metaRow}>
+            <Text numberOfLines={2} style={styles.metaText}>{place.meta}</Text>
+            {place.availability ? (
+              <View style={[styles.availability, place.availabilityTone === 'warning' && styles.availabilityWarning]}>
+                <Text style={[styles.availabilityText, place.availabilityTone === 'warning' && styles.availabilityWarningText]}>{place.availability}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    );
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()} style={styles.back}>
-          <AppIcon name="chevron-forward" color="#D7B45A" size={22} style={{ transform: [{ rotate: '180deg' }] }} />
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-
-        <View style={styles.hero}>
-          <View style={styles.heroIcon}><AppIcon name="guide" color="#17211C" size={24} /></View>
-          <Text style={styles.title}>Trail Guide</Text>
-          <Text style={styles.intro}>Find somewhere to go, learn what you need, then turn it into your next adventure.</Text>
-        </View>
-
-        <View style={styles.searchWrap}>
-          <AppIcon name="search" color="#738178" size={20} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            onSubmitEditing={() => void runSearch()}
-            placeholder="Search trails, parks, camping & guides"
-            placeholderTextColor="#738178"
-            returnKeyType="search"
-            style={styles.searchInput}
-          />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoveryChips}>
-          {discoveryCategories.map((item) => (
-            <Pressable key={item.label} onPress={() => void openNearbySearch(item.query)} style={styles.discoveryChip}>
-              <Text style={styles.discoveryChipText}>{item.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Explore Nearby</Text>
-            <Text style={styles.sectionSubtitle}>Outdoor places around your current area.</Text>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ImageBackground
+          source={{ uri: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=82' }}
+          style={styles.hero}
+          imageStyle={styles.heroImage}
+        >
+          <View style={styles.heroShade} />
+          <View style={styles.heroContent}>
+            <Text style={styles.title}>Trail Guide</Text>
+            <Text style={styles.intro}>Find somewhere to go, learn what you need, then turn it into your next adventure.</Text>
           </View>
-          <Pressable onPress={() => void requestCurrentLocation()} style={styles.locationButton}>
-            <AppIcon name="location" color="#D7B45A" size={16} />
-            <Text style={styles.locationButtonText}>{locationBusy ? 'Locating…' : locationLabel}</Text>
-          </Pressable>
-        </View>
+        </ImageBackground>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nearbyRow}>
-          {nearbyIdeas.map((place, index) => (
-            <Pressable key={place.title} onPress={() => void openNearbySearch(place.query)} style={styles.nearbyCard}>
-              <View style={[styles.nearbyArt, index === 1 && styles.nearbyArtCamp, index === 2 && styles.nearbyArtWater]}>
-                <AppIcon name={index === 1 ? 'trailhead' : index === 2 ? 'weather' : 'explore'} color="#FFF8E8" size={30} />
-              </View>
-              <Text style={styles.nearbyTitle}>{place.title}</Text>
-              <Text style={styles.nearbySubtitle}>{place.subtitle}</Text>
-              <View style={styles.nearbyMeta}><AppIcon name="location" color="#D7B45A" size={14} /><Text style={styles.nearbyMetaText}>Open nearby results</Text></View>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        <View style={styles.planCard}>
-          <View style={styles.planIcon}><AppIcon name="adventure" color="#17211C" size={23} /></View>
-          <View style={styles.planCopy}>
-            <Text style={styles.planEyebrow}>DISCOVER → PLAN</Text>
-            <Text style={styles.planTitle}>Found the spot?</Text>
-            <Text style={styles.planText}>Jump into Explore to find an adventure or start organizing your next outing around it.</Text>
+        <View style={styles.body}>
+          <View style={styles.searchWrap}>
+            <AppIcon name="search" color="#7D8882" size={19} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search trails, parks, camping & guides"
+              placeholderTextColor="#7D8882"
+              style={styles.searchInput}
+            />
           </View>
-          <Pressable onPress={() => router.push('/(tabs)/explore' as never)} style={styles.planButton}><Text style={styles.planButtonText}>Explore</Text></Pressable>
-        </View>
 
-        <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Learn Something</Text><Text style={styles.sectionSubtitle}>Practical guides for getting outside with confidence.</Text></View></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+            {discoveryCategories.map((item) => {
+              const active = category === item;
+              return (
+                <Pressable key={item} onPress={() => setCategory(item)} style={[styles.categoryChip, active && styles.categoryChipActive]}>
+                  <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.guideChips}>
-          {guideCategories.map((value) => (
-            <Pressable key={value} onPress={() => setGuideCategory(value)} style={[styles.guideChip, guideCategory === value && styles.guideChipActive]}>
-              <Text style={[styles.guideChipText, guideCategory === value && styles.guideChipTextActive]}>{value}</Text>
+          <View style={styles.exploreHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Explore Nearby</Text>
+              <Text style={styles.sectionSubtitle}>Outdoor places around your current area.</Text>
+            </View>
+            <Pressable onPress={() => void requestCurrentLocation()} style={styles.locationButton}>
+              <AppIcon name="location" color="#F5C400" size={17} />
+              <Text style={styles.locationText}>{locationBusy ? 'Locating…' : locationLabel}</Text>
             </Pressable>
-          ))}
-        </ScrollView>
+          </View>
 
-        {visibleArticles.map((article) => {
-          const open = openArticle === article.id;
-          return (
-            <Pressable key={article.id} onPress={() => setOpenArticle(open ? null : article.id)} style={styles.articleCard}>
-              <View style={styles.articleTop}>
-                <View style={styles.articleIcon}><AppIcon name="guide" color="#D7B45A" size={21} /></View>
-                <View style={styles.articleCopy}>
-                  <Text style={styles.articleCategory}>{article.category.toUpperCase()}</Text>
-                  <Text style={styles.articleTitle}>{article.title}</Text>
-                  <Text style={styles.articleSummary}>{article.summary}</Text>
-                  <Text style={styles.articleMeta}>{article.readTime}{article.level ? `  •  ${article.level}` : ''}</Text>
+          {parksAndTrails.length > 0 ? (
+            <View style={styles.section}>
+              <View style={styles.sectionRow}>
+                <View style={styles.sectionLabelWrap}>
+                  <View style={styles.sectionIcon}><AppIcon name="explore" color="#79B76A" size={18} /></View>
+                  <Text style={styles.listTitle}>Parks & Trails</Text>
                 </View>
-                <AppIcon name="chevron-forward" color="#D7B45A" size={21} style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }} />
+                <Pressable onPress={() => setCategory('Parks')}><Text style={styles.seeAll}>See all ›</Text></Pressable>
               </View>
-              {open ? <View style={styles.details}>{article.bullets.map((bullet) => <View key={bullet} style={styles.bulletRow}><View style={styles.bullet} /><Text style={styles.bulletText}>{bullet}</Text></View>)}</View> : null}
-            </Pressable>
-          );
-        })}
+              <View style={styles.list}>{parksAndTrails.slice(0, 3).map(renderPlace)}</View>
+            </View>
+          ) : null}
 
-        <View style={styles.footerCard}>
-          <Text style={styles.footerEyebrow}>TRAIL GUIDE</Text>
-          <Text style={styles.footerTitle}>Built to grow with the community</Text>
-          <Text style={styles.footerText}>This structure is ready for richer destination pages, saved places, community tips, trail data, editorial guides, and a native map layer without changing the core experience.</Text>
+          {campgrounds.length > 0 ? (
+            <View style={styles.section}>
+              <View style={styles.sectionRow}>
+                <View style={styles.sectionLabelWrap}>
+                  <View style={styles.sectionIcon}><AppIcon name="trailhead" color="#79B76A" size={18} /></View>
+                  <Text style={styles.listTitle}>Campgrounds</Text>
+                </View>
+                <Pressable onPress={() => setCategory('Camping')}><Text style={styles.seeAll}>See all ›</Text></Pressable>
+              </View>
+              <View style={styles.list}>{campgrounds.slice(0, 2).map(renderPlace)}</View>
+            </View>
+          ) : null}
+
+          {water.length > 0 ? (
+            <View style={styles.section}>
+              <View style={styles.sectionRow}>
+                <View style={styles.sectionLabelWrap}>
+                  <View style={styles.sectionIcon}><AppIcon name="weather" color="#79B76A" size={18} /></View>
+                  <Text style={styles.listTitle}>Water</Text>
+                </View>
+                <Pressable onPress={() => setCategory('Water')}><Text style={styles.seeAll}>See all ›</Text></Pressable>
+              </View>
+              <View style={styles.list}>{water.slice(0, 2).map(renderPlace)}</View>
+            </View>
+          ) : null}
+
+          {visiblePlaces.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No nearby matches yet</Text>
+              <Text style={styles.emptyText}>Try another category or a broader search.</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <View style={styles.sectionLabelWrap}>
+                <View style={styles.sectionIcon}><AppIcon name="guide" color="#79B76A" size={18} /></View>
+                <Text style={styles.listTitle}>Guides & Know-How</Text>
+              </View>
+              <Text style={styles.seeAll}>See all ›</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.guideRow}>
+              {guides.map((guide) => (
+                <View key={guide.id} style={styles.guideCard}>
+                  <ImageBackground source={{ uri: guide.image }} style={styles.guideImage} imageStyle={styles.guideImageRadius}>
+                    <View style={styles.guideShade} />
+                    <Text style={styles.guideTitle}>{guide.title}</Text>
+                  </ImageBackground>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -228,60 +294,55 @@ export default function TrailGuideScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0F1713' },
-  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 72, gap: 14 },
-  back: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 2 },
-  backText: { color: '#D7B45A', fontWeight: '900' },
-  hero: { alignItems: 'center', paddingTop: 2, paddingBottom: 4 },
-  heroIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginBottom: 9 },
-  title: { color: '#FFF8E8', fontSize: 38, lineHeight: 42, fontWeight: '900' },
-  intro: { color: '#AEB8B2', fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 430, marginTop: 6 },
-  searchWrap: { minHeight: 52, borderRadius: 18, backgroundColor: '#F5F0E5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 10 },
-  searchInput: { flex: 1, color: '#17211C', fontSize: 14, paddingVertical: 14 },
-  discoveryChips: { gap: 8, paddingRight: 12, paddingVertical: 2 },
-  discoveryChip: { borderRadius: 999, backgroundColor: '#1B2A22', borderWidth: 1, borderColor: '#405047', paddingHorizontal: 14, paddingVertical: 9 },
-  discoveryChipText: { color: '#E3E9E5', fontSize: 12, fontWeight: '900' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginTop: 4 },
-  sectionTitle: { color: '#FFF8E8', fontSize: 22, fontWeight: '900' },
-  sectionSubtitle: { color: '#86938B', fontSize: 12, lineHeight: 17, marginTop: 2 },
-  locationButton: { maxWidth: 155, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, borderWidth: 1, borderColor: '#4B594F', paddingHorizontal: 10, paddingVertical: 7 },
-  locationButtonText: { color: '#D7B45A', fontWeight: '900', fontSize: 10 },
-  nearbyRow: { gap: 11, paddingRight: 14 },
-  nearbyCard: { width: 218, borderRadius: 20, borderWidth: 1, borderColor: '#2C3B33', backgroundColor: '#17211C', overflow: 'hidden', paddingBottom: 14 },
-  nearbyArt: { height: 98, backgroundColor: '#31533C', alignItems: 'center', justifyContent: 'center' },
-  nearbyArtCamp: { backgroundColor: '#725A2F' },
-  nearbyArtWater: { backgroundColor: '#31576A' },
-  nearbyTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900', marginHorizontal: 13, marginTop: 12 },
-  nearbySubtitle: { color: '#AEB8B2', fontSize: 12, lineHeight: 18, marginHorizontal: 13, marginTop: 4, minHeight: 54 },
-  nearbyMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginHorizontal: 13, marginTop: 4 },
-  nearbyMetaText: { color: '#D7B45A', fontSize: 10.5, fontWeight: '900' },
-  planCard: { borderRadius: 20, borderWidth: 1, borderColor: '#526047', backgroundColor: '#1C2B23', padding: 15, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  planIcon: { width: 43, height: 43, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
-  planCopy: { flex: 1 },
-  planEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .8 },
-  planTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900', marginTop: 2 },
-  planText: { color: '#AEB8B2', fontSize: 11.5, lineHeight: 17, marginTop: 3 },
-  planButton: { borderRadius: 12, backgroundColor: '#D7B45A', paddingHorizontal: 12, paddingVertical: 10 },
-  planButtonText: { color: '#17211C', fontSize: 11, fontWeight: '900' },
-  guideChips: { gap: 8, paddingRight: 12 },
-  guideChip: { borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
-  guideChipActive: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
-  guideChipText: { color: '#D7DFDA', fontSize: 12, fontWeight: '800' },
-  guideChipTextActive: { color: '#17211C' },
-  articleCard: { borderRadius: 18, borderWidth: 1, borderColor: '#2C3B33', backgroundColor: '#17211C', padding: 15 },
-  articleTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  articleIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#22332A', alignItems: 'center', justifyContent: 'center' },
-  articleCopy: { flex: 1 },
-  articleCategory: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .8 },
-  articleTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginTop: 3 },
-  articleSummary: { color: '#AEB8B2', fontSize: 13, lineHeight: 19, marginTop: 4 },
-  articleMeta: { color: '#718078', fontSize: 10.5, fontWeight: '800', marginTop: 7 },
-  details: { borderTopWidth: 1, borderTopColor: '#2B3932', marginTop: 12, paddingTop: 12, gap: 9 },
-  bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
-  bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#67CFC8', marginTop: 7 },
-  bulletText: { color: '#D0D8D3', fontSize: 13, lineHeight: 20, flex: 1 },
-  footerCard: { borderRadius: 18, backgroundColor: '#111A17', borderWidth: 1, borderColor: '#28362E', padding: 16, marginTop: 4 },
-  footerEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  footerTitle: { color: '#FFF8E8', fontSize: 16, fontWeight: '900', marginTop: 3 },
-  footerText: { color: '#8F9C94', fontSize: 12.5, lineHeight: 19, marginTop: 5 },
+  safe: { flex: 1, backgroundColor: '#08100C' },
+  hero: { height: 300, justifyContent: 'flex-end' },
+  heroImage: { resizeMode: 'cover' },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.48)' },
+  heroContent: { paddingHorizontal: 22, paddingBottom: 24 },
+  title: { color: '#FFFDF6', fontSize: 42, lineHeight: 46, fontWeight: '900' },
+  intro: { color: '#F1F3EF', fontSize: 14, lineHeight: 21, maxWidth: 390, marginTop: 8 },
+  body: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 76 },
+  searchWrap: { minHeight: 50, borderRadius: 16, backgroundColor: '#171E1A', borderWidth: 1, borderColor: '#27322C', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14 },
+  searchInput: { flex: 1, color: '#FFFDF6', fontSize: 14, paddingVertical: 13 },
+  categoryRow: { gap: 9, paddingVertical: 16, paddingRight: 8 },
+  categoryChip: { borderRadius: 999, borderWidth: 1, borderColor: '#334139', backgroundColor: '#17211B', paddingHorizontal: 15, paddingVertical: 9 },
+  categoryChipActive: { backgroundColor: '#F5C400', borderColor: '#F5C400' },
+  categoryText: { color: '#F0F3F0', fontWeight: '800', fontSize: 12 },
+  categoryTextActive: { color: '#11150F' },
+  exploreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginTop: 3, marginBottom: 18 },
+  sectionTitle: { color: '#FFFDF6', fontSize: 25, fontWeight: '900' },
+  sectionSubtitle: { color: '#99A49D', fontSize: 12, marginTop: 3 },
+  locationButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8 },
+  locationText: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
+  section: { marginBottom: 24 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  sectionIcon: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#1B2C20', alignItems: 'center', justifyContent: 'center' },
+  listTitle: { color: '#FFFDF6', fontSize: 19, fontWeight: '900' },
+  seeAll: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
+  list: { gap: 9 },
+  placeCard: { minHeight: 126, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#28332D', backgroundColor: '#111915', flexDirection: 'row' },
+  placeImage: { width: 132, alignSelf: 'stretch', backgroundColor: '#1D2A23' },
+  placeCopy: { flex: 1, padding: 12, justifyContent: 'center' },
+  placeTitleRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  placeName: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900', flex: 1 },
+  distance: { color: '#8CCB78', fontSize: 12.5, fontWeight: '800', marginTop: 4 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 },
+  tag: { backgroundColor: '#233027', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  tagText: { color: '#E5EBE6', fontSize: 10.5, fontWeight: '700' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 7 },
+  metaText: { color: '#A8B0AB', fontSize: 10.5, lineHeight: 15, flex: 1 },
+  availability: { borderRadius: 999, backgroundColor: '#1D3421', paddingHorizontal: 8, paddingVertical: 5 },
+  availabilityText: { color: '#8ED47A', fontSize: 9.5, fontWeight: '900' },
+  availabilityWarning: { backgroundColor: '#332711' },
+  availabilityWarningText: { color: '#F0A71F' },
+  emptyState: { borderRadius: 16, borderWidth: 1, borderColor: '#29342E', backgroundColor: '#121A16', padding: 20, marginBottom: 24 },
+  emptyTitle: { color: '#FFFDF6', fontSize: 16, fontWeight: '900' },
+  emptyText: { color: '#98A39C', marginTop: 4, fontSize: 12 },
+  guideRow: { gap: 10, paddingRight: 12 },
+  guideCard: { width: 148, height: 142, borderRadius: 16, overflow: 'hidden' },
+  guideImage: { flex: 1, justifyContent: 'flex-end', padding: 12 },
+  guideImageRadius: { borderRadius: 16 },
+  guideShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.45)' },
+  guideTitle: { color: '#FFFDF6', fontSize: 15, lineHeight: 19, fontWeight: '900' },
 });
