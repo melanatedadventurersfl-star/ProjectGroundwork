@@ -1,9 +1,9 @@
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 type DiscoveryCategory = 'All' | 'Hiking' | 'Camping' | 'Parks' | 'Water' | 'Scenic';
@@ -117,8 +117,7 @@ const guides: GuideCard[] = [
 export default function TrailGuideScreen() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<DiscoveryCategory>('All');
-  const [locationLabel, setLocationLabel] = useState('Near me');
-  const [locationBusy, setLocationBusy] = useState(false);
+  const { backgroundSource, locationLabel, locationBusy, requestCurrentLocation } = useTrailGuideLocationBackground();
 
   const visiblePlaces = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -132,21 +131,6 @@ export default function TrailGuideScreen() {
   const parksAndTrails = visiblePlaces.filter((place) => place.category === 'Parks' || place.category === 'Hiking' || place.category === 'Scenic');
   const campgrounds = visiblePlaces.filter((place) => place.category === 'Camping');
   const water = visiblePlaces.filter((place) => place.category === 'Water');
-
-  async function requestCurrentLocation() {
-    setLocationBusy(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') {
-        setLocationLabel('Location off');
-        return;
-      }
-      await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setLocationLabel('Near me');
-    } finally {
-      setLocationBusy(false);
-    }
-  }
 
   function renderPlace(place: NearbyPlace) {
     return (
@@ -185,7 +169,7 @@ export default function TrailGuideScreen() {
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <ImageBackground
-          source={{ uri: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=82' }}
+          source={backgroundSource}
           style={styles.hero}
           imageStyle={styles.heroImage}
         >
