@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#08100C' },
   hero: { height: 300, justifyContent: 'flex-end' },
   heroImage: { resizeMode: 'cover' },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.48)' },
+  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(4,10,7,0.48)' },
   heroContent: { paddingHorizontal: 22, paddingBottom: 24 },
   title: { color: '#FFFDF6', fontSize: 42, lineHeight: 46, fontWeight: '900' },
   intro: { color: '#F1F3EF', fontSize: 14, lineHeight: 21, maxWidth: 390, marginTop: 8 },
@@ -343,6 +343,6 @@ const styles = StyleSheet.create({
   guideCard: { width: 148, height: 142, borderRadius: 16, overflow: 'hidden' },
   guideImage: { flex: 1, justifyContent: 'flex-end', padding: 12 },
   guideImageRadius: { borderRadius: 16 },
-  guideShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.45)' },
+  guideShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(5,10,7,0.45)' },
   guideTitle: { color: '#FFFDF6', fontSize: 15, lineHeight: 19, fontWeight: '900' },
 });
