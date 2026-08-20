@@ -423,16 +423,6 @@ export default function ExploreScreen() {
             <Text style={s.emptyBody}>Try widening your radius or clearing a filter.</Text>
           </View>
         ) : null}
-
-        <Pressable style={s.learnCard} onPress={() => router.push('/groups' as never)}>
-          <View style={s.learnIconWrap}><Text style={s.learnIcon}>🎒</Text></View>
-          <View style={s.learnCopy}>
-            <Text style={s.learnEyebrow}>LEARN & PREP</Text>
-            <Text style={s.learnTitle}>{category === 'Camping' ? 'New to camping?' : 'Build your outdoor confidence'}</Text>
-            <Text style={s.learnBody}>Gear, safety, skills and practical tips for your next adventure.</Text>
-          </View>
-          <Text style={s.learnArrow}>›</Text>
-        </Pressable>
       </ScrollView>
 
       <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
