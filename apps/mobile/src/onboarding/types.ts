@@ -1,12 +1,26 @@
 export const INTEREST_OPTIONS = [
-  'Camping',
   'Hiking',
+  'Camping',
+  'Travel',
+  'Overlanding',
+  'Fishing',
+  'Cycling',
+  'Climbing',
   'Water adventures',
-  'Road trips',
-  'Food and culture',
+  'Photography',
   'Family adventures',
+  'Food and culture',
   'Wellness outdoors',
   'Beginner-friendly experiences',
+] as const;
+
+export const INTENT_OPTIONS = [
+  'Find people to adventure with',
+  'Discover things happening nearby',
+  'Learn how to get outdoors',
+  'Find groups and communities',
+  'Share my adventures',
+  'Explore new places',
 ] as const;
 
 export type ExperienceLevel = 'new' | 'beginner' | 'intermediate' | 'experienced';
@@ -21,6 +35,7 @@ export type OnboardingForm = {
   discoveryRadiusMiles: number;
   experienceLevel: ExperienceLevel;
   interests: string[];
+  intents: string[];
   pushEnabled: boolean;
   emailEnabled: boolean;
   smsEnabled: boolean;
@@ -43,6 +58,7 @@ export const INITIAL_ONBOARDING_FORM: OnboardingForm = {
   discoveryRadiusMiles: 50,
   experienceLevel: 'new',
   interests: [],
+  intents: [],
   pushEnabled: true,
   emailEnabled: true,
   smsEnabled: false,
