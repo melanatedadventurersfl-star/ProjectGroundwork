@@ -1,3 +1,5 @@
+import * as Location from 'expo-location';
+import { useEffect, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
 
 export type TrailGuideCity = {
@@ -57,4 +59,62 @@ export function getNearestTrailGuideCity(latitude: number, longitude: number) {
     if (!best || distance < best.distance) return { city, distance };
     return best;
   }, null);
+}
+
+function isFloridaRegion(region?: string | null) {
+  const normalized = region?.trim().toLowerCase();
+  return normalized === 'fl' || normalized === 'florida';
+}
+
+export function useTrailGuideLocationBackground() {
+  const [backgroundSource, setBackgroundSource] = useState<ImageSourcePropType>(TRAIL_GUIDE_DEFAULT_BACKGROUND);
+  const [locationLabel, setLocationLabel] = useState('Near me');
+  const [locationBusy, setLocationBusy] = useState(false);
+
+  async function syncLocation(requestPermission: boolean) {
+    setLocationBusy(true);
+    try {
+      const permission = requestPermission
+        ? await Location.requestForegroundPermissionsAsync()
+        : await Location.getForegroundPermissionsAsync();
+
+      if (permission.status !== 'granted') {
+        if (requestPermission) setLocationLabel('Location off');
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = position.coords;
+      const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const place = reverseGeocode[0];
+
+      if (isFloridaRegion(place?.region)) {
+        const nearest = getNearestTrailGuideCity(latitude, longitude);
+        if (nearest) {
+          setBackgroundSource(nearest.city.source);
+          setLocationLabel(nearest.city.label);
+          return;
+        }
+      }
+
+      setBackgroundSource(TRAIL_GUIDE_DEFAULT_BACKGROUND);
+      setLocationLabel(place?.city || place?.subregion || 'Near me');
+    } catch {
+      setBackgroundSource(TRAIL_GUIDE_DEFAULT_BACKGROUND);
+      setLocationLabel('Near me');
+    } finally {
+      setLocationBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void syncLocation(false);
+  }, []);
+
+  return {
+    backgroundSource,
+    locationLabel,
+    locationBusy,
+    requestCurrentLocation: () => syncLocation(true),
+  };
 }
