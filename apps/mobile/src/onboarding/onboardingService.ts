@@ -6,6 +6,15 @@ function normalizeUsPhone(value: string) {
   return digits.length === 10 ? `+1${digits}` : null;
 }
 
+function communicationPreferences(form: OnboardingForm) {
+  return {
+    push: form.pushEnabled,
+    email: form.emailEnabled,
+    sms: form.smsEnabled,
+    discovery_intents: form.intents,
+  };
+}
+
 export async function loadOnboardingProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')
@@ -36,11 +45,7 @@ export async function saveOnboardingProgress(
       discovery_radius_miles: form.discoveryRadiusMiles,
       experience_level: form.experienceLevel,
       interests: form.interests,
-      communication_preferences: {
-        push: form.pushEnabled,
-        email: form.emailEnabled,
-        sms: form.smsEnabled,
-      },
+      communication_preferences: communicationPreferences(form),
       phone_number: phoneNumber,
       sms_consent_at: form.smsEnabled && form.smsConsent ? new Date().toISOString() : null,
       accessibility_needs: form.accessibilityNeeds.trim() || null,
@@ -63,11 +68,7 @@ export async function completeOnboarding(form: OnboardingForm) {
     p_discovery_radius_miles: form.discoveryRadiusMiles,
     p_experience_level: form.experienceLevel,
     p_interests: form.interests,
-    p_communication_preferences: {
-      push: form.pushEnabled,
-      email: form.emailEnabled,
-      sms: form.smsEnabled,
-    },
+    p_communication_preferences: communicationPreferences(form),
     p_phone_number: normalizeUsPhone(form.phoneNumber),
     p_sms_consent: form.smsEnabled && form.smsConsent,
     p_accessibility_needs: form.accessibilityNeeds,

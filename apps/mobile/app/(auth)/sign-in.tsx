@@ -30,16 +30,7 @@ export default function SignInScreen() {
       return;
     }
 
-    if (data?.onboarding_completed_at) {
-      router.replace('/(tabs)');
-      return;
-    }
-
-    const { data: isPlatformAdmin, error: adminError } = await supabase.rpc('is_platform_admin');
-    if (adminError) {
-      console.warn('[auth] Unable to check onboarding v2 preview access', adminError.message);
-    }
-    router.replace(isPlatformAdmin === true ? '/onboarding-v2' : '/onboarding');
+    router.replace(data?.onboarding_completed_at ? '/(tabs)' : '/onboarding-v2');
   }
 
   async function handleSignIn() {

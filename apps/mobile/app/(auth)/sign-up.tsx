@@ -65,7 +65,7 @@ export default function SignUpScreen() {
       }
 
       if (data.session) {
-        router.replace('/onboarding');
+        router.replace('/onboarding-v2');
         return;
       }
 
