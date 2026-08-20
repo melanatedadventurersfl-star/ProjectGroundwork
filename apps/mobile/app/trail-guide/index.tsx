@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -149,12 +150,19 @@ export default function TrailGuideScreen() {
 
   function renderPlace(place: NearbyPlace) {
     return (
-      <View key={place.id} style={styles.placeCard}>
+      <Pressable
+        key={place.id}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${place.name}`}
+        hitSlop={4}
+        onPress={() => router.push(`/trail-guide/${place.id}` as never)}
+        style={({ pressed }) => [styles.placeCard, pressed && styles.cardPressed]}
+      >
         <Image source={{ uri: place.image }} style={styles.placeImage} />
         <View style={styles.placeCopy}>
           <View style={styles.placeTitleRow}>
             <Text numberOfLines={2} style={styles.placeName}>{place.name}</Text>
-            <AppIcon name="guide" color="#F5C400" size={19} />
+            <AppIcon name="chevron-forward" color="#F5C400" size={19} />
           </View>
           <Text style={styles.distance}>{place.distance}</Text>
           <View style={styles.tagRow}>
@@ -169,7 +177,7 @@ export default function TrailGuideScreen() {
             ) : null}
           </View>
         </View>
-      </View>
+      </Pressable>
     );
   }
 
@@ -204,7 +212,13 @@ export default function TrailGuideScreen() {
             {discoveryCategories.map((item) => {
               const active = category === item;
               return (
-                <Pressable key={item} onPress={() => setCategory(item)} style={[styles.categoryChip, active && styles.categoryChipActive]}>
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  hitSlop={4}
+                  onPress={() => setCategory(item)}
+                  style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}
+                >
                   <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item}</Text>
                 </Pressable>
               );
@@ -212,11 +226,16 @@ export default function TrailGuideScreen() {
           </ScrollView>
 
           <View style={styles.exploreHeader}>
-            <View>
+            <View style={styles.exploreHeaderCopy}>
               <Text style={styles.sectionTitle}>Explore Nearby</Text>
               <Text style={styles.sectionSubtitle}>Outdoor places around your current area.</Text>
             </View>
-            <Pressable onPress={() => void requestCurrentLocation()} style={styles.locationButton}>
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => void requestCurrentLocation()}
+              style={({ pressed }) => [styles.locationButton, pressed && styles.chipPressed]}
+            >
               <AppIcon name="location" color="#F5C400" size={17} />
               <Text style={styles.locationText}>{locationBusy ? 'Locating…' : locationLabel}</Text>
             </Pressable>
@@ -229,7 +248,7 @@ export default function TrailGuideScreen() {
                   <View style={styles.sectionIcon}><AppIcon name="explore" color="#79B76A" size={18} /></View>
                   <Text style={styles.listTitle}>Parks & Trails</Text>
                 </View>
-                <Pressable onPress={() => setCategory('Parks')}><Text style={styles.seeAll}>See all ›</Text></Pressable>
+                <Pressable hitSlop={10} onPress={() => setCategory('Parks')} style={({ pressed }) => pressed && styles.textPressed}><Text style={styles.seeAll}>See all ›</Text></Pressable>
               </View>
               <View style={styles.list}>{parksAndTrails.slice(0, 3).map(renderPlace)}</View>
             </View>
@@ -242,7 +261,7 @@ export default function TrailGuideScreen() {
                   <View style={styles.sectionIcon}><AppIcon name="trailhead" color="#79B76A" size={18} /></View>
                   <Text style={styles.listTitle}>Campgrounds</Text>
                 </View>
-                <Pressable onPress={() => setCategory('Camping')}><Text style={styles.seeAll}>See all ›</Text></Pressable>
+                <Pressable hitSlop={10} onPress={() => setCategory('Camping')} style={({ pressed }) => pressed && styles.textPressed}><Text style={styles.seeAll}>See all ›</Text></Pressable>
               </View>
               <View style={styles.list}>{campgrounds.slice(0, 2).map(renderPlace)}</View>
             </View>
@@ -255,7 +274,7 @@ export default function TrailGuideScreen() {
                   <View style={styles.sectionIcon}><AppIcon name="weather" color="#79B76A" size={18} /></View>
                   <Text style={styles.listTitle}>Water</Text>
                 </View>
-                <Pressable onPress={() => setCategory('Water')}><Text style={styles.seeAll}>See all ›</Text></Pressable>
+                <Pressable hitSlop={10} onPress={() => setCategory('Water')} style={({ pressed }) => pressed && styles.textPressed}><Text style={styles.seeAll}>See all ›</Text></Pressable>
               </View>
               <View style={styles.list}>{water.slice(0, 2).map(renderPlace)}</View>
             </View>
@@ -278,12 +297,17 @@ export default function TrailGuideScreen() {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.guideRow}>
               {guides.map((guide) => (
-                <View key={guide.id} style={styles.guideCard}>
+                <Pressable
+                  key={guide.id}
+                  accessibilityRole="button"
+                  onPress={() => router.push(`/trail-guide/guide/${guide.id}` as never)}
+                  style={({ pressed }) => [styles.guideCard, pressed && styles.cardPressed]}
+                >
                   <ImageBackground source={{ uri: guide.image }} style={styles.guideImage} imageStyle={styles.guideImageRadius}>
                     <View style={styles.guideShade} />
                     <Text style={styles.guideTitle}>{guide.title}</Text>
                   </ImageBackground>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -301,37 +325,38 @@ const styles = StyleSheet.create({
   heroContent: { paddingHorizontal: 22, paddingBottom: 24 },
   title: { color: '#FFFDF6', fontSize: 42, lineHeight: 46, fontWeight: '900' },
   intro: { color: '#F1F3EF', fontSize: 14, lineHeight: 21, maxWidth: 390, marginTop: 8 },
-  body: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 76 },
-  searchWrap: { minHeight: 50, borderRadius: 16, backgroundColor: '#171E1A', borderWidth: 1, borderColor: '#27322C', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14 },
+  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 16, paddingBottom: 76 },
+  searchWrap: { minHeight: 52, borderRadius: 16, backgroundColor: '#171E1A', borderWidth: 1, borderColor: '#27322C', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14 },
   searchInput: { flex: 1, color: '#FFFDF6', fontSize: 14, paddingVertical: 13 },
   categoryRow: { gap: 9, paddingVertical: 16, paddingRight: 8 },
-  categoryChip: { borderRadius: 999, borderWidth: 1, borderColor: '#334139', backgroundColor: '#17211B', paddingHorizontal: 15, paddingVertical: 9 },
+  categoryChip: { minHeight: 42, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#334139', backgroundColor: '#17211B', paddingHorizontal: 15, paddingVertical: 9 },
   categoryChipActive: { backgroundColor: '#F5C400', borderColor: '#F5C400' },
   categoryText: { color: '#F0F3F0', fontWeight: '800', fontSize: 12 },
   categoryTextActive: { color: '#11150F' },
   exploreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginTop: 3, marginBottom: 18 },
+  exploreHeaderCopy: { flex: 1, minWidth: 0 },
   sectionTitle: { color: '#FFFDF6', fontSize: 25, fontWeight: '900' },
   sectionSubtitle: { color: '#99A49D', fontSize: 12, marginTop: 3 },
-  locationButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8 },
+  locationButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12 },
   locationText: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
   section: { marginBottom: 24 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  sectionLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 },
+  sectionLabelWrap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
   sectionIcon: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#1B2C20', alignItems: 'center', justifyContent: 'center' },
-  listTitle: { color: '#FFFDF6', fontSize: 19, fontWeight: '900' },
+  listTitle: { color: '#FFFDF6', fontSize: 19, fontWeight: '900', flexShrink: 1 },
   seeAll: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
   list: { gap: 9 },
-  placeCard: { minHeight: 126, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#28332D', backgroundColor: '#111915', flexDirection: 'row' },
-  placeImage: { width: 132, alignSelf: 'stretch', backgroundColor: '#1D2A23' },
-  placeCopy: { flex: 1, padding: 12, justifyContent: 'center' },
+  placeCard: { width: '100%', minHeight: 126, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#28332D', backgroundColor: '#111915', flexDirection: 'row' },
+  placeImage: { width: '36%', minWidth: 108, maxWidth: 172, alignSelf: 'stretch', backgroundColor: '#1D2A23' },
+  placeCopy: { flex: 1, minWidth: 0, padding: 12, justifyContent: 'center' },
   placeTitleRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  placeName: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900', flex: 1 },
+  placeName: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900', flex: 1, minWidth: 0 },
   distance: { color: '#8CCB78', fontSize: 12.5, fontWeight: '800', marginTop: 4 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 },
   tag: { backgroundColor: '#233027', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
   tagText: { color: '#E5EBE6', fontSize: 10.5, fontWeight: '700' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 7 },
-  metaText: { color: '#A8B0AB', fontSize: 10.5, lineHeight: 15, flex: 1 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 7 },
+  metaText: { color: '#A8B0AB', fontSize: 10.5, lineHeight: 15, flexGrow: 1, flexShrink: 1, minWidth: 120 },
   availability: { borderRadius: 999, backgroundColor: '#1D3421', paddingHorizontal: 8, paddingVertical: 5 },
   availabilityText: { color: '#8ED47A', fontSize: 9.5, fontWeight: '900' },
   availabilityWarning: { backgroundColor: '#332711' },
@@ -340,9 +365,12 @@ const styles = StyleSheet.create({
   emptyTitle: { color: '#FFFDF6', fontSize: 16, fontWeight: '900' },
   emptyText: { color: '#98A39C', marginTop: 4, fontSize: 12 },
   guideRow: { gap: 10, paddingRight: 12 },
-  guideCard: { width: 148, height: 142, borderRadius: 16, overflow: 'hidden' },
+  guideCard: { width: 160, height: 146, borderRadius: 16, overflow: 'hidden' },
   guideImage: { flex: 1, justifyContent: 'flex-end', padding: 12 },
   guideImageRadius: { borderRadius: 16 },
   guideShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(5,10,7,0.45)' },
   guideTitle: { color: '#FFFDF6', fontSize: 15, lineHeight: 19, fontWeight: '900' },
+  cardPressed: { opacity: 0.72, transform: [{ scale: 0.992 }] },
+  chipPressed: { opacity: 0.68 },
+  textPressed: { opacity: 0.55 },
 });
