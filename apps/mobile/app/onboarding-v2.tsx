@@ -2,10 +2,11 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
@@ -27,6 +28,7 @@ import { getStateOption, loadCitiesForState, US_STATES } from '../src/onboarding
 import { completeOnboarding, loadOnboardingProfile } from '../src/onboarding/onboardingService';
 import { markGuidedTutorialCompleted } from '../src/onboarding/tutorialPreference';
 import {
+  ADVENTURE_PREFERENCE_OPTIONS,
   INITIAL_ONBOARDING_FORM,
   INTENT_OPTIONS,
   INTEREST_OPTIONS,
@@ -36,37 +38,37 @@ import {
 import { requestConnection } from '../src/social/api';
 
 const GOLD = '#D7B45A';
-const BG = '#0B120F';
-const TEXT = '#FFF8E8';
-const MUTED = '#B8C1BC';
+const BG = '#08100C';
+const TEXT = '#FFF9EB';
+const MUTED = '#C4CCC7';
 const TOTAL_STEPS = 11;
 
 const BACKGROUNDS = [
   require('../assets/onboarding/onboarding-welcome.jpg'),
-  require('../assets/onboarding/onboarding-places.jpg'),
+  require('../assets/onboarding/onboarding-welcome.jpg'),
   require('../assets/onboarding/onboarding-plan.jpg'),
   require('../assets/onboarding/onboarding-places.jpg'),
-  require('../assets/onboarding/onboarding-people.jpg'),
-  require('../assets/onboarding/onboarding-people.jpg'),
-  require('../assets/onboarding/onboarding-people.jpg'),
+  require('../assets/onboarding/onboarding-places.jpg'),
   require('../assets/onboarding/onboarding-share.jpg'),
+  require('../assets/onboarding/onboarding-people.jpg'),
+  require('../assets/onboarding/onboarding-people.jpg'),
   require('../assets/onboarding/onboarding-share.jpg'),
   require('../assets/onboarding/onboarding-plan.jpg'),
   require('../assets/onboarding/onboarding-complete.jpg'),
 ] as const;
 
-const STEP_META = [
-  ['WELCOME', 'Find your people. Find your outside.', 'Go Melanated starts with a few choices so Home feels useful the moment you arrive.'],
-  ['YOUR OUTSIDE', 'What does outside look like for you?', 'Pick everything that feels like you. There is no minimum experience required to belong here.'],
-  ['YOUR WHY', 'What brought you here?', 'Tell us what you want Go Melanated to help you do.'],
-  ['NEARBY', 'What is happening around you?', 'Your home area helps surface nearby people, adventures, groups, posts, and places.'],
-  ['COMMUNITY', 'Your people are already here.', 'See a live glimpse of the community before you ever reach the feed.'],
-  ['PROFILE', 'How should people know you?', 'Give the community a name to call you and enough context to make your profile feel human.'],
-  ['YOUR CIRCLE', 'Start with a few Trailmates.', 'Connections are optional. We recommend people from the community directory.'],
-  ['COMMUNITIES', 'Pick a few campfires.', 'Join communities that match your interests so your feed starts with useful context.'],
-  ['INVITES', 'Outside is better with your people.', 'Your unique invites stay tied to you, so you can bring someone along now or later.'],
-  ['STAY IN THE LOOP', 'Do not miss the plan.', 'Choose how you want to hear about messages, adventures, invitations, and replies.'],
-  ['READY', 'You are in. Let us get outside.', 'Your Go Melanated experience is ready.'],
+const STAGES = [
+  'Welcome',
+  'Your name',
+  'Meet the app',
+  'Trail Guide',
+  'Trail Guide',
+  'Adventures',
+  'Outpost',
+  'Trailmates',
+  'Campfires',
+  'Stay in the loop',
+  'Ready',
 ] as const;
 
 const EXPERIENCE_COPY: Record<ExperienceLevel, string> = {
@@ -75,6 +77,14 @@ const EXPERIENCE_COPY: Record<ExperienceLevel, string> = {
   intermediate: 'Comfortable outside',
   experienced: 'Seasoned adventurer',
 };
+
+const DEMO_SECTIONS = [
+  ['Trail Guide', 'map-outline', 'Places, guides, local outdoor knowledge'],
+  ['Adventures', 'trail-sign-outline', 'Trips, camps, events, and experiences'],
+  ['Outpost', 'chatbubbles-outline', 'What your community is sharing nearby'],
+  ['Trailmates', 'people-outline', 'Mutual connections with people who get outside'],
+  ['Campfires', 'flame-outline', 'Smaller communities around shared interests'],
+] as const;
 
 type CommunitySuggestion = {
   id: string;
@@ -109,6 +119,26 @@ function rankGroups(groups: CommunityGroup[], interests: string[], city: string,
   }).slice(0, 6);
 }
 
+function ChoicePill({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.choicePill, selected && styles.choicePillSelected]} onPress={onPress}>
+      {selected ? <Ionicons name="checkmark" size={14} color={BG} /> : null}
+      <Text style={[styles.choicePillText, selected && styles.choicePillTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function StageDots({ step }: { step: number }) {
+  if (step === 1) return null;
+  return (
+    <View style={styles.stageDots}>
+      {Array.from({ length: TOTAL_STEPS - 1 }, (_, index) => (
+        <View key={index} style={[styles.stageDot, index + 2 === step && styles.stageDotActive, index + 2 < step && styles.stageDotDone]} />
+      ))}
+    </View>
+  );
+}
+
 export default function OnboardingV2Screen() {
   const { session } = useAuth();
   const userId = session?.user.id;
@@ -131,32 +161,37 @@ export default function OnboardingV2Screen() {
   const [groupSuggestions, setGroupSuggestions] = useState<CommunityGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupBusyId, setGroupBusyId] = useState<string | null>(null);
-  const [inviteCount, setInviteCount] = useState(0);
-  const [openInvitesAfterFinish, setOpenInvitesAfterFinish] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<string | null>(null);
+  const [demoSection, setDemoSection] = useState('Trail Guide');
+  const transition = useRef(new Animated.Value(1)).current;
 
   const update = <K extends keyof OnboardingForm>(key: K, value: OnboardingForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const toggleList = (key: 'interests' | 'intents', value: string) => setForm((current) => {
+  const toggleList = (key: 'interests' | 'adventurePreferences' | 'intents', value: string) => setForm((current) => {
     const list = current[key];
     return { ...current, [key]: list.includes(value) ? list.filter((item) => item !== value) : [...list, value] };
   });
 
   useEffect(() => {
+    transition.setValue(0);
+    Animated.timing(transition, { toValue: 1, duration: 320, useNativeDriver: true }).start();
+  }, [step, transition]);
+
+  useEffect(() => {
     let active = true;
     async function load() {
       if (!userId) return setLoading(false);
-      const [profile, identity, invites] = await Promise.all([
+      const [profile, identity] = await Promise.all([
         loadOnboardingProfile(userId),
         supabase.from('profiles').select('username').eq('id', userId).single(),
-        supabase.from('member_invites').select('id', { count: 'exact', head: true }).eq('sender_profile_id', userId).eq('status', 'available'),
       ]);
       if (!active) return;
       if (identity.error) throw identity.error;
       const communication = (profile.communication_preferences ?? {}) as Record<string, unknown>;
       const intents = Array.isArray(communication.discovery_intents)
         ? communication.discovery_intents.filter((value): value is string => typeof value === 'string') : [];
+      const adventurePreferences = Array.isArray(communication.adventure_preferences)
+        ? communication.adventure_preferences.filter((value): value is string => typeof value === 'string') : [];
       setUsername(identity.data?.username ?? null);
-      setInviteCount(invites.count ?? 0);
       setWasAlreadyComplete(Boolean(profile.onboarding_completed_at));
       setForm((current) => ({
         ...current,
@@ -168,6 +203,7 @@ export default function OnboardingV2Screen() {
         discoveryRadiusMiles: profile.discovery_radius_miles ?? 50,
         experienceLevel: (profile.experience_level ?? 'new') as ExperienceLevel,
         interests: profile.interests ?? [],
+        adventurePreferences,
         intents,
         pushEnabled: typeof communication.push === 'boolean' ? communication.push : true,
         emailEnabled: typeof communication.email === 'boolean' ? communication.email : true,
@@ -195,7 +231,7 @@ export default function OnboardingV2Screen() {
   }, [form.homeState]);
 
   useEffect(() => {
-    if (!userId || step < 5) return;
+    if (!userId || step < 7) return;
     let active = true;
     setSuggestionsLoading(true);
     async function loadSuggestions() {
@@ -211,7 +247,7 @@ export default function OnboardingV2Screen() {
   }, [form.homeState, step, userId]);
 
   useEffect(() => {
-    if (step < 8) return;
+    if (step < 9) return;
     let active = true;
     setGroupsLoading(true);
     void getGroups().then((groups) => { if (active) setGroupSuggestions(rankGroups(groups, form.interests, form.homeCity, form.homeState)); })
@@ -232,12 +268,18 @@ export default function OnboardingV2Screen() {
   }, [cities, citySearch, form.homeCity, form.homeState]);
 
   const canContinue = useMemo(() => {
-    if (step === 2) return form.interests.length > 0;
-    if (step === 3) return form.intents.length > 0;
-    if (step === 4) return Boolean(form.homeState.trim() && form.homeCity.trim());
-    if (step === 6) return Boolean(form.firstName.trim() && form.lastName.trim() && form.displayName.trim());
+    if (step === 2) return Boolean(form.displayName.trim());
+    if (step === 4) return form.interests.length > 0;
+    if (step === 5) return Boolean(form.homeState.trim() && form.homeCity.trim());
+    if (step === 6) return form.adventurePreferences.length > 0;
+    if (step === 7) return form.intents.length > 0;
     return true;
   }, [form, step]);
+
+  const locationLabel = [form.homeCity, form.homeState].filter(Boolean).join(', ');
+  const greetingName = form.displayName.trim() || username || 'friend';
+  const trailInterest = form.interests[0] || 'Outdoor places';
+  const joinedGroupCount = groupSuggestions.filter((group) => group.is_member).length;
 
   async function requestCurrentLocation() {
     setLocating(true);
@@ -250,7 +292,11 @@ export default function OnboardingV2Screen() {
       const state = US_STATES.find((option) => option.name.toLowerCase() === region.toLowerCase() || option.abbreviation.toLowerCase() === region.toLowerCase());
       const city = place?.city || place?.subregion || '';
       if (!state || !city) return Alert.alert('Choose your city', 'We found your location but could not match it cleanly.');
-      update('homeState', state.abbreviation); update('homeCity', city); setStateSearch(state.name); setCitySearch(city); setStateOpen(false);
+      update('homeState', state.abbreviation);
+      update('homeCity', city);
+      setStateSearch(state.name);
+      setCitySearch(city);
+      setStateOpen(false);
     } catch (error) { Alert.alert('Unable to use location', error instanceof Error ? error.message : 'Choose your city instead.'); }
     finally { setLocating(false); }
   }
@@ -277,7 +323,8 @@ export default function OnboardingV2Screen() {
     try {
       if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('general', { name: 'General', importance: Notifications.AndroidImportance.HIGH, sound: 'default' });
       const permission = await Notifications.requestPermissionsAsync();
-      setNotificationPermission(permission.status); update('pushEnabled', permission.status === 'granted');
+      setNotificationPermission(permission.status);
+      update('pushEnabled', permission.status === 'granted');
     } catch { setNotificationPermission('unavailable'); }
   }
 
@@ -292,70 +339,258 @@ export default function OnboardingV2Screen() {
       discovery_radius_miles: form.discoveryRadiusMiles,
       experience_level: form.experienceLevel,
       interests: form.interests,
-      communication_preferences: { push: form.pushEnabled, email: form.emailEnabled, sms: form.smsEnabled, discovery_intents: form.intents },
+      communication_preferences: {
+        push: form.pushEnabled,
+        email: form.emailEnabled,
+        sms: form.smsEnabled,
+        discovery_intents: form.intents,
+        adventure_preferences: form.adventurePreferences,
+      },
     }).eq('id', userId);
     if (error) throw error;
   }
 
   async function finish() {
-    if (saving || !canContinue) return;
+    if (saving) return;
     setSaving(true);
     try {
-      if (wasAlreadyComplete) await saveReplayProfile(); else await completeOnboarding(form);
+      const nameParts = form.displayName.trim().split(/\s+/).filter(Boolean);
+      const completionForm: OnboardingForm = {
+        ...form,
+        firstName: form.firstName.trim() || nameParts[0] || '',
+        lastName: form.lastName.trim() || nameParts.slice(1).join(' '),
+      };
+      if (wasAlreadyComplete) await saveReplayProfile(); else await completeOnboarding(completionForm);
       markGuidedTutorialCompleted();
-      router.replace(openInvitesAfterFinish ? '/member/invites' as never : '/(tabs)' as never);
+      router.replace('/(tabs)' as never);
     } catch (error) { Alert.alert('Unable to finish setup', error instanceof Error ? error.message : 'Please try again.'); }
     finally { setSaving(false); }
   }
 
-  if (loading) return <ImageBackground source={BACKGROUNDS[0]} style={styles.background}><View style={styles.scrim}><SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={GOLD} size="large" /><Text style={styles.body}>Preparing your Go Melanated welcome…</Text></View></SafeAreaView></View></ImageBackground>;
+  function goNext() {
+    if (!canContinue || saving) return;
+    if (step < TOTAL_STEPS) setStep((value) => value + 1);
+    else void finish();
+  }
 
-  const meta = STEP_META[step - 1]!;
-  const locationLabel = [form.homeCity, form.homeState].filter(Boolean).join(', ');
-  const joinedGroupCount = groupSuggestions.filter((group) => group.is_member).length;
+  if (loading) {
+    return (
+      <ImageBackground source={BACKGROUNDS[0]} style={styles.background}>
+        <View style={styles.scrim}><SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={GOLD} size="large" /><Text style={styles.bodyCopy}>Preparing your Go Melanated welcome…</Text></View></SafeAreaView></View>
+      </ImageBackground>
+    );
+  }
 
-  const card = (children: React.ReactNode) => <View style={styles.card}>{children}</View>;
-  const row = (children: React.ReactNode) => <View style={styles.rowCard}>{children}</View>;
+  const animatedStyle = {
+    opacity: transition,
+    transform: [{ translateY: transition.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+  };
 
   return (
     <ImageBackground source={BACKGROUNDS[step - 1]} style={styles.background} resizeMode="cover">
       <View style={[styles.scrim, step === 11 && styles.scrimLight]}>
         <SafeAreaView style={styles.safe}>
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.topBar}>
-              <Text style={styles.brand}>GO MELANATED</Text>
-              {wasAlreadyComplete ? <Pressable onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exit}>Exit replay</Text></Pressable> : null}
-            </View>
-            <ScrollView style={styles.flex} contentContainerStyle={[styles.content, step === 1 && styles.welcomeContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <View style={styles.progressRow}><Text style={styles.kicker}>{meta[0]}</Text><Text style={styles.stepCount}>{step}/{TOTAL_STEPS}</Text></View>
-              <View style={styles.progressRail}>{Array.from({ length: TOTAL_STEPS }, (_, index) => <View key={index} style={[styles.progressSegment, index < step && styles.progressActive]} />)}</View>
-              <Text style={[styles.title, step === 1 && styles.welcomeTitle]}>{meta[1]}</Text><Text style={[styles.body, step === 1 && styles.welcomeBody]}>{meta[2]}</Text>
+            {step > 1 ? (
+              <View style={styles.topBar}>
+                <View>
+                  <Text style={styles.brand}>GO MELANATED</Text>
+                  <Text style={styles.sectionLabel}>{STAGES[step - 1]}</Text>
+                </View>
+                {wasAlreadyComplete ? <Pressable onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exit}>Exit replay</Text></Pressable> : null}
+              </View>
+            ) : null}
+            <StageDots step={step} />
 
-              {step === 1 ? <View style={styles.welcomePromise}><View style={styles.welcomePromiseIcon}><Ionicons name="compass-outline" size={19} color={GOLD} /></View><View style={styles.flex}><Text style={styles.welcomePromiseTitle}>Built for us. Built for outside.</Text><Text style={styles.welcomePromiseCopy}>Discover adventures, meet your people, find places, join communities, and share what you learn along the way.</Text><Text style={styles.welcomePromiseMeta}>Adventure · Culture · Connection</Text></View></View> : null}
+            <Animated.View style={[styles.flex, animatedStyle]}>
+              <ScrollView style={styles.flex} contentContainerStyle={[styles.content, step === 1 && styles.welcomeContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {step === 1 ? (
+                  <View style={styles.welcomeWrap}>
+                    <View style={styles.welcomeMark}><Ionicons name="mountain-outline" size={30} color={GOLD} /></View>
+                    <Text style={styles.welcomeBrand}>GO MELANATED</Text>
+                    <Text style={styles.welcomeHeadline}>Find your people.{`\n`}Find your outside.</Text>
+                    <Text style={styles.welcomeCopy}>A community built to help you discover places, find adventures, learn, connect, and get outside.</Text>
+                    <View style={styles.flex} />
+                    <Pressable style={styles.primaryButton} onPress={goNext}><Text style={styles.primaryButtonText}>Get Started</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                  </View>
+                ) : null}
 
-              {step === 2 ? <View style={styles.stack}><View style={styles.chips}>{(Object.keys(EXPERIENCE_COPY) as ExperienceLevel[]).map((value) => <Pressable key={value} style={[styles.chip, form.experienceLevel === value && styles.selected]} onPress={() => update('experienceLevel', value)}><Text style={styles.chipText}>{EXPERIENCE_COPY[value]}</Text></Pressable>)}</View><View style={styles.grid}>{INTEREST_OPTIONS.map((interest) => <Pressable key={interest} style={[styles.tile, form.interests.includes(interest) && styles.selected]} onPress={() => toggleList('interests', interest)}><Ionicons name={form.interests.includes(interest) ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={form.interests.includes(interest) ? GOLD : MUTED} /><Text style={styles.tileText}>{interest}</Text></Pressable>)}</View></View> : null}
+                {step === 2 ? (
+                  <View style={styles.centeredStage}>
+                    <Text style={styles.eyebrow}>FIRST THINGS FIRST</Text>
+                    <Text style={styles.stageTitle}>What should we call you?</Text>
+                    <Text style={styles.stageCopy}>We’ll use this to make Go Melanated feel a little more like yours.</Text>
+                    <View style={styles.nameFieldWrap}>
+                      <Ionicons name="person-outline" size={19} color={GOLD} />
+                      <TextInput
+                        autoFocus
+                        style={styles.nameInput}
+                        value={form.displayName}
+                        placeholder="Your name"
+                        placeholderTextColor="#7F8A84"
+                        onChangeText={(value) => setForm((current) => ({
+                          ...current,
+                          displayName: value,
+                          firstName: current.firstName.trim() ? current.firstName : value.trim().split(/\s+/)[0] || '',
+                        }))}
+                      />
+                    </View>
+                    {form.displayName.trim() ? <Text style={styles.greeting}>👋 Good to meet you, {form.displayName.trim()}.</Text> : null}
+                    <View style={styles.flex} />
+                    <Pressable style={[styles.primaryButton, !canContinue && styles.disabled]} disabled={!canContinue} onPress={goNext}><Text style={styles.primaryButtonText}>Continue</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                  </View>
+                ) : null}
 
-              {step === 3 ? <View style={styles.stack}>{INTENT_OPTIONS.map((intent) => <Pressable key={intent} style={[styles.rowCard, form.intents.includes(intent) && styles.selected]} onPress={() => toggleList('intents', intent)}><Text style={styles.rowText}>{intent}</Text><Ionicons name={form.intents.includes(intent) ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={form.intents.includes(intent) ? GOLD : MUTED} /></Pressable>)}</View> : null}
+                {step === 3 ? (
+                  <View style={styles.appDemoStage}>
+                    <Text style={styles.eyebrow}>HERE’S YOUR GO MELANATED</Text>
+                    <Text style={styles.stageTitle}>Everything you need to get outside, together.</Text>
+                    <View style={styles.demoPreview}>
+                      <Text style={styles.demoPreviewKicker}>{demoSection.toUpperCase()}</Text>
+                      <Text style={styles.demoPreviewTitle}>{DEMO_SECTIONS.find(([name]) => name === demoSection)?.[2]}</Text>
+                      <View style={styles.demoPreviewArt}><Ionicons name={(DEMO_SECTIONS.find(([name]) => name === demoSection)?.[1] ?? 'compass-outline') as never} size={44} color={GOLD} /></View>
+                    </View>
+                    <View style={styles.demoList}>
+                      {DEMO_SECTIONS.map(([name, icon, copy]) => {
+                        const active = demoSection === name;
+                        return (
+                          <Pressable key={name} style={[styles.demoRow, active && styles.demoRowActive]} onPress={() => setDemoSection(name)}>
+                            <View style={[styles.demoIcon, active && styles.demoIconActive]}><Ionicons name={icon as never} size={20} color={active ? BG : GOLD} /></View>
+                            <View style={styles.flex}><Text style={styles.demoRowTitle}>{name}</Text><Text style={styles.demoRowCopy}>{copy}</Text></View>
+                            <Ionicons name="chevron-forward" size={18} color={MUTED} />
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Pressable style={styles.primaryButton} onPress={goNext}><Text style={styles.primaryButtonText}>Show me around</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                  </View>
+                ) : null}
 
-              {step === 4 ? <View style={styles.stack}>{card(<><Ionicons name="location" size={30} color={GOLD} /><Text style={styles.cardTitle}>Use your location</Text><Text style={styles.cardCopy}>This makes Nearby useful. You can choose a city instead.</Text><Pressable style={styles.goldButton} disabled={locating} onPress={() => void requestCurrentLocation()}><Text style={styles.goldText}>{locating ? 'Finding you…' : 'Use my location'}</Text></Pressable></>)}<View style={styles.field}><Text style={styles.label}>State</Text><TextInput style={styles.input} value={stateSearch} placeholder="Start typing your state" placeholderTextColor="#869089" onFocus={() => setStateOpen(true)} onChangeText={(value) => { setStateSearch(value); setStateOpen(true); update('homeState', ''); update('homeCity', ''); setCitySearch(''); }} />{stateOptions.length ? <View style={styles.autocomplete}>{stateOptions.map((state) => <Pressable key={state.abbreviation} style={styles.autoRow} onPress={() => { setStateSearch(state.name); update('homeState', state.abbreviation); update('homeCity', ''); setCitySearch(''); setStateOpen(false); }}><Text style={styles.rowText}>{state.name}</Text><Text style={styles.kicker}>{state.abbreviation}</Text></Pressable>)}</View> : null}</View><View style={styles.field}><Text style={styles.label}>City</Text><TextInput style={styles.input} editable={Boolean(form.homeState) && !citiesLoading} value={citySearch} placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'} placeholderTextColor="#869089" onChangeText={(value) => { setCitySearch(value); update('homeCity', ''); }} />{cityOptions.length ? <View style={styles.autocomplete}>{cityOptions.map((city) => <Pressable key={city} style={styles.autoRow} onPress={() => { setCitySearch(city); update('homeCity', city); }}><Text style={styles.rowText}>{city}</Text></Pressable>)}</View> : null}</View>{locationLabel ? <Text style={styles.confirm}>✓ Nearby will start around {locationLabel}</Text> : null}</View> : null}
+                {step === 4 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>TRAIL GUIDE</Text><Text style={styles.previewTitle}>{trailInterest}</Text></View><Ionicons name="map-outline" size={25} color={GOLD} /></View>
+                    <View style={styles.previewHero}><Text style={styles.previewHeroLabel}>{form.interests.length ? 'Personalizing as you choose' : 'Discover your outside'}</Text><Text style={styles.previewHeroTitle}>{form.interests.length ? `${form.interests.slice(0, 2).join(' + ')} ideas are moving up` : 'Places, guides, tips, and local ideas'}</Text></View>
+                    <View style={styles.previewCards}>
+                      {['Near you', form.interests[0] || 'Hiking', form.interests[1] || 'Camping'].map((label, index) => <View key={`${label}-${index}`} style={styles.previewMiniCard}><Ionicons name={index === 0 ? 'location-outline' : 'leaf-outline'} size={18} color={GOLD} /><Text style={styles.previewMiniTitle}>{label}</Text><Text style={styles.previewMiniCopy}>{index === 0 ? 'Local places and weekend ideas' : `Guides and recommendations for ${label.toLowerCase()}`}</Text></View>)}
+                    </View>
+                    <View style={styles.questionSheet}>
+                      <Text style={styles.sheetEyebrow}>MAKE THIS YOURS</Text>
+                      <Text style={styles.sheetTitle}>What sounds like your kind of outside?</Text>
+                      <View style={styles.choiceWrap}>{INTEREST_OPTIONS.map((interest) => <ChoicePill key={interest} label={interest} selected={form.interests.includes(interest)} onPress={() => toggleList('interests', interest)} />)}</View>
+                      <View style={styles.experienceRow}>{(Object.keys(EXPERIENCE_COPY) as ExperienceLevel[]).map((level) => <ChoicePill key={level} label={EXPERIENCE_COPY[level]} selected={form.experienceLevel === level} onPress={() => update('experienceLevel', level)} />)}</View>
+                      <Pressable style={[styles.primaryButton, !canContinue && styles.disabled]} disabled={!canContinue} onPress={goNext}><Text style={styles.primaryButtonText}>Looks good</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                    </View>
+                  </View>
+                ) : null}
 
-              {step === 5 ? <View style={styles.stack}>{suggestionsLoading ? <ActivityIndicator color={GOLD} /> : null}{suggestions.map((person) => row(<><Avatar person={person} /><View style={styles.flex}><Text style={styles.personName}>{person.display_name || person.username || 'Go Melanated member'}</Text><Text style={styles.cardCopy}>{[person.home_city, person.home_state].filter(Boolean).join(', ') || 'Community member'}</Text></View></>))}{!suggestionsLoading && !suggestions.length ? card(<><Text style={styles.cardTitle}>Your community will fill in here.</Text><Text style={styles.cardCopy}>Nearby discovery keeps growing as members, adventures, and posts appear around your area.</Text></>) : null}</View> : null}
+                {step === 5 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>TRAIL GUIDE</Text><Text style={styles.previewTitle}>{locationLabel ? `Around ${locationLabel}` : 'Around you'}</Text></View><Ionicons name="location-outline" size={25} color={GOLD} /></View>
+                    <View style={styles.locationPreview}><View style={styles.locationMapPin}><Ionicons name="location" size={26} color={BG} /></View><Text style={styles.locationPreviewTitle}>{locationLabel || 'Your local outdoor map'}</Text><Text style={styles.locationPreviewCopy}>Trails · Parks · Camping · Water · Weekend ideas</Text></View>
+                    <View style={styles.questionSheet}>
+                      <Text style={styles.sheetEyebrow}>LOCAL DISCOVERY</Text>
+                      <Text style={styles.sheetTitle}>Where should we start exploring?</Text>
+                      <Pressable style={styles.locationButton} disabled={locating} onPress={() => void requestCurrentLocation()}><Ionicons name="navigate" size={19} color={BG} /><Text style={styles.locationButtonText}>{locating ? 'Finding you…' : 'Use my location'}</Text></Pressable>
+                      <Text style={styles.orText}>or choose a city</Text>
+                      <View style={styles.field}><Text style={styles.label}>State</Text><TextInput style={styles.input} value={stateSearch} placeholder="Start typing your state" placeholderTextColor="#7C8781" onFocus={() => setStateOpen(true)} onChangeText={(value) => { setStateSearch(value); setStateOpen(true); update('homeState', ''); update('homeCity', ''); setCitySearch(''); }} />{stateOptions.length ? <View style={styles.autocomplete}>{stateOptions.map((state) => <Pressable key={state.abbreviation} style={styles.autoRow} onPress={() => { setStateSearch(state.name); update('homeState', state.abbreviation); update('homeCity', ''); setCitySearch(''); setStateOpen(false); }}><Text style={styles.autoText}>{state.name}</Text><Text style={styles.autoMeta}>{state.abbreviation}</Text></Pressable>)}</View> : null}</View>
+                      <View style={styles.field}><Text style={styles.label}>City</Text><TextInput style={styles.input} editable={Boolean(form.homeState) && !citiesLoading} value={citySearch} placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'} placeholderTextColor="#7C8781" onChangeText={(value) => { setCitySearch(value); update('homeCity', ''); }} />{cityOptions.length ? <View style={styles.autocomplete}>{cityOptions.map((city) => <Pressable key={city} style={styles.autoRow} onPress={() => { setCitySearch(city); update('homeCity', city); }}><Text style={styles.autoText}>{city}</Text></Pressable>)}</View> : null}</View>
+                      <Pressable style={[styles.primaryButton, !canContinue && styles.disabled]} disabled={!canContinue} onPress={goNext}><Text style={styles.primaryButtonText}>Explore from here</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                    </View>
+                  </View>
+                ) : null}
 
-              {step === 6 ? <View style={styles.stack}>{card(<View style={styles.profileRow}><View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarText}>{initials(form.displayName || username)}</Text></View><View style={styles.flex}><Text style={styles.personName}>{form.displayName || username || 'Your profile'}</Text>{username ? <Text style={styles.kicker}>@{username}</Text> : null}<Text style={styles.cardCopy}>{locationLabel}</Text></View></View>)}{[['First name','firstName'],['Last name','lastName'],['Display name','displayName']].map(([label, key]) => <View style={styles.field} key={key}><Text style={styles.label}>{label}</Text><TextInput style={styles.input} value={String(form[key as 'firstName' | 'lastName' | 'displayName'])} onChangeText={(value) => update(key as 'firstName' | 'lastName' | 'displayName', value)} /></View>)}</View> : null}
+                {step === 6 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>ADVENTURES</Text><Text style={styles.previewTitle}>Ready when you are.</Text></View><Ionicons name="trail-sign-outline" size={25} color={GOLD} /></View>
+                    <View style={styles.adventureList}>
+                      {[
+                        ['Little Camp of Horrors', 'Oct 30 – Nov 1 · Lake Wales, FL'],
+                        ['Kayak the Springs', '1 day · Silver Springs, FL'],
+                        ['Blue Ridge Getaway', 'Weekend · Blue Ridge, GA'],
+                      ].map(([title, meta], index) => <View key={title} style={[styles.adventureCard, form.adventurePreferences.length && index === 0 && styles.previewHighlighted]}><View style={styles.adventureImage}><Ionicons name={index === 1 ? 'boat-outline' : 'bonfire-outline'} size={24} color={GOLD} /></View><View style={styles.flex}><Text style={styles.adventureTitle}>{title}</Text><Text style={styles.adventureMeta}>{meta}</Text></View></View>)}
+                    </View>
+                    <View style={styles.questionSheet}>
+                      <Text style={styles.sheetEyebrow}>TUNE YOUR ADVENTURES</Text>
+                      <Text style={styles.sheetTitle}>What kinds of adventures would you actually want to hear about?</Text>
+                      <View style={styles.choiceWrap}>{ADVENTURE_PREFERENCE_OPTIONS.map((preference) => <ChoicePill key={preference} label={preference} selected={form.adventurePreferences.includes(preference)} onPress={() => toggleList('adventurePreferences', preference)} />)}</View>
+                      <Pressable style={[styles.primaryButton, !canContinue && styles.disabled]} disabled={!canContinue} onPress={goNext}><Text style={styles.primaryButtonText}>That sounds like me</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                    </View>
+                  </View>
+                ) : null}
 
-              {step === 7 ? <View style={styles.stack}>{suggestions.slice(0, 5).map((person) => row(<><Avatar person={person} /><View style={styles.flex}><Text style={styles.personName}>{person.display_name || person.username || 'Go Melanated member'}</Text><Text style={styles.cardCopy}>{[person.home_city, person.home_state].filter(Boolean).join(', ')}</Text></View><Pressable style={[styles.smallButton, connectionSentIds.has(person.id) && styles.smallButtonDone]} disabled={connectionSentIds.has(person.id) || connectingId === person.id} onPress={() => void connect(person)}><Text style={styles.smallButtonText}>{connectionSentIds.has(person.id) ? 'Requested' : connectingId === person.id ? 'Sending…' : 'Connect'}</Text></Pressable></>))}</View> : null}
+                {step === 7 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>OUTPOST</Text><Text style={styles.previewTitle}>Outside is better together.</Text></View><Ionicons name="chatbubbles-outline" size={25} color={GOLD} /></View>
+                    <View style={styles.outpostPost}><View style={styles.postHeader}><View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarText}>TR</Text></View><View><Text style={styles.personName}>Tasha R.</Text><Text style={styles.postMeta}>{locationLabel || 'Nearby'} · 2h ago</Text></View></View><Text style={styles.postText}>Perfect morning for a trail walk. Anybody else getting outside today?</Text><View style={styles.postPhoto}><Ionicons name="image-outline" size={30} color={GOLD} /></View><View style={styles.postStats}><Text style={styles.postMeta}>♥ 28</Text><Text style={styles.postMeta}>6 replies</Text></View></View>
+                    <View style={styles.questionSheet}>
+                      <Text style={styles.sheetEyebrow}>SHAPE YOUR COMMUNITY</Text>
+                      <Text style={styles.sheetTitle}>What are you hoping to find here?</Text>
+                      <View style={styles.choiceWrap}>{INTENT_OPTIONS.map((intent) => <ChoicePill key={intent} label={intent} selected={form.intents.includes(intent)} onPress={() => toggleList('intents', intent)} />)}</View>
+                      <Pressable style={[styles.primaryButton, !canContinue && styles.disabled]} disabled={!canContinue} onPress={goNext}><Text style={styles.primaryButtonText}>Keep going</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                    </View>
+                  </View>
+                ) : null}
 
-              {step === 8 ? <View style={styles.stack}>{groupsLoading ? <ActivityIndicator color={GOLD} /> : null}{groupSuggestions.map((group) => row(<><Ionicons name={group.kind === 'local' ? 'location-outline' : 'people-outline'} size={24} color={GOLD} /><View style={styles.flex}><Text style={styles.personName}>{group.name}</Text><Text style={styles.cardCopy}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text></View><Pressable style={[styles.smallButton, group.is_member && styles.smallButtonDone]} disabled={group.is_member || groupBusyId === group.id} onPress={() => void joinSuggestedGroup(group)}><Text style={styles.smallButtonText}>{group.is_member ? 'Joined ✓' : groupBusyId === group.id ? 'Joining…' : 'Join'}</Text></Pressable></>))}</View> : null}
+                {step === 8 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>TRAILMATES</Text><Text style={styles.previewTitle}>Meet your people.</Text></View><Ionicons name="people-outline" size={25} color={GOLD} /></View>
+                    <Text style={styles.previewIntro}>Trailmates are mutual connections, not followers. Connect if someone feels like your kind of outside.</Text>
+                    <View style={styles.peopleList}>{suggestionsLoading ? <ActivityIndicator color={GOLD} /> : suggestions.slice(0, 5).map((person) => <View key={person.id} style={styles.personRow}><Avatar person={person} /><View style={styles.flex}><Text style={styles.personName}>{person.display_name || person.username || 'Go Melanated member'}</Text><Text style={styles.personMeta}>{[person.home_city, person.home_state].filter(Boolean).join(', ') || 'Community member'}</Text><Text style={styles.personInterests}>{person.interests?.slice(0, 2).join(' · ') || 'Outside · Community'}</Text></View><Pressable style={[styles.connectButton, connectionSentIds.has(person.id) && styles.connectButtonDone]} disabled={connectionSentIds.has(person.id) || connectingId === person.id} onPress={() => void connect(person)}><Text style={styles.connectButtonText}>{connectionSentIds.has(person.id) ? 'Requested' : connectingId === person.id ? 'Sending…' : 'Connect'}</Text></Pressable></View>)}</View>
+                    {!suggestionsLoading && !suggestions.length ? <View style={styles.emptyCard}><Text style={styles.cardTitle}>Your Trailmates will show up here.</Text><Text style={styles.cardCopy}>We’ll keep looking for people whose location and interests overlap with yours.</Text></View> : null}
+                    <View style={styles.questionSheetCompact}><Text style={styles.sheetTitle}>Anyone look like your kind of people?</Text><Text style={styles.sheetCopy}>Connect now or keep moving. You can always come back later.</Text><Pressable style={styles.primaryButton} onPress={goNext}><Text style={styles.primaryButtonText}>Continue</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable></View>
+                  </View>
+                ) : null}
 
-              {step === 9 ? <View style={styles.stack}>{card(<><Text style={styles.bigNumber}>{inviteCount}</Text><Text style={styles.cardTitle}>unique invites available</Text><Text style={styles.cardCopy}>Invites stay tied to your account so Go Melanated knows who brought someone into the community.</Text></>)}<Pressable style={[styles.rowCard, openInvitesAfterFinish && styles.selected]} onPress={() => setOpenInvitesAfterFinish((value) => !value)}><Text style={styles.rowText}>Open Invite Friends after setup</Text><Ionicons name={openInvitesAfterFinish ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={openInvitesAfterFinish ? GOLD : MUTED} /></Pressable></View> : null}
+                {step === 9 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>CAMPFIRES</Text><Text style={styles.previewTitle}>Find your campfire.</Text></View><Ionicons name="flame-outline" size={25} color={GOLD} /></View>
+                    <Text style={styles.previewIntro}>These are smaller communities shaped by the interests and location you already chose.</Text>
+                    <View style={styles.peopleList}>{groupsLoading ? <ActivityIndicator color={GOLD} /> : groupSuggestions.map((group) => <View key={group.id} style={styles.groupRow}><View style={styles.groupIcon}><Ionicons name={group.kind === 'local' ? 'location-outline' : 'flame-outline'} size={22} color={GOLD} /></View><View style={styles.flex}><Text style={styles.personName}>{group.name}</Text><Text style={styles.personMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text></View><Pressable style={[styles.joinButton, group.is_member && styles.connectButtonDone]} disabled={group.is_member || groupBusyId === group.id} onPress={() => void joinSuggestedGroup(group)}><Text style={styles.connectButtonText}>{group.is_member ? 'Joined ✓' : groupBusyId === group.id ? 'Joining…' : 'Join'}</Text></Pressable></View>)}</View>
+                    <View style={styles.questionSheetCompact}><Text style={styles.sheetTitle}>Join a few to get started.</Text><Text style={styles.sheetCopy}>Your Campfire feed will begin with context instead of an empty room.</Text><Pressable style={styles.primaryButton} onPress={goNext}><Text style={styles.primaryButtonText}>Continue</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable></View>
+                  </View>
+                ) : null}
 
-              {step === 10 ? <View style={styles.stack}>{card(<>{['Messages from your crew','Adventure updates','Invitations','Replies to your posts'].map((label) => <View style={styles.notice} key={label}><Ionicons name="notifications-outline" size={18} color={GOLD} /><Text style={styles.rowText}>{label}</Text><Ionicons name="checkmark-circle" size={18} color={GOLD} /></View>)}</>)}<View style={styles.preference}><View style={styles.flex}><Text style={styles.personName}>Push notifications</Text><Text style={styles.cardCopy}>Messages, adventure changes, invites, and relevant activity.</Text></View><Switch value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} /></View><View style={styles.preference}><View style={styles.flex}><Text style={styles.personName}>Email updates</Text><Text style={styles.cardCopy}>Useful account and community updates.</Text></View><Switch value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} /></View><Pressable style={styles.goldButton} onPress={() => void requestNotificationPermission()}><Text style={styles.goldText}>{notificationPermission === 'granted' ? 'Notifications enabled ✓' : 'Allow notifications'}</Text></Pressable></View> : null}
+                {step === 10 ? (
+                  <View style={styles.featureStage}>
+                    <View style={styles.previewHeader}><View><Text style={styles.previewKicker}>STAY IN THE LOOP</Text><Text style={styles.previewTitle}>Never miss what matters.</Text></View><Ionicons name="notifications-outline" size={25} color={GOLD} /></View>
+                    <View style={styles.notificationPreview}>{[
+                      ['Adventure updates', 'Changes, reminders, new trips', 'trail-sign-outline'],
+                      ['Trailmate activity', 'Requests, messages, connections', 'people-outline'],
+                      ['Campfire replies', 'New posts and comments', 'flame-outline'],
+                      ['Nearby activity', 'Events and local happenings', 'location-outline'],
+                    ].map(([title, copy, icon]) => <View key={title} style={styles.notificationRow}><View style={styles.notificationIcon}><Ionicons name={icon as never} size={20} color={GOLD} /></View><View style={styles.flex}><Text style={styles.personName}>{title}</Text><Text style={styles.personMeta}>{copy}</Text></View></View>)}</View>
+                    <View style={styles.questionSheet}>
+                      <Text style={styles.sheetEyebrow}>YOUR CHOICE</Text>
+                      <Text style={styles.sheetTitle}>Want us to let you know when something worth seeing happens?</Text>
+                      <View style={styles.preferenceRow}><View style={styles.flex}><Text style={styles.personName}>Push notifications</Text><Text style={styles.personMeta}>Messages, adventure changes, invites, and relevant activity.</Text></View><Switch value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} /></View>
+                      <View style={styles.preferenceRow}><View style={styles.flex}><Text style={styles.personName}>Email updates</Text><Text style={styles.personMeta}>Useful account and community updates.</Text></View><Switch value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} /></View>
+                      <Pressable style={styles.primaryButton} onPress={() => void requestNotificationPermission()}><Text style={styles.primaryButtonText}>{notificationPermission === 'granted' ? 'Notifications enabled ✓' : 'Keep me in the loop'}</Text></Pressable>
+                      <Pressable style={styles.textButton} onPress={goNext}><Text style={styles.textButtonText}>Continue</Text></Pressable>
+                    </View>
+                  </View>
+                ) : null}
 
-              {step === 11 ? <View style={styles.stack}>{card(<><View style={styles.readyIcon}><Ionicons name="checkmark" size={34} color={BG} /></View><Text style={styles.readyTitle}>Your Go Melanated is ready.</Text><Text style={styles.cardCopy}>Your interests, location, community, and preferences are ready to shape what you see next.</Text></>)}{card(<><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>{form.interests.length} interests selected</Text></View><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>Nearby: {locationLabel || 'your home area'}</Text></View><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>{connectionSentIds.size} Trailmate request{connectionSentIds.size === 1 ? '' : 's'}</Text></View><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>{joinedGroupCount} campfire{joinedGroupCount === 1 ? '' : 's'} joined</Text></View></>)}</View> : null}
+                {step === 11 ? (
+                  <View style={styles.completeStage}>
+                    <View style={styles.completeMark}><Ionicons name="checkmark" size={34} color={BG} /></View>
+                    <Text style={styles.completeTitle}>{greetingName}, you’re in.</Text>
+                    <Text style={styles.completeCopy}>Your Go Melanated is already shaped around what you told us.</Text>
+                    <View style={styles.summaryCard}>
+                      <View style={styles.summaryRow}><View style={styles.summaryIcon}><Ionicons name="map-outline" size={19} color={GOLD} /></View><View style={styles.flex}><Text style={styles.summaryTitle}>Trail Guide</Text><Text style={styles.summaryCopy}>{form.interests.slice(0, 3).join(', ') || 'Ready to explore'}</Text></View></View>
+                      <View style={styles.summaryRow}><View style={styles.summaryIcon}><Ionicons name="location-outline" size={19} color={GOLD} /></View><View style={styles.flex}><Text style={styles.summaryTitle}>Nearby</Text><Text style={styles.summaryCopy}>{locationLabel || 'Your selected home area'}</Text></View></View>
+                      <View style={styles.summaryRow}><View style={styles.summaryIcon}><Ionicons name="trail-sign-outline" size={19} color={GOLD} /></View><View style={styles.flex}><Text style={styles.summaryTitle}>Adventures</Text><Text style={styles.summaryCopy}>{form.adventurePreferences.slice(0, 2).join(' · ') || 'Ready for recommendations'}</Text></View></View>
+                      <View style={styles.summaryRow}><View style={styles.summaryIcon}><Ionicons name="flame-outline" size={19} color={GOLD} /></View><View style={styles.flex}><Text style={styles.summaryTitle}>Community</Text><Text style={styles.summaryCopy}>{joinedGroupCount} campfire{joinedGroupCount === 1 ? '' : 's'} joined · {connectionSentIds.size} connection{connectionSentIds.size === 1 ? '' : 's'} started</Text></View></View>
+                    </View>
+                    <View style={styles.flex} />
+                    <Pressable style={[styles.primaryButton, saving && styles.disabled]} disabled={saving} onPress={() => void finish()}><Text style={styles.primaryButtonText}>{saving ? 'Finishing…' : 'Start Exploring'}</Text><Ionicons name="arrow-forward" size={18} color={BG} /></Pressable>
+                  </View>
+                ) : null}
+              </ScrollView>
+            </Animated.View>
 
-              {step === 1 ? <View style={styles.welcomeSpacer} /> : null}
-              <View style={[styles.footer, step === 1 && styles.welcomeFooter]}>{step > 1 ? <Pressable style={styles.back} disabled={saving} onPress={() => setStep((value) => Math.max(1, value - 1))}><Text style={styles.backText}>Back</Text></Pressable> : <View style={styles.backSpacer} />}<Pressable style={[styles.next, (!canContinue || saving) && styles.disabled]} disabled={!canContinue || saving} onPress={() => step < TOTAL_STEPS ? setStep((value) => value + 1) : void finish()}><Text style={styles.nextText}>{saving ? 'Finishing…' : step === TOTAL_STEPS ? (openInvitesAfterFinish ? 'Finish & Invite Friends' : 'See What’s Happening') : 'Next'}</Text>{!saving && step < TOTAL_STEPS ? <Ionicons name="arrow-forward" size={18} color={BG} /> : null}</Pressable></View>
-            </ScrollView>
+            {step > 2 && step < 11 ? (
+              <Pressable style={styles.backFloating} onPress={() => setStep((value) => Math.max(1, value - 1))}><Ionicons name="chevron-back" size={18} color={TEXT} /><Text style={styles.backFloatingText}>Back</Text></Pressable>
+            ) : null}
           </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
@@ -365,73 +600,130 @@ export default function OnboardingV2Screen() {
 
 const styles = StyleSheet.create({
   background: { flex: 1 },
-  scrim: { flex: 1, backgroundColor: 'rgba(5,10,8,0.64)' },
-  scrimLight: { backgroundColor: 'rgba(5,10,8,0.48)' },
+  scrim: { flex: 1, backgroundColor: 'rgba(4,9,7,0.64)' },
+  scrimLight: { backgroundColor: 'rgba(4,9,7,0.43)' },
   safe: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 28 },
-  topBar: { minHeight: 58, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(7,12,10,0.38)', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.13)' },
-  brand: { color: TEXT, fontWeight: '900', letterSpacing: 1.6, fontSize: 14 },
-  exit: { color: '#D8DED9', fontWeight: '800', fontSize: 12 },
-  content: { padding: 20, paddingBottom: 44 },
+  bodyCopy: { color: MUTED, fontSize: 14 },
+  topBar: { minHeight: 58, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(5,10,8,0.34)', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.12)' },
+  brand: { color: TEXT, fontWeight: '900', letterSpacing: 1.7, fontSize: 13 },
+  sectionLabel: { color: GOLD, fontWeight: '800', fontSize: 9, letterSpacing: 0.8, marginTop: 2, textTransform: 'uppercase' },
+  exit: { color: '#D7DEDA', fontWeight: '800', fontSize: 12 },
+  stageDots: { flexDirection: 'row', gap: 5, paddingHorizontal: 20, paddingTop: 10 },
+  stageDot: { flex: 1, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.14)' },
+  stageDotActive: { backgroundColor: GOLD },
+  stageDotDone: { backgroundColor: 'rgba(215,180,90,0.45)' },
+  content: { padding: 20, paddingBottom: 94 },
   welcomeContent: { flexGrow: 1, paddingBottom: 24 },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  kicker: { color: '#F3C85B', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
-  stepCount: { color: '#D3DAD5', fontSize: 10, fontWeight: '900' },
-  progressRail: { flexDirection: 'row', gap: 4, marginTop: 10, marginBottom: 24 },
-  progressSegment: { flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
-  progressActive: { backgroundColor: GOLD },
-  title: { color: TEXT, fontSize: 32, lineHeight: 38, fontWeight: '900', letterSpacing: -0.7, textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 8 },
-  welcomeTitle: { fontSize: 36, lineHeight: 42, maxWidth: 560 },
-  body: { color: '#E0E6E2', fontSize: 15, lineHeight: 22, marginTop: 8, marginBottom: 24, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6 },
-  welcomeBody: { color: '#E7ECE9', maxWidth: 560, marginBottom: 18 },
-  welcomePromise: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12, paddingHorizontal: 2, maxWidth: 610 },
-  welcomePromiseIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(7,13,10,0.58)', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  welcomePromiseTitle: { color: TEXT, fontWeight: '900', fontSize: 17, lineHeight: 21 },
-  welcomePromiseCopy: { color: '#D7DEDA', lineHeight: 19, fontSize: 12.5, marginTop: 5, maxWidth: 520 },
-  welcomePromiseMeta: { color: '#F1D171', fontSize: 10.5, fontWeight: '900', letterSpacing: 0.35, marginTop: 9 },
-  welcomeSpacer: { flex: 1, minHeight: 170 },
-  welcomeFooter: { marginTop: 20, paddingTop: 8 },
-  stack: { gap: 12 },
-  card: { backgroundColor: 'rgba(12,20,16,0.88)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', padding: 18, gap: 10 },
-  rowCard: { minHeight: 64, backgroundColor: 'rgba(12,20,16,0.88)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  selected: { borderColor: GOLD, backgroundColor: 'rgba(43,39,20,0.92)' },
-  cardTitle: { color: TEXT, fontSize: 19, lineHeight: 24, fontWeight: '900' },
-  cardCopy: { color: '#C8D0CB', fontSize: 12, lineHeight: 18 },
-  promise: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 4 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(12,20,16,0.86)', paddingHorizontal: 12, paddingVertical: 9 },
-  chipText: { color: TEXT, fontWeight: '800', fontSize: 11 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  tile: { width: '48.5%', minHeight: 70, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', backgroundColor: 'rgba(12,20,16,0.86)', padding: 13, justifyContent: 'space-between' },
-  tileText: { color: TEXT, fontWeight: '800', fontSize: 13, marginTop: 8 },
-  rowText: { flex: 1, color: TEXT, fontWeight: '800', fontSize: 13 },
-  goldButton: { minHeight: 48, borderRadius: 13, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, marginTop: 4 },
-  goldText: { color: BG, fontWeight: '900', fontSize: 14 },
-  field: { gap: 7 },
-  label: { color: '#F0F3F1', fontWeight: '800', fontSize: 12 },
-  input: { minHeight: 50, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(7,13,10,0.9)', paddingHorizontal: 14, color: TEXT, fontSize: 15 },
-  autocomplete: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', backgroundColor: 'rgba(7,13,10,0.96)', borderRadius: 13, overflow: 'hidden' },
-  autoRow: { minHeight: 45, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.12)' },
-  confirm: { color: '#D8F0DE', fontWeight: '800', fontSize: 12 },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
+  welcomeWrap: { flex: 1, minHeight: 590, alignItems: 'center', paddingTop: 46 },
+  welcomeMark: { width: 58, height: 58, borderRadius: 29, borderWidth: 1.5, borderColor: GOLD, backgroundColor: 'rgba(8,16,12,0.48)', alignItems: 'center', justifyContent: 'center' },
+  welcomeBrand: { color: TEXT, fontSize: 15, fontWeight: '900', letterSpacing: 2.4, marginTop: 18 },
+  welcomeHeadline: { color: TEXT, fontSize: 38, lineHeight: 44, fontWeight: '900', textAlign: 'center', letterSpacing: -0.8, marginTop: 32, textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 10 },
+  welcomeCopy: { color: '#E4EAE6', fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 440, marginTop: 18 },
+  primaryButton: { minHeight: 54, borderRadius: 15, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9, paddingHorizontal: 18 },
+  primaryButtonText: { color: BG, fontWeight: '900', fontSize: 15 },
+  disabled: { opacity: 0.42 },
+  centeredStage: { flex: 1, minHeight: 590, paddingTop: 64 },
+  eyebrow: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.35 },
+  stageTitle: { color: TEXT, fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -0.7, marginTop: 10 },
+  stageCopy: { color: '#D6DDD9', fontSize: 14, lineHeight: 21, maxWidth: 520, marginTop: 9 },
+  nameFieldWrap: { marginTop: 34, minHeight: 58, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: 'rgba(8,15,12,0.8)', paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nameInput: { flex: 1, color: TEXT, fontSize: 17, fontWeight: '700' },
+  greeting: { color: '#F2D77C', fontSize: 14, fontWeight: '800', marginTop: 18, textAlign: 'center' },
+  appDemoStage: { gap: 14 },
+  demoPreview: { minHeight: 156, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', backgroundColor: 'rgba(7,14,11,0.78)', padding: 18, overflow: 'hidden' },
+  demoPreviewKicker: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  demoPreviewTitle: { color: TEXT, fontSize: 21, lineHeight: 26, fontWeight: '900', marginTop: 8, maxWidth: 280 },
+  demoPreviewArt: { position: 'absolute', right: 20, bottom: 18, width: 78, height: 78, borderRadius: 24, backgroundColor: 'rgba(215,180,90,0.12)', alignItems: 'center', justifyContent: 'center' },
+  demoList: { gap: 8 },
+  demoRow: { minHeight: 68, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)', backgroundColor: 'rgba(8,15,12,0.72)', padding: 11, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  demoRowActive: { borderColor: GOLD, backgroundColor: 'rgba(30,35,20,0.88)' },
+  demoIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(215,180,90,0.12)', alignItems: 'center', justifyContent: 'center' },
+  demoIconActive: { backgroundColor: GOLD },
+  demoRowTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  demoRowCopy: { color: '#B9C3BD', fontSize: 11, lineHeight: 15, marginTop: 2 },
+  featureStage: { gap: 14 },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
+  previewKicker: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.25 },
+  previewTitle: { color: TEXT, fontSize: 28, lineHeight: 33, fontWeight: '900', letterSpacing: -0.6, marginTop: 4 },
+  previewIntro: { color: '#D5DDD8', fontSize: 13, lineHeight: 19 },
+  previewHero: { minHeight: 146, borderRadius: 22, backgroundColor: 'rgba(7,14,11,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: 18, justifyContent: 'flex-end' },
+  previewHeroLabel: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  previewHeroTitle: { color: TEXT, fontSize: 21, lineHeight: 26, fontWeight: '900', marginTop: 6, maxWidth: 400 },
+  previewCards: { flexDirection: 'row', gap: 8 },
+  previewMiniCard: { flex: 1, minHeight: 104, borderRadius: 16, backgroundColor: 'rgba(8,15,12,0.78)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 12 },
+  previewMiniTitle: { color: TEXT, fontSize: 12, fontWeight: '900', marginTop: 8 },
+  previewMiniCopy: { color: '#AEB9B2', fontSize: 9.5, lineHeight: 14, marginTop: 3 },
+  questionSheet: { borderRadius: 24, backgroundColor: 'rgba(7,13,10,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.17)', padding: 18, gap: 14, marginTop: 4 },
+  questionSheetCompact: { borderRadius: 24, backgroundColor: 'rgba(7,13,10,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.17)', padding: 18, gap: 10, marginTop: 4 },
+  sheetEyebrow: { color: GOLD, fontSize: 9.5, fontWeight: '900', letterSpacing: 1.2 },
+  sheetTitle: { color: TEXT, fontSize: 22, lineHeight: 27, fontWeight: '900', letterSpacing: -0.35 },
+  sheetCopy: { color: '#BCC6C0', fontSize: 12, lineHeight: 18 },
+  choiceWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choicePill: { minHeight: 38, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(20,29,24,0.84)', paddingHorizontal: 12, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center' },
+  choicePillSelected: { backgroundColor: GOLD, borderColor: GOLD },
+  choicePillText: { color: TEXT, fontSize: 11, fontWeight: '800' },
+  choicePillTextSelected: { color: BG },
+  experienceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingTop: 2 },
+  locationPreview: { minHeight: 184, borderRadius: 22, backgroundColor: 'rgba(11,25,17,0.73)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  locationMapPin: { width: 50, height: 50, borderRadius: 25, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  locationPreviewTitle: { color: TEXT, fontSize: 20, fontWeight: '900', marginTop: 14 },
+  locationPreviewCopy: { color: '#C5CEC8', fontSize: 11, marginTop: 5, textAlign: 'center' },
+  locationButton: { minHeight: 50, borderRadius: 14, backgroundColor: '#7BA45F', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  locationButtonText: { color: BG, fontWeight: '900', fontSize: 14 },
+  orText: { color: '#8F9A93', fontSize: 10, textAlign: 'center', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  field: { gap: 6 },
+  label: { color: '#E5EAE7', fontWeight: '800', fontSize: 11 },
+  input: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(8,15,12,0.88)', paddingHorizontal: 14, color: TEXT, fontSize: 14 },
+  autocomplete: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: '#09110D', borderRadius: 13, overflow: 'hidden' },
+  autoRow: { minHeight: 44, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  autoText: { color: TEXT, fontWeight: '700' },
+  autoMeta: { color: GOLD, fontWeight: '900', fontSize: 10 },
+  adventureList: { gap: 9 },
+  adventureCard: { minHeight: 76, borderRadius: 16, backgroundColor: 'rgba(8,15,12,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  previewHighlighted: { borderColor: GOLD },
+  adventureImage: { width: 54, height: 54, borderRadius: 14, backgroundColor: 'rgba(215,180,90,0.12)', alignItems: 'center', justifyContent: 'center' },
+  adventureTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  adventureMeta: { color: '#B3BDB7', fontSize: 10.5, marginTop: 3 },
+  outpostPost: { borderRadius: 20, backgroundColor: 'rgba(8,15,12,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', padding: 14 },
+  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  postMeta: { color: '#AAB5AE', fontSize: 10 },
+  postText: { color: TEXT, fontSize: 13, lineHeight: 19, marginTop: 12 },
+  postPhoto: { minHeight: 120, borderRadius: 14, backgroundColor: 'rgba(215,180,90,0.08)', alignItems: 'center', justifyContent: 'center', marginTop: 12 },
+  postStats: { flexDirection: 'row', gap: 16, marginTop: 10 },
+  peopleList: { gap: 9 },
+  personRow: { minHeight: 72, borderRadius: 16, backgroundColor: 'rgba(8,15,12,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  avatar: { width: 46, height: 46, borderRadius: 23 },
   avatarFallback: { backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: BG, fontWeight: '900', fontSize: 15 },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  personName: { color: TEXT, fontWeight: '900', fontSize: 14 },
-  smallButton: { minWidth: 80, minHeight: 38, borderRadius: 12, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  smallButtonDone: { backgroundColor: '#38443D' },
-  smallButtonText: { color: BG, fontWeight: '900', fontSize: 11 },
-  bigNumber: { color: GOLD, fontSize: 50, fontWeight: '900', textAlign: 'center' },
-  notice: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  preference: { backgroundColor: 'rgba(12,20,16,0.88)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  readyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
-  readyTitle: { color: TEXT, fontWeight: '900', fontSize: 24, textAlign: 'center' },
-  footer: { flexDirection: 'row', gap: 10, marginTop: 28, alignItems: 'center' },
-  back: { minHeight: 50, minWidth: 78, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(9,15,12,0.72)', alignItems: 'center', justifyContent: 'center' },
-  backText: { color: TEXT, fontWeight: '900' },
-  backSpacer: { width: 78 },
-  next: { flex: 1, minHeight: 50, borderRadius: 13, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
-  nextText: { color: BG, fontWeight: '900', fontSize: 14 },
-  disabled: { opacity: 0.45 },
+  avatarText: { color: BG, fontWeight: '900', fontSize: 14 },
+  personName: { color: TEXT, fontWeight: '900', fontSize: 13 },
+  personMeta: { color: '#B1BBB5', fontSize: 10.5, lineHeight: 15, marginTop: 2 },
+  personInterests: { color: '#D6BD6A', fontSize: 9.5, marginTop: 3 },
+  connectButton: { minWidth: 74, minHeight: 36, borderRadius: 11, backgroundColor: '#7BA7D6', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
+  joinButton: { minWidth: 68, minHeight: 36, borderRadius: 11, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
+  connectButtonDone: { backgroundColor: '#3A463F' },
+  connectButtonText: { color: BG, fontWeight: '900', fontSize: 10.5 },
+  emptyCard: { borderRadius: 18, backgroundColor: 'rgba(8,15,12,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', padding: 16 },
+  cardTitle: { color: TEXT, fontWeight: '900', fontSize: 16 },
+  cardCopy: { color: '#BBC5BF', fontSize: 11, lineHeight: 17, marginTop: 4 },
+  groupRow: { minHeight: 66, borderRadius: 16, backgroundColor: 'rgba(8,15,12,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  groupIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(215,180,90,0.12)', alignItems: 'center', justifyContent: 'center' },
+  notificationPreview: { gap: 8 },
+  notificationRow: { minHeight: 62, borderRadius: 15, backgroundColor: 'rgba(8,15,12,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  notificationIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(215,180,90,0.12)', alignItems: 'center', justifyContent: 'center' },
+  preferenceRow: { minHeight: 64, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(15,23,19,0.72)', padding: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  textButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center' },
+  textButtonText: { color: '#D0D8D3', fontWeight: '800', fontSize: 12 },
+  completeStage: { flex: 1, minHeight: 600, alignItems: 'center', paddingTop: 50 },
+  completeMark: { width: 66, height: 66, borderRadius: 33, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  completeTitle: { color: TEXT, fontSize: 35, lineHeight: 40, fontWeight: '900', textAlign: 'center', letterSpacing: -0.7, marginTop: 22 },
+  completeCopy: { color: '#E1E7E3', fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 440, marginTop: 8 },
+  summaryCard: { width: '100%', borderRadius: 22, backgroundColor: 'rgba(8,15,12,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: 10, marginTop: 24 },
+  summaryRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.09)' },
+  summaryIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(215,180,90,0.11)', alignItems: 'center', justifyContent: 'center' },
+  summaryTitle: { color: TEXT, fontWeight: '900', fontSize: 13 },
+  summaryCopy: { color: '#B8C2BC', fontSize: 10.5, lineHeight: 15, marginTop: 2 },
+  backFloating: { position: 'absolute', left: 18, bottom: 16, minHeight: 38, borderRadius: 999, backgroundColor: 'rgba(5,10,8,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  backFloatingText: { color: TEXT, fontWeight: '800', fontSize: 11 },
 });
