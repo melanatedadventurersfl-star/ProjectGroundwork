@@ -326,12 +326,12 @@ export default function OnboardingV2Screen() {
               <Text style={styles.brand}>GO MELANATED</Text>
               {wasAlreadyComplete ? <Pressable onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exit}>Exit replay</Text></Pressable> : null}
             </View>
-            <ScrollView style={styles.flex} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.flex} contentContainerStyle={[styles.content, step === 1 && styles.welcomeContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <View style={styles.progressRow}><Text style={styles.kicker}>{meta[0]}</Text><Text style={styles.stepCount}>{step}/{TOTAL_STEPS}</Text></View>
               <View style={styles.progressRail}>{Array.from({ length: TOTAL_STEPS }, (_, index) => <View key={index} style={[styles.progressSegment, index < step && styles.progressActive]} />)}</View>
-              <Text style={styles.title}>{meta[1]}</Text><Text style={styles.body}>{meta[2]}</Text>
+              <Text style={[styles.title, step === 1 && styles.welcomeTitle]}>{meta[1]}</Text><Text style={[styles.body, step === 1 && styles.welcomeBody]}>{meta[2]}</Text>
 
-              {step === 1 ? card(<><Text style={styles.cardTitle}>Built for us. Built for outside.</Text><Text style={styles.cardCopy}>Discover adventures, meet your people, find places, join communities, and share what you learn along the way.</Text><View style={styles.promise}><Ionicons name="compass-outline" size={22} color={GOLD} /><Text style={styles.cardCopy}>Adventure · Culture · Connection</Text></View></>) : null}
+              {step === 1 ? <View style={styles.welcomePromise}><View style={styles.welcomePromiseIcon}><Ionicons name="compass-outline" size={19} color={GOLD} /></View><View style={styles.flex}><Text style={styles.welcomePromiseTitle}>Built for us. Built for outside.</Text><Text style={styles.welcomePromiseCopy}>Discover adventures, meet your people, find places, join communities, and share what you learn along the way.</Text><Text style={styles.welcomePromiseMeta}>Adventure · Culture · Connection</Text></View></View> : null}
 
               {step === 2 ? <View style={styles.stack}><View style={styles.chips}>{(Object.keys(EXPERIENCE_COPY) as ExperienceLevel[]).map((value) => <Pressable key={value} style={[styles.chip, form.experienceLevel === value && styles.selected]} onPress={() => update('experienceLevel', value)}><Text style={styles.chipText}>{EXPERIENCE_COPY[value]}</Text></Pressable>)}</View><View style={styles.grid}>{INTEREST_OPTIONS.map((interest) => <Pressable key={interest} style={[styles.tile, form.interests.includes(interest) && styles.selected]} onPress={() => toggleList('interests', interest)}><Ionicons name={form.interests.includes(interest) ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={form.interests.includes(interest) ? GOLD : MUTED} /><Text style={styles.tileText}>{interest}</Text></Pressable>)}</View></View> : null}
 
@@ -353,7 +353,8 @@ export default function OnboardingV2Screen() {
 
               {step === 11 ? <View style={styles.stack}>{card(<><View style={styles.readyIcon}><Ionicons name="checkmark" size={34} color={BG} /></View><Text style={styles.readyTitle}>Your Go Melanated is ready.</Text><Text style={styles.cardCopy}>Your interests, location, community, and preferences are ready to shape what you see next.</Text></>)}{card(<><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>{form.interests.length} interests selected</Text></View><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>Nearby: {locationLabel || 'your home area'}</Text></View><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>{connectionSentIds.size} Trailmate request{connectionSentIds.size === 1 ? '' : 's'}</Text></View><View style={styles.notice}><Ionicons name="checkmark-circle" size={20} color={GOLD} /><Text style={styles.rowText}>{joinedGroupCount} campfire{joinedGroupCount === 1 ? '' : 's'} joined</Text></View></>)}</View> : null}
 
-              <View style={styles.footer}>{step > 1 ? <Pressable style={styles.back} disabled={saving} onPress={() => setStep((value) => Math.max(1, value - 1))}><Text style={styles.backText}>Back</Text></Pressable> : <View style={styles.backSpacer} />}<Pressable style={[styles.next, (!canContinue || saving) && styles.disabled]} disabled={!canContinue || saving} onPress={() => step < TOTAL_STEPS ? setStep((value) => value + 1) : void finish()}><Text style={styles.nextText}>{saving ? 'Finishing…' : step === TOTAL_STEPS ? (openInvitesAfterFinish ? 'Finish & Invite Friends' : 'See What’s Happening') : 'Next'}</Text>{!saving && step < TOTAL_STEPS ? <Ionicons name="arrow-forward" size={18} color={BG} /> : null}</Pressable></View>
+              {step === 1 ? <View style={styles.welcomeSpacer} /> : null}
+              <View style={[styles.footer, step === 1 && styles.welcomeFooter]}>{step > 1 ? <Pressable style={styles.back} disabled={saving} onPress={() => setStep((value) => Math.max(1, value - 1))}><Text style={styles.backText}>Back</Text></Pressable> : <View style={styles.backSpacer} />}<Pressable style={[styles.next, (!canContinue || saving) && styles.disabled]} disabled={!canContinue || saving} onPress={() => step < TOTAL_STEPS ? setStep((value) => value + 1) : void finish()}><Text style={styles.nextText}>{saving ? 'Finishing…' : step === TOTAL_STEPS ? (openInvitesAfterFinish ? 'Finish & Invite Friends' : 'See What’s Happening') : 'Next'}</Text>{!saving && step < TOTAL_STEPS ? <Ionicons name="arrow-forward" size={18} color={BG} /> : null}</Pressable></View>
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -373,6 +374,7 @@ const styles = StyleSheet.create({
   brand: { color: TEXT, fontWeight: '900', letterSpacing: 1.6, fontSize: 14 },
   exit: { color: '#D8DED9', fontWeight: '800', fontSize: 12 },
   content: { padding: 20, paddingBottom: 44 },
+  welcomeContent: { flexGrow: 1, paddingBottom: 24 },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   kicker: { color: '#F3C85B', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   stepCount: { color: '#D3DAD5', fontSize: 10, fontWeight: '900' },
@@ -380,7 +382,16 @@ const styles = StyleSheet.create({
   progressSegment: { flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
   progressActive: { backgroundColor: GOLD },
   title: { color: TEXT, fontSize: 32, lineHeight: 38, fontWeight: '900', letterSpacing: -0.7, textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 8 },
+  welcomeTitle: { fontSize: 36, lineHeight: 42, maxWidth: 560 },
   body: { color: '#E0E6E2', fontSize: 15, lineHeight: 22, marginTop: 8, marginBottom: 24, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6 },
+  welcomeBody: { color: '#E7ECE9', maxWidth: 560, marginBottom: 18 },
+  welcomePromise: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12, paddingHorizontal: 2, maxWidth: 610 },
+  welcomePromiseIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(7,13,10,0.58)', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  welcomePromiseTitle: { color: TEXT, fontWeight: '900', fontSize: 17, lineHeight: 21 },
+  welcomePromiseCopy: { color: '#D7DEDA', lineHeight: 19, fontSize: 12.5, marginTop: 5, maxWidth: 520 },
+  welcomePromiseMeta: { color: '#F1D171', fontSize: 10.5, fontWeight: '900', letterSpacing: 0.35, marginTop: 9 },
+  welcomeSpacer: { flex: 1, minHeight: 170 },
+  welcomeFooter: { marginTop: 20, paddingTop: 8 },
   stack: { gap: 12 },
   card: { backgroundColor: 'rgba(12,20,16,0.88)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', padding: 18, gap: 10 },
   rowCard: { minHeight: 64, backgroundColor: 'rgba(12,20,16,0.88)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
