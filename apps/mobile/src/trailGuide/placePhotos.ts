@@ -61,12 +61,12 @@ function titleScore(place: TrailGuidePlace, title = '') {
 }
 
 function photoFromInfo(info: WikiImageInfo | undefined, title: string): TrailGuidePhoto | null {
-  const url = info?.thumburl ?? info?.url;
-  const sourceUrl = info?.descriptionurl;
-  if (!url || !sourceUrl) return null;
+  const resolvedUrl = info?.thumburl ?? info?.url;
+  const resolvedSourceUrl = info?.descriptionurl;
+  if (typeof resolvedUrl !== 'string' || typeof resolvedSourceUrl !== 'string') return null;
   return {
-    url,
-    sourceUrl,
+    url: resolvedUrl,
+    sourceUrl: resolvedSourceUrl,
     title,
     credit: stripHtml(info?.extmetadata?.Artist?.value ?? info?.extmetadata?.Credit?.value),
     license: stripHtml(info?.extmetadata?.LicenseShortName?.value),
@@ -119,8 +119,16 @@ async function searchWikipedia(place: TrailGuidePlace, query: string) {
     });
 
   const best = pages[0];
-  if (!best?.thumbnail?.source || !best.pageimage || !best.fullurl || titleScore(place, best.title) === 0) return null;
-  return loadImageMetadata(best.pageimage, best.thumbnail.source, best.fullurl, best.title ?? place.name);
+  const thumbnail = best?.thumbnail?.source;
+  const pageImage = best?.pageimage;
+  const fullUrl = best?.fullurl;
+  if (
+    typeof thumbnail !== 'string' ||
+    typeof pageImage !== 'string' ||
+    typeof fullUrl !== 'string' ||
+    titleScore(place, best?.title) === 0
+  ) return null;
+  return loadImageMetadata(pageImage, thumbnail, fullUrl, best?.title ?? place.name);
 }
 
 async function searchCommons(place: TrailGuidePlace, query: string) {
