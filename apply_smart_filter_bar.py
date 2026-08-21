@@ -44,7 +44,7 @@ smart_bar = '''          <ScrollView horizontal showsHorizontalScrollIndicator={
               <Text style={[s.smartChevron, radius !== '50' && s.smartChipTextActive]}>⌄</Text>
             </Pressable>
             <Pressable onPress={() => setActiveSmartFilter('goodFor')} style={[s.smartChip, selectedTags.length > 0 && s.smartChipActive]}>
-              <Text style={[s.smartChipText, selectedTags.length > 0 && s.smartChipTextActive]} numberOfLines={1}>{selectedTags.length ? (selectedTags.length === 1 ? selectedTags[0].replace(' Friendly', '') : `${selectedTags.length} preferences`) : '+ Good for'}</Text>
+              <Text style={[s.smartChipText, selectedTags.length > 0 && s.smartChipTextActive]} numberOfLines={1}>{selectedTags.length ? (selectedTags.length === 1 ? (selectedTags[0]?.replace(' Friendly', '') ?? 'Preference') : `${selectedTags.length} preferences`) : '+ Good for'}</Text>
               <Text style={[s.smartChevron, selectedTags.length > 0 && s.smartChipTextActive]}>⌄</Text>
             </Pressable>
             <Pressable onPress={() => setActiveSmartFilter('sort')} style={[s.smartChip, sort !== 'closest' && s.smartChipActive]}>
@@ -83,7 +83,7 @@ new_modal = '''
             {activeSmartFilter === 'activity' ? (
               <View style={s.quickOptionWrap}>
                 <Pressable onPress={() => setCategory('All')} style={[s.quickOption, category === 'All' && s.quickOptionActive]}><Text style={[s.quickOptionText, category === 'All' && s.quickOptionTextActive]}>All activities</Text></Pressable>
-                {categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[s.quickOption, category === item && s.quickOptionActive]}><Text style={[s.quickOptionText, category === item && s.quickOptionTextActive]}>{categoryIcons[item]} {item}</Text></Pressable>)}
+                {categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[s.quickOption, category === item && s.quickOptionActive]}><Text style={[s.quickOptionText, category === item && s.quickOptionTextActive]}>{categoryIcons[item] ?? ''} {item}</Text></Pressable>)}
               </View>
             ) : null}
 
