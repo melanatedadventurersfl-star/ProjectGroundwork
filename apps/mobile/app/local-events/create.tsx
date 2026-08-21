@@ -151,7 +151,7 @@ export default function CreateLocalEventScreen() {
         <Text style={styles.label}>Campfire photo</Text>
         <Pressable onPress={() => void choosePhoto()} style={styles.photoPicker}>
           {photo ? (
-            <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFillObject} />
+            <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFill} />
           ) : (
             <View style={styles.photoEmpty}>
               <Text style={styles.photoIcon}>＋</Text>
