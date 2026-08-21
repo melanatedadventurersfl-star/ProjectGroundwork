@@ -9,6 +9,7 @@ import {
   Animated,
   Image,
   ImageBackground,
+  type ImageSourcePropType,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { getGroups, joinGroup, type CommunityGroup } from '../community/api';
 import { supabase } from '../lib/supabase';
+import { requestConnection } from '../social/api';
 import { getStateOption, loadCitiesForState, US_STATES } from './locations';
 import { completeOnboarding, loadOnboardingProfile } from './onboardingService';
 import { markGuidedTutorialCompleted } from './tutorialPreference';
@@ -34,12 +36,13 @@ import {
   INTEREST_OPTIONS,
   type OnboardingForm,
 } from './types';
-import { requestConnection } from '../social/api';
 
-const GOLD = '#E1B94F';
+const GOLD = '#E7BD55';
 const BG = '#07100C';
 const TEXT = '#FFF9EC';
-const MUTED = '#BEC8C2';
+const MUTED = '#B6C0BA';
+const SURFACE = '#0C1712';
+const SURFACE_2 = '#132019';
 const TOTAL_STEPS = 15;
 
 const BACKGROUNDS = [
@@ -59,6 +62,13 @@ const BACKGROUNDS = [
   require('../../assets/onboarding/onboarding-complete.jpg'),
   require('../../assets/onboarding/onboarding-people.jpg'),
 ] as const;
+
+const PREVIEW_IMAGES = {
+  trailhead: require('../../assets/onboarding/onboarding-plan.jpg'),
+  people: require('../../assets/onboarding/onboarding-people.jpg'),
+  places: require('../../assets/onboarding/onboarding-places.jpg'),
+  share: require('../../assets/onboarding/onboarding-share.jpg'),
+} as const;
 
 const APP_SECTIONS = [
   ['Trailhead', 'home-outline', 'Your home base for what is happening'],
@@ -81,12 +91,7 @@ type CommunitySuggestion = {
 
 type SectionName = 'Trailhead' | 'Adventures' | 'Trail Guide' | 'Outpost' | 'Trailmates' | 'Campfires';
 
-type PrimaryProps = {
-  label?: string;
-  disabled?: boolean;
-  onPress: () => void;
-};
-
+type PrimaryProps = { label?: string; disabled?: boolean; onPress: () => void };
 type QuestionSheetProps = {
   eyebrow: string;
   title: string;
@@ -146,20 +151,60 @@ function Progress({ step }: { step: number }) {
   );
 }
 
+function PreviewHero({ image, kicker, title, copy }: { image: ImageSourcePropType; kicker: string; title: string; copy: string }) {
+  return (
+    <ImageBackground source={image} style={styles.heroCard} imageStyle={styles.heroImage} resizeMode="cover">
+      <View style={styles.heroShade} />
+      <View style={styles.heroTextBlock}>
+        <Text style={styles.cardKicker}>{kicker}</Text>
+        <Text style={styles.heroTitle}>{title}</Text>
+        <Text style={styles.cardCopy}>{copy}</Text>
+      </View>
+    </ImageBackground>
+  );
+}
+
+function PreviewTile({ image, kicker, title, copy }: { image?: ImageSourcePropType; kicker: string; title: string; copy?: string }) {
+  const body = (
+    <>
+      {image ? <View style={styles.tileShade} /> : null}
+      <View style={styles.tileTextBlock}>
+        <Text style={styles.cardKicker}>{kicker}</Text>
+        <Text style={styles.previewTitle}>{title}</Text>
+        {copy ? <Text style={styles.tileCopy}>{copy}</Text> : null}
+      </View>
+    </>
+  );
+  if (image) return <ImageBackground source={image} style={styles.previewCard} imageStyle={styles.previewImage}>{body}</ImageBackground>;
+  return <View style={[styles.previewCard, styles.previewCardPlain]}>{body}</View>;
+}
+
 function AppChrome({ active, children, name }: { active: SectionName; children: React.ReactNode; name: string }) {
   return (
     <View style={styles.appFrame}>
       <View style={styles.appHeader}>
-        <View><Text style={styles.appSection}>{active}</Text><Text style={styles.appGreeting}>Good morning, {name}</Text></View>
-        <Ionicons name="notifications-outline" size={21} color={TEXT} />
+        <View>
+          <Text style={styles.appSection}>{active}</Text>
+          <Text style={styles.appGreeting}>Good morning, {name}</Text>
+        </View>
+        <View style={styles.bellButton}><Ionicons name="notifications-outline" size={21} color={TEXT} /></View>
       </View>
       <View style={styles.appBody}>{children}</View>
       <View style={styles.bottomNav}>
         {[
-          ['Trailhead', 'home-outline'], ['Adventures', 'trail-sign-outline'], ['Trail Guide', 'map-outline'], ['Outpost', 'chatbubbles-outline'], ['Campfires', 'flame-outline'],
+          ['Trailhead', 'home-outline'],
+          ['Adventures', 'trail-sign-outline'],
+          ['Trail Guide', 'map-outline'],
+          ['Outpost', 'chatbubbles-outline'],
+          ['Campfires', 'flame-outline'],
         ].map(([label, icon]) => {
           const selected = active === label || (active === 'Trailmates' && label === 'Outpost');
-          return <View key={label} style={styles.navItem}><Ionicons name={icon as never} size={17} color={selected ? GOLD : '#7F8A84'} /><Text style={[styles.navText, selected && styles.navTextActive]}>{label === 'Trail Guide' ? 'Guide' : label}</Text></View>;
+          return (
+            <View key={label} style={styles.navItem}>
+              <View style={[styles.navIconWrap, selected && styles.navIconWrapActive]}><Ionicons name={icon as never} size={18} color={selected ? GOLD : '#79857E'} /></View>
+              <Text style={[styles.navText, selected && styles.navTextActive]}>{label === 'Trail Guide' ? 'Guide' : label}</Text>
+            </View>
+          );
         })}
       </View>
     </View>
@@ -408,45 +453,46 @@ export default function GuidedOnboardingExperience() {
   if (loading) return <ImageBackground source={BACKGROUNDS[0]} style={styles.background}><View style={styles.scrim}><SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={GOLD} size="large" /><Text style={styles.muted}>Preparing your Go Melanated welcome…</Text></View></SafeAreaView></View></ImageBackground>;
 
   const animatedStyle = { opacity: transition, transform: [{ translateY: transition.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] };
+  const appStep = step >= 4 && step !== 14;
 
   return (
     <ImageBackground source={BACKGROUNDS[step - 1]} style={styles.background} resizeMode="cover">
-      <View style={[styles.scrim, step >= 14 && styles.scrimLight]}>
+      <View style={[styles.scrim, appStep && styles.scrimApp, step >= 14 && styles.scrimLight]}>
         <SafeAreaView style={styles.safe}>
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            {step > 1 ? <View style={styles.topBar}><Text style={styles.brand}>GO MELANATED</Text>{wasAlreadyComplete ? <Pressable onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exit}>Exit replay</Text></Pressable> : null}</View> : null}
+            {step > 1 ? <View style={[styles.topBar, appStep && styles.topBarApp]}><Text style={styles.brand}>GO MELANATED</Text>{wasAlreadyComplete ? <Pressable onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exit}>Exit replay</Text></Pressable> : null}</View> : null}
             <Progress step={step} />
             <Animated.View style={[styles.flex, animatedStyle]}>
-              <ScrollView style={styles.flex} contentContainerStyle={[styles.content, step === 1 && styles.fill]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                {step === 1 ? <View style={styles.welcome}><View style={styles.logo}><Ionicons name="mountain-outline" size={30} color={GOLD} /></View><Text style={styles.welcomeBrand}>GO MELANATED</Text><Text style={styles.welcomeTitle}>Find your people.{`\n`}Find your outside.</Text><Text style={styles.welcomeCopy}>Discover places, find adventures, learn, connect, and get outside with a community built for us.</Text><View style={styles.flex} /><Primary label="Get Started" onPress={next} /></View> : null}
+              <ScrollView style={styles.flex} contentContainerStyle={[styles.content, step === 1 && styles.fill, appStep && styles.appContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                {step === 1 ? <View style={styles.welcome}><View style={styles.logo}><Ionicons name="trail-sign-outline" size={30} color={GOLD} /></View><Text style={styles.welcomeBrand}>GO MELANATED</Text><Text style={styles.welcomeTitle}>Find your people.{`\n`}Find your outside.</Text><Text style={styles.welcomeCopy}>Discover places, find adventures, learn, connect, and get outside with a community built for us.</Text><View style={styles.flex} /><Primary label="Get Started" onPress={next} /></View> : null}
 
                 {step === 2 ? <View style={styles.nameStage}><Text style={styles.eyebrow}>FIRST THINGS FIRST</Text><Text style={styles.bigTitle}>What should we call you?</Text><Text style={styles.copy}>We will personalize the tour as we go.</Text><View style={styles.nameField}><Ionicons name="person-outline" size={18} color={GOLD} /><TextInput autoFocus style={styles.nameInput} value={form.displayName} placeholder="Your name" placeholderTextColor="#77817C" onChangeText={(value) => update('displayName', value)} /></View>{form.displayName.trim() ? <Text style={styles.hello}>👋 Good to meet you, {form.displayName.trim()}.</Text> : null}<View style={styles.flex} /><Primary disabled={!canContinue} onPress={next} /></View> : null}
 
                 {step === 3 ? <View style={styles.stack}><Text style={styles.eyebrow}>HERE IS YOUR GO MELANATED</Text><Text style={styles.bigTitle}>Everything works together.</Text><Text style={styles.copy}>We will walk through the app the same way you will use it, starting from your Trailhead.</Text><View style={styles.sectionList}>{APP_SECTIONS.map(([name, icon, copy]) => <Pressable key={name} onPress={() => setTourSection(name as SectionName)}><SectionCard icon={icon} title={name} copy={copy} active={tourSection === name} /></Pressable>)}</View><Primary label="Take the tour" onPress={next} /></View> : null}
 
-                {step === 4 ? <AppChrome active="Trailhead" name={greetingName}><View style={styles.heroCard}><Text style={styles.cardKicker}>UPCOMING ADVENTURES</Text><Text style={styles.heroTitle}>Weekend Camping Trip</Text><Text style={styles.cardCopy}>A few days outside, good people, and room around the fire.</Text></View><View style={styles.previewGrid}><View style={styles.previewCard}><Text style={styles.cardKicker}>NEAR YOU</Text><Text style={styles.previewTitle}>Places worth exploring</Text><Text style={styles.cardCopy}>Trails, parks, water, and weekend ideas.</Text></View><View style={styles.previewCard}><Text style={styles.cardKicker}>FOR YOU</Text><Text style={styles.previewTitle}>Beginner hiking tips</Text><Text style={styles.cardCopy}>Helpful guides without the gatekeeping.</Text></View></View><View style={styles.guideBubble}><Text style={styles.guideBubbleTitle}>This is your Trailhead.</Text><Text style={styles.guideBubbleCopy}>It pulls together upcoming adventures, nearby activity, recommendations, people, and things you may want to explore.</Text><Primary label="Make it mine" onPress={next} /></View></AppChrome> : null}
+                {step === 4 ? <AppChrome active="Trailhead" name={greetingName}><PreviewHero image={PREVIEW_IMAGES.trailhead} kicker="UPCOMING ADVENTURE" title="Weekend Camping Trip" copy="A few days outside, good people, and room around the fire." /><View style={styles.previewGrid}><PreviewTile image={PREVIEW_IMAGES.places} kicker="NEAR YOU" title="Places worth exploring" /><PreviewTile kicker="FOR YOU" title="Beginner hiking tips" copy="Helpful guides without the gatekeeping." /></View><View style={styles.guideBubble}><View style={styles.guideIcon}><Ionicons name="home-outline" size={18} color={GOLD} /></View><View style={styles.guideText}><Text style={styles.guideBubbleTitle}>This is your Trailhead.</Text><Text style={styles.guideBubbleCopy}>Your home base for adventures, nearby finds, useful guides, and community activity.</Text></View><Primary label="Make it mine" onPress={next} /></View></AppChrome> : null}
 
-                {step === 5 ? <AppChrome active="Trailhead" name={greetingName}><View style={styles.heroCard}><Text style={styles.cardKicker}>UPCOMING ADVENTURES</Text><Text style={styles.heroTitle}>{form.interests.includes('Camping') ? 'Camp under the stars' : 'Find your next outside day'}</Text><Text style={styles.cardCopy}>Your choices below change what rises to the top.</Text></View><View style={styles.previewGrid}><View style={styles.previewCard}><Text style={styles.cardKicker}>FOR YOU</Text><Text style={styles.previewTitle}>{form.interests[0] || 'Outdoor ideas'}</Text></View><View style={styles.previewCard}><Text style={styles.cardKicker}>TRY NEXT</Text><Text style={styles.previewTitle}>{form.interests[1] || 'Something new'}</Text></View></View><QuestionSheet eyebrow="LET US SHAPE YOUR TRAILHEAD" title="What are you into?" label="Update my Trailhead" disabled={!canContinue} onPress={next}><View style={styles.pills}>{INTEREST_OPTIONS.map((interest) => <ChoicePill key={interest} label={interest} selected={form.interests.includes(interest)} onPress={() => toggleList('interests', interest)} />)}</View></QuestionSheet></AppChrome> : null}
+                {step === 5 ? <AppChrome active="Trailhead" name={greetingName}><PreviewHero image={PREVIEW_IMAGES.trailhead} kicker="UPCOMING FOR YOU" title={form.interests.includes('Camping') ? 'Camp under the stars' : 'Find your next outside day'} copy="Your choices below change what rises to the top." /><View style={styles.previewGrid}><PreviewTile image={PREVIEW_IMAGES.places} kicker="FOR YOU" title={form.interests[0] || 'Outdoor ideas'} /><PreviewTile kicker="TRY NEXT" title={form.interests[1] || 'Something new'} /></View><QuestionSheet eyebrow="MAKE IT YOURS" title="What are you into?" label="Update my Trailhead" disabled={!canContinue} onPress={next}><View style={styles.pills}>{INTEREST_OPTIONS.map((interest) => <ChoicePill key={interest} label={interest} selected={form.interests.includes(interest)} onPress={() => toggleList('interests', interest)} />)}</View></QuestionSheet></AppChrome> : null}
 
-                {step === 6 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Your Trailhead, personalized.</Text><View style={styles.heroCard}><Text style={styles.cardKicker}>UPCOMING FOR YOU</Text><Text style={styles.heroTitle}>{form.interests.includes('Camping') ? 'Sunrise Campout' : `${form.interests[0] || 'Outdoor'} weekend`}</Text><Text style={styles.cardCopy}>Recommendations now lean toward {form.interests.slice(0, 3).join(', ').toLowerCase()}.</Text></View><View style={styles.previewGrid}><View style={styles.previewCard}><Text style={styles.cardKicker}>TRAIL GUIDE</Text><Text style={styles.previewTitle}>{form.interests[0] || 'Explore'}</Text></View><View style={styles.previewCard}><Text style={styles.cardKicker}>NEARBY</Text><Text style={styles.previewTitle}>Add your location next</Text></View></View><Primary label="Show me the Trail Guide" onPress={next} /></AppChrome> : null}
+                {step === 6 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Your Trailhead, personalized.</Text><PreviewHero image={PREVIEW_IMAGES.trailhead} kicker="UPCOMING FOR YOU" title={form.interests.includes('Camping') ? 'Sunrise Campout' : `${form.interests[0] || 'Outdoor'} weekend`} copy={`Recommendations now lean toward ${form.interests.slice(0, 3).join(', ').toLowerCase()}.`} /><View style={styles.previewGrid}><PreviewTile image={PREVIEW_IMAGES.places} kicker="TRAIL GUIDE" title={form.interests[0] || 'Explore'} /><PreviewTile kicker="NEARBY" title="Add your location next" /></View><Primary label="Show me the Trail Guide" onPress={next} /></AppChrome> : null}
 
-                {step === 7 ? <AppChrome active="Trail Guide" name={greetingName}><Text style={styles.sectionHeading}>Trail Guide</Text><Text style={styles.copy}>Find places, learn, and plan your next outside day.</Text><View style={styles.heroCard}><Text style={styles.cardKicker}>DISCOVERY STARTS HERE</Text><Text style={styles.heroTitle}>{locationLabel || 'Choose where to explore'}</Text><Text style={styles.cardCopy}>Nearby recommendations get better when we know where to start.</Text></View><QuestionSheet eyebrow="TRAIL GUIDE" title="Where should we start exploring?" label="Explore from here" disabled={!canContinue} onPress={next}><Pressable style={styles.locationButton} onPress={() => void requestCurrentLocation()} disabled={locating}><Ionicons name="navigate" size={18} color={BG} /><Text style={styles.locationButtonText}>{locating ? 'Finding you…' : 'Use my location'}</Text></Pressable><Text style={styles.or}>or choose a city</Text><View style={styles.field}><Text style={styles.label}>State</Text><TextInput style={styles.input} value={stateSearch} placeholder="Start typing your state" placeholderTextColor="#78837D" onFocus={() => setStateOpen(true)} onChangeText={(value) => { setStateSearch(value); setStateOpen(true); update('homeState', ''); update('homeCity', ''); setCitySearch(''); }} />{stateOptions.length ? <View style={styles.autocomplete}>{stateOptions.map((state) => <Pressable key={state.abbreviation} style={styles.autoRow} onPress={() => { setStateSearch(state.name); update('homeState', state.abbreviation); update('homeCity', ''); setCitySearch(''); setStateOpen(false); }}><Text style={styles.autoText}>{state.name}</Text><Text style={styles.autoMeta}>{state.abbreviation}</Text></Pressable>)}</View> : null}</View><View style={styles.field}><Text style={styles.label}>City</Text><TextInput style={styles.input} editable={Boolean(form.homeState) && !citiesLoading} value={citySearch} placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'} placeholderTextColor="#78837D" onChangeText={(value) => { setCitySearch(value); update('homeCity', ''); }} />{cityOptions.length ? <View style={styles.autocomplete}>{cityOptions.map((city) => <Pressable key={city} style={styles.autoRow} onPress={() => { setCitySearch(city); update('homeCity', city); }}><Text style={styles.autoText}>{city}</Text></Pressable>)}</View> : null}</View></QuestionSheet></AppChrome> : null}
+                {step === 7 ? <AppChrome active="Trail Guide" name={greetingName}><Text style={styles.sectionHeading}>Find your outside.</Text><PreviewHero image={PREVIEW_IMAGES.places} kicker="TRAIL GUIDE" title={locationLabel || 'Choose where to explore'} copy="Nearby recommendations get better when we know where to start." /><QuestionSheet eyebrow="TRAIL GUIDE" title="Where should we start exploring?" label="Explore from here" disabled={!canContinue} onPress={next}><Pressable style={styles.locationButton} onPress={() => void requestCurrentLocation()} disabled={locating}><Ionicons name="navigate" size={18} color={BG} /><Text style={styles.locationButtonText}>{locating ? 'Finding you…' : 'Use my location'}</Text></Pressable><Text style={styles.or}>or choose a city</Text><View style={styles.field}><Text style={styles.label}>State</Text><TextInput style={styles.input} value={stateSearch} placeholder="Start typing your state" placeholderTextColor="#78837D" onFocus={() => setStateOpen(true)} onChangeText={(value) => { setStateSearch(value); setStateOpen(true); update('homeState', ''); update('homeCity', ''); setCitySearch(''); }} />{stateOptions.length ? <View style={styles.autocomplete}>{stateOptions.map((state) => <Pressable key={state.abbreviation} style={styles.autoRow} onPress={() => { setStateSearch(state.name); update('homeState', state.abbreviation); update('homeCity', ''); setCitySearch(''); setStateOpen(false); }}><Text style={styles.autoText}>{state.name}</Text><Text style={styles.autoMeta}>{state.abbreviation}</Text></Pressable>)}</View> : null}</View><View style={styles.field}><Text style={styles.label}>City</Text><TextInput style={styles.input} editable={Boolean(form.homeState) && !citiesLoading} value={citySearch} placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'} placeholderTextColor="#78837D" onChangeText={(value) => { setCitySearch(value); update('homeCity', ''); }} />{cityOptions.length ? <View style={styles.autocomplete}>{cityOptions.map((city) => <Pressable key={city} style={styles.autoRow} onPress={() => { setCitySearch(city); update('homeCity', city); }}><Text style={styles.autoText}>{city}</Text></Pressable>)}</View> : null}</View></QuestionSheet></AppChrome> : null}
 
-                {step === 8 ? <AppChrome active="Trail Guide" name={greetingName}><Text style={styles.sectionHeading}>Around {locationLabel || 'you'}</Text><View style={styles.chipRow}>{['Nearby', 'Trails', 'Camping', 'Water'].map((item) => <View key={item} style={[styles.smallChip, item === 'Nearby' && styles.smallChipActive]}><Text style={styles.smallChipText}>{item}</Text></View>)}</View><View style={styles.heroCard}><Text style={styles.cardKicker}>RECOMMENDED FOR YOU</Text><Text style={styles.heroTitle}>{form.interests.includes('Water adventures') ? 'A spring worth the drive' : 'A trail for your next free morning'}</Text><Text style={styles.cardCopy}>Trail Guide is now combining your location with what you told us you enjoy.</Text></View><Primary label="Show me Adventures" onPress={next} /></AppChrome> : null}
+                {step === 8 ? <AppChrome active="Trail Guide" name={greetingName}><Text style={styles.sectionHeading}>Around {locationLabel || 'you'}</Text><View style={styles.chipRow}>{['Nearby', 'Trails', 'Camping', 'Water'].map((item) => <View key={item} style={[styles.smallChip, item === 'Nearby' && styles.smallChipActive]}><Text style={styles.smallChipText}>{item}</Text></View>)}</View><PreviewHero image={PREVIEW_IMAGES.places} kicker="RECOMMENDED FOR YOU" title={form.interests.includes('Water adventures') ? 'A spring worth the drive' : 'A trail for your next free morning'} copy="Trail Guide is now combining your location with what you told us you enjoy." /><Primary label="Show me Adventures" onPress={next} /></AppChrome> : null}
 
-                {step === 9 ? <AppChrome active="Adventures" name={greetingName}><Text style={styles.sectionHeading}>Adventures</Text><Text style={styles.copy}>Trips, events, and experiences you can actually join.</Text><View style={styles.adventureList}>{[['Lake Louisa Camping Trip','Weekend · Clermont, FL'],['Beginner Hike & Picnic','Day trip · Orlando, FL'],['Silver Springs Kayak Tour','Water · Ocala, FL']].map(([title, meta], index) => <View key={title} style={[styles.adventureRow, form.adventurePreferences.length > 0 && index === 0 && styles.rowHighlighted]}><View style={styles.thumb}><Ionicons name={index === 2 ? 'boat-outline' : 'bonfire-outline'} size={22} color={GOLD} /></View><View style={styles.flex}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowMeta}>{meta}</Text></View></View>)}</View><QuestionSheet eyebrow="ADVENTURES" title="Which kinds should we keep an eye out for?" label="Show me these adventures" disabled={!canContinue} onPress={next}><View style={styles.pills}>{ADVENTURE_PREFERENCE_OPTIONS.map((preference) => <ChoicePill key={preference} label={preference} selected={form.adventurePreferences.includes(preference)} onPress={() => toggleList('adventurePreferences', preference)} />)}</View></QuestionSheet></AppChrome> : null}
+                {step === 9 ? <AppChrome active="Adventures" name={greetingName}><Text style={styles.sectionHeading}>Adventures you can join.</Text><View style={styles.adventureList}>{[['Lake Louisa Camping Trip','Weekend · Clermont, FL'],['Beginner Hike & Picnic','Day trip · Orlando, FL'],['Silver Springs Kayak Tour','Water · Ocala, FL']].map(([title, meta], index) => <View key={title} style={[styles.adventureRow, form.adventurePreferences.length > 0 && index === 0 && styles.rowHighlighted]}><ImageBackground source={index === 2 ? PREVIEW_IMAGES.places : PREVIEW_IMAGES.trailhead} style={styles.thumb} imageStyle={styles.thumbImage}><View style={styles.thumbShade} /><Ionicons name={index === 2 ? 'boat-outline' : 'bonfire-outline'} size={21} color={TEXT} /></ImageBackground><View style={styles.flex}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowMeta}>{meta}</Text></View></View>)}</View><QuestionSheet eyebrow="ADVENTURES" title="Which kinds should we keep an eye out for?" label="Show me these adventures" disabled={!canContinue} onPress={next}><View style={styles.pills}>{ADVENTURE_PREFERENCE_OPTIONS.map((preference) => <ChoicePill key={preference} label={preference} selected={form.adventurePreferences.includes(preference)} onPress={() => toggleList('adventurePreferences', preference)} />)}</View></QuestionSheet></AppChrome> : null}
 
-                {step === 10 ? <AppChrome active="Outpost" name={greetingName}><Text style={styles.sectionHeading}>Outpost</Text><Text style={styles.copy}>Share, ask, learn, and see what is happening around the community.</Text><View style={styles.post}><View style={styles.postHeader}><View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarText}>TR</Text></View><View><Text style={styles.rowTitle}>Tasha R.</Text><Text style={styles.rowMeta}>{locationLabel || 'Nearby'} · 2h</Text></View></View><Text style={styles.postText}>Sunset hike was everything. Anybody else getting outside this weekend?</Text><View style={styles.photoPlaceholder}><Ionicons name="image-outline" size={28} color={GOLD} /></View></View><QuestionSheet eyebrow="OUTPOST" title="What are you hoping to get out of the community?" label="Shape my Outpost" disabled={!canContinue} onPress={next}><View style={styles.pills}>{INTENT_OPTIONS.map((intent) => <ChoicePill key={intent} label={intent} selected={form.intents.includes(intent)} onPress={() => toggleList('intents', intent)} />)}</View></QuestionSheet></AppChrome> : null}
+                {step === 10 ? <AppChrome active="Outpost" name={greetingName}><Text style={styles.sectionHeading}>The community, outside.</Text><View style={styles.post}><View style={styles.postHeader}><View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarText}>TR</Text></View><View><Text style={styles.rowTitle}>Tasha R.</Text><Text style={styles.rowMeta}>{locationLabel || 'Nearby'} · 2h</Text></View></View><Text style={styles.postText}>Sunset hike was everything. Anybody else getting outside this weekend?</Text><ImageBackground source={PREVIEW_IMAGES.share} style={styles.postPhoto} imageStyle={styles.postPhotoImage}><View style={styles.postPhotoShade} /></ImageBackground></View><QuestionSheet eyebrow="OUTPOST" title="What are you hoping to get out of the community?" label="Shape my Outpost" disabled={!canContinue} onPress={next}><View style={styles.pills}>{INTENT_OPTIONS.map((intent) => <ChoicePill key={intent} label={intent} selected={form.intents.includes(intent)} onPress={() => toggleList('intents', intent)} />)}</View></QuestionSheet></AppChrome> : null}
 
-                {step === 11 ? <AppChrome active="Trailmates" name={greetingName}><Text style={styles.sectionHeading}>Trailmates</Text><Text style={styles.copy}>People you mutually connect with and may actually adventure with.</Text>{suggestionsLoading ? <ActivityIndicator color={GOLD} /> : <View style={styles.people}>{suggestions.slice(0, 4).map((person) => <View key={person.id} style={styles.personRow}><Avatar person={person} /><View style={styles.flex}><Text style={styles.rowTitle}>{person.display_name || person.username || 'Go Melanated member'}</Text><Text style={styles.rowMeta}>{[person.home_city, person.home_state].filter(Boolean).join(', ') || 'Community member'}</Text><Text style={styles.interestMeta}>{person.interests?.slice(0, 2).join(' · ') || 'Outside · Community'}</Text></View><Pressable style={[styles.connect, connectionSentIds.has(person.id) && styles.done]} disabled={connectionSentIds.has(person.id) || connectingId === person.id} onPress={() => void connect(person)}><Text style={styles.connectText}>{connectionSentIds.has(person.id) ? 'Requested' : 'Connect'}</Text></Pressable></View>)}</View>}<View style={styles.guideBubble}><Text style={styles.guideBubbleTitle}>Want to start your circle?</Text><Text style={styles.guideBubbleCopy}>Connect if somebody feels like your kind of people. Skipping is completely fine.</Text><Primary onPress={next} /></View></AppChrome> : null}
+                {step === 11 ? <AppChrome active="Trailmates" name={greetingName}><Text style={styles.sectionHeading}>Find people to get outside with.</Text>{suggestionsLoading ? <ActivityIndicator color={GOLD} /> : <View style={styles.people}>{suggestions.slice(0, 4).map((person) => <View key={person.id} style={styles.personRow}><Avatar person={person} /><View style={styles.flex}><Text style={styles.rowTitle}>{person.display_name || person.username || 'Go Melanated member'}</Text><Text style={styles.rowMeta}>{[person.home_city, person.home_state].filter(Boolean).join(', ') || 'Community member'}</Text><Text style={styles.interestMeta}>{person.interests?.slice(0, 2).join(' · ') || 'Outside · Community'}</Text></View><Pressable style={[styles.connect, connectionSentIds.has(person.id) && styles.done]} disabled={connectionSentIds.has(person.id) || connectingId === person.id} onPress={() => void connect(person)}><Text style={styles.connectText}>{connectionSentIds.has(person.id) ? 'Requested' : 'Connect'}</Text></Pressable></View>)}</View>}<View style={styles.guideBubble}><View style={styles.guideIcon}><Ionicons name="people-outline" size={18} color={GOLD} /></View><View style={styles.guideText}><Text style={styles.guideBubbleTitle}>Want to start your circle?</Text><Text style={styles.guideBubbleCopy}>Connect if somebody feels like your kind of people. Skipping is completely fine.</Text></View><Primary onPress={next} /></View></AppChrome> : null}
 
-                {step === 12 ? <AppChrome active="Campfires" name={greetingName}><Text style={styles.sectionHeading}>Campfires</Text><Text style={styles.copy}>Smaller communities around what you love, where you live, and what you want to learn.</Text>{groupsLoading ? <ActivityIndicator color={GOLD} /> : <View style={styles.people}>{groupSuggestions.map((group) => <View key={group.id} style={styles.groupRow}><View style={styles.groupIcon}><Ionicons name={group.kind === 'local' ? 'location-outline' : 'flame-outline'} size={20} color={GOLD} /></View><View style={styles.flex}><Text style={styles.rowTitle}>{group.name}</Text><Text style={styles.rowMeta}>{group.member_count} members</Text></View><Pressable style={[styles.join, group.is_member && styles.done]} disabled={group.is_member || groupBusyId === group.id} onPress={() => void joinSuggestedGroup(group)}><Text style={styles.connectText}>{group.is_member ? 'Joined ✓' : 'Join'}</Text></Pressable></View>)}</View>}<View style={styles.guideBubble}><Text style={styles.guideBubbleTitle}>A few that may fit you.</Text><Text style={styles.guideBubbleCopy}>These recommendations already use the interests and location you picked earlier.</Text><Primary onPress={next} /></View></AppChrome> : null}
+                {step === 12 ? <AppChrome active="Campfires" name={greetingName}><Text style={styles.sectionHeading}>Smaller circles, shared interests.</Text>{groupsLoading ? <ActivityIndicator color={GOLD} /> : <View style={styles.people}>{groupSuggestions.map((group) => <View key={group.id} style={styles.groupRow}><View style={styles.groupIcon}><Ionicons name={group.kind === 'local' ? 'map-outline' : 'flame-outline'} size={20} color={GOLD} /></View><View style={styles.flex}><Text style={styles.rowTitle}>{group.name}</Text><Text style={styles.rowMeta}>{group.member_count} members</Text></View><Pressable style={[styles.join, group.is_member && styles.done]} disabled={group.is_member || groupBusyId === group.id} onPress={() => void joinSuggestedGroup(group)}><Text style={styles.connectText}>{group.is_member ? 'Joined ✓' : 'Join'}</Text></Pressable></View>)}</View>}<View style={styles.guideBubble}><View style={styles.guideIcon}><Ionicons name="flame-outline" size={18} color={GOLD} /></View><View style={styles.guideText}><Text style={styles.guideBubbleTitle}>A few that may fit you.</Text><Text style={styles.guideBubbleCopy}>These already use the interests and location you picked earlier.</Text></View><Primary onPress={next} /></View></AppChrome> : null}
 
-                {step === 13 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>There is a lot happening here.</Text><Text style={styles.copy}>Now that you have seen what Go Melanated can do, notifications have some context.</Text><View style={styles.noticeList}>{[['Adventure updates','Changes, reminders, new trips','trail-sign-outline'],['Trailmate activity','Requests, messages, connections','people-outline'],['Campfire replies','New posts and comments','flame-outline'],['Nearby activity','Events and local happenings','location-outline']].map(([title, copy, icon]) => <View key={title} style={styles.noticeRow}><View style={styles.noticeIcon}><Ionicons name={icon as never} size={18} color={GOLD} /></View><View style={styles.flex}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowMeta}>{copy}</Text></View></View>)}</View><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Want us to keep you in the loop?</Text><View style={styles.preference}><View style={styles.flex}><Text style={styles.rowTitle}>Push notifications</Text><Text style={styles.rowMeta}>Relevant activity, messages, and adventure updates.</Text></View><Switch value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} /></View><View style={styles.preference}><View style={styles.flex}><Text style={styles.rowTitle}>Email updates</Text><Text style={styles.rowMeta}>Useful account and community updates.</Text></View><Switch value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} /></View><Primary label={notificationPermission === 'granted' ? 'Notifications enabled ✓' : 'Keep me in the loop'} onPress={() => void requestNotificationPermission()} /><Pressable style={styles.textButton} onPress={next}><Text style={styles.textButtonText}>Continue</Text></Pressable></View></AppChrome> : null}
+                {step === 13 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Stay in the loop.</Text><View style={styles.noticeList}>{[['Adventure updates','Changes, reminders, new trips','trail-sign-outline'],['Trailmate activity','Requests, messages, connections','people-outline'],['Campfire replies','New posts and comments','flame-outline'],['Nearby activity','Events and local happenings','map-outline']].map(([title, copy, icon]) => <View key={title} style={styles.noticeRow}><View style={styles.noticeIcon}><Ionicons name={icon as never} size={18} color={GOLD} /></View><View style={styles.flex}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowMeta}>{copy}</Text></View></View>)}</View><View style={styles.sheet}><View style={styles.sheetHandle} /><Text style={styles.sheetTitle}>Want us to keep you in the loop?</Text><View style={styles.preference}><View style={styles.flex}><Text style={styles.rowTitle}>Push notifications</Text><Text style={styles.rowMeta}>Relevant activity, messages, and adventure updates.</Text></View><Switch value={form.pushEnabled} onValueChange={(value) => update('pushEnabled', value)} /></View><View style={styles.preference}><View style={styles.flex}><Text style={styles.rowTitle}>Email updates</Text><Text style={styles.rowMeta}>Useful account and community updates.</Text></View><Switch value={form.emailEnabled} onValueChange={(value) => update('emailEnabled', value)} /></View><Primary label={notificationPermission === 'granted' ? 'Notifications enabled ✓' : 'Keep me in the loop'} onPress={() => void requestNotificationPermission()} /><Pressable style={styles.textButton} onPress={next}><Text style={styles.textButtonText}>Continue</Text></Pressable></View></AppChrome> : null}
 
                 {step === 14 ? <View style={styles.complete}><View style={styles.completeIcon}><Ionicons name="checkmark" size={32} color={BG} /></View><Text style={styles.completeTitle}>You are in, {greetingName}.</Text><Text style={styles.completeCopy}>Here is what your Go Melanated now knows about you.</Text><View style={styles.summary}><SectionCard icon="home-outline" title="Trailhead" copy={`Built around ${form.interests.slice(0, 3).join(', ') || 'your interests'}`} /><SectionCard icon="trail-sign-outline" title="Adventures" copy={form.adventurePreferences.slice(0, 3).join(' · ') || 'Ready for recommendations'} /><SectionCard icon="map-outline" title="Trail Guide" copy={`Exploring around ${locationLabel || 'your area'}`} /><SectionCard icon="flame-outline" title="Campfires" copy={`${joinedGroupCount} joined · ${connectionSentIds.size} Trailmate connection${connectionSentIds.size === 1 ? '' : 's'} started`} /></View><Primary label="See my Trailhead" onPress={next} /></View> : null}
 
-                {step === 15 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Your Trailhead is ready.</Text><View style={styles.heroCard}><Text style={styles.cardKicker}>UPCOMING FOR YOU</Text><Text style={styles.heroTitle}>{form.adventurePreferences.includes('Camping trips') ? 'Lake Louisa Camping Trip' : 'Your next adventure is waiting'}</Text><Text style={styles.cardCopy}>Recommendations are now tuned to your interests, location, and adventure preferences.</Text></View><View style={styles.previewGrid}><View style={styles.previewCard}><Text style={styles.cardKicker}>TRAIL GUIDE</Text><Text style={styles.previewTitle}>{locationLabel || 'Nearby'} ideas</Text></View><View style={styles.previewCard}><Text style={styles.cardKicker}>COMMUNITY</Text><Text style={styles.previewTitle}>{joinedGroupCount || 'New'} Campfires</Text></View></View><View style={styles.guideBubble}><Text style={styles.guideBubbleTitle}>That is it.</Text><Text style={styles.guideBubbleCopy}>No separate tutorial. You have already been using the app. We will simply remove the guide layer from here.</Text><Primary label={saving ? 'Finishing…' : 'Explore my Trailhead'} disabled={saving} onPress={() => void finish()} /></View></AppChrome> : null}
+                {step === 15 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Your Trailhead is ready.</Text><PreviewHero image={PREVIEW_IMAGES.trailhead} kicker="UPCOMING FOR YOU" title={form.adventurePreferences.includes('Camping trips') ? 'Lake Louisa Camping Trip' : 'Your next adventure is waiting'} copy="Recommendations are now tuned to your interests, location, and adventure preferences." /><View style={styles.previewGrid}><PreviewTile image={PREVIEW_IMAGES.places} kicker="TRAIL GUIDE" title={`${locationLabel || 'Nearby'} ideas`} /><PreviewTile kicker="COMMUNITY" title={`${joinedGroupCount || 'New'} Campfires`} /></View><View style={styles.guideBubble}><View style={styles.guideIcon}><Ionicons name="checkmark" size={18} color={GOLD} /></View><View style={styles.guideText}><Text style={styles.guideBubbleTitle}>That is it.</Text><Text style={styles.guideBubbleCopy}>You have already been using the app. From here we simply remove the guide layer.</Text></View><Primary label={saving ? 'Finishing…' : 'Explore my Trailhead'} disabled={saving} onPress={() => void finish()} /></View></AppChrome> : null}
               </ScrollView>
             </Animated.View>
             {step > 2 && step < 15 ? <Pressable style={styles.back} onPress={() => setStep((value) => Math.max(1, value - 1))}><Ionicons name="chevron-back" size={17} color={TEXT} /><Text style={styles.backText}>Back</Text></Pressable> : null}
@@ -458,25 +504,140 @@ export default function GuidedOnboardingExperience() {
 }
 
 const styles = StyleSheet.create({
-  background: { flex: 1 }, scrim: { flex: 1, backgroundColor: 'rgba(4,9,7,0.66)' }, scrimLight: { backgroundColor: 'rgba(4,9,7,0.48)' }, safe: { flex: 1 }, flex: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 }, muted: { color: MUTED },
-  topBar: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(4,9,7,0.4)' }, brand: { color: TEXT, fontWeight: '900', letterSpacing: 1.6, fontSize: 13 }, exit: { color: MUTED, fontSize: 11, fontWeight: '800' },
-  progressRail: { flexDirection: 'row', gap: 3, paddingHorizontal: 18, paddingTop: 8 }, progressSegment: { flex: 1, height: 2, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.13)' }, progressSegmentActive: { backgroundColor: GOLD },
-  content: { padding: 18, paddingBottom: 82 }, fill: { flexGrow: 1, paddingBottom: 22 }, stack: { gap: 14 },
-  welcome: { flex: 1, minHeight: 590, alignItems: 'center', paddingTop: 42 }, logo: { width: 60, height: 60, borderRadius: 30, borderWidth: 1.5, borderColor: GOLD, backgroundColor: 'rgba(6,13,10,0.54)', alignItems: 'center', justifyContent: 'center' }, welcomeBrand: { color: TEXT, fontSize: 15, fontWeight: '900', letterSpacing: 2.3, marginTop: 17 }, welcomeTitle: { color: TEXT, fontSize: 38, lineHeight: 44, fontWeight: '900', textAlign: 'center', letterSpacing: -0.8, marginTop: 34 }, welcomeCopy: { color: '#E4EAE6', fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 420, marginTop: 16 },
-  primary: { minHeight: 52, borderRadius: 15, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 }, primaryText: { color: BG, fontSize: 14, fontWeight: '900' }, disabled: { opacity: 0.42 },
-  nameStage: { flex: 1, minHeight: 590, paddingTop: 64 }, eyebrow: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, bigTitle: { color: TEXT, fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -0.7, marginTop: 9 }, copy: { color: '#D4DCD7', fontSize: 13, lineHeight: 19, marginTop: 7 }, nameField: { minHeight: 56, marginTop: 32, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(7,14,11,0.82)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 }, nameInput: { flex: 1, color: TEXT, fontSize: 16, fontWeight: '700' }, hello: { color: '#F0D374', textAlign: 'center', marginTop: 17, fontWeight: '800' },
-  sectionList: { gap: 8 }, sectionCard: { minHeight: 64, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)', backgroundColor: 'rgba(8,15,12,0.82)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }, sectionCardActive: { borderColor: GOLD, backgroundColor: 'rgba(34,34,18,0.9)' }, sectionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(225,185,79,0.12)', alignItems: 'center', justifyContent: 'center' }, sectionIconActive: { backgroundColor: GOLD }, sectionCardTitle: { color: TEXT, fontWeight: '900', fontSize: 13 }, sectionCardCopy: { color: '#AFBAB3', fontSize: 10.5, lineHeight: 14, marginTop: 2 },
-  appFrame: { borderRadius: 25, overflow: 'hidden', backgroundColor: '#07100D', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', minHeight: 610 }, appHeader: { paddingHorizontal: 15, paddingTop: 15, paddingBottom: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' }, appSection: { color: TEXT, fontSize: 23, fontWeight: '900', letterSpacing: -0.5 }, appGreeting: { color: '#9EAAA3', fontSize: 10, marginTop: 1 }, appBody: { padding: 13, gap: 11 }, bottomNav: { marginTop: 'auto', minHeight: 54, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.1)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 4 }, navItem: { alignItems: 'center', gap: 2, minWidth: 48 }, navText: { color: '#7F8A84', fontSize: 8, fontWeight: '700' }, navTextActive: { color: GOLD },
-  sectionHeading: { color: TEXT, fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: -0.5 }, heroCard: { minHeight: 128, borderRadius: 18, backgroundColor: 'rgba(18,30,24,0.92)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.11)', padding: 15, justifyContent: 'flex-end' }, cardKicker: { color: GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 1 }, heroTitle: { color: TEXT, fontSize: 20, lineHeight: 24, fontWeight: '900', marginTop: 5 }, cardCopy: { color: '#B8C3BC', fontSize: 11, lineHeight: 16, marginTop: 4 }, previewGrid: { flexDirection: 'row', gap: 8 }, previewCard: { flex: 1, minHeight: 95, borderRadius: 15, backgroundColor: 'rgba(15,25,20,0.88)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 11 }, previewTitle: { color: TEXT, fontWeight: '900', fontSize: 13, lineHeight: 17, marginTop: 5 },
-  guideBubble: { borderRadius: 20, backgroundColor: 'rgba(7,13,10,0.98)', borderWidth: 1, borderColor: 'rgba(225,185,79,0.35)', padding: 15, gap: 9 }, guideBubbleTitle: { color: GOLD, fontWeight: '900', fontSize: 16 }, guideBubbleCopy: { color: '#C7D0CB', fontSize: 11.5, lineHeight: 17 },
-  sheet: { borderRadius: 22, backgroundColor: '#0B1511', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: 15, gap: 11 }, sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginBottom: 2 }, sheetEyebrow: { color: GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, sheetTitle: { color: TEXT, fontSize: 20, lineHeight: 25, fontWeight: '900' }, pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, choicePill: { minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', backgroundColor: 'rgba(23,33,28,0.9)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 4 }, choicePillSelected: { backgroundColor: GOLD, borderColor: GOLD }, choicePillText: { color: TEXT, fontSize: 10.5, fontWeight: '800' }, choicePillTextSelected: { color: BG },
-  locationButton: { minHeight: 47, borderRadius: 13, backgroundColor: '#7FA65D', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }, locationButtonText: { color: BG, fontWeight: '900', fontSize: 13 }, or: { color: '#849088', textAlign: 'center', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' }, field: { gap: 5 }, label: { color: '#DDE3DF', fontSize: 10.5, fontWeight: '800' }, input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', backgroundColor: '#08110D', paddingHorizontal: 12, color: TEXT, fontSize: 13 }, autocomplete: { borderRadius: 12, overflow: 'hidden', backgroundColor: '#09120E', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }, autoRow: { minHeight: 41, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' }, autoText: { color: TEXT, fontWeight: '700' }, autoMeta: { color: GOLD, fontWeight: '900', fontSize: 9 },
-  chipRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' }, smallChip: { borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 10, paddingVertical: 6 }, smallChipActive: { backgroundColor: '#476C39', borderColor: '#476C39' }, smallChipText: { color: TEXT, fontSize: 9, fontWeight: '800' },
-  adventureList: { gap: 7 }, adventureRow: { minHeight: 67, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(15,24,20,0.9)', padding: 9, flexDirection: 'row', alignItems: 'center', gap: 9 }, rowHighlighted: { borderColor: GOLD }, thumb: { width: 46, height: 46, borderRadius: 12, backgroundColor: 'rgba(225,185,79,0.1)', alignItems: 'center', justifyContent: 'center' }, rowTitle: { color: TEXT, fontSize: 12.5, fontWeight: '900' }, rowMeta: { color: '#AEB8B2', fontSize: 9.5, lineHeight: 13, marginTop: 2 },
-  post: { borderRadius: 17, backgroundColor: 'rgba(15,24,20,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 12 }, postHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 }, postText: { color: TEXT, fontSize: 11.5, lineHeight: 17, marginTop: 10 }, photoPlaceholder: { minHeight: 100, borderRadius: 13, backgroundColor: 'rgba(225,185,79,0.08)', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
-  people: { gap: 7 }, personRow: { minHeight: 66, borderRadius: 15, backgroundColor: 'rgba(15,24,20,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }, avatar: { width: 43, height: 43, borderRadius: 22 }, avatarFallback: { backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: BG, fontWeight: '900', fontSize: 13 }, interestMeta: { color: '#D2B969', fontSize: 8.5, marginTop: 2 }, connect: { minWidth: 67, minHeight: 33, borderRadius: 10, backgroundColor: '#78A4D1', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }, join: { minWidth: 61, minHeight: 33, borderRadius: 10, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }, done: { backgroundColor: '#39453F' }, connectText: { color: BG, fontSize: 9.5, fontWeight: '900' }, groupRow: { minHeight: 62, borderRadius: 15, backgroundColor: 'rgba(15,24,20,0.9)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }, groupIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(225,185,79,0.1)', alignItems: 'center', justifyContent: 'center' },
-  noticeList: { gap: 7 }, noticeRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(15,24,20,0.9)', padding: 9, flexDirection: 'row', alignItems: 'center', gap: 9 }, noticeIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: 'rgba(225,185,79,0.1)', alignItems: 'center', justifyContent: 'center' }, preference: { minHeight: 60, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }, textButton: { minHeight: 38, alignItems: 'center', justifyContent: 'center' }, textButtonText: { color: '#C7D0CB', fontSize: 10.5, fontWeight: '800' },
-  complete: { flex: 1, minHeight: 600, alignItems: 'center', paddingTop: 44 }, completeIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' }, completeTitle: { color: TEXT, fontSize: 32, lineHeight: 37, fontWeight: '900', textAlign: 'center', marginTop: 19 }, completeCopy: { color: '#DBE2DE', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 7 }, summary: { width: '100%', gap: 7, marginTop: 20, marginBottom: 18 },
-  back: { position: 'absolute', left: 16, bottom: 14, minHeight: 36, borderRadius: 999, backgroundColor: 'rgba(4,9,7,0.82)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 2 }, backText: { color: TEXT, fontSize: 10.5, fontWeight: '800' },
+  background: { flex: 1 },
+  scrim: { flex: 1, backgroundColor: 'rgba(4,9,7,0.66)' },
+  scrimApp: { backgroundColor: 'rgba(4,9,7,0.42)' },
+  scrimLight: { backgroundColor: 'rgba(4,9,7,0.48)' },
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  muted: { color: MUTED },
+  topBar: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(4,9,7,0.4)' },
+  topBarApp: { minHeight: 44, backgroundColor: '#08110D', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.07)' },
+  brand: { color: TEXT, fontWeight: '900', letterSpacing: 1.6, fontSize: 13 },
+  exit: { color: MUTED, fontSize: 11, fontWeight: '800' },
+  progressRail: { flexDirection: 'row', gap: 3, paddingHorizontal: 18, paddingTop: 7, paddingBottom: 5, backgroundColor: 'rgba(7,16,12,0.96)' },
+  progressSegment: { flex: 1, height: 2, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.11)' },
+  progressSegmentActive: { backgroundColor: GOLD },
+  content: { padding: 18, paddingBottom: 82 },
+  appContent: { padding: 0, paddingBottom: 54, backgroundColor: BG },
+  fill: { flexGrow: 1, paddingBottom: 22 },
+  stack: { gap: 14 },
+  welcome: { flex: 1, minHeight: 590, alignItems: 'center', paddingTop: 42 },
+  logo: { width: 60, height: 60, borderRadius: 30, borderWidth: 1.5, borderColor: GOLD, backgroundColor: 'rgba(6,13,10,0.54)', alignItems: 'center', justifyContent: 'center' },
+  welcomeBrand: { color: TEXT, fontSize: 15, fontWeight: '900', letterSpacing: 2.3, marginTop: 17 },
+  welcomeTitle: { color: TEXT, fontSize: 38, lineHeight: 44, fontWeight: '900', textAlign: 'center', letterSpacing: -0.8, marginTop: 34 },
+  welcomeCopy: { color: '#E4EAE6', fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 420, marginTop: 16 },
+  primary: { minHeight: 52, borderRadius: 15, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  primaryText: { color: BG, fontSize: 14, fontWeight: '900' },
+  disabled: { opacity: 0.42 },
+  nameStage: { flex: 1, minHeight: 590, paddingTop: 64 },
+  eyebrow: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.3 },
+  bigTitle: { color: TEXT, fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -0.7, marginTop: 9 },
+  copy: { color: '#D4DCD7', fontSize: 13, lineHeight: 19, marginTop: 7 },
+  nameField: { minHeight: 56, marginTop: 32, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(7,14,11,0.82)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  nameInput: { flex: 1, color: TEXT, fontSize: 16, fontWeight: '700' },
+  hello: { color: '#F0D374', textAlign: 'center', marginTop: 17, fontWeight: '800' },
+  sectionList: { gap: 8 },
+  sectionCard: { minHeight: 64, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)', backgroundColor: 'rgba(8,15,12,0.82)', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sectionCardActive: { borderColor: GOLD, backgroundColor: 'rgba(34,34,18,0.9)' },
+  sectionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(225,185,79,0.12)', alignItems: 'center', justifyContent: 'center' },
+  sectionIconActive: { backgroundColor: GOLD },
+  sectionCardTitle: { color: TEXT, fontWeight: '900', fontSize: 13 },
+  sectionCardCopy: { color: '#AFBAB3', fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  appFrame: { flex: 1, minHeight: 650, backgroundColor: BG },
+  appHeader: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: BG },
+  appSection: { color: TEXT, fontSize: 30, lineHeight: 34, fontWeight: '900', letterSpacing: -0.9 },
+  appGreeting: { color: '#98A49D', fontSize: 12, marginTop: 3 },
+  bellButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: SURFACE_2, alignItems: 'center', justifyContent: 'center' },
+  appBody: { paddingHorizontal: 16, paddingBottom: 18, gap: 13 },
+  bottomNav: { marginTop: 'auto', minHeight: 66, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)', backgroundColor: '#08110D', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 6, paddingBottom: 2 },
+  navItem: { alignItems: 'center', gap: 3, minWidth: 56 },
+  navIconWrap: { minWidth: 34, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  navIconWrapActive: { backgroundColor: 'rgba(231,189,85,0.11)' },
+  navText: { color: '#79857E', fontSize: 9, fontWeight: '700' },
+  navTextActive: { color: GOLD },
+  sectionHeading: { color: TEXT, fontSize: 27, lineHeight: 32, fontWeight: '900', letterSpacing: -0.7, marginTop: 2 },
+  heroCard: { minHeight: 210, borderRadius: 24, overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: SURFACE_2 },
+  heroImage: { borderRadius: 24 },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,7,0.42)' },
+  heroTextBlock: { padding: 18, paddingTop: 70 },
+  cardKicker: { color: GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  heroTitle: { color: TEXT, fontSize: 24, lineHeight: 28, fontWeight: '900', marginTop: 6, letterSpacing: -0.4 },
+  cardCopy: { color: '#E2E8E4', fontSize: 12, lineHeight: 17, marginTop: 6 },
+  previewGrid: { flexDirection: 'row', gap: 10 },
+  previewCard: { flex: 1, minHeight: 128, borderRadius: 20, overflow: 'hidden', justifyContent: 'flex-end', backgroundColor: SURFACE_2 },
+  previewCardPlain: { backgroundColor: SURFACE_2 },
+  previewImage: { borderRadius: 20 },
+  tileShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,7,0.38)' },
+  tileTextBlock: { padding: 13, minHeight: 128, justifyContent: 'flex-end' },
+  previewTitle: { color: TEXT, fontWeight: '900', fontSize: 15, lineHeight: 19, marginTop: 5 },
+  tileCopy: { color: '#AEB9B2', fontSize: 10, lineHeight: 14, marginTop: 5 },
+  guideBubble: { borderRadius: 22, backgroundColor: '#101A15', padding: 16, gap: 11, borderWidth: 1, borderColor: 'rgba(231,189,85,0.18)' },
+  guideIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(231,189,85,0.1)', alignItems: 'center', justifyContent: 'center' },
+  guideText: { gap: 4 },
+  guideBubbleTitle: { color: TEXT, fontWeight: '900', fontSize: 18 },
+  guideBubbleCopy: { color: '#BCC6C0', fontSize: 12, lineHeight: 17 },
+  sheet: { marginHorizontal: -16, marginBottom: -18, marginTop: 2, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: '#101A15', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 20, gap: 12, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  sheetHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 4 },
+  sheetEyebrow: { color: GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  sheetTitle: { color: TEXT, fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: -0.4 },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choicePill: { minHeight: 39, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: '#18241D', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  choicePillSelected: { backgroundColor: GOLD, borderColor: GOLD },
+  choicePillText: { color: TEXT, fontSize: 11, fontWeight: '800' },
+  choicePillTextSelected: { color: BG },
+  locationButton: { minHeight: 48, borderRadius: 14, backgroundColor: '#88A866', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  locationButtonText: { color: BG, fontWeight: '900', fontSize: 13 },
+  or: { color: '#849088', textAlign: 'center', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  field: { gap: 5 },
+  label: { color: '#DDE3DF', fontSize: 10.5, fontWeight: '800' },
+  input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: '#08110D', paddingHorizontal: 12, color: TEXT, fontSize: 13 },
+  autocomplete: { borderRadius: 12, overflow: 'hidden', backgroundColor: '#09120E', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  autoRow: { minHeight: 41, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  autoText: { color: TEXT, fontWeight: '700' },
+  autoMeta: { color: GOLD, fontWeight: '900', fontSize: 9 },
+  chipRow: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
+  smallChip: { borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: SURFACE_2, paddingHorizontal: 11, paddingVertical: 7 },
+  smallChipActive: { backgroundColor: '#476C39', borderColor: '#476C39' },
+  smallChipText: { color: TEXT, fontSize: 9, fontWeight: '800' },
+  adventureList: { gap: 9 },
+  adventureRow: { minHeight: 76, borderRadius: 18, backgroundColor: SURFACE, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowHighlighted: { backgroundColor: '#17231B' },
+  thumb: { width: 58, height: 58, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  thumbImage: { borderRadius: 15 },
+  thumbShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,7,0.42)' },
+  rowTitle: { color: TEXT, fontSize: 13, fontWeight: '900' },
+  rowMeta: { color: '#AEB8B2', fontSize: 10, lineHeight: 14, marginTop: 3 },
+  post: { borderRadius: 20, backgroundColor: SURFACE, padding: 13 },
+  postHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  postText: { color: TEXT, fontSize: 12, lineHeight: 18, marginTop: 11 },
+  postPhoto: { minHeight: 180, borderRadius: 16, overflow: 'hidden', marginTop: 12 },
+  postPhotoImage: { borderRadius: 16 },
+  postPhotoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,7,0.14)' },
+  people: { gap: 8 },
+  personRow: { minHeight: 72, borderRadius: 17, backgroundColor: SURFACE, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  avatar: { width: 46, height: 46, borderRadius: 23 },
+  avatarFallback: { backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: BG, fontWeight: '900', fontSize: 13 },
+  interestMeta: { color: '#D2B969', fontSize: 8.5, marginTop: 2 },
+  connect: { minWidth: 70, minHeight: 34, borderRadius: 11, backgroundColor: '#7EA8D0', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
+  join: { minWidth: 62, minHeight: 34, borderRadius: 11, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
+  done: { backgroundColor: '#39453F' },
+  connectText: { color: BG, fontSize: 9.5, fontWeight: '900' },
+  groupRow: { minHeight: 68, borderRadius: 17, backgroundColor: SURFACE, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  groupIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(231,189,85,0.1)', alignItems: 'center', justifyContent: 'center' },
+  noticeList: { gap: 8 },
+  noticeRow: { minHeight: 62, borderRadius: 16, backgroundColor: SURFACE, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  noticeIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(231,189,85,0.1)', alignItems: 'center', justifyContent: 'center' },
+  preference: { minHeight: 62, borderRadius: 14, backgroundColor: '#15211A', padding: 11, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  textButton: { minHeight: 38, alignItems: 'center', justifyContent: 'center' },
+  textButtonText: { color: '#C7D0CB', fontSize: 10.5, fontWeight: '800' },
+  complete: { flex: 1, minHeight: 600, alignItems: 'center', paddingTop: 44 },
+  completeIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  completeTitle: { color: TEXT, fontSize: 32, lineHeight: 37, fontWeight: '900', textAlign: 'center', marginTop: 19 },
+  completeCopy: { color: '#DBE2DE', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 7 },
+  summary: { width: '100%', gap: 7, marginTop: 20, marginBottom: 18 },
+  back: { position: 'absolute', left: 14, bottom: 12, minHeight: 36, borderRadius: 999, backgroundColor: 'rgba(7,16,12,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  backText: { color: TEXT, fontSize: 10.5, fontWeight: '800' },
 });
