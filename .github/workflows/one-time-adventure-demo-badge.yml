@@ -32,3 +32,5 @@ jobs:
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "fix: show demo badge on adventure cards"
           git push origin HEAD:main
+
+# trigger
