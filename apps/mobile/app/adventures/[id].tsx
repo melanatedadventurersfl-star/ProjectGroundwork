@@ -212,11 +212,8 @@ export default function AdventureDetailScreen() {
             </ImageBackground>
           </View>
 
-          <View style={styles.card}>
-            <View style={styles.sectionHeadingRow}>
-              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>♙</Text></View>
-              <Text style={styles.sectionTitle}>Attendance</Text>
-            </View>
+          <View style={styles.attendanceSection}>
+            <Text style={styles.sectionTitle}>Attendance</Text>
             <View style={styles.rsvpRow}>
               {(['interested', 'going'] as AdventureRsvpStatus[]).map((status) => (
                 <Pressable
@@ -234,15 +231,13 @@ export default function AdventureDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Attendance visibility: ${rsvp.myVisibility === 'private' ? 'Private' : 'Public'}. Tap to change.`}
                 disabled={working}
-                hitSlop={6}
+                hitSlop={8}
                 style={styles.visibilityButton}
                 onPress={() => void toggleVisibility()}
               >
                 <Text style={styles.visibilityIcon}>{rsvp.myVisibility === 'private' ? '▣' : '◎'}</Text>
-                <View style={styles.visibilityCopy}>
-                  <Text style={styles.visibilityLabel}>Attendance visibility</Text>
-                  <Text style={styles.visibilityValue}>{rsvp.myVisibility === 'private' ? 'Private' : 'Public'}  ⌄</Text>
-                </View>
+                <Text style={styles.visibilityText}>Visibility:</Text>
+                <Text style={styles.visibilityValue}>{rsvp.myVisibility === 'private' ? 'Private' : 'Public'}  ⌄</Text>
               </Pressable>
               {rsvp.myStatus ? (
                 <Pressable disabled={working} onPress={() => void chooseRsvp('not_going')}>
@@ -256,10 +251,7 @@ export default function AdventureDetailScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <View style={styles.card}>
-            <View style={styles.sectionHeadingRow}>
-              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>⌁</Text></View>
-              <Text style={styles.sectionTitle}>About this adventure</Text>
-            </View>
+            <Text style={styles.sectionTitle}>About this adventure</Text>
             <Text style={styles.body}>{adventure.description}</Text>
             <View style={styles.chips}>
               <Text style={styles.chip}>{titleCase(adventure.difficulty)}</Text>
@@ -329,7 +321,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0B120F' },
   screen: { flex: 1, backgroundColor: '#0B120F' },
   center: { flex: 1, backgroundColor: '#0B120F', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  content: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 118, gap: 10 },
+  content: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 96, gap: 10 },
   tabletContent: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 18 },
   heroWrap: { borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: '#223028' },
   tabletHeroWrap: { borderRadius: 24 },
@@ -347,17 +339,18 @@ const styles = StyleSheet.create({
   heroLocation: { color: '#D8DEDA', marginTop: 5, fontSize: 14, lineHeight: 19, fontWeight: '700', maxWidth: '94%' },
   heroDetailsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   heroPrice: { color: '#F4C542', fontSize: 15, fontWeight: '900' },
-  heroDetail: { color: '#F5F7F5', fontSize: 14, fontWeight: '800' },
-  heroDot: { color: '#F4C542', fontSize: 12, fontWeight: '900' },
-  heroAttendanceRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginTop: 10 },
-  heroAttendanceIcon: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
+  heroDetail: { color: '#D9E0DB', fontSize: 14, fontWeight: '800' },
+  heroDot: { color: '#D6B84E', fontSize: 12, fontWeight: '900' },
+  heroAttendanceRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginTop: 14 },
+  heroAttendanceIcon: { color: '#E4E9E5', fontSize: 16, fontWeight: '900' },
   heroGoing: { color: '#8ED76B', fontSize: 13, fontWeight: '800' },
-  heroInterested: { color: '#E0E6E2', fontSize: 13, fontWeight: '700' },
-  heroAttendanceDot: { color: '#AAB5AE', fontSize: 11, fontWeight: '900' },
+  heroInterested: { color: '#CFD7D2', fontSize: 13, fontWeight: '700' },
+  heroAttendanceDot: { color: '#89958E', fontSize: 11, fontWeight: '900' },
   notice: { backgroundColor: '#203429', borderRadius: 12, padding: 11, borderWidth: 1, borderColor: '#355241' },
   noticeText: { color: '#D7E5DC', fontWeight: '700' },
   error: { color: '#FFB4A9' },
   card: { backgroundColor: '#111A16', borderRadius: 16, padding: 15, borderWidth: 1, borderColor: '#26332C', gap: 10 },
+  attendanceSection: { paddingHorizontal: 6, paddingVertical: 8, gap: 10 },
   sectionHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionHeadingCopy: { flex: 1 },
   sectionIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
@@ -369,16 +362,15 @@ const styles = StyleSheet.create({
   chip: { color: '#EAF0EC', backgroundColor: '#294226', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, fontWeight: '800', fontSize: 12 },
   chipAlt: { color: '#D9EEF8', backgroundColor: '#183545', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, fontWeight: '800', fontSize: 12 },
   rsvpRow: { flexDirection: 'row', gap: 8 },
-  rsvpButton: { flex: 1, borderWidth: 1, borderColor: '#4A5850', borderRadius: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  rsvpButton: { flex: 1, borderWidth: 1, borderColor: '#34443A', backgroundColor: 'rgba(255,255,255,0.015)', borderRadius: 10, minHeight: 42, alignItems: 'center', justifyContent: 'center' },
   rsvpActive: { backgroundColor: '#F4C542', borderColor: '#F4C542' },
-  rsvpText: { color: '#EDF1EE', fontWeight: '800', fontSize: 13 },
+  rsvpText: { color: '#DDE4DF', fontWeight: '800', fontSize: 13 },
   rsvpTextActive: { color: '#101610' },
   rsvpFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  visibilityButton: { minHeight: 48, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 11, borderWidth: 1, borderColor: '#34443A', backgroundColor: '#121C17', paddingHorizontal: 11, paddingVertical: 8 },
-  visibilityIcon: { color: '#F4C542', fontSize: 18, fontWeight: '900' },
-  visibilityCopy: { flex: 1 },
-  visibilityLabel: { color: '#8E9A93', fontSize: 10, fontWeight: '700' },
-  visibilityValue: { color: '#F4C542', fontSize: 13, fontWeight: '900', marginTop: 1 },
+  visibilityButton: { minHeight: 36, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 2 },
+  visibilityIcon: { color: '#F4C542', fontSize: 17, fontWeight: '900' },
+  visibilityText: { color: '#A7B1AB', fontSize: 12, fontWeight: '700' },
+  visibilityValue: { color: '#F4C542', fontSize: 13, fontWeight: '900' },
   secondaryAction: { color: '#9AA59E', fontSize: 12, textDecorationLine: 'underline' },
   ticketBox: { backgroundColor: '#151F1A', borderRadius: 13, borderWidth: 1, borderColor: '#2C3932', padding: 11 },
   ticketBoxExpanded: { borderColor: '#55665B' },
@@ -390,11 +382,11 @@ const styles = StyleSheet.create({
   ticketPrice: { color: '#79C94B', fontWeight: '900', fontSize: 14, marginTop: 2 },
   selectCircle: { color: '#B7C1BA', fontSize: 24 },
   ticketDetails: { borderTopWidth: 1, borderTopColor: '#28362F', marginTop: 10, paddingTop: 10 },
-  stickyBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 92, backgroundColor: 'rgba(31,27,18,0.98)', borderTopWidth: 1, borderTopColor: '#5A4820', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stickyBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 74, backgroundColor: 'rgba(20,19,14,0.98)', borderTopWidth: 1, borderTopColor: '#463A20', paddingHorizontal: 14, paddingTop: 8, paddingBottom: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
   stickyCopy: { flex: 1 },
   stickyTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
-  stickySubtitle: { color: '#B6B8B2', fontSize: 11, marginTop: 2 },
-  primaryButton: { minHeight: 48, minWidth: 140, borderRadius: 10, backgroundColor: '#F4C542', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  primaryButtonText: { color: '#141309', fontWeight: '900', fontSize: 14 },
-  disabled: { opacity: 0.48 },
+  stickySubtitle: { color: '#AEB4AF', fontSize: 10.5, marginTop: 1 },
+  primaryButton: { minHeight: 42, minWidth: 118, borderRadius: 10, backgroundColor: '#F4C542', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  primaryButtonText: { color: '#141309', fontWeight: '900', fontSize: 13 },
+  disabled: { opacity: 0.44 },
 });
