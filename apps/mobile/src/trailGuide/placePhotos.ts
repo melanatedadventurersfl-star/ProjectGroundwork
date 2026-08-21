@@ -25,6 +25,7 @@ type WikiSearchResponse = {
 
 type WikiImageInfo = {
   url?: string;
+  thumburl?: string;
   descriptionurl?: string;
   extmetadata?: {
     Artist?: { value?: string };
@@ -34,7 +35,7 @@ type WikiImageInfo = {
 };
 
 type WikiImageResponse = {
-  query?: { pages?: Record<string, { imageinfo?: WikiImageInfo[] }> };
+  query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> };
 };
 
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
@@ -50,7 +51,7 @@ function normalizedWords(value: string) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .split(/\s+/)
-    .filter((word) => word.length > 2 && !['the', 'and', 'florida', 'park', 'preserve', 'state'].includes(word));
+    .filter((word) => word.length > 2 && !['the', 'and', 'florida', 'park', 'preserve', 'state', 'area'].includes(word));
 }
 
 function titleScore(place: TrailGuidePlace, title = '') {
@@ -59,31 +60,96 @@ function titleScore(place: TrailGuidePlace, title = '') {
   return wanted.reduce((score, word) => score + (candidate.has(word) ? 1 : 0), 0);
 }
 
+function photoFromInfo(info: WikiImageInfo | undefined, title: string): TrailGuidePhoto | null {
+  const url = info?.thumburl ?? info?.url;
+  const sourceUrl = info?.descriptionurl;
+  if (!url || !sourceUrl) return null;
+  return {
+    url,
+    sourceUrl,
+    title,
+    credit: stripHtml(info?.extmetadata?.Artist?.value ?? info?.extmetadata?.Credit?.value),
+    license: stripHtml(info?.extmetadata?.LicenseShortName?.value),
+  };
+}
+
 async function loadImageMetadata(filename: string, fallbackUrl: string, sourceUrl: string, title: string) {
-  const url = new URL('https://en.wikipedia.org/w/api.php');
+  const url = new URL('https://commons.wikimedia.org/w/api.php');
   url.searchParams.set('action', 'query');
   url.searchParams.set('format', 'json');
   url.searchParams.set('origin', '*');
-  url.searchParams.set('titles', `File:${filename}`);
+  url.searchParams.set('titles', filename.startsWith('File:') ? filename : `File:${filename}`);
   url.searchParams.set('prop', 'imageinfo');
   url.searchParams.set('iiprop', 'url|extmetadata');
+  url.searchParams.set('iiurlwidth', '1200');
 
   try {
     const response = await fetch(url.toString());
     if (!response.ok) throw new Error('Image metadata unavailable');
     const data = (await response.json()) as WikiImageResponse;
     const page = Object.values(data.query?.pages ?? {})[0];
-    const info = page?.imageinfo?.[0];
-    return {
-      url: info?.url ?? fallbackUrl,
-      sourceUrl: info?.descriptionurl ?? sourceUrl,
-      title,
-      credit: stripHtml(info?.extmetadata?.Artist?.value ?? info?.extmetadata?.Credit?.value),
-      license: stripHtml(info?.extmetadata?.LicenseShortName?.value),
-    } satisfies TrailGuidePhoto;
+    return photoFromInfo(page?.imageinfo?.[0], title) ?? { url: fallbackUrl, sourceUrl, title };
   } catch {
-    return { url: fallbackUrl, sourceUrl, title } satisfies TrailGuidePhoto;
+    return { url: fallbackUrl, sourceUrl, title };
   }
+}
+
+async function searchWikipedia(place: TrailGuidePlace, query: string) {
+  const url = new URL('https://en.wikipedia.org/w/api.php');
+  url.searchParams.set('action', 'query');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('origin', '*');
+  url.searchParams.set('generator', 'search');
+  url.searchParams.set('gsrsearch', query);
+  url.searchParams.set('gsrlimit', '8');
+  url.searchParams.set('prop', 'pageimages|info');
+  url.searchParams.set('piprop', 'thumbnail|name');
+  url.searchParams.set('pithumbsize', '1200');
+  url.searchParams.set('inprop', 'url');
+
+  const response = await fetch(url.toString());
+  if (!response.ok) return null;
+  const data = (await response.json()) as WikiSearchResponse;
+  const pages = Object.values(data.query?.pages ?? {})
+    .filter((page) => page.thumbnail?.source && page.pageimage && page.fullurl)
+    .sort((a, b) => {
+      const scoreDelta = titleScore(place, b.title) - titleScore(place, a.title);
+      if (scoreDelta !== 0) return scoreDelta;
+      return (a.index ?? 99) - (b.index ?? 99);
+    });
+
+  const best = pages[0];
+  if (!best?.thumbnail?.source || !best.pageimage || !best.fullurl || titleScore(place, best.title) === 0) return null;
+  return loadImageMetadata(best.pageimage, best.thumbnail.source, best.fullurl, best.title ?? place.name);
+}
+
+async function searchCommons(place: TrailGuidePlace, query: string) {
+  const url = new URL('https://commons.wikimedia.org/w/api.php');
+  url.searchParams.set('action', 'query');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('origin', '*');
+  url.searchParams.set('generator', 'search');
+  url.searchParams.set('gsrnamespace', '6');
+  url.searchParams.set('gsrsearch', query);
+  url.searchParams.set('gsrlimit', '12');
+  url.searchParams.set('prop', 'imageinfo');
+  url.searchParams.set('iiprop', 'url|extmetadata');
+  url.searchParams.set('iiurlwidth', '1200');
+
+  const response = await fetch(url.toString());
+  if (!response.ok) return null;
+  const data = (await response.json()) as WikiImageResponse;
+  const pages = Object.values(data.query?.pages ?? {})
+    .filter((page) => page.imageinfo?.[0]?.url || page.imageinfo?.[0]?.thumburl)
+    .sort((a, b) => {
+      const scoreDelta = titleScore(place, b.title) - titleScore(place, a.title);
+      if (scoreDelta !== 0) return scoreDelta;
+      return (a.index ?? 99) - (b.index ?? 99);
+    });
+
+  const best = pages[0];
+  if (!best?.title || titleScore(place, best.title) === 0) return null;
+  return photoFromInfo(best.imageinfo?.[0], best.title);
 }
 
 export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
@@ -91,33 +157,23 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
   if (existing) return existing;
 
   const pending = (async () => {
-    const url = new URL('https://en.wikipedia.org/w/api.php');
-    url.searchParams.set('action', 'query');
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('origin', '*');
-    url.searchParams.set('generator', 'search');
-    url.searchParams.set('gsrsearch', `${place.name} ${place.area} Florida`);
-    url.searchParams.set('gsrlimit', '6');
-    url.searchParams.set('prop', 'pageimages|info');
-    url.searchParams.set('piprop', 'thumbnail|name');
-    url.searchParams.set('pithumbsize', '1200');
-    url.searchParams.set('inprop', 'url');
+    const queries = [
+      `\"${place.name}\" Florida`,
+      `\"${place.name}\" ${place.area}`,
+      `${place.name} ${place.area} Florida`,
+      place.name,
+    ];
 
     try {
-      const response = await fetch(url.toString());
-      if (!response.ok) return null;
-      const data = (await response.json()) as WikiSearchResponse;
-      const pages = Object.values(data.query?.pages ?? {})
-        .filter((page) => page.thumbnail?.source && page.pageimage && page.fullurl)
-        .sort((a, b) => {
-          const scoreDelta = titleScore(place, b.title) - titleScore(place, a.title);
-          if (scoreDelta !== 0) return scoreDelta;
-          return (a.index ?? 99) - (b.index ?? 99);
-        });
-
-      const best = pages[0];
-      if (!best?.thumbnail?.source || !best.pageimage || !best.fullurl || titleScore(place, best.title) === 0) return null;
-      return loadImageMetadata(best.pageimage, best.thumbnail.source, best.fullurl, best.title ?? place.name);
+      for (const query of queries) {
+        const wikipedia = await searchWikipedia(place, query);
+        if (wikipedia) return wikipedia;
+      }
+      for (const query of queries) {
+        const commons = await searchCommons(place, query);
+        if (commons) return commons;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -142,7 +198,7 @@ export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
     return () => {
       active = false;
     };
-  }, [place?.id]);
+  }, [place]);
 
   return photo;
 }
