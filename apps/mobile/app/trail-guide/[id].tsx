@@ -27,9 +27,9 @@ export default function TrailGuidePlaceDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           {photo ? (
-            <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
-            <View style={[StyleSheet.absoluteFillObject, styles.photoPlaceholder]}>
+            <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}>
               <AppIcon name="photo" color="#65726B" size={38} />
               <Text style={styles.photoLoading}>Loading destination photo…</Text>
             </View>
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   hero: { height: 340, justifyContent: 'space-between', overflow: 'hidden', backgroundColor: '#17201B' },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#17201B' },
   photoLoading: { color: '#77847D', fontSize: 11, fontWeight: '800' },
-  shade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.48)' },
+  shade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,7,0.48)' },
   back: { marginTop: 14, marginLeft: 16, minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, borderRadius: 14, backgroundColor: 'rgba(9,16,12,0.58)' },
   backLabel: { color: '#FFFDF6', fontSize: 13, fontWeight: '900' },
   heroCopy: { padding: 22 },
