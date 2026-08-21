@@ -26,6 +26,11 @@ function money(cents: number | null) {
   return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 }
 
+function formatBillingPeriod(value: MembershipStatus['billing_period']) {
+  if (!value) return 'Member access';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export default function GoPlusScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -103,7 +108,7 @@ export default function GoPlusScreen() {
         </View> : <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your membership</Text>
           <View style={styles.card}><View style={styles.detailRow}><Text style={styles.detailLabel}>Plan</Text><Text style={styles.detailValue}>{membership?.plan_name ?? 'Go+'}</Text></View>
-            <View style={[styles.detailRow, styles.divider]}><Text style={styles.detailLabel}>Billing</Text><Text style={styles.detailValue}>{membership?.billing_period ? membership.billing_period[0].toUpperCase() + membership.billing_period.slice(1) : 'Member access'}</Text></View>
+            <View style={[styles.detailRow, styles.divider]}><Text style={styles.detailLabel}>Billing</Text><Text style={styles.detailValue}>{formatBillingPeriod(membership?.billing_period ?? null)}</Text></View>
             {membership?.current_period_ends_at ? <View style={[styles.detailRow, styles.divider]}><Text style={styles.detailLabel}>{membership.cancel_at_period_end ? 'Access through' : 'Renews'}</Text><Text style={styles.detailValue}>{new Date(membership.current_period_ends_at).toLocaleDateString()}</Text></View> : null}
           </View>
         </View>}
