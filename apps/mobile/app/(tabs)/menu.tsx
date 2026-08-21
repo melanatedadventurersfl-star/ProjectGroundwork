@@ -19,6 +19,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
     ['Delete Account','/delete-account','privacy'],
   ]],
   ['Membership', [
+    ['Go+ Membership','/member/go-plus','badge'],
     ['Trips & Payments','/member/trips','trips'],
     ['Trail Family','/member/trail-family','community'],
     ['Trailmates & Crew','/circles','connections'],
