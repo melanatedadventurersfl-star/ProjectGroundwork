@@ -3,136 +3,46 @@ import { useMemo, useState } from 'react';
 import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  cityCollections,
+  cityKeyFromLocationLabel,
+  discoveryCategories,
+  trailGuidePlaces,
+  type DiscoveryCategory,
+  type TrailGuidePlace,
+} from '../../src/trailGuide/catalog';
+import { trailGuideArticles } from '../../src/trailGuide/guides';
 import { useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
 import { AppIcon } from '../../src/ui/AppIcon';
-
-type DiscoveryCategory = 'All' | 'Hiking' | 'Camping' | 'Parks' | 'Water' | 'Scenic';
-
-type NearbyPlace = {
-  id: string;
-  category: Exclude<DiscoveryCategory, 'All'>;
-  name: string;
-  distance: string;
-  type: string;
-  tags: string[];
-  meta: string;
-  image: string;
-  availability?: string;
-  availabilityTone?: 'good' | 'warning';
-};
-
-type GuideCard = {
-  id: string;
-  title: string;
-  image: string;
-};
-
-const discoveryCategories: DiscoveryCategory[] = ['All', 'Hiking', 'Camping', 'Parks', 'Water', 'Scenic'];
-
-const nearbyPlaces: NearbyPlace[] = [
-  {
-    id: 'hanna',
-    category: 'Parks',
-    name: 'Kathryn Abbey Hanna Park',
-    distance: '5.2 mi away',
-    type: 'Park',
-    tags: ['Trails', 'Beach'],
-    meta: 'Easy–Moderate  •  7 trails',
-    image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'baldwin',
-    category: 'Hiking',
-    name: 'Jacksonville-Baldwin Rail Trail',
-    distance: '8.7 mi away',
-    type: 'Paved Trail',
-    tags: ['Walking', 'Cycling'],
-    meta: '14.5 miles  •  Paved  •  Easy',
-    image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'timucuan',
-    category: 'Scenic',
-    name: 'Timucuan Preserve',
-    distance: '11 mi away',
-    type: 'Nature Preserve',
-    tags: ['Nature Preserve', 'Kayaking'],
-    meta: 'Trails  •  Historic Sites',
-    image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'little-talbot-camp',
-    category: 'Camping',
-    name: 'Little Talbot Island Campground',
-    distance: '6.1 mi away',
-    type: 'Campground',
-    tags: ['Tent', 'RV', 'Cabins'],
-    meta: 'Restrooms  •  Showers  •  Fire Rings',
-    availability: 'Available',
-    availabilityTone: 'good',
-    image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'huguenot',
-    category: 'Camping',
-    name: 'Huguenot Memorial Park',
-    distance: '9.3 mi away',
-    type: 'Campground',
-    tags: ['Tent', 'RV'],
-    meta: 'Picnic Tables  •  Restrooms  •  Fire Rings',
-    availability: '2 sites left',
-    availabilityTone: 'warning',
-    image: 'https://images.unsplash.com/photo-1478131143081-80f7f84ca84d?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'talbot-water',
-    category: 'Water',
-    name: 'Little Talbot Island Beach',
-    distance: '6.3 mi away',
-    type: 'Beach',
-    tags: ['Swimming', 'Surfing'],
-    meta: 'Showers  •  Wildlife  •  Easy Access',
-    image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80',
-  },
-];
-
-const guides: GuideCard[] = [
-  {
-    id: 'camping-essentials',
-    title: 'Camping Essentials Checklist',
-    image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'hiking-safety',
-    title: 'Hiking Safety Tips',
-    image: 'https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'leave-no-trace',
-    title: 'Leave No Trace Principles',
-    image: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80',
-  },
-];
 
 export default function TrailGuideScreen() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<DiscoveryCategory>('All');
+  const [collection, setCollection] = useState<string | null>(null);
   const { backgroundSource, locationLabel, locationBusy, requestCurrentLocation } = useTrailGuideLocationBackground();
+  const cityKey = cityKeyFromLocationLabel(locationLabel);
+  const cityName = cityKey === 'orlando' ? 'Orlando' : 'Jacksonville';
 
   const visiblePlaces = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return nearbyPlaces.filter((place) => {
-      const matchesCategory = category === 'All' || place.category === category;
-      const haystack = `${place.name} ${place.type} ${place.tags.join(' ')} ${place.meta}`.toLowerCase();
-      return matchesCategory && (!query || haystack.includes(query));
+    return trailGuidePlaces.filter((place) => {
+      if (place.city !== cityKey) return false;
+      if (category !== 'All' && place.category !== category) return false;
+      if (collection && !place.collections.includes(collection)) return false;
+      const haystack = `${place.name} ${place.area} ${place.type} ${place.tags.join(' ')} ${place.meta} ${place.collections.join(' ')}`.toLowerCase();
+      return !query || haystack.includes(query);
     });
-  }, [category, search]);
+  }, [category, cityKey, collection, search]);
 
-  const parksAndTrails = visiblePlaces.filter((place) => place.category === 'Parks' || place.category === 'Hiking' || place.category === 'Scenic');
-  const campgrounds = visiblePlaces.filter((place) => place.category === 'Camping');
-  const water = visiblePlaces.filter((place) => place.category === 'Water');
+  function chooseCategory(next: DiscoveryCategory) {
+    setCategory(next);
+  }
 
-  function renderPlace(place: NearbyPlace) {
+  function chooseCollection(next: string) {
+    setCollection((current) => (current === next ? null : next));
+  }
+
+  function renderPlace(place: TrailGuidePlace) {
     return (
       <Pressable
         key={place.id}
@@ -148,18 +58,11 @@ export default function TrailGuideScreen() {
             <Text numberOfLines={2} style={styles.placeName}>{place.name}</Text>
             <AppIcon name="chevron-forward" color="#F5C400" size={19} />
           </View>
-          <Text style={styles.distance}>{place.distance}</Text>
+          <Text style={styles.area}>{place.area}</Text>
           <View style={styles.tagRow}>
             {place.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}
           </View>
-          <View style={styles.metaRow}>
-            <Text numberOfLines={2} style={styles.metaText}>{place.meta}</Text>
-            {place.availability ? (
-              <View style={[styles.availability, place.availabilityTone === 'warning' && styles.availabilityWarning]}>
-                <Text style={[styles.availabilityText, place.availabilityTone === 'warning' && styles.availabilityWarningText]}>{place.availability}</Text>
-              </View>
-            ) : null}
-          </View>
+          <Text numberOfLines={2} style={styles.metaText}>{place.meta}</Text>
         </View>
       </Pressable>
     );
@@ -168,11 +71,7 @@ export default function TrailGuideScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <ImageBackground
-          source={backgroundSource}
-          style={styles.hero}
-          imageStyle={styles.heroImage}
-        >
+        <ImageBackground source={backgroundSource} style={styles.hero} imageStyle={styles.heroImage}>
           <View style={styles.heroShade} />
           <View style={styles.heroContent}>
             <Text style={styles.title}>Trail Guide</Text>
@@ -186,7 +85,7 @@ export default function TrailGuideScreen() {
             <TextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search trails, parks, camping & guides"
+              placeholder="Search places, activities & guides"
               placeholderTextColor="#7D8882"
               style={styles.searchInput}
             />
@@ -199,8 +98,7 @@ export default function TrailGuideScreen() {
                 <Pressable
                   key={item}
                   accessibilityRole="button"
-                  hitSlop={4}
-                  onPress={() => setCategory(item)}
+                  onPress={() => chooseCategory(item)}
                   style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}
                 >
                   <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item}</Text>
@@ -211,8 +109,8 @@ export default function TrailGuideScreen() {
 
           <View style={styles.exploreHeader}>
             <View style={styles.exploreHeaderCopy}>
-              <Text style={styles.sectionTitle}>Explore Nearby</Text>
-              <Text style={styles.sectionSubtitle}>Outdoor places around your current area.</Text>
+              <Text style={styles.sectionTitle}>{cityName} Field Guide</Text>
+              <Text style={styles.sectionSubtitle}>40 outdoor places curated around the reference city.</Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -221,66 +119,57 @@ export default function TrailGuideScreen() {
               style={({ pressed }) => [styles.locationButton, pressed && styles.chipPressed]}
             >
               <AppIcon name="location" color="#F5C400" size={17} />
-              <Text style={styles.locationText}>{locationBusy ? 'Locating…' : locationLabel}</Text>
+              <Text numberOfLines={1} style={styles.locationText}>{locationBusy ? 'Locating…' : locationLabel}</Text>
             </Pressable>
           </View>
 
-          {parksAndTrails.length > 0 ? (
-            <View style={styles.section}>
-              <View style={styles.sectionRow}>
-                <View style={styles.sectionLabelWrap}>
-                  <View style={styles.sectionIcon}><AppIcon name="explore" color="#79B76A" size={18} /></View>
-                  <Text style={styles.listTitle}>Parks & Trails</Text>
-                </View>
-                <Pressable hitSlop={10} onPress={() => setCategory('Parks')} style={({ pressed }) => pressed && styles.textPressed}><Text style={styles.seeAll}>See all ›</Text></Pressable>
-              </View>
-              <View style={styles.list}>{parksAndTrails.slice(0, 3).map(renderPlace)}</View>
-            </View>
-          ) : null}
+          <View style={styles.collectionHeader}>
+            <Text style={styles.collectionTitle}>Curated collections</Text>
+            {collection ? <Pressable hitSlop={8} onPress={() => setCollection(null)}><Text style={styles.clearText}>Clear</Text></Pressable> : null}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionRow}>
+            {cityCollections[cityKey].map((item) => {
+              const active = collection === item;
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => chooseCollection(item)}
+                  style={({ pressed }) => [styles.collectionChip, active && styles.collectionChipActive, pressed && styles.chipPressed]}
+                >
+                  <Text style={[styles.collectionText, active && styles.collectionTextActive]}>{item}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
-          {campgrounds.length > 0 ? (
-            <View style={styles.section}>
-              <View style={styles.sectionRow}>
-                <View style={styles.sectionLabelWrap}>
-                  <View style={styles.sectionIcon}><AppIcon name="trailhead" color="#79B76A" size={18} /></View>
-                  <Text style={styles.listTitle}>Campgrounds</Text>
-                </View>
-                <Pressable hitSlop={10} onPress={() => setCategory('Camping')} style={({ pressed }) => pressed && styles.textPressed}><Text style={styles.seeAll}>See all ›</Text></Pressable>
-              </View>
-              <View style={styles.list}>{campgrounds.slice(0, 2).map(renderPlace)}</View>
-            </View>
-          ) : null}
+          <View style={styles.resultsHeader}>
+            <Text style={styles.listTitle}>{visiblePlaces.length} {visiblePlaces.length === 1 ? 'place' : 'places'}</Text>
+            {(category !== 'All' || collection || search.trim()) ? (
+              <Text style={styles.resultsHint}>Filtered results</Text>
+            ) : <Text style={styles.resultsHint}>Browse the full city guide</Text>}
+          </View>
 
-          {water.length > 0 ? (
-            <View style={styles.section}>
-              <View style={styles.sectionRow}>
-                <View style={styles.sectionLabelWrap}>
-                  <View style={styles.sectionIcon}><AppIcon name="weather" color="#79B76A" size={18} /></View>
-                  <Text style={styles.listTitle}>Water</Text>
-                </View>
-                <Pressable hitSlop={10} onPress={() => setCategory('Water')} style={({ pressed }) => pressed && styles.textPressed}><Text style={styles.seeAll}>See all ›</Text></Pressable>
-              </View>
-              <View style={styles.list}>{water.slice(0, 2).map(renderPlace)}</View>
-            </View>
-          ) : null}
-
-          {visiblePlaces.length === 0 ? (
+          {visiblePlaces.length > 0 ? (
+            <View style={styles.list}>{visiblePlaces.map(renderPlace)}</View>
+          ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No nearby matches yet</Text>
-              <Text style={styles.emptyText}>Try another category or a broader search.</Text>
+              <Text style={styles.emptyTitle}>No matches in this collection</Text>
+              <Text style={styles.emptyText}>Try another category, clear the collection, or broaden your search.</Text>
             </View>
-          ) : null}
+          )}
 
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <View style={styles.sectionLabelWrap}>
                 <View style={styles.sectionIcon}><AppIcon name="guide" color="#79B76A" size={18} /></View>
-                <Text style={styles.listTitle}>Guides & Know-How</Text>
+                <View>
+                  <Text style={styles.listTitle}>Guides & Know-How</Text>
+                  <Text style={styles.guideSubtitle}>Practical knowledge for Florida outdoor days.</Text>
+                </View>
               </View>
-              <Text style={styles.seeAll}>See all ›</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.guideRow}>
-              {guides.map((guide) => (
+              {trailGuideArticles.map((guide) => (
                 <Pressable
                   key={guide.id}
                   accessibilityRole="button"
@@ -289,6 +178,7 @@ export default function TrailGuideScreen() {
                 >
                   <ImageBackground source={{ uri: guide.image }} style={styles.guideImage} imageStyle={styles.guideImageRadius}>
                     <View style={styles.guideShade} />
+                    <Text style={styles.guideTopic}>{guide.topic.toUpperCase()}</Text>
                     <Text style={styles.guideTitle}>{guide.title}</Text>
                   </ImageBackground>
                 </Pressable>
@@ -317,44 +207,49 @@ const styles = StyleSheet.create({
   categoryChipActive: { backgroundColor: '#F5C400', borderColor: '#F5C400' },
   categoryText: { color: '#F0F3F0', fontWeight: '800', fontSize: 12 },
   categoryTextActive: { color: '#11150F' },
-  exploreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginTop: 3, marginBottom: 18 },
-  exploreHeaderCopy: { flex: 1, minWidth: 0 },
-  sectionTitle: { color: '#FFFDF6', fontSize: 25, fontWeight: '900' },
-  sectionSubtitle: { color: '#99A49D', fontSize: 12, marginTop: 3 },
-  locationButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12 },
-  locationText: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
-  section: { marginBottom: 24 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 },
-  sectionLabelWrap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  sectionIcon: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#1B2C20', alignItems: 'center', justifyContent: 'center' },
-  listTitle: { color: '#FFFDF6', fontSize: 19, fontWeight: '900', flexShrink: 1 },
-  seeAll: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
-  list: { gap: 9 },
-  placeCard: { width: '100%', minHeight: 126, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#28332D', backgroundColor: '#111915', flexDirection: 'row' },
-  placeImage: { width: '36%', minWidth: 108, maxWidth: 172, alignSelf: 'stretch', backgroundColor: '#1D2A23' },
-  placeCopy: { flex: 1, minWidth: 0, padding: 12, justifyContent: 'center' },
-  placeTitleRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  placeName: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900', flex: 1, minWidth: 0 },
-  distance: { color: '#8CCB78', fontSize: 12.5, fontWeight: '800', marginTop: 4 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 },
-  tag: { backgroundColor: '#233027', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-  tagText: { color: '#E5EBE6', fontSize: 10.5, fontWeight: '700' },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 7 },
-  metaText: { color: '#A8B0AB', fontSize: 10.5, lineHeight: 15, flexGrow: 1, flexShrink: 1, minWidth: 120 },
-  availability: { borderRadius: 999, backgroundColor: '#1D3421', paddingHorizontal: 8, paddingVertical: 5 },
-  availabilityText: { color: '#8ED47A', fontSize: 9.5, fontWeight: '900' },
-  availabilityWarning: { backgroundColor: '#332711' },
-  availabilityWarningText: { color: '#F0A71F' },
-  emptyState: { borderRadius: 16, borderWidth: 1, borderColor: '#29342E', backgroundColor: '#121A16', padding: 20, marginBottom: 24 },
+  exploreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginTop: 4, marginBottom: 15 },
+  exploreHeaderCopy: { flex: 1 },
+  sectionTitle: { color: '#FFFDF6', fontSize: 24, lineHeight: 29, fontWeight: '900' },
+  sectionSubtitle: { color: '#8E9B94', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  locationButton: { maxWidth: 170, minHeight: 42, borderRadius: 14, borderWidth: 1, borderColor: '#344139', backgroundColor: '#142019', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 },
+  locationText: { flexShrink: 1, color: '#E4EAE6', fontSize: 11, fontWeight: '800' },
+  collectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 },
+  collectionTitle: { color: '#DCE4DF', fontSize: 13, fontWeight: '900' },
+  clearText: { color: '#F5C400', fontSize: 12, fontWeight: '900' },
+  collectionRow: { gap: 8, paddingVertical: 12, paddingRight: 8 },
+  collectionChip: { minHeight: 38, justifyContent: 'center', borderRadius: 13, backgroundColor: '#111915', borderWidth: 1, borderColor: '#29362F', paddingHorizontal: 13 },
+  collectionChipActive: { backgroundColor: '#213627', borderColor: '#79B76A' },
+  collectionText: { color: '#A9B4AE', fontSize: 11, fontWeight: '800' },
+  collectionTextActive: { color: '#CFF3C2' },
+  resultsHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8, marginBottom: 12 },
+  resultsHint: { color: '#7F8C85', fontSize: 11, fontWeight: '700' },
+  listTitle: { color: '#FFFDF6', fontSize: 18, fontWeight: '900' },
+  list: { gap: 10 },
+  placeCard: { minHeight: 126, borderRadius: 18, overflow: 'hidden', backgroundColor: '#111915', borderWidth: 1, borderColor: '#27332C', flexDirection: 'row' },
+  placeImage: { width: 116, minHeight: 126, backgroundColor: '#1B241F' },
+  placeCopy: { flex: 1, padding: 13 },
+  placeTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  placeName: { color: '#FFFDF6', fontSize: 15, lineHeight: 20, fontWeight: '900', flex: 1 },
+  area: { color: '#8ED47A', fontSize: 11, fontWeight: '800', marginTop: 3 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 },
+  tag: { borderRadius: 999, backgroundColor: '#1C2922', paddingHorizontal: 8, paddingVertical: 4 },
+  tagText: { color: '#D5DED8', fontSize: 9, fontWeight: '800' },
+  metaText: { color: '#8F9B94', fontSize: 10, lineHeight: 15, marginTop: 8 },
+  section: { marginTop: 30 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  sectionIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#19251E', alignItems: 'center', justifyContent: 'center' },
+  guideSubtitle: { color: '#7F8C85', fontSize: 10, marginTop: 2 },
+  guideRow: { gap: 11, paddingRight: 6 },
+  guideCard: { width: 210, height: 146, borderRadius: 18, overflow: 'hidden' },
+  guideImage: { flex: 1, justifyContent: 'flex-end', padding: 14 },
+  guideImageRadius: { borderRadius: 18 },
+  guideShade: { position: 'absolute', inset: 0, backgroundColor: 'rgba(4,9,6,0.48)' },
+  guideTopic: { color: '#F5C400', fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginBottom: 4 },
+  guideTitle: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900' },
+  emptyState: { borderRadius: 18, borderWidth: 1, borderColor: '#29362F', backgroundColor: '#111915', padding: 22, alignItems: 'center' },
   emptyTitle: { color: '#FFFDF6', fontSize: 16, fontWeight: '900' },
-  emptyText: { color: '#98A39C', marginTop: 4, fontSize: 12 },
-  guideRow: { gap: 10, paddingRight: 12 },
-  guideCard: { width: 160, height: 146, borderRadius: 16, overflow: 'hidden' },
-  guideImage: { flex: 1, justifyContent: 'flex-end', padding: 12 },
-  guideImageRadius: { borderRadius: 16 },
-  guideShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(5,10,7,0.45)' },
-  guideTitle: { color: '#FFFDF6', fontSize: 15, lineHeight: 19, fontWeight: '900' },
-  cardPressed: { opacity: 0.72, transform: [{ scale: 0.992 }] },
-  chipPressed: { opacity: 0.68 },
-  textPressed: { opacity: 0.55 },
+  emptyText: { color: '#8D9992', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 5 },
+  cardPressed: { opacity: 0.78 },
+  chipPressed: { opacity: 0.75 },
 });
