@@ -1,0 +1,96 @@
+name: One-time Adventures polish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-adventures-polish.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply Adventures UI polish
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected snippet not found in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          explore = 'apps/mobile/app/(tabs)/explore.tsx'
+          api = 'apps/mobile/src/local-events/api.ts'
+          detail = 'apps/mobile/app/local-events/[id].tsx'
+
+          replace_exact(
+              explore,
+              '''          <View style={s.locationRow}>\n            <Text style={s.locationMarker}>⌖</Text>\n            <Text style={s.location}>{currentLocationLabel}</Text>\n          </View>\n\n''',
+              ''
+          )
+
+          replace_exact(
+              explore,
+              '''      <View style={s.eventCopy}>\n        <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>''',
+              '''      <View style={s.eventCopy}>\n        {event.is_demo ? <Text style={s.demoBadge}>DEMO EVENT</Text> : null}\n        <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>'''
+          )
+
+          replace_exact(
+              explore,
+              "  eventCopy: { flex: 1, justifyContent: 'center', padding: 12 },\n  eventTitle:",
+              "  eventCopy: { flex: 1, justifyContent: 'center', padding: 12 },\n  demoBadge: { alignSelf: 'flex-start', color: '#111816', backgroundColor: '#F5C542', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, fontSize: 8, fontWeight: '900', letterSpacing: .7, marginBottom: 5 },\n  eventTitle:"
+          )
+
+          replace_exact(
+              api,
+              "  group_id: string | null;\n  host_name: string;",
+              "  group_id: string | null;\n  is_demo: boolean;\n  host_name: string;"
+          )
+
+          replace_exact(
+              detail,
+              "import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';",
+              "import { ActivityIndicator, ImageBackground, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';"
+          )
+
+          replace_exact(
+              detail,
+              "import { getLocalEvent, setLocalEventRsvp, type LocalEvent } from '../../src/local-events/api';\n",
+              "import { getLocalEvent, setLocalEventRsvp, type LocalEvent } from '../../src/local-events/api';\n\nconst DEFAULT_EVENT_IMAGE = require('../../assets/explore/default-event.jpg');\n"
+          )
+
+          replace_exact(
+              detail,
+              '''        <Text style={styles.badge}>MEMBER-LED CAMPFIRE</Text>\n        <Text style={styles.title}>{event.title}</Text>''',
+              '''        <View style={styles.badgeRow}>\n          <Text style={styles.badge}>MEMBER-LED CAMPFIRE</Text>\n          {event.is_demo ? <Text style={styles.demoBadge}>DEMO EVENT</Text> : null}\n        </View>\n        <ImageBackground\n          source={event.image_url ? { uri: event.image_url } : DEFAULT_EVENT_IMAGE}\n          style={styles.heroImage}\n          imageStyle={styles.heroImageCorners}\n        >\n          <View style={styles.heroShade} />\n        </ImageBackground>\n        <Text style={styles.title}>{event.title}</Text>'''
+          )
+
+          replace_exact(
+              detail,
+              "  badge: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 11, marginTop: 6 },\n  title:",
+              "  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },\n  badge: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 11 },\n  demoBadge: { color: '#17211C', backgroundColor: '#F5C542', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontWeight: '900', letterSpacing: .8, fontSize: 9 },\n  heroImage: { height: 210, overflow: 'hidden', borderRadius: 18, backgroundColor: '#17211C' },\n  heroImageCorners: { borderRadius: 18 },\n  heroShade: { flex: 1, backgroundColor: 'rgba(8,13,12,.08)' },\n  title:"
+          )
+          PY
+
+      - name: Verify mobile TypeScript
+        run: npm run mobile:typecheck
+
+      - name: Commit finishing pass
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-time-adventures-polish.yml
+          git add apps/mobile/app/'(tabs)'/explore.tsx apps/mobile/src/local-events/api.ts apps/mobile/app/local-events/'[id]'.tsx
+          git commit -m "feat: finish Adventures location and demo presentation"
+          git push origin HEAD:main
