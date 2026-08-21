@@ -14,7 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listAdventures, setAdventureSaved } from '../../src/adventures/api';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { useAuth } from '../../src/auth/AuthProvider';
@@ -37,6 +37,13 @@ const categoryIcons: Record<string, string> = {
 const quickTags = ['Weekend', 'Family Friendly', 'Beginner Friendly', 'Accessible'];
 const radii = ['25', '50', '100', 'Anywhere'];
 const DEFAULT_EVENT_IMAGE = require('../../assets/explore/default-event.jpg');
+
+const sortOptions: Array<{ value: SortMode; label: string; helper: string }> = [
+  { value: 'closest', label: 'Closest', helper: 'Nearest to you' },
+  { value: 'soonest', label: 'Soonest', helper: 'Coming up next' },
+  { value: 'newest', label: 'Newest', helper: 'Recently added' },
+  { value: 'price', label: 'Price', helper: 'Lowest first' },
+];
 
 function promptForAccount(destination: string) {
   Alert.alert('Sign in to continue', `${destination} is available to members. Sign in or create an account to continue.`, [
@@ -193,6 +200,7 @@ function EventCard({ event, distance, wide = false }: { event: LocalEvent; dista
 
 export default function ExploreScreen() {
   const { session } = useAuth();
+  const insets = useSafeAreaInsets();
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [events, setEvents] = useState<LocalEvent[]>([]);
   const [search, setSearch] = useState('');
@@ -347,6 +355,8 @@ export default function ExploreScreen() {
   const nearby = localEvents;
   const nearbyPreview = nearby.slice(0, 6);
   const isSearching = search.trim().length > 0;
+  const resultCount = visibleAdventures.length + localEvents.length;
+  const filterCount = (sort !== 'closest' ? 1 : 0) + selectedTags.length + (radius !== '50' ? 1 : 0);
 
   return (
     <SafeAreaView style={s.safe} edges={['left', 'right']}>
@@ -374,8 +384,9 @@ export default function ExploreScreen() {
               returnKeyType="search"
               clearButtonMode="while-editing"
             />
-            <Pressable style={s.filterIconButton} onPress={() => setShowFilters(true)}>
-              <Text style={s.filterIcon}>☷</Text>
+            <Pressable style={[s.filterIconButton, filterCount > 0 && s.filterIconButtonActive]} onPress={() => setShowFilters(true)}>
+              <Text style={[s.filterIcon, filterCount > 0 && s.filterIconActive]}>☷</Text>
+              {filterCount > 0 ? <View style={s.filterCountBadge}><Text style={s.filterCountText}>{filterCount}</Text></View> : null}
             </Pressable>
           </View>
 
@@ -464,45 +475,92 @@ export default function ExploreScreen() {
       <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
         <View style={s.modalRoot}>
           <Pressable style={s.modalBackdrop} onPress={() => setShowFilters(false)} />
-          <View style={s.filterSheet}>
+          <View style={[s.filterSheet, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
             <View style={s.sheetHandle} />
             <View style={s.filterPanelTop}>
-              <Text style={s.filterPanelTitle}>Refine Adventures</Text>
-              <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.resetFilter}>Reset</Text></Pressable>
+              <View style={s.filterHeadingCopy}>
+                <Text style={s.filterPanelTitle}>Refine Adventures</Text>
+                <Text style={s.filterPanelSubtitle}>Fine-tune what shows up around {currentLocationLabel.split(',')[0] ?? currentLocationLabel}.</Text>
+              </View>
+              <Pressable onPress={resetFilters} hitSlop={8} style={s.resetButton}>
+                <Text style={s.resetFilter}>Clear</Text>
+              </Pressable>
             </View>
 
-            <Text style={s.filterLabel}>SORT</Text>
-            <View style={s.filterChips}>
-              {(['closest', 'soonest', 'newest', 'price'] as SortMode[]).map((value) => (
-                <Pressable key={value} onPress={() => setSort(value)} style={[s.filterChip, sort === value && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, sort === value && s.filterChipTextActive]}>
-                    {value === 'price' ? 'Price' : value.charAt(0).toUpperCase() + value.slice(1)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.filterScrollContent}>
+              <View style={s.filterSection}>
+                <Text style={s.filterLabel}>SORT BY</Text>
+                <View style={s.sortGrid}>
+                  {sortOptions.map((option) => {
+                    const active = sort === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => setSort(option.value)}
+                        style={[s.sortCard, active && s.sortCardActive]}
+                      >
+                        <View style={[s.radioOuter, active && s.radioOuterActive]}>
+                          {active ? <View style={s.radioInner} /> : null}
+                        </View>
+                        <View style={s.sortCardCopy}>
+                          <Text style={[s.sortCardTitle, active && s.sortCardTitleActive]}>{option.label}</Text>
+                          <Text style={[s.sortCardHelper, active && s.sortCardHelperActive]}>{option.helper}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
-            <Text style={s.filterLabel}>QUICK FILTERS</Text>
-            <View style={s.filterChips}>
-              {quickTags.map((tag) => (
-                <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.filterChip, selectedTags.includes(tag) && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, selectedTags.includes(tag) && s.filterChipTextActive]}>{tag}</Text>
-                </Pressable>
-              ))}
-            </View>
+              <View style={s.filterDivider} />
 
-            <Text style={s.filterLabel}>RADIUS</Text>
-            <View style={s.filterChips}>
-              {radii.map((value) => (
-                <Pressable key={value} onPress={() => setRadius(value)} style={[s.filterChip, radius === value && s.filterChipActive]}>
-                  <Text style={[s.filterChipText, radius === value && s.filterChipTextActive]}>{value === 'Anywhere' ? value : `${value} mi`}</Text>
-                </Pressable>
-              ))}
-            </View>
+              <View style={s.filterSection}>
+                <View style={s.filterSectionHeading}>
+                  <Text style={s.filterLabel}>DISTANCE</Text>
+                  <Text style={s.filterSectionValue}>{radius === 'Anywhere' ? 'Anywhere in Florida' : `Within ${radius} miles`}</Text>
+                </View>
+                <View style={s.radiusRail}>
+                  {radii.map((value) => {
+                    const active = radius === value;
+                    return (
+                      <Pressable key={value} onPress={() => setRadius(value)} style={[s.radiusOption, active && s.radiusOptionActive]}>
+                        <Text style={[s.radiusOptionText, active && s.radiusOptionTextActive]}>{value === 'Anywhere' ? 'Any' : value}</Text>
+                        <Text style={[s.radiusOptionUnit, active && s.radiusOptionTextActive]}>{value === 'Anywhere' ? 'Florida' : 'mi'}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
-            <Pressable style={s.showResultsButton} onPress={() => setShowFilters(false)}>
-              <Text style={s.showResultsText}>Show results</Text>
-            </Pressable>
+              <View style={s.filterDivider} />
+
+              <View style={s.filterSection}>
+                <Text style={s.filterLabel}>GOOD FOR</Text>
+                <View style={s.quickFilterGrid}>
+                  {quickTags.map((tag) => {
+                    const active = selectedTags.includes(tag);
+                    return (
+                      <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.quickFilterCard, active && s.quickFilterCardActive]}>
+                        <View style={[s.checkBox, active && s.checkBoxActive]}>
+                          {active ? <Text style={s.checkMark}>✓</Text> : null}
+                        </View>
+                        <Text style={[s.quickFilterText, active && s.quickFilterTextActive]}>{tag}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={s.filterFooter}>
+              <View style={s.filterSummary}>
+                <Text style={s.filterSummaryNumber}>{resultCount}</Text>
+                <Text style={s.filterSummaryLabel}>{resultCount === 1 ? 'result' : 'results'}</Text>
+              </View>
+              <Pressable style={s.showResultsButton} onPress={() => setShowFilters(false)}>
+                <Text style={s.showResultsText}>Show adventures</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -533,8 +591,12 @@ const s = StyleSheet.create({
   searchWrap: { height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#151C1A', paddingLeft: 15 },
   searchIcon: { color: '#C7CECA', fontSize: 26, marginRight: 7, marginTop: -2 },
   input: { flex: 1, color: '#F7F7F4', fontSize: 15, paddingVertical: 13 },
-  filterIconButton: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  filterIconButton: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  filterIconButtonActive: { backgroundColor: '#F5C542' },
   filterIcon: { color: '#C7CECA', fontSize: 20, fontWeight: '900' },
+  filterIconActive: { color: '#111816' },
+  filterCountBadge: { position: 'absolute', top: 2, right: 2, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F4' },
+  filterCountText: { color: '#111816', fontSize: 9, fontWeight: '900' },
   categoryRow: { gap: 9, paddingRight: 18, paddingBottom: 2 },
   categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#111715', paddingHorizontal: 15, paddingVertical: 10 },
   categoryChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
@@ -578,18 +640,50 @@ const s = StyleSheet.create({
   emptyTitle: { color: '#F7F7F4', fontSize: 18, fontWeight: '900' },
   emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5, textAlign: 'center' },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.62)' },
-  filterSheet: { maxHeight: '66%', backgroundColor: '#111816', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderColor: '#303B36', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 13 },
-  sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 4 },
-  filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  filterPanelTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900' },
-  resetFilter: { color: '#F5C542', fontSize: 12, fontWeight: '900' },
-  filterLabel: { color: '#839088', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginTop: 3 },
-  filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  filterChip: { borderRadius: 999, borderWidth: 1, borderColor: '#46544C', paddingHorizontal: 12, paddingVertical: 8 },
-  filterChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
-  filterChipText: { color: '#D6DDD9', fontSize: 11, fontWeight: '800' },
-  filterChipTextActive: { color: '#151B18' },
-  showResultsButton: { marginTop: 6, borderRadius: 16, backgroundColor: '#F5C542', alignItems: 'center', paddingVertical: 14 },
+  modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.70)' },
+  filterSheet: { maxHeight: '82%', backgroundColor: '#101714', borderTopLeftRadius: 30, borderTopRightRadius: 30, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 18, paddingTop: 10 },
+  sheetHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 14 },
+  filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, marginBottom: 4 },
+  filterHeadingCopy: { flex: 1 },
+  filterPanelTitle: { color: '#F7F7F4', fontSize: 23, lineHeight: 28, fontWeight: '900', letterSpacing: -.4 },
+  filterPanelSubtitle: { color: '#98A49E', fontSize: 11, lineHeight: 15, marginTop: 4 },
+  resetButton: { minHeight: 36, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1, borderColor: '#47534C', alignItems: 'center', justifyContent: 'center' },
+  resetFilter: { color: '#F5C542', fontSize: 11, fontWeight: '900' },
+  filterScrollContent: { paddingTop: 14, paddingBottom: 10 },
+  filterSection: { gap: 10 },
+  filterSectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  filterLabel: { color: '#89958E', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  filterSectionValue: { color: '#D9DEDB', fontSize: 10, fontWeight: '800' },
+  filterDivider: { height: 1, backgroundColor: '#26312C', marginVertical: 17 },
+  sortGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sortCard: { width: '48.7%', minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 15, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18' },
+  sortCardActive: { borderColor: '#F5C542', backgroundColor: '#1D2117' },
+  radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#66736C', alignItems: 'center', justifyContent: 'center' },
+  radioOuterActive: { borderColor: '#F5C542' },
+  radioInner: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#F5C542' },
+  sortCardCopy: { flex: 1 },
+  sortCardTitle: { color: '#E4E9E6', fontSize: 12, fontWeight: '900' },
+  sortCardTitleActive: { color: '#F7F7F4' },
+  sortCardHelper: { color: '#7F8B84', fontSize: 9, marginTop: 2 },
+  sortCardHelperActive: { color: '#B6BDAF' },
+  radiusRail: { flexDirection: 'row', gap: 7 },
+  radiusOption: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18' },
+  radiusOptionActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
+  radiusOptionText: { color: '#E0E5E2', fontSize: 13, fontWeight: '900' },
+  radiusOptionUnit: { color: '#78857E', fontSize: 8, fontWeight: '800', marginTop: 1 },
+  radiusOptionTextActive: { color: '#111816' },
+  quickFilterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  quickFilterCard: { width: '48.7%', minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderRadius: 14, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18' },
+  quickFilterCardActive: { borderColor: '#6C6230', backgroundColor: '#222315' },
+  checkBox: { width: 19, height: 19, borderRadius: 6, borderWidth: 1.5, borderColor: '#66736C', alignItems: 'center', justifyContent: 'center' },
+  checkBoxActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
+  checkMark: { color: '#111816', fontSize: 12, lineHeight: 14, fontWeight: '900' },
+  quickFilterText: { flex: 1, color: '#D9DEDB', fontSize: 10, fontWeight: '800' },
+  quickFilterTextActive: { color: '#F7F7F4' },
+  filterFooter: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#26312C' },
+  filterSummary: { minWidth: 58, alignItems: 'center' },
+  filterSummaryNumber: { color: '#F7F7F4', fontSize: 20, lineHeight: 21, fontWeight: '900' },
+  filterSummaryLabel: { color: '#89958E', fontSize: 9, fontWeight: '800', marginTop: 2 },
+  showResultsButton: { flex: 1, minHeight: 50, borderRadius: 16, backgroundColor: '#F5C542', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
   showResultsText: { color: '#111816', fontSize: 14, fontWeight: '900' },
 });
