@@ -16,6 +16,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
     ['Invite Friends','/member/invites','connections'],
     ['Notifications','/notifications','notifications'],
     ['Weather & Location','/member/weather','weather'],
+    ['Delete Account','/delete-account','privacy'],
   ]],
   ['Membership', [
     ['Trips & Payments','/member/trips','trips'],
@@ -24,10 +25,11 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
   ]],
   ['Help', [
     ['Trail Guide','/trail-guide','guide'],
+    ['Privacy Policy','/privacy-policy','privacy'],
     ['Community Guidelines','/community-guidelines','privacy'],
     ['Replay Tutorial','tutorial://replay','guide'],
     ['Support','/member/support','support'],
-    ['About Melanated Adventurers','/about','about'],
+    ['About Go Melanated','/about','about'],
   ]],
 ] as const;
 
