@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Melanated",
+    "name": "Go Melanated",
     "slug": "melanated-adventurers",
-    "description": "Melanated Adventurers mobile app",
+    "description": "Go Melanated outdoor community and adventure app",
     "version": "0.3.0",
     "orientation": "portrait",
     "scheme": "melanatedadventurers",
@@ -27,14 +27,14 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Melanated Adventurers to use your location for nearby Adventures and local weather."
+          "locationWhenInUsePermission": "Allow Go Melanated to use your location for nearby Adventures and local weather."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Melanated Adventurers to add photos from your library to your Passport memories.",
-          "cameraPermission": "Allow Melanated Adventurers to take photos for your Passport memories.",
+          "photosPermission": "Allow Go Melanated to add photos from your library to your Passport memories.",
+          "cameraPermission": "Allow Go Melanated to take photos for your Passport memories.",
           "microphonePermission": false
         }
       ]
