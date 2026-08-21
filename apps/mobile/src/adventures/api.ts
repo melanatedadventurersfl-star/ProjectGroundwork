@@ -17,10 +17,10 @@ const DEMO_ADVENTURE_SLUGS = new Set([
 ]);
 
 function withAdventureImage<T extends AdventureSummary>(adventure: T): T {
-  const isDemo = DEMO_ADVENTURE_SLUGS.has(adventure.slug);
   return {
     ...adventure,
-    title: isDemo && !adventure.title.startsWith('Demo · ') ? `Demo · ${adventure.title}` : adventure.title,
+    is_demo: Boolean(adventure.is_demo || DEMO_ADVENTURE_SLUGS.has(adventure.slug)),
+    title: adventure.title.replace(/^Demo\s*[·:-]\s*/i, ''),
     hero_image_url: adventure.hero_image_url || DEFAULT_ADVENTURE_IMAGE_URL,
   };
 }
