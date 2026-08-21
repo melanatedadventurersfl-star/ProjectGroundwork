@@ -24,7 +24,7 @@ import {
   type AdventureTicketType,
 } from '../../src/adventures/api';
 import type { AdventureDetail } from '../../src/adventures/types';
-import { AdventureWeatherPanel } from '../../src/weather/AdventureWeatherPanel';
+import { FavoriteButton } from '../../src/components/FavoriteButton';
 
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -54,12 +54,11 @@ export default function AdventureDetailScreen() {
   const [adventure, setAdventure] = useState<AdventureDetail | null>(null);
   const [tickets, setTickets] = useState<AdventureTicketType[]>([]);
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
-  const [expandedBeforeYouGo, setExpandedBeforeYouGo] = useState<string | null>(null);
   const [rsvp, setRsvp] = useState<AdventureRsvpSummary>({
     interested: 0,
     going: 0,
     myStatus: null,
-    myVisibility: 'private',
+    myVisibility: 'community',
   });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -78,7 +77,7 @@ export default function AdventureDetailScreen() {
       setAdventure(nextAdventure);
       setSaved(Boolean(nextAdventure.is_saved));
       setTickets(nextTickets);
-      setRsvp(nextRsvp);
+      setRsvp(nextRsvp.myStatus ? nextRsvp : { ...nextRsvp, myVisibility: 'community' });
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load adventure.');
@@ -133,11 +132,16 @@ export default function AdventureDetailScreen() {
   async function toggleVisibility() {
     if (!adventure) return;
     const visibility: AdventureAttendanceVisibility = rsvp.myVisibility === 'private' ? 'community' : 'private';
-    const status = rsvp.myStatus ?? 'interested';
+
+    if (!rsvp.myStatus) {
+      setRsvp((current) => ({ ...current, myVisibility: visibility }));
+      return;
+    }
+
     setWorking(true);
     try {
-      await setAdventureRsvp(adventure.id, status, visibility);
-      await load();
+      await setAdventureRsvp(adventure.id, rsvp.myStatus, visibility);
+      setRsvp((current) => ({ ...current, myVisibility: visibility }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to update attendance privacy.');
     } finally {
@@ -161,38 +165,10 @@ export default function AdventureDetailScreen() {
     : adventure.spots_remaining == null
       ? 'Open'
       : `${adventure.spots_remaining} spots`;
-  const publicLocation = [adventure.venue_name, adventure.address, `${adventure.city}, ${adventure.state}`]
-    .filter(Boolean)
-    .join(' · ');
   const canCheckout = !closed && tickets.length > 0;
-
-  const beforeYouGo = [
-    {
-      id: 'expect',
-      title: 'What to expect',
-      body: 'Your reservation flow includes attendee assignment, readiness, waivers, trip updates, and confirmed-trip instructions.',
-    },
-    {
-      id: 'bring',
-      title: 'What to bring',
-      body: 'Packing guidance and any organizer-specific gear requirements appear with your confirmed trip information.',
-    },
-    {
-      id: 'cancellation',
-      title: 'Cancellation policy',
-      body: 'Cancellation details depend on the selected ticket and will be shown before checkout is completed.',
-    },
-    {
-      id: 'accessibility',
-      title: 'Accessibility',
-      body: 'Review the adventure description and organizer instructions for terrain, mobility, and accessibility considerations.',
-    },
-    {
-      id: 'waiver',
-      title: 'Waiver',
-      body: 'Required waivers are handled as part of the reservation and readiness flow.',
-    },
-  ];
+  const heroLocation = adventure.venue_name
+    ? `${adventure.venue_name} · ${adventure.city}, ${adventure.state}`
+    : `${adventure.city}, ${adventure.state}`;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -212,22 +188,18 @@ export default function AdventureDetailScreen() {
                 <Pressable accessibilityLabel="Back" style={styles.heroButton} onPress={() => router.back()}>
                   <Text style={styles.heroButtonText}>‹</Text>
                 </Pressable>
-                <View style={styles.heroTopActions}>
-                  <Pressable
-                    accessibilityLabel={saved ? 'Remove from Saved' : 'Save Adventure'}
-                    style={styles.heroButton}
-                    onPress={() => void toggleSaved()}
-                  >
-                    <Text style={styles.saveGlyph}>{saved ? '★' : '☆'}</Text>
-                  </Pressable>
-                </View>
+                <FavoriteButton
+                  saved={saved}
+                  accessibilityLabel={saved ? 'Remove from Saved' : 'Save Adventure'}
+                  onPress={() => void toggleSaved()}
+                />
               </View>
 
               <View style={styles.heroBottom}>
                 <Text style={styles.eyebrow}>{adventure.is_featured ? 'FEATURED ADVENTURE' : 'OFFICIAL ADVENTURE'}</Text>
                 <Text style={styles.title}>{adventure.title}</Text>
                 <Text style={styles.heroMeta}>{formatDate(adventure.starts_at)} · {formatTime(adventure.starts_at)}</Text>
-                <Text style={styles.heroLocation}>⌖  {adventure.city}, {adventure.state}</Text>
+                <Text style={styles.heroLocation}>⌖  {heroLocation}</Text>
               </View>
             </ImageBackground>
           </View>
@@ -275,8 +247,19 @@ export default function AdventureDetailScreen() {
               ))}
             </View>
             <View style={styles.rsvpFooter}>
-              <Pressable onPress={() => void toggleVisibility()} disabled={working}>
-                <Text style={styles.privacyText}>▣ Visibility: <Text style={styles.accentText}>{rsvp.myVisibility === 'private' ? 'Private' : 'Community'}</Text> ⌄</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Attendance visibility: ${rsvp.myVisibility === 'private' ? 'Private' : 'Public'}. Tap to change.`}
+                disabled={working}
+                hitSlop={6}
+                style={styles.visibilityButton}
+                onPress={() => void toggleVisibility()}
+              >
+                <Text style={styles.visibilityIcon}>{rsvp.myVisibility === 'private' ? '▣' : '◎'}</Text>
+                <View style={styles.visibilityCopy}>
+                  <Text style={styles.visibilityLabel}>Attendance visibility</Text>
+                  <Text style={styles.visibilityValue}>{rsvp.myVisibility === 'private' ? 'Private' : 'Public'}  ⌄</Text>
+                </View>
               </Pressable>
               {rsvp.myStatus ? (
                 <Pressable disabled={working} onPress={() => void chooseRsvp('not_going')}>
@@ -286,85 +269,44 @@ export default function AdventureDetailScreen() {
             </View>
           </View>
 
-          <AdventureWeatherPanel adventure={adventure} />
-
-          <View style={styles.card}>
-            <View style={styles.sectionHeadingRow}>
-              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>⌖</Text></View>
-              <Text style={styles.sectionTitle}>Location & meeting point</Text>
-            </View>
-            <Text style={styles.locationTitle}>{adventure.venue_name || `${adventure.city}, ${adventure.state}`}</Text>
-            <Text style={styles.subtle}>{adventure.address || `${adventure.city}, ${adventure.state}`}</Text>
-            <View style={styles.locationActions}>
-              <Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>↗  Directions</Text></Pressable>
-              <Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>▱  View location</Text></Pressable>
-            </View>
-            <View style={styles.divider} />
-            <Text style={styles.meetLabel}>Meet here</Text>
-            <Text style={styles.body}>{adventure.meeting_instructions || publicLocation}</Text>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.sectionHeadingRow}>
-              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>◇</Text></View>
-              <View style={styles.sectionHeadingCopy}>
-                <Text style={styles.sectionTitle}>Choose your experience</Text>
-                <Text style={styles.subtle}>Tap an option to see what’s included.</Text>
+          {tickets.length ? (
+            <View style={styles.card}>
+              <View style={styles.sectionHeadingRow}>
+                <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>◇</Text></View>
+                <View style={styles.sectionHeadingCopy}>
+                  <Text style={styles.sectionTitle}>Choose your experience</Text>
+                  <Text style={styles.subtle}>Tap an option to see what’s included.</Text>
+                </View>
               </View>
-            </View>
 
-            {tickets.length ? tickets.map((ticket) => {
-              const expanded = expandedTicket === ticket.id;
-              const admissions = (ticket as AdventureTicketType & { admissions_per_unit?: number }).admissions_per_unit ?? 1;
-              return (
-                <Pressable
-                  key={ticket.id}
-                  style={[styles.ticketBox, expanded && styles.ticketBoxExpanded]}
-                  onPress={() => setExpandedTicket(expanded ? null : ticket.id)}
-                >
-                  <View style={styles.ticketRow}>
-                    <View style={styles.ticketBadge}><Text style={styles.ticketBadgeText}>↗</Text></View>
-                    <View style={styles.ticketCopy}>
-                      <Text style={styles.ticketName}>{ticket.name}</Text>
-                      <Text style={styles.subtle}>{admissions > 1 ? `Admission for ${admissions} people` : 'Admission for 1 person'}</Text>
-                      <Text style={styles.ticketPrice}>{ticket.price_cents === 0 ? 'Free' : `$${Math.round(ticket.price_cents / 100)}`}</Text>
-                    </View>
-                    <Text style={styles.selectCircle}>{expanded ? '●' : '○'}</Text>
-                  </View>
-                  {expanded ? (
-                    <View style={styles.ticketDetails}>
-                      <Text style={styles.body}>{ticket.description || 'Standard admission for this experience.'}</Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            }) : <Text style={styles.body}>Ticket options are being finalized for this adventure.</Text>}
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.sectionHeadingRow}>
-              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>▣</Text></View>
-              <Text style={styles.sectionTitle}>Before you go</Text>
-            </View>
-            <View style={styles.accordionList}>
-              {beforeYouGo.map((item) => {
-                const expanded = expandedBeforeYouGo === item.id;
+              {tickets.map((ticket) => {
+                const expanded = expandedTicket === ticket.id;
+                const admissions = (ticket as AdventureTicketType & { admissions_per_unit?: number }).admissions_per_unit ?? 1;
                 return (
                   <Pressable
-                    key={item.id}
-                    style={styles.accordionRow}
-                    onPress={() => setExpandedBeforeYouGo(expanded ? null : item.id)}
+                    key={ticket.id}
+                    style={[styles.ticketBox, expanded && styles.ticketBoxExpanded]}
+                    onPress={() => setExpandedTicket(expanded ? null : ticket.id)}
                   >
-                    <View style={styles.accordionHeader}>
-                      <Text style={styles.accordionTitle}>{item.title}</Text>
-                      <Text style={styles.chevron}>{expanded ? '⌃' : '⌄'}</Text>
+                    <View style={styles.ticketRow}>
+                      <View style={styles.ticketBadge}><Text style={styles.ticketBadgeText}>↗</Text></View>
+                      <View style={styles.ticketCopy}>
+                        <Text style={styles.ticketName}>{ticket.name}</Text>
+                        <Text style={styles.subtle}>{admissions > 1 ? `Admission for ${admissions} people` : 'Admission for 1 person'}</Text>
+                        <Text style={styles.ticketPrice}>{ticket.price_cents === 0 ? 'Free' : `$${Math.round(ticket.price_cents / 100)}`}</Text>
+                      </View>
+                      <Text style={styles.selectCircle}>{expanded ? '●' : '○'}</Text>
                     </View>
-                    {expanded ? <Text style={styles.accordionBody}>{item.body}</Text> : null}
+                    {expanded ? (
+                      <View style={styles.ticketDetails}>
+                        <Text style={styles.body}>{ticket.description || 'Standard admission for this experience.'}</Text>
+                      </View>
+                    ) : null}
                   </Pressable>
                 );
               })}
             </View>
-          </View>
+          ) : null}
         </ScrollView>
 
         <View style={styles.stickyBar}>
@@ -397,16 +339,14 @@ const styles = StyleSheet.create({
   tabletHero: { height: 360 },
   heroRadius: { borderRadius: 22 },
   heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,8,6,0.30)' },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12 },
-  heroTopActions: { flexDirection: 'row', gap: 8 },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
   heroButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(10,16,13,0.82)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
   heroButtonText: { color: '#FFFDF6', fontSize: 30, lineHeight: 32 },
-  saveGlyph: { color: '#F4C542', fontSize: 26 },
   heroBottom: { padding: 18, paddingTop: 80 },
   eyebrow: { color: '#F4C542', fontWeight: '900', letterSpacing: 1.1, fontSize: 11 },
   title: { color: '#FFFFFF', fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 6, maxWidth: '94%' },
   heroMeta: { color: '#F2F4F2', marginTop: 10, fontSize: 15, fontWeight: '700' },
-  heroLocation: { color: '#D8DEDA', marginTop: 5, fontSize: 14, fontWeight: '700' },
+  heroLocation: { color: '#D8DEDA', marginTop: 5, fontSize: 14, lineHeight: 19, fontWeight: '700', maxWidth: '94%' },
   quickFacts: { flexDirection: 'row', backgroundColor: '#111A16', borderRadius: 16, borderWidth: 1, borderColor: '#26332C', paddingVertical: 12, paddingHorizontal: 6 },
   quickFact: { flex: 1, alignItems: 'center', paddingHorizontal: 3 },
   quickIcon: { color: '#F4C542', fontSize: 18, marginBottom: 4 },
@@ -432,15 +372,12 @@ const styles = StyleSheet.create({
   rsvpText: { color: '#EDF1EE', fontWeight: '800', fontSize: 13 },
   rsvpTextActive: { color: '#101610' },
   rsvpFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  privacyText: { color: '#A9B4AD', fontSize: 12, fontWeight: '700' },
-  accentText: { color: '#F4C542' },
+  visibilityButton: { minHeight: 48, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 11, borderWidth: 1, borderColor: '#34443A', backgroundColor: '#121C17', paddingHorizontal: 11, paddingVertical: 8 },
+  visibilityIcon: { color: '#F4C542', fontSize: 18, fontWeight: '900' },
+  visibilityCopy: { flex: 1 },
+  visibilityLabel: { color: '#8E9A93', fontSize: 10, fontWeight: '700' },
+  visibilityValue: { color: '#F4C542', fontSize: 13, fontWeight: '900', marginTop: 1 },
   secondaryAction: { color: '#9AA59E', fontSize: 12, textDecorationLine: 'underline' },
-  locationTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 15 },
-  locationActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  secondaryButton: { minHeight: 42, borderRadius: 10, borderWidth: 1, borderColor: '#37453D', paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
-  secondaryButtonText: { color: '#E9EEEB', fontSize: 13, fontWeight: '700' },
-  divider: { height: 1, backgroundColor: '#26332C', marginVertical: 2 },
-  meetLabel: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
   ticketBox: { backgroundColor: '#151F1A', borderRadius: 13, borderWidth: 1, borderColor: '#2C3932', padding: 11 },
   ticketBoxExpanded: { borderColor: '#55665B' },
   ticketRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -451,12 +388,6 @@ const styles = StyleSheet.create({
   ticketPrice: { color: '#79C94B', fontWeight: '900', fontSize: 14, marginTop: 2 },
   selectCircle: { color: '#B7C1BA', fontSize: 24 },
   ticketDetails: { borderTopWidth: 1, borderTopColor: '#28362F', marginTop: 10, paddingTop: 10 },
-  accordionList: { gap: 7 },
-  accordionRow: { borderWidth: 1, borderColor: '#28362F', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#121C17' },
-  accordionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  accordionTitle: { color: '#EEF2EF', fontSize: 13, fontWeight: '700' },
-  chevron: { color: '#AAB4AE', fontSize: 16 },
-  accordionBody: { color: '#AEB8B2', fontSize: 12, lineHeight: 18, marginTop: 8 },
   stickyBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 92, backgroundColor: 'rgba(31,27,18,0.98)', borderTopWidth: 1, borderTopColor: '#5A4820', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   stickyCopy: { flex: 1 },
   stickyTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
