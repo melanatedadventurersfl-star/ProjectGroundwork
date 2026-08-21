@@ -286,7 +286,7 @@ export default function OutpostScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -298,10 +298,6 @@ export default function OutpostScreen() {
           <View style={styles.flex}>
             <Text style={styles.title}>Outpost</Text>
             <View style={styles.locationRow}><Ionicons name="location-outline" size={14} color={GOLD} /><Text style={styles.subtitle}>{locationLabel}</Text></View>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.headerIconButton} onPress={() => router.push('/notifications')}><Ionicons name="notifications-outline" size={22} color={TEXT} /></Pressable>
-            <Pressable style={styles.profileButton} onPress={() => router.push('/member')} accessibilityRole="button" accessibilityLabel="Open account menu"><Ionicons name="menu" size={21} color={TEXT} /></Pressable>
           </View>
         </View>
 
@@ -398,9 +394,6 @@ const styles = StyleSheet.create({
   title: { color: TEXT, fontSize: 32, lineHeight: 36, fontWeight: '900' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   subtitle: { color: MUTED, fontSize: 12, fontWeight: '700' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerIconButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  profileButton: { width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: GOLD, backgroundColor: CARD, alignItems: 'center', justifyContent: 'center' },
   tabs: { gap: 6, paddingVertical: 2 },
   tab: { minHeight: 36, minWidth: 68, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   tabActive: { backgroundColor: '#252D27', borderWidth: 1, borderColor: '#4A493C' },
