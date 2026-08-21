@@ -14,12 +14,17 @@ import {
 import { getTrailGuideConditionSignal } from '../../src/trailGuide/conditions';
 import { trailGuideArticles } from '../../src/trailGuide/guides';
 import { distanceMiles, useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
-import { useTrailGuidePlacePhoto } from '../../src/trailGuide/placePhotos';
+import {
+  resolveTrailGuidePlacePhoto,
+  type TrailGuidePhoto,
+  useTrailGuidePlacePhoto,
+} from '../../src/trailGuide/placePhotos';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeatherByQuery, type WeatherForecast } from '../../src/weather/api';
 
 const EXPLORE_PREVIEW_LIMIT = 6;
 const RECOMMENDED_LIMIT = 3;
+const RECOMMENDED_PHOTO_POOL = 16;
 
 function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object }) {
   const photo = useTrailGuidePlacePhoto(place);
@@ -35,14 +40,15 @@ function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object })
 
 function RecommendedCard({
   place,
+  photo,
   weather,
   distance,
 }: {
   place: TrailGuidePlace;
+  photo: TrailGuidePhoto;
   weather: WeatherForecast | null;
   distance: string | null;
 }) {
-  const photo = useTrailGuidePlacePhoto(place);
   const signal = getTrailGuideConditionSignal(place, weather);
   return (
     <Pressable
@@ -52,7 +58,7 @@ function RecommendedCard({
       style={({ pressed }) => [styles.recommendedCard, pressed && styles.cardPressed]}
     >
       <View style={styles.recommendedImage}>
-        {photo ? <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={26} /></View>}
+        <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         <View style={styles.cardShade} />
         <View style={[styles.signalBadge, signal.tone === 'good' && styles.signalGood, signal.tone === 'caution' && styles.signalCaution]}>
           <Text style={styles.signalBadgeText}>{signal.label}</Text>
@@ -74,6 +80,8 @@ export default function TrailGuideScreen() {
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [distanceById, setDistanceById] = useState<Record<string, number>>({});
+  const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>({});
+  const [photoPoolBusy, setPhotoPoolBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
   const { backgroundSource, coordinates, locationLabel, locationBusy, requestCurrentLocation } = useTrailGuideLocationBackground();
@@ -124,7 +132,31 @@ export default function TrailGuideScreen() {
     });
   }, [cityPlaces, distanceById, weather]);
 
-  const recommendedPlaces = rankedCityPlaces.slice(0, RECOMMENDED_LIMIT);
+  useEffect(() => {
+    let active = true;
+    const candidates = rankedCityPlaces
+      .filter((place) => photoById[place.id] == null)
+      .slice(0, RECOMMENDED_PHOTO_POOL);
+    if (candidates.length === 0) return;
+
+    setPhotoPoolBusy(true);
+    void Promise.all(candidates.map(async (place) => {
+      const photo = await resolveTrailGuidePlacePhoto(place);
+      return photo ? [place.id, photo] as const : null;
+    }))
+      .then((rows) => {
+        if (!active) return;
+        const resolved = rows.filter((row): row is readonly [string, TrailGuidePhoto] => row !== null);
+        if (resolved.length > 0) setPhotoById((current) => ({ ...current, ...Object.fromEntries(resolved) }));
+      })
+      .finally(() => {
+        if (active) setPhotoPoolBusy(false);
+      });
+
+    return () => { active = false; };
+  }, [photoById, rankedCityPlaces]);
+
+  const recommendedPlaces = rankedCityPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT);
   const filteredPlaces = category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category);
   const explorePlaces = showAll ? filteredPlaces : filteredPlaces.slice(0, EXPLORE_PREVIEW_LIMIT);
   const categoryLabel = category === 'All' ? 'places' : `${category.toLowerCase()} spots`;
@@ -179,9 +211,18 @@ export default function TrailGuideScreen() {
             <Text style={styles.sectionTitle}>Recommended today</Text>
             <Text style={styles.sectionSubtitle}>Top picks based on current conditions{coordinates ? ' and your location.' : '.'}</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
-            {recommendedPlaces.map((place) => <RecommendedCard key={place.id} place={place} weather={weather} distance={formatDistance(place)} />)}
-          </ScrollView>
+          {recommendedPlaces.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
+              {recommendedPlaces.map((place) => (
+                <RecommendedCard key={place.id} place={place} photo={photoById[place.id]} weather={weather} distance={formatDistance(place)} />
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.recommendationLoading}>
+              <AppIcon name="photo" color="#79D26A" size={18} />
+              <Text style={styles.recommendationLoadingText}>{photoPoolBusy ? 'Finding photo-ready picks…' : 'No verified photo-ready picks yet.'}</Text>
+            </View>
+          )}
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Guides & Know-How</Text>
@@ -263,6 +304,8 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#FFFDF6', fontSize: 20, lineHeight: 24, fontWeight: '900' },
   sectionSubtitle: { color: '#8D9992', fontSize: 11, lineHeight: 16, marginTop: 3 },
   recommendedRow: { gap: 10, paddingRight: 4 },
+  recommendationLoading: { minHeight: 72, borderRadius: 16, borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
+  recommendationLoadingText: { color: '#AEB9B2', fontSize: 11, fontWeight: '800' },
   recommendedCard: { width: 164, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
   recommendedImage: { height: 118, justifyContent: 'flex-end', padding: 9, overflow: 'hidden' },
   cardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,9,6,0.24)' },
