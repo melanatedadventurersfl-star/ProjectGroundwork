@@ -1,0 +1,158 @@
+name: One-time inline Adventure filters
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-inline-adventure-filters.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move filters into Adventures page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("apps/mobile/app/(tabs)/explore.tsx")
+          text = p.read_text()
+
+          text = text.replace("  Modal,\n", "")
+          text = text.replace("import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';", "import { SafeAreaView } from 'react-native-safe-area-context';")
+          text = text.replace("  const insets = useSafeAreaInsets();\n", "")
+          text = text.replace("  const [showFilters, setShowFilters] = useState(false);\n", "")
+
+          old_search = '''            <Pressable style={[s.filterIconButton, filterCount > 0 && s.filterIconButtonActive]} onPress={() => setShowFilters(true)}>
+              <Text style={[s.filterIcon, filterCount > 0 && s.filterIconActive]}>☷</Text>
+              {filterCount > 0 ? <View style={s.filterCountBadge}><Text style={s.filterCountText}>{filterCount}</Text></View> : null}
+            </Pressable>
+'''
+          if old_search not in text:
+              raise SystemExit('filter icon block not found')
+          text = text.replace(old_search, '', 1)
+
+          category_end = '''          </ScrollView>
+        </View>
+
+        {error ? <Text style={s.error}>{error}</Text> : null}
+'''
+          inline = '''          </ScrollView>
+
+          <View style={s.inlineFilters}>
+            <View style={s.inlineFilterHeader}>
+              <View>
+                <Text style={s.inlineFilterTitle}>Refine</Text>
+                <Text style={s.inlineFilterSubtitle}>{resultCount} {resultCount === 1 ? 'result' : 'results'} around {currentLocationLabel.split(',')[0] ?? currentLocationLabel}</Text>
+              </View>
+              {filterCount > 0 ? (
+                <Pressable onPress={resetFilters} hitSlop={8} style={s.inlineClearButton}>
+                  <Text style={s.inlineClearText}>Clear</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={s.inlineFilterGroup}>
+              <Text style={s.inlineFilterLabel}>SORT</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.inlineFilterRail}>
+                {sortOptions.map((option) => {
+                  const active = sort === option.value;
+                  return (
+                    <Pressable key={option.value} onPress={() => setSort(option.value)} style={[s.inlineChip, active && s.inlineChipActive]}>
+                      <Text style={[s.inlineChipText, active && s.inlineChipTextActive]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={s.inlineFilterGroup}>
+              <View style={s.inlineFilterGroupHeading}>
+                <Text style={s.inlineFilterLabel}>DISTANCE</Text>
+                <Text style={s.inlineFilterValue}>{radius === 'Anywhere' ? 'Florida' : `${radius} mi`}</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.inlineFilterRail}>
+                {radii.map((value) => {
+                  const active = radius === value;
+                  return (
+                    <Pressable key={value} onPress={() => setRadius(value)} style={[s.inlineChip, active && s.inlineChipActive]}>
+                      <Text style={[s.inlineChipText, active && s.inlineChipTextActive]}>{value === 'Anywhere' ? 'Anywhere' : `${value} mi`}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={s.inlineFilterGroup}>
+              <Text style={s.inlineFilterLabel}>GOOD FOR</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.inlineFilterRail}>
+                {quickTags.map((tag) => {
+                  const active = selectedTags.includes(tag);
+                  return (
+                    <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.inlineChip, active && s.inlineChipActive]}>
+                      <Text style={[s.inlineChipText, active && s.inlineChipTextActive]}>{active ? '✓ ' : ''}{tag}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+
+        {error ? <Text style={s.error}>{error}</Text> : null}
+'''
+          if category_end not in text:
+              raise SystemExit('category end anchor not found')
+          text = text.replace(category_end, inline, 1)
+
+          modal_start = text.find("\n      <Modal visible={showFilters}")
+          modal_end = text.find("\n      </Modal>", modal_start)
+          if modal_start == -1 or modal_end == -1:
+              raise SystemExit('modal block not found')
+          modal_end += len("\n      </Modal>")
+          text = text[:modal_start] + text[modal_end:]
+
+          style_anchor = "  categoryTextActive: { color: '#121816' },\n"
+          style_insert = """  categoryTextActive: { color: '#121816' },
+  inlineFilters: { marginTop: 2, borderRadius: 18, borderWidth: 1, borderColor: '#2D3833', backgroundColor: '#101714', paddingVertical: 13, gap: 12 },
+  inlineFilterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 13 },
+  inlineFilterTitle: { color: '#F7F7F4', fontSize: 15, fontWeight: '900' },
+  inlineFilterSubtitle: { color: '#8F9B94', fontSize: 9, marginTop: 2 },
+  inlineClearButton: { borderRadius: 999, borderWidth: 1, borderColor: '#4A554F', paddingHorizontal: 11, paddingVertical: 6 },
+  inlineClearText: { color: '#F5C542', fontSize: 10, fontWeight: '900' },
+  inlineFilterGroup: { gap: 7 },
+  inlineFilterGroupHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 13 },
+  inlineFilterLabel: { color: '#7E8A83', fontSize: 8, fontWeight: '900', letterSpacing: 1, paddingHorizontal: 13 },
+  inlineFilterValue: { color: '#C8D0CB', fontSize: 9, fontWeight: '800' },
+  inlineFilterRail: { paddingHorizontal: 13, gap: 7 },
+  inlineChip: { minHeight: 34, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#3B4741', backgroundColor: '#141C19', paddingHorizontal: 12 },
+  inlineChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
+  inlineChipText: { color: '#D8DEDA', fontSize: 10, fontWeight: '800' },
+  inlineChipTextActive: { color: '#111816' },
+"""
+          if style_anchor not in text:
+              raise SystemExit('style anchor not found')
+          text = text.replace(style_anchor, style_insert, 1)
+
+          p.write_text(text)
+          PY
+
+      - name: Verify mobile TypeScript
+        run: npm run mobile:typecheck
+
+      - name: Commit inline filters
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-time-inline-adventure-filters.yml
+          git add apps/mobile/app/'(tabs)'/explore.tsx
+          git commit -m "feat: integrate Adventure filters into discovery page"
+          git push origin HEAD:main
