@@ -39,16 +39,6 @@ jobs:
       - name: Apply smart filter bar
         run: python apply_smart_filter_bar.py
 
-      - name: Fix strict indexed icon lookup
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path("apps/mobile/app/(tabs)/explore.tsx")
-          text = p.read_text()
-          text = text.replace("{categoryIcons[item]}", "{categoryIcons[item] ?? ''}")
-          p.write_text(text)
-          PY
-
       - name: Verify mobile TypeScript
         run: npm run mobile:typecheck
 
@@ -59,4 +49,8 @@ jobs:
           git rm .github/workflows/one-time-smart-adventure-filter-bar.yml apply_smart_filter_bar.py
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "feat: build compact smart filter bar for Adventures"
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
+
+# retry after strict-index and push-race fixes
