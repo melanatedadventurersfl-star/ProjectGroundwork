@@ -23,6 +23,7 @@ export type AdventureSummary = {
   spots_remaining: number | null;
   starting_price_cents: number;
   is_featured: boolean;
+  is_demo?: boolean;
   is_saved?: boolean;
 };
 
