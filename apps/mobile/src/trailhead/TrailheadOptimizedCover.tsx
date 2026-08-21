@@ -153,7 +153,7 @@ export function TrailheadOptimizedCover({
   return (
     <View style={[styles.cover, { height: heroHeight, borderColor: theme.accent, shadowColor: theme.accent }]}>
       <Image source={background} resizeMode="cover" style={styles.background} />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: atmosphere }]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.identityScrim} />
       <View pointerEvents="none" style={styles.lowerScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-  background: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  background: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   identityScrim: {
     position: 'absolute', left: 0, top: 0, bottom: 0, width: '62%',
     backgroundColor: 'rgba(3, 8, 7, 0.16)',
