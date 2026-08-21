@@ -110,21 +110,6 @@ async function persistPhoto(placeId: string, photo: TrailGuidePhoto) {
   }
 }
 
-async function loadImageMetadata(filename: string, fallbackUrl: string, sourceUrl: string, title: string) {
-  const url = new URL('https://commons.wikimedia.org/w/api.php');
-  url.searchParams.set('action', 'query');
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('origin', '*');
-  url.searchParams.set('titles', filename.startsWith('File:') ? filename : `File:${filename}`);
-  url.searchParams.set('prop', 'imageinfo');
-  url.searchParams.set('iiprop', 'url|extmetadata');
-  url.searchParams.set('iiurlwidth', '1200');
-
-  const data = await fetchJson<WikiImageResponse>(url);
-  const page = Object.values(data?.query?.pages ?? {})[0];
-  return photoFromInfo(page?.imageinfo?.[0], title) ?? { url: fallbackUrl, sourceUrl, title };
-}
-
 async function searchWikipedia(place: TrailGuidePlace) {
   const url = new URL('https://en.wikipedia.org/w/api.php');
   url.searchParams.set('action', 'query');
@@ -140,7 +125,7 @@ async function searchWikipedia(place: TrailGuidePlace) {
 
   const data = await fetchJson<WikiSearchResponse>(url);
   const pages = Object.values(data?.query?.pages ?? {})
-    .filter((page) => page.thumbnail?.source && page.pageimage && page.fullurl)
+    .filter((page) => page.thumbnail?.source && page.fullurl)
     .sort((a, b) => {
       const scoreDelta = titleScore(place, b.title) - titleScore(place, a.title);
       if (scoreDelta !== 0) return scoreDelta;
@@ -149,15 +134,13 @@ async function searchWikipedia(place: TrailGuidePlace) {
 
   const best = pages[0];
   const thumbnail = best?.thumbnail?.source;
-  const pageImage = best?.pageimage;
   const fullUrl = best?.fullurl;
   if (
     typeof thumbnail !== 'string' ||
-    typeof pageImage !== 'string' ||
     typeof fullUrl !== 'string' ||
     titleScore(place, best?.title) === 0
   ) return null;
-  return loadImageMetadata(pageImage, thumbnail, fullUrl, best?.title ?? place.name);
+  return { url: thumbnail, sourceUrl: fullUrl, title: best?.title ?? place.name } satisfies TrailGuidePhoto;
 }
 
 async function searchCommons(place: TrailGuidePlace) {
