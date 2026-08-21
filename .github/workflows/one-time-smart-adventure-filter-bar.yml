@@ -169,3 +169,5 @@ jobs:
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "feat: build compact smart filter bar for Adventures"
           git push origin HEAD:main
+
+# trigger
