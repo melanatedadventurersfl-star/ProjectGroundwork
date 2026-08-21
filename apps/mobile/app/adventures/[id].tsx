@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   hero: { height: 405, justifyContent: 'space-between', backgroundColor: '#24342B' },
   tabletHero: { height: 360 },
   heroRadius: { borderRadius: 22 },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,8,6,0.30)' },
+  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,8,6,0.30)' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12 },
   heroTopActions: { flexDirection: 'row', gap: 8 },
   heroButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(10,16,13,0.82)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
