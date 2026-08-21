@@ -25,6 +25,7 @@ import { supabase } from '../../src/lib/supabase';
 type SortMode = 'soonest' | 'closest' | 'newest' | 'price';
 type Point = { latitude: number; longitude: number };
 type ExpandedSection = 'featured' | 'events' | 'popular' | null;
+type SmartFilter = 'activity' | 'distance' | 'goodFor' | 'sort' | null;
 
 const categories = ['Camping', 'Hiking', 'Water', 'Fishing', 'Cycling'];
 const categoryIcons: Record<string, string> = {
@@ -207,7 +208,7 @@ export default function ExploreScreen() {
   const [radius, setRadius] = useState('50');
   const [sort, setSort] = useState<SortMode>('closest');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
+  const [activeSmartFilter, setActiveSmartFilter] = useState<SmartFilter>(null);
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null);
   const [homeCity, setHomeCity] = useState('');
   const [homeState, setHomeState] = useState('');
@@ -379,24 +380,31 @@ export default function ExploreScreen() {
               returnKeyType="search"
               clearButtonMode="while-editing"
             />
-            <Pressable style={[s.filterIconButton, filterCount > 0 && s.filterIconButtonActive]} onPress={() => setShowFilters(true)}>
-              <Text style={[s.filterIcon, filterCount > 0 && s.filterIconActive]}>☷</Text>
-              {filterCount > 0 ? <View style={s.filterCountBadge}><Text style={s.filterCountText}>{filterCount}</Text></View> : null}
-            </Pressable>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
-            {categories.map((item) => (
-              <Pressable
-                key={item}
-                onPress={() => chooseCategory(item)}
-                style={[s.categoryChip, category === item && s.categoryChipActive]}
-              >
-                <Text style={[s.categoryIcon, category === item && s.categoryTextActive]}>{categoryIcons[item]}</Text>
-                <Text style={[s.categoryText, category === item && s.categoryTextActive]}>{item}</Text>
-              </Pressable>
-            ))}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.smartBar}>
+            <Pressable onPress={() => setActiveSmartFilter('activity')} style={[s.smartChip, category !== 'All' && s.smartChipActive]}>
+              <Text style={[s.smartChipText, category !== 'All' && s.smartChipTextActive]}>{category === 'All' ? 'Activity' : `${categoryIcons[category] ?? ''} ${category}`}</Text>
+              <Text style={[s.smartChevron, category !== 'All' && s.smartChipTextActive]}>⌄</Text>
+            </Pressable>
+            <Pressable onPress={() => setActiveSmartFilter('distance')} style={[s.smartChip, radius !== '50' && s.smartChipActive]}>
+              <Text style={[s.smartChipText, radius !== '50' && s.smartChipTextActive]}>{radius === 'Anywhere' ? 'Florida' : `${radius} mi`}</Text>
+              <Text style={[s.smartChevron, radius !== '50' && s.smartChipTextActive]}>⌄</Text>
+            </Pressable>
+            <Pressable onPress={() => setActiveSmartFilter('goodFor')} style={[s.smartChip, selectedTags.length > 0 && s.smartChipActive]}>
+              <Text style={[s.smartChipText, selectedTags.length > 0 && s.smartChipTextActive]} numberOfLines={1}>{selectedTags.length ? (selectedTags.length === 1 ? (selectedTags[0]?.replace(' Friendly', '') ?? 'Preference') : `${selectedTags.length} preferences`) : '+ Good for'}</Text>
+              <Text style={[s.smartChevron, selectedTags.length > 0 && s.smartChipTextActive]}>⌄</Text>
+            </Pressable>
+            <Pressable onPress={() => setActiveSmartFilter('sort')} style={[s.smartChip, sort !== 'closest' && s.smartChipActive]}>
+              <Text style={[s.smartChipText, sort !== 'closest' && s.smartChipTextActive]}>{sortOptions.find((option) => option.value === sort)?.label ?? 'Closest'}</Text>
+              <Text style={[s.smartChevron, sort !== 'closest' && s.smartChipTextActive]}>⌄</Text>
+            </Pressable>
           </ScrollView>
+
+          <View style={s.smartSummary}>
+            <Text style={s.smartSummaryText}>{resultCount} {resultCount === 1 ? 'adventure' : 'adventures'}{filterCount > 0 ? ` · ${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}` : ''}</Text>
+            {filterCount > 0 ? <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.smartClear}>Clear</Text></Pressable> : null}
+          </View>
         </View>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
@@ -467,95 +475,42 @@ export default function ExploreScreen() {
         ) : null}
       </ScrollView>
 
-      <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
-        <View style={s.modalRoot}>
-          <Pressable style={s.modalBackdrop} onPress={() => setShowFilters(false)} />
-          <View style={[s.filterSheet, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
-            <View style={s.sheetHandle} />
-            <View style={s.filterPanelTop}>
-              <View style={s.filterHeadingCopy}>
-                <Text style={s.filterPanelTitle}>Refine Adventures</Text>
-                <Text style={s.filterPanelSubtitle}>Fine-tune what shows up around {currentLocationLabel.split(',')[0] ?? currentLocationLabel}.</Text>
-              </View>
-              <Pressable onPress={resetFilters} hitSlop={8} style={s.resetButton}>
-                <Text style={s.resetFilter}>Clear</Text>
-              </Pressable>
+      <Modal visible={activeSmartFilter !== null} transparent animationType="fade" onRequestClose={() => setActiveSmartFilter(null)}>
+        <View style={s.quickModalRoot}>
+          <Pressable style={s.quickModalBackdrop} onPress={() => setActiveSmartFilter(null)} />
+          <View style={[s.quickSheet, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
+            <View style={s.quickSheetHandle} />
+            <View style={s.quickSheetHeader}>
+              <Text style={s.quickSheetTitle}>
+                {activeSmartFilter === 'activity' ? 'Activity' : activeSmartFilter === 'distance' ? 'Distance' : activeSmartFilter === 'goodFor' ? 'Good for' : 'Sort by'}
+              </Text>
+              <Pressable onPress={() => setActiveSmartFilter(null)} hitSlop={8}><Text style={s.quickDone}>Done</Text></Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.filterScrollContent}>
-              <View style={s.filterSection}>
-                <Text style={s.filterLabel}>SORT BY</Text>
-                <View style={s.sortGrid}>
-                  {sortOptions.map((option) => {
-                    const active = sort === option.value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        onPress={() => setSort(option.value)}
-                        style={[s.sortCard, active && s.sortCardActive]}
-                      >
-                        <View style={[s.radioOuter, active && s.radioOuterActive]}>
-                          {active ? <View style={s.radioInner} /> : null}
-                        </View>
-                        <View style={s.sortCardCopy}>
-                          <Text style={[s.sortCardTitle, active && s.sortCardTitleActive]}>{option.label}</Text>
-                          <Text style={[s.sortCardHelper, active && s.sortCardHelperActive]}>{option.helper}</Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+            {activeSmartFilter === 'activity' ? (
+              <View style={s.quickOptionWrap}>
+                <Pressable onPress={() => setCategory('All')} style={[s.quickOption, category === 'All' && s.quickOptionActive]}><Text style={[s.quickOptionText, category === 'All' && s.quickOptionTextActive]}>All activities</Text></Pressable>
+                {categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[s.quickOption, category === item && s.quickOptionActive]}><Text style={[s.quickOptionText, category === item && s.quickOptionTextActive]}>{categoryIcons[item] ?? ''} {item}</Text></Pressable>)}
               </View>
+            ) : null}
 
-              <View style={s.filterDivider} />
-
-              <View style={s.filterSection}>
-                <View style={s.filterSectionHeading}>
-                  <Text style={s.filterLabel}>DISTANCE</Text>
-                  <Text style={s.filterSectionValue}>{radius === 'Anywhere' ? 'Anywhere in Florida' : `Within ${radius} miles`}</Text>
-                </View>
-                <View style={s.radiusRail}>
-                  {radii.map((value) => {
-                    const active = radius === value;
-                    return (
-                      <Pressable key={value} onPress={() => setRadius(value)} style={[s.radiusOption, active && s.radiusOptionActive]}>
-                        <Text style={[s.radiusOptionText, active && s.radiusOptionTextActive]}>{value === 'Anywhere' ? 'Any' : value}</Text>
-                        <Text style={[s.radiusOptionUnit, active && s.radiusOptionTextActive]}>{value === 'Anywhere' ? 'Florida' : 'mi'}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+            {activeSmartFilter === 'distance' ? (
+              <View style={s.quickOptionWrap}>
+                {radii.map((value) => <Pressable key={value} onPress={() => setRadius(value)} style={[s.quickOption, radius === value && s.quickOptionActive]}><Text style={[s.quickOptionText, radius === value && s.quickOptionTextActive]}>{value === 'Anywhere' ? 'Anywhere in Florida' : `Within ${value} miles`}</Text></Pressable>)}
               </View>
+            ) : null}
 
-              <View style={s.filterDivider} />
-
-              <View style={s.filterSection}>
-                <Text style={s.filterLabel}>GOOD FOR</Text>
-                <View style={s.quickFilterGrid}>
-                  {quickTags.map((tag) => {
-                    const active = selectedTags.includes(tag);
-                    return (
-                      <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.quickFilterCard, active && s.quickFilterCardActive]}>
-                        <View style={[s.checkBox, active && s.checkBoxActive]}>
-                          {active ? <Text style={s.checkMark}>✓</Text> : null}
-                        </View>
-                        <Text style={[s.quickFilterText, active && s.quickFilterTextActive]}>{tag}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+            {activeSmartFilter === 'goodFor' ? (
+              <View style={s.quickOptionWrap}>
+                {quickTags.map((tag) => { const active = selectedTags.includes(tag); return <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.quickOption, active && s.quickOptionActive]}><Text style={[s.quickOptionText, active && s.quickOptionTextActive]}>{active ? '✓ ' : ''}{tag}</Text></Pressable>; })}
               </View>
-            </ScrollView>
+            ) : null}
 
-            <View style={s.filterFooter}>
-              <View style={s.filterSummary}>
-                <Text style={s.filterSummaryNumber}>{resultCount}</Text>
-                <Text style={s.filterSummaryLabel}>{resultCount === 1 ? 'result' : 'results'}</Text>
+            {activeSmartFilter === 'sort' ? (
+              <View style={s.quickOptionWrap}>
+                {sortOptions.map((option) => <Pressable key={option.value} onPress={() => { setSort(option.value); setActiveSmartFilter(null); }} style={[s.quickOption, sort === option.value && s.quickOptionActive]}><View><Text style={[s.quickOptionText, sort === option.value && s.quickOptionTextActive]}>{option.label}</Text><Text style={s.quickOptionHelper}>{option.helper}</Text></View></Pressable>)}
               </View>
-              <Pressable style={s.showResultsButton} onPress={() => setShowFilters(false)}>
-                <Text style={s.showResultsText}>Show adventures</Text>
-              </Pressable>
-            </View>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -598,6 +553,28 @@ const s = StyleSheet.create({
   categoryIcon: { color: '#E5E9E6', fontSize: 15, fontWeight: '900' },
   categoryText: { color: '#E5E9E6', fontSize: 13, fontWeight: '800' },
   categoryTextActive: { color: '#121816' },
+  smartBar: { gap: 8, paddingRight: 18, paddingBottom: 1 },
+  smartChip: { minHeight: 38, maxWidth: 170, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#111715', paddingHorizontal: 13 },
+  smartChipActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
+  smartChipText: { color: '#E2E7E4', fontSize: 11, fontWeight: '800' },
+  smartChipTextActive: { color: '#111816' },
+  smartChevron: { color: '#8F9A94', fontSize: 12, fontWeight: '900', marginTop: -2 },
+  smartSummary: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#26312C', paddingTop: 8 },
+  smartSummaryText: { color: '#AEB7B2', fontSize: 10, fontWeight: '700' },
+  smartClear: { color: '#F5C542', fontSize: 10, fontWeight: '900' },
+  quickModalRoot: { flex: 1, justifyContent: 'flex-end' },
+  quickModalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.58)' },
+  quickSheet: { backgroundColor: '#101714', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 18, paddingTop: 9 },
+  quickSheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 12 },
+  quickSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  quickSheetTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900' },
+  quickDone: { color: '#F5C542', fontSize: 12, fontWeight: '900' },
+  quickOptionWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  quickOption: { minHeight: 42, minWidth: '47%', flexGrow: 1, justifyContent: 'center', borderRadius: 13, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18', paddingHorizontal: 13, paddingVertical: 9 },
+  quickOptionActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
+  quickOptionText: { color: '#E3E8E5', fontSize: 12, fontWeight: '800' },
+  quickOptionTextActive: { color: '#111816' },
+  quickOptionHelper: { color: '#7F8B84', fontSize: 9, marginTop: 2 },
   loader: { marginTop: 28 },
   error: { color: '#FF9B8F', paddingHorizontal: 18, paddingTop: 14, fontWeight: '700' },
   section: { marginTop: 25 },
