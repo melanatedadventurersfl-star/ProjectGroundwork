@@ -1,12 +1,21 @@
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createLocalEvent, getEventHostAccess } from '../../src/local-events/api';
+import { createLocalEvent, getEventHostAccess, uploadLocalEventImage } from '../../src/local-events/api';
+import { prepareLocalImage } from '../../src/lib/imageUpload';
 import { loadCitiesForState, US_STATES } from '../../src/onboarding/locations';
 
 const categories = ['Camping', 'Hiking', 'Water', 'Culture', 'Wellness', 'Family', 'Gear', 'Other'];
+
+type EventPhoto = {
+  uri: string;
+  bytes: Uint8Array;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
+  extension: 'jpg' | 'png' | 'webp';
+};
 
 export default function CreateLocalEventScreen() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -20,6 +29,7 @@ export default function CreateLocalEventScreen() {
   const [stateSearch, setStateSearch] = useState('');
   const [citySearch, setCitySearch] = useState('');
   const [cities, setCities] = useState<string[]>([]);
+  const [photo, setPhoto] = useState<EventPhoto | null>(null);
   const [loadingCities, setLoadingCities] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,11 +70,43 @@ export default function CreateLocalEventScreen() {
   const validDate = Boolean(parsedStart && !Number.isNaN(parsedStart.getTime()));
   const canSubmit = Boolean(allowed && title.trim() && description.trim() && category && validDate && state && city && !saving);
 
+  async function choosePhoto() {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo library access is required to add an event photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      base64: true,
+      quality: 0.86,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    try {
+      const asset = result.assets[0];
+      const prepared = await prepareLocalImage({ uri: asset.uri, base64: asset.base64 });
+      setPhoto({
+        uri: asset.uri,
+        bytes: new Uint8Array(prepared.bytes),
+        contentType: prepared.contentType,
+        extension: prepared.extension,
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to prepare this photo.');
+    }
+  }
+
   async function submit() {
     if (!canSubmit || !parsedStart) return;
     setSaving(true);
     setError(null);
     try {
+      const imageUrl = photo ? await uploadLocalEventImage(photo) : undefined;
       const id = await createLocalEvent({
         title,
         description,
@@ -73,6 +115,7 @@ export default function CreateLocalEventScreen() {
         city,
         state,
         venueName,
+        imageUrl,
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
@@ -104,6 +147,25 @@ export default function CreateLocalEventScreen() {
         <Text style={styles.eyebrow}>MEMBER-LED CAMPFIRE</Text>
         <Text style={styles.title}>Start a Campfire</Text>
         <Text style={styles.body}>Campfires are lightweight member-led meetups: a hike, park hang, paddle, brewery stop, trail walk, or anything else worth gathering for. Official MA Adventures still use the full ticketing, waiver, payment, and readiness flow.</Text>
+
+        <Text style={styles.label}>Campfire photo</Text>
+        <Pressable onPress={() => void choosePhoto()} style={styles.photoPicker}>
+          {photo ? (
+            <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFillObject} />
+          ) : (
+            <View style={styles.photoEmpty}>
+              <Text style={styles.photoIcon}>＋</Text>
+              <Text style={styles.photoTitle}>Add a cover photo</Text>
+              <Text style={styles.photoHelp}>Stored in Melanated Adventures media storage</Text>
+            </View>
+          )}
+        </Pressable>
+        {photo ? (
+          <View style={styles.photoActions}>
+            <Pressable onPress={() => void choosePhoto()}><Text style={styles.photoActionText}>Change photo</Text></Pressable>
+            <Pressable onPress={() => setPhoto(null)}><Text style={styles.removePhotoText}>Remove</Text></Pressable>
+          </View>
+        ) : null}
 
         <Text style={styles.label}>Campfire name</Text>
         <TextInput value={title} onChangeText={setTitle} placeholder="Saturday morning trail walk" placeholderTextColor="#758179" style={styles.input} />
@@ -162,7 +224,7 @@ export default function CreateLocalEventScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}>
-          <Text style={styles.primaryButtonText}>{saving ? 'Starting…' : 'Start Campfire'}</Text>
+          <Text style={styles.primaryButtonText}>{saving ? 'Uploading & starting…' : 'Start Campfire'}</Text>
         </Pressable>
         <Text style={styles.disclaimer}>Campfires display the host’s name and are clearly marked as member-led, not official Melanated Adventurers experiences.</Text>
       </ScrollView>
@@ -180,6 +242,14 @@ const styles = StyleSheet.create({
   title: { color: '#FFF8E8', fontSize: 32, lineHeight: 36, fontWeight: '900' },
   body: { color: '#C9D1CC', fontSize: 16, lineHeight: 23, marginBottom: 4 },
   label: { color: '#FFF3CE', fontWeight: '900', marginTop: 7 },
+  photoPicker: { height: 178, overflow: 'hidden', borderRadius: 16, borderWidth: 1, borderColor: '#35513F', backgroundColor: '#17211C' },
+  photoEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  photoIcon: { color: '#D7B45A', fontSize: 30, fontWeight: '400' },
+  photoTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 4 },
+  photoHelp: { color: '#7F8C84', fontSize: 11, marginTop: 4, textAlign: 'center' },
+  photoActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2 },
+  photoActionText: { color: '#D7B45A', fontWeight: '800', fontSize: 12 },
+  removePhotoText: { color: '#FFB4A9', fontWeight: '800', fontSize: 12 },
   input: { backgroundColor: '#17211C', borderWidth: 1, borderColor: '#2A382F', color: '#FFF8E8', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 13 },
   multiline: { minHeight: 104, textAlignVertical: 'top' },
   help: { color: '#7F8C84', fontSize: 12 },
