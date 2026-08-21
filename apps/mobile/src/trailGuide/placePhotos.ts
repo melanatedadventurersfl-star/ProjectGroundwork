@@ -11,6 +11,33 @@ export type TrailGuidePhoto = {
   license?: string;
 };
 
+export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
+  'reddie-point-preserve': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/reddiepoint-e1445948531617.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/reddie-point-preserve/',
+    title: 'Reddie Point Preserve',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'blue-cypress-park': {
+    url: 'https://www.jacksonville.gov/getContentAsset/aaff1dad-ead7-4990-b68f-96ffb1e4db91/bd714d09-ccf8-4e86-a041-57e2011ebfe4/BlueCypress.png?language=en',
+    sourceUrl: 'https://www.jacksonville.gov/departments/parks-and-recreation/jaxparks/community-centers/blue-cypress-center-and-park',
+    title: 'Blue Cypress Park',
+    credit: 'City of Jacksonville',
+  },
+  'tree-hill-nature-center': {
+    url: 'https://www.treehill.org/Portals/0/adam/Content/mb_5RJtktkyAQZpuXVoIhg/Text/DSC_1076.jpg',
+    sourceUrl: 'https://www.treehill.org/visit',
+    title: 'Tree Hill Nature Center',
+    credit: 'Tree Hill Nature Center',
+  },
+  'bulls-bay-preserve': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/Bulls_Bay_waterfall-IMG_3914.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/bulls-bay-preserve/',
+    title: 'Bulls Bay Preserve',
+    credit: 'Timucuan Parks Foundation',
+  },
+};
+
 type WikiSearchPage = {
   index?: number;
   pageid?: number;
@@ -179,6 +206,9 @@ async function resolveFreshPhoto(place: TrailGuidePlace) {
 }
 
 export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
+  const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
+  if (curated) return curated;
+
   const existing = cache.get(place.id);
   if (existing) return existing;
 
@@ -198,11 +228,11 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
 }
 
 export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
-  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(null);
+  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? null : null);
 
   useEffect(() => {
     let active = true;
-    setPhoto(null);
+    setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? null : null);
     if (!place) return () => { active = false; };
 
     void resolveTrailGuidePlacePhoto(place).then((next) => {

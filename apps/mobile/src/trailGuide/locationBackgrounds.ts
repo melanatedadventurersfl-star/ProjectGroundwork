@@ -44,6 +44,7 @@ export const TRAIL_GUIDE_CITIES: TrailGuideCity[] = [
 ];
 
 const EARTH_RADIUS_MILES = 3958.8;
+const INITIAL_CITY = TRAIL_GUIDE_CITIES[0];
 
 function toRadians(value: number) {
   return (value * Math.PI) / 180;
@@ -72,8 +73,8 @@ function isFloridaRegion(region?: string | null) {
 }
 
 export function useTrailGuideLocationBackground() {
-  const [backgroundSource, setBackgroundSource] = useState<ImageSourcePropType>(TRAIL_GUIDE_DEFAULT_BACKGROUND);
-  const [locationLabel, setLocationLabel] = useState('Near me');
+  const [backgroundSource, setBackgroundSource] = useState<ImageSourcePropType>(INITIAL_CITY?.source ?? TRAIL_GUIDE_DEFAULT_BACKGROUND);
+  const [locationLabel, setLocationLabel] = useState(INITIAL_CITY?.label ?? 'Jacksonville, FL');
   const [locationBusy, setLocationBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<TrailGuideCoordinates | null>(null);
 
@@ -109,8 +110,7 @@ export function useTrailGuideLocationBackground() {
       setLocationLabel(place?.city || place?.subregion || 'Near me');
     } catch {
       setCoordinates(null);
-      setBackgroundSource(TRAIL_GUIDE_DEFAULT_BACKGROUND);
-      setLocationLabel('Near me');
+      setLocationLabel((current) => current || 'Jacksonville, FL');
     } finally {
       setLocationBusy(false);
     }

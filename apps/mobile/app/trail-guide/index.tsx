@@ -15,6 +15,7 @@ import { getTrailGuideConditionSignal } from '../../src/trailGuide/conditions';
 import { trailGuideArticles } from '../../src/trailGuide/guides';
 import { distanceMiles, useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
 import {
+  CURATED_TRAIL_GUIDE_PHOTOS,
   resolveTrailGuidePlacePhoto,
   type TrailGuidePhoto,
   useTrailGuidePlacePhoto,
@@ -80,7 +81,7 @@ export default function TrailGuideScreen() {
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [distanceById, setDistanceById] = useState<Record<string, number>>({});
-  const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>({});
+  const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>(() => ({ ...CURATED_TRAIL_GUIDE_PHOTOS }));
   const [photoPoolBusy, setPhotoPoolBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
@@ -133,6 +134,12 @@ export default function TrailGuideScreen() {
   }, [cityPlaces, distanceById, weather]);
 
   useEffect(() => {
+    const photoReadyCount = rankedCityPlaces.filter((place) => photoById[place.id] != null).length;
+    if (photoReadyCount >= RECOMMENDED_LIMIT) {
+      setPhotoPoolBusy(false);
+      return;
+    }
+
     let active = true;
     const candidates = rankedCityPlaces
       .filter((place) => photoById[place.id] == null)
