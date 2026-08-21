@@ -19,6 +19,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Apply smart filter bar
         run: python apply_smart_filter_bar.py
 
@@ -33,3 +41,5 @@ jobs:
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "feat: build compact smart filter bar for Adventures"
           git push origin HEAD:main
+
+# trigger after TypeScript CI fix
