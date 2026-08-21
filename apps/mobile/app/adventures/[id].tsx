@@ -160,11 +160,6 @@ export default function AdventureDetailScreen() {
   const soldOut = adventure.status === 'sold_out';
   const cancelled = adventure.status === 'cancelled';
   const closed = soldOut || cancelled || adventure.status === 'completed';
-  const spotsLabel = soldOut
-    ? 'Sold out'
-    : adventure.spots_remaining == null
-      ? 'Open'
-      : `${adventure.spots_remaining} spots`;
   const canCheckout = !closed && tickets.length > 0;
   const heroLocation = adventure.venue_name
     ? `${adventure.venue_name} · ${adventure.city}, ${adventure.state}`
@@ -200,6 +195,19 @@ export default function AdventureDetailScreen() {
                 <Text style={styles.title}>{adventure.title}</Text>
                 <Text style={styles.heroMeta}>{formatDate(adventure.starts_at)} · {formatTime(adventure.starts_at)}</Text>
                 <Text style={styles.heroLocation}>⌖  {heroLocation}</Text>
+                <View style={styles.heroDetailsRow}>
+                  <Text style={styles.heroPrice}>{priceLabel}</Text>
+                  <Text style={styles.heroDot}>•</Text>
+                  <Text style={styles.heroDetail}>{titleCase(adventure.difficulty)}</Text>
+                  <Text style={styles.heroDot}>•</Text>
+                  <Text style={styles.heroDetail}>{titleCase(adventure.category)}</Text>
+                </View>
+                <View style={styles.heroAttendanceRow}>
+                  <Text style={styles.heroAttendanceIcon}>♙</Text>
+                  <Text style={styles.heroGoing}>{rsvp.going} going</Text>
+                  <Text style={styles.heroAttendanceDot}>•</Text>
+                  <Text style={styles.heroInterested}>{rsvp.interested} interested</Text>
+                </View>
               </View>
             </ImageBackground>
           </View>
@@ -207,10 +215,7 @@ export default function AdventureDetailScreen() {
           <View style={styles.card}>
             <View style={styles.sectionHeadingRow}>
               <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>♙</Text></View>
-              <View style={styles.sectionHeadingCopy}>
-                <Text style={styles.sectionTitle}>Who’s going</Text>
-                <Text style={styles.subtle}>{rsvp.going} going · {rsvp.interested} interested</Text>
-              </View>
+              <Text style={styles.sectionTitle}>Attendance</Text>
             </View>
             <View style={styles.rsvpRow}>
               {(['interested', 'going'] as AdventureRsvpStatus[]).map((status) => (
@@ -245,13 +250,6 @@ export default function AdventureDetailScreen() {
                 </Pressable>
               ) : null}
             </View>
-          </View>
-
-          <View style={styles.quickFacts}>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>◈</Text><Text style={styles.quickValue}>{priceLabel}</Text><Text style={styles.quickLabel}>Price</Text></View>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>♙</Text><Text style={styles.quickValue}>{spotsLabel}</Text><Text style={styles.quickLabel}>Availability</Text></View>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>△</Text><Text style={styles.quickValue}>{titleCase(adventure.difficulty)}</Text><Text style={styles.quickLabel}>Difficulty</Text></View>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>≈</Text><Text style={styles.quickValue}>{titleCase(adventure.category)}</Text><Text style={styles.quickLabel}>Adventure</Text></View>
           </View>
 
           {notice ? <View style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></View> : null}
@@ -311,7 +309,7 @@ export default function AdventureDetailScreen() {
 
         <View style={styles.stickyBar}>
           <View style={styles.stickyCopy}>
-            <Text style={styles.stickyTitle}>{priceLabel} · {spotsLabel}</Text>
+            <Text style={styles.stickyTitle}>{priceLabel}</Text>
             <Text style={styles.stickySubtitle}>{canCheckout ? 'Reserve your spot for this adventure.' : tickets.length ? 'Reservations are unavailable.' : 'Ticket options coming soon.'}</Text>
           </View>
           <Pressable
@@ -335,23 +333,27 @@ const styles = StyleSheet.create({
   tabletContent: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 18 },
   heroWrap: { borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: '#223028' },
   tabletHeroWrap: { borderRadius: 24 },
-  hero: { height: 405, justifyContent: 'space-between', backgroundColor: '#24342B' },
-  tabletHero: { height: 360 },
+  hero: { height: 438, justifyContent: 'space-between', backgroundColor: '#24342B' },
+  tabletHero: { height: 408 },
   heroRadius: { borderRadius: 22 },
-  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,8,6,0.30)' },
+  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,8,6,0.36)' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 },
   heroButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(10,16,13,0.82)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
   heroButtonText: { color: '#FFFDF6', fontSize: 30, lineHeight: 32 },
-  heroBottom: { padding: 18, paddingTop: 80 },
+  heroBottom: { padding: 18, paddingTop: 96, backgroundColor: 'rgba(5,10,7,0.24)' },
   eyebrow: { color: '#F4C542', fontWeight: '900', letterSpacing: 1.1, fontSize: 11 },
   title: { color: '#FFFFFF', fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 6, maxWidth: '94%' },
   heroMeta: { color: '#F2F4F2', marginTop: 10, fontSize: 15, fontWeight: '700' },
   heroLocation: { color: '#D8DEDA', marginTop: 5, fontSize: 14, lineHeight: 19, fontWeight: '700', maxWidth: '94%' },
-  quickFacts: { flexDirection: 'row', backgroundColor: '#111A16', borderRadius: 16, borderWidth: 1, borderColor: '#26332C', paddingVertical: 12, paddingHorizontal: 6 },
-  quickFact: { flex: 1, alignItems: 'center', paddingHorizontal: 3 },
-  quickIcon: { color: '#F4C542', fontSize: 18, marginBottom: 4 },
-  quickValue: { color: '#FFFFFF', fontWeight: '900', fontSize: 13, textAlign: 'center' },
-  quickLabel: { color: '#8E9A93', fontSize: 10, marginTop: 2, textAlign: 'center' },
+  heroDetailsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  heroPrice: { color: '#F4C542', fontSize: 15, fontWeight: '900' },
+  heroDetail: { color: '#F5F7F5', fontSize: 14, fontWeight: '800' },
+  heroDot: { color: '#F4C542', fontSize: 12, fontWeight: '900' },
+  heroAttendanceRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginTop: 10 },
+  heroAttendanceIcon: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
+  heroGoing: { color: '#8ED76B', fontSize: 13, fontWeight: '800' },
+  heroInterested: { color: '#E0E6E2', fontSize: 13, fontWeight: '700' },
+  heroAttendanceDot: { color: '#AAB5AE', fontSize: 11, fontWeight: '900' },
   notice: { backgroundColor: '#203429', borderRadius: 12, padding: 11, borderWidth: 1, borderColor: '#355241' },
   noticeText: { color: '#D7E5DC', fontWeight: '700' },
   error: { color: '#FFB4A9' },
