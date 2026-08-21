@@ -131,11 +131,11 @@ jobs:
   smartBar: { gap: 8, paddingRight: 18, paddingBottom: 1 },
   smartChip: { minHeight: 38, maxWidth: 170, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#111715', paddingHorizontal: 13 },
   smartChipActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
-  smartChipText: { color: '#E2E7E4', fontSize: 11, fontWeight: '850' },
+  smartChipText: { color: '#E2E7E4', fontSize: 11, fontWeight: '800' },
   smartChipTextActive: { color: '#111816' },
   smartChevron: { color: '#8F9A94', fontSize: 12, fontWeight: '900', marginTop: -2 },
   smartSummary: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#26312C', paddingTop: 8 },
-  smartSummaryText: { color: '#AEB7B2', fontSize: 10, fontWeight: '750' },
+  smartSummaryText: { color: '#AEB7B2', fontSize: 10, fontWeight: '700' },
   smartClear: { color: '#F5C542', fontSize: 10, fontWeight: '900' },
   quickModalRoot: { flex: 1, justifyContent: 'flex-end' },
   quickModalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.58)' },
@@ -147,7 +147,7 @@ jobs:
   quickOptionWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   quickOption: { minHeight: 42, minWidth: '47%', flexGrow: 1, justifyContent: 'center', borderRadius: 13, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18', paddingHorizontal: 13, paddingVertical: 9 },
   quickOptionActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
-  quickOptionText: { color: '#E3E8E5', fontSize: 12, fontWeight: '850' },
+  quickOptionText: { color: '#E3E8E5', fontSize: 12, fontWeight: '800' },
   quickOptionTextActive: { color: '#111816' },
   quickOptionHelper: { color: '#7F8B84', fontSize: 9, marginTop: 2 },
 """
@@ -171,3 +171,4 @@ jobs:
           git push origin HEAD:main
 
 # trigger
+# fixed font weights
