@@ -10,6 +10,11 @@ export type TrailGuideCity = {
   source: ImageSourcePropType;
 };
 
+export type TrailGuideCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
 export const TRAIL_GUIDE_DEFAULT_BACKGROUND: ImageSourcePropType = {
   uri: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=82',
 };
@@ -44,7 +49,7 @@ function toRadians(value: number) {
   return (value * Math.PI) / 180;
 }
 
-function distanceMiles(latitudeA: number, longitudeA: number, latitudeB: number, longitudeB: number) {
+export function distanceMiles(latitudeA: number, longitudeA: number, latitudeB: number, longitudeB: number) {
   const lat1 = toRadians(latitudeA);
   const lat2 = toRadians(latitudeB);
   const deltaLat = toRadians(latitudeB - latitudeA);
@@ -70,6 +75,7 @@ export function useTrailGuideLocationBackground() {
   const [backgroundSource, setBackgroundSource] = useState<ImageSourcePropType>(TRAIL_GUIDE_DEFAULT_BACKGROUND);
   const [locationLabel, setLocationLabel] = useState('Near me');
   const [locationBusy, setLocationBusy] = useState(false);
+  const [coordinates, setCoordinates] = useState<TrailGuideCoordinates | null>(null);
 
   async function syncLocation(requestPermission: boolean) {
     setLocationBusy(true);
@@ -79,12 +85,14 @@ export function useTrailGuideLocationBackground() {
         : await Location.getForegroundPermissionsAsync();
 
       if (permission.status !== 'granted') {
+        setCoordinates(null);
         if (requestPermission) setLocationLabel('Location off');
         return;
       }
 
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude, longitude } = position.coords;
+      setCoordinates({ latitude, longitude });
       const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
       const place = reverseGeocode[0];
 
@@ -100,6 +108,7 @@ export function useTrailGuideLocationBackground() {
       setBackgroundSource(TRAIL_GUIDE_DEFAULT_BACKGROUND);
       setLocationLabel(place?.city || place?.subregion || 'Near me');
     } catch {
+      setCoordinates(null);
       setBackgroundSource(TRAIL_GUIDE_DEFAULT_BACKGROUND);
       setLocationLabel('Near me');
     } finally {
@@ -113,6 +122,7 @@ export function useTrailGuideLocationBackground() {
 
   return {
     backgroundSource,
+    coordinates,
     locationLabel,
     locationBusy,
     requestCurrentLocation: () => syncLocation(true),
