@@ -60,7 +60,7 @@ export function PersistentTopNav() {
     <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
       <View style={styles.bar}>
         <Pressable accessibilityRole="button" accessibilityLabel="Melanated home" onPress={() => router.navigate('/(tabs)' as never)} hitSlop={8} style={styles.logoButton}>
-          <Image source={require('../../assets/ma-app-icon.png')} style={styles.logo} resizeMode="cover" />
+          <Image source={require('../../assets/go-melanated-logo.png')} style={styles.logo} resizeMode="contain" />
         </Pressable>
 
         <View style={styles.actions}>
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
   shell: { backgroundColor: '#0F1713', borderBottomWidth: 1, borderBottomColor: '#243129', paddingHorizontal: 18 },
   bar: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   logoButton: { width: 48, height: 48, alignItems: 'flex-start', justifyContent: 'center' },
-  logo: { width: 40, height: 40, borderRadius: 10 },
+  logo: { width: 40, height: 40 },
   actions: { flexDirection: 'row', gap: 9 },
   iconButton: { width: 39, height: 39, borderRadius: 20, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -5, right: -7, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D3A94F', borderWidth: 2, borderColor: '#0F1713' },
