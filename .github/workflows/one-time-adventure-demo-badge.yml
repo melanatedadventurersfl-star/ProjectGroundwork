@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: adventure-ui-one-time
+  cancel-in-progress: false
+
 jobs:
   patch:
     runs-on: ubuntu-latest
@@ -17,6 +21,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Sync latest main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
 
       - uses: actions/setup-node@v4
         with:
@@ -29,6 +38,16 @@ jobs:
       - name: Apply demo badge patch
         run: python scripts/patch_adventure_demo_badge.py
 
+      - name: Fix strict indexed icon lookup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("apps/mobile/app/(tabs)/explore.tsx")
+          text = p.read_text()
+          text = text.replace("{categoryIcons[item]}", "{categoryIcons[item] ?? ''}")
+          p.write_text(text)
+          PY
+
       - name: Verify mobile TypeScript
         run: npm run mobile:typecheck
 
@@ -40,5 +59,3 @@ jobs:
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "fix: show demo badge on adventure cards"
           git push origin HEAD:main
-
-# trigger after TypeScript CI fix
