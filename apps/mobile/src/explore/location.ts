@@ -34,7 +34,13 @@ export function resolveSearchCenter(search: string, fallbackCity?: string, fallb
       if (!city || !state) continue;
       if (normalized.includes(city) && (normalized.includes(state) || normalized.includes('fl'))) return point;
     }
+
+    // A non-empty query that is not a recognized city is a keyword search.
+    // Do not silently fall back to the member's home city, because that makes
+    // unrelated adventures/events appear to match the typed keyword.
+    return null;
   }
+
   return fallbackCity && fallbackState ? pointForCity(fallbackCity, fallbackState) : null;
 }
 
