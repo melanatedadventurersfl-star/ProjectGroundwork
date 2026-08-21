@@ -16,12 +16,8 @@ export default function DeleteAccountScreen() {
     setSubmitting(true);
     setError('');
 
-    const { error: requestError } = await supabase.from('support_requests').insert({
-      profile_id: session.user.id,
-      category: 'account',
-      subject: 'Account deletion request',
-      message: 'User requested deletion of their Go Melanated account from the in-app deletion flow.',
-      diagnostics: { source: 'in_app_account_deletion', requested_at: new Date().toISOString() },
+    const { error: requestError } = await supabase.functions.invoke('request-account-deletion', {
+      body: {},
     });
 
     if (requestError) {
