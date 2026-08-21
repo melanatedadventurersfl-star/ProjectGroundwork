@@ -11,7 +11,9 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "eas:preview:android": "eas build --platform android --profile preview",
-    "eas:preview:ios": "eas build --platform ios --profile preview"
+    "eas:preview:ios": "eas build --platform ios --profile preview",
+    "eas:production:android": "eas build --platform android --profile production",
+    "eas:submit:android": "eas submit --platform android --profile production --latest"
   },
   "dependencies": {
     "@react-native-vector-icons/ionicons": "^13.1.2",
