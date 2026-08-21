@@ -90,7 +90,6 @@ type CommunitySuggestion = {
 };
 
 type SectionName = 'Trailhead' | 'Adventures' | 'Trail Guide' | 'Outpost' | 'Trailmates' | 'Campfires';
-
 type PrimaryProps = { label?: string; disabled?: boolean; onPress: () => void };
 type QuestionSheetProps = {
   eyebrow: string;
@@ -250,6 +249,7 @@ export default function GuidedOnboardingExperience() {
   const [cities, setCities] = useState<string[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<CommunitySuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [connectionSentIds, setConnectionSentIds] = useState<Set<string>>(new Set());
@@ -384,6 +384,7 @@ export default function GuidedOnboardingExperience() {
       setStateSearch(state.name);
       setCitySearch(city);
       setStateOpen(false);
+      setCityPickerOpen(false);
     } catch (error) { Alert.alert('Unable to use location', error instanceof Error ? error.message : 'Choose your city instead.'); }
     finally { setLocating(false); }
   }
@@ -450,6 +451,15 @@ export default function GuidedOnboardingExperience() {
     else void finish();
   }
 
+  function advanceFromTrailGuide() {
+    if (!canContinue || saving) return;
+    setStep(9);
+  }
+
+  function goBack() {
+    setStep((value) => value === 9 ? 7 : Math.max(1, value - 1));
+  }
+
   if (loading) return <ImageBackground source={BACKGROUNDS[0]} style={styles.background}><View style={styles.scrim}><SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={GOLD} size="large" /><Text style={styles.muted}>Preparing your Go Melanated welcome…</Text></View></SafeAreaView></View></ImageBackground>;
 
   const animatedStyle = { opacity: transition, transform: [{ translateY: transition.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] };
@@ -476,7 +486,42 @@ export default function GuidedOnboardingExperience() {
 
                 {step === 6 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Your Trailhead, personalized.</Text><PreviewHero image={PREVIEW_IMAGES.trailhead} kicker="UPCOMING FOR YOU" title={form.interests.includes('Camping') ? 'Sunrise Campout' : `${form.interests[0] || 'Outdoor'} weekend`} copy={`Recommendations now lean toward ${form.interests.slice(0, 3).join(', ').toLowerCase()}.`} /><View style={styles.previewGrid}><PreviewTile image={PREVIEW_IMAGES.places} kicker="TRAIL GUIDE" title={form.interests[0] || 'Explore'} /><PreviewTile kicker="NEARBY" title="Add your location next" /></View><Primary label="Show me the Trail Guide" onPress={next} /></AppChrome> : null}
 
-                {step === 7 ? <AppChrome active="Trail Guide" name={greetingName}><Text style={styles.sectionHeading}>Find your outside.</Text><PreviewHero image={PREVIEW_IMAGES.places} kicker="TRAIL GUIDE" title={locationLabel || 'Choose where to explore'} copy="Nearby recommendations get better when we know where to start." /><QuestionSheet eyebrow="TRAIL GUIDE" title="Where should we start exploring?" label="Explore from here" disabled={!canContinue} onPress={next}><Pressable style={styles.locationButton} onPress={() => void requestCurrentLocation()} disabled={locating}><Ionicons name="navigate" size={18} color={BG} /><Text style={styles.locationButtonText}>{locating ? 'Finding you…' : 'Use my location'}</Text></Pressable><Text style={styles.or}>or choose a city</Text><View style={styles.field}><Text style={styles.label}>State</Text><TextInput style={styles.input} value={stateSearch} placeholder="Start typing your state" placeholderTextColor="#78837D" onFocus={() => setStateOpen(true)} onChangeText={(value) => { setStateSearch(value); setStateOpen(true); update('homeState', ''); update('homeCity', ''); setCitySearch(''); }} />{stateOptions.length ? <View style={styles.autocomplete}>{stateOptions.map((state) => <Pressable key={state.abbreviation} style={styles.autoRow} onPress={() => { setStateSearch(state.name); update('homeState', state.abbreviation); update('homeCity', ''); setCitySearch(''); setStateOpen(false); }}><Text style={styles.autoText}>{state.name}</Text><Text style={styles.autoMeta}>{state.abbreviation}</Text></Pressable>)}</View> : null}</View><View style={styles.field}><Text style={styles.label}>City</Text><TextInput style={styles.input} editable={Boolean(form.homeState) && !citiesLoading} value={citySearch} placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'} placeholderTextColor="#78837D" onChangeText={(value) => { setCitySearch(value); update('homeCity', ''); }} />{cityOptions.length ? <View style={styles.autocomplete}>{cityOptions.map((city) => <Pressable key={city} style={styles.autoRow} onPress={() => { setCitySearch(city); update('homeCity', city); }}><Text style={styles.autoText}>{city}</Text></Pressable>)}</View> : null}</View></QuestionSheet></AppChrome> : null}
+                {step === 7 ? <AppChrome active="Trail Guide" name={greetingName}>
+                  <View style={styles.trailGuideIntro}>
+                    <Text style={styles.trailGuideEyebrow}>DISCOVER · LEARN · EXPLORE</Text>
+                    <Text style={styles.sectionHeading}>Find places. Learn what to know.</Text>
+                    <Text style={styles.trailGuideIntroCopy}>Trail Guide helps you discover outdoor places near you and gives you practical guides, tips, and local knowledge before you go.</Text>
+                  </View>
+                  <View style={styles.trailPreviewSection}>
+                    <View style={styles.trailPreviewHeader}><Text style={styles.trailPreviewLabel}>NEAR YOU</Text><Text style={styles.trailPreviewMeta}>{locationLabel || 'Preview'}</Text></View>
+                    <View style={styles.previewGrid}>
+                      <PreviewTile image={PREVIEW_IMAGES.places} kicker="TRAIL" title="Timucuan preserve" copy="Hiking · Easy" />
+                      <PreviewTile image={PREVIEW_IMAGES.share} kicker="WATER" title="Little Talbot Island" copy="Beach · Nature" />
+                    </View>
+                  </View>
+                  <View style={styles.trailKnowledgeCard}>
+                    <ImageBackground source={PREVIEW_IMAGES.places} style={styles.trailKnowledgeImage} imageStyle={styles.trailKnowledgeImageRadius}><View style={styles.tileShade} /></ImageBackground>
+                    <View style={styles.flex}><Text style={styles.cardKicker}>GUIDES & KNOW-HOW</Text><Text style={styles.trailKnowledgeTitle}>Beginner's packing list</Text><Text style={styles.trailKnowledgeCopy}>Simple, useful advice for feeling prepared outside.</Text></View>
+                    <Ionicons name="bookmark-outline" size={18} color={MUTED} />
+                  </View>
+                  <View style={styles.trailPreviewSection}>
+                    <View style={styles.trailPreviewHeader}><Text style={styles.trailPreviewLabel}>WORTH THE DRIVE</Text><Text style={styles.trailPreviewMeta}>More ideas</Text></View>
+                    <View style={styles.chipRow}>{['Springs', 'Camping', 'Scenic escapes'].map((item) => <View key={item} style={styles.smallChip}><Text style={styles.smallChipText}>{item}</Text></View>)}</View>
+                  </View>
+                  <View style={styles.compactLocationCard}>
+                    <View style={styles.compactLocationHeading}><View style={styles.compactLocationIcon}><Ionicons name="location-outline" size={18} color="#79D26A" /></View><View style={styles.flex}><Text style={styles.compactLocationTitle}>Make Trail Guide local</Text><Text style={styles.compactLocationCopy}>Use your location or choose a city for nearby recommendations.</Text></View></View>
+                    <View style={styles.compactLocationActions}>
+                      <Pressable style={[styles.compactLocationAction, styles.compactLocationActionPrimary]} onPress={() => void requestCurrentLocation()} disabled={locating}><Ionicons name="navigate" size={16} color={TEXT} /><Text style={styles.compactLocationActionText}>{locating ? 'Finding…' : 'Use location'}</Text></Pressable>
+                      <Pressable style={styles.compactLocationAction} onPress={() => setCityPickerOpen((value) => !value)}><Ionicons name="search-outline" size={16} color={TEXT} /><Text style={styles.compactLocationActionText}>Choose city</Text></Pressable>
+                    </View>
+                    {cityPickerOpen ? <View style={styles.compactCityPicker}>
+                      <View style={styles.field}><Text style={styles.label}>State</Text><TextInput style={styles.input} value={stateSearch} placeholder="Start typing your state" placeholderTextColor="#78837D" onFocus={() => setStateOpen(true)} onChangeText={(value) => { setStateSearch(value); setStateOpen(true); update('homeState', ''); update('homeCity', ''); setCitySearch(''); }} />{stateOptions.length ? <View style={styles.autocomplete}>{stateOptions.map((state) => <Pressable key={state.abbreviation} style={styles.autoRow} onPress={() => { setStateSearch(state.name); update('homeState', state.abbreviation); update('homeCity', ''); setCitySearch(''); setStateOpen(false); }}><Text style={styles.autoText}>{state.name}</Text><Text style={styles.autoMeta}>{state.abbreviation}</Text></Pressable>)}</View> : null}</View>
+                      <View style={styles.field}><Text style={styles.label}>City</Text><TextInput style={styles.input} editable={Boolean(form.homeState) && !citiesLoading} value={citySearch} placeholder={form.homeState ? 'Start typing your city' : 'Choose a state first'} placeholderTextColor="#78837D" onChangeText={(value) => { setCitySearch(value); update('homeCity', ''); }} />{cityOptions.length ? <View style={styles.autocomplete}>{cityOptions.map((city) => <Pressable key={city} style={styles.autoRow} onPress={() => { setCitySearch(city); update('homeCity', city); setCityPickerOpen(false); }}><Text style={styles.autoText}>{city}</Text></Pressable>)}</View> : null}</View>
+                    </View> : null}
+                    {locationLabel ? <View style={styles.locationConfirmed}><Ionicons name="checkmark-circle" size={16} color="#79D26A" /><Text style={styles.locationConfirmedText}>{locationLabel}</Text></View> : null}
+                    <Primary label="Continue" disabled={!canContinue} onPress={advanceFromTrailGuide} />
+                  </View>
+                </AppChrome> : null}
 
                 {step === 8 ? <AppChrome active="Trail Guide" name={greetingName}><Text style={styles.sectionHeading}>Around {locationLabel || 'you'}</Text><View style={styles.chipRow}>{['Nearby', 'Trails', 'Camping', 'Water'].map((item) => <View key={item} style={[styles.smallChip, item === 'Nearby' && styles.smallChipActive]}><Text style={styles.smallChipText}>{item}</Text></View>)}</View><PreviewHero image={PREVIEW_IMAGES.places} kicker="RECOMMENDED FOR YOU" title={form.interests.includes('Water adventures') ? 'A spring worth the drive' : 'A trail for your next free morning'} copy="Trail Guide is now combining your location with what you told us you enjoy." /><Primary label="Show me Adventures" onPress={next} /></AppChrome> : null}
 
@@ -495,7 +540,7 @@ export default function GuidedOnboardingExperience() {
                 {step === 15 ? <AppChrome active="Trailhead" name={greetingName}><Text style={styles.sectionHeading}>Your Trailhead is ready.</Text><PreviewHero image={PREVIEW_IMAGES.trailhead} kicker="UPCOMING FOR YOU" title={form.adventurePreferences.includes('Camping trips') ? 'Lake Louisa Camping Trip' : 'Your next adventure is waiting'} copy="Recommendations are now tuned to your interests, location, and adventure preferences." /><View style={styles.previewGrid}><PreviewTile image={PREVIEW_IMAGES.places} kicker="TRAIL GUIDE" title={`${locationLabel || 'Nearby'} ideas`} /><PreviewTile kicker="COMMUNITY" title={`${joinedGroupCount || 'New'} Campfires`} /></View><View style={styles.guideBubble}><View style={styles.guideIcon}><Ionicons name="checkmark" size={18} color={GOLD} /></View><View style={styles.guideText}><Text style={styles.guideBubbleTitle}>That is it.</Text><Text style={styles.guideBubbleCopy}>You have already been using the app. From here we simply remove the guide layer.</Text></View><Primary label={saving ? 'Finishing…' : 'Explore my Trailhead'} disabled={saving} onPress={() => void finish()} /></View></AppChrome> : null}
               </ScrollView>
             </Animated.View>
-            {step > 2 && step < 15 ? <Pressable style={styles.back} onPress={() => setStep((value) => Math.max(1, value - 1))}><Ionicons name="chevron-back" size={17} color={TEXT} /><Text style={styles.backText}>Back</Text></Pressable> : null}
+            {step > 2 && step < 15 ? <Pressable style={styles.back} onPress={goBack}><Ionicons name="chevron-back" size={17} color={TEXT} /><Text style={styles.backText}>Back</Text></Pressable> : null}
           </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
@@ -506,17 +551,17 @@ export default function GuidedOnboardingExperience() {
 const styles = StyleSheet.create({
   background: { flex: 1 },
   scrim: { flex: 1, backgroundColor: 'rgba(4,9,7,0.66)' },
-  scrimApp: { backgroundColor: 'rgba(4,9,7,0.42)' },
-  scrimLight: { backgroundColor: 'rgba(4,9,7,0.48)' },
+  scrimApp: { backgroundColor: 'rgba(4,9,7,0.84)' },
+  scrimLight: { backgroundColor: 'rgba(4,9,7,0.5)' },
   safe: { flex: 1 },
   flex: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   muted: { color: MUTED },
-  topBar: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(4,9,7,0.4)' },
-  topBarApp: { minHeight: 44, backgroundColor: '#08110D', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.07)' },
-  brand: { color: TEXT, fontWeight: '900', letterSpacing: 1.6, fontSize: 13 },
-  exit: { color: MUTED, fontSize: 11, fontWeight: '800' },
-  progressRail: { flexDirection: 'row', gap: 3, paddingHorizontal: 18, paddingTop: 7, paddingBottom: 5, backgroundColor: 'rgba(7,16,12,0.96)' },
+  topBar: { minHeight: 54, paddingHorizontal: 18, paddingTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  topBarApp: { backgroundColor: BG },
+  brand: { color: TEXT, fontSize: 12, fontWeight: '900', letterSpacing: 1.8 },
+  exit: { color: '#AAB4AE', fontSize: 10.5, fontWeight: '800' },
+  progressRail: { height: 18, marginHorizontal: 18, flexDirection: 'row', gap: 4, alignItems: 'center' },
   progressSegment: { flex: 1, height: 2, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.11)' },
   progressSegmentActive: { backgroundColor: GOLD },
   content: { padding: 18, paddingBottom: 82 },
@@ -601,6 +646,30 @@ const styles = StyleSheet.create({
   smallChip: { borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: SURFACE_2, paddingHorizontal: 11, paddingVertical: 7 },
   smallChipActive: { backgroundColor: '#476C39', borderColor: '#476C39' },
   smallChipText: { color: TEXT, fontSize: 9, fontWeight: '800' },
+  trailGuideIntro: { gap: 7, paddingTop: 2 },
+  trailGuideEyebrow: { color: '#79D26A', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  trailGuideIntroCopy: { color: '#C8D1CB', fontSize: 12, lineHeight: 18, maxWidth: 560 },
+  trailPreviewSection: { gap: 8 },
+  trailPreviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  trailPreviewLabel: { color: '#DDE3DF', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  trailPreviewMeta: { color: '#79D26A', fontSize: 9.5, fontWeight: '800' },
+  trailKnowledgeCard: { minHeight: 90, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: SURFACE, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trailKnowledgeImage: { width: 82, height: 68, borderRadius: 14, overflow: 'hidden' },
+  trailKnowledgeImageRadius: { borderRadius: 14 },
+  trailKnowledgeTitle: { color: TEXT, fontSize: 14, fontWeight: '900', marginTop: 3 },
+  trailKnowledgeCopy: { color: '#AEB9B2', fontSize: 9.5, lineHeight: 14, marginTop: 3 },
+  compactLocationCard: { borderRadius: 20, borderWidth: 1, borderColor: 'rgba(121,210,106,0.2)', backgroundColor: '#101A15', padding: 13, gap: 10 },
+  compactLocationHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  compactLocationIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(121,210,106,0.11)', alignItems: 'center', justifyContent: 'center' },
+  compactLocationTitle: { color: TEXT, fontSize: 15, fontWeight: '900' },
+  compactLocationCopy: { color: '#AFBAB3', fontSize: 10, lineHeight: 14, marginTop: 2 },
+  compactLocationActions: { flexDirection: 'row', gap: 8 },
+  compactLocationAction: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: '#16211B', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  compactLocationActionPrimary: { backgroundColor: '#477E3E', borderColor: '#477E3E' },
+  compactLocationActionText: { color: TEXT, fontSize: 10.5, fontWeight: '900' },
+  compactCityPicker: { gap: 8, paddingTop: 2 },
+  locationConfirmed: { minHeight: 30, borderRadius: 10, backgroundColor: 'rgba(121,210,106,0.08)', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  locationConfirmedText: { color: '#CFE7C9', fontSize: 10, fontWeight: '800' },
   adventureList: { gap: 9 },
   adventureRow: { minHeight: 76, borderRadius: 18, backgroundColor: SURFACE, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowHighlighted: { backgroundColor: '#17231B' },
