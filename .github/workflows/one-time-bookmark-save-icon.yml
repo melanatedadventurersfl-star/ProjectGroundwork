@@ -1,0 +1,63 @@
+name: One-time bookmark save icon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-bookmark-save-icon.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: adventure-ui-one-time
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync latest main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Replace star with bookmark
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("apps/mobile/app/(tabs)/explore.tsx")
+          text = p.read_text()
+          text = text.replace("import { router } from 'expo-router';", "import Ionicons from '@react-native-vector-icons/ionicons';\nimport { router } from 'expo-router';", 1)
+          text = text.replace("style={s.heartButton}", "style={[s.saveButton, adventure.is_saved && s.saveButtonActive]}", 1)
+          text = text.replace("<Text style={s.heart}>{adventure.is_saved ? '★' : '☆'}</Text>", "<Ionicons name={adventure.is_saved ? 'bookmark' : 'bookmark-outline'} size={18} color={adventure.is_saved ? '#111816' : '#FFFFFF'} />", 1)
+          text = text.replace("  heartButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(8,13,12,.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,.5)', alignItems: 'center', justifyContent: 'center' },\n  heart: { color: '#FFFFFF', fontSize: 18 },", "  saveButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(8,13,12,.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,.5)', alignItems: 'center', justifyContent: 'center' },\n  saveButtonActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },")
+          p.write_text(text)
+          PY
+
+      - name: Verify mobile TypeScript
+        run: npm run mobile:typecheck
+
+      - name: Commit bookmark icon
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-time-bookmark-save-icon.yml
+          git add apps/mobile/app/'(tabs)'/explore.tsx
+          git commit -m "fix: use bookmark for saved adventures"
+          git reset --hard HEAD
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
