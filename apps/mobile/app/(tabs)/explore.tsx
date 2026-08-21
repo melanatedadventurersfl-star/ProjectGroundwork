@@ -177,7 +177,6 @@ function FeaturedHero({ adventure }: { adventure: AdventureSummary }) {
 function EventCard({ event, distance, wide = false }: { event: LocalEvent; distance?: number | null; wide?: boolean }) {
   const date = new Date(event.starts_at);
   const imageSource = event.image_url ? { uri: event.image_url } : DEFAULT_EVENT_IMAGE;
-
   return (
     <Pressable
       style={[s.eventCard, wide && s.eventCardWide]}
@@ -366,10 +365,6 @@ export default function ExploreScreen() {
       >
         <View style={s.hero}>
           <Text style={s.title}>Melanated Adventures</Text>
-          <View style={s.locationRow}>
-            <Text style={s.locationMarker}>⌖</Text>
-            <Text style={s.location}>{currentLocationLabel}</Text>
-          </View>
 
           {!loading && !isSearching && heroAdventure ? <FeaturedHero adventure={heroAdventure} /> : null}
 
