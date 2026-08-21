@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -117,13 +118,13 @@ function AdventureTile({
                 {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : null}
               </View>
               <Pressable
-                style={s.heartButton}
+                style={[s.saveButton, adventure.is_saved && s.saveButtonActive]}
                 onPress={(event) => {
                   event.stopPropagation();
                   onToggleSaved(adventure);
                 }}
               >
-                <Text style={s.heart}>{adventure.is_saved ? '★' : '☆'}</Text>
+                <Ionicons name={adventure.is_saved ? 'bookmark' : 'bookmark-outline'} size={18} color={adventure.is_saved ? '#111816' : '#FFFFFF'} />
               </Pressable>
             </View>
           </View>
@@ -596,8 +597,8 @@ const s = StyleSheet.create({
   tileBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   demoBadge: { color: '#111816', backgroundColor: '#F5C542', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, fontSize: 9, fontWeight: '900', letterSpacing: .7 },
   distanceBadge: { color: '#FFFFFF', backgroundColor: 'rgba(8,13,12,.72)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, fontSize: 10, fontWeight: '900' },
-  heartButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(8,13,12,.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,.5)', alignItems: 'center', justifyContent: 'center' },
-  heart: { color: '#FFFFFF', fontSize: 18 },
+  saveButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(8,13,12,.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,.5)', alignItems: 'center', justifyContent: 'center' },
+  saveButtonActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
   tileFallback: { backgroundColor: '#1E3A31', alignItems: 'center', justifyContent: 'center' },
   tileFallbackIcon: { color: '#F5C542', fontSize: 35, fontWeight: '900' },
   tileCopy: { padding: 11 },
