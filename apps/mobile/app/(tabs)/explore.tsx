@@ -319,7 +319,7 @@ export default function ExploreScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#F5C542" />}
       >
         <View style={s.hero}>
-          <Text style={s.title}>Explore</Text>
+          <Text style={s.title}>Adventures</Text>
           <View style={s.locationRow}>
             <Text style={s.locationMarker}>✦</Text>
             <Text style={s.location}>{currentLocationLabel}</Text>
