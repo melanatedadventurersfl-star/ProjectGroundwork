@@ -1,5 +1,6 @@
 export type AdventureStatus = 'published' | 'sold_out' | 'cancelled' | 'completed';
 export type AdventureDifficulty = 'easy' | 'moderate' | 'challenging';
+export type AdventureAccessLevel = 'public' | 'go_plus_only' | 'go_plus_early_access';
 
 export type AdventureSummary = {
   id: string;
@@ -25,6 +26,9 @@ export type AdventureSummary = {
   is_featured: boolean;
   is_demo?: boolean;
   is_saved?: boolean;
+  access_level?: AdventureAccessLevel;
+  go_plus_early_access_at?: string | null;
+  public_registration_at?: string | null;
 };
 
 export type AdventureDetail = AdventureSummary & {
