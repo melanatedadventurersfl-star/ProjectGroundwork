@@ -204,28 +204,6 @@ export default function AdventureDetailScreen() {
             </ImageBackground>
           </View>
 
-          <View style={styles.quickFacts}>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>◈</Text><Text style={styles.quickValue}>{priceLabel}</Text><Text style={styles.quickLabel}>Price</Text></View>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>♙</Text><Text style={styles.quickValue}>{spotsLabel}</Text><Text style={styles.quickLabel}>Availability</Text></View>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>△</Text><Text style={styles.quickValue}>{titleCase(adventure.difficulty)}</Text><Text style={styles.quickLabel}>Difficulty</Text></View>
-            <View style={styles.quickFact}><Text style={styles.quickIcon}>≈</Text><Text style={styles.quickValue}>{titleCase(adventure.category)}</Text><Text style={styles.quickLabel}>Adventure</Text></View>
-          </View>
-
-          {notice ? <View style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></View> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <View style={styles.card}>
-            <View style={styles.sectionHeadingRow}>
-              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>⌁</Text></View>
-              <Text style={styles.sectionTitle}>About this adventure</Text>
-            </View>
-            <Text style={styles.body}>{adventure.description}</Text>
-            <View style={styles.chips}>
-              <Text style={styles.chip}>{titleCase(adventure.difficulty)}</Text>
-              <Text style={styles.chipAlt}>{titleCase(adventure.category)}</Text>
-            </View>
-          </View>
-
           <View style={styles.card}>
             <View style={styles.sectionHeadingRow}>
               <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>♙</Text></View>
@@ -266,6 +244,28 @@ export default function AdventureDetailScreen() {
                   <Text style={styles.secondaryAction}>Not going</Text>
                 </Pressable>
               ) : null}
+            </View>
+          </View>
+
+          <View style={styles.quickFacts}>
+            <View style={styles.quickFact}><Text style={styles.quickIcon}>◈</Text><Text style={styles.quickValue}>{priceLabel}</Text><Text style={styles.quickLabel}>Price</Text></View>
+            <View style={styles.quickFact}><Text style={styles.quickIcon}>♙</Text><Text style={styles.quickValue}>{spotsLabel}</Text><Text style={styles.quickLabel}>Availability</Text></View>
+            <View style={styles.quickFact}><Text style={styles.quickIcon}>△</Text><Text style={styles.quickValue}>{titleCase(adventure.difficulty)}</Text><Text style={styles.quickLabel}>Difficulty</Text></View>
+            <View style={styles.quickFact}><Text style={styles.quickIcon}>≈</Text><Text style={styles.quickValue}>{titleCase(adventure.category)}</Text><Text style={styles.quickLabel}>Adventure</Text></View>
+          </View>
+
+          {notice ? <View style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></View> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <View style={styles.card}>
+            <View style={styles.sectionHeadingRow}>
+              <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>⌁</Text></View>
+              <Text style={styles.sectionTitle}>About this adventure</Text>
+            </View>
+            <Text style={styles.body}>{adventure.description}</Text>
+            <View style={styles.chips}>
+              <Text style={styles.chip}>{titleCase(adventure.difficulty)}</Text>
+              <Text style={styles.chipAlt}>{titleCase(adventure.category)}</Text>
             </View>
           </View>
 
