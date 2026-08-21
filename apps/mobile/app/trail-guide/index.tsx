@@ -52,7 +52,7 @@ function RecommendedCard({
       style={({ pressed }) => [styles.recommendedCard, pressed && styles.cardPressed]}
     >
       <View style={styles.recommendedImage}>
-        {photo ? <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFillObject} resizeMode="cover" /> : <View style={[StyleSheet.absoluteFillObject, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={26} /></View>}
+        {photo ? <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={26} /></View>}
         <View style={styles.cardShade} />
         <View style={[styles.signalBadge, signal.tone === 'good' && styles.signalGood, signal.tone === 'caution' && styles.signalCaution]}>
           <Text style={styles.signalBadgeText}>{signal.label}</Text>
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
   page: { paddingBottom: 76 },
   hero: { height: 286, justifyContent: 'flex-end' },
   heroImage: { resizeMode: 'cover' },
-  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.50)' },
+  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,7,0.50)' },
   heroContent: { paddingHorizontal: 18, paddingBottom: 18 },
   heroEyebrow: { color: '#D7E0DA', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   cityTitle: { color: '#FFFDF6', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 3 },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   recommendedRow: { gap: 10, paddingRight: 4 },
   recommendedCard: { width: 164, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
   recommendedImage: { height: 118, justifyContent: 'flex-end', padding: 9, overflow: 'hidden' },
-  cardShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,6,0.24)' },
+  cardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,9,6,0.24)' },
   signalBadge: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#26352D', paddingHorizontal: 8, paddingVertical: 4 },
   signalGood: { backgroundColor: '#1E5A2A' },
   signalCaution: { backgroundColor: '#856A0A' },
