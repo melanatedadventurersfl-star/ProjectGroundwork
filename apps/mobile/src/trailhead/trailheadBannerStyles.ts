@@ -1,8 +1,8 @@
 import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
-  cover: { height: 224, marginTop: -72, borderRadius: 22, overflow: 'hidden', backgroundColor: '#07100D', borderWidth: 1.4, shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  coverCompact: { height: 212 },
+  cover: { height: 276, marginTop: -72, borderRadius: 22, overflow: 'hidden', backgroundColor: '#07100D', borderWidth: 1.4, shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  coverCompact: { height: 258 },
   imageRadius: { borderRadius: 22 },
   animatedBackground: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   hazeOverlay: { position: 'absolute', top: -8, left: -28, right: -28, bottom: -8, backgroundColor: 'rgba(255,255,255,0.10)' },
@@ -25,14 +25,14 @@ export const styles = StyleSheet.create({
   leftScrimCompact: { width: 0 },
   bottomScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 0, backgroundColor: 'transparent' },
 
-  primaryEmblem: { position: 'absolute', left: 10, top: 26, width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
-  primaryEmblemCompact: { left: 8, top: 31, width: 80, height: 80 },
+  primaryEmblem: { position: 'absolute', left: 10, top: 38, width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
+  primaryEmblemCompact: { left: 8, top: 42, width: 80, height: 80 },
 
   headerActions: { position: 'absolute', right: 12, top: 11, flexDirection: 'row', gap: 8, zIndex: 5 },
   headerButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(5,10,9,0.42)', borderWidth: 1, borderColor: 'rgba(255,248,232,0.20)', alignItems: 'center', justifyContent: 'center' },
 
-  titleBlock: { position: 'absolute', left: 112, right: 90, top: 30 },
-  titleBlockCompact: { left: 94, right: 14, top: 31 },
+  titleBlock: { position: 'absolute', left: 112, right: 90, top: 42 },
+  titleBlockCompact: { left: 94, right: 14, top: 42 },
   titleBlockVeryCompact: { left: 90, right: 10 },
   greeting: { color: '#FFF8E8', fontSize: 15, lineHeight: 19, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } },
   greetingCompact: { fontSize: 14, lineHeight: 17 },
@@ -42,13 +42,13 @@ export const styles = StyleSheet.create({
   rankGlyph: { fontSize: 12, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
   rankText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.55, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
 
-  badgeRail: { position: 'absolute', right: 12, bottom: 10, zIndex: 4, minHeight: 38, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 19, borderWidth: 1, backgroundColor: 'rgba(4,9,8,0.52)', flexDirection: 'row', alignItems: 'center', gap: 4, shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
+  badgeRail: { position: 'absolute', right: 12, bottom: 16, zIndex: 4, minHeight: 38, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 19, borderWidth: 1, backgroundColor: 'rgba(4,9,8,0.52)', flexDirection: 'row', alignItems: 'center', gap: 4, shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 5 },
   badgeSlot: { width: 30, height: 30, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
   badgeFallback: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.24)', alignItems: 'center', justifyContent: 'center' },
   badgeOverflow: { minWidth: 24, textAlign: 'center', fontSize: 10.5, fontWeight: '900', paddingHorizontal: 2, textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
 
-  metaBlock: { position: 'absolute', left: 16, right: 112, bottom: 15 },
-  metaBlockCompact: { left: 12, right: 94, bottom: 12 },
+  metaBlock: { position: 'absolute', left: 16, right: 112, bottom: 22 },
+  metaBlockCompact: { left: 12, right: 94, bottom: 18 },
   weatherRow: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
   weatherIcon: { color: '#FFF8E8', fontSize: 13, textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
   weatherText: { color: '#FFF8E8', fontSize: 11.5, fontWeight: '800', textTransform: 'capitalize', textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },

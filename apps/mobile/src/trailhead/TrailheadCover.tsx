@@ -79,7 +79,7 @@ export function TrailheadCover(props: TrailheadCoverProps) {
     return (
       <View
         accessibilityLabel="Trailhead loading"
-        style={{ height: 228, borderRadius: 28, overflow: 'hidden', backgroundColor: '#10232A' }}
+        style={{ height: 276, borderRadius: 28, overflow: 'hidden', backgroundColor: '#10232A' }}
       >
         <Image source={fallbackBackground} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
         <View
