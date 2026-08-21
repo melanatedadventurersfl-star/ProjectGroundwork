@@ -194,27 +194,28 @@ export default function TrailGuideScreen() {
               <AppIcon name="location" color="#F5C400" size={15} />
               <Text style={styles.locationText}>{locationBusy ? 'Locating…' : coordinates ? locationLabel : 'Use my location'}</Text>
             </Pressable>
+
+            <View style={styles.heroWeatherRow}>
+              <View style={styles.heroWeatherCopy}>
+                <Text style={styles.heroWeatherTitle}>
+                  {weatherBusy ? 'Checking conditions…' : weather ? `${Math.round(weather.current.temp_f)}° · ${weather.current.condition.text}` : 'Conditions unavailable'}
+                </Text>
+                {weather ? (
+                  <Text style={styles.heroWeatherMeta}>
+                    Feels like {Math.round(weather.current.feelslike_f)}° · {weather.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0}% rain · {Math.round(weather.current.wind_mph)} mph wind
+                  </Text>
+                ) : (
+                  <Text style={styles.heroWeatherMeta}>Recommendations still work without weather.</Text>
+                )}
+              </View>
+              <View style={styles.heroWeatherIcon}>
+                <AppIcon name="weather" color="#F5C400" size={22} />
+              </View>
+            </View>
           </View>
         </ImageBackground>
 
         <View style={styles.body}>
-          <View style={styles.conditionsCard}>
-            <View style={styles.conditionsCopy}>
-              <Text style={styles.conditionsLabel}>TODAY</Text>
-              <Text style={styles.conditionsTitle}>
-                {weatherBusy ? 'Checking conditions…' : weather ? `${Math.round(weather.current.temp_f)}° · ${weather.current.condition.text}` : 'Conditions unavailable'}
-              </Text>
-              {weather ? (
-                <Text style={styles.conditionsMeta}>
-                  Feels like {Math.round(weather.current.feelslike_f)}° · {weather.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0}% rain · {Math.round(weather.current.wind_mph)} mph wind
-                </Text>
-              ) : (
-                <Text style={styles.conditionsMeta}>Recommendations still work without weather.</Text>
-              )}
-            </View>
-            <AppIcon name="weather" color="#F5C400" size={24} />
-          </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
             {discoveryCategories.map((item) => {
               const active = category === item;
@@ -307,20 +308,20 @@ export default function TrailGuideScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#08100C' },
   page: { paddingBottom: 76 },
-  hero: { height: 230, justifyContent: 'flex-end' },
+  hero: { minHeight: 278, justifyContent: 'flex-end' },
   heroImage: { resizeMode: 'cover' },
-  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(4,10,7,0.48)' },
-  heroContent: { paddingHorizontal: 18, paddingBottom: 20 },
+  heroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(4,10,7,0.5)' },
+  heroContent: { paddingHorizontal: 18, paddingBottom: 18 },
   heroEyebrow: { color: '#D7E0DA', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   cityTitle: { color: '#FFFDF6', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 3 },
   locationRow: { alignSelf: 'flex-start', minHeight: 34, borderRadius: 999, backgroundColor: 'rgba(7,15,10,0.68)', paddingHorizontal: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationText: { color: '#F4F7F4', fontSize: 11, fontWeight: '800' },
-  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 14 },
-  conditionsCard: { minHeight: 88, borderRadius: 18, borderWidth: 1, borderColor: '#2B3B32', backgroundColor: '#121C17', padding: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  conditionsCopy: { flex: 1 },
-  conditionsLabel: { color: '#8ED47A', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  conditionsTitle: { color: '#FFFDF6', fontSize: 19, fontWeight: '900', marginTop: 3 },
-  conditionsMeta: { color: '#9DA9A2', fontSize: 10, lineHeight: 15, marginTop: 4 },
+  heroWeatherRow: { marginTop: 14, minHeight: 62, borderRadius: 16, backgroundColor: 'rgba(7,15,10,0.66)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroWeatherCopy: { flex: 1 },
+  heroWeatherTitle: { color: '#FFFDF6', fontSize: 18, lineHeight: 22, fontWeight: '900' },
+  heroWeatherMeta: { color: '#D2D8D4', fontSize: 10, lineHeight: 14, marginTop: 3 },
+  heroWeatherIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: 'rgba(7,15,10,0.58)', alignItems: 'center', justifyContent: 'center' },
+  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 0 },
   categoryRow: { gap: 8, paddingVertical: 14, paddingRight: 4 },
   categoryChip: { minHeight: 40, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#344139', backgroundColor: '#111A15', paddingHorizontal: 15 },
   categoryChipActive: { backgroundColor: '#79D26A', borderColor: '#79D26A' },
