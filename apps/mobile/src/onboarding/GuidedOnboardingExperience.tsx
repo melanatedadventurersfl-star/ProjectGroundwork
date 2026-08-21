@@ -29,7 +29,7 @@ import { requestConnection } from '../social/api';
 import { getStateOption, loadCitiesForState, US_STATES } from './locations';
 import { completeOnboarding, loadOnboardingProfile } from './onboardingService';
 import { markGuidedTutorialCompleted } from './tutorialPreference';
-import { INITIAL_ONBOARDING_FORM, INTEREST_OPTIONS, type OnboardingForm } from './types';
+import { INITIAL_ONBOARDING_FORM, type OnboardingForm } from './types';
 
 const GOLD = '#F5B82E';
 const BG = '#07100C';
@@ -52,6 +52,12 @@ const BACKGROUNDS = {
 
 // The launcher asset is a cleaner/high-density source than the tiny legacy wordmark raster.
 const LOGO = require('../../assets/ma-app-icon.png');
+const EXPLORER_BADGE = require('../../assets/ranks/explorer.png');
+const STICKER_PREVIEWS = [
+  require('../../assets/badges/trailhead.png'),
+  require('../../assets/badges/first-adventure.jpg'),
+  require('../../assets/badges/camp-crew.jpg'),
+] as const;
 
 type CommunitySuggestion = {
   id: string;
@@ -86,7 +92,6 @@ const NAV_ITEMS: NavItem[] = [
   { section: 'Campfires', label: 'Campfires', icon: 'flame-outline' },
 ];
 
-const PRIMARY_INTERESTS = ['Hiking', 'Camping', 'Water adventures', 'Travel', 'Wellness outdoors', 'Community'] as const;
 const ADVENTURE_OPTIONS = ['Camping trips', 'Day trips', 'Weekend trips', 'Water adventures', 'Road trips', 'Beginner experiences'] as const;
 const OUTPOST_OPTIONS = [
   ['Find people to adventure with', 'Meet new people', 'people-outline'],
@@ -188,7 +193,7 @@ function BottomNav({ active }: { active: SectionName }) {
   );
 }
 
-function SectionShell({ active, name, children, step, onBack }: { active: SectionName; name: string; children: ReactNode; step: number; onBack: () => void }) {
+function SectionShell({ active, name, children, step, onBack, scrollEnabled = true }: { active: SectionName; name: string; children: ReactNode; step: number; onBack: () => void; scrollEnabled?: boolean }) {
   return (
     <SafeAreaView style={styles.sectionShell} edges={['top', 'left', 'right']}>
       <View style={styles.sectionHeader}>
@@ -202,8 +207,13 @@ function SectionShell({ active, name, children, step, onBack }: { active: Sectio
         <Ionicons name="notifications-outline" size={22} color={GOLD} />
       </View>
       <StepProgress step={step} />
-      <ScrollView contentContainerStyle={styles.sectionScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.contentFrame}>{children}</View>
+      <ScrollView
+        contentContainerStyle={[styles.sectionScroll, !scrollEnabled && styles.sectionScrollFixed]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={scrollEnabled}
+      >
+        <View style={[styles.contentFrame, !scrollEnabled && styles.contentFrameFixed]}>{children}</View>
       </ScrollView>
       <BottomNav active={active} />
     </SafeAreaView>
@@ -287,7 +297,6 @@ export default function GuidedOnboardingExperience() {
   const [saving, setSaving] = useState(false);
   const [wasAlreadyComplete, setWasAlreadyComplete] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
-  const [showMoreInterests, setShowMoreInterests] = useState(false);
   const [locating, setLocating] = useState(false);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [stateSearch, setStateSearch] = useState('');
@@ -431,9 +440,6 @@ export default function GuidedOnboardingExperience() {
 
   const greetingName = form.displayName.trim() || username || 'friend';
   const locationLabel = [form.homeCity, form.homeState].filter(Boolean).join(', ');
-  const interestOptions = showMoreInterests
-    ? Array.from(new Set([...PRIMARY_INTERESTS, ...INTEREST_OPTIONS]))
-    : [...PRIMARY_INTERESTS];
   const peopleToShow = suggestions.length ? suggestions.slice(0, 3) : DEMO_PEOPLE;
 
   async function requestCurrentLocation() {
@@ -629,41 +635,54 @@ export default function GuidedOnboardingExperience() {
 
   if (step === 3) {
     return (
-      <SectionShell active="Trailhead" name={greetingName} step={step} onBack={back}>
-        <SectionIntro eyebrow="YOUR HOME BASE" title="This is your Trailhead." copy="Your home base for upcoming adventures, nearby places, useful guides, and community activity." />
-        <ImageBackground source={BACKGROUNDS.trailhead} style={styles.rankHero} imageStyle={styles.rankHeroImage}>
-          <View style={styles.rankShade} />
-          <View style={styles.rankTopRow}>
-            <View style={styles.explorerBadge}><Ionicons name="compass-outline" size={27} color={GOLD} /></View>
-            <View style={styles.flex}>
-              <Text style={styles.previewKicker}>EXPLORER</Text>
-              <Text style={styles.rankTitle}>Level 1</Text>
-              <Text style={styles.rankSubcopy}>Everyone starts here.</Text>
+      <SectionShell active="Trailhead" name={greetingName} step={step} onBack={back} scrollEnabled={false}>
+        <View style={styles.trailheadIntroStage}>
+          <SectionIntro eyebrow="YOUR HOME BASE" title="This is your Trailhead." copy="Your rank, weather, badges, nearby places, guides, and community activity all start here." />
+          <ImageBackground source={BACKGROUNDS.trailhead} style={styles.trailheadHero} imageStyle={styles.trailheadHeroImage}>
+            <View style={styles.trailheadHeroShade} />
+            <View style={styles.trailheadHeroMain}>
+              <Image source={EXPLORER_BADGE} style={styles.trailheadExplorerBadge} resizeMode="contain" />
+              <View style={styles.trailheadHeroCopy}>
+                <View style={styles.trailheadRankRow}>
+                  <Text style={styles.trailheadRankName}>EXPLORER</Text>
+                  <Text style={styles.trailheadRankLevel}>· Level 1</Text>
+                </View>
+                <Text style={styles.trailheadRankSubcopy}>Everyone starts here.</Text>
+                <View style={styles.trailheadWeatherRow}>
+                  <Ionicons name="partly-sunny-outline" size={17} color={GOLD} />
+                  <Text style={styles.trailheadWeatherText}>68° · Clear skies</Text>
+                </View>
+                <Text style={styles.trailheadLocationText}>{locationLabel || 'Your local weather'}</Text>
+              </View>
+            </View>
+            <View style={styles.stickerTray}>
+              {STICKER_PREVIEWS.map((source, index) => (
+                <Image key={index} source={source} style={styles.stickerPreview} resizeMode="cover" />
+              ))}
+              <View style={styles.stickerCount}><Text style={styles.stickerCountText}>+12</Text></View>
+            </View>
+          </ImageBackground>
+          <View style={styles.badgeGuideCard}>
+            <View style={styles.badgeGuideHeading}>
+              <Ionicons name="ribbon-outline" size={18} color={GOLD} />
+              <Text style={styles.badgeGuideEyebrow}>HOW BADGES & STICKERS WORK</Text>
+            </View>
+            <View style={styles.badgeGuideRow}>
+              <View style={styles.badgeGuideIcon}><Text style={styles.badgeGuideIconText}>1</Text></View>
+              <View style={styles.flex}><Text style={styles.badgeGuideTitle}>Start as Explorer</Text><Text style={styles.badgeGuideText}>Everyone begins at Level 1.</Text></View>
+            </View>
+            <View style={styles.badgeGuideDivider} />
+            <View style={styles.badgeGuideRow}>
+              <View style={styles.badgeGuideIcon}><Text style={styles.badgeGuideIconText}>XP</Text></View>
+              <View style={styles.flex}><Text style={styles.badgeGuideTitle}>Earn XP by showing up</Text><Text style={styles.badgeGuideText}>Join adventures, explore places, connect, and participate.</Text></View>
+            </View>
+            <View style={styles.badgeGuideDivider} />
+            <View style={styles.badgeGuideRow}>
+              <View style={styles.badgeGuideIcon}><Ionicons name="trophy-outline" size={16} color={GOLD} /></View>
+              <View style={styles.flex}><Text style={styles.badgeGuideTitle}>Build your collection</Text><Text style={styles.badgeGuideText}>Unlock higher ranks, achievement badges, and collectible stickers over time.</Text></View>
             </View>
           </View>
-          <View style={styles.weatherBlock}>
-            <Text style={styles.weatherTemp}>68°</Text>
-            <View><Text style={styles.weatherCondition}>Clear skies</Text><Text style={styles.weatherLocation}>{locationLabel || 'Your local weather'}</Text></View>
-          </View>
-        </ImageBackground>
-        <View style={styles.previewGrid}>
-          <PreviewCard image={BACKGROUNDS.share} kicker="UPCOMING" title="Weekend Camping Trip" copy="Your next adventure at a glance" />
-          <PreviewCard image={BACKGROUNDS.places} kicker="NEAR YOU" title="Places worth exploring" copy="Local ideas that fit your interests" />
-        </View>
-        <View style={styles.actionCard}>
-          <Text style={styles.actionTitle}>Choose your interests</Text>
-          <Text style={styles.actionCopy}>Select at least 2. We’ll use these to personalize your Trailhead.</Text>
-          <View style={styles.chipWrap}>
-            {interestOptions.map((interest) => (
-              <ChoiceChip key={interest} label={interest === 'Water adventures' ? 'Water' : interest === 'Wellness outdoors' ? 'Wellness' : interest} selected={form.interests.includes(interest)} onPress={() => update('interests', toggleValue(form.interests, interest))} />
-            ))}
-          </View>
-          <Pressable style={styles.moreInterests} onPress={() => setShowMoreInterests((value) => !value)}>
-            <Text style={styles.moreInterestsText}>{showMoreInterests ? 'Show fewer' : 'More interests'}</Text>
-            <Ionicons name={showMoreInterests ? 'chevron-up' : 'chevron-down'} size={15} color={GOLD} />
-          </Pressable>
-          <SelectionStatus count={form.interests.length} />
-          <PrimaryButton label="Personalize my Trailhead" disabled={form.interests.length < MIN_SELECTIONS} onPress={next} />
+          <View style={styles.trailheadContinue}><PrimaryButton label="Continue" onPress={next} /></View>
         </View>
       </SectionShell>
     );
@@ -949,7 +968,9 @@ const styles = StyleSheet.create({
   progressSegment: { flex: 1, height: 4, borderRadius: 4, backgroundColor: '#2B3530' },
   progressSegmentActive: { backgroundColor: GOLD },
   sectionScroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 20 },
+  sectionScrollFixed: { flexGrow: 1, paddingBottom: 10 },
   contentFrame: { width: '100%', maxWidth: 620, alignSelf: 'center' },
+  contentFrameFixed: { flex: 1 },
   sectionIntro: { marginBottom: 13 },
   sectionTitle: { color: TEXT, fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -0.7 },
   sectionCopy: { color: MUTED, fontSize: 14, lineHeight: 20, marginTop: 6 },
@@ -958,6 +979,34 @@ const styles = StyleSheet.create({
   navLabel: { color: '#7C8881', fontSize: 10 },
   navLabelActive: { color: GOLD, fontWeight: '800' },
   navUnderline: { width: 24, height: 3, borderRadius: 3, backgroundColor: GOLD, marginTop: 1 },
+  trailheadIntroStage: { flex: 1 },
+  trailheadHero: { height: 160, borderRadius: 20, overflow: 'hidden', padding: 13, marginBottom: 10, justifyContent: 'space-between' },
+  trailheadHeroImage: { borderRadius: 20 },
+  trailheadHeroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(3,8,6,0.42)' },
+  trailheadHeroMain: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  trailheadExplorerBadge: { width: 82, height: 82 },
+  trailheadHeroCopy: { flex: 1, minWidth: 0 },
+  trailheadRankRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 5 },
+  trailheadRankName: { color: TEXT, fontSize: 19, lineHeight: 22, fontWeight: '900', letterSpacing: 0.8 },
+  trailheadRankLevel: { color: GOLD, fontSize: 15, fontWeight: '900' },
+  trailheadRankSubcopy: { color: '#E5E9E6', fontSize: 11.5, marginTop: 2 },
+  trailheadWeatherRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
+  trailheadWeatherText: { color: TEXT, fontSize: 12.5, fontWeight: '800' },
+  trailheadLocationText: { color: '#DFE4E1', fontSize: 10.5, marginTop: 2 },
+  stickerTray: { alignSelf: 'flex-end', minHeight: 42, borderRadius: 999, backgroundColor: 'rgba(4,9,7,0.80)', borderWidth: 1, borderColor: 'rgba(245,184,46,0.38)', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 7, paddingVertical: 5 },
+  stickerPreview: { width: 31, height: 31, borderRadius: 16, borderWidth: 1, borderColor: '#7D672A' },
+  stickerCount: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#2B2B22', alignItems: 'center', justifyContent: 'center' },
+  stickerCountText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
+  badgeGuideCard: { borderRadius: 18, borderWidth: 1, borderColor: '#403D2D', backgroundColor: '#101612', padding: 11, gap: 6 },
+  badgeGuideHeading: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 1 },
+  badgeGuideEyebrow: { color: GOLD, fontSize: 10.5, fontWeight: '900', letterSpacing: 1 },
+  badgeGuideRow: { minHeight: 39, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  badgeGuideIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, borderColor: '#8B6D22', backgroundColor: '#171810', alignItems: 'center', justifyContent: 'center' },
+  badgeGuideIconText: { color: GOLD, fontSize: 11.5, fontWeight: '900' },
+  badgeGuideTitle: { color: TEXT, fontSize: 12.5, lineHeight: 16, fontWeight: '900' },
+  badgeGuideText: { color: MUTED, fontSize: 10.5, lineHeight: 14, marginTop: 1 },
+  badgeGuideDivider: { height: 1, backgroundColor: '#293129', marginLeft: 44 },
+  trailheadContinue: { marginTop: 'auto', paddingTop: 10 },
   rankHero: { height: 190, borderRadius: 21, overflow: 'hidden', padding: 16, justifyContent: 'space-between', marginBottom: 12 },
   rankHeroImage: { borderRadius: 21 },
   rankShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(3,8,6,0.40)' },
