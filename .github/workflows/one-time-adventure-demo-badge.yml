@@ -58,8 +58,9 @@ jobs:
           git rm .github/workflows/one-time-adventure-demo-badge.yml scripts/patch_adventure_demo_badge.py
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "fix: show demo badge on adventure cards"
+          git reset --hard HEAD
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
 
-# retry with rebase-before-push
+# retry with clean-tree rebase
