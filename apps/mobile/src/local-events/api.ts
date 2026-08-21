@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 
+const EVENT_MEDIA_BUCKET = 'event-media';
+
 export type LocalEvent = {
   id: string;
   host_id: string;
@@ -95,6 +97,33 @@ export async function setLocalEventRsvp(localEventId: string, status: 'going' | 
   if (error) throw error;
 }
 
+export async function uploadLocalEventImage(input: {
+  bytes: Uint8Array;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
+  extension: 'jpg' | 'png' | 'webp';
+}) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('You must be signed in to upload an event photo.');
+  if (!input.bytes.byteLength) throw new Error('Event photo is empty.');
+
+  const path = `${userId}/local-events/${Date.now()}.${input.extension}`;
+  const payload = input.bytes.buffer.slice(
+    input.bytes.byteOffset,
+    input.bytes.byteOffset + input.bytes.byteLength,
+  ) as ArrayBuffer;
+
+  const { error } = await supabase.storage.from(EVENT_MEDIA_BUCKET).upload(path, payload, {
+    contentType: input.contentType,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(EVENT_MEDIA_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export async function createLocalEvent(input: {
   title: string;
   description: string;
@@ -105,6 +134,7 @@ export async function createLocalEvent(input: {
   state: string;
   venueName?: string;
   capacity?: number;
+  imageUrl?: string;
 }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
@@ -120,6 +150,7 @@ export async function createLocalEvent(input: {
     city: input.city.trim(),
     state: input.state.trim().toUpperCase(),
     venue_name: input.venueName?.trim() || null,
+    image_url: input.imageUrl || null,
     capacity: input.capacity ?? null,
     is_free: true,
     status: 'published',
