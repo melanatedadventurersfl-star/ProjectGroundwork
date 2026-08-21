@@ -1,15 +1,15 @@
 import { useFocusEffect } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useCallback, useState } from 'react';
-import { Image, View } from 'react-native';
+import { Image, useWindowDimensions, View } from 'react-native';
 
 import { useAuth } from '../auth/AuthProvider';
 import { getMyPassportRank } from '../passport/rankApi';
 import type { RankName } from '../passport/RankEmblem';
-import { TrailheadCover as DynamicTrailheadCover } from './TrailheadDynamicCover';
+import { TrailheadOptimizedCover } from './TrailheadOptimizedCover';
 import { backgroundFor, dayPhaseFor } from './trailheadBannerConfig';
 
-type TrailheadCoverProps = Parameters<typeof DynamicTrailheadCover>[0];
+type TrailheadCoverProps = Parameters<typeof TrailheadOptimizedCover>[0];
 
 const RANK_CACHE_PREFIX = 'ma-trailhead-rank:v1:';
 const VALID_RANKS: RankName[] = ['Explorer', 'Pathfinder', 'Trailblazer', 'Adventurer', 'Summit Seeker', 'Ascendant'];
@@ -20,6 +20,7 @@ function isRankName(value: unknown): value is RankName {
 
 export function TrailheadCover(props: TrailheadCoverProps) {
   const { session } = useAuth();
+  const { width } = useWindowDimensions();
   const userId = session?.user.id ?? null;
   const [effectiveRank, setEffectiveRank] = useState<RankName | null>(null);
   const [rankReady, setRankReady] = useState(false);
@@ -73,13 +74,14 @@ export function TrailheadCover(props: TrailheadCoverProps) {
   }, [props.rank, userId]));
 
   const waitingForProfile = Boolean(userId) && props.displayName.trim() === 'Adventurer';
+  const fallbackHeight = width < 370 ? 286 : width < 420 ? 300 : 318;
 
   if (!rankReady || !effectiveRank || waitingForProfile) {
     const fallbackBackground = backgroundFor(props.rank, 'clear', dayPhaseFor(null, new Date()));
     return (
       <View
         accessibilityLabel="Trailhead loading"
-        style={{ height: 276, borderRadius: 28, overflow: 'hidden', backgroundColor: '#10232A' }}
+        style={{ height: fallbackHeight, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10232A' }}
       >
         <Image source={fallbackBackground} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
         <View
@@ -90,5 +92,5 @@ export function TrailheadCover(props: TrailheadCoverProps) {
     );
   }
 
-  return <DynamicTrailheadCover {...props} rank={effectiveRank} />;
+  return <TrailheadOptimizedCover {...props} rank={effectiveRank} />;
 }
