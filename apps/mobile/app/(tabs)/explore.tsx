@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -60,10 +60,13 @@ function isWeekend(date: string) {
   return day === 0 || day === 6;
 }
 
-function matchesQuickTags(item: { title: string; description?: string | null; category?: string | null; starts_at: string }, tags: string[]) {
+function matchesQuickTags(
+  item: { title: string; description?: string | null; category?: string | null; starts_at: string },
+  tags: string[],
+) {
   if (!tags.length) return true;
   const tagsForItem = inferredTags(item);
-  return tags.every((tag) => tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag));
+  return tags.every((tag) => (tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag)));
 }
 
 function SectionHeader({ title, expanded, onPress }: { title: string; expanded: boolean; onPress: () => void }) {
@@ -77,7 +80,12 @@ function SectionHeader({ title, expanded, onPress }: { title: string; expanded: 
   );
 }
 
-function AdventureTile({ adventure, distance, onToggleSaved, wide = false }: {
+function AdventureTile({
+  adventure,
+  distance,
+  onToggleSaved,
+  wide = false,
+}: {
   adventure: AdventureSummary;
   distance?: number | null;
   onToggleSaved: (adventure: AdventureSummary) => void;
@@ -89,7 +97,11 @@ function AdventureTile({ adventure, distance, onToggleSaved, wide = false }: {
       onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
     >
       {adventure.hero_image_url ? (
-        <ImageBackground source={{ uri: adventure.hero_image_url }} style={[s.tileImage, wide && s.tileImageWide]} imageStyle={s.tileImageCorners}>
+        <ImageBackground
+          source={{ uri: adventure.hero_image_url }}
+          style={[s.tileImage, wide && s.tileImageWide]}
+          imageStyle={s.tileImageCorners}
+        >
           <View style={s.tileShade}>
             <View style={s.tileTopRow}>
               {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : <View />}
@@ -106,13 +118,51 @@ function AdventureTile({ adventure, distance, onToggleSaved, wide = false }: {
           </View>
         </ImageBackground>
       ) : (
-        <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>
+        <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}>
+          <Text style={s.tileFallbackIcon}>↗</Text>
+        </View>
       )}
       <View style={s.tileCopy}>
         <Text style={s.tileTitle} numberOfLines={wide ? 2 : 1}>{adventure.title}</Text>
         <Text style={s.tileMeta} numberOfLines={1}>{adventure.category} · {adventure.city}, {adventure.state}</Text>
-        <Text style={s.tileDate}>{new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+        <Text style={s.tileDate}>
+          {new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        </Text>
       </View>
+    </Pressable>
+  );
+}
+
+function FeaturedHero({ adventure }: { adventure: AdventureSummary }) {
+  const start = new Date(adventure.starts_at);
+  const dateLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  const content = (
+    <View style={s.featureHeroShade}>
+      <View style={s.featureHeroCopy}>
+        <Text style={s.featureHeroEyebrow}>FEATURED ADVENTURE</Text>
+        <Text style={s.featureHeroTitle} numberOfLines={2}>{adventure.title}</Text>
+        <Text style={s.featureHeroMeta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state}   ·   {dateLabel}</Text>
+        {adventure.summary ? <Text style={s.featureHeroBody} numberOfLines={2}>{adventure.summary}</Text> : null}
+        <View style={s.featureHeroButton}>
+          <Text style={s.featureHeroButtonText}>View Adventure  →</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  return (
+    <Pressable
+      style={s.featureHero}
+      onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
+    >
+      {adventure.hero_image_url ? (
+        <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.featureHeroImage} imageStyle={s.featureHeroImageCorners}>
+          {content}
+        </ImageBackground>
+      ) : (
+        <View style={[s.featureHeroImage, s.featureHeroFallback]}>{content}</View>
+      )}
     </Pressable>
   );
 }
@@ -126,18 +176,16 @@ function EventCard({ event, distance, wide = false }: { event: LocalEvent; dista
       style={[s.eventCard, wide && s.eventCardWide]}
       onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}
     >
-      <View style={s.eventDateBlock}>
-        <Text style={s.eventMonth}>{date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text>
-        <Text style={s.eventDay}>{date.getDate()}</Text>
-        <Text style={s.eventWeekday}>{date.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</Text>
-      </View>
       <ImageBackground source={imageSource} style={s.eventVisual} imageStyle={s.eventVisualImage}>
         <View style={s.eventVisualShade} />
       </ImageBackground>
       <View style={s.eventCopy}>
         <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>
-        <Text style={s.eventMeta} numberOfLines={1}>{event.city}, {event.state}</Text>
-        <Text style={s.eventMeta}>{date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}{distance != null ? ` · ${distance.toFixed(0)} mi` : ''}</Text>
+        <Text style={s.eventMeta} numberOfLines={1}>{event.category} · {event.city}, {event.state}</Text>
+        <Text style={s.eventDateLine}>
+          {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+          {distance != null ? ` · ${distance.toFixed(0)} mi` : ''}
+        </Text>
       </View>
     </Pressable>
   );
@@ -145,7 +193,6 @@ function EventCard({ event, distance, wide = false }: { event: LocalEvent; dista
 
 export default function ExploreScreen() {
   const { session } = useAuth();
-  const pageRef = useRef<ScrollView>(null);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [events, setEvents] = useState<LocalEvent[]>([]);
   const [search, setSearch] = useState('');
@@ -155,7 +202,6 @@ export default function ExploreScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [expandedSection, setExpandedSection] = useState<ExpandedSection>(null);
-  const [featuredY, setFeaturedY] = useState(0);
   const [homeCity, setHomeCity] = useState('');
   const [homeState, setHomeState] = useState('');
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null);
@@ -182,7 +228,7 @@ export default function ExploreScreen() {
         if (city && state) setCurrentLocationLabel(`${city}, ${state}`);
         else if (city) setCurrentLocationLabel(city);
       } catch {
-        // Saved profile location remains the fallback when device location is unavailable.
+        // Profile location remains the fallback when device location is unavailable.
       }
     })();
     return () => { active = false; };
@@ -205,7 +251,7 @@ export default function ExploreScreen() {
       setHomeState(profile.data?.home_state ?? '');
       setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load Explore.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load Melanated Adventures.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -246,12 +292,12 @@ export default function ExploreScreen() {
     const query = search.trim().toLowerCase();
     const searchable = `${event.title} ${event.host_name} ${event.city} ${event.state} ${event.category} ${event.description}`.toLowerCase();
     const textMatch = !query || searchable.includes(query) || savedCenter != null;
-    const distanceMatch = distance == null || distance <= Math.min(100, radiusLimit);
+    const distanceMatch = radius === 'Anywhere' || distance == null || distance <= radiusLimit;
     return textMatch && distanceMatch && matchesQuickTags(event, selectedTags);
   }).sort((a, b) => sort === 'closest'
     ? (a.distance ?? 9999) - (b.distance ?? 9999)
     : new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime()),
-  [events, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
+  [events, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
 
   async function toggle(adventure: AdventureSummary) {
     if (!session) {
@@ -281,12 +327,6 @@ export default function ExploreScreen() {
     return distanceMiles(searchCenter, { latitude: adventure.latitude, longitude: adventure.longitude });
   }
 
-  function showIdeas() {
-    setSort('closest');
-    setExpandedSection(null);
-    requestAnimationFrame(() => pageRef.current?.scrollTo({ y: Math.max(0, featuredY - 16), animated: true }));
-  }
-
   function toggleExpanded(section: Exclude<ExpandedSection, null>) {
     setExpandedSection((current) => current === section ? null : section);
   }
@@ -297,45 +337,31 @@ export default function ExploreScreen() {
     setRadius('50');
   }
 
-  const featured = visibleAdventures.filter((item) => item.is_featured).concat(visibleAdventures.filter((item) => !item.is_featured));
+  const featured = visibleAdventures
+    .filter((item) => item.is_featured)
+    .concat(visibleAdventures.filter((item) => !item.is_featured));
+  const heroAdventure = adventures.find((item) => item.is_featured && item.hero_image_url) ?? adventures.find((item) => item.hero_image_url) ?? adventures[0];
   const featuredPreview = featured.slice(0, 6);
   const popular = visibleAdventures.slice(6, 18).length ? visibleAdventures.slice(6, 18) : visibleAdventures;
   const popularPreview = popular.slice(0, 6);
   const nearby = localEvents;
-  const nearbyPreview = nearby.slice(0, 4);
-
-  const timeOfDay = new Date().getHours();
-  const daypart = timeOfDay >= 17 ? 'evening' : timeOfDay >= 12 ? 'afternoon' : 'morning';
-  const conditionTitle = `A good ${daypart} to get outside`;
-  const conditionBody = category === 'All'
-    ? `Discover something nearby in ${currentLocationLabel}.`
-    : `Find ${category.toLowerCase()} ideas around ${currentLocationLabel}.`;
+  const nearbyPreview = nearby.slice(0, 6);
+  const isSearching = search.trim().length > 0;
 
   return (
     <SafeAreaView style={s.safe} edges={['left', 'right']}>
       <ScrollView
-        ref={pageRef}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#F5C542" />}
       >
         <View style={s.hero}>
-          <Text style={s.title}>Adventures</Text>
+          <Text style={s.title}>Melanated Adventures</Text>
           <View style={s.locationRow}>
-            <Text style={s.locationMarker}>✦</Text>
+            <Text style={s.locationMarker}>⌖</Text>
             <Text style={s.location}>{currentLocationLabel}</Text>
-            <Text style={s.locationChevron}>⌄</Text>
           </View>
 
-          <View style={s.conditionCard}>
-            <View style={s.conditionIconWrap}><Text style={s.conditionIcon}>☀</Text></View>
-            <View style={s.conditionCopy}>
-              <Text style={s.conditionTitle}>{conditionTitle}</Text>
-              <Text style={s.conditionBody}>{conditionBody}</Text>
-            </View>
-            <Pressable style={s.conditionButton} onPress={showIdeas}>
-              <Text style={s.conditionButtonText}>See ideas  ›</Text>
-            </Pressable>
-          </View>
+          {!loading && !isSearching && heroAdventure ? <FeaturedHero adventure={heroAdventure} /> : null}
 
           <View style={s.searchWrap}>
             <Text style={s.searchIcon}>⌕</Text>
@@ -345,6 +371,8 @@ export default function ExploreScreen() {
               placeholder="Search places, adventures & events"
               placeholderTextColor="#909A95"
               style={s.input}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
             />
             <Pressable style={s.filterIconButton} onPress={() => setShowFilters(true)}>
               <Text style={s.filterIcon}>☷</Text>
@@ -353,7 +381,11 @@ export default function ExploreScreen() {
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
             {categories.map((item) => (
-              <Pressable key={item} onPress={() => chooseCategory(item)} style={[s.categoryChip, category === item && s.categoryChipActive]}>
+              <Pressable
+                key={item}
+                onPress={() => chooseCategory(item)}
+                style={[s.categoryChip, category === item && s.categoryChipActive]}
+              >
                 <Text style={[s.categoryIcon, category === item && s.categoryTextActive]}>{categoryIcons[item]}</Text>
                 <Text style={[s.categoryText, category === item && s.categoryTextActive]}>{item}</Text>
               </Pressable>
@@ -365,7 +397,7 @@ export default function ExploreScreen() {
         {loading ? <ActivityIndicator color="#F5C542" style={s.loader} /> : null}
 
         {!loading && featuredPreview.length ? (
-          <View style={s.section} onLayout={(event) => setFeaturedY(event.nativeEvent.layout.y)}>
+          <View style={s.section}>
             <SectionHeader title="Featured Adventures" expanded={expandedSection === 'featured'} onPress={() => toggleExpanded('featured')} />
             {expandedSection === 'featured' ? (
               <View style={s.expandedList}>
@@ -400,7 +432,11 @@ export default function ExploreScreen() {
 
         {!loading && popularPreview.length ? (
           <View style={s.section}>
-            <SectionHeader title={`Popular Around ${currentLocationLabel.split(',')[0] ?? currentLocationLabel}`} expanded={expandedSection === 'popular'} onPress={() => toggleExpanded('popular')} />
+            <SectionHeader
+              title={`Popular Around ${currentLocationLabel.split(',')[0] ?? currentLocationLabel}`}
+              expanded={expandedSection === 'popular'}
+              onPress={() => toggleExpanded('popular')}
+            />
             {expandedSection === 'popular' ? (
               <View style={s.expandedList}>
                 {popular.map((adventure) => (
@@ -419,8 +455,8 @@ export default function ExploreScreen() {
 
         {!loading && !featuredPreview.length && !nearbyPreview.length ? (
           <View style={s.empty}>
-            <Text style={s.emptyTitle}>Nothing nearby yet</Text>
-            <Text style={s.emptyBody}>Try widening your radius or clearing a filter.</Text>
+            <Text style={s.emptyTitle}>{isSearching ? 'No matches found' : 'Nothing nearby yet'}</Text>
+            <Text style={s.emptyBody}>{isSearching ? 'Try another keyword, city, or activity.' : 'Try widening your radius or clearing a filter.'}</Text>
           </View>
         ) : null}
       </ScrollView>
@@ -431,7 +467,7 @@ export default function ExploreScreen() {
           <View style={s.filterSheet}>
             <View style={s.sheetHandle} />
             <View style={s.filterPanelTop}>
-              <Text style={s.filterPanelTitle}>Refine Explore</Text>
+              <Text style={s.filterPanelTitle}>Refine Adventures</Text>
               <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.resetFilter}>Reset</Text></Pressable>
             </View>
 
@@ -478,19 +514,22 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#090F0E' },
   content: { paddingBottom: 120 },
   hero: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
-  title: { color: '#F8F8F4', fontSize: 42, lineHeight: 46, fontWeight: '900', letterSpacing: -1.2 },
+  title: { color: '#F8F8F4', fontSize: 39, lineHeight: 43, fontWeight: '900', letterSpacing: -1.2 },
   locationRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 },
-  locationMarker: { color: '#F5C542', fontSize: 15, fontWeight: '900' },
+  locationMarker: { color: '#F5C542', fontSize: 17, fontWeight: '900' },
   location: { color: '#F5C542', fontSize: 16, fontWeight: '900' },
-  locationChevron: { color: '#A7B0AB', fontSize: 16, fontWeight: '900' },
-  conditionCard: { minHeight: 90, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 18, borderWidth: 1, borderColor: '#39463F', backgroundColor: '#13201C' },
-  conditionIconWrap: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A2924' },
-  conditionIcon: { color: '#F5C542', fontSize: 28 },
-  conditionCopy: { flex: 1 },
-  conditionTitle: { color: '#F8F8F4', fontSize: 15, lineHeight: 19, fontWeight: '900' },
-  conditionBody: { color: '#AFBAB4', fontSize: 10, lineHeight: 14, marginTop: 3 },
-  conditionButton: { borderRadius: 999, borderWidth: 1, borderColor: '#F5C542', paddingHorizontal: 12, paddingVertical: 8 },
-  conditionButtonText: { color: '#F5C542', fontSize: 10, fontWeight: '900' },
+  featureHero: { height: 194, overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: '#5C5631', backgroundColor: '#16241F' },
+  featureHeroImage: { flex: 1 },
+  featureHeroImageCorners: { borderRadius: 19 },
+  featureHeroFallback: { backgroundColor: '#173127' },
+  featureHeroShade: { flex: 1, justifyContent: 'flex-end', padding: 16, backgroundColor: 'rgba(3,8,7,.43)' },
+  featureHeroCopy: { maxWidth: '88%' },
+  featureHeroEyebrow: { color: '#F5C542', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
+  featureHeroTitle: { color: '#FFFFFF', fontSize: 25, lineHeight: 28, fontWeight: '900', marginTop: 4, letterSpacing: -.5 },
+  featureHeroMeta: { color: '#F0F3F1', fontSize: 10, fontWeight: '700', marginTop: 6 },
+  featureHeroBody: { color: '#D6DED9', fontSize: 10, lineHeight: 14, marginTop: 6 },
+  featureHeroButton: { alignSelf: 'flex-start', marginTop: 11, borderRadius: 999, backgroundColor: '#F5C542', paddingHorizontal: 15, paddingVertical: 9 },
+  featureHeroButtonText: { color: '#121816', fontSize: 11, fontWeight: '900' },
   searchWrap: { height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#151C1A', paddingLeft: 15 },
   searchIcon: { color: '#C7CECA', fontSize: 26, marginRight: 7, marginTop: -2 },
   input: { flex: 1, color: '#F7F7F4', fontSize: 15, paddingVertical: 13 },
@@ -526,29 +565,18 @@ const s = StyleSheet.create({
   tileTitle: { color: '#F7F7F4', fontSize: 15, fontWeight: '900' },
   tileMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 4 },
   tileDate: { color: '#F5C542', fontSize: 10, fontWeight: '800', marginTop: 6 },
-  eventCard: { width: 306, minHeight: 126, flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
+  eventCard: { width: 320, minHeight: 112, flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
   eventCardWide: { width: '100%' },
-  eventDateBlock: { width: 62, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151E1B' },
-  eventMonth: { color: '#F5C542', fontSize: 9, fontWeight: '900' },
-  eventDay: { color: '#F8F8F4', fontSize: 29, lineHeight: 31, fontWeight: '900' },
-  eventWeekday: { color: '#AAB4AE', fontSize: 9, fontWeight: '800' },
-  eventVisual: { width: 92, alignSelf: 'stretch' },
+  eventVisual: { width: 112, alignSelf: 'stretch' },
   eventVisualImage: { resizeMode: 'cover' },
-  eventVisualShade: { flex: 1, backgroundColor: 'rgba(8,13,12,.14)' },
+  eventVisualShade: { flex: 1, backgroundColor: 'rgba(8,13,12,.10)' },
   eventCopy: { flex: 1, justifyContent: 'center', padding: 12 },
   eventTitle: { color: '#F7F7F4', fontSize: 15, lineHeight: 19, fontWeight: '900' },
   eventMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 5 },
-  learnCard: { marginHorizontal: 18, marginTop: 27, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#315248', backgroundColor: '#10241F' },
-  learnIconWrap: { width: 52, height: 52, borderRadius: 15, backgroundColor: '#203329', alignItems: 'center', justifyContent: 'center' },
-  learnIcon: { fontSize: 26 },
-  learnCopy: { flex: 1 },
-  learnEyebrow: { color: '#F5C542', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  learnTitle: { color: '#F7F7F4', fontSize: 16, fontWeight: '900', marginTop: 2 },
-  learnBody: { color: '#A9B6AF', fontSize: 10, lineHeight: 14, marginTop: 3 },
-  learnArrow: { color: '#F5C542', fontSize: 28 },
+  eventDateLine: { color: '#F5C542', fontSize: 10, fontWeight: '800', marginTop: 6 },
   empty: { marginHorizontal: 18, marginTop: 28, padding: 20, borderRadius: 18, borderWidth: 1, borderColor: '#2E3934', backgroundColor: '#111715', alignItems: 'center' },
   emptyTitle: { color: '#F7F7F4', fontSize: 18, fontWeight: '900' },
-  emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5 },
+  emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5, textAlign: 'center' },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.62)' },
   filterSheet: { maxHeight: '66%', backgroundColor: '#111816', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderColor: '#303B36', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 13 },
