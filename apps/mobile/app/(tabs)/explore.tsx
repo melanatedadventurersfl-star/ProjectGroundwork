@@ -112,7 +112,10 @@ function AdventureTile({
         >
           <View style={s.tileShade}>
             <View style={s.tileTopRow}>
-              {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : <View />}
+              <View style={s.tileBadges}>
+                {adventure.is_demo ? <Text style={s.demoBadge}>DEMO</Text> : null}
+                {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : null}
+              </View>
               <Pressable
                 style={s.heartButton}
                 onPress={(event) => {
@@ -590,6 +593,8 @@ const s = StyleSheet.create({
   tileImageCorners: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   tileShade: { flex: 1, backgroundColor: 'rgba(0,0,0,.16)', padding: 9 },
   tileTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  tileBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  demoBadge: { color: '#111816', backgroundColor: '#F5C542', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, fontSize: 9, fontWeight: '900', letterSpacing: .7 },
   distanceBadge: { color: '#FFFFFF', backgroundColor: 'rgba(8,13,12,.72)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, fontSize: 10, fontWeight: '900' },
   heartButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(8,13,12,.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,.5)', alignItems: 'center', justifyContent: 'center' },
   heart: { color: '#FFFFFF', fontSize: 18 },
