@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex,nofollow" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://hqndxityqrdiiwqyjagu.supabase.co; base-uri 'none'; form-action 'self'" />
   <meta name="referrer" content="no-referrer" />
-  <title>Reset your password · Melanated</title>
+  <title>Reset your password · Go Melanated</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
@@ -30,9 +30,9 @@
 <body>
   <main class="card">
     <section id="resetView">
-      <p class="eyebrow">MELANATED</p>
+      <p class="eyebrow">GO MELANATED</p>
       <h1>Choose a new password</h1>
-      <p class="copy">This secure page works on any phone, tablet, or computer. Your password is updated directly with Melanated's authentication service.</p>
+      <p class="copy">This secure page works on any phone, tablet, or computer. Your password is updated directly with Go Melanated's authentication service.</p>
       <div id="status" class="status">Checking your secure reset link…</div>
       <form id="form" class="hidden">
         <label for="password">New password</label>
@@ -46,7 +46,7 @@
       <div class="mark">✓</div>
       <p class="eyebrow">PASSWORD UPDATED</p>
       <h1>You're all set</h1>
-      <p class="copy">Your Melanated password has been changed. Return to the app and sign in with your new password.</p>
+      <p class="copy">Your Go Melanated password has been changed. Return to the app and sign in with your new password.</p>
     </section>
   </main>
 <script>
@@ -76,9 +76,9 @@
   if (errorDescription) {
     fail(errorDescription);
   } else if (!accessToken) {
-    fail('This reset link is missing or has expired. Return to Melanated and request a new password reset email.');
+    fail('This reset link is missing or has expired. Return to Go Melanated and request a new password reset email.');
   } else if (type && type !== 'recovery') {
-    fail('This link is not a password recovery link. Return to Melanated and request a new one.');
+    fail('This link is not a password recovery link. Return to Go Melanated and request a new one.');
   } else {
     status.textContent = 'Secure link verified. Enter your new password below.';
     form.classList.remove('hidden');
