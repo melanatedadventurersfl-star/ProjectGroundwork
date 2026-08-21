@@ -14,4 +14,11 @@ module.exports = defineConfig([
       'react-hooks/preserve-manual-memoization': 'warn',
     },
   },
+  {
+    files: ['src/onboarding/GuidedOnboardingExperience.tsx'],
+    rules: {
+      // Apostrophes in onboarding display copy are intentional prose.
+      'react/no-unescaped-entities': 'off',
+    },
+  },
 ]);
