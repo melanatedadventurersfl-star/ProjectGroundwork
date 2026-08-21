@@ -263,7 +263,7 @@ export default function TrailheadScreen() {
                 <AdventureImageBackground uri={item.hero_image_url} style={styles.compactImage} imageStyle={styles.compactRadius}>
                   <View style={styles.compactShade} />
                   <View style={styles.compactBody}>
-                    {item.is_featured ? <Text style={styles.compactEyebrow}>FEATURED</Text> : null}
+                    {item.is_demo ? <Text style={styles.compactEyebrow}>DEMO</Text> : item.is_featured ? <Text style={styles.compactEyebrow}>FEATURED</Text> : null}
                     <Text style={styles.compactTitle} numberOfLines={2}>{item.title}</Text>
                     <Text style={styles.compactMeta} numberOfLines={1}>{shortDate(item.starts_at)} · {item.city}</Text>
                   </View>
