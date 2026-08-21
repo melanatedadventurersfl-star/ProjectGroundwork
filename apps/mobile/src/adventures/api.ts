@@ -7,9 +7,20 @@ const DEFAULT_ADVENTURE_IMAGE_URL = Image.resolveAssetSource(
   require('../../assets/explore/default-event.jpg'),
 ).uri;
 
+const DEMO_ADVENTURE_SLUGS = new Set([
+  'jax-riverside-sunset-walk-2026',
+  'jax-hanna-park-paddle-2026',
+  'jax-baldwin-trail-ride-2026',
+  'jax-huguenot-beach-campout-2026',
+  'jax-timucuan-history-hike-2026',
+  'jax-fishing-social-2026',
+]);
+
 function withAdventureImage<T extends AdventureSummary>(adventure: T): T {
+  const isDemo = DEMO_ADVENTURE_SLUGS.has(adventure.slug);
   return {
     ...adventure,
+    title: isDemo && !adventure.title.startsWith('Demo · ') ? `Demo · ${adventure.title}` : adventure.title,
     hero_image_url: adventure.hero_image_url || DEFAULT_ADVENTURE_IMAGE_URL,
   };
 }
