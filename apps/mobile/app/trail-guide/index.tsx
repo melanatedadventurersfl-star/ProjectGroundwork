@@ -213,9 +213,11 @@ export default function TrailGuideScreen() {
           </View>
           {recommendedPlaces.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
-              {recommendedPlaces.map((place) => (
-                <RecommendedCard key={place.id} place={place} photo={photoById[place.id]} weather={weather} distance={formatDistance(place)} />
-              ))}
+              {recommendedPlaces.map((place) => {
+                const photo = photoById[place.id];
+                if (!photo) return null;
+                return <RecommendedCard key={place.id} place={place} photo={photo} weather={weather} distance={formatDistance(place)} />;
+              })}
             </ScrollView>
           ) : (
             <View style={styles.recommendationLoading}>
