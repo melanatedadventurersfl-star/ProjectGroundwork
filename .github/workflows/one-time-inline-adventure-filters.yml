@@ -156,3 +156,5 @@ jobs:
           git add apps/mobile/app/'(tabs)'/explore.tsx
           git commit -m "feat: integrate Adventure filters into discovery page"
           git push origin HEAD:main
+
+# trigger
