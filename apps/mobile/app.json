@@ -31,6 +31,12 @@
         }
       ],
       [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow Go Melanated to check which people in your contacts are already members."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Allow Go Melanated to add photos from your library to your Passport memories.",
