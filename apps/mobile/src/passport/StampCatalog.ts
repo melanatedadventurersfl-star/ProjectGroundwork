@@ -127,4 +127,17 @@ export const STAMP_CATALOG: readonly StampCatalogItem[] = [
   },
 ];
 
+function normalizeStampKey(value: string | null | undefined) {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+export function findStampCatalogItem(input: { code?: string | null; title?: string | null }) {
+  const code = normalizeStampKey(input.code);
+  const title = normalizeStampKey(input.title);
+  return STAMP_CATALOG.find((item) => (
+    (code && normalizeStampKey(item.code) === code)
+    || (title && normalizeStampKey(item.title) === title)
+  )) ?? null;
+}
+
 export const FEATURED_STAMPS = STAMP_CATALOG.slice(-3);

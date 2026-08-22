@@ -10,8 +10,8 @@ import {
   type MemberBadge,
   type PassportStamp,
 } from '../passport/api';
+import { findStampCatalogItem } from '../passport/StampCatalog';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
-import { isLegacyStampCode, StampArt } from '../passport/StampArt';
 import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
 import {
@@ -31,13 +31,13 @@ const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
-  if (phase === 'night') return 'rgba(4, 13, 28, 0.42)';
-  if (weather === 'storm') return 'rgba(18, 24, 31, 0.28)';
-  if (weather === 'rain') return 'rgba(16, 31, 39, 0.22)';
-  if (weather === 'fog') return 'rgba(214, 225, 220, 0.12)';
-  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.14)';
-  if (phase === 'morning') return 'rgba(255, 224, 168, 0.08)';
-  if (phase === 'evening') return 'rgba(255, 150, 76, 0.08)';
+  if (phase === 'night') return 'rgba(4, 13, 28, 0.26)';
+  if (weather === 'storm') return 'rgba(18, 24, 31, 0.16)';
+  if (weather === 'rain') return 'rgba(16, 31, 39, 0.12)';
+  if (weather === 'fog') return 'rgba(214, 225, 220, 0.08)';
+  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.08)';
+  if (phase === 'morning') return 'rgba(255, 224, 168, 0.05)';
+  if (phase === 'evening') return 'rgba(255, 150, 76, 0.05)';
   return 'transparent';
 }
 
@@ -136,8 +136,8 @@ export function TrailheadOptimizedCover({
   const location = locationLabel || 'Current location';
   const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
 
-  const badgeLimit = veryCompact ? 2 : 3;
-  const stampLimit = veryCompact ? 3 : 4;
+  const badgeLimit = veryCompact ? 2 : compact ? 2 : 3;
+  const stampLimit = veryCompact ? 3 : compact ? 3 : 4;
   const visibleBadges = earnedBadges.slice(0, badgeLimit);
   const visibleStamps = earnedStamps.slice(0, stampLimit);
   const overflowBadges = Math.max(0, earnedBadges.length - visibleBadges.length);
@@ -147,15 +147,13 @@ export function TrailheadOptimizedCover({
 
   const heroHeight = veryCompact ? 286 : compact ? 300 : 318;
   const emblemSize = veryCompact ? 82 : compact ? 96 : 108;
-  const badgeSize = veryCompact ? 34 : compact ? 38 : 44;
-  const stampWidth = veryCompact ? 21 : compact ? 23 : 26;
+  const badgeSize = veryCompact ? 44 : compact ? 50 : 56;
+  const stampWidth = veryCompact ? 26 : compact ? 30 : 34;
 
   return (
     <View style={[styles.cover, { height: heroHeight, borderColor: theme.accent, shadowColor: theme.accent }]}>
       <Image source={background} resizeMode="cover" style={styles.background} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere }]} />
-      <View pointerEvents="none" style={styles.identityScrim} />
-      <View pointerEvents="none" style={styles.lowerScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
 
       <Pressable
@@ -182,7 +180,7 @@ export function TrailheadOptimizedCover({
           style={[styles.name, compact && styles.nameCompact, veryCompact && styles.nameVeryCompact]}
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={0.7}
+          minimumFontScale={0.58}
         >
           {displayName}
         </Text>
@@ -202,7 +200,7 @@ export function TrailheadOptimizedCover({
           <Text style={styles.locationPin}>⌖</Text>
           <Text style={styles.location} numberOfLines={1}>{location}</Text>
         </View>
-        <Text style={[styles.weatherCopy, { color: theme.soft }]} numberOfLines={veryCompact ? 2 : 2}>{detail}</Text>
+        <Text style={[styles.weatherCopy, { color: theme.soft }]} numberOfLines={2}>{detail}</Text>
       </View>
 
       {(visibleBadges.length || visibleStamps.length) ? (
@@ -222,7 +220,7 @@ export function TrailheadOptimizedCover({
                       <BadgeArt title={badge.title} size={badgeSize} />
                     ) : (
                       <View style={[styles.badgeFallback, { width: badgeSize, height: badgeSize, borderRadius: badgeSize / 2, borderColor: theme.accent }]}>
-                        <AppIcon name="badge" color={theme.soft} size={Math.max(15, badgeSize * 0.46)} />
+                        <AppIcon name="badge" color={theme.soft} size={Math.max(18, badgeSize * 0.46)} />
                       </View>
                     )}
                   </View>
@@ -236,17 +234,24 @@ export function TrailheadOptimizedCover({
             <View style={[styles.achievementGroup, visibleBadges.length ? styles.stampGroup : null]}>
               <Text style={[styles.achievementLabel, { color: theme.soft }]}>STAMPS</Text>
               <View style={styles.achievementRow}>
-                {visibleStamps.map((stamp) => (
-                  <View key={stamp.stamp_id} style={[styles.stampSlot, { width: stampWidth + 6, height: stampWidth * 1.28 + 4 }]}>
-                    {stamp.code && isLegacyStampCode(stamp.code) ? (
-                      <StampArt code={stamp.code} width={stampWidth} />
-                    ) : (
-                      <View style={[styles.genericStamp, { width: stampWidth + 2, height: stampWidth + 7, borderColor: theme.accent }]}>
-                        <Text style={[styles.genericStampText, { color: theme.soft }]}>MA</Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
+                {visibleStamps.map((stamp) => {
+                  const catalogStamp = findStampCatalogItem({ code: stamp.code, title: stamp.title });
+                  return (
+                    <View key={stamp.stamp_id} style={[styles.stampSlot, { width: stampWidth + 8, height: stampWidth * 1.28 + 6 }]}>
+                      {catalogStamp ? (
+                        <Image
+                          source={catalogStamp.source}
+                          resizeMode="contain"
+                          style={{ width: stampWidth, height: stampWidth * 1.28 }}
+                        />
+                      ) : (
+                        <View style={[styles.genericStamp, { width: stampWidth + 2, height: stampWidth + 9, borderColor: theme.accent }]}>
+                          <AppIcon name="badge" color={theme.soft} size={Math.max(14, stampWidth * 0.46)} />
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
                 {overflowStamps > 0 ? <Text style={[styles.overflow, { color: theme.soft }]}>+{overflowStamps}</Text> : null}
               </View>
             </View>
@@ -270,15 +275,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   background: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
-  identityScrim: {
-    position: 'absolute', left: 0, top: 0, bottom: 0, width: '62%',
-    backgroundColor: 'rgba(3, 8, 7, 0.16)',
-  },
-  lowerScrim: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, height: '46%',
-    backgroundColor: 'rgba(3, 8, 7, 0.24)',
-  },
-  rankGlow: { position: 'absolute', left: -68, top: -36, width: 240, height: 240, borderRadius: 120, opacity: 0.26 },
+  rankGlow: { position: 'absolute', left: -68, top: -36, width: 240, height: 240, borderRadius: 120, opacity: 0.18 },
 
   emblem: { position: 'absolute', left: 14, top: 44, width: 112, height: 112, alignItems: 'center', justifyContent: 'center' },
   emblemCompact: { left: 10, top: 48, width: 100, height: 100 },
@@ -287,7 +284,7 @@ const styles = StyleSheet.create({
   headerActions: { position: 'absolute', right: 12, top: 11, flexDirection: 'row', gap: 8, zIndex: 8 },
   headerButton: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(5,10,9,0.52)', borderWidth: 1,
+    backgroundColor: 'rgba(5,10,9,0.46)', borderWidth: 1,
     borderColor: 'rgba(255,248,232,0.20)', alignItems: 'center', justifyContent: 'center',
   },
 
@@ -312,9 +309,9 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
   },
 
-  weatherBlock: { position: 'absolute', left: 18, width: '43%', bottom: 20 },
-  weatherBlockCompact: { left: 13, width: '44%', bottom: 15 },
-  weatherBlockVeryCompact: { left: 10, width: '45%', bottom: 13 },
+  weatherBlock: { position: 'absolute', left: 18, width: '42%', bottom: 18 },
+  weatherBlockCompact: { left: 13, width: '43%', bottom: 14 },
+  weatherBlockVeryCompact: { left: 10, width: '44%', bottom: 12 },
   weatherMainRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   weatherIcon: {
     color: '#FFF8E8', fontSize: 21,
@@ -344,23 +341,22 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
   },
 
-  achievementShelf: { position: 'absolute', right: 16, width: '43%', bottom: 18, zIndex: 5 },
-  achievementShelfCompact: { right: 12, width: '44%', bottom: 15 },
-  achievementShelfVeryCompact: { right: 9, width: '45%', bottom: 12 },
+  achievementShelf: { position: 'absolute', right: 14, width: '46%', bottom: 16, zIndex: 5 },
+  achievementShelfCompact: { right: 10, width: '47%', bottom: 13 },
+  achievementShelfVeryCompact: { right: 8, width: '47%', bottom: 10 },
   achievementGroup: { minWidth: 0 },
-  stampGroup: { marginTop: 7 },
+  stampGroup: { marginTop: 5 },
   achievementLabel: {
-    fontSize: 8, lineHeight: 10, fontWeight: '800', letterSpacing: 2.2, opacity: 0.82,
+    fontSize: 7.5, lineHeight: 9, fontWeight: '800', letterSpacing: 1.8, opacity: 0.72,
     textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 },
   },
-  achievementRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3, minWidth: 0 },
+  achievementRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 3, minWidth: 0 },
   badgeSlot: { overflow: 'visible', alignItems: 'center', justifyContent: 'center' },
-  badgeFallback: { borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' },
+  badgeFallback: { borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
   stampSlot: { alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
-  genericStamp: { borderWidth: 1, borderRadius: 6, backgroundColor: 'rgba(5,10,9,0.44)', alignItems: 'center', justifyContent: 'center' },
-  genericStampText: { fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
+  genericStamp: { borderWidth: 1, borderRadius: 7, backgroundColor: 'rgba(5,10,9,0.28)', alignItems: 'center', justifyContent: 'center' },
   overflow: {
-    marginLeft: 1, fontSize: 11, fontWeight: '900', opacity: 0.9,
+    marginLeft: 1, fontSize: 10.5, fontWeight: '900', opacity: 0.78,
     textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 },
   },
 });
