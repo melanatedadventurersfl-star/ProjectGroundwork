@@ -36,6 +36,8 @@ export type AdventureMemory = {
   created_at: string;
   updated_at: string;
   tags: AdventureMemoryTag[];
+  author_name?: string | null;
+  author_avatar_url?: string | null;
 };
 
 async function requireUserId() {
@@ -99,6 +101,17 @@ async function hydrateMemoryTags(memoryIds: string[]): Promise<Map<string, Adven
   return result;
 }
 
+async function hydrateMemoryAuthors(rows: any[]) {
+  const profileIds = Array.from(new Set(rows.map((row) => row.profile_id as string)));
+  if (!profileIds.length) return new Map<string, any>();
+  const { data, error } = await supabase
+    .from('profile_directory')
+    .select('id,display_name,username,avatar_url')
+    .in('id', profileIds);
+  if (error) throw error;
+  return new Map((data ?? []).map((profile: any) => [profile.id, profile]));
+}
+
 export async function getAdventureMemories(adventureId: string): Promise<AdventureMemory[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
@@ -122,8 +135,19 @@ export async function getCommunityAdventureMemories(adventureId: string): Promis
     .order('created_at', { ascending: false });
   if (error) throw error;
   const rows = data ?? [];
-  const tags = await hydrateMemoryTags(rows.map((row: any) => row.id));
-  return rows.map((row: any) => ({ ...row, tags: tags.get(row.id) ?? [] })) as AdventureMemory[];
+  const [tags, authors] = await Promise.all([
+    hydrateMemoryTags(rows.map((row: any) => row.id)),
+    hydrateMemoryAuthors(rows),
+  ]);
+  return rows.map((row: any) => {
+    const author: any = authors.get(row.profile_id);
+    return {
+      ...row,
+      tags: tags.get(row.id) ?? [],
+      author_name: author?.display_name || author?.username || 'Community member',
+      author_avatar_url: author?.avatar_url ?? null,
+    };
+  }) as AdventureMemory[];
 }
 
 export async function createAdventureMemory(input: {
