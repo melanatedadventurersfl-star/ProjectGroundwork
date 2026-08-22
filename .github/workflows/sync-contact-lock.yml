@@ -36,3 +36,5 @@ jobs:
           git add package-lock.json
           git commit -m "Sync lockfile for Expo contacts"
           git push origin HEAD:feat/contact-matched-trailmates
+
+# Temporary branch-only helper. Remove after the lockfile commit lands.
