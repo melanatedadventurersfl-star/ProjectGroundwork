@@ -106,6 +106,10 @@ function AppShell() {
     tutorialCheckedRef.current = true;
     try {
       if (!hasCompletedGuidedTutorial()) {
+        // A brand-new user is already seeing the Guide for this installed build.
+        // Treat the current release as acknowledged so What's New only appears
+        // after a later app/update release, never immediately after onboarding.
+        markReleaseSeen(releaseSeenKey);
         setTutorialStep(0);
         setTutorialVisible(true);
       } else if (hasFinishedGuidedTutorial()) {
@@ -118,7 +122,7 @@ function AppShell() {
       setTutorialStep(0);
       setTutorialVisible(true);
     }
-  }, [isLoading, isTrailhead, session]);
+  }, [isLoading, isTrailhead, releaseSeenKey, session]);
 
   useEffect(() => {
     if (isLoading || isAuthScreen || !isTrailhead || tutorialVisible || whatsNewCheckedRef.current) return;
