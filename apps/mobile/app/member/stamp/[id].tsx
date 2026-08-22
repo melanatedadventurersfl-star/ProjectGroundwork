@@ -1,7 +1,9 @@
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -22,6 +24,7 @@ import {
   getOwnedMemoryPhotos,
   getPassportStamps,
   saveEventGalleryPhoto,
+  uploadMemoryPhoto,
   type MemoryPhoto,
   type PassportStamp,
 } from '../../../src/passport/api';
@@ -38,6 +41,11 @@ import { AppIcon } from '../../../src/ui/AppIcon';
 
 type HubTab = 'memory' | 'event';
 type MemoryVisibility = 'private' | 'community';
+type MemoryDraftPhoto = {
+  id: string;
+  uri: string;
+  mimeType?: string | null;
+};
 
 function personName(person: AdventureEventPerson) {
   return person.display_name?.trim() || person.username?.trim() || 'Adventurer';
@@ -67,6 +75,8 @@ export default function StampDetailScreen() {
   const [memoryHighlight, setMemoryHighlight] = useState('');
   const [memoryNotes, setMemoryNotes] = useState('');
   const [memoryVisibility, setMemoryVisibility] = useState<MemoryVisibility>('private');
+  const [memoryPhotos, setMemoryPhotos] = useState<MemoryDraftPhoto[]>([]);
+  const [pickingMemoryPhoto, setPickingMemoryPhoto] = useState(false);
   const [savingMemory, setSavingMemory] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set());
@@ -95,11 +105,11 @@ export default function StampDetailScreen() {
 
       if (matched?.adventure_id) {
         const id = matched.adventure_id;
-        const [memoryPhotos, reflectionResult] = await Promise.all([
+        const [memoryPhotoResults, reflectionResult] = await Promise.all([
           getOwnedMemoryPhotos(id),
           getAdventureEventReflection(id),
         ]);
-        setPhotos(memoryPhotos);
+        setPhotos(memoryPhotoResults);
         setReflection(reflectionResult);
 
         const [peopleResult, galleryResult, feedResult] = await Promise.allSettled([
@@ -172,8 +182,72 @@ export default function StampDetailScreen() {
     setMemoryHighlight(reflection?.highlight ?? '');
     setMemoryNotes(reflection?.reflection ?? '');
     setMemoryVisibility(reflection?.visibility ?? 'private');
+    setMemoryPhotos([]);
     setMemoryOpen(true);
   }, [reflection]);
+
+  const chooseMemoryPhotos = useCallback(async () => {
+    if (pickingMemoryPhoto || savingMemory) return;
+    setPickingMemoryPhoto(true);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Photo access needed', 'Allow photo access to add pictures to this memory.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: 10,
+        quality: 0.9,
+        exif: false,
+      });
+      if (!result.canceled) {
+        const next = result.assets
+          .filter((asset) => Boolean(asset.uri))
+          .map((asset) => ({
+            id: `${asset.assetId ?? asset.uri}-${Math.random().toString(36).slice(2, 8)}`,
+            uri: asset.uri,
+            mimeType: asset.mimeType,
+          }));
+        setMemoryPhotos((current) => [...current, ...next].slice(0, 10));
+      }
+    } catch (caught) {
+      Alert.alert('Unable to open photos', caught instanceof Error ? caught.message : 'Please try again.');
+    } finally {
+      setPickingMemoryPhoto(false);
+    }
+  }, [pickingMemoryPhoto, savingMemory]);
+
+  const takeMemoryPhoto = useCallback(async () => {
+    if (pickingMemoryPhoto || savingMemory) return;
+    setPickingMemoryPhoto(true);
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Camera access needed', 'Allow camera access to take a photo for this memory.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.9,
+        exif: false,
+      });
+      const asset = !result.canceled ? result.assets?.[0] : null;
+      if (asset?.uri) {
+        setMemoryPhotos((current) => [...current, {
+          id: `${asset.assetId ?? asset.uri}-${Math.random().toString(36).slice(2, 8)}`,
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+        }].slice(0, 10));
+      }
+    } catch (caught) {
+      Alert.alert('Unable to open camera', caught instanceof Error ? caught.message : 'Please try again.');
+    } finally {
+      setPickingMemoryPhoto(false);
+    }
+  }, [pickingMemoryPhoto, savingMemory]);
 
   const saveMemory = useCallback(async () => {
     if (!adventureId || savingMemory) return;
@@ -186,12 +260,27 @@ export default function StampDetailScreen() {
         reflection: memoryNotes,
         visibility: memoryVisibility,
       });
+
+      for (const photo of memoryPhotos) {
+        await uploadMemoryPhoto({
+          adventureId,
+          localUri: photo.uri,
+          mimeType: photo.mimeType,
+          caption: memoryHighlight.trim(),
+          visibility: memoryVisibility === 'community' ? 'group' : 'private',
+        });
+      }
+
       setReflection({
         rating,
         highlight: memoryHighlight.trim() || null,
         reflection: memoryNotes.trim() || null,
         visibility: memoryVisibility,
       });
+      if (memoryPhotos.length) {
+        setPhotos(await getOwnedMemoryPhotos(adventureId));
+      }
+      setMemoryPhotos([]);
       setMemoryOpen(false);
       setError(null);
     } catch (caught) {
@@ -199,7 +288,7 @@ export default function StampDetailScreen() {
     } finally {
       setSavingMemory(false);
     }
-  }, [adventureId, memoryHighlight, memoryNotes, memoryVisibility, rating, savingMemory]);
+  }, [adventureId, memoryHighlight, memoryNotes, memoryPhotos, memoryVisibility, rating, savingMemory]);
 
   const connect = useCallback(async (person: AdventureEventPerson) => {
     if (person.is_connected || requestedIds.has(person.profile_id) || connectingId) return;
@@ -393,8 +482,7 @@ export default function StampDetailScreen() {
 
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View style={styles.headingCopy}><Text style={styles.cardEyebrow}>PHOTO MEMORY</Text><Text style={styles.cardTitle}>{photos.length ? `${photos.length} saved ${photos.length === 1 ? 'moment' : 'moments'}` : 'Build your photo memory'}</Text></View>
-                    <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} hitSlop={10}><Text style={styles.actionText}>ADD PHOTO</Text></Pressable>
+                    <View style={styles.headingCopy}><Text style={styles.cardEyebrow}>PHOTO MEMORY</Text><Text style={styles.cardTitle}>{photos.length ? `${photos.length} saved ${photos.length === 1 ? 'moment' : 'moments'}` : 'Your saved photos'}</Text></View>
                   </View>
 
                   {photos.length ? (
@@ -402,12 +490,11 @@ export default function StampDetailScreen() {
                       {photos.slice(0, 8).map((photo) => (
                         <View key={photo.id} style={styles.memoryPhotoCard}><Image source={{ uri: photo.image_url }} style={styles.memoryPhoto} /><View style={styles.photoSourceBadge}><Text style={styles.photoSourceText}>{photo.source_kind === 'event_gallery' ? 'SAVED FROM EVENT' : 'YOUR PHOTO'}</Text></View></View>
                       ))}
-                      <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} style={styles.addPhotoTile}><AppIcon name="add" color="#D7B45A" size={26} /><Text style={styles.addPhotoTileText}>Add Photos</Text></Pressable>
                     </ScrollView>
                   ) : (
-                    <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} style={({ pressed }) => [styles.photoEmpty, pressed && styles.pressed]}>
-                      <AppIcon name="photo" color="#67CFC8" size={25} /><Text style={styles.emptyTitle}>No photos saved yet.</Text><Text style={styles.emptyBody}>Add your own or save shared event photos into this personal memory.</Text>
-                    </Pressable>
+                    <View style={styles.photoEmpty}>
+                      <AppIcon name="photo" color="#67CFC8" size={25} /><Text style={styles.emptyTitle}>No photos saved yet.</Text><Text style={styles.emptyBody}>Photos you add while creating or editing this memory will appear here.</Text>
+                    </View>
                   )}
                 </View>
               </>
@@ -467,7 +554,7 @@ export default function StampDetailScreen() {
       <Modal visible={memoryOpen} transparent animationType="slide" onRequestClose={() => setMemoryOpen(false)}>
         <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <Pressable style={styles.modalBackdrop} onPress={() => setMemoryOpen(false)} />
-          <View style={styles.memorySheet}>
+          <ScrollView style={styles.memorySheet} contentContainerStyle={styles.memorySheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}><View style={styles.headingCopy}><Text style={styles.cardEyebrow}>YOUR MEMORY</Text><Text style={styles.sheetTitle}>What do you want to remember?</Text></View><Pressable onPress={() => setMemoryOpen(false)}><Text style={styles.sheetClose}>CLOSE</Text></Pressable></View>
 
@@ -477,14 +564,46 @@ export default function StampDetailScreen() {
             <Text style={styles.inputLabel}>Memory or note</Text>
             <TextInput value={memoryNotes} onChangeText={setMemoryNotes} placeholder="What happened? What do you want to remember later?" placeholderTextColor="#748078" style={styles.notesInput} multiline textAlignVertical="top" maxLength={1800} />
 
+            <View style={styles.photoEditorHeader}>
+              <View style={styles.headingCopy}>
+                <Text style={styles.inputLabel}>Photos <Text style={styles.optionalLabel}>(optional)</Text></Text>
+                <Text style={styles.photoEditorHelp}>Add up to 10 photos to this memory.</Text>
+              </View>
+              {memoryPhotos.length ? <Text style={styles.photoCount}>{memoryPhotos.length}/10</Text> : null}
+            </View>
+
+            <View style={styles.photoPickerRow}>
+              <Pressable disabled={pickingMemoryPhoto || savingMemory} onPress={() => void chooseMemoryPhotos()} style={({ pressed }) => [styles.photoPickerButton, pressed && styles.pressed, (pickingMemoryPhoto || savingMemory) && styles.buttonDisabled]}>
+                <AppIcon name="photos" color="#F5C341" size={18} />
+                <Text style={styles.photoPickerText}>{pickingMemoryPhoto ? 'OPENING…' : 'CHOOSE PHOTOS'}</Text>
+              </Pressable>
+              <Pressable disabled={pickingMemoryPhoto || savingMemory} onPress={() => void takeMemoryPhoto()} style={({ pressed }) => [styles.photoPickerButton, pressed && styles.pressed, (pickingMemoryPhoto || savingMemory) && styles.buttonDisabled]}>
+                <AppIcon name="camera" color="#F5C341" size={18} />
+                <Text style={styles.photoPickerText}>TAKE PHOTO</Text>
+              </Pressable>
+            </View>
+
+            {memoryPhotos.length ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.draftPhotoStrip} keyboardShouldPersistTaps="handled">
+                {memoryPhotos.map((photo) => (
+                  <View key={photo.id} style={styles.draftPhotoCard}>
+                    <Image source={{ uri: photo.uri }} style={styles.draftPhoto} />
+                    <Pressable onPress={() => setMemoryPhotos((current) => current.filter((item) => item.id !== photo.id))} style={styles.removeDraftPhoto} hitSlop={6} accessibilityLabel="Remove photo">
+                      <Text style={styles.removeDraftPhotoText}>×</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : null}
+
             <Text style={styles.inputLabel}>Who can see this memory?</Text>
             <View style={styles.visibilityRow}>
               <Pressable onPress={() => setMemoryVisibility('private')} style={[styles.visibilityChoice, memoryVisibility === 'private' && styles.visibilityChoiceActive]}><AppIcon name="privacy" color={memoryVisibility === 'private' ? '#17211C' : '#AEB9B2'} size={17} /><View style={styles.visibilityCopy}><Text style={[styles.visibilityTitle, memoryVisibility === 'private' && styles.visibilityTitleActive]}>Only Me</Text><Text style={[styles.visibilityBody, memoryVisibility === 'private' && styles.visibilityBodyActive]}>Keep it in my Passport</Text></View></Pressable>
               <Pressable onPress={() => setMemoryVisibility('community')} style={[styles.visibilityChoice, memoryVisibility === 'community' && styles.visibilityChoiceActive]}><AppIcon name="community" color={memoryVisibility === 'community' ? '#17211C' : '#AEB9B2'} size={17} /><View style={styles.visibilityCopy}><Text style={[styles.visibilityTitle, memoryVisibility === 'community' && styles.visibilityTitleActive]}>Community</Text><Text style={[styles.visibilityBody, memoryVisibility === 'community' && styles.visibilityBodyActive]}>Share this reflection</Text></View></Pressable>
             </View>
 
-            <Pressable disabled={savingMemory} onPress={() => void saveMemory()} style={[styles.saveMemoryButton, savingMemory && styles.buttonDisabled]}><Text style={styles.saveMemoryText}>{savingMemory ? 'SAVING…' : 'SAVE MEMORY'}</Text></Pressable>
-          </View>
+            <Pressable disabled={savingMemory || pickingMemoryPhoto} onPress={() => void saveMemory()} style={[styles.saveMemoryButton, (savingMemory || pickingMemoryPhoto) && styles.buttonDisabled]}><Text style={styles.saveMemoryText}>{savingMemory ? 'SAVING…' : 'SAVE MEMORY'}</Text></Pressable>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
@@ -614,7 +733,8 @@ const styles = StyleSheet.create({
   missingTitle: { color: '#F7F8F3', fontSize: 22, fontWeight: '900' },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.58)' },
-  memorySheet: { backgroundColor: '#101916', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#2D3B34', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, gap: 11, maxHeight: '88%' },
+  memorySheet: { backgroundColor: '#101916', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#2D3B34', maxHeight: '92%' },
+  memorySheetContent: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, gap: 11 },
   sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: '#425048', alignSelf: 'center', marginBottom: 3 },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   sheetTitle: { color: '#F7F8F3', fontSize: 21, lineHeight: 25, fontWeight: '900', marginTop: 3 },
@@ -622,6 +742,18 @@ const styles = StyleSheet.create({
   inputLabel: { color: '#DCE3DE', fontSize: 11.5, fontWeight: '900', marginTop: 2 },
   singleInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#36443D', backgroundColor: '#0B1310', color: '#F7F8F3', paddingHorizontal: 13, fontSize: 13.5 },
   notesInput: { minHeight: 112, borderRadius: 13, borderWidth: 1, borderColor: '#36443D', backgroundColor: '#0B1310', color: '#F7F8F3', paddingHorizontal: 13, paddingTop: 12, fontSize: 13.5, lineHeight: 19 },
+  photoEditorHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 2 },
+  optionalLabel: { color: '#7F8B84', fontWeight: '700' },
+  photoEditorHelp: { color: '#7F8B84', fontSize: 9.5, marginTop: 3 },
+  photoCount: { color: '#67CFC8', fontSize: 10, fontWeight: '900' },
+  photoPickerRow: { flexDirection: 'row', gap: 8 },
+  photoPickerButton: { flex: 1, minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#5A5130', backgroundColor: '#0B1310', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8 },
+  photoPickerText: { color: '#F5C341', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.35, textAlign: 'center' },
+  draftPhotoStrip: { gap: 8, paddingVertical: 1, paddingRight: 4 },
+  draftPhotoCard: { width: 82, height: 82, borderRadius: 11, overflow: 'hidden', backgroundColor: '#17231D', position: 'relative' },
+  draftPhoto: { width: '100%', height: '100%' },
+  removeDraftPhoto: { position: 'absolute', top: 4, right: 4, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(7,14,12,0.88)', borderWidth: 1, borderColor: '#DCE3DE', alignItems: 'center', justifyContent: 'center' },
+  removeDraftPhotoText: { color: '#F7F8F3', fontSize: 18, lineHeight: 19, fontWeight: '700' },
   visibilityRow: { flexDirection: 'row', gap: 8 },
   visibilityChoice: { flex: 1, minHeight: 62, borderRadius: 13, borderWidth: 1, borderColor: '#36443D', flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10 },
   visibilityChoiceActive: { backgroundColor: '#F5C341', borderColor: '#F5C341' },
