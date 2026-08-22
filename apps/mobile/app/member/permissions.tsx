@@ -112,12 +112,15 @@ export default function AppPermissionsScreen() {
     try {
       const keys = Object.keys(permissionMeta) as PermissionKey[];
       const results = await Promise.all(keys.map(readPermission));
-      setPermissions(keys.map((key, index) => ({
-        key,
-        ...permissionMeta[key],
-        state: normalizeStatus(results[index].status),
-        canAskAgain: results[index].canAskAgain !== false,
-      })));
+      setPermissions(keys.map((key, index) => {
+        const result = results[index] ?? { status: 'unavailable', canAskAgain: false };
+        return {
+          key,
+          ...permissionMeta[key],
+          state: normalizeStatus(result.status),
+          canAskAgain: result.canAskAgain !== false,
+        };
+      }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to read device permissions.');
     } finally {
