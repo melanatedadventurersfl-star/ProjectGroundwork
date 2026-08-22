@@ -89,8 +89,8 @@ export default function AppPermissionsScreen() {
       setPermissions((Object.keys(permissionMeta) as PermissionKey[]).map((key) => ({
         key,
         ...permissionMeta[key],
-        state: normalizeStatus(states[key].status),
-        canAskAgain: states[key].canAskAgain !== false,
+        state: normalizeStatus(states[key]?.status),
+        canAskAgain: states[key]?.canAskAgain !== false,
       })));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to read device permissions.');
