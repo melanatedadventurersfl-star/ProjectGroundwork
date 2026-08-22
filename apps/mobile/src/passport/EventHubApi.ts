@@ -41,9 +41,12 @@ export type AdventureMemory = {
 };
 
 async function requireUserId() {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) throw error ?? new Error('Sign in required.');
-  return data.user.id;
+  // The app already restores and refreshes the signed-in session globally.
+  // Reading that persisted session avoids an extra /auth/v1/user request here,
+  // which can stall behind a React Native auth refresh lock during a save.
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.user) throw error ?? new Error('Sign in required.');
+  return data.session.user.id;
 }
 
 export async function getAdventureEventPeople(adventureId: string): Promise<AdventureEventPerson[]> {
