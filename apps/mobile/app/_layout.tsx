@@ -49,9 +49,11 @@ function AppShell() {
   const pathname = usePathname();
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialGateReady, setTutorialGateReady] = useState(false);
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const tutorialCheckedRef = useRef(false);
+  const tutorialUserRef = useRef<string | null>(null);
   const whatsNewCheckedRef = useRef(false);
   const releaseSeenKey = `${currentReleaseNotes.id}:${Updates.updateId ?? 'embedded'}`;
 
@@ -64,8 +66,9 @@ function AppShell() {
     pathname.startsWith('/sign-up');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
-  const hideBottomNav = isLoading || isAuthScreen || keyboardVisible;
-  const hideTopNav = isLoading || isAuthScreen || isTrailhead || isCommunityHub;
+  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !tutorialGateReady;
+  const hideBottomNav = isLoading || isAuthScreen || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -102,30 +105,46 @@ function AppShell() {
   }, [isLoading, pathname, session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session || !isTrailhead || tutorialCheckedRef.current) return;
+    const userId = session?.user.id ?? null;
+    if (tutorialUserRef.current === userId) return;
+    tutorialUserRef.current = userId;
+    tutorialCheckedRef.current = false;
+    setTutorialGateReady(false);
+    setTutorialVisible(false);
+    setTutorialStep(0);
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    if (isLoading || !session || isAuthScreen || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
       if (!hasCompletedGuidedTutorial()) {
-        // A brand-new user is already seeing the Guide for this installed build.
-        // Treat the current release as acknowledged so What's New only appears
-        // after a later app/update release, never immediately after onboarding.
+        // The Guide is a required post-sign-up gate. Do not expose persistent
+        // navigation or let a loading-state tap bypass it before it appears.
         markReleaseSeen(releaseSeenKey);
+        setWhatsNewVisible(false);
         setTutorialStep(0);
         setTutorialVisible(true);
-      } else if (hasFinishedGuidedTutorial()) {
-        void awardTutorialCompletionStamp().catch((error) => {
-          console.warn('[tutorial] Unable to sync tutorial completion stamp', error);
-        });
+        router.replace('/(tabs)' as never);
+      } else {
+        setTutorialGateReady(true);
+        if (hasFinishedGuidedTutorial()) {
+          void awardTutorialCompletionStamp().catch((error) => {
+            console.warn('[tutorial] Unable to sync tutorial completion stamp', error);
+          });
+        }
       }
     } catch (error) {
       console.warn('[tutorial] Unable to read guided tutorial preference', error);
+      setWhatsNewVisible(false);
       setTutorialStep(0);
       setTutorialVisible(true);
+      router.replace('/(tabs)' as never);
     }
-  }, [isLoading, isTrailhead, releaseSeenKey, session]);
+  }, [isAuthScreen, isLoading, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || !isTrailhead || tutorialVisible || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || !isTrailhead || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -133,9 +152,10 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, isTrailhead, releaseSeenKey, tutorialVisible]);
+  }, [isAuthScreen, isLoading, isTrailhead, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
+    setTutorialGateReady(false);
     setWhatsNewVisible(false);
     setTutorialStep(0);
     setTutorialVisible(true);
@@ -144,6 +164,7 @@ function AppShell() {
 
   function closeTutorial() {
     setTutorialVisible(false);
+    setTutorialGateReady(true);
     setTutorialStep(0);
     whatsNewCheckedRef.current = false;
     router.replace('/(tabs)' as never);
@@ -181,7 +202,7 @@ function AppShell() {
 
   return (
     <View style={styles.appShell}>
-      <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen} />
+      <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       {hideTopNav ? null : <PersistentTopNav />}
       <KeyboardAvoidingView
         style={styles.stackArea}
