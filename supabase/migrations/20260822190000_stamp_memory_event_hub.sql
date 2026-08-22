@@ -10,8 +10,7 @@ create table if not exists public.adventure_memories (
   rating integer check (rating is null or rating between 1 and 5),
   visibility text not null default 'private' check (visibility in ('private', 'public')),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  check (coalesce(length(trim(title)), 0) > 0 or coalesce(length(trim(body)), 0) > 0 or rating is not null)
+  updated_at timestamptz not null default now()
 );
 
 create index if not exists adventure_memories_owner_adventure_idx
@@ -52,8 +51,8 @@ select
   nullif(trim(ar.reflection), ''),
   ar.rating,
   case when ar.visibility = 'community' then 'public' else 'private' end,
-  coalesce(ar.created_at, now()),
-  coalesce(ar.updated_at, now())
+  ar.created_at,
+  ar.updated_at
 from public.adventure_reflections ar
 where (ar.rating is not null or nullif(trim(ar.highlight), '') is not null or nullif(trim(ar.reflection), '') is not null)
   and not exists (
@@ -63,6 +62,11 @@ where (ar.rating is not null or nullif(trim(ar.highlight), '') is not null or nu
 
 alter table public.adventure_memories enable row level security;
 alter table public.adventure_memory_tags enable row level security;
+
+drop trigger if exists adventure_memories_set_updated_at on public.adventure_memories;
+create trigger adventure_memories_set_updated_at
+before update on public.adventure_memories
+for each row execute function public.set_updated_at();
 
 drop policy if exists "Members read permitted adventure memories" on public.adventure_memories;
 create policy "Members read permitted adventure memories"
@@ -148,8 +152,11 @@ using (
 grant select, insert, update, delete on public.adventure_memories to authenticated;
 grant select, insert, delete on public.adventure_memory_tags to authenticated;
 
+-- PostgreSQL requires dropping a table-returning function before changing its output columns.
+drop function if exists public.get_adventure_event_people(uuid);
+
 -- Older builds can keep using is_connected. New builds also get a durable direction-aware state.
-create or replace function public.get_adventure_event_people(target_adventure_id uuid)
+create function public.get_adventure_event_people(target_adventure_id uuid)
 returns table(
   profile_id uuid,
   display_name text,
