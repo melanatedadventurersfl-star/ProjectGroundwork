@@ -8,7 +8,7 @@ import { getMemberBasecamp, removeProfilePhoto, saveProfileDetails, uploadProfil
 import { ProfilePosts } from '../../src/member/ProfilePosts';
 import { getJourney, getMemberBadges, getPassportStamps, type MemberBadge, type PassportStamp } from '../../src/passport/api';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
-import { FEATURED_STAMPS, type StampCatalogItem } from '../../src/passport/StampCatalog';
+import { STAMP_CATALOG } from '../../src/passport/StampCatalog';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../../src/weather/api';
@@ -39,11 +39,12 @@ function Stat({icon,value,label,last=false,onPress}:{icon:AppIconName;value:numb
  return <Pressable accessibilityRole="button" accessibilityLabel={`View ${label}`} onPress={onPress} style={({pressed})=>[styles.statCell,last&&styles.statCellLast,pressed&&styles.statCellPressed]}><AppIcon name={icon} color="#F5C341" size={18}/><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></Pressable>;
 }
 
-function FeaturedStamp({stamp}:{stamp:StampCatalogItem}){
+function FeaturedStamp({stamp}:{stamp:PassportStamp}){
+ const catalogStamp=STAMP_CATALOG.find(item=>item.code===stamp.code||item.title===stamp.title);
  return <Pressable style={({pressed})=>[styles.favoriteCard,pressed&&styles.collectionCardPressed]} onPress={()=>router.push('/member/stamps')}>
-  <View style={styles.favoriteArt}><Image source={stamp.source} style={styles.featuredStampImage} resizeMode="contain"/></View>
+  <View style={styles.favoriteArt}>{catalogStamp?<Image source={catalogStamp.source} style={styles.featuredStampImage} resizeMode="contain"/>:<View style={styles.genericBadge}><AppIcon name="stamp" color="#F5C341" size={30}/></View>}</View>
   <Text style={styles.favoriteTitle} numberOfLines={2}>{stamp.title}</Text>
-  <Text style={styles.favoriteMeta}>{stamp.dateLabel}</Text>
+  <Text style={styles.favoriteMeta}>{formatDate(stamp.earned_at)}</Text>
  </Pressable>;
 }
 
@@ -160,7 +161,7 @@ export default function ProfileScreen(){
  const remaining=nextRank?Math.max(0,nextRank[1]-journey.length):0;
  const location=[profile.home_city,profile.home_state].filter(Boolean).join(', ');
  const totalPhotos=journey.reduce((sum,item)=>sum+(Number(item.photo_count)||0),0);
- const featuredStamps=FEATURED_STAMPS;
+ const featuredStamps=stamps.slice(0,3);
  const featuredBadges=badges.slice(0,3);
  if(loading)return <SafeAreaView style={styles.center}><ActivityIndicator color="#F5C341"/></SafeAreaView>;
 
@@ -244,10 +245,10 @@ export default function ProfileScreen(){
   <View style={styles.tabs}>{(['journey','posts','photos','about'] as ProfileTab[]).map(value=><Pressable key={value} onPress={()=>setTab(value)} style={styles.tab}><Text style={[styles.tabText,tab===value&&styles.tabTextActive]}>{value.charAt(0).toUpperCase()+value.slice(1)}</Text>{tab===value?<View style={styles.tabUnderline}/>:null}</Pressable>)}</View>
 
   {tab==='journey'?<>
-   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={()=>router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View>
-   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredStamps.map(stamp=><FeaturedStamp key={stamp.id} stamp={stamp}/>)}</ScrollView>
+   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text>{stamps.length?<Pressable onPress={()=>router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable>:null}</View>
+   {featuredStamps.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredStamps.map(stamp=><FeaturedStamp key={stamp.stamp_id} stamp={stamp}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your stamp book is waiting</Text><Text style={styles.muted}>Complete the guided tour to earn Trail Ready, then collect stamps as you complete official Adventures.</Text></View>}
 
-   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Achievement Badges</Text><Pressable onPress={()=>router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable></View>
+   <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Achievement Badges</Text>{badges.length?<Pressable onPress={()=>router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable>:null}</View>
    {featuredBadges.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoritesRow}>{featuredBadges.map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your achievement case is waiting</Text><Text style={styles.muted}>Milestone badges you earn will appear here alongside your stamps.</Text></View>}
 
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Adventure Journey</Text></View>
