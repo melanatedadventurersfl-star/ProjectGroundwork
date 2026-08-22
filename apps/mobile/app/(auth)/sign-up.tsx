@@ -116,14 +116,16 @@ export default function SignUpScreen() {
               <View style={styles.fields}>
                 <TextInput
                   autoCapitalize="none"
-                  autoComplete="email"
+                  autoComplete="username-new"
                   autoCorrect={false}
+                  importantForAutofill="yes"
                   keyboardType="email-address"
                   onChangeText={setEmail}
                   placeholder="Email"
                   placeholderTextColor="#AEB8B2"
                   returnKeyType="next"
                   style={styles.input}
+                  textContentType="username"
                   value={email}
                 />
 
@@ -131,12 +133,14 @@ export default function SignUpScreen() {
                   <TextInput
                     autoCapitalize="none"
                     autoComplete="new-password"
+                    importantForAutofill="yes"
                     onChangeText={setPassword}
                     placeholder="Password (8+ characters)"
                     placeholderTextColor="#AEB8B2"
                     returnKeyType="next"
                     secureTextEntry={!showPassword}
                     style={styles.passwordInput}
+                    textContentType="newPassword"
                     value={password}
                   />
                   <Pressable hitSlop={10} onPress={() => setShowPassword((value) => !value)}>
@@ -148,6 +152,7 @@ export default function SignUpScreen() {
                   <TextInput
                     autoCapitalize="none"
                     autoComplete="new-password"
+                    importantForAutofill="yes"
                     onChangeText={setConfirmPassword}
                     onSubmitEditing={() => void handleSignUp()}
                     placeholder="Confirm password"
@@ -155,6 +160,7 @@ export default function SignUpScreen() {
                     returnKeyType="done"
                     secureTextEntry={!showConfirmPassword}
                     style={styles.passwordInput}
+                    textContentType="newPassword"
                     value={confirmPassword}
                   />
                   <Pressable hitSlop={10} onPress={() => setShowConfirmPassword((value) => !value)}>
