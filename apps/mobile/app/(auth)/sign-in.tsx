@@ -232,7 +232,14 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   background: { flex: 1, backgroundColor: '#0B120F' },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5, 10, 8, 0.34)' },
+  scrim: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(5, 10, 8, 0.34)',
+  },
   safe: { flex: 1 },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: 18, paddingBottom: 18 },
