@@ -72,40 +72,21 @@ async function hydrateMemoryTags(memoryIds: string[]): Promise<Map<string, Adven
   const result = new Map<string, AdventureMemoryTag[]>();
   if (!memoryIds.length) return result;
 
-  const { data: tags, error } = await supabase
+  const { data: plainTags, error } = await supabase
     .from('adventure_memory_tags')
-    .select('memory_id, tagged_profile_id, profile_directory!adventure_memory_tags_tagged_profile_id_fkey(display_name, username, avatar_url)')
+    .select('memory_id, tagged_profile_id')
     .in('memory_id', memoryIds);
+  if (error) throw error;
 
-  if (error) {
-    // Some Supabase schemas cannot resolve a view through a FK. Fall back to profiles.
-    const { data: plainTags, error: plainError } = await supabase
-      .from('adventure_memory_tags')
-      .select('memory_id, tagged_profile_id')
-      .in('memory_id', memoryIds);
-    if (plainError) throw plainError;
-    const profileIds = Array.from(new Set((plainTags ?? []).map((row: any) => row.tagged_profile_id as string)));
-    const { data: profiles, error: profileError } = profileIds.length
-      ? await supabase.from('profile_directory').select('id,display_name,username,avatar_url').in('id', profileIds)
-      : { data: [], error: null };
-    if (profileError) throw profileError;
-    const profileMap = new Map((profiles ?? []).map((profile: any) => [profile.id, profile]));
-    for (const row of plainTags ?? []) {
-      const profile: any = profileMap.get(row.tagged_profile_id);
-      const current = result.get(row.memory_id) ?? [];
-      current.push({
-        profile_id: row.tagged_profile_id,
-        display_name: profile?.display_name ?? null,
-        username: profile?.username ?? null,
-        avatar_url: profile?.avatar_url ?? null,
-      });
-      result.set(row.memory_id, current);
-    }
-    return result;
-  }
+  const profileIds = Array.from(new Set((plainTags ?? []).map((row: any) => row.tagged_profile_id as string)));
+  const { data: profiles, error: profileError } = profileIds.length
+    ? await supabase.from('profile_directory').select('id,display_name,username,avatar_url').in('id', profileIds)
+    : { data: [], error: null };
+  if (profileError) throw profileError;
+  const profileMap = new Map((profiles ?? []).map((profile: any) => [profile.id, profile]));
 
-  for (const row of tags ?? []) {
-    const profile: any = Array.isArray(row.profile_directory) ? row.profile_directory[0] : row.profile_directory;
+  for (const row of plainTags ?? []) {
+    const profile: any = profileMap.get(row.tagged_profile_id);
     const current = result.get(row.memory_id) ?? [];
     current.push({
       profile_id: row.tagged_profile_id,
@@ -152,12 +133,13 @@ export async function createAdventureMemory(input: {
   rating?: number | null;
   visibility?: 'private' | 'public';
   taggedProfileIds?: string[];
+  allowEmpty?: boolean;
 }) {
   const userId = await requireUserId();
   const title = input.title?.trim() || null;
   const body = input.body?.trim() || null;
   const rating = input.rating ?? null;
-  if (!title && !body && rating === null) throw new Error('Add a title, reflection, or rating to save this memory.');
+  if (!input.allowEmpty && !title && !body && rating === null) throw new Error('Add a title, reflection, rating, or photo to save this memory.');
 
   const { data, error } = await supabase
     .from('adventure_memories')
@@ -196,8 +178,6 @@ export async function updateAdventureMemoryVisibility(memoryId: string, visibili
     .eq('profile_id', userId);
   if (error) throw error;
 
-  // Keep attached media visibility aligned with the memory so changing privacy
-  // immediately removes/adds media from any public memory surface.
   const { error: photoError } = await supabase
     .from('adventure_memory_photos')
     .update({ visibility })
