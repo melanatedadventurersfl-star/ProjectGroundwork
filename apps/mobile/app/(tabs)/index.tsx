@@ -141,7 +141,7 @@ export default function TrailheadScreen() {
         display_name?: string | null;
         cover_url?: string | null;
       } | null;
-      setDisplayName(profile?.display_name?.trim() || profile?.first_name?.trim() || 'Adventurer');
+      setDisplayName(profile?.first_name?.trim() || profile?.display_name?.trim() || 'Adventurer');
       setCoverUrl(profile?.cover_url ?? null);
       setError(null);
     } catch (caught) {
