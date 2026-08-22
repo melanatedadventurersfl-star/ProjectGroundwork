@@ -47,8 +47,15 @@ function personInitial(person: AdventureEventPerson) {
   return personName(person).slice(0, 1).toUpperCase();
 }
 
-function formatPostDate(value: string) {
+function formatDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function photoStatus(photo: MemoryPhoto) {
+  if (photo.visibility === 'private') return { label: 'PRIVATE', icon: 'privacy' as const, kind: 'private' as const };
+  if (photo.moderation_status === 'pending') return { label: 'PENDING', icon: 'photo' as const, kind: 'pending' as const };
+  if (photo.moderation_status === 'rejected') return { label: 'NOT APPROVED', icon: 'privacy' as const, kind: 'rejected' as const };
+  return { label: 'EVENT GALLERY', icon: 'community' as const, kind: 'shared' as const };
 }
 
 export default function StampDetailScreen() {
@@ -68,6 +75,7 @@ export default function StampDetailScreen() {
   const [memoryNotes, setMemoryNotes] = useState('');
   const [memoryVisibility, setMemoryVisibility] = useState<MemoryVisibility>('private');
   const [savingMemory, setSavingMemory] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<MemoryPhoto | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [requestedIds, setRequestedIds] = useState<Set<string>>(new Set());
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
@@ -132,6 +140,17 @@ export default function StampDetailScreen() {
   const hasNotes = Boolean(reflection?.highlight || reflection?.reflection);
   const connectedPeople = useMemo(() => eventPeople.filter((person) => person.is_connected), [eventPeople]);
   const recommendedPeople = useMemo(() => eventPeople.filter((person) => !person.is_connected), [eventPeople]);
+  const ownSharedPhotos = useMemo(
+    () => photos.filter((photo) => photo.source_kind === 'personal' && photo.visibility !== 'private'),
+    [photos],
+  );
+  const eventDisplayPhotos = useMemo(() => {
+    const byId = new Map<string, MemoryPhoto>();
+    for (const photo of ownSharedPhotos) byId.set(photo.id, photo);
+    for (const photo of eventPhotos) byId.set(photo.id, photo);
+    return Array.from(byId.values()).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [eventPhotos, ownSharedPhotos]);
+  const pendingCount = ownSharedPhotos.filter((photo) => photo.moderation_status === 'pending').length;
 
   const savedSourceIds = useMemo(() => {
     const ids = new Set<string>();
@@ -276,7 +295,6 @@ export default function StampDetailScreen() {
               <Text style={styles.title}>{stamp.title}</Text>
               <View style={styles.metaItem}><AppIcon name="adventure" color="#67CFC8" size={14} /><Text style={styles.meta}>{stamp.dateLabel}</Text></View>
               <View style={styles.metaItem}><AppIcon name="location" color="#67CFC8" size={14} /><Text style={styles.meta}>{stamp.location}</Text></View>
-
               {earned && adventureId ? (
                 <View style={styles.ratingArea}>
                   {!ratingOpen ? (
@@ -298,7 +316,6 @@ export default function StampDetailScreen() {
               ) : null}
             </View>
           </View>
-
           <View style={styles.heroStatusRow}>
             <View style={[styles.statusPill, earned ? styles.statusPillEarned : styles.statusPillPreview]}>
               {earned ? <AppIcon name="checkmark" color="#17211C" size={12} /> : null}
@@ -326,135 +343,98 @@ export default function StampDetailScreen() {
               <>
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View style={styles.headingCopy}>
-                      <Text style={styles.cardEyebrow}>YOUR MEMORY</Text>
-                      <Text style={styles.cardTitle}>{hasNotes ? 'What you want to remember' : 'Make this stamp yours'}</Text>
-                    </View>
-                    <Pressable onPress={openMemoryEditor} style={({ pressed }) => [styles.editMemoryButton, pressed && styles.pressed]}>
-                      <Text style={styles.editMemoryText}>{hasNotes ? 'EDIT MEMORY' : 'ADD MEMORY'}</Text>
-                    </Pressable>
+                    <View style={styles.headingCopy}><Text style={styles.cardEyebrow}>MY REFLECTION</Text><Text style={styles.cardTitle}>{hasNotes ? 'What I want to remember' : 'Make this stamp yours'}</Text></View>
+                    <Pressable onPress={openMemoryEditor} style={({ pressed }) => [styles.editMemoryButton, pressed && styles.pressed]}><Text style={styles.editMemoryText}>{hasNotes ? 'EDIT' : 'ADD MEMORY'}</Text></Pressable>
                   </View>
-
                   {reflection?.highlight ? <View style={styles.memoryQuote}><Text style={styles.quoteMark}>“</Text><Text style={styles.highlight}>{reflection.highlight}</Text></View> : null}
                   {reflection?.reflection ? <Text style={styles.reflection}>{reflection.reflection}</Text> : null}
-                  {!hasNotes ? <Text style={styles.emptyBody}>Save a favorite moment, reflection, or note from this adventure.</Text> : null}
-                  <View style={styles.privateLine}>
-                    <AppIcon name={reflection?.visibility === 'community' ? 'community' : 'privacy'} color="#67CFC8" size={13} />
-                    <Text style={styles.privateLineText}>{reflection?.visibility === 'community' ? 'Shared with community' : 'Private memory'}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.sectionCard}>
-                  <View>
-                    <Text style={styles.cardEyebrow}>PEOPLE FROM THIS ADVENTURE</Text>
-                    <Text style={styles.cardTitle}>{connectedPeople.length ? 'Connections and people you may know' : 'People you may want to connect with'}</Text>
-                  </View>
-
-                  {connectedPeople.length ? (
-                    <>
-                      <Text style={styles.peopleSubhead}>CONNECTED HERE</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>
-                        {connectedPeople.map((person) => <PersonTile key={person.profile_id} person={person} connected />)}
-                      </ScrollView>
-                    </>
-                  ) : null}
-
-                  {recommendedPeople.length ? (
-                    <>
-                      <Text style={styles.peopleSubhead}>{connectedPeople.length ? 'PEOPLE YOU MAY KNOW' : 'FROM THIS EVENT'}</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>
-                        {recommendedPeople.map((person) => {
-                          const requested = requestedIds.has(person.profile_id);
-                          const connecting = connectingId === person.profile_id;
-                          return (
-                            <View key={person.profile_id} style={styles.recommendationCard}>
-                              <Pressable onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: person.profile_id } })} style={styles.recommendationIdentity}>
-                                <Avatar person={person} />
-                                <Text style={styles.personName} numberOfLines={1}>{personName(person)}</Text>
-                                {person.username ? <Text style={styles.personHandle} numberOfLines={1}>@{person.username}</Text> : null}
-                              </Pressable>
-                              <Pressable disabled={requested || connecting} onPress={() => void connect(person)} style={[styles.connectButton, requested && styles.connectButtonRequested]}>
-                                <Text style={[styles.connectButtonText, requested && styles.connectButtonTextRequested]}>{requested ? 'REQUESTED' : connecting ? 'SENDING…' : 'CONNECT'}</Text>
-                              </Pressable>
-                            </View>
-                          );
-                        })}
-                      </ScrollView>
-                    </>
-                  ) : null}
-
-                  {!eventPeople.length ? (
-                    <View style={styles.inlineEmpty}>
-                      <AppIcon name="community" color="#67CFC8" size={23} />
-                      <View style={styles.inlineEmptyCopy}><Text style={styles.emptyTitle}>No discoverable attendees yet.</Text><Text style={styles.emptyBody}>As attendees allow event discovery, connection recommendations will appear here.</Text></View>
-                    </View>
-                  ) : null}
+                  {!hasNotes ? <Text style={styles.emptyBody}>Save the part of this adventure you want to carry with you.</Text> : null}
+                  <View style={styles.privateLine}><AppIcon name={reflection?.visibility === 'community' ? 'community' : 'privacy'} color="#67CFC8" size={13} /><Text style={styles.privateLineText}>{reflection?.visibility === 'community' ? 'Shared reflection' : 'Private reflection'}</Text></View>
                 </View>
 
                 <View style={styles.sectionCard}>
                   <View style={styles.cardHeadingRow}>
-                    <View style={styles.headingCopy}><Text style={styles.cardEyebrow}>PHOTO MEMORY</Text><Text style={styles.cardTitle}>{photos.length ? `${photos.length} saved ${photos.length === 1 ? 'moment' : 'moments'}` : 'Build your photo memory'}</Text></View>
-                    <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} hitSlop={10}><Text style={styles.actionText}>ADD PHOTO</Text></Pressable>
+                    <View style={styles.headingCopy}><Text style={styles.cardEyebrow}>MY PHOTOS</Text><Text style={styles.cardTitle}>{photos.length ? `${photos.length} saved ${photos.length === 1 ? 'moment' : 'moments'}` : 'Build your photo memory'}</Text></View>
+                    <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} hitSlop={10}><Text style={styles.actionText}>+ ADD PHOTO</Text></Pressable>
                   </View>
-
                   {photos.length ? (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoStrip}>
-                      {photos.slice(0, 8).map((photo) => (
-                        <View key={photo.id} style={styles.memoryPhotoCard}><Image source={{ uri: photo.image_url }} style={styles.memoryPhoto} /><View style={styles.photoSourceBadge}><Text style={styles.photoSourceText}>{photo.source_kind === 'event_gallery' ? 'SAVED FROM EVENT' : 'YOUR PHOTO'}</Text></View></View>
-                      ))}
-                      <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} style={styles.addPhotoTile}><AppIcon name="add" color="#D7B45A" size={26} /><Text style={styles.addPhotoTileText}>Add Photos</Text></Pressable>
+                      {photos.slice(0, 10).map((photo) => <PhotoTile key={photo.id} photo={photo} onPress={() => setSelectedPhoto(photo)} />)}
+                      <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} style={styles.addPhotoTile}><AppIcon name="add" color="#D7B45A" size={26} /><Text style={styles.addPhotoTileText}>Add Photo</Text></Pressable>
                     </ScrollView>
                   ) : (
                     <Pressable onPress={() => router.push(`/passport/photos/${adventureId}`)} style={({ pressed }) => [styles.photoEmpty, pressed && styles.pressed]}>
-                      <AppIcon name="photo" color="#67CFC8" size={25} /><Text style={styles.emptyTitle}>No photos saved yet.</Text><Text style={styles.emptyBody}>Add your own or save shared event photos into this personal memory.</Text>
+                      <AppIcon name="photo" color="#67CFC8" size={25} /><Text style={styles.emptyTitle}>No photos saved yet.</Text><Text style={styles.emptyBody}>Private photos stay here. Shared photos also appear on the Event tab.</Text>
                     </Pressable>
                   )}
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.sectionCard}>
-                  <Text style={styles.cardEyebrow}>EVENT GALLERY</Text>
-                  <Text style={styles.cardTitle}>{eventPhotos.length ? `${eventPhotos.length} shared ${eventPhotos.length === 1 ? 'photo' : 'photos'}` : 'Shared moments from the event'}</Text>
-                  {eventPhotos.length ? (
-                    <View style={styles.eventPhotoGrid}>
-                      {eventPhotos.slice(0, 6).map((photo) => {
-                        const saved = savedSourceIds.has(photo.id);
-                        const saving = savingPhotoId === photo.id;
-                        return (
-                          <View key={photo.id} style={styles.eventPhotoCard}>
-                            <Image source={{ uri: photo.image_url }} style={styles.eventPhoto} />
-                            <Pressable disabled={saved || saving} onPress={() => void saveGalleryPhoto(photo)} style={[styles.savePhotoButton, saved && styles.savePhotoButtonSaved]}>
-                              <Text style={[styles.savePhotoText, saved && styles.savePhotoTextSaved]}>{saved ? 'SAVED' : saving ? 'SAVING…' : 'SAVE TO MEMORY'}</Text>
-                            </Pressable>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ) : <View style={styles.inlineEmpty}><AppIcon name="photos" color="#67CFC8" size={24} /><View style={styles.inlineEmptyCopy}><Text style={styles.emptyTitle}>The event gallery is quiet.</Text><Text style={styles.emptyBody}>Approved attendee photos will collect here.</Text></View></View>}
-                </View>
-
-                <View style={styles.sectionCard}>
-                  <Text style={styles.cardEyebrow}>PEOPLE FROM THIS ADVENTURE</Text>
-                  <Text style={styles.cardTitle}>{eventPeople.length ? `${eventPeople.length} discoverable ${eventPeople.length === 1 ? 'person' : 'people'}` : 'People you can reconnect with'}</Text>
-                  {eventPeople.length ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>
-                      {eventPeople.map((person) => <PersonTile key={person.profile_id} person={person} connected={person.is_connected} />)}
-                    </ScrollView>
-                  ) : <View style={styles.inlineEmpty}><AppIcon name="community" color="#67CFC8" size={24} /><View style={styles.inlineEmptyCopy}><Text style={styles.emptyTitle}>No discoverable attendees yet.</Text><Text style={styles.emptyBody}>Only appropriate discoverable attendees and your accepted connections appear here.</Text></View></View>}
                 </View>
 
                 <View style={styles.sectionCard}>
                   <Text style={styles.cardEyebrow}>COMMUNITY MOMENTS</Text>
+                  <Text style={styles.cardTitle}>{communityMoments.length ? 'Conversation around this adventure' : 'No conversation yet'}</Text>
+                  {communityMoments.length ? communityMoments.slice(0, 3).map((post) => <CommunityMoment key={post.id} post={post} />) : <Text style={styles.emptyBody}>Shared posts and conversation connected to this adventure will appear here.</Text>}
+                </View>
+
+                <PeopleSection
+                  eventPeople={eventPeople}
+                  connectedPeople={connectedPeople}
+                  recommendedPeople={recommendedPeople}
+                  requestedIds={requestedIds}
+                  connectingId={connectingId}
+                  onConnect={connect}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.sectionCard}>
+                  <View style={styles.cardHeadingRow}>
+                    <View style={styles.headingCopy}><Text style={styles.cardEyebrow}>EVENT GALLERY</Text><Text style={styles.cardTitle}>{eventDisplayPhotos.length ? `${eventDisplayPhotos.length} shared ${eventDisplayPhotos.length === 1 ? 'moment' : 'moments'}` : 'Shared moments from the event'}</Text></View>
+                    {pendingCount ? <View style={styles.pendingCounter}><Text style={styles.pendingCounterText}>{pendingCount} PENDING</Text></View> : null}
+                  </View>
+                  {eventDisplayPhotos.length ? (
+                    <View style={styles.eventPhotoGrid}>
+                      {eventDisplayPhotos.slice(0, 9).map((photo) => {
+                        const saved = savedSourceIds.has(photo.id);
+                        const saving = savingPhotoId === photo.id;
+                        const isOwn = photos.some((owned) => owned.id === photo.id);
+                        return (
+                          <View key={photo.id} style={styles.eventPhotoCard}>
+                            <Pressable onPress={() => setSelectedPhoto(photo)} style={({ pressed }) => pressed && styles.pressed}>
+                              <Image source={{ uri: photo.image_url }} style={styles.eventPhoto} />
+                              <PhotoStatusBadge photo={photo} compact />
+                            </Pressable>
+                            {!isOwn && photo.moderation_status === 'approved' ? (
+                              <Pressable disabled={saved || saving} onPress={() => void saveGalleryPhoto(photo)} style={[styles.savePhotoButton, saved && styles.savePhotoButtonSaved]}>
+                                <Text style={[styles.savePhotoText, saved && styles.savePhotoTextSaved]}>{saved ? 'SAVED' : saving ? 'SAVING…' : 'SAVE TO MEMORY'}</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <View style={styles.inlineEmpty}><AppIcon name="photos" color="#67CFC8" size={24} /><View style={styles.inlineEmptyCopy}><Text style={styles.emptyTitle}>The event gallery is quiet.</Text><Text style={styles.emptyBody}>If you submit a photo, it will appear here immediately with its moderation status.</Text></View></View>
+                  )}
+                </View>
+
+                {pendingCount ? (
+                  <View style={styles.sectionCard}>
+                    <Text style={styles.cardEyebrow}>YOUR SUBMITTED PHOTOS</Text>
+                    <Text style={styles.cardTitle}>{pendingCount} {pendingCount === 1 ? 'photo is' : 'photos are'} awaiting approval</Text>
+                    <Text style={styles.emptyBody}>You can see your submission immediately. Other attendees will only see it after approval.</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.sectionCard}>
+                  <Text style={styles.cardEyebrow}>ATTENDEES</Text>
+                  <Text style={styles.cardTitle}>{eventPeople.length ? `${eventPeople.length} discoverable ${eventPeople.length === 1 ? 'person' : 'people'}` : 'People from this adventure'}</Text>
+                  {eventPeople.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{eventPeople.map((person) => <PersonTile key={person.profile_id} person={person} connected={person.is_connected} />)}</ScrollView> : <Text style={styles.emptyBody}>No discoverable attendees yet.</Text>}
+                </View>
+
+                <View style={styles.sectionCard}>
+                  <Text style={styles.cardEyebrow}>COMMUNITY CONVERSATION</Text>
                   <Text style={styles.cardTitle}>{communityMoments.length ? `${communityMoments.length} from this adventure` : 'The shared story'}</Text>
-                  {communityMoments.length ? communityMoments.slice(0, 5).map((post) => (
-                    <Pressable key={post.id} onPress={() => router.push({ pathname: '/community/[id]', params: { id: post.id } })} style={({ pressed }) => [styles.momentCard, pressed && styles.pressed]}>
-                      <View style={styles.momentHeader}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.momentAvatar} /> : <View style={[styles.momentAvatar, styles.avatarFallback]}><Text style={styles.momentAvatarText}>{post.author_name.slice(0, 1).toUpperCase()}</Text></View>}<View style={styles.momentHeaderCopy}><Text style={styles.momentAuthor}>{post.author_name}</Text><Text style={styles.momentDate}>{formatPostDate(post.created_at)}</Text></View></View>
-                      <Text style={styles.momentBody} numberOfLines={4}>{post.body}</Text>
-                      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.momentImage} /> : null}
-                      <View style={styles.momentStats}><Text style={styles.momentStat}>♥ {post.reaction_count}</Text><Text style={styles.momentStat}>◌ {post.comment_count}</Text></View>
-                    </Pressable>
-                  )) : <View style={styles.inlineEmpty}><AppIcon name="community" color="#67CFC8" size={24} /><View style={styles.inlineEmptyCopy}><Text style={styles.emptyTitle}>No community moments yet.</Text><Text style={styles.emptyBody}>Posts tied to this adventure will appear here.</Text></View></View>}
+                  {communityMoments.length ? communityMoments.slice(0, 5).map((post) => <CommunityMoment key={post.id} post={post} />) : <Text style={styles.emptyBody}>Posts tied to this adventure will appear here.</Text>}
                 </View>
               </>
             )}
@@ -470,24 +450,100 @@ export default function StampDetailScreen() {
           <View style={styles.memorySheet}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}><View style={styles.headingCopy}><Text style={styles.cardEyebrow}>YOUR MEMORY</Text><Text style={styles.sheetTitle}>What do you want to remember?</Text></View><Pressable onPress={() => setMemoryOpen(false)}><Text style={styles.sheetClose}>CLOSE</Text></Pressable></View>
-
             <Text style={styles.inputLabel}>Favorite moment</Text>
             <TextInput value={memoryHighlight} onChangeText={setMemoryHighlight} placeholder="The laugh, the view, the first step…" placeholderTextColor="#748078" style={styles.singleInput} maxLength={180} />
-
             <Text style={styles.inputLabel}>Memory or note</Text>
             <TextInput value={memoryNotes} onChangeText={setMemoryNotes} placeholder="What happened? What do you want to remember later?" placeholderTextColor="#748078" style={styles.notesInput} multiline textAlignVertical="top" maxLength={1800} />
-
             <Text style={styles.inputLabel}>Who can see this memory?</Text>
             <View style={styles.visibilityRow}>
               <Pressable onPress={() => setMemoryVisibility('private')} style={[styles.visibilityChoice, memoryVisibility === 'private' && styles.visibilityChoiceActive]}><AppIcon name="privacy" color={memoryVisibility === 'private' ? '#17211C' : '#AEB9B2'} size={17} /><View style={styles.visibilityCopy}><Text style={[styles.visibilityTitle, memoryVisibility === 'private' && styles.visibilityTitleActive]}>Only Me</Text><Text style={[styles.visibilityBody, memoryVisibility === 'private' && styles.visibilityBodyActive]}>Keep it in my Passport</Text></View></Pressable>
               <Pressable onPress={() => setMemoryVisibility('community')} style={[styles.visibilityChoice, memoryVisibility === 'community' && styles.visibilityChoiceActive]}><AppIcon name="community" color={memoryVisibility === 'community' ? '#17211C' : '#AEB9B2'} size={17} /><View style={styles.visibilityCopy}><Text style={[styles.visibilityTitle, memoryVisibility === 'community' && styles.visibilityTitleActive]}>Community</Text><Text style={[styles.visibilityBody, memoryVisibility === 'community' && styles.visibilityBodyActive]}>Share this reflection</Text></View></Pressable>
             </View>
-
             <Pressable disabled={savingMemory} onPress={() => void saveMemory()} style={[styles.saveMemoryButton, savingMemory && styles.buttonDisabled]}><Text style={styles.saveMemoryText}>{savingMemory ? 'SAVING…' : 'SAVE MEMORY'}</Text></Pressable>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={Boolean(selectedPhoto)} transparent animationType="fade" onRequestClose={() => setSelectedPhoto(null)}>
+        <View style={styles.photoModalRoot}>
+          <Pressable style={styles.photoModalBackdrop} onPress={() => setSelectedPhoto(null)} />
+          {selectedPhoto ? (
+            <View style={styles.photoDetailCard}>
+              <Image source={{ uri: selectedPhoto.image_url }} style={styles.photoDetailImage} resizeMode="contain" />
+              <View style={styles.photoDetailBody}>
+                <View style={styles.photoDetailHeader}><PhotoStatusBadge photo={selectedPhoto} /><Pressable onPress={() => setSelectedPhoto(null)} hitSlop={10}><Text style={styles.sheetClose}>CLOSE</Text></Pressable></View>
+                {selectedPhoto.caption ? <Text style={styles.photoCaption}>{selectedPhoto.caption}</Text> : <Text style={styles.emptyBody}>No caption added.</Text>}
+                <Text style={styles.photoDate}>{formatDate(selectedPhoto.created_at)}</Text>
+                {selectedPhoto.moderation_status === 'pending' && selectedPhoto.visibility !== 'private' ? <Text style={styles.photoStatusNote}>This photo is visible to you now and will appear to other attendees after approval.</Text> : null}
+                {selectedPhoto.moderation_status === 'rejected' ? <Text style={styles.photoStatusNote}>This photo was not approved for the Event Gallery. It remains in your personal memory.</Text> : null}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function PhotoStatusBadge({ photo, compact = false }: { photo: MemoryPhoto; compact?: boolean }) {
+  const status = photoStatus(photo);
+  return (
+    <View style={[styles.photoStatusBadge, compact && styles.photoStatusBadgeCompact, status.kind === 'private' && styles.photoStatusPrivate, status.kind === 'pending' && styles.photoStatusPending, status.kind === 'rejected' && styles.photoStatusRejected, status.kind === 'shared' && styles.photoStatusShared]}>
+      <AppIcon name={status.icon} color={status.kind === 'pending' ? '#17211C' : '#F7F8F3'} size={compact ? 10 : 12} />
+      <Text style={[styles.photoStatusText, status.kind === 'pending' && styles.photoStatusTextDark]}>{status.label}</Text>
+    </View>
+  );
+}
+
+function PhotoTile({ photo, onPress }: { photo: MemoryPhoto; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.memoryPhotoCard, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel={`Open photo, ${photoStatus(photo).label.toLowerCase()}`}>
+      <Image source={{ uri: photo.image_url }} style={styles.memoryPhoto} />
+      <PhotoStatusBadge photo={photo} compact />
+    </Pressable>
+  );
+}
+
+function CommunityMoment({ post }: { post: CommunityPost }) {
+  return (
+    <Pressable onPress={() => router.push({ pathname: '/community/[id]', params: { id: post.id } })} style={({ pressed }) => [styles.momentCard, pressed && styles.pressed]}>
+      <View style={styles.momentHeader}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.momentAvatar} /> : <View style={[styles.momentAvatar, styles.avatarFallback]}><Text style={styles.momentAvatarText}>{post.author_name.slice(0, 1).toUpperCase()}</Text></View>}<View style={styles.momentHeaderCopy}><Text style={styles.momentAuthor}>{post.author_name}</Text><Text style={styles.momentDate}>{formatDate(post.created_at)}</Text></View></View>
+      <Text style={styles.momentBody} numberOfLines={4}>{post.body}</Text>
+      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.momentImage} /> : null}
+      <View style={styles.momentStats}><Text style={styles.momentStat}>♥ {post.reaction_count}</Text><Text style={styles.momentStat}>◌ {post.comment_count}</Text></View>
+    </Pressable>
+  );
+}
+
+function PeopleSection({ eventPeople, connectedPeople, recommendedPeople, requestedIds, connectingId, onConnect }: {
+  eventPeople: AdventureEventPerson[];
+  connectedPeople: AdventureEventPerson[];
+  recommendedPeople: AdventureEventPerson[];
+  requestedIds: Set<string>;
+  connectingId: string | null;
+  onConnect: (person: AdventureEventPerson) => void;
+}) {
+  return (
+    <View style={styles.sectionCard}>
+      <Text style={styles.cardEyebrow}>PEOPLE FROM THIS ADVENTURE</Text>
+      <Text style={styles.cardTitle}>{eventPeople.length ? `${eventPeople.length} ${eventPeople.length === 1 ? 'person' : 'people'} from this adventure` : 'People you met here'}</Text>
+      {connectedPeople.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{connectedPeople.map((person) => <PersonTile key={person.profile_id} person={person} connected />)}</ScrollView> : null}
+      {recommendedPeople.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>
+          {recommendedPeople.map((person) => {
+            const requested = requestedIds.has(person.profile_id);
+            const connecting = connectingId === person.profile_id;
+            return (
+              <View key={person.profile_id} style={styles.recommendationCard}>
+                <Pressable onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: person.profile_id } })} style={styles.recommendationIdentity}><Avatar person={person} /><Text style={styles.personName} numberOfLines={1}>{personName(person)}</Text>{person.username ? <Text style={styles.personHandle} numberOfLines={1}>@{person.username}</Text> : null}</Pressable>
+                <Pressable disabled={requested || connecting} onPress={() => onConnect(person)} style={[styles.connectButton, requested && styles.connectButtonRequested]}><Text style={[styles.connectButtonText, requested && styles.connectButtonTextRequested]}>{requested ? 'REQUESTED' : connecting ? 'SENDING…' : 'CONNECT'}</Text></Pressable>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+      {!eventPeople.length ? <Text style={styles.emptyBody}>No discoverable attendees yet.</Text> : null}
+    </View>
   );
 }
 
@@ -556,7 +612,6 @@ const styles = StyleSheet.create({
   reflection: { color: '#B8C3BD', fontSize: 13.5, lineHeight: 20 },
   privateLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 3 },
   privateLineText: { color: '#829088', fontSize: 10.5, fontWeight: '700' },
-  peopleSubhead: { color: '#7F8C85', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.8, marginTop: 2 },
   peopleRow: { gap: 13, paddingRight: 4 },
   personCard: { width: 82, alignItems: 'center', gap: 5 },
   avatarWrap: { width: 58, height: 58, position: 'relative' },
@@ -579,11 +634,17 @@ const styles = StyleSheet.create({
   emptyTitle: { color: '#F7F8F3', fontSize: 14, lineHeight: 18, fontWeight: '900' },
   emptyBody: { color: '#929E97', fontSize: 12.5, lineHeight: 18 },
   photoStrip: { gap: 9, paddingRight: 4 },
-  memoryPhotoCard: { width: 118, height: 118, borderRadius: 13, overflow: 'hidden', backgroundColor: '#18231E' },
+  memoryPhotoCard: { width: 132, height: 132, borderRadius: 13, overflow: 'hidden', backgroundColor: '#18231E' },
   memoryPhoto: { width: '100%', height: '100%' },
-  photoSourceBadge: { position: 'absolute', left: 5, bottom: 5, right: 5, backgroundColor: 'rgba(7,14,12,0.82)', borderRadius: 7, paddingHorizontal: 6, paddingVertical: 4 },
-  photoSourceText: { color: '#E8EEE9', fontSize: 6.8, fontWeight: '900', letterSpacing: 0.4, textAlign: 'center' },
-  addPhotoTile: { width: 118, height: 118, borderRadius: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#48564F', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  photoStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  photoStatusBadgeCompact: { position: 'absolute', left: 6, bottom: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  photoStatusPrivate: { backgroundColor: 'rgba(7,14,12,0.88)' },
+  photoStatusPending: { backgroundColor: '#F5C341' },
+  photoStatusRejected: { backgroundColor: '#7C3434' },
+  photoStatusShared: { backgroundColor: 'rgba(28,83,70,0.94)' },
+  photoStatusText: { color: '#F7F8F3', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.4 },
+  photoStatusTextDark: { color: '#17211C' },
+  addPhotoTile: { width: 132, height: 132, borderRadius: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#48564F', alignItems: 'center', justifyContent: 'center', gap: 6 },
   addPhotoTileText: { color: '#B7C1BB', fontSize: 11, fontWeight: '800' },
   photoEmpty: { minHeight: 112, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#34423B', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 5 },
   eventPhotoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -593,6 +654,8 @@ const styles = StyleSheet.create({
   savePhotoButtonSaved: { backgroundColor: '#24312B' },
   savePhotoText: { color: '#17211C', fontSize: 6.8, fontWeight: '900', letterSpacing: 0.35, textAlign: 'center' },
   savePhotoTextSaved: { color: '#8FD4C7' },
+  pendingCounter: { backgroundColor: '#F5C341', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  pendingCounterText: { color: '#17211C', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.4 },
   momentCard: { borderTopWidth: 1, borderTopColor: '#25312C', paddingTop: 12, gap: 8 },
   momentHeader: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   momentAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#1B2721' },
@@ -631,5 +694,14 @@ const styles = StyleSheet.create({
   visibilityBody: { color: '#8D9992', fontSize: 8.5, lineHeight: 12, marginTop: 2 },
   visibilityBodyActive: { color: '#485149' },
   saveMemoryButton: { minHeight: 50, borderRadius: 14, backgroundColor: '#F5C341', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  saveMemoryText: { color: '#17211C', fontSize: 12.5, fontWeight: '900', letterSpacing: 0.6 },
+  saveMemoryText: { color: '#17211C', fontSize: 12.5, fontWeight: '900', letterSpacing: 0.7 },
+  photoModalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18 },
+  photoModalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.82)' },
+  photoDetailCard: { width: '100%', maxWidth: 560, backgroundColor: '#101916', borderRadius: 20, borderWidth: 1, borderColor: '#34423B', overflow: 'hidden' },
+  photoDetailImage: { width: '100%', height: 420, backgroundColor: '#070D0B' },
+  photoDetailBody: { padding: 15, gap: 10 },
+  photoDetailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  photoCaption: { color: '#F7F8F3', fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  photoDate: { color: '#829088', fontSize: 10.5, fontWeight: '700' },
+  photoStatusNote: { color: '#B8C3BD', fontSize: 12, lineHeight: 18, backgroundColor: '#17231E', borderRadius: 10, padding: 10 },
 });
