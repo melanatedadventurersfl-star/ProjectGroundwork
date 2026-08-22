@@ -16,6 +16,7 @@ const sections: readonly [string, readonly [string, string, AppIconName][]][] = 
     ['Invite Friends','/member/invites','connections'],
     ['Notifications','/notifications','notifications'],
     ['Weather & Location','/member/weather','weather'],
+    ['App Permissions','/member/permissions','privacy'],
     ['Delete Account','/delete-account','privacy'],
   ]],
   ['Membership', [
