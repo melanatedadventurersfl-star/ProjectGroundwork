@@ -20,6 +20,15 @@ type SelectedPhoto = {
   mimeType?: string | null;
 };
 
+function uploadErrorMessage(caught: unknown) {
+  if (caught instanceof Error && caught.message.trim()) return caught.message;
+  if (caught && typeof caught === 'object' && 'message' in caught) {
+    const message = (caught as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return 'Please try again.';
+}
+
 export default function AddAdventurePhotoScreen() {
   const { adventureId } = useLocalSearchParams<{ adventureId: string }>();
   const [photo, setPhoto] = useState<SelectedPhoto | null>(null);
@@ -88,7 +97,7 @@ export default function AddAdventurePhotoScreen() {
         [{ text: 'Done', onPress: () => router.back() }],
       );
     } catch (caught) {
-      Alert.alert('Unable to upload photo', caught instanceof Error ? caught.message : 'Please try again.');
+      Alert.alert('Unable to upload photo', uploadErrorMessage(caught));
     } finally {
       setUploading(false);
     }
