@@ -26,6 +26,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { getGroups, joinGroup, type CommunityGroup } from '../community/api';
 import { supabase } from '../lib/supabase';
 import { requestConnection } from '../social/api';
+import { findContactMatches } from './contactMatching';
 import { getStateOption, loadCitiesForState, US_STATES } from './locations';
 import { completeOnboarding, loadOnboardingProfile } from './onboardingService';
 import { markGuidedTutorialCompleted } from './tutorialPreference';
@@ -67,7 +68,6 @@ type CommunitySuggestion = {
   home_state: string | null;
   avatar_url: string | null;
   interests: string[] | null;
-  isDemo?: boolean;
 };
 
 type MemberInvite = {
@@ -100,12 +100,6 @@ const OUTPOST_OPTIONS = [
   ['Share my adventures', 'Share adventures', 'images-outline'],
   ['Explore new places', 'Explore locally', 'compass-outline'],
 ] as const;
-
-const DEMO_PEOPLE: CommunitySuggestion[] = [
-  { id: 'demo-nia', display_name: 'Nia Carter', username: null, home_city: 'St. Petersburg', home_state: 'FL', avatar_url: null, interests: ['Water adventures'], isDemo: true },
-  { id: 'demo-marcus', display_name: 'Marcus Ellis', username: null, home_city: 'Jacksonville', home_state: 'FL', avatar_url: null, interests: ['Hiking'], isDemo: true },
-  { id: 'demo-devon', display_name: 'Devon Hill', username: null, home_city: 'Orlando', home_state: 'FL', avatar_url: null, interests: ['Camping'], isDemo: true },
-];
 
 function initials(value?: string | null) {
   return String(value || 'GM')
@@ -305,7 +299,9 @@ export default function GuidedOnboardingExperience() {
   const [cities, setCities] = useState<string[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<CommunitySuggestion[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [contactsStatus, setContactsStatus] = useState<'idle' | 'granted' | 'denied'>('idle');
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [matchedContactCount, setMatchedContactCount] = useState(0);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectionSentIds, setConnectionSentIds] = useState<Set<string>>(new Set());
   const [invite, setInvite] = useState<MemberInvite | null>(null);
@@ -383,14 +379,8 @@ export default function GuidedOnboardingExperience() {
   useEffect(() => {
     if (!userId || step !== 7) return;
     let active = true;
-    setSuggestionsLoading(true);
     setInviteLoading(true);
-    async function loadPeopleAndInvite() {
-      let query = supabase.from('community_profile_directory').select('*').neq('id', userId).limit(6);
-      if (form.homeState) query = query.eq('home_state', form.homeState);
-      let result = await query;
-      if (result.error && form.homeState) result = await supabase.from('community_profile_directory').select('*').neq('id', userId).limit(6);
-      if (result.error) throw result.error;
+    async function loadInvite() {
       const inviteResult = await supabase
         .from('member_invites')
         .select('id,token,status')
@@ -399,21 +389,14 @@ export default function GuidedOnboardingExperience() {
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
-      if (active) {
-        setSuggestions((result.data ?? []) as CommunitySuggestion[]);
-        setInvite(inviteResult.data as MemberInvite | null);
-      }
+      if (inviteResult.error) throw inviteResult.error;
+      if (active) setInvite(inviteResult.data as MemberInvite | null);
     }
-    void loadPeopleAndInvite()
-      .catch((error) => console.warn('[onboarding] trailmates preview failed', error))
-      .finally(() => {
-        if (active) {
-          setSuggestionsLoading(false);
-          setInviteLoading(false);
-        }
-      });
+    void loadInvite()
+      .catch((error) => console.warn('[onboarding] invite preview failed', error))
+      .finally(() => { if (active) setInviteLoading(false); });
     return () => { active = false; };
-  }, [form.homeState, step, userId]);
+  }, [step, userId]);
 
   useEffect(() => {
     if (step !== 8) return;
@@ -440,7 +423,7 @@ export default function GuidedOnboardingExperience() {
 
   const greetingName = form.displayName.trim() || username || 'friend';
   const locationLabel = [form.homeCity, form.homeState].filter(Boolean).join(', ');
-  const peopleToShow = suggestions.length ? suggestions.slice(0, 3) : DEMO_PEOPLE;
+  const peopleToShow = suggestions.slice(0, 3);
 
   async function requestCurrentLocation() {
     setLocating(true);
@@ -473,7 +456,7 @@ export default function GuidedOnboardingExperience() {
   }
 
   async function connect(person: CommunitySuggestion) {
-    if (person.isDemo || connectingId || connectionSentIds.has(person.id)) return;
+    if (connectingId || connectionSentIds.has(person.id)) return;
     setConnectingId(person.id);
     try {
       await requestConnection(person.id);
@@ -492,6 +475,21 @@ export default function GuidedOnboardingExperience() {
       return;
     }
     await Share.share({ title: 'Join me on Go Melanated', message: inviteShareMessage(invite.token) });
+  }
+
+  async function findFriendsFromContacts() {
+    if (contactsLoading) return;
+    setContactsLoading(true);
+    try {
+      const result = await findContactMatches();
+      setContactsStatus(result.permission);
+      setSuggestions(result.matches);
+      setMatchedContactCount(result.matches.length);
+    } catch (error) {
+      Alert.alert('Unable to check contacts', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setContactsLoading(false);
+    }
   }
 
   async function joinSuggestedGroup(group: CommunityGroup) {
@@ -840,37 +838,66 @@ export default function GuidedOnboardingExperience() {
   if (step === 7) {
     return (
       <SectionShell active="Trailmates" name={greetingName} step={step} onBack={back}>
-        <SectionIntro eyebrow="FIND YOUR PEOPLE" title="Trailmates" copy="Find people you already know, then discover people who share your interests and love getting outside." />
+        <SectionIntro eyebrow="FIND YOUR PEOPLE" title="Trailmates" copy="Invite people you already know, or choose to check whether anyone in your contacts is already on Go Melanated." />
         <View style={styles.findFriendsCard}>
           <View style={styles.findFriendsIcon}><Ionicons name="person-add-outline" size={25} color={GOLD} /></View>
           <View style={styles.flex}>
             <Text style={styles.actionTitle}>Invite people you already know</Text>
-            <Text style={styles.actionCopyStandalone}>Use your phone’s share sheet to choose a contact. Your address book stays on your phone.</Text>
+            <Text style={styles.actionCopyStandalone}>Use your phone’s share sheet to choose who to invite. Contact access is optional.</Text>
           </View>
           <PrimaryButton label={inviteLoading ? 'Loading invite…' : 'Choose who to invite'} disabled={inviteLoading} onPress={() => void shareInvite()} />
+          <Pressable
+            accessibilityRole="button"
+            style={[styles.contactsButton, contactsStatus === 'granted' && styles.contactsButtonConnected]}
+            disabled={contactsLoading}
+            onPress={() => void findFriendsFromContacts()}
+          >
+            <Ionicons name={contactsStatus === 'granted' ? 'checkmark-circle' : 'phone-portrait-outline'} size={20} color={contactsStatus === 'granted' ? '#8DD39E' : GOLD} />
+            <View style={styles.flex}>
+              <Text style={styles.contactsButtonTitle}>
+                {contactsStatus === 'granted' ? 'Contacts connected' : contactsLoading ? 'Checking contacts…' : 'Find friends from contacts'}
+              </Text>
+              <Text style={styles.contactsButtonCopy}>
+                {contactsStatus === 'granted'
+                  ? matchedContactCount
+                    ? `${matchedContactCount} ${matchedContactCount === 1 ? 'person' : 'people'} found on Go Melanated`
+                    : 'No matches found. Nothing from your contact list is stored.'
+                  : contactsStatus === 'denied'
+                    ? 'Contact access is off. You can keep inviting manually.'
+                    : 'See who you already know on the app'}
+              </Text>
+            </View>
+            {contactsLoading ? <ActivityIndicator size="small" color={GOLD} /> : contactsStatus !== 'granted' ? <Ionicons name="chevron-forward" size={18} color={GOLD} /> : null}
+          </Pressable>
+          <View style={styles.contactPrivacyRow}>
+            <Ionicons name="lock-closed-outline" size={16} color={MUTED} />
+            <Text style={styles.contactPrivacyText}>We only use contact phone numbers to look for matches. Your address book is not saved.</Text>
+          </View>
         </View>
-        <Text style={styles.subsectionTitle}>People you may want to know</Text>
-        {suggestionsLoading ? <ActivityIndicator color={GOLD} style={styles.inlineLoader} /> : null}
-        <View style={styles.peopleRow}>
-          {peopleToShow.map((person) => {
-            const sent = connectionSentIds.has(person.id);
-            return (
-              <View key={person.id} style={styles.personCard}>
-                {person.isDemo ? <View style={styles.demoBadge}><Text style={styles.demoBadgeText}>DEMO</Text></View> : null}
-                <Avatar person={person} />
-                <Text style={styles.personName} numberOfLines={1}>{person.display_name || person.username || 'Explorer'}</Text>
-                <Text style={styles.personMeta} numberOfLines={1}>{[person.home_city, person.home_state].filter(Boolean).join(', ') || 'Go Melanated'}</Text>
-                <Text style={styles.personInterest} numberOfLines={1}>{person.interests?.[0] || 'Outdoors'}</Text>
-                <Pressable style={[styles.connectButton, sent && styles.connectButtonDone, person.isDemo && styles.connectButtonDemo]} disabled={person.isDemo || sent || connectingId === person.id} onPress={() => void connect(person)}>
-                  <Text style={[styles.connectButtonText, sent && styles.connectButtonTextDone]}>{person.isDemo ? 'Preview' : sent ? 'Requested ✓' : connectingId === person.id ? 'Sending…' : 'Connect'}</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
+        {contactsStatus === 'granted' && peopleToShow.length ? (
+          <>
+            <Text style={styles.subsectionTitle}>People from your contacts</Text>
+            <View style={styles.peopleRow}>
+              {peopleToShow.map((person) => {
+                const sent = connectionSentIds.has(person.id);
+                return (
+                  <View key={person.id} style={styles.personCard}>
+                    <Avatar person={person} />
+                    <Text style={styles.personName} numberOfLines={1}>{person.display_name || person.username || 'Explorer'}</Text>
+                    <Text style={styles.personMeta} numberOfLines={1}>{[person.home_city, person.home_state].filter(Boolean).join(', ') || 'Go Melanated'}</Text>
+                    <Text style={styles.personInterest} numberOfLines={1}>{person.interests?.[0] || 'Outdoors'}</Text>
+                    <Pressable style={[styles.connectButton, sent && styles.connectButtonDone]} disabled={sent || connectingId === person.id} onPress={() => void connect(person)}>
+                      <Text style={[styles.connectButtonText, sent && styles.connectButtonTextDone]}>{sent ? 'Requested ✓' : connectingId === person.id ? 'Sending…' : 'Connect'}</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
         <View style={styles.actionCardCompact}>
           <Text style={styles.actionTitle}>Connect now or keep exploring.</Text>
-          <Text style={styles.actionCopy}>Trailmates will keep improving as your interests and local community grow.</Text>
+          <Text style={styles.actionCopy}>You can always find more Trailmates later as your community grows.</Text>
           <PrimaryButton label="Continue" onPress={next} />
         </View>
       </SectionShell>
@@ -1081,14 +1108,18 @@ const styles = StyleSheet.create({
   postTagText: { color: GOLD, fontSize: 10, fontWeight: '800' },
   findFriendsCard: { borderRadius: 20, borderWidth: 1, borderColor: '#4D4020', backgroundColor: '#121A14', padding: 15, gap: 12, marginBottom: 16 },
   findFriendsIcon: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: '#6F5C26', backgroundColor: '#191D13', alignItems: 'center', justifyContent: 'center' },
+  contactsButton: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: GOLD, backgroundColor: '#0D1712', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingVertical: 10 },
+  contactsButtonConnected: { borderColor: '#397247', backgroundColor: '#0C1A11' },
+  contactsButtonTitle: { color: TEXT, fontSize: 13, fontWeight: '900' },
+  contactsButtonCopy: { color: MUTED, fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  contactPrivacyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 4 },
+  contactPrivacyText: { flex: 1, color: MUTED, fontSize: 10.5, lineHeight: 15 },
   subsectionTitle: { color: TEXT, fontSize: 17, fontWeight: '900', marginBottom: 9 },
   subsectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   joinedCount: { color: GOLD, fontSize: 12, fontWeight: '800' },
   inlineLoader: { marginVertical: 14 },
   peopleRow: { flexDirection: 'row', gap: 8 },
   personCard: { flex: 1, minWidth: 0, borderRadius: 17, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, padding: 9, position: 'relative' },
-  demoBadge: { position: 'absolute', top: 7, right: 7, zIndex: 2, borderRadius: 999, backgroundColor: '#2D301E', paddingHorizontal: 6, paddingVertical: 3 },
-  demoBadgeText: { color: GOLD, fontSize: 8, fontWeight: '900', letterSpacing: 0.6 },
   personAvatar: { width: '100%', aspectRatio: 1, borderRadius: 13, marginBottom: 8 },
   avatarFallback: { backgroundColor: '#223129', alignItems: 'center', justifyContent: 'center' },
   avatarFallbackText: { color: GOLD, fontSize: 24, fontWeight: '900' },
@@ -1097,7 +1128,6 @@ const styles = StyleSheet.create({
   personInterest: { color: GOLD, fontSize: 9.5, fontWeight: '800', marginTop: 5 },
   connectButton: { minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: GOLD, alignItems: 'center', justifyContent: 'center', marginTop: 8, paddingHorizontal: 5 },
   connectButtonDone: { backgroundColor: GOLD },
-  connectButtonDemo: { borderColor: '#455249', opacity: 0.7 },
   connectButtonText: { color: GOLD, fontSize: 10, fontWeight: '900' },
   connectButtonTextDone: { color: BG },
   groupList: { gap: 9 },
