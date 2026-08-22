@@ -1,7 +1,3 @@
-import * as Contacts from 'expo-contacts';
-import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,6 +7,7 @@ import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
 type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unavailable';
 type PermissionKey = 'notifications' | 'location' | 'contacts' | 'camera' | 'photos';
+type PermissionResult = { status?: string; canAskAgain?: boolean };
 
 type PermissionRow = {
   key: PermissionKey;
@@ -61,6 +58,49 @@ function statusLabel(state: PermissionState) {
   return 'Unavailable';
 }
 
+async function readPermission(key: PermissionKey): Promise<PermissionResult> {
+  try {
+    if (key === 'notifications') {
+      const Notifications = await import('expo-notifications');
+      return await Notifications.getPermissionsAsync();
+    }
+    if (key === 'location') {
+      const Location = await import('expo-location');
+      return await Location.getForegroundPermissionsAsync();
+    }
+    if (key === 'contacts') {
+      const Contacts = await import('expo-contacts');
+      return await Contacts.getPermissionsAsync();
+    }
+    const ImagePicker = await import('expo-image-picker');
+    return key === 'camera'
+      ? await ImagePicker.getCameraPermissionsAsync()
+      : await ImagePicker.getMediaLibraryPermissionsAsync();
+  } catch (caught) {
+    console.warn(`Permission module unavailable for ${key}`, caught);
+    return { status: 'unavailable', canAskAgain: false };
+  }
+}
+
+async function askPermission(key: PermissionKey) {
+  if (key === 'notifications') {
+    const Notifications = await import('expo-notifications');
+    return Notifications.requestPermissionsAsync();
+  }
+  if (key === 'location') {
+    const Location = await import('expo-location');
+    return Location.requestForegroundPermissionsAsync();
+  }
+  if (key === 'contacts') {
+    const Contacts = await import('expo-contacts');
+    return Contacts.requestPermissionsAsync();
+  }
+  const ImagePicker = await import('expo-image-picker');
+  return key === 'camera'
+    ? ImagePicker.requestCameraPermissionsAsync()
+    : ImagePicker.requestMediaLibraryPermissionsAsync();
+}
+
 export default function AppPermissionsScreen() {
   const [permissions, setPermissions] = useState<PermissionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,27 +110,13 @@ export default function AppPermissionsScreen() {
   const loadPermissions = useCallback(async () => {
     setError('');
     try {
-      const [notifications, location, contacts, camera, photos] = await Promise.all([
-        Notifications.getPermissionsAsync(),
-        Location.getForegroundPermissionsAsync(),
-        Contacts.getPermissionsAsync(),
-        ImagePicker.getCameraPermissionsAsync(),
-        ImagePicker.getMediaLibraryPermissionsAsync(),
-      ]);
-
-      const states: Record<PermissionKey, { status?: string; canAskAgain?: boolean }> = {
-        notifications,
-        location,
-        contacts,
-        camera,
-        photos,
-      };
-
-      setPermissions((Object.keys(permissionMeta) as PermissionKey[]).map((key) => ({
+      const keys = Object.keys(permissionMeta) as PermissionKey[];
+      const results = await Promise.all(keys.map(readPermission));
+      setPermissions(keys.map((key, index) => ({
         key,
         ...permissionMeta[key],
-        state: normalizeStatus(states[key].status),
-        canAskAgain: states[key].canAskAgain !== false,
+        state: normalizeStatus(results[index].status),
+        canAskAgain: results[index].canAskAgain !== false,
       })));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to read device permissions.');
@@ -111,7 +137,7 @@ export default function AppPermissionsScreen() {
     const row = permissions.find((item) => item.key === key);
     if (!row) return;
 
-    if (row.state === 'granted' || !row.canAskAgain) {
+    if (row.state === 'granted' || row.state === 'unavailable' || !row.canAskAgain) {
       await Linking.openSettings();
       return;
     }
@@ -119,11 +145,7 @@ export default function AppPermissionsScreen() {
     setRequesting(key);
     setError('');
     try {
-      if (key === 'notifications') await Notifications.requestPermissionsAsync();
-      if (key === 'location') await Location.requestForegroundPermissionsAsync();
-      if (key === 'contacts') await Contacts.requestPermissionsAsync();
-      if (key === 'camera') await ImagePicker.requestCameraPermissionsAsync();
-      if (key === 'photos') await ImagePicker.requestMediaLibraryPermissionsAsync();
+      await askPermission(key);
       await loadPermissions();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : `Unable to update ${row.label.toLowerCase()} permission.`);
@@ -152,7 +174,7 @@ export default function AppPermissionsScreen() {
         {!loading ? <View style={styles.card}>
           {permissions.map((permission, index) => {
             const isGranted = permission.state === 'granted';
-            const actionLabel = isGranted || !permission.canAskAgain ? 'Manage' : 'Allow';
+            const actionLabel = isGranted || permission.state === 'unavailable' || !permission.canAskAgain ? 'Manage' : 'Allow';
             return (
               <View key={permission.key} style={[styles.row, index > 0 && styles.divider]}>
                 <View style={styles.iconWrap}>
@@ -168,7 +190,7 @@ export default function AppPermissionsScreen() {
                   <Text style={styles.rowDescription}>{permission.description}</Text>
                 </View>
                 <Pressable
-                  disabled={requesting === permission.key || permission.state === 'unavailable'}
+                  disabled={requesting === permission.key}
                   onPress={() => void requestPermission(permission.key)}
                   style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
                 >
@@ -184,7 +206,7 @@ export default function AppPermissionsScreen() {
         <View style={styles.noteCard}>
           <AppIcon name="privacy" color="#D7B45A" size={20} />
           <Text style={styles.noteText}>
-            Turning off a permission does not delete your account or existing content. Some features may be limited until access is enabled again.
+            If this installed build does not contain a newer native permission module, that permission will show as unavailable instead of preventing the app from starting.
           </Text>
         </View>
 
