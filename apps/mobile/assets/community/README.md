@@ -1,0 +1,1 @@
+Seeded Community media assets used by Outpost discovery cards. Covers are wide crops for compact profile rows; avatars are paired identity images. These assets are derived from existing Go Melanated design-library imagery and are intended as starter media until Community hosts upload custom art.
