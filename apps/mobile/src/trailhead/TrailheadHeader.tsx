@@ -8,10 +8,10 @@ export function TrailheadHeader() {
     <View style={styles.row}>
       <View style={styles.brandRow}>
         <Image
-          source={require('../../assets/ma-pathfinder-mark.png')}
+          source={require('../../assets/go-melanated-logo.png')}
           style={styles.brandMark}
           resizeMode="contain"
-          accessibilityLabel="Melanated Adventurers"
+          accessibilityLabel="Go Melanated"
         />
         <Text style={styles.pageTitle}>TRAILHEAD</Text>
       </View>
