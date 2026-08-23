@@ -1,21 +1,43 @@
-import * as ImagePicker from 'expo-image-picker';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createLocalEvent, getEventHostAccess, getGroupCampfireAccess, uploadLocalEventImage } from '../../src/local-events/api';
-import { prepareLocalImage } from '../../src/lib/imageUpload';
+import { createLocalEvent, getEventHostAccess, getGroupCampfireAccess } from '../../src/local-events/api';
+import { getMemberBasecamp } from '../../src/member/api';
 import { loadCitiesForState, US_STATES } from '../../src/onboarding/locations';
 
-const categories = ['Camping', 'Hiking', 'Water', 'Culture', 'Wellness', 'Family', 'Gear', 'Other'];
+const categories = ['Hangout', 'Hiking', 'Water', 'Food & drinks', 'Wellness', 'Family', 'Camping', 'Other'];
+type QuickTime = 'now' | 'tonight' | 'tomorrow' | 'weekend' | 'custom';
 
-type EventPhoto = {
-  uri: string;
-  bytes: Uint8Array;
-  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
-  extension: 'jpg' | 'png' | 'webp';
-};
+function quickDate(choice: Exclude<QuickTime, 'custom'>) {
+  const date = new Date();
+  date.setSeconds(0, 0);
+  if (choice === 'now') {
+    date.setMinutes(Math.ceil(date.getMinutes() / 15) * 15);
+    return date;
+  }
+  if (choice === 'tonight') {
+    date.setHours(19, 0, 0, 0);
+    if (date.getTime() <= Date.now()) date.setDate(date.getDate() + 1);
+    return date;
+  }
+  if (choice === 'tomorrow') {
+    date.setDate(date.getDate() + 1);
+    date.setHours(10, 0, 0, 0);
+    return date;
+  }
+  const daysUntilSaturday = (6 - date.getDay() + 7) % 7 || 7;
+  date.setDate(date.getDate() + daysUntilSaturday);
+  date.setHours(10, 0, 0, 0);
+  return date;
+}
+
+function localInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export default function CreateLocalEventScreen() {
   const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>();
@@ -23,15 +45,15 @@ export default function CreateLocalEventScreen() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState(groupName?.toLowerCase().includes('camp') ? 'Camping' : 'Hiking');
-  const [startsAt, setStartsAt] = useState('');
+  const [category, setCategory] = useState('Hangout');
+  const [quickTime, setQuickTime] = useState<QuickTime>('tonight');
+  const [startsAt, setStartsAt] = useState(() => localInputValue(quickDate('tonight')));
   const [venueName, setVenueName] = useState('');
   const [state, setState] = useState('');
   const [city, setCity] = useState('');
   const [stateSearch, setStateSearch] = useState('');
   const [citySearch, setCitySearch] = useState('');
   const [cities, setCities] = useState<string[]>([]);
-  const [photo, setPhoto] = useState<EventPhoto | null>(null);
   const [loadingCities, setLoadingCities] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +66,27 @@ export default function CreateLocalEventScreen() {
   }, [groupId]);
 
   useEffect(() => {
+    getMemberBasecamp().then((basecamp) => {
+      const homeState = basecamp.profile?.home_state ?? '';
+      const homeCity = basecamp.profile?.home_city ?? '';
+      if (homeState) {
+        setState(homeState);
+        const stateName = US_STATES.find((item) => item.abbreviation === homeState)?.name || homeState;
+        setStateSearch(stateName);
+      }
+      if (homeCity) {
+        setCity(homeCity);
+        setCitySearch(homeCity);
+      }
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (!state) {
       setCities([]);
       return;
     }
     setLoadingCities(true);
-    setCity('');
-    setCitySearch('');
     loadCitiesForState(state)
       .then(setCities)
       .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load cities.'))
@@ -59,42 +95,23 @@ export default function CreateLocalEventScreen() {
 
   const filteredStates = useMemo(() => {
     const term = stateSearch.trim().toLowerCase();
-    if (!term) return US_STATES;
-    return US_STATES.filter((item) => item.name.toLowerCase().includes(term) || item.abbreviation.toLowerCase().includes(term));
-  }, [stateSearch]);
+    if (!term || state) return US_STATES.filter((item) => !state || item.abbreviation === state);
+    return US_STATES.filter((item) => item.name.toLowerCase().includes(term) || item.abbreviation.toLowerCase().includes(term)).slice(0, 10);
+  }, [state, stateSearch]);
 
   const filteredCities = useMemo(() => {
     const term = citySearch.trim().toLowerCase();
-    if (!term) return cities.slice(0, 12);
-    return cities.filter((item) => item.toLowerCase().includes(term)).slice(0, 20);
-  }, [cities, citySearch]);
+    if (!term || city) return cities.filter((item) => !city || item === city).slice(0, 10);
+    return cities.filter((item) => item.toLowerCase().includes(term)).slice(0, 12);
+  }, [cities, city, citySearch]);
 
   const parsedStart = startsAt ? new Date(startsAt) : null;
   const validDate = Boolean(parsedStart && !Number.isNaN(parsedStart.getTime()));
-  const canSubmit = Boolean(allowed && title.trim() && description.trim() && category && validDate && state && city && !saving);
+  const canSubmit = Boolean(allowed && title.trim() && description.trim() && validDate && state && city && !saving);
 
-  async function choosePhoto() {
-    setError(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Photo library access is required to add an event photo.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [16, 9],
-      base64: true,
-      quality: 0.86,
-    });
-    if (result.canceled || !result.assets[0]) return;
-    try {
-      const asset = result.assets[0];
-      const prepared = await prepareLocalImage({ uri: asset.uri, base64: asset.base64 });
-      setPhoto({ uri: asset.uri, bytes: new Uint8Array(prepared.bytes), contentType: prepared.contentType, extension: prepared.extension });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to prepare this photo.');
-    }
+  function chooseQuickTime(choice: Exclude<QuickTime, 'custom'>) {
+    setQuickTime(choice);
+    setStartsAt(localInputValue(quickDate(choice)));
   }
 
   async function submit() {
@@ -102,7 +119,6 @@ export default function CreateLocalEventScreen() {
     setSaving(true);
     setError(null);
     try {
-      const imageUrl = photo ? await uploadLocalEventImage(photo) : undefined;
       const id = await createLocalEvent({
         title,
         description,
@@ -111,12 +127,11 @@ export default function CreateLocalEventScreen() {
         city,
         state,
         venueName,
-        imageUrl,
         groupId: groupId ?? null,
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to create this Campfire.');
+      setError(caught instanceof Error ? caught.message : 'Unable to start this Campfire.');
     } finally {
       setSaving(false);
     }
@@ -128,13 +143,9 @@ export default function CreateLocalEventScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
-          <Text style={styles.eyebrow}>CAMPFIRES</Text>
+          <View style={styles.fireMark}><Ionicons name="bonfire-outline" size={28} color="#D7B45A" /></View>
           <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Hosting is invitation-based'}</Text>
-          <Text style={styles.body}>
-            {communityScoped
-              ? `Only Community Leaders and master accounts can create Campfires for ${groupName || 'this Community'}. Members can still view, RSVP, and participate.`
-              : 'Trusted Hosts, Community Leads, and staff can start Campfires. Everyone can browse, RSVP, save, and share them.'}
-          </Text>
+          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can start Campfires for ${groupName || 'this Community'}.` : 'Trusted Hosts, Community Leads, and staff can start Campfires. Everyone can browse and join them.'}</Text>
           <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
         </View>
       </SafeAreaView>
@@ -143,53 +154,58 @@ export default function CreateLocalEventScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ {communityScoped ? groupName || 'Community' : 'Outpost'}</Text></Pressable>
-        <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY CAMPFIRE' : 'MEMBER-LED CAMPFIRE'}</Text>
-        <Text style={styles.title}>Start a Campfire</Text>
-        <Text style={styles.body}>
-          {communityScoped
-            ? `Create a lightweight meetup for ${groupName || 'this Community'}. It will appear in the Community’s Campfire tab and the wider Outpost discovery experience.`
-            : 'Campfires are lightweight member-led meetups: a hike, park hang, paddle, brewery stop, trail walk, or anything else worth gathering for. Official MA Adventures still use the full ticketing, waiver, payment, and readiness flow.'}
-        </Text>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.topRow}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}><Ionicons name="chevron-back" size={21} color="#FFF8E8" /></Pressable>
+          <View style={styles.flex}>
+            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY CAMPFIRE' : 'CAMPFIRE'}</Text>
+            <Text style={styles.title}>What are you doing?</Text>
+          </View>
+        </View>
+        <Text style={styles.body}>Keep it casual. Say what you’re doing, when, and where. People nearby can jump in.</Text>
 
-        <Text style={styles.label}>Campfire photo</Text>
-        <Pressable onPress={() => void choosePhoto()} style={styles.photoPicker}>
-          {photo ? <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFill} /> : (
-            <View style={styles.photoEmpty}>
-              <Text style={styles.photoIcon}>＋</Text>
-              <Text style={styles.photoTitle}>Add a cover photo</Text>
-              <Text style={styles.photoHelp}>Stored in Melanated Adventures media storage</Text>
-            </View>
-          )}
-        </Pressable>
-        {photo ? <View style={styles.photoActions}><Pressable onPress={() => void choosePhoto()}><Text style={styles.photoActionText}>Change photo</Text></Pressable><Pressable onPress={() => setPhoto(null)}><Text style={styles.removePhotoText}>Remove</Text></Pressable></View> : null}
+        <TextInput value={title} onChangeText={setTitle} placeholder="Riverwalk + drinks" placeholderTextColor="#718078" style={styles.bigInput} maxLength={80} />
 
-        <Text style={styles.label}>Campfire name</Text>
-        <TextInput value={title} onChangeText={setTitle} placeholder="Saturday morning trail walk" placeholderTextColor="#758179" style={styles.input} />
+        <Text style={styles.label}>When?</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRail}>
+          {([
+            ['now', 'Now'],
+            ['tonight', 'Tonight'],
+            ['tomorrow', 'Tomorrow'],
+            ['weekend', 'This weekend'],
+          ] as const).map(([value, label]) => <Pressable key={value} onPress={() => chooseQuickTime(value)} style={[styles.quickChip, quickTime === value && styles.quickChipActive]}><Text style={[styles.quickChipText, quickTime === value && styles.quickChipTextActive]}>{label}</Text></Pressable>)}
+          <Pressable onPress={() => setQuickTime('custom')} style={[styles.quickChip, quickTime === 'custom' && styles.quickChipActive]}><Text style={[styles.quickChipText, quickTime === 'custom' && styles.quickChipTextActive]}>Pick a time</Text></Pressable>
+        </ScrollView>
+        {quickTime === 'custom' ? <><TextInput value={startsAt} onChangeText={setStartsAt} autoCapitalize="none" placeholder="2026-08-23T18:30" placeholderTextColor="#718078" style={styles.input} /><Text style={styles.help}>YYYY-MM-DDTHH:MM</Text></> : <View style={styles.selectedTime}><Ionicons name="time-outline" size={16} color="#D7B45A" /><Text style={styles.selectedTimeText}>{parsedStart?.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text></View>}
 
-        <Text style={styles.label}>What’s the plan?</Text>
-        <TextInput value={description} onChangeText={setDescription} placeholder="Tell everyone what to expect." placeholderTextColor="#758179" multiline style={[styles.input, styles.multiline]} />
+        <Text style={styles.label}>Where?</Text>
+        <TextInput value={venueName} onChangeText={setVenueName} placeholder="Park, trailhead, coffee shop…" placeholderTextColor="#718078" style={styles.input} />
+        <View style={styles.locationGrid}>
+          <View style={styles.locationColumn}>
+            <Text style={styles.microLabel}>State</Text>
+            <TextInput value={stateSearch} onChangeText={(value) => { setStateSearch(value); setState(''); setCity(''); setCitySearch(''); }} placeholder="State" placeholderTextColor="#718078" style={styles.input} />
+            {!state ? <View style={styles.options}>{filteredStates.map((item) => <Pressable key={item.abbreviation} onPress={() => { setState(item.abbreviation); setStateSearch(item.name); setCity(''); setCitySearch(''); }} style={styles.option}><Text style={styles.optionText}>{item.name}</Text></Pressable>)}</View> : null}
+          </View>
+          <View style={styles.locationColumn}>
+            <Text style={styles.microLabel}>City</Text>
+            <TextInput editable={Boolean(state)} value={citySearch} onChangeText={(value) => { setCitySearch(value); setCity(''); }} placeholder={state ? 'City' : 'Choose state'} placeholderTextColor="#718078" style={[styles.input, !state && styles.disabled]} />
+            {state && !city ? loadingCities ? <ActivityIndicator color="#D7B45A" style={styles.cityLoader} /> : <View style={styles.options}>{filteredCities.map((item) => <Pressable key={item} onPress={() => { setCity(item); setCitySearch(item); }} style={styles.option}><Text style={styles.optionText}>{item}</Text></Pressable>)}</View> : null}
+          </View>
+        </View>
 
-        <Text style={styles.label}>Category</Text>
+        <Text style={styles.label}>What’s the vibe?</Text>
+        <TextInput value={description} onChangeText={setDescription} placeholder="Going for a walk around the Riverwalk and probably grabbing a drink after. Anyone around?" placeholderTextColor="#718078" multiline maxLength={600} style={[styles.input, styles.multiline]} />
+
+        <Text style={styles.label}>What kind of hang?</Text>
         <View style={styles.chips}>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[styles.chip, category === item && styles.chipActive]}><Text style={[styles.chipText, category === item && styles.chipTextActive]}>{item}</Text></Pressable>)}</View>
 
-        <Text style={styles.label}>Date and time</Text>
-        <TextInput value={startsAt} onChangeText={setStartsAt} autoCapitalize="none" placeholder="2026-08-22T09:00" placeholderTextColor="#758179" style={styles.input} />
-        <Text style={styles.help}>Use YYYY-MM-DDTHH:MM in your local time.</Text>
-
-        <Text style={styles.label}>Meet here</Text>
-        <TextInput value={venueName} onChangeText={setVenueName} placeholder="Park, trailhead, or venue" placeholderTextColor="#758179" style={styles.input} />
-
-        <Text style={styles.label}>State</Text>
-        <TextInput value={stateSearch} onChangeText={setStateSearch} placeholder={state ? `Selected: ${state}` : 'Search state'} placeholderTextColor="#758179" style={styles.input} />
-        <View style={styles.options}>{filteredStates.slice(0, stateSearch ? 12 : 6).map((item) => <Pressable key={item.abbreviation} onPress={() => { setState(item.abbreviation); setStateSearch(item.name); }} style={[styles.option, state === item.abbreviation && styles.optionActive]}><Text style={styles.optionText}>{item.name} ({item.abbreviation})</Text></Pressable>)}</View>
-
-        {state ? <><Text style={styles.label}>City</Text><TextInput value={citySearch} onChangeText={setCitySearch} placeholder={city ? `Selected: ${city}` : 'Search city'} placeholderTextColor="#758179" style={styles.input} />{loadingCities ? <ActivityIndicator color="#D7B45A" /> : <View style={styles.options}>{filteredCities.map((item) => <Pressable key={item} onPress={() => { setCity(item); setCitySearch(item); }} style={[styles.option, city === item && styles.optionActive]}><Text style={styles.optionText}>{item}</Text></Pressable>)}</View>}</> : null}
-
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}><Text style={styles.primaryButtonText}>{saving ? 'Uploading & starting…' : 'Start Campfire'}</Text></Pressable>
-        <Text style={styles.disclaimer}>{communityScoped ? 'This Campfire will be linked to the Community.' : 'Campfires display the host’s name and are clearly marked as member-led, not official Melanated Adventurers experiences.'}</Text>
+
+        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}>
+          <Ionicons name="bonfire-outline" size={19} color="#17211C" />
+          <Text style={styles.primaryButtonText}>{saving ? 'Starting…' : 'Start Campfire'}</Text>
+        </Pressable>
+        <Text style={styles.disclaimer}>Campfires are casual member-led plans, not official Adventures.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -198,36 +214,42 @@ export default function CreateLocalEventScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0F1713' },
   center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 22, paddingBottom: 56, gap: 10 },
+  content: { padding: 18, paddingBottom: 48, gap: 11 },
   denied: { flex: 1, padding: 24, justifyContent: 'center', gap: 14 },
-  back: { color: '#D7B45A', fontWeight: '800', fontSize: 16 },
-  eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 11, marginTop: 5 },
-  title: { color: '#FFF8E8', fontSize: 32, lineHeight: 36, fontWeight: '900' },
-  body: { color: '#C9D1CC', fontSize: 16, lineHeight: 23, marginBottom: 4 },
-  label: { color: '#FFF3CE', fontWeight: '900', marginTop: 7 },
-  photoPicker: { height: 178, overflow: 'hidden', borderRadius: 16, borderWidth: 1, borderColor: '#35513F', backgroundColor: '#17211C' },
-  photoEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  photoIcon: { color: '#D7B45A', fontSize: 30, fontWeight: '400' },
-  photoTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 4 },
-  photoHelp: { color: '#7F8C84', fontSize: 11, marginTop: 4, textAlign: 'center' },
-  photoActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 2 },
-  photoActionText: { color: '#D7B45A', fontWeight: '800', fontSize: 12 },
-  removePhotoText: { color: '#FFB4A9', fontWeight: '800', fontSize: 12 },
-  input: { backgroundColor: '#17211C', borderWidth: 1, borderColor: '#2A382F', color: '#FFF8E8', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 13 },
-  multiline: { minHeight: 104, textAlignVertical: 'top' },
-  help: { color: '#7F8C84', fontSize: 12 },
+  flex: { flex: 1 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  backButton: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: '#334139', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
+  fireMark: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#25281F', alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+  eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 10 },
+  title: { color: '#FFF8E8', fontSize: 27, lineHeight: 31, fontWeight: '900' },
+  body: { color: '#AEB8B2', fontSize: 13, lineHeight: 19, marginBottom: 3 },
+  bigInput: { minHeight: 62, backgroundColor: '#17211C', borderWidth: 1, borderColor: '#35443A', color: '#FFF8E8', borderRadius: 16, paddingHorizontal: 15, paddingVertical: 15, fontSize: 18, fontWeight: '800' },
+  label: { color: '#FFF3CE', fontWeight: '900', marginTop: 7, fontSize: 13 },
+  microLabel: { color: '#8F9B93', fontWeight: '800', fontSize: 10, marginBottom: 4 },
+  input: { backgroundColor: '#17211C', borderWidth: 1, borderColor: '#2A382F', color: '#FFF8E8', borderRadius: 13, paddingHorizontal: 13, paddingVertical: 12 },
+  multiline: { minHeight: 104, textAlignVertical: 'top', lineHeight: 19 },
+  help: { color: '#7F8C84', fontSize: 10.5 },
+  quickRail: { gap: 7, paddingRight: 8 },
+  quickChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 13, borderRadius: 99, borderWidth: 1, borderColor: '#3B4941', backgroundColor: '#141E19' },
+  quickChipActive: { borderColor: '#9A8E3E', backgroundColor: '#302E1A' },
+  quickChipText: { color: '#B5BFB8', fontSize: 11.5, fontWeight: '800' },
+  quickChipTextActive: { color: '#F1D879' },
+  selectedTime: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#151F1A', borderWidth: 1, borderColor: '#2A382F' },
+  selectedTimeText: { color: '#DCE2DE', fontSize: 12, fontWeight: '700' },
+  locationGrid: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  locationColumn: { flex: 1 },
+  options: { marginTop: 4, gap: 3, maxHeight: 190 },
+  option: { backgroundColor: '#1B2720', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 9 },
+  optionText: { color: '#E8EDE9', fontSize: 11.5 },
+  cityLoader: { marginTop: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: { borderWidth: 1, borderColor: '#4E5C53', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
   chipActive: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
-  chipText: { color: '#D4DBD6', fontWeight: '700', fontSize: 12 },
+  chipText: { color: '#D4DBD6', fontWeight: '700', fontSize: 11.5 },
   chipTextActive: { color: '#17211C' },
-  options: { gap: 6 },
-  option: { backgroundColor: '#151F1A', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
-  optionActive: { borderWidth: 1, borderColor: '#D7B45A' },
-  optionText: { color: '#E8EDE9' },
-  primaryButton: { backgroundColor: '#D7B45A', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 10 },
-  primaryButtonText: { color: '#17211C', fontWeight: '900', fontSize: 15 },
+  primaryButton: { minHeight: 50, backgroundColor: '#D7B45A', borderRadius: 14, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  primaryButtonText: { color: '#17211C', fontWeight: '900', fontSize: 14 },
   disabled: { opacity: 0.4 },
-  disclaimer: { color: '#7F8C84', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 3 },
-  error: { color: '#FFB4A9' },
+  disclaimer: { color: '#7F8C84', fontSize: 10.5, lineHeight: 16, textAlign: 'center', marginTop: 1 },
+  error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 10 },
 });
