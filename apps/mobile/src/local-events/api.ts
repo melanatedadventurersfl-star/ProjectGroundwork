@@ -51,6 +51,15 @@ export async function getEventHostAccess(): Promise<EventHostAccess> {
 export async function getGroupCampfireAccess(groupId: string): Promise<boolean> {
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session?.user.id) return false;
+
+  const { data: group, error: groupError } = await supabase
+    .from('community_groups')
+    .select('kind')
+    .eq('id', groupId)
+    .maybeSingle();
+  if (groupError) throw groupError;
+  if (group?.kind !== 'local') return false;
+
   const { data, error } = await supabase.rpc('can_create_group_campfire', { target_group_id: groupId });
   if (error) throw error;
   return data === true;
@@ -86,6 +95,14 @@ export async function listLocalEvents(): Promise<LocalEvent[]> {
 }
 
 export async function listGroupCampfires(groupId: string): Promise<LocalEvent[]> {
+  const { data: group, error: groupError } = await supabase
+    .from('community_groups')
+    .select('kind')
+    .eq('id', groupId)
+    .maybeSingle();
+  if (groupError) throw groupError;
+  if (group?.kind !== 'local') return [];
+
   const { data: events, error } = await supabase
     .from('local_event_discovery')
     .select('*')
@@ -156,7 +173,7 @@ export async function createLocalEvent(input: {
 
   if (input.groupId) {
     const canCreate = await getGroupCampfireAccess(input.groupId);
-    if (!canCreate) throw new Error('Only Community Leaders and master accounts can create a Campfire for this Community.');
+    if (!canCreate) throw new Error('Community Campfires are only available in local Communities and can only be created by Community Leaders or master accounts.');
   }
 
   const { data, error } = await supabase.from('local_events').insert({
