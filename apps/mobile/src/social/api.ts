@@ -5,6 +5,7 @@ export type CommunityProfile = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  cover_url: string | null;
   bio: string | null;
   home_city: string | null;
   home_state: string | null;
