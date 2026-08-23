@@ -131,7 +131,7 @@ export default function CreateLocalEventScreen() {
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to start this Campfire.');
+      setError(caught instanceof Error ? caught.message : 'Unable to create this Outing.');
     } finally {
       setSaving(false);
     }
@@ -143,9 +143,9 @@ export default function CreateLocalEventScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
-          <View style={styles.fireMark}><Ionicons name="bonfire-outline" size={28} color="#D7B45A" /></View>
+          <View style={styles.fireMark}><Ionicons name="calendar-outline" size={28} color="#D7B45A" /></View>
           <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Hosting is invitation-based'}</Text>
-          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can start Campfires for ${groupName || 'this Community'}.` : 'Trusted Hosts, Community Leads, and staff can start Campfires. Everyone can browse and join them.'}</Text>
+          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Trusted Hosts, Community Leads, and staff can plan Outings. Everyone can browse and join them.'}</Text>
           <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
         </View>
       </SafeAreaView>
@@ -158,7 +158,7 @@ export default function CreateLocalEventScreen() {
         <View style={styles.topRow}>
           <Pressable onPress={() => router.back()} style={styles.backButton}><Ionicons name="chevron-back" size={21} color="#FFF8E8" /></Pressable>
           <View style={styles.flex}>
-            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY CAMPFIRE' : 'CAMPFIRE'}</Text>
+            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY OUTING' : 'OUTING'}</Text>
             <Text style={styles.title}>What are you doing?</Text>
           </View>
         </View>
@@ -202,10 +202,10 @@ export default function CreateLocalEventScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}>
-          <Ionicons name="bonfire-outline" size={19} color="#17211C" />
-          <Text style={styles.primaryButtonText}>{saving ? 'Starting…' : 'Start Campfire'}</Text>
+          <Ionicons name="calendar-outline" size={19} color="#17211C" />
+          <Text style={styles.primaryButtonText}>{saving ? 'Creating…' : 'Create Outing'}</Text>
         </Pressable>
-        <Text style={styles.disclaimer}>Campfires are casual member-led plans, not official Adventures.</Text>
+        <Text style={styles.disclaimer}>Outings are casual member-led plans, not official Adventures.</Text>
       </ScrollView>
     </SafeAreaView>
   );
