@@ -31,18 +31,19 @@ export default function TrailGuidePlaceDetailScreen() {
     );
   }
 
+  const currentPlace = place;
   const planOuting = () => {
     router.push({
       pathname: '/local-events/create',
       params: {
         source: 'trail-guide',
-        trailGuidePlaceId: place.id,
-        title: place.name,
-        description: `Planning an outing to ${place.name}. ${place.summary}`,
-        category: outingCategory(place.category),
-        venueName: place.name,
+        trailGuidePlaceId: currentPlace.id,
+        title: currentPlace.name,
+        description: `Planning an outing to ${currentPlace.name}. ${currentPlace.summary}`,
+        category: outingCategory(currentPlace.category),
+        venueName: currentPlace.name,
         state: 'FL',
-        city: trailGuideCity(place.city),
+        city: trailGuideCity(currentPlace.city),
       },
     });
   };
@@ -65,9 +66,9 @@ export default function TrailGuidePlaceDetailScreen() {
             <Text style={styles.backLabel}>Trail Guide</Text>
           </Pressable>
           <View style={styles.heroCopy}>
-            <Text style={styles.type}>{place.category.toUpperCase()} · {place.type.toUpperCase()}</Text>
-            <Text style={styles.title}>{place.name}</Text>
-            <Text style={styles.area}>{place.area}</Text>
+            <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
+            <Text style={styles.title}>{currentPlace.name}</Text>
+            <Text style={styles.area}>{currentPlace.area}</Text>
           </View>
         </View>
 
@@ -78,8 +79,8 @@ export default function TrailGuidePlaceDetailScreen() {
             </Text>
           ) : null}
 
-          <Text style={styles.summary}>{place.summary}</Text>
-          <View style={styles.tags}>{place.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
+          <Text style={styles.summary}>{currentPlace.summary}</Text>
+          <View style={styles.tags}>{currentPlace.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
 
           <Pressable onPress={planOuting} style={({ pressed }) => [styles.planOuting, pressed && styles.pressed]}>
             <View style={styles.planOutingIcon}><AppIcon name="calendar" color="#17211C" size={20} /></View>
@@ -90,17 +91,17 @@ export default function TrailGuidePlaceDetailScreen() {
             <AppIcon name="chevron-forward" color="#17211C" size={20} />
           </Pressable>
 
-          {place.collections.length > 0 ? (
+          {currentPlace.collections.length > 0 ? (
             <View style={styles.collectionBlock}>
               <Text style={styles.miniLabel}>FEATURED IN</Text>
-              <View style={styles.collections}>{place.collections.map((item) => <View key={item} style={styles.collection}><Text style={styles.collectionText}>{item}</Text></View>)}</View>
+              <View style={styles.collections}>{currentPlace.collections.map((item) => <View key={item} style={styles.collection}><Text style={styles.collectionText}>{item}</Text></View>)}</View>
             </View>
           ) : null}
 
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>At a glance</Text>
-            <View style={styles.detailRow}><View style={styles.dot} /><Text style={styles.detailText}>Area: {place.area}</Text></View>
-            {place.details.map((detail) => <View key={detail} style={styles.detailRow}><View style={styles.dot} /><Text style={styles.detailText}>{detail}</Text></View>)}
+            <View style={styles.detailRow}><View style={styles.dot} /><Text style={styles.detailText}>Area: {currentPlace.area}</Text></View>
+            {currentPlace.details.map((detail) => <View key={detail} style={styles.detailRow}><View style={styles.dot} /><Text style={styles.detailText}>{detail}</Text></View>)}
           </View>
 
           <View style={styles.currentInfoCard}>
