@@ -19,6 +19,7 @@ export type AppIconName =
   | 'trips'
   | 'connections'
   | 'guide'
+  | 'map'
   | 'support'
   | 'about'
   | 'privacy'
@@ -54,6 +55,7 @@ const icons: Record<AppIconName, IoniconName> = {
   trips: 'ticket-outline',
   connections: 'link-outline',
   guide: 'map-outline',
+  map: 'map-outline',
   support: 'help-circle-outline',
   about: 'information-circle-outline',
   privacy: 'shield-checkmark-outline',
