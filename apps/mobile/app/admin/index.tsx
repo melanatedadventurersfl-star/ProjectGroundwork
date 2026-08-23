@@ -173,6 +173,13 @@ export default function AdminProfileScreen() {
               </View>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
+            <Pressable style={[styles.row, styles.divider]} onPress={() => router.push('/admin/moderation' as never)}>
+              <View style={styles.rowCopy}>
+                <Text style={styles.rowTitle}>Moderation Queue</Text>
+                <Text style={styles.rowSubtitle}>Review reports, remove violating content, warn members, or dismiss reports.</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
           </View>
         </View>
 
