@@ -40,19 +40,42 @@ function localInputValue(date: Date) {
 }
 
 export default function CreateLocalEventScreen() {
-  const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>();
+  const {
+    groupId,
+    groupName,
+    source,
+    title: initialTitle,
+    description: initialDescription,
+    category: initialCategory,
+    venueName: initialVenueName,
+    state: initialState,
+    city: initialCity,
+  } = useLocalSearchParams<{
+    groupId?: string;
+    groupName?: string;
+    source?: string;
+    trailGuidePlaceId?: string;
+    title?: string;
+    description?: string;
+    category?: string;
+    venueName?: string;
+    state?: string;
+    city?: string;
+  }>();
   const communityScoped = Boolean(groupId);
+  const fromTrailGuide = source === 'trail-guide';
+  const initialStateName = initialState ? US_STATES.find((item) => item.abbreviation === initialState)?.name || initialState : '';
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Hangout');
+  const [title, setTitle] = useState(initialTitle ?? '');
+  const [description, setDescription] = useState(initialDescription ?? '');
+  const [category, setCategory] = useState(categories.includes(initialCategory ?? '') ? initialCategory! : 'Hangout');
   const [quickTime, setQuickTime] = useState<QuickTime>('tonight');
   const [startsAt, setStartsAt] = useState(() => localInputValue(quickDate('tonight')));
-  const [venueName, setVenueName] = useState('');
-  const [state, setState] = useState('');
-  const [city, setCity] = useState('');
-  const [stateSearch, setStateSearch] = useState('');
-  const [citySearch, setCitySearch] = useState('');
+  const [venueName, setVenueName] = useState(initialVenueName ?? '');
+  const [state, setState] = useState(initialState ?? '');
+  const [city, setCity] = useState(initialCity ?? '');
+  const [stateSearch, setStateSearch] = useState(initialStateName);
+  const [citySearch, setCitySearch] = useState(initialCity ?? '');
   const [cities, setCities] = useState<string[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,13 +93,12 @@ export default function CreateLocalEventScreen() {
       const homeState = basecamp.profile?.home_state ?? '';
       const homeCity = basecamp.profile?.home_city ?? '';
       if (homeState) {
-        setState(homeState);
-        const stateName = US_STATES.find((item) => item.abbreviation === homeState)?.name || homeState;
-        setStateSearch(stateName);
+        setState((current) => current || homeState);
+        setStateSearch((current) => current || US_STATES.find((item) => item.abbreviation === homeState)?.name || homeState);
       }
       if (homeCity) {
-        setCity(homeCity);
-        setCitySearch(homeCity);
+        setCity((current) => current || homeCity);
+        setCitySearch((current) => current || homeCity);
       }
     }).catch(() => undefined);
   }, []);
@@ -158,11 +180,21 @@ export default function CreateLocalEventScreen() {
         <View style={styles.topRow}>
           <Pressable onPress={() => router.back()} style={styles.backButton}><Ionicons name="chevron-back" size={21} color="#FFF8E8" /></Pressable>
           <View style={styles.flex}>
-            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY OUTING' : 'OUTING'}</Text>
-            <Text style={styles.title}>What are you doing?</Text>
+            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY OUTING' : fromTrailGuide ? 'TRAIL GUIDE · OUTING' : 'OUTING'}</Text>
+            <Text style={styles.title}>{fromTrailGuide ? 'Plan this Outing' : 'What are you doing?'}</Text>
           </View>
         </View>
-        <Text style={styles.body}>Keep it casual. Say what you’re doing, when, and where. People nearby can jump in.</Text>
+        <Text style={styles.body}>{fromTrailGuide ? 'The Trail Guide filled in the destination details. Choose when you want to go, adjust anything you need, and invite the community.' : 'Keep it casual. Say what you’re doing, when, and where. People nearby can jump in.'}</Text>
+
+        {fromTrailGuide && initialVenueName ? (
+          <View style={styles.trailGuideContext}>
+            <Ionicons name="map-outline" size={19} color="#D7B45A" />
+            <View style={styles.flex}>
+              <Text style={styles.trailGuideContextLabel}>FROM THE TRAIL GUIDE</Text>
+              <Text style={styles.trailGuideContextTitle}>{initialVenueName}</Text>
+            </View>
+          </View>
+        ) : null}
 
         <TextInput value={title} onChangeText={setTitle} placeholder="Riverwalk + drinks" placeholderTextColor="#718078" style={styles.bigInput} maxLength={80} />
 
@@ -223,6 +255,9 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 10 },
   title: { color: '#FFF8E8', fontSize: 27, lineHeight: 31, fontWeight: '900' },
   body: { color: '#AEB8B2', fontSize: 13, lineHeight: 19, marginBottom: 3 },
+  trailGuideContext: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#1B1A11', paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trailGuideContextLabel: { color: '#9C8A53', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  trailGuideContextTitle: { color: '#FFF3CE', fontSize: 13, fontWeight: '900', marginTop: 2 },
   bigInput: { minHeight: 62, backgroundColor: '#17211C', borderWidth: 1, borderColor: '#35443A', color: '#FFF8E8', borderRadius: 16, paddingHorizontal: 15, paddingVertical: 15, fontSize: 18, fontWeight: '800' },
   label: { color: '#FFF3CE', fontWeight: '900', marginTop: 7, fontSize: 13 },
   microLabel: { color: '#8F9B93', fontWeight: '800', fontSize: 10, marginBottom: 4 },
