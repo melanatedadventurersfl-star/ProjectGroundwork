@@ -36,6 +36,36 @@ export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
     title: 'Bulls Bay Preserve',
     credit: 'Timucuan Parks Foundation',
   },
+  'seaton-creek-historic-preserve': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/SeatonCreek091312-37BWA-copy.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/seaton-creek-historic-preserve/',
+    title: 'Seaton Creek Historic Preserve',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'betz-tiger-point-preserve': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_9152_2.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/betz-tiger-point-preserve/',
+    title: 'Betz-Tiger Point Preserve',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'theodore-roosevelt-area': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/2019/11/SpPnd0005.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/theodore-roosevelt-area/',
+    title: 'Theodore Roosevelt Area',
+    credit: 'Timucuan Parks Foundation',
+  },
+  'jacksonville-baldwin-rail-trail': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2714-Rail-Trail-scaled.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/jacksonville-baldwin-rail-trail/',
+    title: 'Jacksonville-Baldwin Rail Trail',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'thomas-creek-conservation-area': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2763_Thomas-Creek-scaled.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/thomas-creek-preserve/',
+    title: 'Thomas Creek Conservation Area',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
 };
 
 type WikiSearchPage = {
@@ -66,9 +96,17 @@ type WikiImageResponse = {
   query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> };
 };
 
-const REQUEST_TIMEOUT_MS = 2200;
+const REQUEST_TIMEOUT_MS = 3500;
 const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v2:';
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
+
+function fallbackPhotoForPlace(place: TrailGuidePlace): TrailGuidePhoto {
+  return {
+    url: place.image,
+    sourceUrl: place.image,
+    title: place.name,
+  };
+}
 
 function stripHtml(value?: string) {
   if (!value) return undefined;
@@ -228,15 +266,17 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
 }
 
 export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
-  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? null : null);
+  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(
+    place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null,
+  );
 
   useEffect(() => {
     let active = true;
-    setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? null : null);
+    setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null);
     if (!place) return () => { active = false; };
 
     void resolveTrailGuidePlacePhoto(place).then((next) => {
-      if (active) setPhoto(next);
+      if (active && next) setPhoto(next);
     });
 
     return () => {
