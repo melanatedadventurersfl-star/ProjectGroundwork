@@ -41,64 +41,41 @@ export type AdventureMemory = {
 };
 
 async function requireUserId() {
-  // The app already restores and refreshes the signed-in session globally.
-  // Reading that persisted session avoids an extra /auth/v1/user request here,
-  // which can stall behind a React Native auth refresh lock during a save.
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.user) throw error ?? new Error('Sign in required.');
   return data.session.user.id;
 }
 
 export async function getAdventureEventPeople(adventureId: string): Promise<AdventureEventPerson[]> {
-  const { data, error } = await supabase.rpc('get_adventure_event_people', {
-    target_adventure_id: adventureId,
-  });
+  const { data, error } = await supabase.rpc('get_adventure_event_people', { target_adventure_id: adventureId });
   if (error) throw error;
-  return (data ?? []).map((row: any) => ({
-    ...row,
-    relationship_state: (row.relationship_state ?? (row.is_connected ? 'connected' : 'none')) as RelationshipState,
-  })) as AdventureEventPerson[];
+  return (data ?? []).map((row: any) => ({ ...row, relationship_state: (row.relationship_state ?? (row.is_connected ? 'connected' : 'none')) as RelationshipState })) as AdventureEventPerson[];
 }
 
 export async function actOnAdventureConnection(profileId: string): Promise<RelationshipState> {
-  const { data, error } = await supabase.rpc('connect_or_accept_member', {
-    target_profile_id: profileId,
-  });
+  const { data, error } = await supabase.rpc('connect_or_accept_member', { target_profile_id: profileId });
   if (error) throw error;
   return (data ?? 'none') as RelationshipState;
 }
 
 /** @deprecated Use actOnAdventureConnection so incoming requests are accepted correctly. */
-export async function requestAdventureConnection(profileId: string) {
-  return actOnAdventureConnection(profileId);
-}
+export async function requestAdventureConnection(profileId: string) { return actOnAdventureConnection(profileId); }
 
 async function hydrateMemoryTags(memoryIds: string[]): Promise<Map<string, AdventureMemoryTag[]>> {
   const result = new Map<string, AdventureMemoryTag[]>();
   if (!memoryIds.length) return result;
-
-  const { data: plainTags, error } = await supabase
-    .from('adventure_memory_tags')
-    .select('memory_id, tagged_profile_id')
-    .in('memory_id', memoryIds);
+  const { data: plainTags, error } = await supabase.from('adventure_memory_tags').select('memory_id, tagged_profile_id').in('memory_id', memoryIds);
   if (error) throw error;
-
   const profileIds = Array.from(new Set((plainTags ?? []).map((row: any) => row.tagged_profile_id as string)));
   const { data: profiles, error: profileError } = profileIds.length
     ? await supabase.from('profile_directory').select('id,display_name,username,avatar_url').in('id', profileIds)
     : { data: [], error: null };
   if (profileError) throw profileError;
   const profileMap = new Map((profiles ?? []).map((profile: any) => [profile.id, profile]));
-
   for (const row of plainTags ?? []) {
     const profile: any = profileMap.get(row.tagged_profile_id);
     const current = result.get(row.memory_id) ?? [];
-    current.push({
-      profile_id: row.tagged_profile_id,
-      display_name: profile?.display_name ?? null,
-      username: profile?.username ?? null,
-      avatar_url: profile?.avatar_url ?? null,
-    });
+    current.push({ profile_id: row.tagged_profile_id, display_name: profile?.display_name ?? null, username: profile?.username ?? null, avatar_url: profile?.avatar_url ?? null });
     result.set(row.memory_id, current);
   }
   return result;
@@ -107,140 +84,97 @@ async function hydrateMemoryTags(memoryIds: string[]): Promise<Map<string, Adven
 async function hydrateMemoryAuthors(rows: any[]) {
   const profileIds = Array.from(new Set(rows.map((row) => row.profile_id as string)));
   if (!profileIds.length) return new Map<string, any>();
-  const { data, error } = await supabase
-    .from('profile_directory')
-    .select('id,display_name,username,avatar_url')
-    .in('id', profileIds);
+  const { data, error } = await supabase.from('profile_directory').select('id,display_name,username,avatar_url').in('id', profileIds);
   if (error) throw error;
   return new Map((data ?? []).map((profile: any) => [profile.id, profile]));
 }
 
 export async function getAdventureMemories(adventureId: string): Promise<AdventureMemory[]> {
   const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from('adventure_memories')
-    .select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at')
-    .eq('profile_id', userId)
-    .eq('adventure_id', adventureId)
-    .order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('adventure_memories').select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at').eq('profile_id', userId).eq('adventure_id', adventureId).order('created_at', { ascending: false });
   if (error) throw error;
   const rows = data ?? [];
   const tags = await hydrateMemoryTags(rows.map((row: any) => row.id));
   return rows.map((row: any) => ({ ...row, tags: tags.get(row.id) ?? [] })) as AdventureMemory[];
 }
 
+export async function getAdventureMemory(memoryId: string): Promise<AdventureMemory> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase.from('adventure_memories').select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at').eq('profile_id', userId).eq('id', memoryId).single();
+  if (error) throw error;
+  const tags = await hydrateMemoryTags([memoryId]);
+  return { ...(data as any), tags: tags.get(memoryId) ?? [] } as AdventureMemory;
+}
+
 export async function getCommunityAdventureMemories(adventureId: string): Promise<AdventureMemory[]> {
-  const { data, error } = await supabase
-    .from('adventure_memories')
-    .select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at')
-    .eq('adventure_id', adventureId)
-    .eq('visibility', 'public')
-    .order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('adventure_memories').select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at').eq('adventure_id', adventureId).eq('visibility', 'public').order('created_at', { ascending: false });
   if (error) throw error;
   const rows = data ?? [];
-  const [tags, authors] = await Promise.all([
-    hydrateMemoryTags(rows.map((row: any) => row.id)),
-    hydrateMemoryAuthors(rows),
-  ]);
+  const [tags, authors] = await Promise.all([hydrateMemoryTags(rows.map((row: any) => row.id)), hydrateMemoryAuthors(rows)]);
   return rows.map((row: any) => {
     const author: any = authors.get(row.profile_id);
-    return {
-      ...row,
-      tags: tags.get(row.id) ?? [],
-      author_name: author?.display_name || author?.username || 'Community member',
-      author_avatar_url: author?.avatar_url ?? null,
-    };
+    return { ...row, tags: tags.get(row.id) ?? [], author_name: author?.display_name || author?.username || 'Community member', author_avatar_url: author?.avatar_url ?? null };
   }) as AdventureMemory[];
 }
 
-export async function createAdventureMemory(input: {
-  adventureId: string;
-  title?: string;
-  body?: string;
-  rating?: number | null;
-  visibility?: 'private' | 'public';
-  taggedProfileIds?: string[];
-  allowEmpty?: boolean;
-}) {
+export async function createAdventureMemory(input: { adventureId: string; title?: string; body?: string; rating?: number | null; visibility?: 'private' | 'public'; taggedProfileIds?: string[]; allowEmpty?: boolean; }) {
   const userId = await requireUserId();
   const title = input.title?.trim() || null;
   const body = input.body?.trim() || null;
   const rating = input.rating ?? null;
   if (!input.allowEmpty && !title && !body && rating === null) throw new Error('Add a title, reflection, rating, or photo to save this memory.');
-
-  const { data, error } = await supabase
-    .from('adventure_memories')
-    .insert({
-      profile_id: userId,
-      adventure_id: input.adventureId,
-      title,
-      body,
-      rating,
-      visibility: input.visibility ?? 'private',
-    })
-    .select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at')
-    .single();
+  const { data, error } = await supabase.from('adventure_memories').insert({ profile_id: userId, adventure_id: input.adventureId, title, body, rating, visibility: input.visibility ?? 'private' }).select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at').single();
   if (error) throw error;
-
   const taggedProfileIds = Array.from(new Set(input.taggedProfileIds ?? [])).filter(Boolean);
   if (taggedProfileIds.length) {
-    const { error: tagError } = await supabase.from('adventure_memory_tags').insert(
-      taggedProfileIds.map((profileId) => ({ memory_id: data.id, tagged_profile_id: profileId })),
-    );
-    if (tagError) {
-      await supabase.from('adventure_memories').delete().eq('id', data.id).eq('profile_id', userId);
-      throw tagError;
-    }
+    const { error: tagError } = await supabase.from('adventure_memory_tags').insert(taggedProfileIds.map((profileId) => ({ memory_id: data.id, tagged_profile_id: profileId })));
+    if (tagError) { await supabase.from('adventure_memories').delete().eq('id', data.id).eq('profile_id', userId); throw tagError; }
   }
-
   return data as Omit<AdventureMemory, 'tags'>;
+}
+
+export async function updateAdventureMemory(input: { memoryId: string; title: string; body: string; rating: number | null; visibility: 'private' | 'public'; taggedProfileIds: string[]; }) {
+  const userId = await requireUserId();
+  const { data, error } = await supabase.from('adventure_memories').update({ title: input.title.trim() || null, body: input.body.trim() || null, rating: input.rating, visibility: input.visibility }).eq('id', input.memoryId).eq('profile_id', userId).select('id,profile_id,adventure_id,title,body,rating,visibility,created_at,updated_at').single();
+  if (error) throw error;
+  const { error: clearTagError } = await supabase.from('adventure_memory_tags').delete().eq('memory_id', input.memoryId);
+  if (clearTagError) throw clearTagError;
+  const tagIds = Array.from(new Set(input.taggedProfileIds)).filter(Boolean);
+  if (tagIds.length) {
+    const { error: tagError } = await supabase.from('adventure_memory_tags').insert(tagIds.map((profileId) => ({ memory_id: input.memoryId, tagged_profile_id: profileId })));
+    if (tagError) throw tagError;
+  }
+  await supabase.from('adventure_memory_photos').update({ visibility: input.visibility }).eq('memory_id', input.memoryId).eq('profile_id', userId);
+  return data;
+}
+
+export async function deleteAdventureMemory(memoryId: string) {
+  const userId = await requireUserId();
+  const { data: photos, error: photoReadError } = await supabase.from('adventure_memory_photos').select('id,image_url,source_kind').eq('memory_id', memoryId).eq('profile_id', userId);
+  if (photoReadError) throw photoReadError;
+  const { error: deleteError } = await supabase.from('adventure_memories').delete().eq('id', memoryId).eq('profile_id', userId);
+  if (deleteError) throw deleteError;
+  const storagePaths = (photos ?? []).filter((photo: any) => photo.source_kind === 'personal' && photo.image_url && !/^(https?:|data:|file:)/i.test(photo.image_url)).map((photo: any) => photo.image_url as string);
+  if (storagePaths.length) await supabase.storage.from('adventure-photos').remove(storagePaths);
 }
 
 export async function updateAdventureMemoryVisibility(memoryId: string, visibility: 'private' | 'public') {
   const userId = await requireUserId();
-  const { error } = await supabase
-    .from('adventure_memories')
-    .update({ visibility })
-    .eq('id', memoryId)
-    .eq('profile_id', userId);
+  const { error } = await supabase.from('adventure_memories').update({ visibility }).eq('id', memoryId).eq('profile_id', userId);
   if (error) throw error;
-
-  const { error: photoError } = await supabase
-    .from('adventure_memory_photos')
-    .update({ visibility })
-    .eq('memory_id', memoryId)
-    .eq('profile_id', userId);
+  const { error: photoError } = await supabase.from('adventure_memory_photos').update({ visibility }).eq('memory_id', memoryId).eq('profile_id', userId);
   if (photoError) throw photoError;
 }
 
-// Legacy reflection access remains for older routes while the stamp screen moves to journals.
 export async function getAdventureEventReflection(adventureId: string): Promise<AdventureEventReflection | null> {
   const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from('adventure_reflections')
-    .select('rating,highlight,reflection,visibility')
-    .eq('profile_id', userId)
-    .eq('adventure_id', adventureId)
-    .maybeSingle();
+  const { data, error } = await supabase.from('adventure_reflections').select('rating,highlight,reflection,visibility').eq('profile_id', userId).eq('adventure_id', adventureId).maybeSingle();
   if (error) throw error;
   return data as AdventureEventReflection | null;
 }
 
-export async function saveAdventureEventReflection(input: {
-  adventureId: string;
-  rating: number | null;
-  highlight: string;
-  reflection: string;
-  visibility: 'private' | 'community';
-}) {
+export async function saveAdventureEventReflection(input: { adventureId: string; rating: number | null; highlight: string; reflection: string; visibility: 'private' | 'community'; }) {
   const userId = await requireUserId();
-  const { error } = await supabase.from('adventure_reflections').upsert({
-    profile_id: userId,
-    adventure_id: input.adventureId,
-    rating: input.rating,
-    highlight: input.highlight.trim() || null,
-    reflection: input.reflection.trim() || null,
-    visibility: input.visibility,
-  }, { onConflict: 'profile_id,adventure_id' });
+  const { error } = await supabase.from('adventure_reflections').upsert({ profile_id: userId, adventure_id: input.adventureId, rating: input.rating, highlight: input.highlight.trim() || null, reflection: input.reflection.trim() || null, visibility: input.visibility }, { onConflict: 'profile_id,adventure_id' });
   if (error) throw error;
 }
