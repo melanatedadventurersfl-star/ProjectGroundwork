@@ -154,6 +154,7 @@ export default function CreateLocalEventScreen() {
         state,
         venueName,
         groupId: groupId ?? null,
+        trailGuidePlaceId: trailGuidePlaceId ?? null,
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
