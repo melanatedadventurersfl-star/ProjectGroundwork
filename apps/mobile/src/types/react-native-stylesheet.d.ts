@@ -1,8 +1,9 @@
 import 'react-native';
 
 declare module 'react-native' {
-  interface StyleSheetStatic {
-    absoluteFillObject: {
+  namespace StyleSheet {
+    /** Legacy runtime alias used by existing screens. */
+    const absoluteFillObject: {
       position: 'absolute';
       left: 0;
       right: 0;
