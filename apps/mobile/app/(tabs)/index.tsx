@@ -33,6 +33,7 @@ import { AppIcon } from '../../src/ui/AppIcon';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const COMPACT_CARD_WIDTH = 176;
 const WIDE_CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 430);
+const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.72, 238), 300);
 type CampfireMode = 'general' | 'circle';
 
 function greeting(hour: number) {
@@ -285,22 +286,58 @@ export default function TrailheadScreen() {
           <Text style={styles.campfireTitle}>Around the Campfire</Text>
           <Pressable onPress={() => session ? router.push('/(tabs)/community') : promptForAccount('Campfire')} accessibilityRole="button"><Text style={styles.linkBare}>{session ? 'See all →' : 'Sign in →'}</Text></Pressable>
         </View>
-        {session ? <View style={styles.campfireSwitch} accessibilityRole="tablist"><Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'general' }} style={[styles.campfireSwitchButton, campfireMode === 'general' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('general')}><Text style={[styles.campfireSwitchText, campfireMode === 'general' && styles.campfireSwitchTextActive]}>General</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'circle' }} style={[styles.campfireSwitchButton, campfireMode === 'circle' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('circle')}><Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Crew</Text></Pressable></View> : null}
-        <View style={styles.campfireFeed}>
-          {session && campfirePosts.length ? campfirePosts.map((post) => (
-            <Pressable key={post.id} style={({ pressed }) => [styles.campfirePost, pressed && styles.campfirePostPressed]} onPress={() => router.push(`/community/${post.id}`)} accessibilityRole="button" accessibilityLabel={`Open post from ${post.author_name}`}>
-              <View style={styles.campfireAvatar}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.campfireAvatarImage} /> : <Text style={styles.campfireAvatarText}>{initials(post.author_name)}</Text>}</View>
-              <View style={styles.campfirePostBody}>
-                <View style={styles.campfireAuthorRow}><Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text><Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text></View>
-                <Text style={styles.campfirePostText} numberOfLines={3}>{post.body}</Text>
-                {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.campfireMediaThumb} /> : null}
-                <View style={styles.campfireEngagementRow}><Text style={styles.campfireEngagement}>♡ {post.reaction_count || 0}</Text><Text style={styles.campfireEngagement}>◯ {post.comment_count || 0}</Text></View>
-              </View>
+        {session ? (
+          <View style={styles.campfireSwitch} accessibilityRole="tablist">
+            <Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'general' }} style={[styles.campfireSwitchButton, campfireMode === 'general' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('general')}>
+              <Text style={[styles.campfireSwitchText, campfireMode === 'general' && styles.campfireSwitchTextActive]}>General</Text>
             </Pressable>
-          )) : (
-            <View style={styles.campfireEmpty}><Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.') : 'Meet your outdoor community.'}</Text><Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see your Crew posts here.' : campfireMode === 'circle' ? 'New posts from your Crews will show up here.' : 'Recent community posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text></View>
-          )}
-        </View>
+            <Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'circle' }} style={[styles.campfireSwitchButton, campfireMode === 'circle' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('circle')}>
+              <Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Crew</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {session && campfirePosts.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={CAMPFIRE_CARD_WIDTH + 12} contentContainerStyle={styles.campfireCardRow}>
+            {campfirePosts.map((post) => (
+              <Pressable
+                key={post.id}
+                style={({ pressed }) => [styles.campfireCard, pressed && styles.campfirePostPressed]}
+                onPress={() => router.push(`/community/${post.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open post from ${post.author_name}${post.image_url ? ', with photo' : ''}`}
+              >
+                {post.image_url ? (
+                  <Image source={{ uri: post.image_url }} style={styles.campfireCardImage} />
+                ) : (
+                  <View style={styles.campfireCardFallback}>
+                    <AppIcon name="community" color="#D7B45A" size={38} />
+                    <Text style={styles.campfireFallbackText}>Campfire post</Text>
+                  </View>
+                )}
+                <View pointerEvents="none" style={styles.campfireCardShade} />
+                <View style={styles.campfireCardContent}>
+                  <View style={styles.campfireAuthorRow}>
+                    <View style={styles.campfireAvatar}>
+                      {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.campfireAvatarImage} /> : <Text style={styles.campfireAvatarText}>{initials(post.author_name)}</Text>}
+                    </View>
+                    <Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text>
+                    <Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text>
+                  </View>
+                  <Text style={styles.campfirePostText} numberOfLines={2}>{post.body}</Text>
+                  <View style={styles.campfireEngagementRow}>
+                    <Text style={styles.campfireEngagement}>♡ {post.reaction_count || 0}</Text>
+                    <Text style={styles.campfireEngagement}>◯ {post.comment_count || 0}</Text>
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={styles.campfireEmpty}>
+            <Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.') : 'Meet your outdoor community.'}</Text>
+            <Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see your Crew posts here.' : campfireMode === 'circle' ? 'New posts from your Crews will show up here.' : 'Recent community posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -352,24 +389,27 @@ const styles = StyleSheet.create({
   campfireTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   campfireTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900', flexShrink: 1 },
   campfireSwitch: { alignSelf: 'flex-start', flexDirection: 'row', backgroundColor: '#132019', borderRadius: 999, padding: 3, gap: 2, borderWidth: 1, borderColor: '#31443A' },
-  campfireSwitchButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  campfireSwitchButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, alignItems: 'center' },
   campfireSwitchActive: { backgroundColor: '#D7B45A' },
   campfireSwitchText: { color: '#AFC0B6', fontSize: 11, fontWeight: '800' },
   campfireSwitchTextActive: { color: '#17211C' },
-  campfireFeed: { gap: 10 },
-  campfirePost: { flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 12, borderRadius: 17, borderWidth: 1, borderColor: '#2B3B33', backgroundColor: '#121D18' },
-  campfirePostPressed: { opacity: 0.72 },
-  campfireAvatar: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
-  campfireAvatarImage: { width: '100%', height: '100%' },
-  campfireAvatarText: { color: '#F0D083', fontSize: 11, fontWeight: '900' },
-  campfirePostBody: { flex: 1, minWidth: 0, gap: 5 },
+  campfireCardRow: { gap: 12, paddingRight: 18 },
+  campfireCard: { width: CAMPFIRE_CARD_WIDTH, height: 304, borderRadius: 20, overflow: 'hidden', backgroundColor: '#121D18', borderWidth: 1, borderColor: '#2B3B33' },
+  campfirePostPressed: { opacity: 0.78 },
+  campfireCardImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%', resizeMode: 'cover' },
+  campfireCardFallback: { ...StyleSheet.absoluteFill, backgroundColor: '#17251F', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  campfireFallbackText: { color: '#B8C4BD', fontSize: 12, fontWeight: '800' },
+  campfireCardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,8,7,0.16)' },
+  campfireCardContent: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 14, paddingTop: 34, gap: 8, backgroundColor: 'rgba(5,10,8,0.78)' },
   campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  campfireAuthor: { color: '#FFF8E8', fontSize: 13, fontWeight: '900', flexShrink: 1 },
-  campfireTime: { color: '#87968D', fontSize: 10, fontWeight: '700' },
-  campfirePostText: { color: '#D6DED9', fontSize: 12.5, lineHeight: 18 },
-  campfireMediaThumb: { width: '100%', height: 94, borderRadius: 12, backgroundColor: '#26372D', marginTop: 2 },
-  campfireEngagementRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 2 },
-  campfireEngagement: { color: '#8C9A92', fontSize: 10.5, fontWeight: '700' },
+  campfireAvatar: { width: 32, height: 32, borderRadius: 16, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
+  campfireAvatarImage: { width: '100%', height: '100%' },
+  campfireAvatarText: { color: '#F0D083', fontSize: 10, fontWeight: '900' },
+  campfireAuthor: { color: '#FFF8E8', fontSize: 13, fontWeight: '900', flexShrink: 1, maxWidth: '62%' },
+  campfireTime: { color: '#A5B0AA', fontSize: 10, fontWeight: '700' },
+  campfirePostText: { color: '#FFF8E8', fontSize: 16, lineHeight: 20, fontWeight: '800' },
+  campfireEngagementRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  campfireEngagement: { color: '#D0D8D3', fontSize: 11, fontWeight: '700' },
   campfireEmpty: { borderRadius: 17, borderWidth: 1, borderColor: '#2B3B33', backgroundColor: '#121D18', padding: 14, gap: 4 },
   campfireEmptyTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
   campfireEmptyText: { color: '#9FAAA4', fontSize: 12, lineHeight: 17 },
