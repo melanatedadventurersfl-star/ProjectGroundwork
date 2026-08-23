@@ -33,7 +33,7 @@ import { AppIcon } from '../../src/ui/AppIcon';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const COMPACT_CARD_WIDTH = 176;
 const WIDE_CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 430);
-const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.72, 238), 300);
+const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.64, 214), 264);
 type CampfireMode = 'general' | 'circle';
 
 function greeting(hour: number) {
@@ -389,21 +389,21 @@ const styles = StyleSheet.create({
   campfireSwitchActive: { backgroundColor: '#D7B45A' },
   campfireSwitchText: { color: '#AFC0B6', fontSize: 11, fontWeight: '800' },
   campfireSwitchTextActive: { color: '#17211C' },
-  campfireCardRow: { gap: 12, paddingRight: 18 },
-  campfireCard: { width: CAMPFIRE_CARD_WIDTH, height: 304, borderRadius: 20, overflow: 'hidden', backgroundColor: '#121D18', borderWidth: 1, borderColor: '#2B3B33' },
+  campfireCardRow: { gap: 12, paddingRight: 26 },
+  campfireCard: { width: CAMPFIRE_CARD_WIDTH, height: 280, borderRadius: 18, overflow: 'hidden', backgroundColor: '#121D18', borderWidth: 1, borderColor: '#2B3B33' },
   campfirePostPressed: { opacity: 0.78 },
   campfireCardImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%', resizeMode: 'cover' },
-  campfireCardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,8,7,0.16)' },
-  campfireCardContent: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 14, paddingTop: 34, gap: 8, backgroundColor: 'rgba(5,10,8,0.78)' },
-  campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  campfireAvatar: { width: 32, height: 32, borderRadius: 16, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
+  campfireCardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,8,7,0.10)' },
+  campfireCardContent: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 112, paddingHorizontal: 12, paddingVertical: 10, gap: 6, justifyContent: 'space-between', backgroundColor: 'rgba(5,10,8,0.82)' },
+  campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 28 },
+  campfireAvatar: { width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
   campfireAvatarImage: { width: '100%', height: '100%' },
-  campfireAvatarText: { color: '#F0D083', fontSize: 10, fontWeight: '900' },
-  campfireAuthor: { color: '#FFF8E8', fontSize: 13, fontWeight: '900', flexShrink: 1, maxWidth: '62%' },
-  campfireTime: { color: '#A5B0AA', fontSize: 10, fontWeight: '700' },
-  campfirePostText: { color: '#FFF8E8', fontSize: 16, lineHeight: 20, fontWeight: '800' },
-  campfireEngagementRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  campfireEngagement: { color: '#D0D8D3', fontSize: 11, fontWeight: '700' },
+  campfireAvatarText: { color: '#F0D083', fontSize: 9, fontWeight: '900' },
+  campfireAuthor: { color: '#FFF8E8', fontSize: 12, lineHeight: 15, fontWeight: '900', flexShrink: 1, maxWidth: '64%' },
+  campfireTime: { color: '#9BA7A0', fontSize: 9, lineHeight: 12, fontWeight: '700' },
+  campfirePostText: { color: '#FFF8E8', fontSize: 13.5, lineHeight: 17, fontWeight: '800', minHeight: 34 },
+  campfireEngagementRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 16 },
+  campfireEngagement: { color: '#C4CEC8', fontSize: 10, lineHeight: 13, fontWeight: '700' },
   campfireEmpty: { borderRadius: 17, borderWidth: 1, borderColor: '#2B3B33', backgroundColor: '#121D18', padding: 14, gap: 4 },
   campfireEmptyTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
   campfireEmptyText: { color: '#9FAAA4', fontSize: 12, lineHeight: 17 },
