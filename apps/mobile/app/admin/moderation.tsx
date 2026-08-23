@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { supabase } from '../../src/lib/supabase';
 
@@ -69,6 +69,18 @@ export default function ModerationQueueScreen() {
     setBusyId(null);
   }
 
+  function confirmWarning(report: ReportRow) {
+    if (busyId) return;
+    Alert.alert(
+      'Warn this member?',
+      'This confirms a Community Guidelines violation. The member will receive a high-priority in-app warning, the warning will be saved to their moderation history, and this report will be resolved. The content will stay up.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send warning', style: 'destructive', onPress: () => { void moderate(report.id, 'resolved', 'warning'); } },
+      ],
+    );
+  }
+
   if (loading) {
     return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" size="large" /><Text style={styles.muted}>Loading moderation queue…</Text></View></SafeAreaView>;
   }
@@ -84,7 +96,7 @@ export default function ModerationQueueScreen() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>COMMUNITY SAFETY</Text>
           <Text style={styles.title}>Moderation Queue</Text>
-          <Text style={styles.subtitle}>Reports stay here until reviewed. Removing content preserves the report snapshot for the moderation record.</Text>
+          <Text style={styles.subtitle}>Reports stay here until reviewed. Warnings notify the member and become part of their moderation history. Removing content preserves the report snapshot for the moderation record.</Text>
         </View>
 
         {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
@@ -106,7 +118,7 @@ export default function ModerationQueueScreen() {
 
             <View style={styles.actions}>
               {report.status === 'open' ? <Pressable disabled={busy} style={styles.secondaryButton} onPress={() => void moderate(report.id, 'reviewing', 'none')}><Text style={styles.secondaryText}>Start review</Text></Pressable> : null}
-              <Pressable disabled={busy} style={styles.secondaryButton} onPress={() => void moderate(report.id, 'resolved', 'warning')}><Text style={styles.secondaryText}>Warn & resolve</Text></Pressable>
+              <Pressable disabled={busy} style={styles.warningButton} onPress={() => confirmWarning(report)}><Text style={styles.warningText}>{busy ? 'Working…' : 'Warn & resolve'}</Text></Pressable>
               <Pressable disabled={busy} style={styles.removeButton} onPress={() => void moderate(report.id, 'resolved', 'remove_content')}><Text style={styles.removeText}>{busy ? 'Working…' : 'Remove content'}</Text></Pressable>
               <Pressable disabled={busy} style={styles.dismissButton} onPress={() => void moderate(report.id, 'dismissed', 'none')}><Text style={styles.dismissText}>No violation</Text></Pressable>
             </View>
@@ -123,5 +135,5 @@ const styles = StyleSheet.create({
   denied: { marginTop: 28, padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#523B35', backgroundColor: '#211817', gap: 8 }, errorBox: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#5C3A36', backgroundColor: '#241817' }, error: { color: '#FFB4A9', fontSize: 12, lineHeight: 18 },
   empty: { marginTop: 18, alignItems: 'center', gap: 6, borderRadius: 18, borderWidth: 1, borderColor: '#2D3B33', backgroundColor: '#17211C', padding: 24 }, emptyTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
   card: { borderRadius: 18, borderWidth: 1, borderColor: '#33443A', backgroundColor: '#17211C', padding: 15, gap: 10 }, cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, priorityBadge: { borderRadius: 999, borderWidth: 1, borderColor: '#53665A', backgroundColor: '#213028', paddingHorizontal: 8, paddingVertical: 4 }, highPriority: { borderColor: '#7A433C', backgroundColor: '#2A1D1B' }, priorityText: { color: '#B8C5BD', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 }, highPriorityText: { color: '#FFB4A9' }, date: { color: '#7F8B83', fontSize: 10 }, target: { color: '#8D9A92', fontSize: 11, fontWeight: '800' }, reason: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' }, snapshot: { borderRadius: 12, backgroundColor: '#101914', borderWidth: 1, borderColor: '#2A3A31', padding: 12, gap: 5 }, snapshotLabel: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 }, snapshotText: { color: '#E2E8E4', fontSize: 14, lineHeight: 20 }, details: { color: '#A9B4AD', fontSize: 12, lineHeight: 18 }, actions: { gap: 8, marginTop: 2 },
-  secondaryButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#45584D', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C2822' }, secondaryText: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' }, removeButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#7A433C', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2A1D1B' }, removeText: { color: '#FFB4A9', fontSize: 12, fontWeight: '900' }, dismissButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center' }, dismissText: { color: '#8D9A92', fontSize: 12, fontWeight: '800' },
+  secondaryButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#45584D', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C2822' }, secondaryText: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' }, warningButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#806B39', alignItems: 'center', justifyContent: 'center', backgroundColor: '#292617' }, warningText: { color: '#F0D083', fontSize: 12, fontWeight: '900' }, removeButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#7A433C', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2A1D1B' }, removeText: { color: '#FFB4A9', fontSize: 12, fontWeight: '900' }, dismissButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center' }, dismissText: { color: '#8D9A92', fontSize: 12, fontWeight: '800' },
 });
