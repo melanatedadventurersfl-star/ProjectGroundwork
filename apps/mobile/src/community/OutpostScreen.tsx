@@ -19,6 +19,7 @@ import {
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
 import { distanceMiles, pointForCity } from '../explore/location';
+import { supabase } from '../lib/supabase';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, setLocalEventRsvp, type LocalEvent } from '../local-events/api';
 
@@ -31,13 +32,23 @@ const MUTED = '#AEB8B2';
 const NEAR_RADIUS_MILES = 50;
 
 type OutpostTab = 'for-you' | 'groups' | 'campfires';
+type BasecampFilter = 'for-you' | 'latest' | 'trailmates' | 'communities' | 'nearby';
 type CampfireFilter = 'nearby' | 'today' | 'week';
 type PickedPhoto = { uri: string; mimeType?: string | null };
+type AuthorLocation = { city: string | null; state: string | null };
 
 const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'for-you', label: 'Basecamp' },
   { value: 'groups', label: 'Communities' },
   { value: 'campfires', label: 'Campfires' },
+];
+
+const basecampFilters: { value: BasecampFilter; label: string }[] = [
+  { value: 'for-you', label: 'For You' },
+  { value: 'latest', label: 'Latest' },
+  { value: 'trailmates', label: 'Trailmates' },
+  { value: 'communities', label: 'Communities' },
+  { value: 'nearby', label: 'Nearby' },
 ];
 
 const campfireFilters: { value: CampfireFilter; label: string }[] = [
@@ -202,11 +213,15 @@ function CampfireCard({
 
 export default function OutpostScreen() {
   const [tab, setTab] = useState<OutpostTab>('for-you');
+  const [basecampFilter, setBasecampFilter] = useState<BasecampFilter>('for-you');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [trailmateIds, setTrailmateIds] = useState<string[]>([]);
+  const [authorLocations, setAuthorLocations] = useState<Record<string, AuthorLocation>>({});
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('You');
   const [loading, setLoading] = useState(true);
@@ -230,6 +245,7 @@ export default function OutpostScreen() {
         listLocalEvents().catch(() => []),
         getMemberBasecamp(),
       ]);
+
       setPosts(nextPosts);
       setGroups(nextGroups);
       setCampfires(nextCampfires);
@@ -237,6 +253,37 @@ export default function OutpostScreen() {
       setHomeState(basecamp.profile?.home_state ?? null);
       setProfileAvatarUrl(basecamp.profile?.avatar_url ?? null);
       setProfileName(basecamp.profile?.display_name || basecamp.profile?.username || 'You');
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id ?? null;
+      setCurrentUserId(userId);
+
+      let nextTrailmateIds: string[] = [];
+      if (userId) {
+        const { data: connections } = await supabase
+          .from('member_connections')
+          .select('requester_id,addressee_id')
+          .eq('status', 'accepted')
+          .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+        nextTrailmateIds = (connections ?? []).map((row) => row.requester_id === userId ? row.addressee_id : row.requester_id);
+      }
+      setTrailmateIds(nextTrailmateIds);
+
+      const authorIds = [...new Set(nextPosts.map((post) => post.author_id))];
+      if (authorIds.length) {
+        const { data: profiles } = await supabase
+          .from('community_profile_directory')
+          .select('id,home_city,home_state')
+          .in('id', authorIds);
+        const locations: Record<string, AuthorLocation> = {};
+        for (const profile of profiles ?? []) {
+          locations[profile.id] = { city: profile.home_city ?? null, state: profile.home_state ?? null };
+        }
+        setAuthorLocations(locations);
+      } else {
+        setAuthorLocations({});
+      }
+
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load Outpost.');
@@ -250,9 +297,48 @@ export default function OutpostScreen() {
 
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : homeCity || homeState || 'Your area';
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
+  const selectedBasecampFilter = basecampFilters.find((item) => item.value === basecampFilter) ?? basecampFilters[0]!;
   const myGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member), [groups]);
   const homePoint = useMemo(() => homeCity && homeState ? pointForCity(homeCity, homeState) : null, [homeCity, homeState]);
+  const trailmateIdSet = useMemo(() => new Set(trailmateIds), [trailmateIds]);
+  const myGroupIdSet = useMemo(() => new Set(myGroups.map((group) => group.id)), [myGroups]);
+
+  const isPostNearby = useCallback((post: CommunityPost) => {
+    const location = authorLocations[post.author_id];
+    if (!location) return false;
+    if (homeCity && homeState && location.city === homeCity && location.state === homeState) return true;
+    const authorPoint = location.city && location.state ? pointForCity(location.city, location.state) : null;
+    if (homePoint && authorPoint) return distanceMiles(homePoint, authorPoint) <= NEAR_RADIUS_MILES;
+    return Boolean(homeState && location.state === homeState && (!homeCity || location.city === homeCity));
+  }, [authorLocations, homeCity, homePoint, homeState]);
+
+  const visiblePosts = useMemo(() => {
+    let next = [...posts];
+
+    if (basecampFilter === 'trailmates') next = next.filter((post) => trailmateIdSet.has(post.author_id));
+    if (basecampFilter === 'communities') next = next.filter((post) => Boolean(post.group_id && myGroupIdSet.has(post.group_id)));
+    if (basecampFilter === 'nearby') next = next.filter(isPostNearby);
+
+    if (basecampFilter === 'for-you') {
+      const score = (post: CommunityPost) => {
+        let value = 0;
+        if (post.author_id === currentUserId) value += 100;
+        if (trailmateIdSet.has(post.author_id)) value += 30;
+        if (post.group_id && myGroupIdSet.has(post.group_id)) value += 20;
+        if (isPostNearby(post)) value += 10;
+        if (post.is_pinned) value += 5;
+        return value;
+      };
+      return next.sort((a, b) => {
+        const scoreDiff = score(b) - score(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    }
+
+    return next.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [basecampFilter, currentUserId, isPostNearby, myGroupIdSet, posts, trailmateIdSet]);
 
   const distanceForCampfire = useCallback((event: LocalEvent) => {
     if (!homePoint) return null;
@@ -373,7 +459,7 @@ export default function OutpostScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {tab === 'for-you' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Community posts, people, and plans worth catching up on.</Text></View>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Your people, communities, and nearby activity in one place.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
@@ -387,9 +473,12 @@ export default function OutpostScreen() {
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Basecamp</Text></View>
-          {posts.map((post) => <PostCard key={post.id} post={post} />)}
-          {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
+          <View style={styles.basecampHeading}><Text style={styles.sectionTitle}>Your Basecamp</Text><Text style={styles.basecampMode}>{selectedBasecampFilter.label}</Text></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>
+            {basecampFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, basecampFilter === filter.value && styles.filterChipActive]} onPress={() => setBasecampFilter(filter.value)}><Text style={[styles.filterText, basecampFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}
+          </ScrollView>
+          {visiblePosts.map((post) => <PostCard key={post.id} post={post} />)}
+          {!visiblePosts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>{basecampFilter === 'trailmates' ? 'No Trailmate posts yet' : basecampFilter === 'communities' ? 'No community posts yet' : basecampFilter === 'nearby' ? 'Nothing nearby yet' : 'Start the conversation'}</Text><Text style={styles.emptyText}>{basecampFilter === 'latest' || basecampFilter === 'for-you' ? 'Share what you’re doing outside.' : 'Try another filter or add something to the Outpost.'}</Text></View> : null}
         </> : null}
 
         {tab === 'groups' ? <>
@@ -454,6 +543,8 @@ const styles = StyleSheet.create({
   tabIntroTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   tabIntroCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17 },
   sectionHeading: { gap: 2, paddingTop: 3 },
+  basecampHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 3 },
+  basecampMode: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
   composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 9, gap: 7 },
