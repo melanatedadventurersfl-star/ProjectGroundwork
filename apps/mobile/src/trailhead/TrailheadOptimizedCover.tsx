@@ -6,6 +6,7 @@ import { AppState, Image, Pressable, StyleSheet, Text, useWindowDimensions, View
 import type { MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
+import { TrailheadHeader } from './TrailheadHeader';
 import {
   backgroundFor,
   dayPhaseFor,
@@ -21,6 +22,7 @@ import {
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
+const HEADER_INSET = 78;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
   if (phase === 'night') return 'rgba(4, 13, 28, 0.10)';
@@ -114,7 +116,8 @@ export function TrailheadOptimizedCover({
 
   const openRankJourney = () => router.push('/member/rank-progress');
 
-  const heroHeight = veryCompact ? 286 : compact ? 300 : 318;
+  const baseHeroHeight = veryCompact ? 286 : compact ? 300 : 318;
+  const heroHeight = baseHeroHeight + HEADER_INSET;
   const emblemSize = veryCompact ? 82 : compact ? 96 : 108;
 
   return (
@@ -124,6 +127,7 @@ export function TrailheadOptimizedCover({
       <View pointerEvents="none" style={styles.identityScrim} />
       <View pointerEvents="none" style={styles.lowerScrim} />
       <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
+      <TrailheadHeader />
 
       <Pressable
         accessibilityRole="button"
@@ -168,32 +172,34 @@ export function TrailheadOptimizedCover({
 
 const styles = StyleSheet.create({
   cover: {
+    marginTop: -HEADER_INSET,
+    zIndex: 8,
     borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: '#07100D',
     shadowOpacity: 0.24,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: 8,
   },
   background: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   identityScrim: {
-    position: 'absolute', left: 0, top: 0, bottom: 0, width: '58%',
+    position: 'absolute', left: 0, top: HEADER_INSET, bottom: 0, width: '58%',
     backgroundColor: 'rgba(3, 8, 7, 0.10)',
   },
   lowerScrim: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, height: '42%',
+    position: 'absolute', left: 0, right: 0, bottom: 0, height: '34%',
     backgroundColor: 'rgba(3, 8, 7, 0.15)',
   },
-  rankGlow: { position: 'absolute', left: -68, top: -36, width: 240, height: 240, borderRadius: 120, opacity: 0.22 },
+  rankGlow: { position: 'absolute', left: -68, top: HEADER_INSET - 36, width: 240, height: 240, borderRadius: 120, opacity: 0.22 },
 
-  emblem: { position: 'absolute', left: 14, top: 44, width: 112, height: 112, alignItems: 'center', justifyContent: 'center' },
-  emblemCompact: { left: 10, top: 48, width: 100, height: 100 },
-  emblemVeryCompact: { left: 8, top: 52, width: 86, height: 86 },
+  emblem: { position: 'absolute', left: 14, top: HEADER_INSET + 44, width: 112, height: 112, alignItems: 'center', justifyContent: 'center' },
+  emblemCompact: { left: 10, top: HEADER_INSET + 48, width: 100, height: 100 },
+  emblemVeryCompact: { left: 8, top: HEADER_INSET + 52, width: 86, height: 86 },
 
-  titleBlock: { position: 'absolute', left: 130, right: 18, top: 52 },
-  titleBlockCompact: { left: 112, right: 14, top: 53 },
-  titleBlockVeryCompact: { left: 96, right: 10, top: 55 },
+  titleBlock: { position: 'absolute', left: 130, right: 18, top: HEADER_INSET + 52 },
+  titleBlockCompact: { left: 112, right: 14, top: HEADER_INSET + 53 },
+  titleBlockVeryCompact: { left: 96, right: 10, top: HEADER_INSET + 55 },
   greeting: {
     color: '#FFF8E8', fontSize: 17, lineHeight: 21, fontWeight: '700',
     textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 },
