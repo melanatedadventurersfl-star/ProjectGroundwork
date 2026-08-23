@@ -6,6 +6,15 @@ import { getTrailGuidePlace } from '../../src/trailGuide/catalog';
 import { useTrailGuidePlacePhoto } from '../../src/trailGuide/placePhotos';
 import { AppIcon } from '../../src/ui/AppIcon';
 
+function outingCategory(category: string) {
+  if (category === 'Hiking' || category === 'Water' || category === 'Camping') return category;
+  return 'Hangout';
+}
+
+function trailGuideCity(city: 'jacksonville' | 'orlando') {
+  return city === 'orlando' ? 'Orlando' : 'Jacksonville';
+}
+
 export default function TrailGuidePlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const place = getTrailGuidePlace(id);
@@ -20,6 +29,22 @@ export default function TrailGuidePlaceDetailScreen() {
         </View>
       </SafeAreaView>
     );
+  }
+
+  function planOuting() {
+    router.push({
+      pathname: '/local-events/create',
+      params: {
+        source: 'trail-guide',
+        trailGuidePlaceId: place.id,
+        title: place.name,
+        description: `Planning an outing to ${place.name}. ${place.summary}`,
+        category: outingCategory(place.category),
+        venueName: place.name,
+        state: 'FL',
+        city: trailGuideCity(place.city),
+      },
+    });
   }
 
   return (
@@ -55,6 +80,15 @@ export default function TrailGuidePlaceDetailScreen() {
 
           <Text style={styles.summary}>{place.summary}</Text>
           <View style={styles.tags}>{place.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
+
+          <Pressable onPress={planOuting} style={({ pressed }) => [styles.planOuting, pressed && styles.pressed]}>
+            <View style={styles.planOutingIcon}><AppIcon name="calendar" color="#17211C" size={20} /></View>
+            <View style={styles.planOutingCopy}>
+              <Text style={styles.planOutingTitle}>Plan an Outing here</Text>
+              <Text style={styles.planOutingText}>Start an outing with this destination already filled in.</Text>
+            </View>
+            <AppIcon name="chevron-forward" color="#17211C" size={20} />
+          </Pressable>
 
           {place.collections.length > 0 ? (
             <View style={styles.collectionBlock}>
@@ -100,6 +134,11 @@ const styles = StyleSheet.create({
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
   tag: { borderRadius: 999, backgroundColor: '#1E2C24', borderWidth: 1, borderColor: '#324338', paddingHorizontal: 11, paddingVertical: 7 },
   tagText: { color: '#EDF2EE', fontSize: 12, fontWeight: '800' },
+  planOuting: { marginTop: 20, minHeight: 78, borderRadius: 18, backgroundColor: '#D7B45A', paddingHorizontal: 15, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  planOutingIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(23,33,28,0.10)', alignItems: 'center', justifyContent: 'center' },
+  planOutingCopy: { flex: 1 },
+  planOutingTitle: { color: '#17211C', fontSize: 15, fontWeight: '900' },
+  planOutingText: { color: '#3A413B', fontSize: 11, lineHeight: 16, marginTop: 2, fontWeight: '700' },
   collectionBlock: { marginTop: 22 },
   miniLabel: { color: '#7F8C85', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   collections: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8 },
