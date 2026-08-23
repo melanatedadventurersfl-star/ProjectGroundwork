@@ -20,6 +20,7 @@ import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
 import { getConnections, searchCommunityMembers, type Connection } from './circles';
 import { getCommunityManagementTypes, type CommunityManagementType } from './communityManagement';
+import { distanceMiles, pointForCity } from '../explore/location';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
 
@@ -30,6 +31,8 @@ const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const OFFICIAL_STARTERS = new Set(['camping', 'hiking', 'water adventures', 'family adventures', 'beginner outdoors']);
+const NEAR_RADIUS_MILES = 50;
+const REGIONAL_RADIUS_MILES = 125;
 
 type OutpostTab = 'for-you' | 'groups' | 'campfires';
 type PickedPhoto = { uri: string; mimeType?: string | null };
@@ -279,8 +282,25 @@ export default function OutpostScreen() {
     return 'member_led';
   }, [communityManagement]);
 
-  const isLocalGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [homeCity, homeState]);
-  const isRegionalGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState), [homeState]);
+  const homePoint = useMemo(() => homeCity && homeState ? pointForCity(homeCity, homeState) : null, [homeCity, homeState]);
+  const distanceForGroup = useCallback((group: CommunityGroup) => {
+    if (!homePoint || !group.city || !group.state) return null;
+    const groupPoint = pointForCity(group.city, group.state);
+    return groupPoint ? distanceMiles(homePoint, groupPoint) : null;
+  }, [homePoint]);
+  const isInStateGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState), [homeState]);
+  const isLocalGroup = useCallback((group: CommunityGroup) => {
+    if (!isInStateGroup(group)) return false;
+    const distance = distanceForGroup(group);
+    if (distance != null) return distance <= NEAR_RADIUS_MILES;
+    return Boolean(homeCity && group.city === homeCity);
+  }, [distanceForGroup, homeCity, isInStateGroup]);
+  const isRegionalGroup = useCallback((group: CommunityGroup) => {
+    if (!isInStateGroup(group)) return false;
+    const distance = distanceForGroup(group);
+    if (distance != null) return distance > NEAR_RADIUS_MILES && distance <= REGIONAL_RADIUS_MILES;
+    return Boolean(group.city && homeCity && group.city !== homeCity);
+  }, [distanceForGroup, homeCity, isInStateGroup]);
   const isLocalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState && (!homeCity || event.city === homeCity)), [homeCity, homeState]);
   const isRegionalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState), [homeState]);
 
@@ -316,8 +336,8 @@ export default function OutpostScreen() {
     let next = discoverGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
 
     if (discoverFilter === 'near') next = next.filter(isLocalGroup);
-    if (discoverFilter === 'regional') next = next.filter((group) => isRegionalGroup(group) && !isLocalGroup(group));
-    if (discoverFilter === 'state') next = next.filter(isRegionalGroup);
+    if (discoverFilter === 'regional') next = next.filter(isRegionalGroup);
+    if (discoverFilter === 'state') next = next.filter(isInStateGroup);
     if (discoverFilter === 'beginner') next = next.filter((group) => group.name.toLowerCase().includes('beginner'));
 
     return [...next].sort((a, b) => {
@@ -337,7 +357,7 @@ export default function OutpostScreen() {
       };
       return score(b) - score(a);
     });
-  }, [discoverFilter, discoverGroups, discoverQuery, isLocalGroup, isRegionalGroup, managementFor]);
+  }, [discoverFilter, discoverGroups, discoverQuery, isInStateGroup, isLocalGroup, isRegionalGroup, managementFor]);
 
   const displayedDiscoverGroups = useMemo(() => {
     const shouldCap = discoverFilter === 'recommended' && !discoverQuery.trim() && !showAllDiscover;
@@ -345,10 +365,17 @@ export default function OutpostScreen() {
   }, [discoverFilter, discoverQuery, showAllDiscover, visibleDiscoverGroups]);
 
   const reasonForCommunity = useCallback((group: CommunityGroup) => {
-    if (isLocalGroup(group)) return 'Near you';
+    if (isLocalGroup(group)) {
+      const distance = distanceForGroup(group);
+      return distance != null ? `${Math.max(1, Math.round(distance))} mi away` : 'Near you';
+    }
     if (discoverFilter === 'popular') return 'Popular';
     if (discoverFilter === 'beginner') return 'Beginner friendly';
-    if ((discoverFilter === 'regional' || discoverFilter === 'state') && isRegionalGroup(group) && homeState) return `In ${homeState}`;
+    if (discoverFilter === 'regional' && isRegionalGroup(group)) {
+      const distance = distanceForGroup(group);
+      return distance != null ? `${Math.round(distance)} mi away` : 'Regional';
+    }
+    if (discoverFilter === 'state' && isInStateGroup(group) && homeState) return `In ${homeState}`;
     if (discoverFilter === 'recommended' && group.kind === 'interest') {
       const communityName = group.name.trim().toLowerCase();
       const matchingInterest = profileInterests.find((interest) => {
@@ -358,7 +385,7 @@ export default function OutpostScreen() {
       if (matchingInterest) return `Because you like ${matchingInterest}`;
     }
     return null;
-  }, [discoverFilter, homeState, isLocalGroup, isRegionalGroup, profileInterests]);
+  }, [discoverFilter, distanceForGroup, homeState, isInStateGroup, isLocalGroup, isRegionalGroup, profileInterests]);
 
   const sortedCampfires = useMemo(() => [...campfires].sort((a, b) => {
     const locality = (event: LocalEvent) => isLocalCampfire(event) ? 2 : isRegionalCampfire(event) ? 1 : 0;
@@ -455,7 +482,7 @@ export default function OutpostScreen() {
             <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Communities</Text><Text style={styles.sectionCopy}>Find new communities based on interests, activity, and location.</Text></View>
             <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={(value) => { setDiscoverQuery(value); setShowAllDiscover(false); }} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => { setDiscoverFilter(filter.value); setShowAllDiscover(false); }}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
-            <View style={styles.list}>{displayedDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={reasonForCommunity(group)} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match this search and filter.</Text> : null}</View>
+            <View style={styles.list}>{displayedDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={reasonForCommunity(group)} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>{discoverFilter === 'near' ? `No unjoined communities within ${NEAR_RADIUS_MILES} miles yet.` : 'No discoverable communities match this search and filter.'}</Text> : null}</View>
             {discoverFilter === 'recommended' && !discoverQuery.trim() && visibleDiscoverGroups.length > 5 ? <Pressable style={styles.seeAllButton} onPress={() => setShowAllDiscover((value) => !value)}><Text style={styles.seeAllText}>{showAllDiscover ? 'Show less' : `See all ${visibleDiscoverGroups.length}`}</Text><Ionicons name={showAllDiscover ? 'chevron-up' : 'chevron-down'} size={14} color={GOLD} /></Pressable> : null}
           </View>
         </> : null}
