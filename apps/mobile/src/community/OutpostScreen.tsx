@@ -18,7 +18,7 @@ import {
 } from './api';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
-import { getCircles, getConnections, searchCommunityMembers, type CommunityCircle, type CommunityPerson, type Connection } from './circles';
+import { getConnections, searchCommunityMembers, type CommunityPerson, type Connection } from './circles';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
 
@@ -29,12 +29,11 @@ const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 
-type OutpostTab = 'for-you' | 'crew' | 'nearby' | 'groups' | 'campfires';
+type OutpostTab = 'for-you' | 'nearby' | 'groups' | 'campfires';
 type PickedPhoto = { uri: string; mimeType?: string | null };
 
 const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'for-you', label: 'Basecamp' },
-  { value: 'crew', label: 'Crew' },
   { value: 'nearby', label: 'Nearby' },
   { value: 'groups', label: 'Circles' },
   { value: 'campfires', label: 'Campfires' },
@@ -75,7 +74,13 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
           : null;
 
   const isPopular = reason === 'Popular';
-  const contextIcon = reason?.startsWith('Near') || reason?.startsWith('Around') || reason?.startsWith('In ') ? 'location-outline' : isPopular ? 'flame-outline' : 'sparkles-outline';
+  const contextIcon = reason?.startsWith('Near') || reason?.startsWith('In ')
+    ? 'location-outline'
+    : reason?.includes('Circle')
+      ? 'people-outline'
+      : isPopular
+        ? 'flame-outline'
+        : 'sparkles-outline';
 
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
@@ -112,11 +117,7 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
       {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       <View style={styles.engagementWrap}>
-        <PostEngagementBar
-          postId={post.id}
-          initialReactionCount={post.reaction_count || 0}
-          commentCount={post.comment_count || 0}
-        />
+        <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} />
       </View>
     </Pressable>
   );
@@ -131,16 +132,6 @@ function GroupRow({ group, joining, onJoin }: { group: CommunityGroup; joining: 
         <Text style={styles.rowMeta}>{group.is_member ? `${group.member_count} member${group.member_count === 1 ? '' : 's'}` : joining ? 'Joining…' : `${group.member_count} members · Tap to join`}</Text>
       </View>
       <Ionicons name={group.is_member ? 'chevron-forward' : 'add-circle-outline'} size={20} color={group.is_member ? MUTED : GOLD} />
-    </Pressable>
-  );
-}
-
-function CrewRow({ crew }: { crew: CommunityCircle }) {
-  return (
-    <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/circles/[id]', params: { id: crew.id } })}>
-      <View style={styles.crewAvatar}><Ionicons name="people" size={19} color={GOLD} /></View>
-      <View style={styles.flex}><Text style={styles.rowTitle}>{crew.name}</Text><Text style={styles.rowMeta}>{crew.member_count} {crew.member_count === 1 ? 'Trailmate' : 'Trailmates'}</Text></View>
-      <Ionicons name="chevron-forward" size={20} color={MUTED} />
     </Pressable>
   );
 }
@@ -174,7 +165,6 @@ export default function OutpostScreen() {
   const [tab, setTab] = useState<OutpostTab>('for-you');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
-  const [crews, setCrews] = useState<CommunityCircle[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [members, setMembers] = useState<CommunityPerson[]>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
@@ -194,10 +184,9 @@ export default function OutpostScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [nextPosts, nextGroups, nextCrews, nextConnections, nextMembers, nextCampfires, basecamp] = await Promise.all([
+      const [nextPosts, nextGroups, nextConnections, nextMembers, nextCampfires, basecamp] = await Promise.all([
         getCommunityFeed(),
         getGroups(),
-        getCircles(),
         getConnections().catch(() => []),
         searchCommunityMembers('').catch(() => []),
         listLocalEvents().catch(() => []),
@@ -205,7 +194,6 @@ export default function OutpostScreen() {
       ]);
       setPosts(nextPosts);
       setGroups(nextGroups);
-      setCrews(nextCrews);
       setConnections(nextConnections);
       setMembers(nextMembers);
       setCampfires(nextCampfires);
@@ -225,8 +213,7 @@ export default function OutpostScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : homeCity || homeState || 'Your area';
-  const acceptedConnections = useMemo(() => connections.filter((connection) => connection.status === 'accepted'), [connections]);
-  const acceptedConnectionIds = useMemo(() => new Set(acceptedConnections.map((connection) => connection.profile_id)), [acceptedConnections]);
+  const acceptedConnectionIds = useMemo(() => new Set(connections.filter((connection) => connection.status === 'accepted').map((connection) => connection.profile_id)), [connections]);
   const nearbyPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState && (!homeCity || !person.home_city || person.home_city === homeCity)), [members, homeCity, homeState]);
   const regionalPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState), [members, homeState]);
   const aroundPeople = nearbyPeople.length ? nearbyPeople : regionalPeople;
@@ -238,17 +225,29 @@ export default function OutpostScreen() {
   const nearbyCampfires = useMemo(() => campfires.filter((event) => homeState && event.state === homeState && (!homeCity || event.city === homeCity)).slice(0, 4), [campfires, homeCity, homeState]);
   const regionalCampfires = useMemo(() => campfires.filter((event) => homeState && event.state === homeState).slice(0, 4), [campfires, homeState]);
   const aroundCampfires = nearbyCampfires.length ? nearbyCampfires : regionalCampfires;
-  const myGroupNames = useMemo(() => new Map(groups.filter((group) => group.is_member).map((group) => [group.id, group.name])), [groups]);
-  const crewPosts = useMemo(() => posts.filter((post) => acceptedConnectionIds.has(post.author_id)).slice(0, 12), [posts, acceptedConnectionIds]);
+  const myGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
+  const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member), [groups]);
+  const myGroupNames = useMemo(() => new Map(myGroups.map((group) => [group.id, group.name])), [myGroups]);
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
 
   const reasonForPost = useCallback((post: CommunityPost) => {
-    if (post.group_id && myGroupNames.has(post.group_id)) return myGroupNames.get(post.group_id) ?? 'Your Circle';
+    if (post.group_id && myGroupNames.has(post.group_id)) return `Your Circle · ${myGroupNames.get(post.group_id)}`;
     if (acceptedConnectionIds.has(post.author_id)) return 'Trailmate';
     if (nearbyIds.has(post.author_id)) return nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `In ${homeState}` : 'Nearby';
     if ((post.reaction_count || 0) + (post.comment_count || 0) >= 3) return 'Popular';
-    return 'Discover';
+    return 'Recommended';
   }, [acceptedConnectionIds, homeState, locationLabel, myGroupNames, nearbyIds, nearbyPeople.length]);
+
+  const basecampPosts = useMemo(() => [...posts].sort((a, b) => {
+    const score = (post: CommunityPost) => {
+      let value = (post.reaction_count || 0) + (post.comment_count || 0);
+      if (post.group_id && myGroupNames.has(post.group_id)) value += 40;
+      if (acceptedConnectionIds.has(post.author_id)) value += 30;
+      if (nearbyIds.has(post.author_id)) value += 15;
+      return value;
+    };
+    return score(b) - score(a);
+  }), [acceptedConnectionIds, myGroupNames, nearbyIds, posts]);
 
   async function choosePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -300,27 +299,20 @@ export default function OutpostScreen() {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+        <View style={styles.tabs}>
           {tabs.map((item) => <Pressable key={item.value} style={[styles.tab, tab === item.value && styles.tabActive]} onPress={() => setTab(item.value)}><Text style={[styles.tabText, tab === item.value && styles.tabTextActive]}>{item.label}</Text></Pressable>)}
-        </ScrollView>
+        </View>
 
         {loading ? <ActivityIndicator color={GOLD} style={styles.loader} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {tab === 'for-you' ? <>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Trailmates, your Circles, nearby activity, and community posts worth catching up on.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
               <View style={styles.composerAvatar}>{profileAvatarUrl ? <Image source={{ uri: profileAvatarUrl }} style={styles.avatarImage} /> : <Text style={styles.composerAvatarText}>{initials(profileName)}</Text>}</View>
-              <TextInput
-                value={composerBody}
-                onChangeText={setComposerBody}
-                placeholder={composerType === 'ask' ? 'Ask the Outpost…' : composerType === 'buddy' ? 'Find an adventure buddy…' : 'What’s happening outside?'}
-                placeholderTextColor="#7F8B83"
-                multiline
-                maxLength={4000}
-                style={styles.composerInput}
-              />
+              <TextInput value={composerBody} onChangeText={setComposerBody} placeholder={composerType === 'ask' ? 'Ask the Outpost…' : composerType === 'buddy' ? 'Find an adventure buddy…' : 'What’s happening outside?'} placeholderTextColor="#7F8B83" multiline maxLength={4000} style={styles.composerInput} />
             </View>
             <View style={styles.composerActions}>
               <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={16} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
@@ -329,41 +321,33 @@ export default function OutpostScreen() {
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-
-          <View style={styles.feedHeading}>
-            <Text style={styles.feedTitle}>Latest from Basecamp</Text>
-          </View>
-
-          {posts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
+          <View style={styles.feedHeading}><Text style={styles.feedTitle}>Your Basecamp</Text><Text style={styles.feedHint}>Personalized</Text></View>
+          {basecampPosts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
 
-        {tab === 'crew' ? <>
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeaderRow}><View style={styles.flex}><Text style={styles.sectionTitle}>Your Crew</Text><Text style={styles.sectionCopy}>The Trailmates you adventure with most.</Text></View><Pressable onPress={() => router.push('/circles')}><Text style={styles.link}>Manage</Text></Pressable></View>
-            <View style={styles.list}>{crews.map((crew) => <CrewRow key={crew.id} crew={crew} />)}{!crews.length ? <Text style={styles.emptyText}>Create a Crew to organize your Trailmates.</Text> : null}</View>
-          </View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>From Your Trailmates</Text><Text style={styles.sectionCopy}>Posts from people you’re connected with.</Text></View>
-          {crewPosts.map((post) => <PostCard key={post.id} post={post} />)}
-          {!crewPosts.length && !loading ? <Text style={styles.emptyText}>Connect with Trailmates and their posts will show up here.</Text> : null}
-        </> : null}
-
         {tab === 'nearby' ? <>
-          <View style={styles.nearbyHero}><View style={styles.nearbyIcon}><Ionicons name="navigate" size={22} color="#101510" /></View><View style={styles.flex}><Text style={styles.eyebrow}>AROUND YOU</Text><Text style={styles.nearbyTitle}>{nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `Across ${homeState}` : `Near ${locationLabel}`}</Text><Text style={styles.sectionCopy}>{aroundPeople.length} adventurer{aroundPeople.length === 1 ? '' : 's'} · {aroundGroups.length} circle{aroundGroups.length === 1 ? '' : 's'} · {aroundCampfires.length} Campfire{aroundCampfires.length === 1 ? '' : 's'}</Text></View></View>
-          {aroundPeople.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{aroundPeople.slice(0, 12).map((person) => <PersonChip key={person.id} person={person} />)}</ScrollView> : null}
+          <View style={styles.nearbyHero}><View style={styles.nearbyIcon}><Ionicons name="navigate" size={22} color="#101510" /></View><View style={styles.flex}><Text style={styles.eyebrow}>LOCAL DISCOVERY</Text><Text style={styles.nearbyTitle}>{nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `Across ${homeState}` : `Near ${locationLabel}`}</Text><Text style={styles.sectionCopy}>{aroundPeople.length} adventurer{aroundPeople.length === 1 ? '' : 's'} · {aroundGroups.length} circle{aroundGroups.length === 1 ? '' : 's'} · {aroundCampfires.length} Campfire{aroundCampfires.length === 1 ? '' : 's'}</Text></View></View>
+          {aroundPeople.length ? <><View style={styles.sectionHeading}><Text style={styles.sectionTitle}>People Nearby</Text><Text style={styles.sectionCopy}>Adventurers in your area.</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{aroundPeople.slice(0, 12).map((person) => <PersonChip key={person.id} person={person} />)}</ScrollView></> : null}
           {aroundCampfires.length ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>{nearbyCampfires.length ? 'Campfires Nearby' : `Campfires in ${homeState}`}</Text>{aroundCampfires.map((event) => <CampfireCard key={event.id} event={event} />)}</View> : null}
+          {aroundGroups.length ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Circles Around You</Text><Text style={styles.sectionCopy}>Local communities connected to your area.</Text><View style={styles.list}>{aroundGroups.slice(0, 5).map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}</View></View> : null}
           <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Local Posts</Text><Text style={styles.sectionCopy}>{nearbyPeople.length ? 'What adventurers around you are sharing.' : 'What adventurers in your region are sharing.'}</Text></View>
           {nearbyPosts.map((post) => <PostCard key={post.id} post={post} reason={nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `In ${homeState}` : 'Nearby'} />)}
           {!nearbyPosts.length && !loading ? <Text style={styles.emptyText}>Local activity will show here as the Outpost grows.</Text> : null}
         </> : null}
 
-        {tab === 'groups' ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Circles</Text><Text style={styles.sectionCopy}>Ongoing communities built around shared interests and adventures.</Text><View style={styles.list}>{groups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!groups.length ? <Text style={styles.emptyText}>No circles yet.</Text> : null}</View></View> : null}
+        {tab === 'groups' ? <>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Your communities</Text><Text style={styles.tabIntroCopy}>Persistent spaces built around shared interests, identities, activities, and goals.</Text></View>
+          <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Your Circles</Text><Text style={styles.sectionCopy}>Communities you already belong to.</Text><View style={styles.list}>{myGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!myGroups.length ? <Text style={styles.emptyListText}>You have not joined a Circle yet.</Text> : null}</View></View>
+          <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Discover Circles</Text><Text style={styles.sectionCopy}>Find communities that match what you enjoy outdoors.</Text><View style={styles.list}>{discoverGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!discoverGroups.length ? <Text style={styles.emptyListText}>You are caught up on available Circles.</Text> : null}</View></View>
+        </> : null}
 
         {tab === 'campfires' ? <>
-          <View style={styles.campfireHero}><View style={styles.campfireHeroIcon}><Ionicons name="bonfire-outline" size={26} color={GOLD} /></View><View style={styles.flex}><Text style={styles.sectionTitle}>Campfires</Text><Text style={styles.sectionCopy}>Casual member-led meetups. Hikes, paddles, park hangs, brewery stops, trail walks, and whatever else gets people together.</Text></View></View>
+          <View style={styles.campfireHero}><View style={styles.campfireHeroIcon}><Ionicons name="bonfire-outline" size={26} color={GOLD} /></View><View style={styles.flex}><Text style={styles.sectionTitle}>Come hang out</Text><Text style={styles.sectionCopy}>Casual, member-led meetups with less planning and lower commitment than an Adventure.</Text></View></View>
           <Pressable style={styles.startCampfireButton} onPress={() => router.push('/local-events/create')}><Ionicons name="add-circle-outline" size={19} color="#101510" /><Text style={styles.startCampfireText}>Start a Campfire</Text></Pressable>
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Upcoming Campfires</Text><Text style={styles.sectionCopy}>Quick plans, casual hangs, and easy ways to connect.</Text></View>
           {campfires.map((event) => <CampfireCard key={event.id} event={event} />)}
-          {!campfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="bonfire-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>No Campfires yet</Text><Text style={styles.emptyText}>Start one and give people a reason to get outside.</Text></View> : null}
+          {!campfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="bonfire-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>No Campfires yet</Text><Text style={styles.emptyText}>Start one and give people a reason to get together.</Text></View> : null}
         </> : null}
       </ScrollView>
     </SafeAreaView>
@@ -378,13 +362,16 @@ const styles = StyleSheet.create({
   title: { color: TEXT, fontSize: 32, lineHeight: 36, fontWeight: '900' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   subtitle: { color: MUTED, fontSize: 12, fontWeight: '700' },
-  tabs: { gap: 6, paddingVertical: 2 },
-  tab: { minHeight: 36, minWidth: 68, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  tabs: { flexDirection: 'row', gap: 6, paddingVertical: 2 },
+  tab: { flex: 1, minHeight: 38, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   tabActive: { backgroundColor: '#252D27', borderWidth: 1, borderColor: '#4A493C' },
-  tabText: { color: '#9DA8A1', fontWeight: '800', fontSize: 12 },
+  tabText: { color: '#9DA8A1', fontWeight: '800', fontSize: 11.5 },
   tabTextActive: { color: GOLD },
   loader: { marginVertical: 4 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
+  tabIntro: { gap: 2, paddingHorizontal: 2, paddingTop: 2 },
+  tabIntroTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
+  tabIntroCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17 },
   composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 9, gap: 7 },
   composerPromptRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   composerAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#34443A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
@@ -405,12 +392,11 @@ const styles = StyleSheet.create({
   typeTextActive: { color: GOLD },
   feedHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 2 },
   feedTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
+  feedHint: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
   sectionHeading: { gap: 2, paddingTop: 3 },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
   sectionCard: { backgroundColor: CARD, borderRadius: 17, padding: 12, gap: 11 },
-  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  link: { color: GOLD, fontSize: 12, fontWeight: '900' },
   postCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 12 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
@@ -434,7 +420,6 @@ const styles = StyleSheet.create({
   list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
   listRow: { minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  crewAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#213229', alignItems: 'center', justifyContent: 'center' },
   rowTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
   rowMeta: { color: MUTED, fontSize: 11.5, lineHeight: 16, marginTop: 2 },
   personChip: { width: 66, alignItems: 'center', gap: 5 },
@@ -455,5 +440,6 @@ const styles = StyleSheet.create({
   emptyCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 22, alignItems: 'center', gap: 6 },
   emptyTitle: { color: TEXT, fontSize: 16, fontWeight: '900' },
   emptyText: { color: MUTED, fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  emptyListText: { color: MUTED, fontSize: 12, lineHeight: 17, textAlign: 'center', padding: 16 },
   pressed: { opacity: 0.72 },
 });
