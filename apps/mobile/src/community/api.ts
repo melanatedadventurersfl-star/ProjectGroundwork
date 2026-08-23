@@ -32,6 +32,7 @@ export type CommunityGroup = {
   city: string | null;
   state: string | null;
   image_url: string | null;
+  cover_image_url: string | null;
   visibility: 'public' | 'members';
   is_member: boolean;
   member_count: number;
@@ -61,7 +62,7 @@ export async function getGroups(): Promise<CommunityGroup[]> {
 
   const { data: groups, error } = await supabase
     .from('community_groups')
-    .select('id, name, description, kind, adventure_id, city, state, image_url, visibility')
+    .select('id, name, description, kind, adventure_id, city, state, image_url, cover_image_url, visibility')
     .order('kind', { ascending: true })
     .order('created_at', { ascending: false });
   if (error) throw error;
