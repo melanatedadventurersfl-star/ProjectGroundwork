@@ -66,9 +66,17 @@ type WikiImageResponse = {
   query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> };
 };
 
-const REQUEST_TIMEOUT_MS = 2200;
+const REQUEST_TIMEOUT_MS = 3500;
 const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v2:';
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
+
+function fallbackPhotoForPlace(place: TrailGuidePlace): TrailGuidePhoto {
+  return {
+    url: place.image,
+    sourceUrl: place.image,
+    title: place.name,
+  };
+}
 
 function stripHtml(value?: string) {
   if (!value) return undefined;
@@ -228,15 +236,17 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
 }
 
 export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
-  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? null : null);
+  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(
+    place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null,
+  );
 
   useEffect(() => {
     let active = true;
-    setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? null : null);
+    setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null);
     if (!place) return () => { active = false; };
 
     void resolveTrailGuidePlacePhoto(place).then((next) => {
-      if (active) setPhoto(next);
+      if (active && next) setPhoto(next);
     });
 
     return () => {
