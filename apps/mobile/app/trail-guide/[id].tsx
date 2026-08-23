@@ -22,6 +22,19 @@ export default function TrailGuidePlaceDetailScreen() {
     );
   }
 
+  function startCampfire() {
+    router.push({
+      pathname: '/local-events/create',
+      params: {
+        trailGuidePlaceId: place.id,
+        trailGuidePlaceName: place.name,
+        trailGuideArea: place.area,
+        trailGuideCity: place.city,
+        trailGuideCategory: place.category,
+      },
+    });
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -55,6 +68,19 @@ export default function TrailGuidePlaceDetailScreen() {
 
           <Text style={styles.summary}>{place.summary}</Text>
           <View style={styles.tags}>{place.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
+
+          <View style={styles.actionCard}>
+            <View style={styles.actionIcon}><AppIcon name="bonfire" color="#F5C400" size={22} /></View>
+            <View style={styles.actionCopy}>
+              <Text style={styles.actionEyebrow}>MEET HERE</Text>
+              <Text style={styles.actionTitle}>Turn this place into a Campfire</Text>
+              <Text style={styles.actionText}>Start a casual member-led plan at {place.name}. The place is carried into the Campfire for you.</Text>
+            </View>
+            <Pressable onPress={startCampfire} style={({ pressed }) => [styles.campfireButton, pressed && styles.pressed]}>
+              <Text style={styles.campfireButtonText}>Start Campfire</Text>
+              <AppIcon name="chevron-forward" color="#152017" size={17} />
+            </Pressable>
+          </View>
 
           {place.collections.length > 0 ? (
             <View style={styles.collectionBlock}>
@@ -100,6 +126,14 @@ const styles = StyleSheet.create({
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
   tag: { borderRadius: 999, backgroundColor: '#1E2C24', borderWidth: 1, borderColor: '#324338', paddingHorizontal: 11, paddingVertical: 7 },
   tagText: { color: '#EDF2EE', fontSize: 12, fontWeight: '800' },
+  actionCard: { marginTop: 20, borderRadius: 20, borderWidth: 1, borderColor: '#50471F', backgroundColor: '#19180F', padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  actionIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#2B2813', alignItems: 'center', justifyContent: 'center' },
+  actionCopy: { flex: 1, minWidth: 190 },
+  actionEyebrow: { color: '#F5C400', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  actionTitle: { color: '#FFF9DE', fontSize: 15, lineHeight: 20, fontWeight: '900', marginTop: 2 },
+  actionText: { color: '#BEB89C', fontSize: 11.5, lineHeight: 17, marginTop: 4 },
+  campfireButton: { minHeight: 42, borderRadius: 13, backgroundColor: '#F5C400', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  campfireButtonText: { color: '#152017', fontSize: 12, fontWeight: '900' },
   collectionBlock: { marginTop: 22 },
   miniLabel: { color: '#7F8C85', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   collections: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8 },
