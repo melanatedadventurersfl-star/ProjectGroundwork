@@ -12,7 +12,7 @@ import {
   type TrailGuidePlace,
 } from '../../src/trailGuide/catalog';
 import { getTrailGuideConditionSignal } from '../../src/trailGuide/conditions';
-import { trailGuideArticles } from '../../src/trailGuide/guides';
+import { trailGuideArticles, type TrailGuideArticle } from '../../src/trailGuide/guides';
 import { distanceMiles, useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
 import {
   CURATED_TRAIL_GUIDE_PHOTOS,
@@ -27,12 +27,23 @@ const EXPLORE_PREVIEW_LIMIT = 6;
 const RECOMMENDED_LIMIT = 3;
 const RECOMMENDED_PHOTO_POOL = 16;
 
+const GUIDE_ORDER_BY_CATEGORY: Record<DiscoveryCategory, string[]> = {
+  All: ['camping-essentials', 'florida-heat-safety', 'hiking-safety', 'leave-no-trace', 'paddling-basics'],
+  Hiking: ['hiking-safety', 'florida-heat-safety', 'leave-no-trace', 'wildlife-awareness', 'storm-season'],
+  Camping: ['camping-essentials', 'first-camping-trip', 'florida-heat-safety', 'wildlife-awareness', 'leave-no-trace'],
+  Parks: ['family-outdoors', 'wildlife-awareness', 'leave-no-trace', 'florida-heat-safety', 'storm-season'],
+  Water: ['paddling-basics', 'storm-season', 'florida-heat-safety', 'wildlife-awareness', 'family-outdoors'],
+  Scenic: ['weekend-planning', 'florida-heat-safety', 'wildlife-awareness', 'leave-no-trace', 'storm-season'],
+};
+
 function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object }) {
   const photo = useTrailGuidePlacePhoto(place);
   if (!photo) {
     return (
       <View style={[style, styles.photoPlaceholder]}>
-        <AppIcon name="photo" color="#65726B" size={24} />
+        <View style={styles.photoFallbackMark}>
+          <AppIcon name="trail" color="#79D26A" size={22} />
+        </View>
       </View>
     );
   }
@@ -72,6 +83,22 @@ function RecommendedCard({
           {distance ? <Text style={styles.recommendedDistance}>{distance}</Text> : null}
         </View>
       </View>
+    </Pressable>
+  );
+}
+
+function QuickGuideCard({ guide }: { guide: TrailGuideArticle }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${guide.title}`}
+      onPress={() => router.push(`/trail-guide/guide/${guide.id}` as never)}
+      style={({ pressed }) => [styles.quickGuideCard, pressed && styles.cardPressed]}
+    >
+      <ImageBackground source={{ uri: guide.image }} style={styles.quickGuideImage} imageStyle={styles.quickGuideImageRadius}>
+        <View style={styles.quickGuideShade} />
+        <Text numberOfLines={2} style={styles.quickGuideTitle}>{guide.title}</Text>
+      </ImageBackground>
     </Pressable>
   );
 }
@@ -133,18 +160,26 @@ export default function TrailGuideScreen() {
     });
   }, [cityPlaces, distanceById, weather]);
 
+  const filteredPlaces = useMemo(
+    () => category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category),
+    [category, rankedCityPlaces],
+  );
+
   useEffect(() => {
-    const photoReadyCount = rankedCityPlaces.filter((place) => photoById[place.id] != null).length;
+    const photoReadyCount = filteredPlaces.filter((place) => photoById[place.id] != null).length;
     if (photoReadyCount >= RECOMMENDED_LIMIT) {
       setPhotoPoolBusy(false);
       return;
     }
 
     let active = true;
-    const candidates = rankedCityPlaces
+    const candidates = filteredPlaces
       .filter((place) => photoById[place.id] == null)
       .slice(0, RECOMMENDED_PHOTO_POOL);
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) {
+      setPhotoPoolBusy(false);
+      return;
+    }
 
     setPhotoPoolBusy(true);
     void Promise.all(candidates.map(async (place) => {
@@ -161,13 +196,37 @@ export default function TrailGuideScreen() {
       });
 
     return () => { active = false; };
-  }, [photoById, rankedCityPlaces]);
+  }, [filteredPlaces, photoById]);
 
-  const recommendedPlaces = rankedCityPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT);
-  const filteredPlaces = category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category);
-  const explorePlaces = showAll ? filteredPlaces : filteredPlaces.slice(0, EXPLORE_PREVIEW_LIMIT);
+  const recommendedPlaces = useMemo(
+    () => filteredPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT),
+    [filteredPlaces, photoById],
+  );
+
+  const recommendedIds = useMemo(() => new Set(recommendedPlaces.map((place) => place.id)), [recommendedPlaces]);
+  const explorePreviewPlaces = useMemo(
+    () => filteredPlaces.filter((place) => !recommendedIds.has(place.id)).slice(0, EXPLORE_PREVIEW_LIMIT),
+    [filteredPlaces, recommendedIds],
+  );
+  const explorePlaces = showAll ? filteredPlaces : explorePreviewPlaces;
+
+  const rainChance = weather?.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0;
+  const quickGuides = useMemo(() => {
+    const preferred = [...GUIDE_ORDER_BY_CATEGORY[category]];
+    if (rainChance >= 60) {
+      const stormIndex = preferred.indexOf('storm-season');
+      if (stormIndex >= 0) preferred.splice(stormIndex, 1);
+      preferred.unshift('storm-season');
+    }
+    return preferred
+      .map((id) => trailGuideArticles.find((guide) => guide.id === id))
+      .filter((guide): guide is TrailGuideArticle => Boolean(guide))
+      .slice(0, 5);
+  }, [category, rainChance]);
+
   const categoryLabel = category === 'All' ? 'places' : `${category.toLowerCase()} spots`;
-  const primaryGuideArticles = trailGuideArticles.slice(0, 5);
+  const recommendationTitle = category === 'All' ? 'Recommended for today' : `${category} picks for today`;
+  const exploreTitle = category === 'All' ? `Explore ${cityName}` : `Explore ${category} in ${cityName}`;
 
   function formatDistance(place: TrailGuidePlace) {
     const distance = distanceById[place.id];
@@ -195,27 +254,44 @@ export default function TrailGuideScreen() {
             <View style={styles.heroWeatherRow}>
               <View style={styles.heroWeatherCopy}>
                 <Text style={styles.heroWeatherTitle}>{weatherBusy ? 'Checking weather…' : weather ? `${Math.round(weather.current.temp_f)}° · ${weather.current.condition.text}` : 'Weather unavailable'}</Text>
-                {weather ? <Text style={styles.heroWeatherMeta}>Feels {Math.round(weather.current.feelslike_f)}° · {weather.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0}% rain · {Math.round(weather.current.wind_mph)} mph wind</Text> : null}
+                {weather ? <Text style={styles.heroWeatherMeta}>Feels {Math.round(weather.current.feelslike_f)}° · {rainChance}% rain · {Math.round(weather.current.wind_mph)} mph wind</Text> : null}
               </View>
-              <AppIcon name="weather" color="#F5C400" size={22} />
+              {weather && rainChance >= 60 ? (
+                <View style={styles.weatherSignal}>
+                  <AppIcon name="weather" color="#F5C400" size={17} />
+                  <Text style={styles.weatherSignalText}>High rain chance</Text>
+                </View>
+              ) : (
+                <AppIcon name="weather" color="#F5C400" size={22} />
+              )}
             </View>
           </View>
         </ImageBackground>
 
         <View style={styles.body}>
+          <View style={styles.quickGuidesHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Quick Guides</Text>
+              <Text style={styles.sectionSubtitle}>Helpful tips for your next adventure.</Text>
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickGuidesRow}>
+            {quickGuides.map((guide) => <QuickGuideCard key={guide.id} guide={guide} />)}
+          </ScrollView>
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
             {discoveryCategories.map((item) => {
               const active = category === item;
               return (
                 <Pressable key={item} accessibilityRole="button" onPress={() => selectCategory(item)} style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}>
-                  <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item}</Text>
+                  <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item === 'All' ? 'For You' : item}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recommended today</Text>
+            <Text style={styles.sectionTitle}>{recommendationTitle}</Text>
             <Text style={styles.sectionSubtitle}>Top picks based on current conditions{coordinates ? ' and your location.' : '.'}</Text>
           </View>
           {recommendedPlaces.length > 0 ? (
@@ -229,29 +305,16 @@ export default function TrailGuideScreen() {
           ) : (
             <View style={styles.recommendationLoading}>
               <AppIcon name="photo" color="#79D26A" size={18} />
-              <Text style={styles.recommendationLoadingText}>{photoPoolBusy ? 'Finding photo-ready picks…' : 'No verified photo-ready picks yet.'}</Text>
+              <Text style={styles.recommendationLoadingText}>{photoPoolBusy ? `Finding ${category === 'All' ? '' : `${category.toLowerCase()} `}picks…` : `No photo-ready ${category === 'All' ? '' : `${category.toLowerCase()} `}picks yet.`}</Text>
             </View>
           )}
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Guides & Know-How</Text>
-            <Text style={styles.sectionSubtitle}>Tips, guides and inspiration for every adventure.</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.guidesRow}>
-            {primaryGuideArticles.map((guide) => (
-              <Pressable key={guide.id} accessibilityRole="button" onPress={() => router.push(`/trail-guide/guide/${guide.id}` as never)} style={({ pressed }) => [styles.guideCard, pressed && styles.cardPressed]}>
-                <ImageBackground source={{ uri: guide.image }} style={styles.guideImage} imageStyle={styles.guideImageRadius}>
-                  <View style={styles.cardShade} />
-                  <Text style={styles.guideTopic}>{guide.topic.toUpperCase()}</Text>
-                </ImageBackground>
-                <View style={styles.guideCopy}><Text numberOfLines={2} style={styles.guideTitle}>{guide.title}</Text><Text style={styles.guideAction}>Start here</Text></View>
-              </Pressable>
-            ))}
-          </ScrollView>
-
           <View style={styles.exploreSectionHeader}>
-            <View style={styles.exploreTitleRow}><Text style={styles.sectionTitle}>Explore {cityName}</Text><Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text></View>
-            <Text style={styles.sectionSubtitle}>Real destination photos, curated outdoor places.</Text>
+            <View style={styles.exploreTitleRow}>
+              <Text style={styles.sectionTitle}>{exploreTitle}</Text>
+              <Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text>
+            </View>
+            <Text style={styles.sectionSubtitle}>Curated outdoor places ranked for current conditions.</Text>
           </View>
 
           {explorePlaces.length > 0 ? (
@@ -264,15 +327,24 @@ export default function TrailGuideScreen() {
                     <PlacePhoto place={place} style={styles.exploreImage} />
                     <View style={styles.exploreCopy}>
                       <Text numberOfLines={2} style={styles.exploreName}>{place.name}</Text>
-                      <View style={styles.exploreMetaRow}><Text style={styles.exploreType}>{place.type}</Text>{distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}</View>
-                      <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}><Text style={styles.smallSignalText}>{signal.label}</Text></View>
+                      <View style={styles.exploreMetaRow}>
+                        <Text numberOfLines={1} style={styles.exploreType}>{place.type}</Text>
+                        {distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}
+                      </View>
+                      <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}>
+                        <Text style={styles.smallSignalText}>{signal.label}</Text>
+                      </View>
                     </View>
+                    <AppIcon name="chevron-forward" color="#738078" size={18} />
                   </Pressable>
                 );
               })}
             </View>
           ) : (
-            <View style={styles.emptyState}><Text style={styles.emptyTitle}>No {categoryLabel} yet</Text><Text style={styles.emptyText}>Try another category to keep exploring {cityName}.</Text></View>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No {categoryLabel} yet</Text>
+              <Text style={styles.emptyText}>Try another category to keep exploring {cityName}.</Text>
+            </View>
           )}
 
           {filteredPlaces.length > EXPLORE_PREVIEW_LIMIT ? (
@@ -290,63 +362,65 @@ export default function TrailGuideScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#08100C' },
   page: { paddingBottom: 76 },
-  hero: { height: 286, justifyContent: 'flex-end' },
+  hero: { height: 246, justifyContent: 'flex-end' },
   heroImage: { resizeMode: 'cover' },
-  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,7,0.50)' },
-  heroContent: { paddingHorizontal: 18, paddingBottom: 18 },
+  heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,7,0.48)' },
+  heroContent: { paddingHorizontal: 18, paddingBottom: 16 },
   heroEyebrow: { color: '#D7E0DA', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   cityTitle: { color: '#FFFDF6', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 3 },
-  locationRow: { alignSelf: 'flex-start', minHeight: 34, borderRadius: 999, backgroundColor: 'rgba(7,15,10,0.68)', paddingHorizontal: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  locationRow: { alignSelf: 'flex-start', minHeight: 32, borderRadius: 999, backgroundColor: 'rgba(7,15,10,0.68)', paddingHorizontal: 10, marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationText: { color: '#F4F7F4', fontSize: 11, fontWeight: '800' },
-  heroWeatherRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  heroWeatherRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   heroWeatherCopy: { flex: 1 },
   heroWeatherTitle: { color: '#FFFDF6', fontSize: 17, fontWeight: '900' },
   heroWeatherMeta: { color: '#D7DED9', fontSize: 10, lineHeight: 15, marginTop: 3 },
-  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 6 },
-  categoryRow: { gap: 8, paddingVertical: 14, paddingRight: 4 },
+  weatherSignal: { maxWidth: 132, minHeight: 38, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(240,245,241,0.24)', backgroundColor: 'rgba(7,15,10,0.72)', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  weatherSignalText: { flexShrink: 1, color: '#FFFDF6', fontSize: 9, lineHeight: 12, fontWeight: '900' },
+  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 },
+  quickGuidesHeader: { marginTop: 3, marginBottom: 9 },
+  quickGuidesRow: { gap: 9, paddingRight: 4 },
+  quickGuideCard: { width: 126, height: 112, borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
+  quickGuideImage: { flex: 1, justifyContent: 'flex-end', padding: 10 },
+  quickGuideImageRadius: { borderRadius: 14 },
+  quickGuideShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,9,6,0.38)' },
+  quickGuideTitle: { color: '#FFFDF6', fontSize: 12, lineHeight: 15, fontWeight: '900' },
+  categoryRow: { gap: 8, paddingTop: 15, paddingBottom: 10, paddingRight: 4 },
   categoryChip: { minHeight: 40, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#344139', backgroundColor: '#111A15', paddingHorizontal: 15 },
   categoryChipActive: { backgroundColor: '#79D26A', borderColor: '#79D26A' },
   categoryText: { color: '#F2F5F2', fontWeight: '800', fontSize: 12 },
   categoryTextActive: { color: '#0C140D' },
-  sectionHeader: { marginTop: 10, marginBottom: 10 },
+  sectionHeader: { marginTop: 8, marginBottom: 10 },
   exploreSectionHeader: { marginTop: 24, marginBottom: 12 },
   sectionTitle: { color: '#FFFDF6', fontSize: 20, lineHeight: 24, fontWeight: '900' },
   sectionSubtitle: { color: '#8D9992', fontSize: 11, lineHeight: 16, marginTop: 3 },
   recommendedRow: { gap: 10, paddingRight: 4 },
   recommendationLoading: { minHeight: 72, borderRadius: 16, borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
   recommendationLoadingText: { color: '#AEB9B2', fontSize: 11, fontWeight: '800' },
-  recommendedCard: { width: 164, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
-  recommendedImage: { height: 118, justifyContent: 'flex-end', padding: 9, overflow: 'hidden' },
+  recommendedCard: { width: 184, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
+  recommendedImage: { height: 126, justifyContent: 'flex-end', padding: 9, overflow: 'hidden' },
   cardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,9,6,0.24)' },
   signalBadge: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#26352D', paddingHorizontal: 8, paddingVertical: 4 },
   signalGood: { backgroundColor: '#1E5A2A' },
   signalCaution: { backgroundColor: '#856A0A' },
   signalBadgeText: { color: '#FFFDF6', fontSize: 9, fontWeight: '900' },
-  recommendedCopy: { minHeight: 78, padding: 10 },
-  recommendedName: { color: '#FFFDF6', fontSize: 13, lineHeight: 17, fontWeight: '900' },
+  recommendedCopy: { minHeight: 72, padding: 10 },
+  recommendedName: { color: '#FFFDF6', fontSize: 14, lineHeight: 18, fontWeight: '900' },
   recommendedMetaRow: { marginTop: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   recommendedMeta: { flex: 1, color: '#78D36B', fontSize: 9, fontWeight: '800' },
   recommendedDistance: { color: '#9CA8A1', fontSize: 9, fontWeight: '800' },
-  guidesRow: { gap: 10, paddingRight: 4 },
-  guideCard: { width: 128, borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
-  guideImage: { height: 94, justifyContent: 'flex-end', padding: 9 },
-  guideImageRadius: { borderTopLeftRadius: 14, borderTopRightRadius: 14 },
-  guideTopic: { color: '#FFFDF6', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
-  guideCopy: { minHeight: 72, padding: 9 },
-  guideTitle: { color: '#FFFDF6', fontSize: 11, lineHeight: 15, fontWeight: '900' },
-  guideAction: { color: '#79D26A', fontSize: 9, fontWeight: '800', marginTop: 5 },
   exploreTitleRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 7 },
   dynamicCount: { color: '#79D26A', fontSize: 12, fontWeight: '900' },
-  exploreGrid: { gap: 9 },
-  exploreCard: { minHeight: 108, borderRadius: 16, overflow: 'hidden', backgroundColor: '#101814', borderWidth: 1, borderColor: '#29352E', flexDirection: 'row' },
-  exploreImage: { width: 112, minHeight: 108, backgroundColor: '#17201B' },
-  photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#17201B' },
-  exploreCopy: { flex: 1, padding: 11 },
+  exploreGrid: { gap: 8 },
+  exploreCard: { minHeight: 104, borderRadius: 15, overflow: 'hidden', backgroundColor: '#101814', borderWidth: 1, borderColor: '#29352E', flexDirection: 'row', alignItems: 'center', paddingRight: 9 },
+  exploreImage: { width: 108, alignSelf: 'stretch', minHeight: 104, backgroundColor: '#17201B' },
+  photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#132119' },
+  photoFallbackMark: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A3020', borderWidth: 1, borderColor: '#2D4D34' },
+  exploreCopy: { flex: 1, paddingVertical: 10, paddingHorizontal: 11 },
   exploreName: { color: '#FFFDF6', fontSize: 14, lineHeight: 18, fontWeight: '900' },
-  exploreMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 5 },
-  exploreType: { color: '#79D26A', fontSize: 10, fontWeight: '800' },
+  exploreMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  exploreType: { flex: 1, color: '#79D26A', fontSize: 10, fontWeight: '800' },
   exploreDistance: { color: '#8F9B94', fontSize: 10, fontWeight: '800' },
-  smallSignal: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#243029', paddingHorizontal: 7, paddingVertical: 3, marginTop: 7 },
+  smallSignal: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#243029', paddingHorizontal: 7, paddingVertical: 3, marginTop: 6 },
   smallSignalGood: { backgroundColor: '#1D4925' },
   smallSignalCaution: { backgroundColor: '#6C590B' },
   smallSignalText: { color: '#F3F6F3', fontSize: 8, fontWeight: '900' },
