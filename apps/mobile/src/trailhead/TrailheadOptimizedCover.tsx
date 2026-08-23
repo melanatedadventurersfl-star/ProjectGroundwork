@@ -160,8 +160,7 @@ export function TrailheadOptimizedCover({
 
   const heroHeight = veryCompact ? 286 : compact ? 300 : 318;
   const emblemSize = veryCompact ? 82 : compact ? 96 : 108;
-  const badgeSize = veryCompact ? 40 : compact ? 46 : 52;
-  const stampWidth = veryCompact ? 27 : compact ? 30 : 34;
+  const achievementSize = veryCompact ? 40 : compact ? 46 : 52;
 
   return (
     <View style={[styles.cover, { height: heroHeight, shadowColor: '#000000' }]}>
@@ -216,12 +215,12 @@ export function TrailheadOptimizedCover({
               <Text style={[styles.achievementLabel, { color: theme.soft }]}>BADGES</Text>
               <View style={styles.achievementRow}>
                 {visibleBadgeTitles.map((title) => (
-                  <View key={title} style={[styles.badgeSlot, { width: badgeSize, height: badgeSize }]}>
+                  <View key={title} style={[styles.achievementSlot, { width: achievementSize, height: achievementSize }]}>
                     {hasBadgeArt(title) ? (
-                      <BadgeArt title={title} size={badgeSize} />
+                      <BadgeArt title={title} size={achievementSize} />
                     ) : (
-                      <View style={[styles.badgeFallback, { width: badgeSize, height: badgeSize, borderRadius: badgeSize / 2, borderColor: theme.accent }]}>
-                        <AppIcon name="badge" color={theme.soft} size={Math.max(15, badgeSize * 0.46)} />
+                      <View style={[styles.badgeFallback, { width: achievementSize, height: achievementSize, borderRadius: achievementSize / 2, borderColor: theme.accent }]}>
+                        <AppIcon name="badge" color={theme.soft} size={Math.max(15, achievementSize * 0.46)} />
                       </View>
                     )}
                   </View>
@@ -235,12 +234,12 @@ export function TrailheadOptimizedCover({
               <Text style={[styles.achievementLabel, { color: theme.soft }]}>STAMPS</Text>
               <View style={styles.achievementRow}>
                 {visibleStamps.map((stamp) => (
-                  <View key={stamp.stamp_id} style={[styles.stampSlot, { width: stampWidth + 6, height: stampWidth * 1.28 + 4 }]}>
+                  <View key={stamp.stamp_id} style={[styles.achievementSlot, { width: achievementSize, height: achievementSize }]}>
                     {stamp.code && isLegacyStampCode(stamp.code) ? (
-                      <StampArt code={stamp.code} width={stampWidth} />
+                      <StampArt code={stamp.code} width={achievementSize} />
                     ) : (
-                      <View style={[styles.genericStamp, { width: stampWidth + 2, height: stampWidth + 7, borderColor: theme.accent }]}>
-                        <Text style={[styles.genericStampText, { color: theme.soft }]}>MA</Text>
+                      <View style={[styles.genericStamp, { width: achievementSize, height: achievementSize, borderColor: theme.accent }]}>
+                        <Text style={[styles.genericStampText, { color: theme.soft, fontSize: Math.max(9, achievementSize * 0.24) }]}>MA</Text>
                       </View>
                     )}
                   </View>
@@ -342,9 +341,8 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 },
   },
   achievementRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 },
-  badgeSlot: { overflow: 'visible', alignItems: 'center', justifyContent: 'center' },
+  achievementSlot: { overflow: 'visible', alignItems: 'center', justifyContent: 'center' },
   badgeFallback: { borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.20)', alignItems: 'center', justifyContent: 'center' },
-  stampSlot: { alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
-  genericStamp: { borderWidth: 1, borderRadius: 7, backgroundColor: 'rgba(5,10,9,0.34)', alignItems: 'center', justifyContent: 'center' },
-  genericStampText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
+  genericStamp: { borderWidth: 1, borderRadius: 8, backgroundColor: 'rgba(5,10,9,0.34)', alignItems: 'center', justifyContent: 'center' },
+  genericStampText: { fontWeight: '900', letterSpacing: 0.4 },
 });
