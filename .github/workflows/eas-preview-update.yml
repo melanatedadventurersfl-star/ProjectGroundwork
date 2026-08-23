@@ -9,6 +9,15 @@ on:
       - 'apps/mobile/src/**'
       - 'apps/mobile/assets/**'
       - 'apps/mobile/scripts/**'
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/app.config.js'
+      - 'apps/mobile/app.config.ts'
+      - 'apps/mobile/eas.json'
+      - 'apps/mobile/package.json'
+      - 'package-lock.json'
+      - 'apps/mobile/android/**'
+      - 'apps/mobile/ios/**'
+      - 'apps/mobile/plugins/**'
       - '.github/workflows/eas-preview-update.yml'
   workflow_dispatch:
 
@@ -16,8 +25,9 @@ permissions:
   contents: read
   actions: write
 
-# A newer mobile update supersedes an older mobile update. Normal JS/UI/image
-# changes are delivered OTA; only native/runtime changes request a fresh APK.
+# The newest main commit always wins. Normal JS/UI/image changes are delivered
+# OTA immediately. If native/runtime files also changed, request one fresh APK
+# in parallel instead of withholding the OTA from already-installed previews.
 concurrency:
   group: eas-preview-ota-main
   cancel-in-progress: true
@@ -60,10 +70,10 @@ jobs:
           if [ -n "${BASELINE_SHA}" ]; then
             echo "Last successful preview APK baseline: ${BASELINE_SHA}"
           else
-            echo "No successful preview APK baseline found. A fresh APK is required."
+            echo "No successful preview APK baseline found. A fresh APK will be requested."
           fi
 
-      - name: Guard OTA against installed runtime baseline
+      - name: Request a fresh APK when native/runtime files changed
         id: runtime_guard
         env:
           BASELINE_SHA: ${{ steps.baseline.outputs.baseline_sha }}
@@ -78,7 +88,7 @@ jobs:
           fi
 
           if [ "${REQUEST_APK}" = false ] && ! git merge-base --is-ancestor "${BASELINE_SHA}" HEAD; then
-            echo "Preview APK baseline ${BASELINE_SHA} is not an ancestor of delivery target ${GITHUB_SHA}."
+            echo "Preview APK baseline ${BASELINE_SHA} is not an ancestor of ${GITHUB_SHA}."
             REQUEST_APK=true
           fi
 
@@ -97,28 +107,42 @@ jobs:
               apps/mobile/assets/ma-splash-icon.png \
               apps/mobile/assets/ma-pathfinder-mark.png)"
             if [ -n "${NATIVE_CHANGES}" ]; then
-              echo "Delivery target contains native/runtime changes not present in the installed APK baseline:"
+              echo "Native/runtime changes are newer than the installed APK baseline:"
               echo "${NATIVE_CHANGES}"
               REQUEST_APK=true
             fi
           fi
 
+          echo "request_apk=${REQUEST_APK}" >> "${GITHUB_OUTPUT}"
+
           if [ "${REQUEST_APK}" = true ]; then
-            echo "skip_ota=true" >> "${GITHUB_OUTPUT}"
-            echo "A matching preview APK is required. Dispatching one native build."
-            curl -fsSL -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/eas-preview-android.yml/dispatches" \
-              -d '{"ref":"main"}'
+            ACTIVE_BUILD_COUNT="$(
+              curl -fsSL \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/eas-preview-android.yml/runs?branch=main&per_page=20" \
+              | python3 -c "import json,sys; runs=json.load(sys.stdin).get('workflow_runs', []); active={'queued','in_progress','requested','waiting','pending'}; print(sum(1 for run in runs if run.get('status') in active))"
+            )"
+
+            if [ "${ACTIVE_BUILD_COUNT}" -gt 0 ]; then
+              echo "A preview APK workflow is already active; not dispatching a duplicate."
+            else
+              echo "Dispatching a fresh preview APK from main."
+              curl -fsSL -X POST \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/eas-preview-android.yml/dispatches" \
+                -d '{"ref":"main"}'
+            fi
           else
-            echo "skip_ota=false" >> "${GITHUB_OUTPUT}"
-            echo "Runtime baseline is compatible. OTA is allowed."
+            echo "Existing preview APK baseline is current for native/runtime files."
           fi
 
+          echo "OTA delivery will continue for this commit either way."
+
       - name: Set up Node
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -126,17 +150,14 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: npm ci
 
       - name: Repair recoverable bundled raster assets before OTA export
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           python3 -m pip install --quiet pillow
           python3 apps/mobile/scripts/prepare_image_assets.py
 
       - name: Strictly verify Trailhead images before OTA export
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -157,15 +178,12 @@ jobs:
           PY
 
       - name: Validate every bundled raster image before OTA export
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: python3 apps/mobile/scripts/validate_image_assets.py
 
       - name: Use vector fallback for invalid Wet & Wild raster
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: sed -i "/legacy-event-2025-wet-wild.*2025-wet-wild.jpg/d" apps/mobile/src/passport/StampArt.tsx
 
       - name: Verify Expo authentication
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: |
           if [ -z "${EXPO_TOKEN}" ]; then
             echo "EXPO_TOKEN repository secret is required."
@@ -175,11 +193,9 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Debounce rapid mobile updates
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         run: sleep 20
 
       - name: Publish preview OTA for triggering commit
-        if: ${{ steps.runtime_guard.outputs.skip_ota != 'true' }}
         working-directory: apps/mobile
         run: |
           CHECKED_OUT="$(git rev-parse HEAD)"
@@ -187,6 +203,8 @@ jobs:
             echo "Delivery target changed unexpectedly."
             exit 1
           }
+          BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export EXPO_PUBLIC_BUILD_TIMESTAMP="${BUILD_TIMESTAMP}"
           npx eas-cli@latest update \
             --channel preview \
             --platform android \
@@ -196,5 +214,6 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_APP_ENV: preview
           EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_PROFILE: preview-ota
           EXPO_PUBLIC_SUPABASE_URL: https://hqndxityqrdiiwqyjagu.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K
