@@ -57,8 +57,8 @@ function hourForLocation(weather:WeatherForecast|null,now:Date){
 
 export function dayPhaseFor(weather:WeatherForecast|null,now=new Date()):DayPhase{const h=hourForLocation(weather,now);return h>=5&&h<12?'morning':h>=12&&h<17?'afternoon':h>=17&&h<21?'evening':'night'}
 export function greetingFor(p:DayPhase){return p==='morning'?'Good morning':p==='afternoon'?'Good afternoon':p==='evening'?'Good evening':'Good night'}
-export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Storms nearby. Consider delaying outdoor plans.';if(w==='rain')return'Rain possible nearby. Bring a rain jacket.';if(w==='snow')return'Snowy conditions. Watch for slippery trails.';if(w==='fog')return'Low visibility. Use extra caution outdoors.';if(w==='windy')return'Windy conditions. Secure loose gear.';if(w==='cloudy')return'Cloudy skies and cooler conditions.';if(w==='partly-cloudy')return p==='evening'?'Golden hour on the trail.':'Clouds drifting across the trail.';return p==='night'?'The trail settles under moonlight.':p==='evening'?'Perfect evening for a local hike.':p==='morning'?'Fresh air. New day. New trails.':'Perfect weather for a local adventure.'}
-export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
+export function weatherCopy(w:WeatherTheme,p:DayPhase){if(w==='storm')return'Storms nearby. Consider delaying outdoor plans.';if(w==='rain')return'Rain possible nearby. Bring a rain jacket.';if(w==='snow')return'Snowy conditions. Watch for slippery trails.';if(w==='fog')return'Low visibility. Use extra caution outdoors.';if(w==='windy')return'Windy conditions. Secure loose gear.';if(w==='cloudy')return'Cloudy skies and cooler conditions.';if(w==='partly-cloudy')return p==='night'?'Clouds drifting across the moonlit trail.':p==='evening'?'Golden hour on the trail.':'Clouds drifting across the trail.';return p==='night'?'The trail settles under moonlight.':p==='evening'?'Perfect evening for a local hike.':p==='morning'?'Fresh air. New day. New trails.':'Perfect weather for a local adventure.'}
+export function glyph(w:WeatherTheme,p:DayPhase){if(w==='clear')return p==='night'?'☾':'☀';if(w==='partly-cloudy')return p==='night'?'☾☁':'🌤';return({storm:'⚡',rain:'🌧',snow:'❄',fog:'≋',windy:'〰',cloudy:'☁'} as const)[w]}
 
 function curatedRankBackground(
   w:WeatherTheme,
@@ -73,6 +73,9 @@ function curatedRankBackground(
     storm:ImageSourcePropType;
   },
 ):ImageSourcePropType {
+  // Time of day wins. Until condition-specific night art exists, never fake night
+  // by dimming a daytime cloudy/rain/storm image.
+  if (p === 'night') return assets.night;
   if (w === 'storm') return assets.storm;
   if (w === 'rain') return assets.rain;
   if (w === 'cloudy' || w === 'partly-cloudy' || w === 'fog' || w === 'windy' || w === 'snow') return assets.cloudy;
