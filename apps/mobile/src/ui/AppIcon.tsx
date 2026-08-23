@@ -37,6 +37,7 @@ export type AppIconName =
   | 'search'
   | 'badge'
   | 'time'
+  | 'calendar'
   | 'close'
   | 'delete';
 
@@ -73,6 +74,7 @@ const icons: Record<AppIconName, IoniconName> = {
   search: 'search-outline',
   badge: 'medal-outline',
   time: 'time-outline',
+  calendar: 'calendar-outline',
   close: 'close-circle-outline',
   delete: 'trash-outline',
 };
