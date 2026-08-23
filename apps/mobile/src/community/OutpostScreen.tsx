@@ -31,11 +31,21 @@ const MUTED = '#AEB8B2';
 
 type OutpostTab = 'for-you' | 'groups' | 'campfires';
 type PickedPhoto = { uri: string; mimeType?: string | null };
+type DiscoverFilter = 'recommended' | 'near' | 'regional' | 'state' | 'popular' | 'beginner';
 
 const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'for-you', label: 'Basecamp' },
   { value: 'groups', label: 'Circles' },
   { value: 'campfires', label: 'Campfires' },
+];
+
+const discoverFilters: { value: DiscoverFilter; label: string }[] = [
+  { value: 'recommended', label: 'Recommended' },
+  { value: 'near', label: 'Near Me' },
+  { value: 'regional', label: 'Regional' },
+  { value: 'state', label: 'In State' },
+  { value: 'popular', label: 'Popular' },
+  { value: 'beginner', label: 'Beginner' },
 ];
 
 const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
@@ -128,10 +138,23 @@ function GroupRow({ group, joining, onJoin, reason }: { group: CommunityGroup; j
       <View style={styles.groupAvatar}>{group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
         <Text style={styles.rowTitle}>{group.name}</Text>
-        <Text style={styles.rowMeta}>{group.is_member ? `${group.member_count} member${group.member_count === 1 ? '' : 's'}` : joining ? 'Joining…' : `${group.member_count} members · Tap to join`}</Text>
+        <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
         {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
       </View>
       <Ionicons name={group.is_member ? 'chevron-forward' : 'add-circle-outline'} size={20} color={group.is_member ? MUTED : GOLD} />
+    </Pressable>
+  );
+}
+
+function MyCircleTile({ group }: { group: CommunityGroup }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.circleTile, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
+      <View style={styles.circleTileImageWrap}>
+        {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.circleTileImage} /> : <View style={styles.circleTileFallback}><Text style={styles.circleTileInitials}>{initials(group.name)}</Text></View>}
+      </View>
+      <Text style={styles.circleTileTitle} numberOfLines={2}>{group.name}</Text>
+      <Text style={styles.circleTileMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+      {(group.city || group.state) ? <Text style={styles.circleTileLocation} numberOfLines={1}>{[group.city, group.state].filter(Boolean).join(', ')}</Text> : null}
     </Pressable>
   );
 }
@@ -173,6 +196,9 @@ export default function OutpostScreen() {
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [myCircleQuery, setMyCircleQuery] = useState('');
+  const [discoverQuery, setDiscoverQuery] = useState('');
+  const [discoverFilter, setDiscoverFilter] = useState<DiscoverFilter>('recommended');
 
   const load = useCallback(async () => {
     try {
@@ -239,10 +265,27 @@ export default function OutpostScreen() {
     return score(b) - score(a);
   }), [acceptedConnectionIds, localMemberIds, myGroupNames, posts, regionalMemberIds]);
 
-  const sortedDiscoverGroups = useMemo(() => [...discoverGroups].sort((a, b) => {
-    const score = (group: CommunityGroup) => (isLocalGroup(group) ? 20 : isRegionalGroup(group) ? 10 : 0) + group.member_count;
-    return score(b) - score(a);
-  }), [discoverGroups, isLocalGroup, isRegionalGroup]);
+  const visibleMyGroups = useMemo(() => {
+    const query = myCircleQuery.trim().toLowerCase();
+    if (!query) return myGroups;
+    return myGroups.filter((group) => `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
+  }, [myCircleQuery, myGroups]);
+
+  const visibleDiscoverGroups = useMemo(() => {
+    const query = discoverQuery.trim().toLowerCase();
+    let next = discoverGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
+
+    if (discoverFilter === 'near') next = next.filter(isLocalGroup);
+    if (discoverFilter === 'regional') next = next.filter((group) => isRegionalGroup(group) && !isLocalGroup(group));
+    if (discoverFilter === 'state') next = next.filter(isRegionalGroup);
+    if (discoverFilter === 'beginner') next = next.filter((group) => group.name.toLowerCase().includes('beginner'));
+
+    return [...next].sort((a, b) => {
+      if (discoverFilter === 'popular') return b.member_count - a.member_count;
+      const score = (group: CommunityGroup) => (isLocalGroup(group) ? 20 : isRegionalGroup(group) ? 10 : 0) + group.member_count;
+      return score(b) - score(a);
+    });
+  }, [discoverFilter, discoverGroups, discoverQuery, isLocalGroup, isRegionalGroup]);
 
   const sortedCampfires = useMemo(() => [...campfires].sort((a, b) => {
     const locality = (event: LocalEvent) => isLocalCampfire(event) ? 2 : isRegionalCampfire(event) ? 1 : 0;
@@ -329,9 +372,18 @@ export default function OutpostScreen() {
         </> : null}
 
         {tab === 'groups' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Your communities</Text><Text style={styles.tabIntroCopy}>Persistent spaces built around shared interests, identities, activities, and goals.</Text></View>
-          <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Your Circles</Text><Text style={styles.sectionCopy}>Communities you already belong to.</Text><View style={styles.list}>{myGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!myGroups.length ? <Text style={styles.emptyListText}>You have not joined a Circle yet.</Text> : null}</View></View>
-          <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Discover Circles</Text><Text style={styles.sectionCopy}>Recommended by interests, activity, and location.</Text><View style={styles.list}>{sortedDiscoverGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} reason={isLocalGroup(group) ? 'Near you' : isRegionalGroup(group) ? `In ${homeState}` : null} />)}{!sortedDiscoverGroups.length ? <Text style={styles.emptyListText}>You are caught up on available Circles.</Text> : null}</View></View>
+          <View style={styles.circleSection}>
+            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Circles</Text><Text style={styles.sectionCopy}>Communities you already belong to.</Text></View>
+            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={myCircleQuery} onChangeText={setMyCircleQuery} placeholder="Search your Circles" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
+            {visibleMyGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.circleRail}>{visibleMyGroups.map((group) => <MyCircleTile key={group.id} group={group} />)}</ScrollView> : <View style={styles.emptyInline}><Text style={styles.emptyText}>{myGroups.length ? 'No joined Circles match that search.' : 'You have not joined a Circle yet.'}</Text></View>}
+          </View>
+
+          <View style={styles.circleSection}>
+            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Circles</Text><Text style={styles.sectionCopy}>Find something new based on interests, activity, and location.</Text></View>
+            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={setDiscoverQuery} placeholder="Search Discover Circles" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => setDiscoverFilter(filter.value)}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
+            <View style={styles.list}>{visibleDiscoverGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} reason={isLocalGroup(group) ? 'Near you' : isRegionalGroup(group) ? `In ${homeState}` : 'Recommended'} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable Circles match this search and filter.</Text> : null}</View>
+          </View>
         </> : null}
 
         {tab === 'campfires' ? <>
@@ -388,7 +440,24 @@ const styles = StyleSheet.create({
   sectionHeading: { gap: 2, paddingTop: 3 },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
-  sectionCard: { backgroundColor: CARD, borderRadius: 17, padding: 12, gap: 11 },
+  circleSection: { gap: 10 },
+  searchBox: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 14, paddingHorizontal: 12 },
+  searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 9 },
+  circleRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
+  circleTile: { width: 150, minHeight: 196, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 16, overflow: 'hidden', paddingBottom: 11 },
+  circleTileImageWrap: { width: '100%', height: 92, backgroundColor: '#101813' },
+  circleTileImage: { width: '100%', height: '100%' },
+  circleTileFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#213229' },
+  circleTileInitials: { color: GOLD, fontSize: 18, fontWeight: '900' },
+  circleTileTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 9, paddingHorizontal: 10 },
+  circleTileMeta: { color: MUTED, fontSize: 10.5, marginTop: 4, paddingHorizontal: 10 },
+  circleTileLocation: { color: GOLD, fontSize: 10, fontWeight: '800', marginTop: 4, paddingHorizontal: 10 },
+  filterRail: { gap: 7, paddingRight: 8, paddingVertical: 1 },
+  filterChip: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#3A473F', backgroundColor: '#121A16' },
+  filterChipActive: { borderColor: '#80952B', backgroundColor: '#263118' },
+  filterText: { color: '#ABB5AE', fontSize: 11.5, fontWeight: '800' },
+  filterTextActive: { color: '#DCEB91' },
+  emptyInline: { minHeight: 76, borderWidth: 1, borderColor: BORDER, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 14 },
   postCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 12 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
