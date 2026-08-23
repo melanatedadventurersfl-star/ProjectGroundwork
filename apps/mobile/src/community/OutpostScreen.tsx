@@ -19,6 +19,7 @@ import {
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
 import { getConnections, searchCommunityMembers, type Connection } from './circles';
+import { getCommunityManagementTypes, type CommunityManagementType } from './communityManagement';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
 
@@ -28,6 +29,7 @@ const CARD = '#17211C';
 const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
+const OFFICIAL_STARTERS = new Set(['camping', 'hiking', 'water adventures', 'family adventures', 'beginner outdoors']);
 
 type OutpostTab = 'for-you' | 'groups' | 'campfires';
 type PickedPhoto = { uri: string; mimeType?: string | null };
@@ -35,7 +37,7 @@ type DiscoverFilter = 'recommended' | 'near' | 'regional' | 'state' | 'popular' 
 
 const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'for-you', label: 'Basecamp' },
-  { value: 'groups', label: 'Circles' },
+  { value: 'groups', label: 'Communities' },
   { value: 'campfires', label: 'Campfires' },
 ];
 
@@ -71,6 +73,18 @@ function relativeTime(value: string) {
   return days < 7 ? `${days}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function CommunityTypeBadge({ type, compact = false }: { type: CommunityManagementType; compact?: boolean }) {
+  const official = type === 'official';
+  return (
+    <View style={[styles.managementBadge, compact && styles.managementBadgeCompact]}>
+      <Ionicons name={official ? 'shield-checkmark-outline' : 'people-outline'} size={compact ? 11 : 12} color={official ? GOLD : MUTED} />
+      <Text style={[styles.managementText, official && styles.managementTextOfficial, compact && styles.managementTextCompact]}>
+        {official ? 'Official' : 'Member-led'}
+      </Text>
+    </View>
+  );
+}
+
 function PostCard({ post, reason }: { post: CommunityPost; reason?: string | null }) {
   const badge = post.post_type === 'ask'
     ? 'Ask'
@@ -85,7 +99,7 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
   const isPopular = reason === 'Popular';
   const contextIcon = reason?.startsWith('Near') || reason?.startsWith('In ')
     ? 'location-outline'
-    : reason?.includes('Circle')
+    : reason?.includes('Community')
       ? 'people-outline'
       : isPopular
         ? 'flame-outline'
@@ -132,12 +146,15 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
   );
 }
 
-function GroupRow({ group, joining, onJoin, reason }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void; reason?: string | null }) {
+function CommunityRow({ group, joining, onJoin, reason, managementType }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void; reason?: string | null; managementType: CommunityManagementType }) {
   return (
     <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
       <View style={styles.groupAvatar}>{group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
-        <Text style={styles.rowTitle}>{group.name}</Text>
+        <View style={styles.rowTitleLine}>
+          <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
+          <CommunityTypeBadge type={managementType} compact />
+        </View>
         <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
         {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
       </View>
@@ -146,15 +163,16 @@ function GroupRow({ group, joining, onJoin, reason }: { group: CommunityGroup; j
   );
 }
 
-function MyCircleTile({ group }: { group: CommunityGroup }) {
+function MyCommunityTile({ group, managementType }: { group: CommunityGroup; managementType: CommunityManagementType }) {
   return (
-    <Pressable style={({ pressed }) => [styles.circleTile, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
-      <View style={styles.circleTileImageWrap}>
-        {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.circleTileImage} /> : <View style={styles.circleTileFallback}><Text style={styles.circleTileInitials}>{initials(group.name)}</Text></View>}
+    <Pressable style={({ pressed }) => [styles.communityTile, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
+      <View style={styles.communityTileImageWrap}>
+        {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.communityTileImage} /> : <View style={styles.communityTileFallback}><Text style={styles.communityTileInitials}>{initials(group.name)}</Text></View>}
       </View>
-      <Text style={styles.circleTileTitle} numberOfLines={2}>{group.name}</Text>
-      <Text style={styles.circleTileMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
-      {(group.city || group.state) ? <Text style={styles.circleTileLocation} numberOfLines={1}>{[group.city, group.state].filter(Boolean).join(', ')}</Text> : null}
+      <Text style={styles.communityTileTitle} numberOfLines={2}>{group.name}</Text>
+      <Text style={styles.communityTileMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+      <View style={styles.communityTileBadgeWrap}><CommunityTypeBadge type={managementType} compact /></View>
+      {(group.city || group.state) ? <Text style={styles.communityTileLocation} numberOfLines={1}>{[group.city, group.state].filter(Boolean).join(', ')}</Text> : null}
     </Pressable>
   );
 }
@@ -180,6 +198,7 @@ export default function OutpostScreen() {
   const [tab, setTab] = useState<OutpostTab>('for-you');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [communityManagement, setCommunityManagement] = useState<Map<string, CommunityManagementType>>(new Map());
   const [connections, setConnections] = useState<Connection[]>([]);
   const [members, setMembers] = useState<Awaited<ReturnType<typeof searchCommunityMembers>>>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
@@ -196,15 +215,16 @@ export default function OutpostScreen() {
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [myCircleQuery, setMyCircleQuery] = useState('');
+  const [myCommunityQuery, setMyCommunityQuery] = useState('');
   const [discoverQuery, setDiscoverQuery] = useState('');
   const [discoverFilter, setDiscoverFilter] = useState<DiscoverFilter>('recommended');
 
   const load = useCallback(async () => {
     try {
-      const [nextPosts, nextGroups, nextConnections, nextMembers, nextCampfires, basecamp] = await Promise.all([
+      const [nextPosts, nextGroups, nextManagement, nextConnections, nextMembers, nextCampfires, basecamp] = await Promise.all([
         getCommunityFeed(),
         getGroups(),
+        getCommunityManagementTypes().catch(() => new Map<string, CommunityManagementType>()),
         getConnections().catch(() => []),
         searchCommunityMembers('').catch(() => []),
         listLocalEvents().catch(() => []),
@@ -212,6 +232,7 @@ export default function OutpostScreen() {
       ]);
       setPosts(nextPosts);
       setGroups(nextGroups);
+      setCommunityManagement(nextManagement);
       setConnections(nextConnections);
       setMembers(nextMembers);
       setCampfires(nextCampfires);
@@ -239,13 +260,21 @@ export default function OutpostScreen() {
   const myGroupNames = useMemo(() => new Map(myGroups.map((group) => [group.id, group.name])), [myGroups]);
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
 
+  const managementFor = useCallback((group: CommunityGroup): CommunityManagementType => {
+    const explicit = communityManagement.get(group.id);
+    if (explicit) return explicit;
+    if (group.kind === 'adventure') return 'official';
+    if (group.kind === 'interest' && OFFICIAL_STARTERS.has(group.name.trim().toLowerCase())) return 'official';
+    return 'member_led';
+  }, [communityManagement]);
+
   const isLocalGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [homeCity, homeState]);
   const isRegionalGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState), [homeState]);
   const isLocalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState && (!homeCity || event.city === homeCity)), [homeCity, homeState]);
   const isRegionalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState), [homeState]);
 
   const reasonForPost = useCallback((post: CommunityPost) => {
-    if (post.group_id && myGroupNames.has(post.group_id)) return `Your Circle · ${myGroupNames.get(post.group_id)}`;
+    if (post.group_id && myGroupNames.has(post.group_id)) return `Your Community · ${myGroupNames.get(post.group_id)}`;
     if (acceptedConnectionIds.has(post.author_id)) return 'Trailmate';
     if (localMemberIds.has(post.author_id)) return `Near ${locationLabel}`;
     if (regionalMemberIds.has(post.author_id) && homeState) return `In ${homeState}`;
@@ -266,10 +295,10 @@ export default function OutpostScreen() {
   }), [acceptedConnectionIds, localMemberIds, myGroupNames, posts, regionalMemberIds]);
 
   const visibleMyGroups = useMemo(() => {
-    const query = myCircleQuery.trim().toLowerCase();
+    const query = myCommunityQuery.trim().toLowerCase();
     if (!query) return myGroups;
     return myGroups.filter((group) => `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
-  }, [myCircleQuery, myGroups]);
+  }, [myCommunityQuery, myGroups]);
 
   const visibleDiscoverGroups = useMemo(() => {
     const query = discoverQuery.trim().toLowerCase();
@@ -325,7 +354,7 @@ export default function OutpostScreen() {
 
   async function handleJoin(group: CommunityGroup) {
     setJoiningId(group.id);
-    try { await joinGroup(group.id); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to join this circle.'); } finally { setJoiningId(null); }
+    try { await joinGroup(group.id); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to join this community.'); } finally { setJoiningId(null); }
   }
 
   return (
@@ -352,7 +381,7 @@ export default function OutpostScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {tab === 'for-you' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Trailmates, your Circles, local activity, and community posts worth catching up on.</Text></View>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Trailmates, your Communities, local activity, and community posts worth catching up on.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
@@ -372,17 +401,17 @@ export default function OutpostScreen() {
         </> : null}
 
         {tab === 'groups' ? <>
-          <View style={styles.circleSection}>
-            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Circles</Text><Text style={styles.sectionCopy}>Communities you already belong to.</Text></View>
-            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={myCircleQuery} onChangeText={setMyCircleQuery} placeholder="Search your Circles" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
-            {visibleMyGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.circleRail}>{visibleMyGroups.map((group) => <MyCircleTile key={group.id} group={group} />)}</ScrollView> : <View style={styles.emptyInline}><Text style={styles.emptyText}>{myGroups.length ? 'No joined Circles match that search.' : 'You have not joined a Circle yet.'}</Text></View>}
+          <View style={styles.communitySection}>
+            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Communities</Text><Text style={styles.sectionCopy}>Communities you’ve joined.</Text></View>
+            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={myCommunityQuery} onChangeText={setMyCommunityQuery} placeholder="Search your communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
+            {visibleMyGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.communityRail}>{visibleMyGroups.map((group) => <MyCommunityTile key={group.id} group={group} managementType={managementFor(group)} />)}</ScrollView> : <View style={styles.emptyInline}><Text style={styles.emptyText}>{myGroups.length ? 'No joined communities match that search.' : 'You have not joined a community yet.'}</Text></View>}
           </View>
 
-          <View style={styles.circleSection}>
-            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Circles</Text><Text style={styles.sectionCopy}>Find something new based on interests, activity, and location.</Text></View>
-            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={setDiscoverQuery} placeholder="Search Discover Circles" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
+          <View style={styles.communitySection}>
+            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Communities</Text><Text style={styles.sectionCopy}>Find new communities based on interests, activity, and location.</Text></View>
+            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={setDiscoverQuery} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => setDiscoverFilter(filter.value)}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
-            <View style={styles.list}>{visibleDiscoverGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} reason={isLocalGroup(group) ? 'Near you' : isRegionalGroup(group) ? `In ${homeState}` : 'Recommended'} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable Circles match this search and filter.</Text> : null}</View>
+            <View style={styles.list}>{visibleDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={isLocalGroup(group) ? 'Near you' : isRegionalGroup(group) ? `In ${homeState}` : 'Recommended'} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match this search and filter.</Text> : null}</View>
           </View>
         </> : null}
 
@@ -440,18 +469,24 @@ const styles = StyleSheet.create({
   sectionHeading: { gap: 2, paddingTop: 3 },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
-  circleSection: { gap: 10 },
+  communitySection: { gap: 10 },
   searchBox: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 14, paddingHorizontal: 12 },
   searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 9 },
-  circleRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
-  circleTile: { width: 150, minHeight: 196, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 16, overflow: 'hidden', paddingBottom: 11 },
-  circleTileImageWrap: { width: '100%', height: 92, backgroundColor: '#101813' },
-  circleTileImage: { width: '100%', height: '100%' },
-  circleTileFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#213229' },
-  circleTileInitials: { color: GOLD, fontSize: 18, fontWeight: '900' },
-  circleTileTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 9, paddingHorizontal: 10 },
-  circleTileMeta: { color: MUTED, fontSize: 10.5, marginTop: 4, paddingHorizontal: 10 },
-  circleTileLocation: { color: GOLD, fontSize: 10, fontWeight: '800', marginTop: 4, paddingHorizontal: 10 },
+  communityRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
+  communityTile: { width: 150, minHeight: 214, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 16, overflow: 'hidden', paddingBottom: 11 },
+  communityTileImageWrap: { width: '100%', height: 92, backgroundColor: '#101813' },
+  communityTileImage: { width: '100%', height: '100%' },
+  communityTileFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#213229' },
+  communityTileInitials: { color: GOLD, fontSize: 18, fontWeight: '900' },
+  communityTileTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 9, paddingHorizontal: 10 },
+  communityTileMeta: { color: MUTED, fontSize: 10.5, marginTop: 4, paddingHorizontal: 10 },
+  communityTileBadgeWrap: { marginTop: 5, paddingHorizontal: 10, alignItems: 'flex-start' },
+  communityTileLocation: { color: '#849087', fontSize: 9.5, fontWeight: '700', marginTop: 4, paddingHorizontal: 10 },
+  managementBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  managementBadgeCompact: { gap: 3 },
+  managementText: { color: MUTED, fontSize: 10.5, fontWeight: '800' },
+  managementTextOfficial: { color: GOLD },
+  managementTextCompact: { fontSize: 9.5 },
   filterRail: { gap: 7, paddingRight: 8, paddingVertical: 1 },
   filterChip: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#3A473F', backgroundColor: '#121A16' },
   filterChipActive: { borderColor: '#80952B', backgroundColor: '#263118' },
@@ -479,9 +514,10 @@ const styles = StyleSheet.create({
   postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
   engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
   list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
-  listRow: { minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
+  listRow: { minHeight: 68, paddingHorizontal: 10, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  rowTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 },
+  rowTitle: { color: TEXT, fontSize: 14, fontWeight: '900', flexShrink: 1 },
   rowMeta: { color: MUTED, fontSize: 11.5, lineHeight: 16, marginTop: 2 },
   rowReason: { color: GOLD, fontSize: 10.5, fontWeight: '800', marginTop: 4 },
   campfireHero: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#171F1B', borderWidth: 1, borderColor: '#3B423B', borderRadius: 17, padding: 14 },
