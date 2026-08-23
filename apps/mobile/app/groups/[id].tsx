@@ -113,10 +113,7 @@ function MemberRow({ member }: { member: CommunityMember }) {
   const location = [member.home_city, member.home_state].filter(Boolean).join(', ');
 
   return (
-    <Pressable
-      style={styles.memberCard}
-      onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: member.profile_id } })}
-    >
+    <Pressable style={styles.memberCard} onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: member.profile_id } })}>
       <View style={styles.memberAvatar}>
         {member.avatar_url ? <Image source={{ uri: member.avatar_url }} style={styles.memberAvatarImage} /> : <Text style={styles.memberAvatarInitials}>{initials(member.display_name)}</Text>}
       </View>
@@ -156,11 +153,12 @@ export default function GroupDetailScreen() {
     if (!id) return;
     try {
       setError(null);
-      const [nextGroup, nextPosts, nextCampfires, nextAccess, memberResult] = await Promise.all([
-        getGroup(id),
+      const nextGroup = await getGroup(id);
+      const isLocal = nextGroup.kind === 'local';
+      const [nextPosts, nextCampfires, nextAccess, memberResult] = await Promise.all([
         getCommunityFeed(undefined, id),
-        listGroupCampfires(id).catch(() => []),
-        getGroupCampfireAccess(id).catch(() => false),
+        isLocal ? listGroupCampfires(id).catch(() => []) : Promise.resolve([]),
+        isLocal ? getGroupCampfireAccess(id).catch(() => false) : Promise.resolve(false),
         supabase.rpc('get_group_member_directory', { target_group_id: id }),
       ]);
       setGroup(nextGroup);
@@ -168,13 +166,14 @@ export default function GroupDetailScreen() {
       setCampfires(nextCampfires);
       setCanCreateCampfire(nextAccess);
       setMembers((memberResult.data ?? []) as CommunityMember[]);
+      if (!isLocal && activeTab === 'campfire') setActiveTab('feed');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load this Community.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [activeTab, id]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -221,7 +220,14 @@ export default function GroupDetailScreen() {
 
   const memberLabel = `${group?.member_count ?? 0} member${group?.member_count === 1 ? '' : 's'}`;
   const heroImage = group?.cover_image_url || group?.image_url;
-  const official = group?.kind === 'interest' || group?.kind === 'adventure';
+  const localCommunity = group?.kind === 'local';
+  const official = !localCommunity;
+  const communityLabel = localCommunity
+    ? group?.city ? `${group.city.toUpperCase()} COMMUNITY` : 'LOCAL COMMUNITY'
+    : 'OFFICIAL COMMUNITY';
+  const tabItems: [GroupTab, string][] = localCommunity
+    ? [['feed', 'Feed'], ['learn', 'Learn'], ['campfire', 'Campfire'], ['members', 'Members'], ['about', 'About']]
+    : [['feed', 'Feed'], ['learn', 'Learn'], ['members', 'Members'], ['about', 'About']];
 
   const hero = (
     <View style={styles.heroShell}>
@@ -234,7 +240,7 @@ export default function GroupDetailScreen() {
               {group?.image_url ? <Image source={{ uri: group.image_url }} style={styles.communityAvatarImage} /> : <Text style={styles.communityAvatarInitials}>{initials(group?.name ?? 'Community')}</Text>}
             </View>
             <View style={styles.flex}>
-              <Text style={styles.eyebrow}>{official ? 'OFFICIAL COMMUNITY' : 'COMMUNITY'}</Text>
+              <Text style={styles.eyebrow}>{communityLabel}</Text>
               <Text style={styles.title} numberOfLines={1}>{group?.name ?? 'Community'}</Text>
               <View style={styles.memberRow}>
                 <Text style={styles.memberMeta}>{memberLabel}</Text>
@@ -250,16 +256,12 @@ export default function GroupDetailScreen() {
                 disabled={membershipBusy}
                 style={[styles.joinButton, group?.is_member && styles.joinedButton]}
               >
-                <Text style={[styles.joinButtonText, group?.is_member && styles.joinedButtonText]}>
-                  {membershipBusy ? '…' : group?.is_member ? 'Joined ⌄' : 'Join'}
-                </Text>
+                <Text style={[styles.joinButtonText, group?.is_member && styles.joinedButtonText]}>{membershipBusy ? '…' : group?.is_member ? 'Joined ⌄' : 'Join'}</Text>
               </Pressable>
               {membershipMenuOpen && group?.is_member ? (
                 <View style={styles.membershipMenu}>
                   <Text style={styles.membershipMenuTitle}>Membership</Text>
-                  <Pressable style={styles.membershipMenuRow} onPress={() => void toggleMembership()}>
-                    <Text style={styles.leaveText}>Leave Community</Text>
-                  </Pressable>
+                  <Pressable style={styles.membershipMenuRow} onPress={() => void toggleMembership()}><Text style={styles.leaveText}>Leave Community</Text></Pressable>
                 </View>
               ) : null}
             </View>
@@ -271,13 +273,7 @@ export default function GroupDetailScreen() {
 
   const tabs = (
     <View style={styles.tabBar}>
-      {([
-        ['feed', 'Feed'],
-        ['learn', 'Learn'],
-        ['campfire', 'Campfire'],
-        ['members', 'Members'],
-        ['about', 'About'],
-      ] as [GroupTab, string][]).map(([key, label]) => (
+      {tabItems.map(([key, label]) => (
         <Pressable key={key} onPress={() => setActiveTab(key)} style={styles.tab}>
           <Text style={[styles.tabText, activeTab === key && styles.activeTabText]}>{label}</Text>
           <View style={[styles.tabIndicator, activeTab === key && styles.tabIndicatorActive]} />
@@ -299,10 +295,7 @@ export default function GroupDetailScreen() {
 
         {activeTab === 'feed' ? (
           <View style={styles.sectionBlock}>
-            <View>
-              <Text style={styles.sectionEyebrow}>COMMUNITY FEED</Text>
-              <Text style={styles.sectionTitle}>{group?.name}</Text>
-            </View>
+            <View><Text style={styles.sectionEyebrow}>COMMUNITY FEED</Text><Text style={styles.sectionTitle}>{group?.name}</Text></View>
             {composerOpen ? (
               <View style={styles.composer}>
                 <Text style={styles.composerLabel}>Share with {group?.name}</Text>
@@ -363,17 +356,17 @@ export default function GroupDetailScreen() {
           </View>
         ) : null}
 
-        {activeTab === 'campfire' ? (
+        {localCommunity && activeTab === 'campfire' ? (
           <View style={styles.sectionBlock}>
             <View style={styles.sectionTitleRow}>
-              <View style={styles.flex}><Text style={styles.sectionEyebrow}>GET TOGETHER</Text><Text style={styles.sectionTitle}>Community Campfires</Text></View>
+              <View style={styles.flex}><Text style={styles.sectionEyebrow}>LOCAL GATHERINGS</Text><Text style={styles.sectionTitle}>Community Campfires</Text></View>
               {canCreateCampfire ? <Pressable onPress={() => router.push({ pathname: '/local-events/create', params: { groupId: id, groupName: group?.name ?? 'Community' } })} style={styles.smallPrimary}><Text style={styles.smallPrimaryText}>+ Campfire</Text></Pressable> : null}
             </View>
-            <Text style={styles.sectionIntro}>Casual meetups tied to this Community.</Text>
+            <Text style={styles.sectionIntro}>Casual meetups for this local Community.</Text>
             {campfires.length ? <View style={styles.campfireList}>{campfires.map((event) => <CampfireCard key={event.id} event={event} />)}</View> : (
               <View style={styles.compactEmptyStatic}>
                 <Text style={styles.compactEmptyIcon}>🔥</Text>
-                <View style={styles.flex}><Text style={styles.compactEmptyTitle}>No Campfires planned yet</Text><Text style={styles.compactEmptyText}>{canCreateCampfire ? 'Create the first gathering for this Community.' : 'When a Community Leader plans one, it will appear here.'}</Text></View>
+                <View style={styles.flex}><Text style={styles.compactEmptyTitle}>No Campfires planned yet</Text><Text style={styles.compactEmptyText}>{canCreateCampfire ? 'Create the first local gathering for this Community.' : 'When a Community Leader plans one, it will appear here.'}</Text></View>
               </View>
             )}
           </View>
@@ -381,12 +374,8 @@ export default function GroupDetailScreen() {
 
         {activeTab === 'members' ? (
           <View style={styles.sectionBlock}>
-            <View style={styles.sectionTitleRow}>
-              <View style={styles.flex}><Text style={styles.sectionEyebrow}>COMMUNITY</Text><Text style={styles.sectionTitle}>{memberLabel}</Text></View>
-            </View>
-            {members.length ? (
-              <View style={styles.memberList}>{members.map((member) => <MemberRow key={member.profile_id} member={member} />)}</View>
-            ) : (
+            <View style={styles.sectionTitleRow}><View style={styles.flex}><Text style={styles.sectionEyebrow}>COMMUNITY</Text><Text style={styles.sectionTitle}>{memberLabel}</Text></View></View>
+            {members.length ? <View style={styles.memberList}>{members.map((member) => <MemberRow key={member.profile_id} member={member} />)}</View> : (
               <View style={styles.compactEmptyStatic}><Text style={styles.compactEmptyIcon}>🧑🏾‍🤝‍🧑🏿</Text><View style={styles.flex}><Text style={styles.compactEmptyTitle}>No members to show yet</Text><Text style={styles.compactEmptyText}>Member profiles will appear here as people join.</Text></View></View>
             )}
           </View>
@@ -399,7 +388,7 @@ export default function GroupDetailScreen() {
             <View style={styles.aboutSurface}>
               <View style={styles.aboutSection}><Text style={styles.aboutHeading}>About</Text><Text style={styles.featureText}>{group?.description ?? 'A Melanated community built around a shared outdoor interest.'}</Text></View>
               <View style={styles.aboutDivider} />
-              <View style={styles.aboutSection}><Text style={styles.aboutHeading}>How it works</Text><Text style={styles.featureText}>Learn is curated knowledge. Feed is where members ask questions and share experience. Campfire connects the Community through casual leader-planned meetups.</Text></View>
+              <View style={styles.aboutSection}><Text style={styles.aboutHeading}>How it works</Text><Text style={styles.featureText}>{localCommunity ? 'Learn is curated knowledge. Feed is where members ask questions and share experience. Campfire is for casual local gatherings planned by Community Leaders.' : 'Learn is curated knowledge. Feed is where members ask questions and share experience. Members connects people around the shared interest.'}</Text></View>
               <View style={styles.aboutDivider} />
               <View style={styles.aboutSection}><Text style={styles.aboutHeading}>Community standard</Text><Text style={styles.featureText}>Keep it useful, welcoming, safe, and rooted in helping people enjoy the outdoors with confidence.</Text></View>
             </View>
