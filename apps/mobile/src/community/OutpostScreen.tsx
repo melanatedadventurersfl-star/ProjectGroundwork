@@ -219,7 +219,6 @@ export default function OutpostScreen() {
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [trailmateIds, setTrailmateIds] = useState<string[]>([]);
   const [authorLocations, setAuthorLocations] = useState<Record<string, AuthorLocation>>({});
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null);
@@ -256,7 +255,6 @@ export default function OutpostScreen() {
 
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id ?? null;
-      setCurrentUserId(userId);
 
       let nextTrailmateIds: string[] = [];
       if (userId) {
@@ -320,25 +318,8 @@ export default function OutpostScreen() {
     if (basecampFilter === 'communities') next = next.filter((post) => Boolean(post.group_id && myGroupIdSet.has(post.group_id)));
     if (basecampFilter === 'nearby') next = next.filter(isPostNearby);
 
-    if (basecampFilter === 'for-you') {
-      const score = (post: CommunityPost) => {
-        let value = 0;
-        if (post.author_id === currentUserId) value += 100;
-        if (trailmateIdSet.has(post.author_id)) value += 30;
-        if (post.group_id && myGroupIdSet.has(post.group_id)) value += 20;
-        if (isPostNearby(post)) value += 10;
-        if (post.is_pinned) value += 5;
-        return value;
-      };
-      return next.sort((a, b) => {
-        const scoreDiff = score(b) - score(a);
-        if (scoreDiff !== 0) return scoreDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-    }
-
     return next.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [basecampFilter, currentUserId, isPostNearby, myGroupIdSet, posts, trailmateIdSet]);
+  }, [basecampFilter, isPostNearby, myGroupIdSet, posts, trailmateIdSet]);
 
   const distanceForCampfire = useCallback((event: LocalEvent) => {
     if (!homePoint) return null;
