@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
-import { setReaction } from './api';
+import { getCommunityFeed, setReaction } from './api';
 import { supabase } from '../lib/supabase';
 
 const GOLD = '#D7B45A';
@@ -11,6 +11,8 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#17211C';
 const BORDER = '#334139';
+const POST_PREVIEW_LIMIT = 160;
+const NATIVE_SHARE_SCHEME = 'melanatedadventurers';
 
 export type CommunityReaction = 'like' | 'love' | 'celebrate' | 'support';
 
@@ -28,6 +30,24 @@ const reactions: ReactionMeta[] = [
 
 function reactionMeta(value: CommunityReaction | null): ReactionMeta {
   return reactions.find((item) => item.value === value) ?? DEFAULT_REACTION;
+}
+
+function normalizeShareBaseUrl(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/\/+$/, '') : null;
+}
+
+function buildPostShareUrl(postId: string) {
+  const publicBaseUrl = normalizeShareBaseUrl(process.env.EXPO_PUBLIC_SHARE_BASE_URL);
+  return publicBaseUrl
+    ? `${publicBaseUrl}/community/${encodeURIComponent(postId)}`
+    : `${NATIVE_SHARE_SCHEME}://community/${encodeURIComponent(postId)}`;
+}
+
+function postPreview(body: string) {
+  const normalized = body.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= POST_PREVIEW_LIMIT) return normalized;
+  return `${normalized.slice(0, POST_PREVIEW_LIMIT - 1).trimEnd()}…`;
 }
 
 export function PostEngagementBar({
@@ -125,8 +145,28 @@ export function PostEngagementBar({
   }
 
   async function sharePost() {
+    const postUrl = buildPostShareUrl(postId);
+    let message = `Shared from Go Melanated\n\nOpen the post: ${postUrl}`;
+
     try {
-      const result = await Share.share({ message: 'Check out this post on Melanated.' });
+      const feed = await getCommunityFeed();
+      const post = feed.find((item) => item.id === postId);
+      if (post) {
+        const preview = postPreview(post.body);
+        const heading = `${post.author_name || 'A member'} shared on Go Melanated`;
+        message = preview
+          ? `${heading}\n“${preview}”\n\nOpen the post: ${postUrl}`
+          : `${heading}\n\nOpen the post: ${postUrl}`;
+      }
+    } catch {
+      // Sharing should still work even if the post preview cannot be refreshed.
+    }
+
+    try {
+      const result = await Share.share({
+        message,
+        title: 'Share Go Melanated post',
+      });
       if (result.action === Share.sharedAction) {
         const { data: sessionData } = await supabase.auth.getSession();
         const userId = sessionData.session?.user.id;
