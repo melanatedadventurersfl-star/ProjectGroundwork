@@ -36,6 +36,36 @@ export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
     title: 'Bulls Bay Preserve',
     credit: 'Timucuan Parks Foundation',
   },
+  'seaton-creek-historic-preserve': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/SeatonCreek091312-37BWA-copy.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/seaton-creek-historic-preserve/',
+    title: 'Seaton Creek Historic Preserve',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'betz-tiger-point-preserve': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_9152_2.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/betz-tiger-point-preserve/',
+    title: 'Betz-Tiger Point Preserve',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'theodore-roosevelt-area': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/2019/11/SpPnd0005.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/theodore-roosevelt-area/',
+    title: 'Theodore Roosevelt Area',
+    credit: 'Timucuan Parks Foundation',
+  },
+  'jacksonville-baldwin-rail-trail': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2714-Rail-Trail-scaled.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/jacksonville-baldwin-rail-trail/',
+    title: 'Jacksonville-Baldwin Rail Trail',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
+  'thomas-creek-conservation-area': {
+    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2763_Thomas-Creek-scaled.jpg',
+    sourceUrl: 'https://www.timucuanparks.org/parks/thomas-creek-preserve/',
+    title: 'Thomas Creek Conservation Area',
+    credit: 'Will Dickey / Timucuan Parks Foundation',
+  },
 };
 
 type WikiSearchPage = {
