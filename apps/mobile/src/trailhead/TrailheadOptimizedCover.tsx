@@ -1,21 +1,11 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppState, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { useAuth } from '../auth/AuthProvider';
-import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
-import {
-  getMemberBadges,
-  getPassportStamps,
-  type MemberBadge,
-  type PassportStamp,
-} from '../passport/api';
+import type { MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
-import { isLegacyStampCode, StampArt } from '../passport/StampArt';
-import { AppIcon } from '../ui/AppIcon';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
-import { getTrailheadFavorites } from './favorites';
 import {
   backgroundFor,
   dayPhaseFor,
@@ -46,7 +36,6 @@ function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
 export function TrailheadOptimizedCover({
   displayName,
   rank,
-  badges = [],
 }: {
   coverUrl?: string | null;
   displayName: string;
@@ -57,33 +46,12 @@ export function TrailheadOptimizedCover({
   onEdit?: () => void;
   onRankPress?: () => void;
 }) {
-  const { session } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 420;
   const veryCompact = width < 370;
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
-  const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>(badges);
-  const [earnedStamps, setEarnedStamps] = useState<PassportStamp[]>([]);
-  const [favoriteBadgeTitles, setFavoriteBadgeTitles] = useState<string[]>([]);
-  const [favoriteStampCodes, setFavoriteStampCodes] = useState<string[]>([]);
   const [clockNow, setClockNow] = useState(() => new Date());
-
-  useFocusEffect(useCallback(() => {
-    let active = true;
-    void Promise.all([
-      getMemberBadges().catch(() => badges),
-      getPassportStamps().catch(() => [] as PassportStamp[]),
-      getTrailheadFavorites(session?.user.id),
-    ]).then(([nextBadges, nextStamps, favorites]) => {
-      if (!active) return;
-      setEarnedBadges(nextBadges);
-      setEarnedStamps(nextStamps);
-      setFavoriteBadgeTitles(favorites.badges);
-      setFavoriteStampCodes(favorites.stamps);
-    });
-    return () => { active = false; };
-  }, [badges, session?.user.id]));
 
   useEffect(() => {
     let active = true;
@@ -144,23 +112,10 @@ export function TrailheadOptimizedCover({
   const location = locationLabel || 'Current location';
   const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
 
-  const visibleBadgeTitles = useMemo(() => {
-    if (favoriteBadgeTitles.length) return favoriteBadgeTitles.slice(0, 3);
-    return earnedBadges.slice(0, 3).map((badge) => badge.title);
-  }, [earnedBadges, favoriteBadgeTitles]);
-  const visibleStamps = useMemo(() => {
-    if (!favoriteStampCodes.length) return earnedStamps.slice(0, 3);
-    const byCode = new Map(earnedStamps.filter((stamp) => stamp.code).map((stamp) => [stamp.code as string, stamp]));
-    return favoriteStampCodes.map((code) => byCode.get(code)).filter((stamp): stamp is PassportStamp => Boolean(stamp)).slice(0, 3);
-  }, [earnedStamps, favoriteStampCodes]);
-
-  const openBadges = () => router.push('/member/badges');
-  const openStamps = () => router.push('/member/stamps');
   const openRankJourney = () => router.push('/member/rank-progress');
 
   const heroHeight = veryCompact ? 286 : compact ? 300 : 318;
   const emblemSize = veryCompact ? 82 : compact ? 96 : 108;
-  const achievementSize = veryCompact ? 40 : compact ? 46 : 52;
 
   return (
     <View style={[styles.cover, { height: heroHeight, shadowColor: '#000000' }]}>
@@ -207,48 +162,6 @@ export function TrailheadOptimizedCover({
         </View>
         <Text style={[styles.weatherCopy, { color: theme.soft }]} numberOfLines={2}>{detail}</Text>
       </View>
-
-      {(visibleBadgeTitles.length || visibleStamps.length) ? (
-        <View style={[styles.achievementShelf, compact && styles.achievementShelfCompact, veryCompact && styles.achievementShelfVeryCompact]}>
-          {visibleBadgeTitles.length ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Open badges and manage Trailhead favorites" onPress={openBadges} style={styles.achievementGroup}>
-              <Text style={[styles.achievementLabel, { color: theme.soft }]}>BADGES</Text>
-              <View style={styles.achievementRow}>
-                {visibleBadgeTitles.map((title) => (
-                  <View key={title} style={[styles.achievementSlot, { width: achievementSize, height: achievementSize }]}>
-                    {hasBadgeArt(title) ? (
-                      <BadgeArt title={title} size={achievementSize} />
-                    ) : (
-                      <View style={[styles.badgeFallback, { width: achievementSize, height: achievementSize, borderRadius: achievementSize / 2, borderColor: theme.accent }]}>
-                        <AppIcon name="badge" color={theme.soft} size={Math.max(15, achievementSize * 0.46)} />
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </Pressable>
-          ) : null}
-
-          {visibleStamps.length ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Open stamps and manage Trailhead favorites" onPress={openStamps} style={[styles.achievementGroup, visibleBadgeTitles.length ? styles.stampGroup : null]}>
-              <Text style={[styles.achievementLabel, { color: theme.soft }]}>STAMPS</Text>
-              <View style={styles.achievementRow}>
-                {visibleStamps.map((stamp) => (
-                  <View key={stamp.stamp_id} style={[styles.achievementSlot, { width: achievementSize, height: achievementSize }]}>
-                    {stamp.code && isLegacyStampCode(stamp.code) ? (
-                      <StampArt code={stamp.code} width={achievementSize} />
-                    ) : (
-                      <View style={[styles.genericStamp, { width: achievementSize, height: achievementSize, borderColor: theme.accent }]}>
-                        <Text style={[styles.genericStampText, { color: theme.soft, fontSize: Math.max(9, achievementSize * 0.24) }]}>MA</Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -299,9 +212,9 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
   },
 
-  weatherBlock: { position: 'absolute', left: 18, width: '43%', bottom: 20 },
-  weatherBlockCompact: { left: 13, width: '44%', bottom: 15 },
-  weatherBlockVeryCompact: { left: 10, width: '45%', bottom: 13 },
+  weatherBlock: { position: 'absolute', left: 18, width: '52%', bottom: 20 },
+  weatherBlockCompact: { left: 13, width: '55%', bottom: 15 },
+  weatherBlockVeryCompact: { left: 10, width: '58%', bottom: 13 },
   weatherMainRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   weatherIcon: {
     color: '#FFF8E8', fontSize: 21,
@@ -330,19 +243,4 @@ const styles = StyleSheet.create({
     fontSize: 11, lineHeight: 15, fontWeight: '700', marginTop: 9,
     textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
   },
-
-  achievementShelf: { position: 'absolute', right: 8, width: '43%', bottom: 18, zIndex: 5 },
-  achievementShelfCompact: { right: 6, width: '44%', bottom: 15 },
-  achievementShelfVeryCompact: { right: 4, width: '45%', bottom: 12 },
-  achievementGroup: { minWidth: 0, paddingVertical: 2 },
-  stampGroup: { marginTop: 7 },
-  achievementLabel: {
-    fontSize: 8, lineHeight: 10, fontWeight: '800', letterSpacing: 2.2, opacity: 0.9,
-    textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 },
-  },
-  achievementRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 },
-  achievementSlot: { overflow: 'visible', alignItems: 'center', justifyContent: 'center' },
-  badgeFallback: { borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.20)', alignItems: 'center', justifyContent: 'center' },
-  genericStamp: { borderWidth: 1, borderRadius: 8, backgroundColor: 'rgba(5,10,9,0.34)', alignItems: 'center', justifyContent: 'center' },
-  genericStampText: { fontWeight: '900', letterSpacing: 0.4 },
 });
