@@ -1,5 +1,31 @@
 import { supabase } from '../lib/supabase';
 
+export type CommunityFeaturedBadge = {
+  badge_id: string;
+  title: string;
+  description: string | null;
+  icon_name: string | null;
+  category: string;
+  earned_at: string;
+};
+
+export type CommunityFeaturedStamp = {
+  stamp_id: string;
+  code: string | null;
+  title: string;
+  description: string | null;
+  icon_name: string | null;
+  earned_at: string;
+  adventure_id: string | null;
+};
+
+export type CommunityPhotoAlbum = {
+  adventure_id: string;
+  title: string;
+  photo_count: number;
+  cover_url: string | null;
+};
+
 export type CommunityProfile = {
   id: string;
   display_name: string | null;
@@ -24,6 +50,9 @@ export type CommunityProfile = {
   stamp_count: number;
   badge_count: number;
   post_count: number;
+  featured_badges: CommunityFeaturedBadge[];
+  featured_stamps: CommunityFeaturedStamp[];
+  photo_albums: CommunityPhotoAlbum[];
 };
 
 export type ConnectionStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'declined' | 'blocked' | 'self';
@@ -32,7 +61,13 @@ export async function getCommunityProfile(profileId: string): Promise<CommunityP
   const { data, error } = await supabase.rpc('get_public_member_profile', { target_profile: profileId });
   if (error) throw error;
   if (!data) throw new Error('Profile not found.');
-  return data as CommunityProfile;
+  const profile = data as CommunityProfile;
+  return {
+    ...profile,
+    featured_badges: Array.isArray(profile.featured_badges) ? profile.featured_badges : [],
+    featured_stamps: Array.isArray(profile.featured_stamps) ? profile.featured_stamps : [],
+    photo_albums: Array.isArray(profile.photo_albums) ? profile.photo_albums : [],
+  };
 }
 
 export async function getConnectionStatus(profileId: string): Promise<{ status: ConnectionStatus; connectionId: string | null }> {
