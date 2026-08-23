@@ -12,7 +12,6 @@ const MUTED = '#AEB8B2';
 const PANEL = '#17211C';
 const BORDER = '#334139';
 const POST_PREVIEW_LIMIT = 160;
-const NATIVE_SHARE_SCHEME = 'melanatedadventurers';
 
 export type CommunityReaction = 'like' | 'love' | 'celebrate' | 'support';
 
@@ -38,10 +37,10 @@ function normalizeShareBaseUrl(value: string | undefined) {
 }
 
 function buildPostShareUrl(postId: string) {
-  const publicBaseUrl = normalizeShareBaseUrl(process.env.EXPO_PUBLIC_SHARE_BASE_URL);
-  return publicBaseUrl
-    ? `${publicBaseUrl}/community/${encodeURIComponent(postId)}`
-    : `${NATIVE_SHARE_SCHEME}://community/${encodeURIComponent(postId)}`;
+  const configuredBaseUrl = normalizeShareBaseUrl(process.env.EXPO_PUBLIC_SHARE_BASE_URL);
+  const supabaseUrl = normalizeShareBaseUrl(process.env.EXPO_PUBLIC_SUPABASE_URL);
+  const publicBaseUrl = configuredBaseUrl || (supabaseUrl ? `${supabaseUrl}/functions/v1/share-post` : null);
+  return publicBaseUrl ? `${publicBaseUrl}/p/${encodeURIComponent(postId)}` : null;
 }
 
 function postPreview(body: string) {
@@ -146,7 +145,9 @@ export function PostEngagementBar({
 
   async function sharePost() {
     const postUrl = buildPostShareUrl(postId);
-    let message = `Shared from Go Melanated\n\nOpen the post: ${postUrl}`;
+    let message = postUrl
+      ? `Shared from Go Melanated\n\nView post on Go Melanated: ${postUrl}`
+      : 'Shared from Go Melanated';
 
     try {
       const feed = await getCommunityFeed();
@@ -154,9 +155,11 @@ export function PostEngagementBar({
       if (post) {
         const preview = postPreview(post.body);
         const heading = `${post.author_name || 'A member'} shared on Go Melanated`;
-        message = preview
-          ? `${heading}\n“${preview}”\n\nOpen the post: ${postUrl}`
-          : `${heading}\n\nOpen the post: ${postUrl}`;
+        message = postUrl
+          ? (preview
+              ? `${heading}\n“${preview}”\n\nView post on Go Melanated: ${postUrl}`
+              : `${heading}\n\nView post on Go Melanated: ${postUrl}`)
+          : (preview ? `${heading}\n“${preview}”` : heading);
       }
     } catch {
       // Sharing should still work even if the post preview cannot be refreshed.
