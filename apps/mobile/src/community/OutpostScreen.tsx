@@ -149,8 +149,12 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
 function CommunityRow({ group, joining, onJoin, reason, managementType }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void; reason?: string | null; managementType: CommunityManagementType }) {
   return (
     <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
-      <View style={styles.groupAvatar}>{group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(group.name)}</Text>}</View>
-      <View style={styles.flex}>
+      {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.communityCoverImage} resizeMode="cover" /> : <View style={styles.communityCoverFallback} />}
+      <View style={styles.communityCoverOverlay} />
+      <View style={styles.communityProfileAvatar}>
+        {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.communityProfileInitials}>{initials(group.name)}</Text>}
+      </View>
+      <View style={styles.communityRowContent}>
         <View style={styles.rowTitleLine}>
           <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
           <CommunityTypeBadge type={managementType} compact />
@@ -160,7 +164,7 @@ function CommunityRow({ group, joining, onJoin, reason, managementType }: { grou
           {reason ? <><Text style={styles.rowMetaDot}>·</Text><Text style={styles.rowReason} numberOfLines={1}>{reason}</Text></> : null}
         </View>
       </View>
-      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={MUTED} /> : <Pressable style={styles.joinPill} onPress={(event) => { event.stopPropagation(); onJoin(group); }} disabled={joining}><Text style={styles.joinPillText}>{joining ? 'Joining' : 'Join'}</Text></Pressable>}
+      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={TEXT} /> : <Pressable style={styles.joinPill} onPress={(event) => { event.stopPropagation(); onJoin(group); }} disabled={joining}><Text style={styles.joinPillText}>{joining ? 'Joining' : 'Join'}</Text></Pressable>}
     </Pressable>
   );
 }
@@ -552,16 +556,21 @@ const styles = StyleSheet.create({
   postBody: { color: '#E5E9E6', fontSize: 14, lineHeight: 21 },
   postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
   engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
-  list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
-  listRow: { minHeight: 58, paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
-  groupAvatar: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden', backgroundColor: '#101813' },
+  listRow: { minHeight: 62, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.16)', overflow: 'hidden', position: 'relative' },
+  communityCoverImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: '100%', height: '100%' },
+  communityCoverFallback: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#1A2A22' },
+  communityCoverOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(10,18,14,0.78)' },
+  communityProfileAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#213229', borderWidth: 2, borderColor: 'rgba(255,255,255,0.82)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
+  communityProfileInitials: { color: TEXT, fontSize: 10.5, fontWeight: '900' },
+  communityRowContent: { flex: 1, minWidth: 0 },
   rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
-  rowTitle: { color: TEXT, fontSize: 13.5, fontWeight: '900', flexShrink: 1 },
+  rowTitle: { color: TEXT, fontSize: 13.5, fontWeight: '900', flexShrink: 1, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 3 },
   rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, minWidth: 0 },
-  rowMeta: { color: MUTED, fontSize: 10.5, lineHeight: 14 },
-  rowMetaDot: { color: '#667269', fontSize: 10 },
-  rowReason: { color: '#8FA097', fontSize: 10.5, fontWeight: '700', flexShrink: 1 },
-  joinPill: { minWidth: 48, minHeight: 30, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: '#6F643D', backgroundColor: '#282519', alignItems: 'center', justifyContent: 'center' },
+  rowMeta: { color: '#E1E6E2', fontSize: 10.5, lineHeight: 14, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 2 },
+  rowMetaDot: { color: '#A7B0A9', fontSize: 10 },
+  rowReason: { color: '#C2CEC6', fontSize: 10.5, fontWeight: '700', flexShrink: 1, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 2 },
+  joinPill: { minWidth: 48, minHeight: 30, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: GOLD, backgroundColor: 'rgba(20,25,19,0.88)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   joinPillText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
   seeAllButton: { alignSelf: 'center', minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 14, borderRadius: 99 },
   seeAllText: { color: GOLD, fontSize: 11.5, fontWeight: '900' },
