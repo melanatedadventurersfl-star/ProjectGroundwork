@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createLocalEvent, getEventHostAccess, uploadLocalEventImage } from '../../src/local-events/api';
+import { createLocalEvent, getEventHostAccess, getGroupCampfireAccess, uploadLocalEventImage } from '../../src/local-events/api';
 import { prepareLocalImage } from '../../src/lib/imageUpload';
 import { loadCitiesForState, US_STATES } from '../../src/onboarding/locations';
 
@@ -18,10 +18,12 @@ type EventPhoto = {
 };
 
 export default function CreateLocalEventScreen() {
+  const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>();
+  const communityScoped = Boolean(groupId);
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Hiking');
+  const [category, setCategory] = useState(groupName?.toLowerCase().includes('camp') ? 'Camping' : 'Hiking');
   const [startsAt, setStartsAt] = useState('');
   const [venueName, setVenueName] = useState('');
   const [state, setState] = useState('');
@@ -35,10 +37,11 @@ export default function CreateLocalEventScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getEventHostAccess()
-      .then((access) => setAllowed(access.canCreate))
-      .catch(() => setAllowed(false));
-  }, []);
+    const accessPromise = groupId
+      ? getGroupCampfireAccess(groupId)
+      : getEventHostAccess().then((access) => access.canCreate);
+    accessPromise.then(setAllowed).catch(() => setAllowed(false));
+  }, [groupId]);
 
   useEffect(() => {
     if (!state) {
@@ -77,7 +80,6 @@ export default function CreateLocalEventScreen() {
       setError('Photo library access is required to add an event photo.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -86,16 +88,10 @@ export default function CreateLocalEventScreen() {
       quality: 0.86,
     });
     if (result.canceled || !result.assets[0]) return;
-
     try {
       const asset = result.assets[0];
       const prepared = await prepareLocalImage({ uri: asset.uri, base64: asset.base64 });
-      setPhoto({
-        uri: asset.uri,
-        bytes: new Uint8Array(prepared.bytes),
-        contentType: prepared.contentType,
-        extension: prepared.extension,
-      });
+      setPhoto({ uri: asset.uri, bytes: new Uint8Array(prepared.bytes), contentType: prepared.contentType, extension: prepared.extension });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to prepare this photo.');
     }
@@ -116,6 +112,7 @@ export default function CreateLocalEventScreen() {
         state,
         venueName,
         imageUrl,
+        groupId: groupId ?? null,
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
@@ -132,9 +129,13 @@ export default function CreateLocalEventScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
           <Text style={styles.eyebrow}>CAMPFIRES</Text>
-          <Text style={styles.title}>Hosting is invitation-based</Text>
-          <Text style={styles.body}>Trusted Hosts, Community Leads, and staff can start Campfires. Everyone can browse, RSVP, save, and share them.</Text>
-          <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Back to Outpost</Text></Pressable>
+          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Hosting is invitation-based'}</Text>
+          <Text style={styles.body}>
+            {communityScoped
+              ? `Only Community Leaders and master accounts can create Campfires for ${groupName || 'this Community'}. Members can still view, RSVP, and participate.`
+              : 'Trusted Hosts, Community Leads, and staff can start Campfires. Everyone can browse, RSVP, save, and share them.'}
+          </Text>
+          <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
         </View>
       </SafeAreaView>
     );
@@ -143,16 +144,18 @@ export default function CreateLocalEventScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Outpost</Text></Pressable>
-        <Text style={styles.eyebrow}>MEMBER-LED CAMPFIRE</Text>
+        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ {communityScoped ? groupName || 'Community' : 'Outpost'}</Text></Pressable>
+        <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY CAMPFIRE' : 'MEMBER-LED CAMPFIRE'}</Text>
         <Text style={styles.title}>Start a Campfire</Text>
-        <Text style={styles.body}>Campfires are lightweight member-led meetups: a hike, park hang, paddle, brewery stop, trail walk, or anything else worth gathering for. Official MA Adventures still use the full ticketing, waiver, payment, and readiness flow.</Text>
+        <Text style={styles.body}>
+          {communityScoped
+            ? `Create a lightweight meetup for ${groupName || 'this Community'}. It will appear in the Community’s Campfire tab and the wider Outpost discovery experience.`
+            : 'Campfires are lightweight member-led meetups: a hike, park hang, paddle, brewery stop, trail walk, or anything else worth gathering for. Official MA Adventures still use the full ticketing, waiver, payment, and readiness flow.'}
+        </Text>
 
         <Text style={styles.label}>Campfire photo</Text>
         <Pressable onPress={() => void choosePhoto()} style={styles.photoPicker}>
-          {photo ? (
-            <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFill} />
-          ) : (
+          {photo ? <Image source={{ uri: photo.uri }} resizeMode="cover" style={StyleSheet.absoluteFill} /> : (
             <View style={styles.photoEmpty}>
               <Text style={styles.photoIcon}>＋</Text>
               <Text style={styles.photoTitle}>Add a cover photo</Text>
@@ -160,12 +163,7 @@ export default function CreateLocalEventScreen() {
             </View>
           )}
         </Pressable>
-        {photo ? (
-          <View style={styles.photoActions}>
-            <Pressable onPress={() => void choosePhoto()}><Text style={styles.photoActionText}>Change photo</Text></Pressable>
-            <Pressable onPress={() => setPhoto(null)}><Text style={styles.removePhotoText}>Remove</Text></Pressable>
-          </View>
-        ) : null}
+        {photo ? <View style={styles.photoActions}><Pressable onPress={() => void choosePhoto()}><Text style={styles.photoActionText}>Change photo</Text></Pressable><Pressable onPress={() => setPhoto(null)}><Text style={styles.removePhotoText}>Remove</Text></Pressable></View> : null}
 
         <Text style={styles.label}>Campfire name</Text>
         <TextInput value={title} onChangeText={setTitle} placeholder="Saturday morning trail walk" placeholderTextColor="#758179" style={styles.input} />
@@ -174,23 +172,10 @@ export default function CreateLocalEventScreen() {
         <TextInput value={description} onChangeText={setDescription} placeholder="Tell everyone what to expect." placeholderTextColor="#758179" multiline style={[styles.input, styles.multiline]} />
 
         <Text style={styles.label}>Category</Text>
-        <View style={styles.chips}>
-          {categories.map((item) => (
-            <Pressable key={item} onPress={() => setCategory(item)} style={[styles.chip, category === item && styles.chipActive]}>
-              <Text style={[styles.chipText, category === item && styles.chipTextActive]}>{item}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <View style={styles.chips}>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[styles.chip, category === item && styles.chipActive]}><Text style={[styles.chipText, category === item && styles.chipTextActive]}>{item}</Text></Pressable>)}</View>
 
         <Text style={styles.label}>Date and time</Text>
-        <TextInput
-          value={startsAt}
-          onChangeText={setStartsAt}
-          autoCapitalize="none"
-          placeholder="2026-08-22T09:00"
-          placeholderTextColor="#758179"
-          style={styles.input}
-        />
+        <TextInput value={startsAt} onChangeText={setStartsAt} autoCapitalize="none" placeholder="2026-08-22T09:00" placeholderTextColor="#758179" style={styles.input} />
         <Text style={styles.help}>Use YYYY-MM-DDTHH:MM in your local time.</Text>
 
         <Text style={styles.label}>Meet here</Text>
@@ -198,35 +183,13 @@ export default function CreateLocalEventScreen() {
 
         <Text style={styles.label}>State</Text>
         <TextInput value={stateSearch} onChangeText={setStateSearch} placeholder={state ? `Selected: ${state}` : 'Search state'} placeholderTextColor="#758179" style={styles.input} />
-        <View style={styles.options}>
-          {filteredStates.slice(0, stateSearch ? 12 : 6).map((item) => (
-            <Pressable key={item.abbreviation} onPress={() => { setState(item.abbreviation); setStateSearch(item.name); }} style={[styles.option, state === item.abbreviation && styles.optionActive]}>
-              <Text style={styles.optionText}>{item.name} ({item.abbreviation})</Text>
-            </Pressable>
-          ))}
-        </View>
+        <View style={styles.options}>{filteredStates.slice(0, stateSearch ? 12 : 6).map((item) => <Pressable key={item.abbreviation} onPress={() => { setState(item.abbreviation); setStateSearch(item.name); }} style={[styles.option, state === item.abbreviation && styles.optionActive]}><Text style={styles.optionText}>{item.name} ({item.abbreviation})</Text></Pressable>)}</View>
 
-        {state ? (
-          <>
-            <Text style={styles.label}>City</Text>
-            <TextInput value={citySearch} onChangeText={setCitySearch} placeholder={city ? `Selected: ${city}` : 'Search city'} placeholderTextColor="#758179" style={styles.input} />
-            {loadingCities ? <ActivityIndicator color="#D7B45A" /> : (
-              <View style={styles.options}>
-                {filteredCities.map((item) => (
-                  <Pressable key={item} onPress={() => { setCity(item); setCitySearch(item); }} style={[styles.option, city === item && styles.optionActive]}>
-                    <Text style={styles.optionText}>{item}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </>
-        ) : null}
+        {state ? <><Text style={styles.label}>City</Text><TextInput value={citySearch} onChangeText={setCitySearch} placeholder={city ? `Selected: ${city}` : 'Search city'} placeholderTextColor="#758179" style={styles.input} />{loadingCities ? <ActivityIndicator color="#D7B45A" /> : <View style={styles.options}>{filteredCities.map((item) => <Pressable key={item} onPress={() => { setCity(item); setCitySearch(item); }} style={[styles.option, city === item && styles.optionActive]}><Text style={styles.optionText}>{item}</Text></Pressable>)}</View>}</> : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}>
-          <Text style={styles.primaryButtonText}>{saving ? 'Uploading & starting…' : 'Start Campfire'}</Text>
-        </Pressable>
-        <Text style={styles.disclaimer}>Campfires display the host’s name and are clearly marked as member-led, not official Melanated Adventurers experiences.</Text>
+        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.primaryButton, !canSubmit && styles.disabled]}><Text style={styles.primaryButtonText}>{saving ? 'Uploading & starting…' : 'Start Campfire'}</Text></Pressable>
+        <Text style={styles.disclaimer}>{communityScoped ? 'This Campfire will be linked to the Community.' : 'Campfires display the host’s name and are clearly marked as member-led, not official Melanated Adventurers experiences.'}</Text>
       </ScrollView>
     </SafeAreaView>
   );
