@@ -9,7 +9,6 @@ import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 import {
   getCommunityProfile,
   getConnectionStatus,
-  removeConnection,
   requestConnection,
   respondToConnection,
   type CommunityProfile,
@@ -24,8 +23,8 @@ function Avatar({ url, name }: { url?: string | null; name?: string | null }) {
 }
 
 function Stat({ icon, value, label }: { icon: AppIconName; value: number; label: string }) {
-  return <View style={styles.statCell}>
-    <AppIcon name={icon} color="#F5C341" size={18} />
+  return <View style={styles.statItem}>
+    <AppIcon name={icon} color="#F5C341" size={16} />
     <Text style={styles.statValue}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>;
@@ -34,10 +33,8 @@ function Stat({ icon, value, label }: { icon: AppIconName; value: number; label:
 function CollectionCard({ icon, value, label }: { icon: AppIconName; value: number; label: string }) {
   return <View style={styles.collectionCard}>
     <View style={styles.collectionIcon}><AppIcon name={icon} color="#F5C341" size={24} /></View>
-    <View>
-      <Text style={styles.collectionValue}>{value}</Text>
-      <Text style={styles.collectionLabel}>{label}</Text>
-    </View>
+    <Text style={styles.collectionValue}>{value}</Text>
+    <Text style={styles.collectionLabel}>{label}</Text>
   </View>;
 }
 
@@ -75,14 +72,13 @@ export default function CommunityProfileScreen() {
     void load();
   }, [load]));
 
-  async function act(action: 'request' | 'accept' | 'decline' | 'remove') {
+  async function act(action: 'request' | 'accept' | 'decline') {
     if (!id) return;
     setWorking(true);
     try {
       if (action === 'request') await requestConnection(id);
       if (action === 'accept' && connectionId) await respondToConnection(connectionId, 'accepted');
       if (action === 'decline' && connectionId) await respondToConnection(connectionId, 'declined');
-      if (action === 'remove' && connectionId) await removeConnection(connectionId);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to update this Trailmate connection.');
@@ -98,30 +94,27 @@ export default function CommunityProfileScreen() {
 
   const location = [profile.home_city, profile.home_state].filter(Boolean).join(', ');
   const isSelf = connectionStatus === 'self';
+  const isConnected = connectionStatus === 'accepted';
   const platformRole = humanizeRole(profile.platform_role);
   const hostRole = humanizeRole(profile.event_host_level);
-  const memberSince = new Date(profile.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  const memberSince = new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
-  const relationshipAction = !isSelf ? <View style={styles.relationshipWrap}>
+  const relationshipAction = !isSelf && !isConnected ? <View style={styles.relationshipArea}>
     {(connectionStatus === 'none' || connectionStatus === 'declined') ? <Pressable disabled={working} style={styles.primaryButton} onPress={() => void act('request')}>
-      <AppIcon name="connections" color="#17211C" size={19} />
+      <AppIcon name="connections" color="#17211C" size={18} />
       <Text style={styles.primaryButtonText}>{working ? 'Sending…' : 'Add Trailmate'}</Text>
     </Pressable> : null}
     {connectionStatus === 'pending_sent' ? <View style={styles.stateCard}>
-      <View style={styles.stateIcon}><AppIcon name="checkmark" color="#F5C341" size={22} /></View>
-      <View style={styles.stateCopy}><Text style={styles.stateTitle}>Request sent</Text><Text style={styles.stateBody}>You’ll become Trailmates when they accept.</Text></View>
+      <AppIcon name="checkmark" color="#F5C341" size={19} />
+      <View style={styles.stateCopy}><Text style={styles.stateTitle}>Request sent</Text><Text style={styles.stateBody}>Waiting for this member to accept.</Text></View>
     </View> : null}
     {connectionStatus === 'pending_received' ? <View style={styles.stateCardColumn}>
       <Text style={styles.stateTitle}>Trailmate request</Text>
-      <Text style={styles.stateBody}>This member wants to become a Trailmate.</Text>
+      <Text style={styles.stateBody}>This member wants to connect with you.</Text>
       <View style={styles.buttonRow}>
         <Pressable disabled={working} style={styles.primarySmall} onPress={() => void act('accept')}><Text style={styles.primaryButtonText}>Accept</Text></Pressable>
         <Pressable disabled={working} style={styles.secondarySmall} onPress={() => void act('decline')}><Text style={styles.secondaryText}>Decline</Text></Pressable>
       </View>
-    </View> : null}
-    {connectionStatus === 'accepted' ? <View style={styles.connectedCard}>
-      <View style={styles.connectedLeft}><AppIcon name="checkmark" color="#BFE2C9" size={20} /><View><Text style={styles.connectedText}>Trailmates</Text><Text style={styles.stateBody}>Connected across Campfire and your Crew.</Text></View></View>
-      <Pressable disabled={working} onPress={() => void act('remove')}><Text style={styles.removeText}>Remove</Text></Pressable>
     </View> : null}
   </View> : null;
 
@@ -131,41 +124,50 @@ export default function CommunityProfileScreen() {
         <Pressable style={styles.backButton} onPress={() => router.back()} hitSlop={10}>
           <AppIcon name="chevron-forward" color="#F5C341" size={24} style={{ transform: [{ rotate: '180deg' }] }} />
         </Pressable>
-        {isSelf ? <Pressable style={styles.editPill} onPress={() => router.push('/member/profile?edit=1')}><AppIcon name="edit" color="#F5C341" size={15} /><Text style={styles.editPillText}>Edit profile</Text></Pressable> : null}
-      </View>
-
-      <View style={styles.profileHeaderCard}>
-        <View style={styles.identityRankRow}>
-          <View style={styles.identityCluster}>
-            <Avatar url={profile.avatar_url} name={profile.display_name} />
-            <View style={styles.heroCopy}>
-              <Text style={styles.name} numberOfLines={2}>{profile.display_name ?? 'Adventurer'}</Text>
-              {profile.username ? <Text style={styles.handle}>@{profile.username}</Text> : null}
-              {location ? <View style={styles.locationRow}><AppIcon name="location" color="#AEB9B4" size={15} /><Text style={styles.location}>{location}</Text></View> : null}
-              <View style={styles.metaRow}>
-                {platformRole ? <Text style={styles.rolePill}>{platformRole}</Text> : null}
-                {hostRole ? <Text style={styles.rolePill}>{hostRole}</Text> : null}
-                <Text style={styles.memberSince}>Member since {memberSince}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.rankIdentity}>
-            <RankEmblem rank={rank} size={50} />
-            <Text style={styles.rankCompact}>{rank.toUpperCase()}</Text>
-          </View>
-        </View>
-
-        {profile.bio ? <Text style={styles.bio} numberOfLines={3}>{profile.bio}</Text> : null}
-
-        {profile.can_see_full_profile ? <View style={styles.statsCard}>
-          <Stat icon="adventure" value={profile.adventure_count} label="Adventures" />
-          <Stat icon="stamp" value={profile.stamp_count} label="Stamps" />
-          <Stat icon="badge" value={profile.badge_count} label="Badges" />
-          <Stat icon="photos" value={profile.post_count} label="Posts" />
+        {isSelf ? <Pressable style={styles.topAction} onPress={() => router.push('/member/profile?edit=1')}><AppIcon name="edit" color="#F5C341" size={15} /><Text style={styles.topActionText}>Edit profile</Text></Pressable> : null}
+        {isConnected ? <View style={styles.connectedPill}>
+          <AppIcon name="checkmark" color="#BFE2C9" size={16} />
+          <Text style={styles.connectedPillText}>Trailmates</Text>
         </View> : null}
-
-        {relationshipAction}
       </View>
+
+      <View style={styles.coverShell}>
+        {profile.cover_url ? <Image source={{ uri: profile.cover_url }} style={styles.coverImage} /> : <View style={styles.coverPlaceholder}>
+          <AppIcon name="adventure" color="#D7B45A" size={34} />
+          <Text style={styles.coverPlaceholderText}>Adventure lives here</Text>
+        </View>}
+        <View style={styles.coverShade} />
+      </View>
+
+      <View style={styles.profileIdentity}>
+        <View style={styles.avatarWrap}><Avatar url={profile.avatar_url} name={profile.display_name} /></View>
+        <View style={styles.identityCopy}>
+          <Text style={styles.name} numberOfLines={2}>{profile.display_name ?? 'Adventurer'}</Text>
+          {profile.username ? <Text style={styles.handle}>@{profile.username}</Text> : null}
+          {location ? <View style={styles.locationRow}><AppIcon name="location" color="#AEB9B4" size={14} /><Text style={styles.location}>{location}</Text></View> : null}
+          <View style={styles.rankLine}><RankEmblem rank={rank} size={24} /><Text style={styles.rankLineText}>{rank.toUpperCase()}</Text></View>
+        </View>
+      </View>
+
+      {(platformRole || hostRole) ? <View style={styles.roleRow}>
+        {platformRole ? <Text style={styles.rolePill}>{platformRole}</Text> : null}
+        {hostRole ? <Text style={styles.rolePill}>{hostRole}</Text> : null}
+      </View> : null}
+
+      {profile.can_see_full_profile ? <View style={styles.statLine}>
+        <Stat icon="stamp" value={profile.stamp_count} label="Stamps" />
+        <Text style={styles.statDot}>•</Text>
+        <Stat icon="badge" value={profile.badge_count} label="Badges" />
+        <Text style={styles.statDot}>•</Text>
+        <Stat icon="adventure" value={profile.adventure_count} label="Adventures" />
+        <Text style={styles.statDot}>•</Text>
+        <Stat icon="photos" value={profile.post_count} label="Posts" />
+      </View> : null}
+
+      {profile.bio ? <Text style={styles.bioText}>{profile.bio}</Text> : null}
+      {profile.interests?.length ? <View style={styles.headerChips}>{profile.interests.map(interest => <Text key={interest} style={styles.headerChip}>{interest}</Text>)}</View> : null}
+      <Text style={styles.joinedText}>Joined {memberSince}</Text>
+      {relationshipAction}
 
       {!profile.can_see_full_profile ? <View style={styles.privateCard}>
         <AppIcon name="privacy" color="#F5C341" size={24} />
@@ -174,7 +176,7 @@ export default function CommunityProfileScreen() {
         <View style={styles.tabs}>
           {(['journey', 'posts', 'about'] as ProfileTab[]).map(value => <Pressable key={value} style={styles.tab} onPress={() => setTab(value)}>
             <Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text>
-            {tab === value ? <View style={styles.tabIndicator} /> : null}
+            {tab === value ? <View style={styles.tabUnderline} /> : null}
           </Pressable>)}
         </View>
 
@@ -186,18 +188,6 @@ export default function CommunityProfileScreen() {
               <Text style={styles.journeyMeta}>{rank} • {profile.stamp_count} stamp{profile.stamp_count === 1 ? '' : 's'}</Text>
               <Text style={styles.muted}>{profile.adventure_count ? `${profile.adventure_count} completed adventure${profile.adventure_count === 1 ? '' : 's'} and counting.` : 'Their trail story is just getting started.'}</Text>
             </View>
-          </View>
-
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Adventure highlights</Text>{profile.adventure_count > 0 ? <Text style={styles.sectionAction}>{profile.adventure_count} completed</Text> : null}</View>
-            {profile.adventure_count > 0 ? <View style={styles.highlightRow}>
-              <View style={styles.highlightIcon}><AppIcon name="trips" color="#F5C341" size={24} /></View>
-              <View style={styles.highlightCopy}><Text style={styles.highlightTitle}>Trail history unlocked</Text><Text style={styles.muted}>Completed adventures will continue building this member’s journey.</Text></View>
-            </View> : <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}><AppIcon name="adventure" color="#7F8D85" size={25} /></View>
-              <Text style={styles.emptyTitle}>The trail starts here</Text>
-              <Text style={styles.emptyBody}>When they log an adventure, their milestones will begin appearing here.</Text>
-            </View>}
           </View>
 
           <View style={styles.sectionCard}>
@@ -220,9 +210,9 @@ export default function CommunityProfileScreen() {
           <Text style={styles.cardTitle}>About</Text>
           {profile.bio ? <Text style={styles.aboutBio}>{profile.bio}</Text> : <Text style={styles.muted}>They haven’t added an about section yet.</Text>}
           {profile.pronouns ? <><Text style={styles.sectionLabel}>PRONOUNS</Text><Text style={styles.muted}>{profile.pronouns}</Text></> : null}
-          {profile.interests?.length ? <><Text style={styles.sectionLabel}>INTERESTS</Text><View style={styles.chips}>{profile.interests.map(interest => <Text key={interest} style={styles.chip}>{interest}</Text>)}</View></> : null}
+          {profile.interests?.length ? <><Text style={styles.sectionLabel}>INTERESTS</Text><View style={styles.headerChips}>{profile.interests.map(interest => <Text key={interest} style={styles.headerChip}>{interest}</Text>)}</View></> : null}
           <Text style={styles.sectionLabel}>MEMBER SINCE</Text>
-          <Text style={styles.muted}>{new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</Text>
+          <Text style={styles.muted}>{memberSince}</Text>
         </View> : null}
       </>}
 
@@ -232,39 +222,47 @@ export default function CommunityProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0B110E' },
-  center: { flex: 1, backgroundColor: '#0B110E', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  content: { padding: 16, paddingBottom: 96, gap: 12 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 42 },
-  backButton: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: '#2A352F', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111815' },
-  editPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#4B4A34', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  editPillText: { color: '#F5C341', fontWeight: '800', fontSize: 12 },
-  profileHeaderCard: { backgroundColor: '#101714', borderRadius: 24, borderWidth: 1, borderColor: '#29342E', padding: 16, gap: 14 },
-  identityRankRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
-  identityCluster: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 13 },
-  avatar: { width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: '#F5C341', backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 30, fontWeight: '900', color: '#F7F8F3' },
-  heroCopy: { flex: 1, minWidth: 0 },
-  name: { color: '#F7F8F3', fontSize: 24, lineHeight: 28, fontWeight: '900' },
-  handle: { color: '#F5C341', fontWeight: '800', marginTop: 2, fontSize: 14 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  location: { color: '#C4CCC7', fontSize: 13 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 8 },
+  safe: { flex: 1, backgroundColor: '#09110F' },
+  center: { flex: 1, backgroundColor: '#09110F', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 108, gap: 11 },
+  topBar: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  topAction: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#4B4A34', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  topActionText: { color: '#F5C341', fontWeight: '800', fontSize: 12 },
+  connectedPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#395043', backgroundColor: '#17211C', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  connectedPillText: { color: '#BFE2C9', fontWeight: '900', fontSize: 12 },
+  coverShell: { aspectRatio: 12 / 5, borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: '#27332F', backgroundColor: '#111A17', position: 'relative' },
+  coverImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  coverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,8,.08)' },
+  coverPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: '#122019' },
+  coverPlaceholderText: { color: '#D7B45A', fontWeight: '800' },
+  profileIdentity: { flexDirection: 'row', alignItems: 'flex-end', gap: 11, marginTop: -38, paddingHorizontal: 10, zIndex: 2 },
+  avatarWrap: { width: 76, height: 76, position: 'relative', borderRadius: 38, borderWidth: 3, borderColor: '#09110F', backgroundColor: '#09110F' },
+  avatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#F5C341', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 29, fontWeight: '900', color: '#121A17' },
+  identityCopy: { flex: 1, minWidth: 0, paddingBottom: 1 },
+  name: { fontSize: 25, fontWeight: '900', lineHeight: 28, color: '#F7F8F3', letterSpacing: -0.35 },
+  handle: { color: '#F5C341', fontSize: 13, fontWeight: '800', marginTop: 1 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  location: { color: '#AEB9B4', fontSize: 13 },
+  rankLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  rankLineText: { color: '#F7F8F3', fontSize: 11.5, fontWeight: '900', letterSpacing: 0.5 },
+  roleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingHorizontal: 10 },
   rolePill: { color: '#DCE8DF', backgroundColor: '#294132', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, fontSize: 10, fontWeight: '900' },
-  memberSince: { color: '#7F8D85', fontSize: 10, fontWeight: '700' },
-  rankIdentity: { alignItems: 'center', minWidth: 68, paddingTop: 2 },
-  rankCompact: { color: '#F5C341', fontSize: 9, fontWeight: '900', marginTop: 4, maxWidth: 72, textAlign: 'center' },
-  bio: { color: '#D4DBD7', fontSize: 14, lineHeight: 20 },
-  statsCard: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#29342E', paddingTop: 14 },
-  statCell: { flex: 1, alignItems: 'center', gap: 2, borderRightWidth: 1, borderRightColor: '#252F2A' },
-  statValue: { color: '#F7F8F3', fontWeight: '900', fontSize: 18 },
-  statLabel: { color: '#8F9C95', fontSize: 9, fontWeight: '700' },
-  relationshipWrap: { gap: 10 },
-  primaryButton: { backgroundColor: '#F5C341', borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9 },
+  statLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 5, flexWrap: 'wrap' },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statValue: { color: '#F7F8F3', fontWeight: '900', fontSize: 13 },
+  statLabel: { color: '#A7B1AB', fontSize: 11, fontWeight: '700' },
+  statDot: { color: '#526058', marginHorizontal: 7 },
+  bioText: { color: '#D4DBD7', fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
+  headerChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  headerChip: { color: '#F0D083', backgroundColor: '#26372D', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 11, fontWeight: '700' },
+  joinedText: { color: '#7F8D85', fontSize: 11, fontWeight: '700' },
+  relationshipArea: { gap: 9 },
+  primaryButton: { backgroundColor: '#F5C341', borderRadius: 14, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9 },
   primaryButtonText: { color: '#17211C', fontWeight: '900', fontSize: 14 },
   stateCard: { backgroundColor: '#17211C', borderRadius: 14, padding: 13, borderWidth: 1, borderColor: '#2E3D34', flexDirection: 'row', alignItems: 'center', gap: 10 },
   stateCardColumn: { backgroundColor: '#17211C', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2E3D34', gap: 5 },
-  stateIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#27352E', alignItems: 'center', justifyContent: 'center' },
   stateCopy: { flex: 1 },
   stateTitle: { color: '#FFF8E8', fontWeight: '900', fontSize: 15 },
   stateBody: { color: '#AEB8B2', lineHeight: 18, fontSize: 12 },
@@ -272,18 +270,14 @@ const styles = StyleSheet.create({
   primarySmall: { flex: 1, backgroundColor: '#F5C341', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
   secondarySmall: { flex: 1, borderWidth: 1, borderColor: '#536159', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
   secondaryText: { color: '#FFF8E8', fontWeight: '800' },
-  connectedCard: { backgroundColor: '#17211C', borderRadius: 14, padding: 13, borderWidth: 1, borderColor: '#395043', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  connectedLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  connectedText: { color: '#BFE2C9', fontWeight: '900', fontSize: 14 },
-  removeText: { color: '#C8B986', fontWeight: '700', fontSize: 11 },
   privateCard: { backgroundColor: '#101714', borderRadius: 18, padding: 18, borderWidth: 1, borderColor: '#29342E', flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   privateCopy: { flex: 1, gap: 4 },
   privateTitle: { color: '#F7F8F3', fontSize: 18, fontWeight: '900' },
-  tabs: { flexDirection: 'row', backgroundColor: '#101714', borderRadius: 16, borderWidth: 1, borderColor: '#29342E', overflow: 'hidden' },
-  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 13, paddingBottom: 11, position: 'relative' },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#22302A', marginTop: 3 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 12, paddingBottom: 10, position: 'relative' },
   tabText: { color: '#8F9C95', fontWeight: '800', fontSize: 13 },
   tabTextActive: { color: '#F7F8F3' },
-  tabIndicator: { position: 'absolute', left: 18, right: 18, bottom: 0, height: 3, borderRadius: 3, backgroundColor: '#F5C341' },
+  tabUnderline: { position: 'absolute', left: 16, right: 16, bottom: -1, height: 3, borderRadius: 3, backgroundColor: '#F5C341' },
   journeyStack: { gap: 12 },
   journeyHero: { backgroundColor: '#101714', borderRadius: 20, borderWidth: 1, borderColor: '#29342E', padding: 16, flexDirection: 'row', gap: 12 },
   journeyIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
@@ -299,18 +293,12 @@ const styles = StyleSheet.create({
   highlightIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
   highlightCopy: { flex: 1, gap: 2 },
   highlightTitle: { color: '#E6EBE8', fontWeight: '900', fontSize: 14 },
-  emptyState: { alignItems: 'center', paddingVertical: 16, paddingHorizontal: 18, gap: 6 },
-  emptyIcon: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#18211D', alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  emptyTitle: { color: '#E8ECE9', fontWeight: '900', fontSize: 15 },
-  emptyBody: { color: '#87948D', lineHeight: 18, fontSize: 12, textAlign: 'center' },
   collectionGrid: { flexDirection: 'row', gap: 10 },
-  collectionCard: { flex: 1, minHeight: 92, backgroundColor: '#141D19', borderRadius: 14, padding: 12, gap: 8, justifyContent: 'space-between' },
+  collectionCard: { flex: 1, minHeight: 105, backgroundColor: '#141D19', borderRadius: 14, padding: 12, gap: 7, justifyContent: 'space-between' },
   collectionIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
   collectionValue: { color: '#F7F8F3', fontWeight: '900', fontSize: 20 },
   collectionLabel: { color: '#8F9C95', fontSize: 10, fontWeight: '700' },
   aboutBio: { color: '#D4DBD7', lineHeight: 21 },
   sectionLabel: { color: '#7F8D85', fontSize: 10, fontWeight: '900', letterSpacing: 1, marginTop: 6 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  chip: { color: '#F0D083', backgroundColor: '#26372D', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 11, fontWeight: '700' },
   error: { color: '#F0A39A', textAlign: 'center', marginTop: 8 },
 });
