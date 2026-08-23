@@ -27,6 +27,7 @@ export type AppIconName =
   | 'photos'
   | 'photo'
   | 'add'
+  | 'trail'
   | 'trail-family'
   | 'location'
   | 'edit'
@@ -58,6 +59,7 @@ const icons: Record<AppIconName, IoniconName> = {
   photos: 'images-outline',
   photo: 'image-outline',
   add: 'add-circle-outline',
+  trail: 'compass-outline',
   'trail-family': 'people-outline',
   location: 'location-outline',
   edit: 'pencil-outline',
