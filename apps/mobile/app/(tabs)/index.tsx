@@ -104,16 +104,21 @@ export default function TrailheadScreen() {
   const reservedAdventures = useMemo(() => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    return [...queue]
+    const unique = new Map<string, AdventureQueueItem>();
+    [...queue]
       .filter((item) => new Date(item.starts_at).getTime() >= startOfToday.getTime())
-      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
+      .forEach((item) => {
+        if (!unique.has(item.adventure_id)) unique.set(item.adventure_id, item);
+      });
+    return [...unique.values()];
   }, [queue]);
   const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
   const campfirePosts = useMemo(() => {
     const filtered = communityPosts.filter((post) => campfireMode === 'circle'
       ? post.audience === 'circle'
       : post.audience === 'everyone' || post.audience === 'connections');
-    return filtered.slice(0, 2);
+    return filtered.slice(0, 3);
   }, [communityPosts, campfireMode]);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -195,10 +200,13 @@ export default function TrailheadScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#D7B45A" />}>
       <View style={styles.topRow}>
-        <ImageBackground source={require('../../assets/ma-pathfinder-mark.png')} style={{ width: 56, height: 56 }} resizeMode="contain" accessibilityLabel="Melanated Adventurers" />
+        <View style={styles.brandRow}>
+          <ImageBackground source={require('../../assets/ma-pathfinder-mark.png')} style={styles.brandMark} resizeMode="contain" accessibilityLabel="Melanated Adventurers" />
+          <Text style={styles.pageTitle}>TRAILHEAD</Text>
+        </View>
         <View style={styles.topActions}>
           <Pressable accessibilityLabel="Notifications" onPress={() => session ? router.push('/notifications') : promptForAccount('Notifications')} style={styles.iconButton}><AppIcon name="notifications" color="#F6F4EE" size={22} /></Pressable>
-          <Pressable accessibilityLabel="Profile" onPress={() => session ? router.push('/member/profile') : promptForAccount('Profile')} style={styles.iconButton}><AppIcon name="profile" color="#F6F4EE" size={22} /></Pressable>
+          <Pressable accessibilityLabel="Menu" onPress={() => router.push('/menu')} style={styles.iconButton}><AppIcon name="menu" color="#F6F4EE" size={22} /></Pressable>
         </View>
       </View>
 
@@ -218,7 +226,7 @@ export default function TrailheadScreen() {
               const adventure = adventureById.get(item.adventure_id);
               return (
                 <Pressable
-                  key={`${item.order_id}-${item.adventure_id}`}
+                  key={item.adventure_id}
                   style={styles.wideCard}
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${item.title}`}
@@ -233,9 +241,7 @@ export default function TrailheadScreen() {
                       </View>
                       <Text style={styles.wideTitle} numberOfLines={2}>{item.title}</Text>
                       <Text style={styles.wideMeta}>{shortDate(item.starts_at)} · {item.city}, {item.state}</Text>
-                      <View style={styles.wideFooter}>
-                        <Text style={styles.wideLink}>View Adventure →</Text>
-                      </View>
+                      <View style={styles.wideFooter}><Text style={styles.wideLink}>View Adventure →</Text></View>
                     </View>
                   </AdventureImageBackground>
                 </Pressable>
@@ -274,7 +280,7 @@ export default function TrailheadScreen() {
         </View>
       ) : null}
 
-      <View style={styles.campfireCard}>
+      <View style={styles.campfireSection}>
         <View style={styles.campfireTopRow}>
           <Text style={styles.campfireTitle}>Around the Campfire</Text>
           <Pressable onPress={() => session ? router.push('/(tabs)/community') : promptForAccount('Campfire')} accessibilityRole="button"><Text style={styles.linkBare}>{session ? 'See all →' : 'Sign in →'}</Text></Pressable>
@@ -284,16 +290,17 @@ export default function TrailheadScreen() {
           {session && campfirePosts.length ? campfirePosts.map((post) => (
             <Pressable key={post.id} style={({ pressed }) => [styles.campfirePost, pressed && styles.campfirePostPressed]} onPress={() => router.push(`/community/${post.id}`)} accessibilityRole="button" accessibilityLabel={`Open post from ${post.author_name}`}>
               <View style={styles.campfireAvatar}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.campfireAvatarImage} /> : <Text style={styles.campfireAvatarText}>{initials(post.author_name)}</Text>}</View>
-              <View style={styles.campfirePostBody}><View style={styles.campfireAuthorRow}><Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text><Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text></View><View style={styles.campfirePostContent}><View style={styles.campfirePostCopy}><Text style={styles.campfirePostText} numberOfLines={2}>{post.body}</Text><Text style={styles.campfireEngagement}>{post.reaction_count || 0} reactions · {post.comment_count || 0} comments</Text></View>{post.image_url ? <Image source={{ uri: post.image_url }} style={styles.campfireMediaThumb} /> : null}</View></View>
+              <View style={styles.campfirePostBody}>
+                <View style={styles.campfireAuthorRow}><Text style={styles.campfireAuthor} numberOfLines={1}>{post.author_name}</Text><Text style={styles.campfireTime}>{relativeTime(post.created_at)}</Text></View>
+                <Text style={styles.campfirePostText} numberOfLines={3}>{post.body}</Text>
+                {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.campfireMediaThumb} /> : null}
+                <View style={styles.campfireEngagementRow}><Text style={styles.campfireEngagement}>♡ {post.reaction_count || 0}</Text><Text style={styles.campfireEngagement}>◯ {post.comment_count || 0}</Text></View>
+              </View>
             </Pressable>
           )) : (
             <View style={styles.campfireEmpty}><Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.') : 'Meet your outdoor community.'}</Text><Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see your Crew posts here.' : campfireMode === 'circle' ? 'New posts from your Crews will show up here.' : 'Recent community posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text></View>
           )}
         </View>
-        <Pressable style={styles.campfireFooter} onPress={() => session ? router.push('/(tabs)/community') : promptForAccount('Campfire')} accessibilityRole="button">
-          <Text style={styles.campfireFooterText}>{session ? 'See what everyone’s talking about' : 'Join the conversation'}</Text>
-          <Text style={styles.campfireFooterArrow}>→</Text>
-        </Pressable>
       </View>
     </ScrollView>
   );
@@ -301,8 +308,11 @@ export default function TrailheadScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0F1713' },
-  content: { paddingHorizontal: 18, paddingTop: 52, paddingBottom: 48, gap: 20 },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 48, gap: 20 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 58 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  brandMark: { width: 50, height: 50 },
+  pageTitle: { color: '#F6F4EE', fontSize: 15, fontWeight: '900', letterSpacing: 2.2 },
   topActions: { flexDirection: 'row', gap: 10 },
   iconButton: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
   loader: { margin: 18 },
@@ -338,7 +348,7 @@ const styles = StyleSheet.create({
   emptyAdventureCard: { minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: '#34463C', backgroundColor: '#17211C', paddingHorizontal: 18, paddingVertical: 16, justifyContent: 'center' },
   emptyAdventureTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900' },
   emptyAdventureText: { color: '#AFC0B6', fontSize: 12, lineHeight: 17, marginTop: 4 },
-  campfireCard: { borderRadius: 24, padding: 16, backgroundColor: '#17211C', borderWidth: 1, borderColor: '#34463C', gap: 10 },
+  campfireSection: { gap: 10, paddingTop: 2 },
   campfireTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   campfireTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900', flexShrink: 1 },
   campfireSwitch: { alignSelf: 'flex-start', flexDirection: 'row', backgroundColor: '#132019', borderRadius: 999, padding: 3, gap: 2, borderWidth: 1, borderColor: '#31443A' },
@@ -346,25 +356,21 @@ const styles = StyleSheet.create({
   campfireSwitchActive: { backgroundColor: '#D7B45A' },
   campfireSwitchText: { color: '#AFC0B6', fontSize: 11, fontWeight: '800' },
   campfireSwitchTextActive: { color: '#17211C' },
-  campfireFeed: { gap: 0 },
-  campfirePost: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#2B3B33' },
+  campfireFeed: { gap: 10 },
+  campfirePost: { flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 12, borderRadius: 17, borderWidth: 1, borderColor: '#2B3B33', backgroundColor: '#121D18' },
   campfirePostPressed: { opacity: 0.72 },
-  campfireAvatar: { width: 38, height: 38, borderRadius: 19, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
+  campfireAvatar: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
   campfireAvatarImage: { width: '100%', height: '100%' },
   campfireAvatarText: { color: '#F0D083', fontSize: 11, fontWeight: '900' },
-  campfirePostBody: { flex: 1, gap: 3 },
+  campfirePostBody: { flex: 1, minWidth: 0, gap: 5 },
   campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   campfireAuthor: { color: '#FFF8E8', fontSize: 13, fontWeight: '900', flexShrink: 1 },
   campfireTime: { color: '#87968D', fontSize: 10, fontWeight: '700' },
-  campfirePostContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  campfirePostCopy: { flex: 1, gap: 2 },
-  campfirePostText: { color: '#C8D1CC', fontSize: 12, lineHeight: 17 },
-  campfireEngagement: { color: '#829087', fontSize: 10, marginTop: 2 },
-  campfireMediaThumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: '#26372D' },
-  campfireEmpty: { borderTopWidth: 1, borderTopColor: '#2B3B33', paddingVertical: 12, gap: 4 },
+  campfirePostText: { color: '#D6DED9', fontSize: 12.5, lineHeight: 18 },
+  campfireMediaThumb: { width: '100%', height: 94, borderRadius: 12, backgroundColor: '#26372D', marginTop: 2 },
+  campfireEngagementRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 2 },
+  campfireEngagement: { color: '#8C9A92', fontSize: 10.5, fontWeight: '700' },
+  campfireEmpty: { borderRadius: 17, borderWidth: 1, borderColor: '#2B3B33', backgroundColor: '#121D18', padding: 14, gap: 4 },
   campfireEmptyTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
   campfireEmptyText: { color: '#9FAAA4', fontSize: 12, lineHeight: 17 },
-  campfireFooter: { minHeight: 44, borderWidth: 1, borderColor: '#3B4C43', borderRadius: 14, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  campfireFooterText: { color: '#D7B45A', fontSize: 12, fontWeight: '900', flex: 1 },
-  campfireFooterArrow: { color: '#D7B45A', fontSize: 18, fontWeight: '900' },
 });
