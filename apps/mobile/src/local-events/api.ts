@@ -48,10 +48,33 @@ export async function getEventHostAccess(): Promise<EventHostAccess> {
   };
 }
 
-export async function listLocalEvents(): Promise<LocalEvent[]> {
+export async function getGroupCampfireAccess(groupId: string): Promise<boolean> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session?.user.id) return false;
+  const { data, error } = await supabase.rpc('can_create_group_campfire', { target_group_id: groupId });
+  if (error) throw error;
+  return data === true;
+}
+
+async function attachMyRsvps(events: any[]): Promise<LocalEvent[]> {
+  if (!events.length) return [];
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
+  let myRsvps: any[] = [];
+  if (userId) {
+    const { data, error } = await supabase
+      .from('local_event_rsvps')
+      .select('local_event_id, status')
+      .eq('profile_id', userId)
+      .in('local_event_id', events.map((event: any) => event.id));
+    if (error) throw error;
+    myRsvps = data ?? [];
+  }
+  const mine = new Map(myRsvps.map((row: any) => [row.local_event_id, row.status]));
+  return events.map((event: any) => ({ ...event, my_rsvp: mine.get(event.id) ?? null })) as LocalEvent[];
+}
 
+export async function listLocalEvents(): Promise<LocalEvent[]> {
   const { data: events, error } = await supabase
     .from('local_event_discovery')
     .select('*')
@@ -59,24 +82,19 @@ export async function listLocalEvents(): Promise<LocalEvent[]> {
     .gte('starts_at', new Date().toISOString())
     .order('starts_at', { ascending: true });
   if (error) throw error;
-  if (!events?.length) return [];
+  return attachMyRsvps(events ?? []);
+}
 
-  let myRsvps: any[] = [];
-  if (userId) {
-    const { data, error: rsvpError } = await supabase
-      .from('local_event_rsvps')
-      .select('local_event_id, status')
-      .eq('profile_id', userId)
-      .in('local_event_id', events.map((event: any) => event.id));
-    if (rsvpError) throw rsvpError;
-    myRsvps = data ?? [];
-  }
-
-  const mine = new Map(myRsvps.map((row: any) => [row.local_event_id, row.status]));
-  return events.map((event: any) => ({
-    ...event,
-    my_rsvp: mine.get(event.id) ?? null,
-  })) as LocalEvent[];
+export async function listGroupCampfires(groupId: string): Promise<LocalEvent[]> {
+  const { data: events, error } = await supabase
+    .from('local_event_discovery')
+    .select('*')
+    .eq('status', 'published')
+    .eq('group_id', groupId)
+    .gte('starts_at', new Date().toISOString())
+    .order('starts_at', { ascending: true });
+  if (error) throw error;
+  return attachMyRsvps(events ?? []);
 }
 
 export async function getLocalEvent(id: string): Promise<LocalEvent> {
@@ -108,18 +126,13 @@ export async function uploadLocalEventImage(input: {
   if (!input.bytes.byteLength) throw new Error('Event photo is empty.');
 
   const path = `${userId}/local-events/${Date.now()}.${input.extension}`;
-  const payload = input.bytes.buffer.slice(
-    input.bytes.byteOffset,
-    input.bytes.byteOffset + input.bytes.byteLength,
-  ) as ArrayBuffer;
-
+  const payload = input.bytes.buffer.slice(input.bytes.byteOffset, input.bytes.byteOffset + input.bytes.byteLength) as ArrayBuffer;
   const { error } = await supabase.storage.from(EVENT_MEDIA_BUCKET).upload(path, payload, {
     contentType: input.contentType,
     cacheControl: '3600',
     upsert: false,
   });
   if (error) throw error;
-
   const { data } = supabase.storage.from(EVENT_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;
 }
@@ -135,10 +148,16 @@ export async function createLocalEvent(input: {
   venueName?: string;
   capacity?: number;
   imageUrl?: string;
+  groupId?: string | null;
 }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
   if (!userId) throw new Error('You must be signed in to create a local event.');
+
+  if (input.groupId) {
+    const canCreate = await getGroupCampfireAccess(input.groupId);
+    if (!canCreate) throw new Error('Only Community Leaders and master accounts can create a Campfire for this Community.');
+  }
 
   const { data, error } = await supabase.from('local_events').insert({
     host_id: userId,
@@ -154,6 +173,7 @@ export async function createLocalEvent(input: {
     capacity: input.capacity ?? null,
     is_free: true,
     status: 'published',
+    group_id: input.groupId ?? null,
   }).select('id').single();
   if (error) throw error;
   return data.id as string;
