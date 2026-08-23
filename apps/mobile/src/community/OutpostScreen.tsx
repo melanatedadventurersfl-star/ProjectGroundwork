@@ -151,11 +151,12 @@ function CommunityRow({ group, joining, onJoin, reason, managementType }: { grou
     <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
       <View style={styles.groupAvatar}>{group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
-        <View style={styles.rowTitleLine}>
-          <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
+        <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
+        <View style={styles.rowMetaLine}>
+          <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
+          <Text style={styles.rowMetaDot}>·</Text>
           <CommunityTypeBadge type={managementType} compact />
         </View>
-        <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
         {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
       </View>
       <Ionicons name={group.is_member ? 'chevron-forward' : 'add-circle-outline'} size={20} color={group.is_member ? MUTED : GOLD} />
@@ -204,6 +205,7 @@ export default function OutpostScreen() {
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
+  const [profileInterests, setProfileInterests] = useState<string[]>([]);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('You');
   const [loading, setLoading] = useState(true);
@@ -238,6 +240,7 @@ export default function OutpostScreen() {
       setCampfires(nextCampfires);
       setHomeCity(basecamp.profile?.home_city ?? null);
       setHomeState(basecamp.profile?.home_state ?? null);
+      setProfileInterests(Array.isArray(basecamp.profile?.interests) ? basecamp.profile.interests.filter((interest: unknown): interest is string => typeof interest === 'string' && Boolean(interest.trim())) : []);
       setProfileAvatarUrl(basecamp.profile?.avatar_url ?? null);
       setProfileName(basecamp.profile?.display_name || basecamp.profile?.username || 'You');
       setError(null);
@@ -327,6 +330,22 @@ export default function OutpostScreen() {
       return score(b) - score(a);
     });
   }, [discoverFilter, discoverGroups, discoverQuery, isLocalGroup, isRegionalGroup, managementFor]);
+
+  const reasonForCommunity = useCallback((group: CommunityGroup) => {
+    if (isLocalGroup(group)) return 'Near you';
+    if (discoverFilter === 'popular') return 'Popular';
+    if (discoverFilter === 'beginner') return 'Beginner friendly';
+    if ((discoverFilter === 'regional' || discoverFilter === 'state') && isRegionalGroup(group) && homeState) return `In ${homeState}`;
+    if (discoverFilter === 'recommended' && group.kind === 'interest') {
+      const communityName = group.name.trim().toLowerCase();
+      const matchingInterest = profileInterests.find((interest) => {
+        const normalizedInterest = interest.trim().toLowerCase();
+        return normalizedInterest && (communityName.includes(normalizedInterest) || normalizedInterest.includes(communityName));
+      });
+      if (matchingInterest) return `Because you like ${matchingInterest}`;
+    }
+    return null;
+  }, [discoverFilter, homeState, isLocalGroup, isRegionalGroup, profileInterests]);
 
   const sortedCampfires = useMemo(() => [...campfires].sort((a, b) => {
     const locality = (event: LocalEvent) => isLocalCampfire(event) ? 2 : isRegionalCampfire(event) ? 1 : 0;
@@ -423,7 +442,7 @@ export default function OutpostScreen() {
             <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Communities</Text><Text style={styles.sectionCopy}>Find new communities based on interests, activity, and location.</Text></View>
             <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={setDiscoverQuery} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => setDiscoverFilter(filter.value)}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
-            <View style={styles.list}>{visibleDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={isLocalGroup(group) ? 'Near you' : isRegionalGroup(group) ? `In ${homeState}` : 'Recommended'} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match this search and filter.</Text> : null}</View>
+            <View style={styles.list}>{visibleDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={reasonForCommunity(group)} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match this search and filter.</Text> : null}</View>
           </View>
         </> : null}
 
@@ -530,7 +549,9 @@ const styles = StyleSheet.create({
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 },
   rowTitle: { color: TEXT, fontSize: 14, fontWeight: '900', flexShrink: 1 },
-  rowMeta: { color: MUTED, fontSize: 11.5, lineHeight: 16, marginTop: 2 },
+  rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' },
+  rowMeta: { color: MUTED, fontSize: 11.5, lineHeight: 16 },
+  rowMetaDot: { color: '#667269', fontSize: 10 },
   rowReason: { color: GOLD, fontSize: 10.5, fontWeight: '800', marginTop: 4 },
   campfireHero: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#171F1B', borderWidth: 1, borderColor: '#3B423B', borderRadius: 17, padding: 14 },
   campfireHeroIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#25281F', alignItems: 'center', justifyContent: 'center' },
