@@ -36,6 +36,53 @@ const GUIDE_ORDER_BY_CATEGORY: Record<DiscoveryCategory, string[]> = {
   Scenic: ['weekend-planning', 'florida-heat-safety', 'wildlife-awareness', 'leave-no-trace', 'storm-season'],
 };
 
+type ActivityIndicator = {
+  key: string;
+  label: string;
+  glyph: string;
+};
+
+const ACTIVITY_DEFINITIONS: ActivityIndicator[] = [
+  { key: 'hiking', label: 'Hiking', glyph: '🥾' },
+  { key: 'water', label: 'Water', glyph: '💧' },
+  { key: 'camping', label: 'Camping', glyph: '⛺' },
+  { key: 'paddling', label: 'Paddling', glyph: '🛶' },
+  { key: 'scenic', label: 'Scenic', glyph: '🌿' },
+  { key: 'wildlife', label: 'Wildlife', glyph: '🐦' },
+  { key: 'family', label: 'Family', glyph: '👨‍👩‍👧' },
+];
+
+function getActivityIndicators(place: TrailGuidePlace): ActivityIndicator[] {
+  const searchable = [place.category, place.type, ...place.tags, ...place.collections, place.meta, place.summary]
+    .join(' ')
+    .toLowerCase();
+
+  const matches = new Set<string>();
+  if (place.category === 'Hiking' || /trail|hiking|walking|on foot/.test(searchable)) matches.add('hiking');
+  if (place.category === 'Camping' || /camp|overnight|campground/.test(searchable)) matches.add('camping');
+  if (place.category === 'Water' || /water|beach|spring|river|creek|marsh|shore|swim/.test(searchable)) matches.add('water');
+  if (/paddl|kayak|canoe|launch|tidal/.test(searchable)) matches.add('paddling');
+  if (place.category === 'Scenic' || /scenic|photograph|landscape|view|historic|cultural/.test(searchable)) matches.add('scenic');
+  if (/wildlife|bird|nature|ecological/.test(searchable)) matches.add('wildlife');
+  if (place.category === 'Parks' || /family|easy outing|picnic|playground/.test(searchable)) matches.add('family');
+
+  const categoryPriority: Record<Exclude<DiscoveryCategory, 'All'>, string[]> = {
+    Hiking: ['hiking', 'scenic', 'wildlife', 'water', 'family', 'camping', 'paddling'],
+    Camping: ['camping', 'hiking', 'water', 'scenic', 'wildlife', 'family', 'paddling'],
+    Parks: ['family', 'hiking', 'scenic', 'wildlife', 'water', 'camping', 'paddling'],
+    Water: ['water', 'paddling', 'scenic', 'wildlife', 'family', 'hiking', 'camping'],
+    Scenic: ['scenic', 'wildlife', 'hiking', 'water', 'family', 'camping', 'paddling'],
+  };
+
+  const orderedKeys = categoryPriority[place.category]
+    .filter((key) => matches.has(key))
+    .slice(0, 3);
+
+  return orderedKeys
+    .map((key) => ACTIVITY_DEFINITIONS.find((activity) => activity.key === key))
+    .filter((activity): activity is ActivityIndicator => Boolean(activity));
+}
+
 function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object }) {
   const photo = useTrailGuidePlacePhoto(place);
   if (!photo) {
@@ -322,6 +369,7 @@ export default function TrailGuideScreen() {
               {explorePlaces.map((place) => {
                 const signal = getTrailGuideConditionSignal(place, weather);
                 const distance = formatDistance(place);
+                const activities = getActivityIndicators(place);
                 return (
                   <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`Open ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.exploreCard, pressed && styles.cardPressed]}>
                     <PlacePhoto place={place} style={styles.exploreImage} />
@@ -331,6 +379,16 @@ export default function TrailGuideScreen() {
                         <Text numberOfLines={1} style={styles.exploreType}>{place.type}</Text>
                         {distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}
                       </View>
+                      {activities.length > 0 ? (
+                        <View style={styles.activityRow}>
+                          {activities.map((activity) => (
+                            <View key={activity.key} style={styles.activityChip}>
+                              <Text style={styles.activityGlyph}>{activity.glyph}</Text>
+                              <Text style={styles.activityText}>{activity.label}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
                       <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}>
                         <Text style={styles.smallSignalText}>{signal.label}</Text>
                       </View>
@@ -411,16 +469,20 @@ const styles = StyleSheet.create({
   exploreTitleRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 7 },
   dynamicCount: { color: '#79D26A', fontSize: 12, fontWeight: '900' },
   exploreGrid: { gap: 8 },
-  exploreCard: { minHeight: 104, borderRadius: 15, overflow: 'hidden', backgroundColor: '#101814', borderWidth: 1, borderColor: '#29352E', flexDirection: 'row', alignItems: 'center', paddingRight: 9 },
-  exploreImage: { width: 108, alignSelf: 'stretch', minHeight: 104, backgroundColor: '#17201B' },
+  exploreCard: { minHeight: 126, borderRadius: 15, overflow: 'hidden', backgroundColor: '#101814', borderWidth: 1, borderColor: '#29352E', flexDirection: 'row', alignItems: 'center', paddingRight: 9 },
+  exploreImage: { width: 108, alignSelf: 'stretch', minHeight: 126, backgroundColor: '#17201B' },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#132119' },
   photoFallbackMark: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A3020', borderWidth: 1, borderColor: '#2D4D34' },
-  exploreCopy: { flex: 1, paddingVertical: 10, paddingHorizontal: 11 },
+  exploreCopy: { flex: 1, paddingVertical: 9, paddingHorizontal: 11 },
   exploreName: { color: '#FFFDF6', fontSize: 14, lineHeight: 18, fontWeight: '900' },
-  exploreMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  exploreMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 3 },
   exploreType: { flex: 1, color: '#79D26A', fontSize: 10, fontWeight: '800' },
   exploreDistance: { color: '#8F9B94', fontSize: 10, fontWeight: '800' },
-  smallSignal: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#243029', paddingHorizontal: 7, paddingVertical: 3, marginTop: 6 },
+  activityRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5, marginTop: 6 },
+  activityChip: { minHeight: 21, flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 999, borderWidth: 1, borderColor: '#2E4136', backgroundColor: '#16221B', paddingHorizontal: 6, paddingVertical: 2 },
+  activityGlyph: { fontSize: 9, lineHeight: 12 },
+  activityText: { color: '#C9D3CD', fontSize: 8, lineHeight: 11, fontWeight: '800' },
+  smallSignal: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#243029', paddingHorizontal: 7, paddingVertical: 3, marginTop: 5 },
   smallSignalGood: { backgroundColor: '#1D4925' },
   smallSignalCaution: { backgroundColor: '#6C590B' },
   smallSignalText: { color: '#F3F6F3', fontSize: 8, fontWeight: '900' },
