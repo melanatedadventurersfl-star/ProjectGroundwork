@@ -147,9 +147,10 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
 }
 
 function CommunityRow({ group, joining, onJoin, reason, managementType }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void; reason?: string | null; managementType: CommunityManagementType }) {
+  const coverUrl = group.cover_image_url || group.image_url;
   return (
     <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
-      {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.communityCoverImage} resizeMode="cover" /> : <View style={styles.communityCoverFallback} />}
+      {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.communityCoverImage} resizeMode="cover" /> : <View style={styles.communityCoverFallback} />}
       <View style={styles.communityCoverOverlay} />
       <View style={styles.communityProfileAvatar}>
         {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.communityProfileInitials}>{initials(group.name)}</Text>}
@@ -170,10 +171,11 @@ function CommunityRow({ group, joining, onJoin, reason, managementType }: { grou
 }
 
 function MyCommunityTile({ group, managementType }: { group: CommunityGroup; managementType: CommunityManagementType }) {
+  const tileImage = group.cover_image_url || group.image_url;
   return (
     <Pressable style={({ pressed }) => [styles.communityTile, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
       <View style={styles.communityTileImageWrap}>
-        {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.communityTileImage} /> : <View style={styles.communityTileFallback}><Text style={styles.communityTileInitials}>{initials(group.name)}</Text></View>}
+        {tileImage ? <Image source={{ uri: tileImage }} style={styles.communityTileImage} /> : <View style={styles.communityTileFallback}><Text style={styles.communityTileInitials}>{initials(group.name)}</Text></View>}
       </View>
       <Text style={styles.communityTileTitle} numberOfLines={2}>{group.name}</Text>
       <Text style={styles.communityTileMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
