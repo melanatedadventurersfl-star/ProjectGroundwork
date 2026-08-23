@@ -18,11 +18,9 @@ import {
 } from './api';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
-import { getConnections, searchCommunityMembers, type Connection } from './circles';
-import { getCommunityManagementTypes, type CommunityManagementType } from './communityManagement';
 import { distanceMiles, pointForCity } from '../explore/location';
 import { getMemberBasecamp } from '../member/api';
-import { listLocalEvents, type LocalEvent } from '../local-events/api';
+import { listLocalEvents, setLocalEventRsvp, type LocalEvent } from '../local-events/api';
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -30,13 +28,11 @@ const CARD = '#17211C';
 const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
-const OFFICIAL_STARTERS = new Set(['camping', 'hiking', 'water adventures', 'family adventures', 'beginner outdoors']);
 const NEAR_RADIUS_MILES = 50;
-const REGIONAL_RADIUS_MILES = 125;
 
 type OutpostTab = 'for-you' | 'groups' | 'campfires';
+type CampfireFilter = 'nearby' | 'today' | 'week';
 type PickedPhoto = { uri: string; mimeType?: string | null };
-type DiscoverFilter = 'recommended' | 'near' | 'regional' | 'state' | 'popular' | 'beginner';
 
 const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'for-you', label: 'Basecamp' },
@@ -44,13 +40,10 @@ const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'campfires', label: 'Campfires' },
 ];
 
-const discoverFilters: { value: DiscoverFilter; label: string }[] = [
-  { value: 'recommended', label: 'Recommended' },
-  { value: 'near', label: 'Near Me' },
-  { value: 'regional', label: 'Regional' },
-  { value: 'state', label: 'In State' },
-  { value: 'popular', label: 'Popular' },
-  { value: 'beginner', label: 'Beginner' },
+const campfireFilters: { value: CampfireFilter; label: string }[] = [
+  { value: 'nearby', label: 'Nearby' },
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'This week' },
 ];
 
 const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
@@ -76,38 +69,30 @@ function relativeTime(value: string) {
   return days < 7 ? `${days}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function CommunityTypeBadge({ type, compact = false }: { type: CommunityManagementType; compact?: boolean }) {
-  const official = type === 'official';
-  return (
-    <View style={[styles.managementBadge, compact && styles.managementBadgeCompact]}>
-      <Ionicons name={official ? 'shield-checkmark-outline' : 'people-outline'} size={compact ? 11 : 12} color={official ? GOLD : MUTED} />
-      <Text style={[styles.managementText, official && styles.managementTextOfficial, compact && styles.managementTextCompact]}>
-        {official ? 'Official' : 'Member-led'}
-      </Text>
-    </View>
-  );
+function formatCampfireTime(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const sameDay = (left: Date, right: Date) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+  const prefix = sameDay(date, today) ? 'Today' : sameDay(date, tomorrow) ? 'Tomorrow' : date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return `${prefix} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function PostCard({ post, reason }: { post: CommunityPost; reason?: string | null }) {
-  const badge = post.post_type === 'ask'
-    ? 'Ask'
-    : post.post_type === 'buddy'
-      ? 'Adventure Buddy'
-      : post.post_type === 'recommendation'
-        ? 'Place'
-        : post.post_type === 'meetup'
-          ? 'Campfire'
-          : null;
+function isToday(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+}
 
-  const isPopular = reason === 'Popular';
-  const contextIcon = reason?.startsWith('Near') || reason?.startsWith('In ')
-    ? 'location-outline'
-    : reason?.includes('Community')
-      ? 'people-outline'
-      : isPopular
-        ? 'flame-outline'
-        : 'sparkles-outline';
+function isWithinWeek(value: string) {
+  const time = new Date(value).getTime();
+  const now = Date.now();
+  return time >= now && time <= now + (7 * 24 * 60 * 60 * 1000);
+}
 
+function PostCard({ post }: { post: CommunityPost }) {
+  const badge = post.post_type === 'ask' ? 'Ask' : post.post_type === 'buddy' ? 'Adventure Buddy' : post.post_type === 'recommendation' ? 'Place' : post.post_type === 'meetup' ? 'Campfire' : null;
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.postHeader}>
@@ -126,16 +111,7 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
               <Text style={styles.authorName} numberOfLines={1}>{post.author_name}</Text>
               {badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}
             </View>
-            <View style={styles.metaLine}>
-              <Text style={styles.postMeta}>{relativeTime(post.created_at)}</Text>
-              {reason ? <>
-                <Text style={styles.metaDot}>·</Text>
-                <View style={[styles.contextChip, isPopular && styles.contextChipPopular]}>
-                  <Ionicons name={contextIcon as never} size={11} color={isPopular ? '#F2CE65' : GOLD} />
-                  <Text style={[styles.contextText, isPopular && styles.contextTextPopular]} numberOfLines={1}>{reason}</Text>
-                </View>
-              </> : null}
-            </View>
+            <Text style={styles.postMeta}>{relativeTime(post.created_at)}</Text>
           </View>
         </Pressable>
         <PostOptionsButton postId={post.id} authorId={post.author_id} body={post.body} />
@@ -149,58 +125,77 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
   );
 }
 
-function CommunityRow({ group, joining, onJoin, reason, managementType }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void; reason?: string | null; managementType: CommunityManagementType }) {
+function CommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
   const coverUrl = group.cover_image_url || group.image_url;
   return (
-    <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
-      {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.communityCoverImage} resizeMode="cover" /> : <View style={styles.communityCoverFallback} />}
-      <View style={styles.communityCoverOverlay} />
-      <View style={styles.communityProfileAvatar}>
-        {group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.communityProfileInitials}>{initials(group.name)}</Text>}
+    <Pressable style={({ pressed }) => [styles.communityCard, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
+      <View style={styles.communityImageWrap}>
+        {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.communityImage} /> : <View style={styles.communityFallback}><Text style={styles.communityInitials}>{initials(group.name)}</Text></View>}
       </View>
-      <View style={styles.communityRowContent}>
-        <View style={styles.rowTitleLine}>
-          <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
-          <CommunityTypeBadge type={managementType} compact />
-        </View>
-        <View style={styles.rowMetaLine}>
-          <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
-          {reason ? <><Text style={styles.rowMetaDot}>·</Text><Text style={styles.rowReason} numberOfLines={1}>{reason}</Text></> : null}
-        </View>
+      <View style={styles.communityInfo}>
+        <Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>
+        <Text style={styles.communityMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}{group.city || group.state ? ` · ${[group.city, group.state].filter(Boolean).join(', ')}` : ''}</Text>
       </View>
-      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={TEXT} /> : <Pressable style={styles.joinPill} onPress={(event) => { event.stopPropagation(); onJoin(group); }} disabled={joining}><Text style={styles.joinPillText}>{joining ? 'Joining' : 'Join'}</Text></Pressable>}
+      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={MUTED} /> : <Pressable disabled={joining} style={styles.joinPill} onPress={(event) => { event.stopPropagation(); onJoin(group); }}><Text style={styles.joinPillText}>{joining ? 'Joining…' : 'Join'}</Text></Pressable>}
     </Pressable>
   );
 }
 
-function MyCommunityTile({ group, managementType }: { group: CommunityGroup; managementType: CommunityManagementType }) {
-  const tileImage = group.cover_image_url || group.image_url;
-  return (
-    <Pressable style={({ pressed }) => [styles.communityTile, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
-      <View style={styles.communityTileImageWrap}>
-        {tileImage ? <Image source={{ uri: tileImage }} style={styles.communityTileImage} /> : <View style={styles.communityTileFallback}><Text style={styles.communityTileInitials}>{initials(group.name)}</Text></View>}
-      </View>
-      <Text style={styles.communityTileTitle} numberOfLines={2}>{group.name}</Text>
-      <Text style={styles.communityTileMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
-      <View style={styles.communityTileBadgeWrap}><CommunityTypeBadge type={managementType} compact /></View>
-      {(group.city || group.state) ? <Text style={styles.communityTileLocation} numberOfLines={1}>{[group.city, group.state].filter(Boolean).join(', ')}</Text> : null}
-    </Pressable>
-  );
-}
-
-function CampfireCard({ event, reason }: { event: LocalEvent; reason?: string | null }) {
-  const start = new Date(event.starts_at);
+function CampfireCard({
+  event,
+  distance,
+  onRsvp,
+  updating,
+}: {
+  event: LocalEvent;
+  distance: number | null;
+  onRsvp: (event: LocalEvent, status: 'going' | 'interested') => void;
+  updating: boolean;
+}) {
+  const locationText = [event.venue_name, event.city].filter(Boolean).join(' · ');
+  const distanceText = distance != null ? `${Math.max(1, Math.round(distance))} mi away` : event.state;
   return (
     <Pressable style={({ pressed }) => [styles.campfireCard, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
-      <View style={styles.campfireIcon}><Ionicons name="bonfire-outline" size={21} color={GOLD} /></View>
-      <View style={styles.flex}>
-        <Text style={styles.rowTitle}>{event.title}</Text>
-        <Text style={styles.rowMeta}>{start.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
-        <Text style={styles.rowMeta}>{event.venue_name ? `${event.venue_name} · ` : ''}{event.city}, {event.state}</Text>
-        <Text style={styles.campfireHost}>Hosted by {event.host_name}</Text>
-        {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
+      <View style={styles.campfireTopRow}>
+        <View style={styles.hostAvatar}><Text style={styles.hostInitials}>{initials(event.host_name)}</Text></View>
+        <View style={styles.flex}>
+          <View style={styles.hostLine}><Text style={styles.hostName}>{event.host_name}</Text><Text style={styles.hostVerb}> started a Campfire</Text></View>
+          <Text style={styles.campfireTime}>{formatCampfireTime(event.starts_at)}</Text>
+        </View>
+        <Ionicons name="bonfire-outline" size={19} color={GOLD} />
       </View>
-      <Ionicons name="chevron-forward" size={20} color={MUTED} />
+
+      <Text style={styles.campfireTitle}>{event.title}</Text>
+      {event.description ? <Text style={styles.campfireDescription} numberOfLines={3}>{event.description}</Text> : null}
+
+      <View style={styles.campfireLocationRow}>
+        <Ionicons name="location-outline" size={15} color={GOLD} />
+        <Text style={styles.campfireLocation} numberOfLines={1}>{locationText || `${event.city}, ${event.state}`}</Text>
+        <Text style={styles.distanceText}>· {distanceText}</Text>
+      </View>
+
+      <View style={styles.campfireFooter}>
+        <View style={styles.socialProof}>
+          <View style={styles.miniAvatar}><Ionicons name="person" size={11} color={TEXT} /></View>
+          <Text style={styles.socialProofText}>{event.rsvp_count ? `${event.rsvp_count} joining` : 'Be the first to join'}</Text>
+        </View>
+        <View style={styles.rsvpActions}>
+          <Pressable
+            disabled={updating}
+            style={[styles.rsvpButton, event.my_rsvp === 'interested' && styles.rsvpButtonActive]}
+            onPress={(pressEvent) => { pressEvent.stopPropagation(); onRsvp(event, 'interested'); }}
+          >
+            <Text style={[styles.rsvpButtonText, event.my_rsvp === 'interested' && styles.rsvpButtonTextActive]}>Interested</Text>
+          </Pressable>
+          <Pressable
+            disabled={updating}
+            style={[styles.rsvpButton, styles.rsvpPrimary, event.my_rsvp === 'going' && styles.rsvpPrimaryActive]}
+            onPress={(pressEvent) => { pressEvent.stopPropagation(); onRsvp(event, 'going'); }}
+          >
+            <Text style={styles.rsvpPrimaryText}>{event.my_rsvp === 'going' ? 'Going ✓' : "I'm in"}</Text>
+          </Pressable>
+        </View>
+      </View>
     </Pressable>
   );
 }
@@ -209,49 +204,37 @@ export default function OutpostScreen() {
   const [tab, setTab] = useState<OutpostTab>('for-you');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
-  const [communityManagement, setCommunityManagement] = useState<Map<string, CommunityManagementType>>(new Map());
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [members, setMembers] = useState<Awaited<ReturnType<typeof searchCommunityMembers>>>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
-  const [profileInterests, setProfileInterests] = useState<string[]>([]);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('You');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [updatingRsvpId, setUpdatingRsvpId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composerBody, setComposerBody] = useState('');
   const [composerType, setComposerType] = useState<CommunityPostType>('update');
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [myCommunityQuery, setMyCommunityQuery] = useState('');
-  const [discoverQuery, setDiscoverQuery] = useState('');
-  const [discoverFilter, setDiscoverFilter] = useState<DiscoverFilter>('recommended');
-  const [showAllDiscover, setShowAllDiscover] = useState(false);
+  const [communityQuery, setCommunityQuery] = useState('');
+  const [campfireFilter, setCampfireFilter] = useState<CampfireFilter>('nearby');
 
   const load = useCallback(async () => {
     try {
-      const [nextPosts, nextGroups, nextManagement, nextConnections, nextMembers, nextCampfires, basecamp] = await Promise.all([
+      const [nextPosts, nextGroups, nextCampfires, basecamp] = await Promise.all([
         getCommunityFeed(),
         getGroups(),
-        getCommunityManagementTypes().catch(() => new Map<string, CommunityManagementType>()),
-        getConnections().catch(() => []),
-        searchCommunityMembers('').catch(() => []),
         listLocalEvents().catch(() => []),
         getMemberBasecamp(),
       ]);
       setPosts(nextPosts);
       setGroups(nextGroups);
-      setCommunityManagement(nextManagement);
-      setConnections(nextConnections);
-      setMembers(nextMembers);
       setCampfires(nextCampfires);
       setHomeCity(basecamp.profile?.home_city ?? null);
       setHomeState(basecamp.profile?.home_state ?? null);
-      setProfileInterests(Array.isArray(basecamp.profile?.interests) ? basecamp.profile.interests.filter((interest: unknown): interest is string => typeof interest === 'string' && Boolean(interest.trim())) : []);
       setProfileAvatarUrl(basecamp.profile?.avatar_url ?? null);
       setProfileName(basecamp.profile?.display_name || basecamp.profile?.username || 'You');
       setError(null);
@@ -266,133 +249,53 @@ export default function OutpostScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : homeCity || homeState || 'Your area';
-  const acceptedConnectionIds = useMemo(() => new Set(connections.filter((connection) => connection.status === 'accepted').map((connection) => connection.profile_id)), [connections]);
-  const localMemberIds = useMemo(() => new Set(members.filter((person) => homeState && person.home_state === homeState && (!homeCity || !person.home_city || person.home_city === homeCity)).map((person) => person.id)), [members, homeCity, homeState]);
-  const regionalMemberIds = useMemo(() => new Set(members.filter((person) => homeState && person.home_state === homeState).map((person) => person.id)), [members, homeState]);
+  const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
   const myGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member), [groups]);
-  const myGroupNames = useMemo(() => new Map(myGroups.map((group) => [group.id, group.name])), [myGroups]);
-  const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
-
-  const managementFor = useCallback((group: CommunityGroup): CommunityManagementType => {
-    const explicit = communityManagement.get(group.id);
-    if (explicit) return explicit;
-    if (group.kind === 'adventure') return 'official';
-    if (group.kind === 'interest' && OFFICIAL_STARTERS.has(group.name.trim().toLowerCase())) return 'official';
-    return 'member_led';
-  }, [communityManagement]);
-
   const homePoint = useMemo(() => homeCity && homeState ? pointForCity(homeCity, homeState) : null, [homeCity, homeState]);
-  const distanceForGroup = useCallback((group: CommunityGroup) => {
-    if (!homePoint || !group.city || !group.state) return null;
-    const groupPoint = pointForCity(group.city, group.state);
-    return groupPoint ? distanceMiles(homePoint, groupPoint) : null;
+
+  const distanceForCampfire = useCallback((event: LocalEvent) => {
+    if (!homePoint) return null;
+    const eventPoint = pointForCity(event.city, event.state);
+    return eventPoint ? distanceMiles(homePoint, eventPoint) : null;
   }, [homePoint]);
-  const isInStateGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState), [homeState]);
-  const isLocalGroup = useCallback((group: CommunityGroup) => {
-    if (!isInStateGroup(group)) return false;
-    const distance = distanceForGroup(group);
-    if (distance != null) return distance <= NEAR_RADIUS_MILES;
-    return Boolean(homeCity && group.city === homeCity);
-  }, [distanceForGroup, homeCity, isInStateGroup]);
-  const isRegionalGroup = useCallback((group: CommunityGroup) => {
-    if (!isInStateGroup(group)) return false;
-    const distance = distanceForGroup(group);
-    if (distance != null) return distance > NEAR_RADIUS_MILES && distance <= REGIONAL_RADIUS_MILES;
-    return Boolean(group.city && homeCity && group.city !== homeCity);
-  }, [distanceForGroup, homeCity, isInStateGroup]);
-  const isLocalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState && (!homeCity || event.city === homeCity)), [homeCity, homeState]);
-  const isRegionalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState), [homeState]);
 
-  const reasonForPost = useCallback((post: CommunityPost) => {
-    if (post.group_id && myGroupNames.has(post.group_id)) return `Your Community · ${myGroupNames.get(post.group_id)}`;
-    if (acceptedConnectionIds.has(post.author_id)) return 'Trailmate';
-    if (localMemberIds.has(post.author_id)) return `Near ${locationLabel}`;
-    if (regionalMemberIds.has(post.author_id) && homeState) return `In ${homeState}`;
-    if ((post.reaction_count || 0) + (post.comment_count || 0) >= 3) return 'Popular';
-    return 'Recommended';
-  }, [acceptedConnectionIds, homeState, localMemberIds, locationLabel, myGroupNames, regionalMemberIds]);
-
-  const basecampPosts = useMemo(() => [...posts].sort((a, b) => {
-    const score = (post: CommunityPost) => {
-      let value = (post.reaction_count || 0) + (post.comment_count || 0);
-      if (post.group_id && myGroupNames.has(post.group_id)) value += 40;
-      if (acceptedConnectionIds.has(post.author_id)) value += 30;
-      if (localMemberIds.has(post.author_id)) value += 15;
-      else if (regionalMemberIds.has(post.author_id)) value += 7;
-      return value;
-    };
-    return score(b) - score(a);
-  }), [acceptedConnectionIds, localMemberIds, myGroupNames, posts, regionalMemberIds]);
-
-  const visibleMyGroups = useMemo(() => {
-    const query = myCommunityQuery.trim().toLowerCase();
-    if (!query) return myGroups;
-    return myGroups.filter((group) => `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
-  }, [myCommunityQuery, myGroups]);
-
-  const visibleDiscoverGroups = useMemo(() => {
-    const query = discoverQuery.trim().toLowerCase();
-    let next = discoverGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
-
-    if (discoverFilter === 'near') next = next.filter(isLocalGroup);
-    if (discoverFilter === 'regional') next = next.filter(isRegionalGroup);
-    if (discoverFilter === 'state') next = next.filter(isInStateGroup);
-    if (discoverFilter === 'beginner') next = next.filter((group) => group.name.toLowerCase().includes('beginner'));
-
-    return [...next].sort((a, b) => {
-      if (discoverFilter === 'popular') return b.member_count - a.member_count;
-      const score = (group: CommunityGroup) => {
-        let value = group.member_count;
-        if (discoverFilter === 'recommended') {
-          if (isLocalGroup(group)) value += 24;
-          else if (isRegionalGroup(group)) value += 7;
-          if (managementFor(group) === 'official') value += 18;
-          if (group.kind === 'interest') value += 4;
-        } else {
-          if (isLocalGroup(group)) value += 20;
-          else if (isRegionalGroup(group)) value += 10;
-        }
-        return value;
-      };
-      return score(b) - score(a);
-    });
-  }, [discoverFilter, discoverGroups, discoverQuery, isInStateGroup, isLocalGroup, isRegionalGroup, managementFor]);
-
-  const displayedDiscoverGroups = useMemo(() => {
-    const shouldCap = discoverFilter === 'recommended' && !discoverQuery.trim() && !showAllDiscover;
-    return shouldCap ? visibleDiscoverGroups.slice(0, 5) : visibleDiscoverGroups;
-  }, [discoverFilter, discoverQuery, showAllDiscover, visibleDiscoverGroups]);
-
-  const reasonForCommunity = useCallback((group: CommunityGroup) => {
-    if (isLocalGroup(group)) {
-      const distance = distanceForGroup(group);
-      return distance != null ? `${Math.max(1, Math.round(distance))} mi away` : 'Near you';
-    }
-    if (discoverFilter === 'popular') return 'Popular';
-    if (discoverFilter === 'beginner') return 'Beginner friendly';
-    if (discoverFilter === 'regional' && isRegionalGroup(group)) {
-      const distance = distanceForGroup(group);
-      return distance != null ? `${Math.round(distance)} mi away` : 'Regional';
-    }
-    if (discoverFilter === 'state' && isInStateGroup(group) && homeState) return `In ${homeState}`;
-    if (discoverFilter === 'recommended' && group.kind === 'interest') {
-      const communityName = group.name.trim().toLowerCase();
-      const matchingInterest = profileInterests.find((interest) => {
-        const normalizedInterest = interest.trim().toLowerCase();
-        return normalizedInterest && (communityName.includes(normalizedInterest) || normalizedInterest.includes(communityName));
+  const visibleCampfires = useMemo(() => {
+    let next = [...campfires];
+    if (campfireFilter === 'today') next = next.filter((event) => isToday(event.starts_at));
+    if (campfireFilter === 'week') next = next.filter((event) => isWithinWeek(event.starts_at));
+    if (campfireFilter === 'nearby') {
+      next = next.filter((event) => {
+        const distance = distanceForCampfire(event);
+        if (distance != null) return distance <= NEAR_RADIUS_MILES;
+        return Boolean(homeState && event.state === homeState && (!homeCity || event.city === homeCity));
       });
-      if (matchingInterest) return `Because you like ${matchingInterest}`;
     }
-    return null;
-  }, [discoverFilter, distanceForGroup, homeState, isInStateGroup, isLocalGroup, isRegionalGroup, profileInterests]);
+    return next.sort((a, b) => {
+      const aDistance = distanceForCampfire(a) ?? Number.MAX_SAFE_INTEGER;
+      const bDistance = distanceForCampfire(b) ?? Number.MAX_SAFE_INTEGER;
+      if (campfireFilter === 'nearby' && aDistance !== bDistance) return aDistance - bDistance;
+      return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+    });
+  }, [campfireFilter, campfires, distanceForCampfire, homeCity, homeState]);
 
-  const sortedCampfires = useMemo(() => [...campfires].sort((a, b) => {
-    const locality = (event: LocalEvent) => isLocalCampfire(event) ? 2 : isRegionalCampfire(event) ? 1 : 0;
-    const localityDiff = locality(b) - locality(a);
-    if (localityDiff) return localityDiff;
-    return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
-  }), [campfires, isLocalCampfire, isRegionalCampfire]);
+  const aroundState = useMemo(() => {
+    if (!homeState || campfireFilter !== 'nearby') return [];
+    const visibleIds = new Set(visibleCampfires.map((event) => event.id));
+    return campfires
+      .filter((event) => event.state === homeState && !visibleIds.has(event.id))
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  }, [campfireFilter, campfires, homeState, visibleCampfires]);
+
+  const filteredMyGroups = useMemo(() => {
+    const query = communityQuery.trim().toLowerCase();
+    return myGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
+  }, [communityQuery, myGroups]);
+
+  const filteredDiscoverGroups = useMemo(() => {
+    const query = communityQuery.trim().toLowerCase();
+    return discoverGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
+  }, [communityQuery, discoverGroups]);
 
   async function choosePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -428,6 +331,24 @@ export default function OutpostScreen() {
     try { await joinGroup(group.id); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to join this community.'); } finally { setJoiningId(null); }
   }
 
+  async function handleRsvp(event: LocalEvent, status: 'going' | 'interested') {
+    setUpdatingRsvpId(event.id);
+    try {
+      await setLocalEventRsvp(event.id, status);
+      setCampfires((current) => current.map((item) => {
+        if (item.id !== event.id) return item;
+        const wasGoing = item.my_rsvp === 'going';
+        const willGo = status === 'going';
+        const rsvpDelta = wasGoing === willGo ? 0 : willGo ? 1 : -1;
+        return { ...item, my_rsvp: status, rsvp_count: Math.max(0, item.rsvp_count + rsvpDelta) };
+      }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to update your Campfire RSVP.');
+    } finally {
+      setUpdatingRsvpId(null);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <ScrollView
@@ -452,7 +373,7 @@ export default function OutpostScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {tab === 'for-you' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Trailmates, your Communities, local activity, and community posts worth catching up on.</Text></View>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Community posts, people, and plans worth catching up on.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
@@ -466,33 +387,48 @@ export default function OutpostScreen() {
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-          <View style={styles.feedHeading}><Text style={styles.feedTitle}>Your Basecamp</Text><Text style={styles.feedHint}>Personalized</Text></View>
-          {basecampPosts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Basecamp</Text></View>
+          {posts.map((post) => <PostCard key={post.id} post={post} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
 
         {tab === 'groups' ? <>
-          <View style={styles.communitySection}>
-            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Communities</Text><Text style={styles.sectionCopy}>Communities you’ve joined.</Text></View>
-            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={myCommunityQuery} onChangeText={setMyCommunityQuery} placeholder="Search your communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
-            {visibleMyGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.communityRail}>{visibleMyGroups.map((group) => <MyCommunityTile key={group.id} group={group} managementType={managementFor(group)} />)}</ScrollView> : <View style={styles.emptyInline}><Text style={styles.emptyText}>{myGroups.length ? 'No joined communities match that search.' : 'You have not joined a community yet.'}</Text></View>}
-          </View>
-
-          <View style={styles.communitySection}>
-            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Communities</Text><Text style={styles.sectionCopy}>Find new communities based on interests, activity, and location.</Text></View>
-            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={(value) => { setDiscoverQuery(value); setShowAllDiscover(false); }} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => { setDiscoverFilter(filter.value); setShowAllDiscover(false); }}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
-            <View style={styles.list}>{displayedDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={reasonForCommunity(group)} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>{discoverFilter === 'near' ? `No unjoined communities within ${NEAR_RADIUS_MILES} miles yet.` : 'No discoverable communities match this search and filter.'}</Text> : null}</View>
-            {discoverFilter === 'recommended' && !discoverQuery.trim() && visibleDiscoverGroups.length > 5 ? <Pressable style={styles.seeAllButton} onPress={() => setShowAllDiscover((value) => !value)}><Text style={styles.seeAllText}>{showAllDiscover ? 'Show less' : `See all ${visibleDiscoverGroups.length}`}</Text><Ionicons name={showAllDiscover ? 'chevron-up' : 'chevron-down'} size={14} color={GOLD} /></Pressable> : null}
-          </View>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Communities</Text><Text style={styles.tabIntroCopy}>Ongoing spaces built around interests, locations, and shared experiences.</Text></View>
+          <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={communityQuery} onChangeText={setCommunityQuery} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Communities</Text></View>
+          <View style={styles.cardList}>{filteredMyGroups.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!filteredMyGroups.length ? <Text style={styles.emptyListText}>{myGroups.length ? 'No joined communities match that search.' : 'You have not joined a community yet.'}</Text> : null}</View>
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover</Text></View>
+          <View style={styles.cardList}>{filteredDiscoverGroups.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!filteredDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match that search.</Text> : null}</View>
         </> : null}
 
         {tab === 'campfires' ? <>
-          <View style={styles.campfireHero}><View style={styles.campfireHeroIcon}><Ionicons name="bonfire-outline" size={26} color={GOLD} /></View><View style={styles.flex}><Text style={styles.sectionTitle}>Come hang out</Text><Text style={styles.sectionCopy}>Casual, member-led meetups with less planning and lower commitment than an Adventure.</Text></View></View>
-          <Pressable style={styles.startCampfireButton} onPress={() => router.push('/local-events/create')}><Ionicons name="add-circle-outline" size={19} color="#101510" /><Text style={styles.startCampfireText}>Start a Campfire</Text></Pressable>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Upcoming Campfires</Text><Text style={styles.sectionCopy}>Nearby gatherings rise to the top automatically.</Text></View>
-          {sortedCampfires.map((event) => <CampfireCard key={event.id} event={event} reason={isLocalCampfire(event) ? 'Near you' : isRegionalCampfire(event) ? `In ${homeState}` : null} />)}
-          {!campfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="bonfire-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>No Campfires yet</Text><Text style={styles.emptyText}>Start one and give people a reason to get together.</Text></View> : null}
+          <View style={styles.campfireHeader}>
+            <View style={styles.flex}>
+              <Text style={styles.campfirePageTitle}>Campfires</Text>
+              <Text style={styles.campfirePageCopy}>Casual plans from people in your community.</Text>
+            </View>
+            <Pressable style={styles.startCampfireCompact} onPress={() => router.push('/local-events/create')}>
+              <Ionicons name="add" size={18} color="#101510" />
+              <Text style={styles.startCampfireCompactText}>Start</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>
+            {campfireFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, campfireFilter === filter.value && styles.filterChipActive]} onPress={() => setCampfireFilter(filter.value)}><Text style={[styles.filterText, campfireFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}
+          </ScrollView>
+
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>{campfireFilter === 'nearby' ? 'Happening nearby' : campfireFilter === 'today' ? 'Today' : 'This week'}</Text>
+          </View>
+
+          {visibleCampfires.map((event) => <CampfireCard key={event.id} event={event} distance={distanceForCampfire(event)} onRsvp={(nextEvent, status) => void handleRsvp(nextEvent, status)} updating={updatingRsvpId === event.id} />)}
+
+          {!visibleCampfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="bonfire-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>Nothing burning here yet</Text><Text style={styles.emptyText}>{campfireFilter === 'nearby' ? 'Start a casual plan and see who wants to come along.' : 'Try another time filter or start a Campfire.'}</Text><Pressable style={styles.emptyAction} onPress={() => router.push('/local-events/create')}><Text style={styles.emptyActionText}>Start a Campfire</Text></Pressable></View> : null}
+
+          {aroundState.length ? <>
+            <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Around {homeState}</Text><Text style={styles.sectionCopy}>A little farther out, still within your state.</Text></View>
+            {aroundState.map((event) => <CampfireCard key={event.id} event={event} distance={distanceForCampfire(event)} onRsvp={(nextEvent, status) => void handleRsvp(nextEvent, status)} updating={updatingRsvpId === event.id} />)}
+          </> : null}
         </> : null}
       </ScrollView>
     </SafeAreaView>
@@ -517,6 +453,9 @@ const styles = StyleSheet.create({
   tabIntro: { gap: 2, paddingHorizontal: 2, paddingTop: 2 },
   tabIntroTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   tabIntroCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17 },
+  sectionHeading: { gap: 2, paddingTop: 3 },
+  sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
+  sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
   composer: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 9, gap: 7 },
   composerPromptRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   composerAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#34443A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
@@ -535,36 +474,6 @@ const styles = StyleSheet.create({
   typeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#344239' },
   typeText: { color: '#CED6D0', fontSize: 12.5, fontWeight: '700' },
   typeTextActive: { color: GOLD },
-  feedHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 2 },
-  feedTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
-  feedHint: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
-  sectionHeading: { gap: 2, paddingTop: 3 },
-  sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
-  sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
-  communitySection: { gap: 10 },
-  searchBox: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 14, paddingHorizontal: 12 },
-  searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 9 },
-  communityRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
-  communityTile: { width: 150, minHeight: 214, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 16, overflow: 'hidden', paddingBottom: 11 },
-  communityTileImageWrap: { width: '100%', height: 92, backgroundColor: '#101813' },
-  communityTileImage: { width: '100%', height: '100%' },
-  communityTileFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#213229' },
-  communityTileInitials: { color: GOLD, fontSize: 18, fontWeight: '900' },
-  communityTileTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 9, paddingHorizontal: 10 },
-  communityTileMeta: { color: MUTED, fontSize: 10.5, marginTop: 4, paddingHorizontal: 10 },
-  communityTileBadgeWrap: { marginTop: 5, paddingHorizontal: 10, alignItems: 'flex-start' },
-  communityTileLocation: { color: '#849087', fontSize: 9.5, fontWeight: '700', marginTop: 4, paddingHorizontal: 10 },
-  managementBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
-  managementBadgeCompact: { gap: 3 },
-  managementText: { color: MUTED, fontSize: 10.5, fontWeight: '800' },
-  managementTextOfficial: { color: GOLD },
-  managementTextCompact: { fontSize: 9.5 },
-  filterRail: { gap: 7, paddingRight: 8, paddingVertical: 1 },
-  filterChip: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#3A473F', backgroundColor: '#121A16' },
-  filterChipActive: { borderColor: '#80952B', backgroundColor: '#263118' },
-  filterText: { color: '#ABB5AE', fontSize: 11.5, fontWeight: '800' },
-  filterTextActive: { color: '#DCEB91' },
-  emptyInline: { minHeight: 76, borderWidth: 1, borderColor: BORDER, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 14 },
   postCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 12 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authorTarget: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
@@ -573,46 +482,65 @@ const styles = StyleSheet.create({
   avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: TEXT, fontWeight: '900', fontSize: 11 },
   authorName: { color: TEXT, fontSize: 15, fontWeight: '900', flexShrink: 1 },
-  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3, minWidth: 0 },
-  postMeta: { color: '#8F9B93', fontSize: 11 },
-  metaDot: { color: '#657168', fontSize: 11 },
-  contextChip: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1, paddingHorizontal: 2, paddingVertical: 1 },
-  contextChipPopular: { backgroundColor: '#342D17', borderWidth: 1, borderColor: '#5A4A21', borderRadius: 99, paddingHorizontal: 7, paddingVertical: 3 },
-  contextText: { color: '#C6B77E', fontSize: 10.5, fontWeight: '800', flexShrink: 1 },
-  contextTextPopular: { color: '#F2CE65' },
+  postMeta: { color: '#8F9B93', fontSize: 11, marginTop: 3 },
   badge: { backgroundColor: '#202B24', borderRadius: 99, paddingHorizontal: 7, paddingVertical: 3 },
   badgeText: { color: '#D7C792', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.2 },
   postBody: { color: '#E5E9E6', fontSize: 14, lineHeight: 21 },
   postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
   engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
-  list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden', backgroundColor: '#101813' },
-  listRow: { minHeight: 62, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.16)', overflow: 'hidden', position: 'relative' },
-  communityCoverImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: '100%', height: '100%' },
-  communityCoverFallback: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#1A2A22' },
-  communityCoverOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(10,18,14,0.78)' },
-  communityProfileAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#213229', borderWidth: 2, borderColor: 'rgba(255,255,255,0.82)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
-  communityProfileInitials: { color: TEXT, fontSize: 10.5, fontWeight: '900' },
-  communityRowContent: { flex: 1, minWidth: 0 },
-  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
-  rowTitle: { color: TEXT, fontSize: 13.5, fontWeight: '900', flexShrink: 1, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 3 },
-  rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, minWidth: 0 },
-  rowMeta: { color: '#E1E6E2', fontSize: 10.5, lineHeight: 14, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 2 },
-  rowMetaDot: { color: '#A7B0A9', fontSize: 10 },
-  rowReason: { color: '#C2CEC6', fontSize: 10.5, fontWeight: '700', flexShrink: 1, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 2 },
-  joinPill: { minWidth: 48, minHeight: 30, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: GOLD, backgroundColor: 'rgba(20,25,19,0.88)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  searchBox: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 14, paddingHorizontal: 12 },
+  searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 9 },
+  cardList: { gap: 9 },
+  communityCard: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 15, padding: 9 },
+  communityImageWrap: { width: 50, height: 50, borderRadius: 13, overflow: 'hidden', backgroundColor: '#213229' },
+  communityImage: { width: '100%', height: '100%' },
+  communityFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  communityInitials: { color: GOLD, fontWeight: '900', fontSize: 12 },
+  communityInfo: { flex: 1, minWidth: 0 },
+  communityName: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  communityMeta: { color: MUTED, fontSize: 10.5, marginTop: 4 },
+  joinPill: { minWidth: 50, minHeight: 32, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: GOLD, alignItems: 'center', justifyContent: 'center' },
   joinPillText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
-  seeAllButton: { alignSelf: 'center', minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 14, borderRadius: 99 },
-  seeAllText: { color: GOLD, fontSize: 11.5, fontWeight: '900' },
-  campfireHero: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#171F1B', borderWidth: 1, borderColor: '#3B423B', borderRadius: 17, padding: 14 },
-  campfireHeroIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#25281F', alignItems: 'center', justifyContent: 'center' },
-  startCampfireButton: { minHeight: 46, borderRadius: 14, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  startCampfireText: { color: '#101510', fontSize: 13, fontWeight: '900' },
-  campfireCard: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 15, padding: 12 },
-  campfireIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#25281F', alignItems: 'center', justifyContent: 'center' },
-  campfireHost: { color: GOLD, fontSize: 10.5, fontWeight: '700', marginTop: 4 },
-  emptyCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 22, alignItems: 'center', gap: 6 },
+  campfireHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 2 },
+  campfirePageTitle: { color: TEXT, fontSize: 24, lineHeight: 28, fontWeight: '900' },
+  campfirePageCopy: { color: '#8F9B93', fontSize: 12, lineHeight: 17, marginTop: 2 },
+  startCampfireCompact: { minHeight: 38, paddingHorizontal: 13, borderRadius: 12, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  startCampfireCompactText: { color: '#101510', fontSize: 12, fontWeight: '900' },
+  filterRail: { gap: 7, paddingRight: 8, paddingVertical: 1 },
+  filterChip: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 13, borderRadius: 99, borderWidth: 1, borderColor: '#3A473F', backgroundColor: '#121A16' },
+  filterChipActive: { borderColor: '#8D8638', backgroundColor: '#2D2C1A' },
+  filterText: { color: '#ABB5AE', fontSize: 11.5, fontWeight: '800' },
+  filterTextActive: { color: '#F1D879' },
+  campfireCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 10 },
+  campfireTopRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  hostAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#263229', borderWidth: 1, borderColor: '#425148', alignItems: 'center', justifyContent: 'center' },
+  hostInitials: { color: GOLD, fontSize: 10, fontWeight: '900' },
+  hostLine: { flexDirection: 'row', alignItems: 'baseline', minWidth: 0 },
+  hostName: { color: TEXT, fontSize: 12.5, fontWeight: '900', flexShrink: 1 },
+  hostVerb: { color: MUTED, fontSize: 11 },
+  campfireTime: { color: GOLD, fontSize: 10.5, fontWeight: '800', marginTop: 2 },
+  campfireTitle: { color: TEXT, fontSize: 17, lineHeight: 21, fontWeight: '900' },
+  campfireDescription: { color: '#D3DAD5', fontSize: 12.5, lineHeight: 18 },
+  campfireLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
+  campfireLocation: { color: '#C8D1CB', fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  distanceText: { color: '#98A39C', fontSize: 10.5, flexShrink: 0 },
+  campfireFooter: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 10, gap: 9 },
+  socialProof: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  miniAvatar: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#28362E', alignItems: 'center', justifyContent: 'center' },
+  socialProofText: { color: MUTED, fontSize: 10.5, fontWeight: '700' },
+  rsvpActions: { flexDirection: 'row', gap: 7 },
+  rsvpButton: { flex: 1, minHeight: 36, borderRadius: 11, borderWidth: 1, borderColor: '#3B4A41', alignItems: 'center', justifyContent: 'center' },
+  rsvpButtonActive: { borderColor: GOLD, backgroundColor: '#292817' },
+  rsvpButtonText: { color: '#C7D0CA', fontSize: 11.5, fontWeight: '900' },
+  rsvpButtonTextActive: { color: GOLD },
+  rsvpPrimary: { borderColor: '#586B5E', backgroundColor: '#233029' },
+  rsvpPrimaryActive: { borderColor: GOLD, backgroundColor: '#302E18' },
+  rsvpPrimaryText: { color: TEXT, fontSize: 11.5, fontWeight: '900' },
+  emptyCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 17, padding: 22, alignItems: 'center', gap: 7 },
   emptyTitle: { color: TEXT, fontSize: 16, fontWeight: '900' },
   emptyText: { color: MUTED, fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  emptyAction: { marginTop: 5, minHeight: 38, paddingHorizontal: 14, borderRadius: 11, backgroundColor: GOLD, justifyContent: 'center' },
+  emptyActionText: { color: '#101510', fontSize: 11.5, fontWeight: '900' },
   emptyListText: { color: MUTED, fontSize: 12, lineHeight: 17, textAlign: 'center', padding: 16 },
   pressed: { opacity: 0.72 },
 });
