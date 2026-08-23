@@ -38,9 +38,9 @@ type PickedPhoto = { uri: string; mimeType?: string | null };
 type AuthorLocation = { city: string | null; state: string | null };
 
 const tabs: { value: OutpostTab; label: string }[] = [
-  { value: 'for-you', label: 'Basecamp' },
+  { value: 'for-you', label: 'Campfires' },
   { value: 'groups', label: 'Communities' },
-  { value: 'campfires', label: 'Campfires' },
+  { value: 'campfires', label: 'Outings' },
 ];
 
 const basecampFilters: { value: BasecampFilter; label: string }[] = [
@@ -62,7 +62,7 @@ const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
   { value: 'ask', label: 'Ask', icon: 'help-circle-outline' },
   { value: 'buddy', label: 'Adventure Buddy', icon: 'people-outline' },
   { value: 'recommendation', label: 'Recommend', icon: 'location-outline' },
-  { value: 'meetup', label: 'Campfire', icon: 'bonfire-outline' },
+  { value: 'meetup', label: 'Outing', icon: 'calendar-outline' },
 ];
 
 function initials(name: string) {
@@ -103,7 +103,7 @@ function isWithinWeek(value: string) {
 }
 
 function PostCard({ post }: { post: CommunityPost }) {
-  const badge = post.post_type === 'ask' ? 'Ask' : post.post_type === 'buddy' ? 'Adventure Buddy' : post.post_type === 'recommendation' ? 'Place' : post.post_type === 'meetup' ? 'Campfire' : null;
+  const badge = post.post_type === 'ask' ? 'Ask' : post.post_type === 'buddy' ? 'Adventure Buddy' : post.post_type === 'recommendation' ? 'Place' : post.post_type === 'meetup' ? 'Outing' : null;
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.postHeader}>
@@ -170,10 +170,10 @@ function CampfireCard({
       <View style={styles.campfireTopRow}>
         <View style={styles.hostAvatar}><Text style={styles.hostInitials}>{initials(event.host_name)}</Text></View>
         <View style={styles.flex}>
-          <View style={styles.hostLine}><Text style={styles.hostName}>{event.host_name}</Text><Text style={styles.hostVerb}> started a Campfire</Text></View>
+          <View style={styles.hostLine}><Text style={styles.hostName}>{event.host_name}</Text><Text style={styles.hostVerb}> planned an outing</Text></View>
           <Text style={styles.campfireTime}>{formatCampfireTime(event.starts_at)}</Text>
         </View>
-        <Ionicons name="bonfire-outline" size={19} color={GOLD} />
+        <Ionicons name="calendar-outline" size={19} color={GOLD} />
       </View>
 
       <Text style={styles.campfireTitle}>{event.title}</Text>
@@ -410,7 +410,7 @@ export default function OutpostScreen() {
         return { ...item, my_rsvp: status, rsvp_count: Math.max(0, item.rsvp_count + rsvpDelta) };
       }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update your Campfire RSVP.');
+      setError(caught instanceof Error ? caught.message : 'Unable to update your Outing RSVP.');
     } finally {
       setUpdatingRsvpId(null);
     }
@@ -440,12 +440,12 @@ export default function OutpostScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {tab === 'for-you' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Your people, communities, and nearby activity in one place.</Text></View>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Around the Campfire</Text><Text style={styles.tabIntroCopy}>Your people, communities, and nearby conversation in one place.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
               <View style={styles.composerAvatar}>{profileAvatarUrl ? <Image source={{ uri: profileAvatarUrl }} style={styles.avatarImage} /> : <Text style={styles.composerAvatarText}>{initials(profileName)}</Text>}</View>
-              <TextInput value={composerBody} onChangeText={setComposerBody} placeholder={composerType === 'ask' ? 'Ask the Outpost…' : composerType === 'buddy' ? 'Find an adventure buddy…' : 'What’s happening outside?'} placeholderTextColor="#7F8B83" multiline maxLength={4000} style={styles.composerInput} />
+              <TextInput value={composerBody} onChangeText={setComposerBody} placeholder={composerType === 'ask' ? 'Ask around the Campfire…' : composerType === 'buddy' ? 'Find an adventure buddy…' : 'What’s happening outside?'} placeholderTextColor="#7F8B83" multiline maxLength={4000} style={styles.composerInput} />
             </View>
             <View style={styles.composerActions}>
               <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={16} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
@@ -454,7 +454,7 @@ export default function OutpostScreen() {
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
-          <View style={styles.basecampHeading}><Text style={styles.sectionTitle}>Your Basecamp</Text><Text style={styles.basecampMode}>{selectedBasecampFilter.label}</Text></View>
+          <View style={styles.basecampHeading}><Text style={styles.sectionTitle}>Your Campfire</Text><Text style={styles.basecampMode}>{selectedBasecampFilter.label}</Text></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>
             {basecampFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, basecampFilter === filter.value && styles.filterChipActive]} onPress={() => setBasecampFilter(filter.value)}><Text style={[styles.filterText, basecampFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}
           </ScrollView>
@@ -474,12 +474,12 @@ export default function OutpostScreen() {
         {tab === 'campfires' ? <>
           <View style={styles.campfireHeader}>
             <View style={styles.flex}>
-              <Text style={styles.campfirePageTitle}>Campfires</Text>
-              <Text style={styles.campfirePageCopy}>Casual plans from people in your community.</Text>
+              <Text style={styles.campfirePageTitle}>Outings</Text>
+              <Text style={styles.campfirePageCopy}>Casual plans to go do something with people in your community.</Text>
             </View>
             <Pressable style={styles.startCampfireCompact} onPress={() => router.push('/local-events/create')}>
               <Ionicons name="add" size={18} color="#101510" />
-              <Text style={styles.startCampfireCompactText}>Start</Text>
+              <Text style={styles.startCampfireCompactText}>Plan</Text>
             </Pressable>
           </View>
 
@@ -493,7 +493,7 @@ export default function OutpostScreen() {
 
           {visibleCampfires.map((event) => <CampfireCard key={event.id} event={event} distance={distanceForCampfire(event)} onRsvp={(nextEvent, status) => void handleRsvp(nextEvent, status)} updating={updatingRsvpId === event.id} />)}
 
-          {!visibleCampfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="bonfire-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>Nothing burning here yet</Text><Text style={styles.emptyText}>{campfireFilter === 'nearby' ? 'Start a casual plan and see who wants to come along.' : 'Try another time filter or start a Campfire.'}</Text><Pressable style={styles.emptyAction} onPress={() => router.push('/local-events/create')}><Text style={styles.emptyActionText}>Start a Campfire</Text></Pressable></View> : null}
+          {!visibleCampfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="calendar-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>No outings here yet</Text><Text style={styles.emptyText}>{campfireFilter === 'nearby' ? 'Plan a casual outing and see who wants to come along.' : 'Try another time filter or plan an Outing.'}</Text><Pressable style={styles.emptyAction} onPress={() => router.push('/local-events/create')}><Text style={styles.emptyActionText}>Plan an Outing</Text></Pressable></View> : null}
 
           {aroundState.length ? <>
             <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Around {homeState}</Text><Text style={styles.sectionCopy}>A little farther out, still within your state.</Text></View>
