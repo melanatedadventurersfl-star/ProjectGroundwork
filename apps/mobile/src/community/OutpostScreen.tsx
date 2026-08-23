@@ -18,7 +18,7 @@ import {
 } from './api';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
-import { getConnections, searchCommunityMembers, type CommunityPerson, type Connection } from './circles';
+import { getConnections, searchCommunityMembers, type Connection } from './circles';
 import { getMemberBasecamp } from '../member/api';
 import { listLocalEvents, type LocalEvent } from '../local-events/api';
 
@@ -29,12 +29,11 @@ const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 
-type OutpostTab = 'for-you' | 'nearby' | 'groups' | 'campfires';
+type OutpostTab = 'for-you' | 'groups' | 'campfires';
 type PickedPhoto = { uri: string; mimeType?: string | null };
 
 const tabs: { value: OutpostTab; label: string }[] = [
   { value: 'for-you', label: 'Basecamp' },
-  { value: 'nearby', label: 'Nearby' },
   { value: 'groups', label: 'Circles' },
   { value: 'campfires', label: 'Campfires' },
 ];
@@ -123,29 +122,21 @@ function PostCard({ post, reason }: { post: CommunityPost; reason?: string | nul
   );
 }
 
-function GroupRow({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+function GroupRow({ group, joining, onJoin, reason }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void; reason?: string | null }) {
   return (
     <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
       <View style={styles.groupAvatar}>{group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
         <Text style={styles.rowTitle}>{group.name}</Text>
         <Text style={styles.rowMeta}>{group.is_member ? `${group.member_count} member${group.member_count === 1 ? '' : 's'}` : joining ? 'Joining…' : `${group.member_count} members · Tap to join`}</Text>
+        {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
       </View>
       <Ionicons name={group.is_member ? 'chevron-forward' : 'add-circle-outline'} size={20} color={group.is_member ? MUTED : GOLD} />
     </Pressable>
   );
 }
 
-function PersonChip({ person }: { person: CommunityPerson }) {
-  return (
-    <Pressable style={({ pressed }) => [styles.personChip, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/community-profile/[id]', params: { id: person.id } })}>
-      <View style={styles.personAvatar}>{person.avatar_url ? <Image source={{ uri: person.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(person.display_name)}</Text>}</View>
-      <Text style={styles.personName} numberOfLines={1}>{person.display_name.split(' ')[0]}</Text>
-    </Pressable>
-  );
-}
-
-function CampfireCard({ event }: { event: LocalEvent }) {
+function CampfireCard({ event, reason }: { event: LocalEvent; reason?: string | null }) {
   const start = new Date(event.starts_at);
   return (
     <Pressable style={({ pressed }) => [styles.campfireCard, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
@@ -155,6 +146,7 @@ function CampfireCard({ event }: { event: LocalEvent }) {
         <Text style={styles.rowMeta}>{start.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text>
         <Text style={styles.rowMeta}>{event.venue_name ? `${event.venue_name} · ` : ''}{event.city}, {event.state}</Text>
         <Text style={styles.campfireHost}>Hosted by {event.host_name}</Text>
+        {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
       </View>
       <Ionicons name="chevron-forward" size={20} color={MUTED} />
     </Pressable>
@@ -166,7 +158,7 @@ export default function OutpostScreen() {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [members, setMembers] = useState<CommunityPerson[]>([]);
+  const [members, setMembers] = useState<Awaited<ReturnType<typeof searchCommunityMembers>>>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
@@ -214,40 +206,50 @@ export default function OutpostScreen() {
 
   const locationLabel = homeCity && homeState ? `${homeCity}, ${homeState}` : homeCity || homeState || 'Your area';
   const acceptedConnectionIds = useMemo(() => new Set(connections.filter((connection) => connection.status === 'accepted').map((connection) => connection.profile_id)), [connections]);
-  const nearbyPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState && (!homeCity || !person.home_city || person.home_city === homeCity)), [members, homeCity, homeState]);
-  const regionalPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState), [members, homeState]);
-  const aroundPeople = nearbyPeople.length ? nearbyPeople : regionalPeople;
-  const nearbyIds = useMemo(() => new Set(aroundPeople.map((person) => person.id)), [aroundPeople]);
-  const nearbyPosts = useMemo(() => posts.filter((post) => nearbyIds.has(post.author_id)).slice(0, 8), [posts, nearbyIds]);
-  const nearbyGroups = useMemo(() => groups.filter((group) => homeState && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [groups, homeCity, homeState]);
-  const regionalGroups = useMemo(() => groups.filter((group) => homeState && group.state === homeState), [groups, homeState]);
-  const aroundGroups = nearbyGroups.length ? nearbyGroups : regionalGroups;
-  const nearbyCampfires = useMemo(() => campfires.filter((event) => homeState && event.state === homeState && (!homeCity || event.city === homeCity)).slice(0, 4), [campfires, homeCity, homeState]);
-  const regionalCampfires = useMemo(() => campfires.filter((event) => homeState && event.state === homeState).slice(0, 4), [campfires, homeState]);
-  const aroundCampfires = nearbyCampfires.length ? nearbyCampfires : regionalCampfires;
+  const localMemberIds = useMemo(() => new Set(members.filter((person) => homeState && person.home_state === homeState && (!homeCity || !person.home_city || person.home_city === homeCity)).map((person) => person.id)), [members, homeCity, homeState]);
+  const regionalMemberIds = useMemo(() => new Set(members.filter((person) => homeState && person.home_state === homeState).map((person) => person.id)), [members, homeState]);
   const myGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member), [groups]);
   const myGroupNames = useMemo(() => new Map(myGroups.map((group) => [group.id, group.name])), [myGroups]);
   const selectedType = postTypes.find((item) => item.value === composerType) ?? postTypes[0]!;
 
+  const isLocalGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [homeCity, homeState]);
+  const isRegionalGroup = useCallback((group: CommunityGroup) => Boolean(homeState && group.state === homeState), [homeState]);
+  const isLocalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState && (!homeCity || event.city === homeCity)), [homeCity, homeState]);
+  const isRegionalCampfire = useCallback((event: LocalEvent) => Boolean(homeState && event.state === homeState), [homeState]);
+
   const reasonForPost = useCallback((post: CommunityPost) => {
     if (post.group_id && myGroupNames.has(post.group_id)) return `Your Circle · ${myGroupNames.get(post.group_id)}`;
     if (acceptedConnectionIds.has(post.author_id)) return 'Trailmate';
-    if (nearbyIds.has(post.author_id)) return nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `In ${homeState}` : 'Nearby';
+    if (localMemberIds.has(post.author_id)) return `Near ${locationLabel}`;
+    if (regionalMemberIds.has(post.author_id) && homeState) return `In ${homeState}`;
     if ((post.reaction_count || 0) + (post.comment_count || 0) >= 3) return 'Popular';
     return 'Recommended';
-  }, [acceptedConnectionIds, homeState, locationLabel, myGroupNames, nearbyIds, nearbyPeople.length]);
+  }, [acceptedConnectionIds, homeState, localMemberIds, locationLabel, myGroupNames, regionalMemberIds]);
 
   const basecampPosts = useMemo(() => [...posts].sort((a, b) => {
     const score = (post: CommunityPost) => {
       let value = (post.reaction_count || 0) + (post.comment_count || 0);
       if (post.group_id && myGroupNames.has(post.group_id)) value += 40;
       if (acceptedConnectionIds.has(post.author_id)) value += 30;
-      if (nearbyIds.has(post.author_id)) value += 15;
+      if (localMemberIds.has(post.author_id)) value += 15;
+      else if (regionalMemberIds.has(post.author_id)) value += 7;
       return value;
     };
     return score(b) - score(a);
-  }), [acceptedConnectionIds, myGroupNames, nearbyIds, posts]);
+  }), [acceptedConnectionIds, localMemberIds, myGroupNames, posts, regionalMemberIds]);
+
+  const sortedDiscoverGroups = useMemo(() => [...discoverGroups].sort((a, b) => {
+    const score = (group: CommunityGroup) => (isLocalGroup(group) ? 20 : isRegionalGroup(group) ? 10 : 0) + group.member_count;
+    return score(b) - score(a);
+  }), [discoverGroups, isLocalGroup, isRegionalGroup]);
+
+  const sortedCampfires = useMemo(() => [...campfires].sort((a, b) => {
+    const locality = (event: LocalEvent) => isLocalCampfire(event) ? 2 : isRegionalCampfire(event) ? 1 : 0;
+    const localityDiff = locality(b) - locality(a);
+    if (localityDiff) return localityDiff;
+    return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+  }), [campfires, isLocalCampfire, isRegionalCampfire]);
 
   async function choosePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -307,7 +309,7 @@ export default function OutpostScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {tab === 'for-you' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Trailmates, your Circles, nearby activity, and community posts worth catching up on.</Text></View>
+          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>What matters to you</Text><Text style={styles.tabIntroCopy}>Trailmates, your Circles, local activity, and community posts worth catching up on.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
             <View style={styles.composerPromptRow}>
@@ -326,27 +328,17 @@ export default function OutpostScreen() {
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
         </> : null}
 
-        {tab === 'nearby' ? <>
-          <View style={styles.nearbyHero}><View style={styles.nearbyIcon}><Ionicons name="navigate" size={22} color="#101510" /></View><View style={styles.flex}><Text style={styles.eyebrow}>LOCAL DISCOVERY</Text><Text style={styles.nearbyTitle}>{nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `Across ${homeState}` : `Near ${locationLabel}`}</Text><Text style={styles.sectionCopy}>{aroundPeople.length} adventurer{aroundPeople.length === 1 ? '' : 's'} · {aroundGroups.length} circle{aroundGroups.length === 1 ? '' : 's'} · {aroundCampfires.length} Campfire{aroundCampfires.length === 1 ? '' : 's'}</Text></View></View>
-          {aroundPeople.length ? <><View style={styles.sectionHeading}><Text style={styles.sectionTitle}>People Nearby</Text><Text style={styles.sectionCopy}>Adventurers in your area.</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>{aroundPeople.slice(0, 12).map((person) => <PersonChip key={person.id} person={person} />)}</ScrollView></> : null}
-          {aroundCampfires.length ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>{nearbyCampfires.length ? 'Campfires Nearby' : `Campfires in ${homeState}`}</Text>{aroundCampfires.map((event) => <CampfireCard key={event.id} event={event} />)}</View> : null}
-          {aroundGroups.length ? <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Circles Around You</Text><Text style={styles.sectionCopy}>Local communities connected to your area.</Text><View style={styles.list}>{aroundGroups.slice(0, 5).map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}</View></View> : null}
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Local Posts</Text><Text style={styles.sectionCopy}>{nearbyPeople.length ? 'What adventurers around you are sharing.' : 'What adventurers in your region are sharing.'}</Text></View>
-          {nearbyPosts.map((post) => <PostCard key={post.id} post={post} reason={nearbyPeople.length ? `Near ${locationLabel}` : homeState ? `In ${homeState}` : 'Nearby'} />)}
-          {!nearbyPosts.length && !loading ? <Text style={styles.emptyText}>Local activity will show here as the Outpost grows.</Text> : null}
-        </> : null}
-
         {tab === 'groups' ? <>
           <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Your communities</Text><Text style={styles.tabIntroCopy}>Persistent spaces built around shared interests, identities, activities, and goals.</Text></View>
           <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Your Circles</Text><Text style={styles.sectionCopy}>Communities you already belong to.</Text><View style={styles.list}>{myGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!myGroups.length ? <Text style={styles.emptyListText}>You have not joined a Circle yet.</Text> : null}</View></View>
-          <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Discover Circles</Text><Text style={styles.sectionCopy}>Find communities that match what you enjoy outdoors.</Text><View style={styles.list}>{discoverGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!discoverGroups.length ? <Text style={styles.emptyListText}>You are caught up on available Circles.</Text> : null}</View></View>
+          <View style={styles.sectionCard}><Text style={styles.sectionTitle}>Discover Circles</Text><Text style={styles.sectionCopy}>Recommended by interests, activity, and location.</Text><View style={styles.list}>{sortedDiscoverGroups.map((group) => <GroupRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} reason={isLocalGroup(group) ? 'Near you' : isRegionalGroup(group) ? `In ${homeState}` : null} />)}{!sortedDiscoverGroups.length ? <Text style={styles.emptyListText}>You are caught up on available Circles.</Text> : null}</View></View>
         </> : null}
 
         {tab === 'campfires' ? <>
           <View style={styles.campfireHero}><View style={styles.campfireHeroIcon}><Ionicons name="bonfire-outline" size={26} color={GOLD} /></View><View style={styles.flex}><Text style={styles.sectionTitle}>Come hang out</Text><Text style={styles.sectionCopy}>Casual, member-led meetups with less planning and lower commitment than an Adventure.</Text></View></View>
           <Pressable style={styles.startCampfireButton} onPress={() => router.push('/local-events/create')}><Ionicons name="add-circle-outline" size={19} color="#101510" /><Text style={styles.startCampfireText}>Start a Campfire</Text></Pressable>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Upcoming Campfires</Text><Text style={styles.sectionCopy}>Quick plans, casual hangs, and easy ways to connect.</Text></View>
-          {campfires.map((event) => <CampfireCard key={event.id} event={event} />)}
+          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Upcoming Campfires</Text><Text style={styles.sectionCopy}>Nearby gatherings rise to the top automatically.</Text></View>
+          {sortedCampfires.map((event) => <CampfireCard key={event.id} event={event} reason={isLocalCampfire(event) ? 'Near you' : isRegionalCampfire(event) ? `In ${homeState}` : null} />)}
           {!campfires.length && !loading ? <View style={styles.emptyCard}><Ionicons name="bonfire-outline" size={28} color={GOLD} /><Text style={styles.emptyTitle}>No Campfires yet</Text><Text style={styles.emptyText}>Start one and give people a reason to get together.</Text></View> : null}
         </> : null}
       </ScrollView>
@@ -362,10 +354,10 @@ const styles = StyleSheet.create({
   title: { color: TEXT, fontSize: 32, lineHeight: 36, fontWeight: '900' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   subtitle: { color: MUTED, fontSize: 12, fontWeight: '700' },
-  tabs: { flexDirection: 'row', gap: 6, paddingVertical: 2 },
-  tab: { flex: 1, minHeight: 38, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  tabs: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
+  tab: { flex: 1, minHeight: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
   tabActive: { backgroundColor: '#252D27', borderWidth: 1, borderColor: '#4A493C' },
-  tabText: { color: '#9DA8A1', fontWeight: '800', fontSize: 11.5 },
+  tabText: { color: '#9DA8A1', fontWeight: '800', fontSize: 12 },
   tabTextActive: { color: GOLD },
   loader: { marginVertical: 4 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 12 },
@@ -422,14 +414,7 @@ const styles = StyleSheet.create({
   groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   rowTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
   rowMeta: { color: MUTED, fontSize: 11.5, lineHeight: 16, marginTop: 2 },
-  personChip: { width: 66, alignItems: 'center', gap: 5 },
-  personAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#213229', borderWidth: 1, borderColor: '#536158', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  personName: { color: '#DDE4DF', fontSize: 11, fontWeight: '800', maxWidth: 64 },
-  peopleRow: { gap: 10, paddingVertical: 2 },
-  nearbyHero: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#17251E', borderWidth: 1, borderColor: '#304239', borderRadius: 17, padding: 14 },
-  nearbyIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
-  eyebrow: { color: GOLD, fontSize: 9.5, letterSpacing: 1.1, fontWeight: '900' },
-  nearbyTitle: { color: TEXT, fontSize: 18, fontWeight: '900', marginTop: 1 },
+  rowReason: { color: GOLD, fontSize: 10.5, fontWeight: '800', marginTop: 4 },
   campfireHero: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#171F1B', borderWidth: 1, borderColor: '#3B423B', borderRadius: 17, padding: 14 },
   campfireHeroIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#25281F', alignItems: 'center', justifyContent: 'center' },
   startCampfireButton: { minHeight: 46, borderRadius: 14, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
