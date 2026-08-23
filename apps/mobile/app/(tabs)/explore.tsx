@@ -435,7 +435,7 @@ export default function ExploreScreen() {
 
         {!loading && nearbyPreview.length ? (
           <View style={s.section}>
-            <SectionHeader title="Happening Near You" expanded={expandedSection === 'events'} onPress={() => toggleExpanded('events')} />
+            <SectionHeader title="Outings Happening Near You" expanded={expandedSection === 'events'} onPress={() => toggleExpanded('events')} />
             {expandedSection === 'events' ? (
               <View style={s.expandedList}>
                 {nearby.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} wide />)}
