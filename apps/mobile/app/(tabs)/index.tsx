@@ -21,6 +21,7 @@ import type { AdventureSummary } from '../../src/adventures/types';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { getCommunityFeed, type CommunityPost } from '../../src/community/api';
 import { getCircles } from '../../src/community/circles';
+import { listLocalEvents, type LocalEvent } from '../../src/local-events/api';
 import { removeProfileCover, uploadProfileCover } from '../../src/member/api';
 import { supabase } from '../../src/lib/supabase';
 import { getJourney } from '../../src/passport/api';
@@ -33,6 +34,7 @@ import { AppIcon } from '../../src/ui/AppIcon';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const COMPACT_CARD_WIDTH = 176;
 const WIDE_CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 430);
+const UPCOMING_CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.72, 244), 310);
 const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.64, 214), 264);
 type CampfireMode = 'general' | 'circle';
 
@@ -44,6 +46,10 @@ function greeting(hour: number) {
 
 function shortDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function shortTime(value: string) {
+  return new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 function countdown(value: string) {
@@ -88,6 +94,7 @@ export default function TrailheadScreen() {
   const { session } = useAuth();
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
+  const [localEvents, setLocalEvents] = useState<LocalEvent[]>([]);
   const [displayName, setDisplayName] = useState('Adventurer');
   const [completedCount, setCompletedCount] = useState(0);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
@@ -114,6 +121,12 @@ export default function TrailheadScreen() {
       });
     return [...unique.values()];
   }, [queue]);
+  const upcomingCampfires = useMemo(
+    () => localEvents
+      .filter((event) => event.my_rsvp === 'going' && event.status === 'published')
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()),
+    [localEvents],
+  );
   const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
   const campfirePosts = useMemo(() => {
     const filtered = communityPosts.filter((post) => {
@@ -131,13 +144,14 @@ export default function TrailheadScreen() {
 
     try {
       const userId = session?.user.id;
-      const [nextQueue, nextJourney, nextAdventures, profileResult, nextPosts, nextCircles] = await Promise.all([
+      const [nextQueue, nextJourney, nextAdventures, profileResult, nextPosts, nextCircles, nextLocalEvents] = await Promise.all([
         userId ? getAdventureQueue() : Promise.resolve([] as AdventureQueueItem[]),
         userId ? getJourney() : Promise.resolve([]),
         listAdventures(),
         userId ? supabase.from('profiles').select('*').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
         userId ? getCommunityFeed().catch(() => [] as CommunityPost[]) : Promise.resolve([] as CommunityPost[]),
         userId ? getCircles().catch(() => []) : Promise.resolve([]),
+        userId ? listLocalEvents().catch(() => [] as LocalEvent[]) : Promise.resolve([] as LocalEvent[]),
       ]);
 
       setQueue(nextQueue);
@@ -145,6 +159,7 @@ export default function TrailheadScreen() {
       setAdventures(nextAdventures);
       setCommunityPosts(nextPosts);
       setCircleCount(nextCircles.length);
+      setLocalEvents(nextLocalEvents);
       const profile = profileResult.data as {
         first_name?: string | null;
         display_name?: string | null;
@@ -159,7 +174,7 @@ export default function TrailheadScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.user.id]);
+  }, [session]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -260,6 +275,56 @@ export default function TrailheadScreen() {
           </Pressable>
         )}
       </View>
+
+      {upcomingCampfires.length ? (
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Your Campfires</Text>
+            <Text style={styles.count}>{upcomingCampfires.length} attending</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={UPCOMING_CAMPFIRE_CARD_WIDTH + 12}
+            decelerationRate="fast"
+            contentContainerStyle={styles.upcomingCampfireRow}
+          >
+            {upcomingCampfires.map((event) => (
+              <Pressable
+                key={event.id}
+                style={({ pressed }) => [styles.upcomingCampfireCard, pressed && styles.campfirePostPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${event.title}`}
+                onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}
+              >
+                {event.image_url ? (
+                  <Image source={{ uri: event.image_url }} style={styles.upcomingCampfireImage} />
+                ) : (
+                  <View style={styles.upcomingCampfireFallback}>
+                    <AppIcon name="local-fire-department" color="#F0D083" size={42} />
+                  </View>
+                )}
+                <View pointerEvents="none" style={styles.upcomingCampfireShade} />
+                <View style={styles.upcomingCampfireBody}>
+                  <View style={styles.upcomingCampfireTopRow}>
+                    <Text style={styles.upcomingCampfireGoing}>GOING</Text>
+                    <Text style={styles.upcomingCampfireCountdown}>{countdown(event.starts_at)}</Text>
+                  </View>
+                  <View style={styles.upcomingCampfireTextBlock}>
+                    <Text style={styles.upcomingCampfireTitle} numberOfLines={2}>{event.title}</Text>
+                    <Text style={styles.upcomingCampfireMeta} numberOfLines={1}>{shortDate(event.starts_at)} · {shortTime(event.starts_at)}</Text>
+                    <Text style={styles.upcomingCampfireMeta} numberOfLines={1}>{event.venue_name ? `${event.venue_name} · ` : ''}{event.city}, {event.state}</Text>
+                  </View>
+                  <View style={styles.upcomingCampfireFooter}>
+                    <Text style={styles.upcomingCampfirePeople}>{event.rsvp_count} {event.rsvp_count === 1 ? 'person' : 'people'} going</Text>
+                    <Text style={styles.upcomingCampfireLink}>View Campfire →</Text>
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       {featured.length ? (
         <View style={styles.section}>
@@ -381,6 +446,21 @@ const styles = StyleSheet.create({
   emptyAdventureCard: { minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: '#34463C', backgroundColor: '#17211C', paddingHorizontal: 18, paddingVertical: 16, justifyContent: 'center' },
   emptyAdventureTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900' },
   emptyAdventureText: { color: '#AFC0B6', fontSize: 12, lineHeight: 17, marginTop: 4 },
+  upcomingCampfireRow: { gap: 12, paddingRight: 18 },
+  upcomingCampfireCard: { width: UPCOMING_CAMPFIRE_CARD_WIDTH, height: 190, borderRadius: 20, overflow: 'hidden', backgroundColor: '#203128', borderWidth: 1, borderColor: '#3B4B42' },
+  upcomingCampfireImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%', resizeMode: 'cover' },
+  upcomingCampfireFallback: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: '#23362B' },
+  upcomingCampfireShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,9,7,0.50)' },
+  upcomingCampfireBody: { flex: 1, padding: 14, justifyContent: 'space-between', gap: 8 },
+  upcomingCampfireTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  upcomingCampfireGoing: { color: '#17211C', backgroundColor: '#E3C350', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 4, fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
+  upcomingCampfireCountdown: { color: '#FFF8E8', fontSize: 10, fontWeight: '800', backgroundColor: 'rgba(10,16,13,0.76)', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5 },
+  upcomingCampfireTextBlock: { gap: 3 },
+  upcomingCampfireTitle: { color: '#FFF8E8', fontSize: 20, lineHeight: 23, fontWeight: '900' },
+  upcomingCampfireMeta: { color: '#D8E0DB', fontSize: 11, lineHeight: 15, fontWeight: '700' },
+  upcomingCampfireFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  upcomingCampfirePeople: { color: '#D4DDD8', fontSize: 10, fontWeight: '700', flexShrink: 1 },
+  upcomingCampfireLink: { color: '#F0D083', fontSize: 11, fontWeight: '900' },
   campfireSection: { gap: 10, paddingTop: 2 },
   campfireTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   campfireTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900', flexShrink: 1 },
