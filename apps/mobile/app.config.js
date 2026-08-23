@@ -6,6 +6,19 @@ const buildCommit =
   process.env.EXPO_PUBLIC_GIT_SHA ||
   'local';
 
+function shareHost() {
+  try {
+    const value = process.env.EXPO_PUBLIC_SHARE_BASE_URL?.trim();
+    if (!value) return null;
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.host : null;
+  } catch {
+    return null;
+  }
+}
+
+const publicShareHost = shareHost();
+
 // The selected Go Melanated launcher artwork is a complete, finished icon.
 // Do not feed that same finished square into Android's adaptive foreground
 // layer, because launchers will scale/mask it a second time and can make the
@@ -13,12 +26,38 @@ const buildCommit =
 // Android will instead use the canonical icon declared at android.icon.
 const android = {
   ...(base.android || {}),
+  ...(publicShareHost
+    ? {
+        intentFilters: [
+          ...(base.android?.intentFilters || []),
+          {
+            action: 'VIEW',
+            autoVerify: true,
+            data: [{ scheme: 'https', host: publicShareHost, pathPrefix: '/p' }],
+            category: ['BROWSABLE', 'DEFAULT'],
+          },
+        ],
+      }
+    : {}),
 };
 delete android.adaptiveIcon;
+
+const ios = {
+  ...(base.ios || {}),
+  ...(publicShareHost
+    ? {
+        associatedDomains: [
+          ...(base.ios?.associatedDomains || []),
+          `applinks:${publicShareHost}`,
+        ],
+      }
+    : {}),
+};
 
 module.exports = {
   ...base,
   android,
+  ios,
   extra: {
     ...base.extra,
     nativeBuildAssetRevision: 'go-melanated-launcher-v12',
