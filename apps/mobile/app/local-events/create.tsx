@@ -39,20 +39,45 @@ function localInputValue(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function campfireCategory(value?: string) {
+  if (value === 'Hiking') return 'Hiking';
+  if (value === 'Water') return 'Water';
+  if (value === 'Camping') return 'Camping';
+  return 'Hangout';
+}
+
 export default function CreateLocalEventScreen() {
-  const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>();
+  const {
+    groupId,
+    groupName,
+    trailGuidePlaceId,
+    trailGuidePlaceName,
+    trailGuideArea,
+    trailGuideCity,
+    trailGuideCategory,
+  } = useLocalSearchParams<{
+    groupId?: string;
+    groupName?: string;
+    trailGuidePlaceId?: string;
+    trailGuidePlaceName?: string;
+    trailGuideArea?: string;
+    trailGuideCity?: string;
+    trailGuideCategory?: string;
+  }>();
   const communityScoped = Boolean(groupId);
+  const trailGuideScoped = Boolean(trailGuidePlaceId && trailGuidePlaceName);
+  const suggestedCity = trailGuideCity === 'orlando' ? 'Orlando' : trailGuideCity === 'jacksonville' ? 'Jacksonville' : '';
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Hangout');
+  const [title, setTitle] = useState(trailGuidePlaceName ? `${trailGuidePlaceName} meetup` : '');
+  const [description, setDescription] = useState(trailGuidePlaceName ? `Thinking about heading to ${trailGuidePlaceName}. Who wants to join?` : '');
+  const [category, setCategory] = useState(campfireCategory(trailGuideCategory));
   const [quickTime, setQuickTime] = useState<QuickTime>('tonight');
   const [startsAt, setStartsAt] = useState(() => localInputValue(quickDate('tonight')));
-  const [venueName, setVenueName] = useState('');
-  const [state, setState] = useState('');
-  const [city, setCity] = useState('');
-  const [stateSearch, setStateSearch] = useState('');
-  const [citySearch, setCitySearch] = useState('');
+  const [venueName, setVenueName] = useState(trailGuidePlaceName ?? '');
+  const [state, setState] = useState(trailGuideScoped ? 'FL' : '');
+  const [city, setCity] = useState(trailGuideScoped ? suggestedCity : '');
+  const [stateSearch, setStateSearch] = useState(trailGuideScoped ? 'Florida' : '');
+  const [citySearch, setCitySearch] = useState(trailGuideScoped ? suggestedCity : '');
   const [cities, setCities] = useState<string[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -66,6 +91,7 @@ export default function CreateLocalEventScreen() {
   }, [groupId]);
 
   useEffect(() => {
+    if (trailGuideScoped) return;
     getMemberBasecamp().then((basecamp) => {
       const homeState = basecamp.profile?.home_state ?? '';
       const homeCity = basecamp.profile?.home_city ?? '';
@@ -79,7 +105,7 @@ export default function CreateLocalEventScreen() {
         setCitySearch(homeCity);
       }
     }).catch(() => undefined);
-  }, []);
+  }, [trailGuideScoped]);
 
   useEffect(() => {
     if (!state) {
@@ -128,6 +154,7 @@ export default function CreateLocalEventScreen() {
         state,
         venueName,
         groupId: groupId ?? null,
+        trailGuidePlaceId: trailGuidePlaceId ?? null,
       });
       router.replace({ pathname: '/local-events/[id]', params: { id } });
     } catch (caught) {
@@ -158,11 +185,23 @@ export default function CreateLocalEventScreen() {
         <View style={styles.topRow}>
           <Pressable onPress={() => router.back()} style={styles.backButton}><Ionicons name="chevron-back" size={21} color="#FFF8E8" /></Pressable>
           <View style={styles.flex}>
-            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY CAMPFIRE' : 'CAMPFIRE'}</Text>
-            <Text style={styles.title}>What are you doing?</Text>
+            <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY CAMPFIRE' : trailGuideScoped ? 'TRAIL GUIDE CAMPFIRE' : 'CAMPFIRE'}</Text>
+            <Text style={styles.title}>{trailGuideScoped ? `Meet at ${trailGuidePlaceName}` : 'What are you doing?'}</Text>
           </View>
         </View>
-        <Text style={styles.body}>Keep it casual. Say what you’re doing, when, and where. People nearby can jump in.</Text>
+        <Text style={styles.body}>{trailGuideScoped ? 'We brought the place over from Trail Guide. Pick a time, tweak the details, and invite people nearby.' : 'Keep it casual. Say what you’re doing, when, and where. People nearby can jump in.'}</Text>
+
+        {trailGuideScoped ? (
+          <View style={styles.trailGuideCard}>
+            <View style={styles.trailGuideIcon}><Ionicons name="map-outline" size={20} color="#D7B45A" /></View>
+            <View style={styles.flex}>
+              <Text style={styles.trailGuideLabel}>FROM TRAIL GUIDE</Text>
+              <Text style={styles.trailGuideName}>{trailGuidePlaceName}</Text>
+              <Text style={styles.trailGuideMeta}>{trailGuideArea || suggestedCity}{trailGuideCategory ? ` · ${trailGuideCategory}` : ''}</Text>
+            </View>
+            <Ionicons name="bonfire-outline" size={20} color="#D7B45A" />
+          </View>
+        ) : null}
 
         <TextInput value={title} onChangeText={setTitle} placeholder="Riverwalk + drinks" placeholderTextColor="#718078" style={styles.bigInput} maxLength={80} />
 
@@ -223,6 +262,11 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 10 },
   title: { color: '#FFF8E8', fontSize: 27, lineHeight: 31, fontWeight: '900' },
   body: { color: '#AEB8B2', fontSize: 13, lineHeight: 19, marginBottom: 3 },
+  trailGuideCard: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#191B12', borderWidth: 1, borderColor: '#4A4423', borderRadius: 15, padding: 13 },
+  trailGuideIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#2A2818', alignItems: 'center', justifyContent: 'center' },
+  trailGuideLabel: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
+  trailGuideName: { color: '#FFF8E8', fontSize: 14, fontWeight: '900', marginTop: 1 },
+  trailGuideMeta: { color: '#9EAAA2', fontSize: 11, marginTop: 2 },
   bigInput: { minHeight: 62, backgroundColor: '#17211C', borderWidth: 1, borderColor: '#35443A', color: '#FFF8E8', borderRadius: 16, paddingHorizontal: 15, paddingVertical: 15, fontSize: 18, fontWeight: '800' },
   label: { color: '#FFF3CE', fontWeight: '900', marginTop: 7, fontSize: 13 },
   microLabel: { color: '#8F9B93', fontWeight: '800', fontSize: 10, marginBottom: 4 },

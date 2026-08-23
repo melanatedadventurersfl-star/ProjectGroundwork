@@ -37,7 +37,8 @@ export type AppIconName =
   | 'badge'
   | 'time'
   | 'close'
-  | 'delete';
+  | 'delete'
+  | 'bonfire';
 
 const icons: Record<AppIconName, IoniconName> = {
   trailhead: 'home-outline',
@@ -73,6 +74,7 @@ const icons: Record<AppIconName, IoniconName> = {
   time: 'time-outline',
   close: 'close-circle-outline',
   delete: 'trash-outline',
+  bonfire: 'bonfire-outline',
 };
 
 export function AppIcon({

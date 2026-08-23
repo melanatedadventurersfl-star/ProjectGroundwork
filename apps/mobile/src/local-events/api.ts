@@ -19,6 +19,7 @@ export type LocalEvent = {
   is_free: boolean;
   status: 'draft' | 'published' | 'cancelled' | 'completed';
   group_id: string | null;
+  trail_guide_place_id: string | null;
   host_name: string;
   rsvp_count: number;
   my_rsvp: 'going' | 'interested' | 'cancelled' | null;
@@ -166,6 +167,7 @@ export async function createLocalEvent(input: {
   capacity?: number;
   imageUrl?: string;
   groupId?: string | null;
+  trailGuidePlaceId?: string | null;
 }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
@@ -191,6 +193,7 @@ export async function createLocalEvent(input: {
     is_free: true,
     status: 'published',
     group_id: input.groupId ?? null,
+    trail_guide_place_id: input.trailGuidePlaceId ?? null,
   }).select('id').single();
   if (error) throw error;
   return data.id as string;
