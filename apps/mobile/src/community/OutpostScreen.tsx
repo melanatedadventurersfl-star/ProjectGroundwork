@@ -230,7 +230,6 @@ export default function OutpostScreen() {
   const nearbyPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState && (!homeCity || !person.home_city || person.home_city === homeCity)), [members, homeCity, homeState]);
   const regionalPeople = useMemo(() => members.filter((person) => homeState && person.home_state === homeState), [members, homeState]);
   const aroundPeople = nearbyPeople.length ? nearbyPeople : regionalPeople;
-  const aroundPeopleLabel = nearbyPeople.length ? locationLabel : homeState ? `${homeState} area` : locationLabel;
   const nearbyIds = useMemo(() => new Set(aroundPeople.map((person) => person.id)), [aroundPeople]);
   const nearbyPosts = useMemo(() => posts.filter((post) => nearbyIds.has(post.author_id)).slice(0, 8), [posts, nearbyIds]);
   const nearbyGroups = useMemo(() => groups.filter((group) => homeState && group.state === homeState && (!homeCity || !group.city || group.city === homeCity)), [groups, homeCity, homeState]);
@@ -331,24 +330,9 @@ export default function OutpostScreen() {
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
 
-          <View style={styles.discoveryHeader}><View><Text style={styles.discoveryTitle}>Around you</Text>{!nearbyPeople.length && regionalPeople.length ? <Text style={styles.discoveryScope}>Showing more from {homeState}</Text> : null}</View><Pressable onPress={() => setTab('nearby')}><Text style={styles.link}>See all</Text></Pressable></View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoveryRail}>
-            <Pressable style={({ pressed }) => [styles.discoveryCard, styles.discoveryPeople, pressed && styles.pressed]} onPress={() => setTab('nearby')}>
-              <View style={[styles.discoveryIcon, styles.discoveryPeopleIcon]}><Ionicons name="people-outline" size={20} color="#DCE9DF" /></View>
-              <Text style={styles.discoveryCardTitle}>{aroundPeople.length ? `${aroundPeople.length} adventurer${aroundPeople.length === 1 ? '' : 's'} ${nearbyPeople.length ? 'nearby' : 'in your region'}` : 'Find nearby adventurers'}</Text>
-              <Text style={styles.discoveryCardMeta}>{aroundPeople.length ? aroundPeopleLabel : 'Expand your local network'}</Text>
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.discoveryCard, styles.discoveryCampfire, pressed && styles.pressed]} onPress={() => setTab('campfires')}>
-              <View style={[styles.discoveryIcon, styles.discoveryCampfireIcon]}><Ionicons name="bonfire-outline" size={20} color="#F2CE65" /></View>
-              <Text style={styles.discoveryCardTitle}>{aroundCampfires.length ? aroundCampfires[0]?.title ?? 'Campfires nearby' : 'Start a Campfire'}</Text>
-              <Text style={styles.discoveryCardMeta}>{aroundCampfires.length ? `${aroundCampfires.length} ${nearbyCampfires.length ? 'nearby' : `across ${homeState}`}` : 'Bring people together'}</Text>
-            </Pressable>
-            <Pressable style={({ pressed }) => [styles.discoveryCard, styles.discoveryCircles, pressed && styles.pressed]} onPress={() => setTab('groups')}>
-              <View style={[styles.discoveryIcon, styles.discoveryCirclesIcon]}><Ionicons name="ellipse-outline" size={20} color="#C9B7F5" /></View>
-              <Text style={styles.discoveryCardTitle}>{aroundGroups.length ? `${aroundGroups.length} ${nearbyGroups.length ? 'local' : 'regional'} circle${aroundGroups.length === 1 ? '' : 's'}` : 'Discover Circles'}</Text>
-              <Text style={styles.discoveryCardMeta}>{aroundGroups.length ? 'Communities to explore' : 'Find your people'}</Text>
-            </Pressable>
-          </ScrollView>
+          <View style={styles.feedHeading}>
+            <Text style={styles.feedTitle}>Latest from Basecamp</Text>
+          </View>
 
           {posts.map((post) => <PostCard key={post.id} post={post} reason={reasonForPost(post)} />)}
           {!posts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Start the conversation</Text><Text style={styles.emptyText}>Share what you’re doing outside.</Text></View> : null}
@@ -419,20 +403,8 @@ const styles = StyleSheet.create({
   typeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#344239' },
   typeText: { color: '#CED6D0', fontSize: 12.5, fontWeight: '700' },
   typeTextActive: { color: GOLD },
-  discoveryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 1 },
-  discoveryTitle: { color: TEXT, fontSize: 17, fontWeight: '900' },
-  discoveryScope: { color: '#7F8C83', fontSize: 10.5, marginTop: 1 },
-  discoveryRail: { gap: 9, paddingBottom: 2 },
-  discoveryCard: { width: 158, minHeight: 106, borderWidth: 1, borderRadius: 16, padding: 12, justifyContent: 'space-between' },
-  discoveryPeople: { backgroundColor: '#15231C', borderColor: '#2E4538' },
-  discoveryCampfire: { backgroundColor: '#241F16', borderColor: '#4C4028' },
-  discoveryCircles: { backgroundColor: '#1C1A25', borderColor: '#3D3650' },
-  discoveryIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  discoveryPeopleIcon: { backgroundColor: '#253A2E' },
-  discoveryCampfireIcon: { backgroundColor: '#3B3020' },
-  discoveryCirclesIcon: { backgroundColor: '#302943' },
-  discoveryCardTitle: { color: TEXT, fontSize: 13.5, lineHeight: 18, fontWeight: '900', marginTop: 8 },
-  discoveryCardMeta: { color: MUTED, fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  feedHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 2 },
+  feedTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionHeading: { gap: 2, paddingTop: 3 },
   sectionTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
   sectionCopy: { color: '#8F9B93', fontSize: 11.5, lineHeight: 17, marginTop: 2 },
