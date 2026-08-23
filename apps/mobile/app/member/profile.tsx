@@ -36,7 +36,7 @@ function formatDate(value?:string|null){
  return date.toLocaleDateString(undefined,{month:'short',day:'numeric',year:date.getFullYear()!==new Date().getFullYear()?'numeric':undefined});
 }
 
-function Avatar({url,name,size=82}:{url?:string|null;name?:string|null;size?:number}){
+function Avatar({url,name,size=76}:{url?:string|null;name?:string|null;size?:number}){
  const radius=size/2;
  if(url)return <Image source={{uri:url}} style={{width:size,height:size,borderRadius:radius,backgroundColor:'#F5C341'}}/>;
  return <View style={{width:size,height:size,borderRadius:radius,backgroundColor:'#F5C341',alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:size*.42,fontWeight:'900',color:'#121A17'}}>{String(name??'A').slice(0,1).toUpperCase()}</Text></View>;
@@ -117,12 +117,8 @@ export default function ProfileScreen(){
   const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],base64:true,quality:.85});
   if(result.canceled||!result.assets?.[0])return;
   setPhotoBusy(true);
-  try{
-   const asset=result.assets[0];
-   const avatarUrl=await uploadProfilePhoto({uri:asset.uri,base64:asset.base64??undefined,mimeType:asset.mimeType});
-   setData((current:any)=>({...current,profile:{...current.profile,avatar_url:avatarUrl}}));
-   setMessage('Profile photo updated.');
-  }catch(error){setMessage(error instanceof Error?error.message:'Unable to update profile photo.')}
+  try{const asset=result.assets[0];const avatarUrl=await uploadProfilePhoto({uri:asset.uri,base64:asset.base64??undefined,mimeType:asset.mimeType});setData((current:any)=>({...current,profile:{...current.profile,avatar_url:avatarUrl}}));setMessage('Profile photo updated.')}
+  catch(error){setMessage(error instanceof Error?error.message:'Unable to update profile photo.')}
   finally{setPhotoBusy(false)}
  }
  async function removePhoto(){
@@ -143,12 +139,8 @@ export default function ProfileScreen(){
   const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:COVER_ASPECT,base64:true,quality:.85});
   if(result.canceled||!result.assets?.[0])return;
   setCoverBusy(true);
-  try{
-   const asset=result.assets[0];
-   const coverUrl=await uploadProfileCover({uri:asset.uri,base64:asset.base64??undefined,mimeType:asset.mimeType});
-   setData((current:any)=>({...current,profile:{...current.profile,cover_url:coverUrl}}));
-   setMessage('Cover image updated.');
-  }catch(error){setMessage(error instanceof Error?error.message:'Unable to update cover image.')}
+  try{const asset=result.assets[0];const coverUrl=await uploadProfileCover({uri:asset.uri,base64:asset.base64??undefined,mimeType:asset.mimeType});setData((current:any)=>({...current,profile:{...current.profile,cover_url:coverUrl}}));setMessage('Cover image updated.')}
+  catch(error){setMessage(error instanceof Error?error.message:'Unable to update cover image.')}
   finally{setCoverBusy(false)}
  }
  async function removeCover(){
@@ -165,8 +157,6 @@ export default function ProfileScreen(){
  const profile=data?.profile??{};
  const rank=useMemo(()=>rankFor(journey.length),[journey.length]);
  const nextRank=useMemo(()=>rankLadder.find(([,minimum])=>minimum>journey.length),[journey.length]);
- const nextMinimum=nextRank?.[1]??Math.max(journey.length,1);
- const progress=nextRank?Math.max(0,Math.min(1,journey.length/nextMinimum)):1;
  const remaining=nextRank?Math.max(0,nextRank[1]-journey.length):0;
  const location=[profile.home_city,profile.home_state].filter(Boolean).join(', ');
  const totalPhotos=journey.reduce((sum,item)=>sum+(Number(item.photo_count)||0),0);
@@ -197,28 +187,32 @@ export default function ProfileScreen(){
  </SafeAreaView>;
 
  return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-  <View style={styles.topBar}><Pressable onPress={()=>router.back()} hitSlop={10}><AppIcon name="chevron-forward" color="#F5C341" size={26} style={{transform:[{rotate:'180deg'}]}}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Edit profile" style={styles.editPill} onPress={()=>setEditing(true)}><AppIcon name="edit" color="#F5C341" size={15}/><Text style={styles.editPillText}>Edit</Text></Pressable></View>
+  <View style={styles.topBar}><Pressable onPress={()=>router.back()} hitSlop={10}><AppIcon name="chevron-forward" color="#F5C341" size={26} style={{transform:[{rotate:'180deg'}]}}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Edit profile" style={styles.editIconButton} onPress={()=>setEditing(true)}><AppIcon name="edit" color="#F5C341" size={18}/></Pressable></View>
 
   <View style={styles.coverShell}>
    {coverUrl?<Image source={{uri:coverUrl}} style={styles.coverImage}/>:<View style={styles.coverPlaceholder}><AppIcon name="adventure" color="#D7B45A" size={34}/><Text style={styles.coverPlaceholderText}>Make this profile yours</Text></View>}
    <View style={styles.coverShade}/>
    <Pressable onPress={coverMenu} style={styles.coverEditButton}><AppIcon name="camera" color="#F7F8F3" size={14}/></Pressable>
-   <View style={styles.coverAchievements}>
-    <View style={styles.coverRankRow}>
-     <RankEmblem rank={rank} size={42}/>
-     <View style={styles.coverRankCopy}><Text style={styles.coverRankName}>{rank.toUpperCase()}</Text><Text style={styles.coverRankMeta}>{journey.length} Adventure{journey.length===1?'':'s'}{nextRank?` · ${remaining} to ${nextRank[0]}`:' · Highest rank'}</Text></View>
-    </View>
-    <View style={styles.coverStatsRow}>
-     <Pressable accessibilityRole="button" accessibilityLabel="View Stamps" onPress={()=>router.push('/member/stamps')} style={({pressed})=>[styles.coverStatPill,pressed&&styles.pressed]}><Text style={styles.coverStatValue}>{stamps.length}</Text><Text style={styles.coverStatLabel}>Stamps</Text></Pressable>
-     <Pressable accessibilityRole="button" accessibilityLabel="View Badges" onPress={()=>router.push('/member/badges')} style={({pressed})=>[styles.coverStatPill,pressed&&styles.pressed]}><Text style={styles.coverStatValue}>{badges.length}</Text><Text style={styles.coverStatLabel}>Badges</Text></Pressable>
-    </View>
-   </View>
   </View>
 
   <View style={styles.profileIdentity}>
-   <Pressable onPress={photoMenu} style={styles.avatarWrap}><Avatar url={profile.avatar_url} name={profile.display_name}/><View style={styles.mainCameraBadge}><AppIcon name="camera" color="#121A17" size={12}/></View></Pressable>
-   <View style={styles.identityCopy}><Text style={styles.name} numberOfLines={2}>{profile.display_name??'Adventurer'}</Text>{profile.username?<Text style={styles.handle}>@{profile.username}</Text>:null}{profile.city_visible!==false&&location?<View style={styles.locationRow}><AppIcon name="location" color="#AEB9B4" size={14}/><Text style={styles.location}>{location}</Text></View>:null}</View>
+   <Pressable onPress={photoMenu} style={styles.avatarWrap}><Avatar url={profile.avatar_url} name={profile.display_name}/><View style={styles.mainCameraBadge}><AppIcon name="camera" color="#121A17" size={11}/></View></Pressable>
+   <View style={styles.identityCopy}>
+    <Text style={styles.name} numberOfLines={2}>{profile.display_name??'Adventurer'}</Text>
+    {profile.username?<Text style={styles.handle}>@{profile.username}</Text>:null}
+    {profile.city_visible!==false&&location?<View style={styles.locationRow}><AppIcon name="location" color="#AEB9B4" size={14}/><Text style={styles.location}>{location}</Text></View>:null}
+    <View style={styles.rankLine}><RankEmblem rank={rank} size={24}/><Text style={styles.rankLineText}>{rank.toUpperCase()}</Text><Text style={styles.rankLineMeta}>{nextRank?`· ${remaining} to ${nextRank[0]}`:'· Highest rank'}</Text></View>
+   </View>
   </View>
+
+  <View style={styles.statLine}>
+   <Pressable onPress={()=>router.push('/member/stamps')} style={({pressed})=>[styles.statLink,pressed&&styles.pressed]}><Text style={styles.statValue}>{stamps.length}</Text><Text style={styles.statLabel}>Stamps</Text></Pressable>
+   <Text style={styles.statDot}>•</Text>
+   <Pressable onPress={()=>router.push('/member/badges')} style={({pressed})=>[styles.statLink,pressed&&styles.pressed]}><Text style={styles.statValue}>{badges.length}</Text><Text style={styles.statLabel}>Badges</Text></Pressable>
+   <Text style={styles.statDot}>•</Text>
+   <View style={styles.statLink}><Text style={styles.statValue}>{journey.length}</Text><Text style={styles.statLabel}>Adventures</Text></View>
+  </View>
+
   <Text style={styles.bioText}>{profile.bio||'Add a short bio to tell the community what kind of outside you love.'}</Text>
 
   <View style={styles.tabs}>{(['journey','posts','photos','about'] as ProfileTab[]).map(value=><Pressable key={value} onPress={()=>setTab(value)} style={styles.tab}><Text style={[styles.tabText,tab===value&&styles.tabTextActive]}>{value.charAt(0).toUpperCase()+value.slice(1)}</Text>{tab===value?<View style={styles.tabUnderline}/>:null}</Pressable>)}</View>
@@ -226,10 +220,8 @@ export default function ProfileScreen(){
   {tab==='journey'?<>
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={()=>router.push('/member/stamps')} style={styles.sectionLinkWrap}><Text style={styles.sectionLink}>View all</Text><AppIcon name="chevron-forward" color="#67CFC8" size={15}/></Pressable></View>
    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stampsRow}>{featuredStamps.map(stamp=><FeaturedStamp key={stamp.id} stamp={stamp}/>)}</ScrollView>
-
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Recent Adventures</Text><Pressable onPress={()=>router.push('/past-adventures')} style={styles.sectionLinkWrap}><Text style={styles.sectionLink}>View all</Text><AppIcon name="chevron-forward" color="#67CFC8" size={15}/></Pressable></View>
    {journey.length?<View style={styles.timeline}>{journey.slice(0,4).map((item,index)=><Pressable key={item.adventure_id} style={styles.timelineRow} onPress={()=>router.push(`/passport/reflection/${item.adventure_id}`)}><View style={styles.timelineRail}><View style={styles.completeDot}><AppIcon name="checkmark" color="#F7F8F3" size={22}/></View>{index<Math.min(journey.length,4)-1?<View style={styles.timelineLine}/>:null}</View><View style={styles.journeyCard}><View style={styles.journeyBadge}><AppIcon name="adventure" color="#F5C341" size={21}/></View><View style={styles.journeyCopy}><Text style={styles.journeyTitle}>{item.title}</Text><Text style={styles.journeyMeta}>{formatDate(item.experienced_at||item.starts_at)}{item.city?` · ${item.city}`:''}</Text></View><AppIcon name="chevron-forward" color="#D7B45A" size={21}/></View></Pressable>)}</View>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your journey starts with the first adventure</Text><Text style={styles.muted}>Completed official Adventures will build your timeline here.</Text></View>}
-
    <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Badge Showcase</Text><Pressable onPress={()=>router.push('/member/badges')} style={styles.sectionLinkWrap}><Text style={styles.sectionLink}>View all</Text><AppIcon name="chevron-forward" color="#67CFC8" size={15}/></Pressable></View>
    {featuredBadges.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesRow}>{featuredBadges.map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView>:<View style={styles.empty}><Text style={styles.emptyTitle}>Your badge case is waiting</Text><Text style={styles.muted}>Milestones you earn will appear here.</Text></View>}
   </>:null}
@@ -241,11 +233,11 @@ export default function ProfileScreen(){
 }
 
 const styles=StyleSheet.create({
- safe:{flex:1,backgroundColor:'#09110F'},center:{flex:1,backgroundColor:'#09110F',alignItems:'center',justifyContent:'center'},content:{paddingHorizontal:18,paddingTop:8,paddingBottom:108,gap:12},editContent:{padding:20,paddingBottom:160,gap:14},pressed:{opacity:.58},
- topBar:{minHeight:38,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},editPill:{flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'#171D1B',borderWidth:1,borderColor:'#252E2A',borderRadius:999,paddingHorizontal:11,paddingVertical:7,minWidth:64,justifyContent:'center'},editPillText:{color:'#F5C341',fontWeight:'800',fontSize:13},
- coverShell:{aspectRatio:12/5,borderRadius:22,overflow:'hidden',borderWidth:1,borderColor:'#27332F',backgroundColor:'#111A17',position:'relative'},coverImage:{width:'100%',height:'100%',resizeMode:'cover'},coverShade:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(4,10,8,.16)'},coverPlaceholder:{flex:1,alignItems:'center',justifyContent:'center',gap:7,backgroundColor:'#122019'},coverPlaceholderText:{color:'#D7B45A',fontWeight:'800'},coverEditButton:{position:'absolute',right:10,top:10,width:32,height:32,borderRadius:16,backgroundColor:'rgba(9,17,15,.82)',borderWidth:1,borderColor:'rgba(245,195,65,.55)',alignItems:'center',justifyContent:'center'},
- coverAchievements:{position:'absolute',right:10,bottom:10,width:'62%',maxWidth:260,backgroundColor:'rgba(7,15,12,.78)',borderRadius:15,borderWidth:1,borderColor:'rgba(255,255,255,.16)',padding:9,gap:7},coverRankRow:{flexDirection:'row',alignItems:'center',gap:8},coverRankCopy:{flex:1,minWidth:0},coverRankName:{color:'#FFF',fontSize:13,fontWeight:'900',letterSpacing:.45},coverRankMeta:{color:'#D8E1DC',fontSize:9.5,fontWeight:'700',marginTop:1},coverStatsRow:{flexDirection:'row',gap:6},coverStatPill:{flex:1,minHeight:31,borderRadius:10,backgroundColor:'rgba(9,17,15,.72)',borderWidth:1,borderColor:'rgba(245,195,65,.28)',paddingHorizontal:8,flexDirection:'row',alignItems:'baseline',justifyContent:'center',gap:4},coverStatValue:{color:'#F5C341',fontSize:14,fontWeight:'900'},coverStatLabel:{color:'#F7F8F3',fontSize:9.5,fontWeight:'800'},
- profileIdentity:{flexDirection:'row',alignItems:'flex-end',gap:12,marginTop:-43,paddingHorizontal:10,zIndex:2},avatarWrap:{width:82,height:82,position:'relative',borderRadius:41,borderWidth:3,borderColor:'#09110F',backgroundColor:'#09110F'},mainCameraBadge:{position:'absolute',right:-2,bottom:2,width:25,height:25,borderRadius:13,backgroundColor:'#F5C341',borderWidth:2,borderColor:'#09110F',alignItems:'center',justifyContent:'center'},identityCopy:{flex:1,minWidth:0,paddingBottom:4},name:{fontSize:27,fontWeight:'900',lineHeight:30,color:'#F7F8F3',letterSpacing:-.45},handle:{color:'#F5C341',fontSize:14,fontWeight:'800',marginTop:1},locationRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:3},location:{color:'#AEB9B4',fontSize:13},bioText:{color:'#D4DBD7',fontSize:14.5,lineHeight:20,paddingHorizontal:10,marginTop:5},
+ safe:{flex:1,backgroundColor:'#09110F'},center:{flex:1,backgroundColor:'#09110F',alignItems:'center',justifyContent:'center'},content:{paddingHorizontal:18,paddingTop:8,paddingBottom:108,gap:11},editContent:{padding:20,paddingBottom:160,gap:14},pressed:{opacity:.58},
+ topBar:{minHeight:38,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},editIconButton:{width:36,height:36,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:'#171D1B',borderWidth:1,borderColor:'#252E2A'},
+ coverShell:{aspectRatio:12/5,borderRadius:22,overflow:'hidden',borderWidth:1,borderColor:'#27332F',backgroundColor:'#111A17',position:'relative'},coverImage:{width:'100%',height:'100%',resizeMode:'cover'},coverShade:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(4,10,8,.08)'},coverPlaceholder:{flex:1,alignItems:'center',justifyContent:'center',gap:7,backgroundColor:'#122019'},coverPlaceholderText:{color:'#D7B45A',fontWeight:'800'},coverEditButton:{position:'absolute',right:10,top:10,width:32,height:32,borderRadius:16,backgroundColor:'rgba(9,17,15,.82)',borderWidth:1,borderColor:'rgba(245,195,65,.55)',alignItems:'center',justifyContent:'center'},
+ profileIdentity:{flexDirection:'row',alignItems:'flex-end',gap:11,marginTop:-38,paddingHorizontal:10,zIndex:2},avatarWrap:{width:76,height:76,position:'relative',borderRadius:38,borderWidth:3,borderColor:'#09110F',backgroundColor:'#09110F'},mainCameraBadge:{position:'absolute',right:-2,bottom:2,width:23,height:23,borderRadius:12,backgroundColor:'#F5C341',borderWidth:2,borderColor:'#09110F',alignItems:'center',justifyContent:'center'},identityCopy:{flex:1,minWidth:0,paddingBottom:1},name:{fontSize:25,fontWeight:'900',lineHeight:28,color:'#F7F8F3',letterSpacing:-.35},handle:{color:'#F5C341',fontSize:13,fontWeight:'800',marginTop:1},locationRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:2},location:{color:'#AEB9B4',fontSize:13},rankLine:{flexDirection:'row',alignItems:'center',gap:6,marginTop:4},rankLineText:{color:'#F7F8F3',fontSize:11.5,fontWeight:'900',letterSpacing:.5},rankLineMeta:{color:'#67CFC8',fontSize:10.5,fontWeight:'800'},
+ statLine:{flexDirection:'row',alignItems:'center',paddingHorizontal:10,gap:9},statLink:{flexDirection:'row',alignItems:'baseline',gap:4},statValue:{color:'#F5C341',fontSize:13,fontWeight:'900'},statLabel:{color:'#B9C3BE',fontSize:11,fontWeight:'800'},statDot:{color:'#52605A',fontSize:12},bioText:{color:'#D4DBD7',fontSize:14.5,lineHeight:20,paddingHorizontal:10,marginTop:1},
  tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#28322E'},tab:{flex:1,alignItems:'center',paddingTop:8,paddingBottom:8,position:'relative'},tabText:{color:'#A8B2AD',fontSize:13,fontWeight:'800'},tabTextActive:{color:'#F5C341'},tabUnderline:{height:2,backgroundColor:'#F5C341',position:'absolute',bottom:-1,left:18,right:18,borderRadius:4},
  sectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:2},sectionTitle:{color:'#F7F8F3',fontSize:20,fontWeight:'900'},sectionLinkWrap:{flexDirection:'row',alignItems:'center',gap:2},sectionLink:{color:'#67CFC8',fontSize:12.5,fontWeight:'800'},stampsRow:{gap:9,paddingRight:20},stampCard:{width:122,minHeight:150,backgroundColor:'#111A17',borderRadius:17,borderWidth:1,borderColor:'#29342F',padding:8,alignItems:'center'},stampImage:{width:'100%',height:112},stampTitle:{color:'#F7F8F3',fontWeight:'800',fontSize:10.5,lineHeight:13,textAlign:'center',marginTop:2},badgesRow:{gap:9,paddingRight:20},badgeCard:{width:116,minHeight:128,backgroundColor:'#111A17',borderRadius:17,borderWidth:1,borderColor:'#29342F',padding:10,alignItems:'center',justifyContent:'center'},badgeTitle:{color:'#F7F8F3',fontWeight:'800',fontSize:10.5,lineHeight:13,textAlign:'center',marginTop:6},genericBadge:{width:64,height:64,borderRadius:32,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},
  timeline:{gap:0},timelineRow:{flexDirection:'row'},timelineRail:{width:36,alignItems:'center'},completeDot:{width:27,height:27,borderRadius:14,alignItems:'center',justifyContent:'center',zIndex:2},timelineLine:{width:2,backgroundColor:'#39473F',flex:1,minHeight:64},journeyCard:{flex:1,minHeight:78,backgroundColor:'#111A17',borderRadius:17,borderWidth:1,borderColor:'#28332F',marginBottom:9,padding:11,flexDirection:'row',alignItems:'center',gap:10},journeyBadge:{width:39,height:39,borderRadius:11,backgroundColor:'#16302A',alignItems:'center',justifyContent:'center'},journeyCopy:{flex:1},journeyTitle:{color:'#F7F8F3',fontSize:14.5,fontWeight:'900'},journeyMeta:{color:'#AAB6B0',fontSize:11.5,marginTop:3},
