@@ -123,7 +123,7 @@ export default function TrailheadScreen() {
   }, [queue]);
   const upcomingCampfires = useMemo(
     () => localEvents
-      .filter((event) => event.my_rsvp === 'going' && event.status === 'published' && new Date(event.starts_at).getTime() >= Date.now())
+      .filter((event) => event.my_rsvp === 'going' && event.status === 'published')
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()),
     [localEvents],
   );
@@ -174,7 +174,7 @@ export default function TrailheadScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.user.id]);
+  }, [session]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
