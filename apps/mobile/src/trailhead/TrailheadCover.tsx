@@ -79,15 +79,9 @@ export function TrailheadCover(props: TrailheadCoverProps) {
   if (!rankReady || !effectiveRank || waitingForProfile) {
     const fallbackBackground = backgroundFor(props.rank, 'clear', dayPhaseFor(null, new Date()));
     return (
-      <View
-        accessibilityLabel="Trailhead loading"
-        style={{ height: fallbackHeight, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10232A' }}
-      >
+      <View accessibilityLabel="Trailhead loading" style={{ height: fallbackHeight, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10232A' }}>
         <Image source={fallbackBackground} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
-        <View
-          pointerEvents="none"
-          style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(5, 16, 20, 0.42)' }}
-        />
+        <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(5, 16, 20, 0.12)' }} />
       </View>
     );
   }

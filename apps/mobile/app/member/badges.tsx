@@ -1,10 +1,12 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '../../src/auth/AuthProvider';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { getJourney, getMemberBadges, type MemberBadge } from '../../src/passport/api';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
+import { getTrailheadFavorites, setFavoriteBadges } from '../../src/trailhead/favorites';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 type BadgeFamily = 'Tenure' | 'Adventure' | 'Community' | 'Activity';
@@ -63,21 +65,24 @@ function formatMonthYear(iso: string) {
 }
 
 export default function ProfileBadgesScreen() {
+  const { session } = useAuth();
   const [earnedBadges, setEarnedBadges] = useState<MemberBadge[]>([]);
   const [completedAdventures, setCompletedAdventures] = useState(0);
+  const [favoriteTitles, setFavoriteTitles] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<BadgeFilter>('All');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void Promise.all([getMemberBadges(), getJourney()])
-      .then(([nextBadges, journey]) => {
+    void Promise.all([getMemberBadges(), getJourney(), getTrailheadFavorites(session?.user.id)])
+      .then(([nextBadges, journey, favorites]) => {
         setEarnedBadges(nextBadges);
         setCompletedAdventures(journey.length);
+        setFavoriteTitles(favorites.badges);
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load badges.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [session?.user.id]);
 
   const currentRank = useMemo(() => rankFor(completedAdventures), [completedAdventures]);
   const nextRank = useMemo(() => rankLadder.find(([, minimum]) => minimum > completedAdventures), [completedAdventures]);
@@ -91,39 +96,17 @@ export default function ProfileBadgesScreen() {
     return BADGE_CATALOG.map((definition) => {
       const directlyEarned = earnedByTitle.get(definition.title);
       if (directlyEarned) {
-        return {
-          ...definition,
-          earned: true,
-          earnedAt: directlyEarned.earned_at,
-          progressLabel: `Earned ${formatMonthYear(directlyEarned.earned_at)}`,
-        };
+        return { ...definition, earned: true, earnedAt: directlyEarned.earned_at, progressLabel: `Earned ${formatMonthYear(directlyEarned.earned_at)}` };
       }
-
       if (definition.adventureTarget) {
         const earned = completedAdventures >= definition.adventureTarget;
-        return {
-          ...definition,
-          earned,
-          earnedAt: null,
-          progressLabel: earned
-            ? 'Earned'
-            : `${Math.min(completedAdventures, definition.adventureTarget)} / ${definition.adventureTarget} adventures`,
-        };
+        return { ...definition, earned, earnedAt: null, progressLabel: earned ? 'Earned' : `${Math.min(completedAdventures, definition.adventureTarget)} / ${definition.adventureTarget} adventures` };
       }
-
       if (definition.tenureYears && trailhead?.earned_at) {
         const anniversary = addYears(trailhead.earned_at, definition.tenureYears);
         const earned = now >= anniversary;
-        return {
-          ...definition,
-          earned,
-          earnedAt: earned ? anniversary.toISOString() : null,
-          progressLabel: earned
-            ? `Earned ${formatMonthYear(anniversary.toISOString())}`
-            : `Stay ${definition.tenureYears} year${definition.tenureYears === 1 ? '' : 's'}`,
-        };
+        return { ...definition, earned, earnedAt: earned ? anniversary.toISOString() : null, progressLabel: earned ? `Earned ${formatMonthYear(anniversary.toISOString())}` : `Stay ${definition.tenureYears} year${definition.tenureYears === 1 ? '' : 's'}` };
       }
-
       return { ...definition, earned: false, earnedAt: null, progressLabel: definition.requirement };
     });
   }, [earnedBadges, completedAdventures]);
@@ -131,6 +114,31 @@ export default function ProfileBadgesScreen() {
   const earnedCount = collection.filter((badge) => badge.earned).length;
   const completion = collection.length ? Math.round((earnedCount / collection.length) * 100) : 0;
   const visibleFamilies = FAMILIES.filter((family) => activeFilter === 'All' || activeFilter === family);
+
+  async function saveFavorites(next: string[]) {
+    const saved = await setFavoriteBadges(session?.user.id, next);
+    setFavoriteTitles(saved.badges);
+  }
+
+  function toggleFavorite(badge: BadgeState) {
+    if (!badge.earned) return;
+    if (favoriteTitles.includes(badge.title)) {
+      void saveFavorites(favoriteTitles.filter((title) => title !== badge.title));
+      return;
+    }
+    if (favoriteTitles.length < 3) {
+      void saveFavorites([...favoriteTitles, badge.title]);
+      return;
+    }
+    Alert.alert(
+      'Replace a favorite?',
+      'You can show up to 3 badges on Trailhead. Choose one to replace.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        ...favoriteTitles.map((title) => ({ text: `Replace ${title}`, onPress: () => void saveFavorites(favoriteTitles.map((current) => current === title ? badge.title : current)) })),
+      ],
+    );
+  }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -144,43 +152,22 @@ export default function ProfileBadgesScreen() {
           <Text style={styles.eyebrow}>ACHIEVEMENTS</Text>
           <Text style={styles.title}>Badges</Text>
           <Text style={styles.copy}>Collect milestones across your Melanated Adventurers journey.</Text>
+          <Text style={styles.favoriteHelp}>★ Choose up to 3 favorites for your Trailhead banner.</Text>
         </View>
         <View style={styles.summaryCard}>
-          <View style={styles.summaryTop}>
-            <View>
-              <Text style={styles.summaryCount}>{earnedCount} / {collection.length}</Text>
-              <Text style={styles.summaryLabel}>Earned</Text>
-            </View>
-            <View style={styles.percentRing}><Text style={styles.percentText}>{completion}%</Text></View>
-          </View>
+          <View style={styles.summaryTop}><View><Text style={styles.summaryCount}>{earnedCount} / {collection.length}</Text><Text style={styles.summaryLabel}>Earned</Text></View><View style={styles.percentRing}><Text style={styles.percentText}>{completion}%</Text></View></View>
           <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${completion}%` }]} /></View>
         </View>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="View rank progression"
-        onPress={() => router.push('/member/rank-progress' as never)}
-        style={({ pressed }) => [styles.rankCard, pressed && styles.rankCardPressed]}
-      >
+      <Pressable accessibilityRole="button" accessibilityLabel="View rank progression" onPress={() => router.push('/member/rank-progress' as never)} style={({ pressed }) => [styles.rankCard, pressed && styles.rankCardPressed]}>
         <View style={styles.rankArt}><RankEmblem rank={currentRank} size={66} /></View>
-        <View style={styles.rankCopy}>
-          <Text style={styles.rankTitle}>{currentRank}</Text>
-          <Text style={styles.rankMeta}>{nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}</Text>
-          <View style={styles.rankProgressTrack}><View style={styles.rankProgressFill} /></View>
-        </View>
+        <View style={styles.rankCopy}><Text style={styles.rankTitle}>{currentRank}</Text><Text style={styles.rankMeta}>{nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}</Text><View style={styles.rankProgressTrack}><View style={styles.rankProgressFill} /></View></View>
         <Text style={styles.rankLink}>View Rank Journey →</Text>
       </Pressable>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {FILTERS.map((filter) => {
-          const active = activeFilter === filter;
-          return (
-            <Pressable key={filter} onPress={() => setActiveFilter(filter)} style={[styles.filterChip, active && styles.filterChipActive]}>
-              <Text style={[styles.filterText, active && styles.filterTextActive]}>{filter}</Text>
-            </Pressable>
-          );
-        })}
+        {FILTERS.map((filter) => { const active = activeFilter === filter; return <Pressable key={filter} onPress={() => setActiveFilter(filter)} style={[styles.filterChip, active && styles.filterChipActive]}><Text style={[styles.filterText, active && styles.filterTextActive]}>{filter}</Text></Pressable>; })}
       </ScrollView>
 
       {loading ? <ActivityIndicator color="#F5C341" style={styles.loader} /> : null}
@@ -190,36 +177,19 @@ export default function ProfileBadgesScreen() {
         const familyBadges = collection.filter((badge) => badge.family === family);
         return (
           <View key={family} style={[styles.section, family === 'Community' && styles.communitySection]}>
-            <View style={styles.sectionHeading}>
-              <Text style={styles.sectionIcon}>{FAMILY_COPY[family].icon}</Text>
-              <View style={styles.sectionCopy}>
-                <Text style={[styles.sectionTitle, family === 'Community' && styles.communityTitle]}>{family}</Text>
-                <Text style={styles.sectionSubtitle}>{FAMILY_COPY[family].subtitle}</Text>
-              </View>
-            </View>
-
+            <View style={styles.sectionHeading}><Text style={styles.sectionIcon}>{FAMILY_COPY[family].icon}</Text><View style={styles.sectionCopy}><Text style={[styles.sectionTitle, family === 'Community' && styles.communityTitle]}>{family}</Text><Text style={styles.sectionSubtitle}>{FAMILY_COPY[family].subtitle}</Text></View></View>
             <View style={styles.grid}>
               {familyBadges.map((badge) => {
-                const progressPercent = badge.adventureTarget
-                  ? Math.min(100, Math.round((completedAdventures / badge.adventureTarget) * 100))
-                  : 0;
+                const progressPercent = badge.adventureTarget ? Math.min(100, Math.round((completedAdventures / badge.adventureTarget) * 100)) : 0;
+                const favorite = favoriteTitles.includes(badge.title);
                 return (
-                  <View key={badge.title} style={[styles.card, !badge.earned && styles.cardLocked]}>
+                  <View key={badge.title} style={[styles.card, !badge.earned && styles.cardLocked, favorite && styles.cardFavorite]}>
                     {!badge.earned ? <View style={styles.lockPill}><Text style={styles.lockText}>LOCKED</Text></View> : null}
-                    <View style={styles.art}>
-                      <View style={!badge.earned ? styles.lockedArt : undefined}>
-                        {hasBadgeArt(badge.title) ? (
-                          <BadgeArt title={badge.title} size={98} />
-                        ) : (
-                          <AppIcon name="badge" color={badge.earned ? '#F5C341' : '#7E8983'} size={48} />
-                        )}
-                      </View>
-                    </View>
+                    {badge.earned ? <Pressable onPress={() => toggleFavorite(badge)} accessibilityRole="button" accessibilityLabel={`${favorite ? 'Remove' : 'Add'} ${badge.title} as Trailhead favorite`} style={[styles.favoriteButton, favorite && styles.favoriteButtonActive]}><Text style={[styles.favoriteStar, favorite && styles.favoriteStarActive]}>★</Text></Pressable> : null}
+                    <View style={styles.art}><View style={!badge.earned ? styles.lockedArt : undefined}>{hasBadgeArt(badge.title) ? <BadgeArt title={badge.title} size={98} /> : <AppIcon name="badge" color={badge.earned ? '#F5C341' : '#7E8983'} size={48} />}</View></View>
                     <Text style={[styles.cardTitle, !badge.earned && styles.cardTitleLocked]}>{badge.title}</Text>
-                    <Text style={[styles.status, badge.earned ? styles.statusEarned : styles.statusLocked]} numberOfLines={2}>{badge.progressLabel}</Text>
-                    {!badge.earned && badge.adventureTarget ? (
-                      <View style={styles.cardProgressTrack}><View style={[styles.cardProgressFill, { width: `${progressPercent}%` }]} /></View>
-                    ) : null}
+                    <Text style={[styles.status, badge.earned ? styles.statusEarned : styles.statusLocked]} numberOfLines={2}>{favorite ? 'TRAILHEAD FAVORITE' : badge.progressLabel}</Text>
+                    {!badge.earned && badge.adventureTarget ? <View style={styles.cardProgressTrack}><View style={[styles.cardProgressFill, { width: `${progressPercent}%` }]} /></View> : null}
                   </View>
                 );
               })}
@@ -241,6 +211,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#54D4C5', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: '#F7F8F3', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 2 },
   copy: { color: '#9AA7A0', fontSize: 13.5, lineHeight: 19, marginTop: 5 },
+  favoriteHelp: { color: '#F5C341', fontSize: 11.5, lineHeight: 16, fontWeight: '800', marginTop: 7 },
   summaryCard: { width: 122, backgroundColor: '#101A17', borderRadius: 17, borderWidth: 1, borderColor: '#32423B', padding: 12, justifyContent: 'space-between' },
   summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   summaryCount: { color: '#F7F8F3', fontSize: 18, fontWeight: '900' },
@@ -276,10 +247,15 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   card: { width: '48.5%', minHeight: 142, backgroundColor: '#111B18', borderRadius: 16, borderWidth: 1, borderColor: '#304039', paddingHorizontal: 10, paddingTop: 10, paddingBottom: 11, alignItems: 'center', justifyContent: 'flex-start', position: 'relative' },
   cardLocked: { backgroundColor: '#0B1210', borderColor: '#222D29' },
+  cardFavorite: { borderColor: '#F5C341' },
   art: { height: 96, alignItems: 'center', justifyContent: 'center' },
   lockedArt: { opacity: 0.42 },
   lockPill: { position: 'absolute', top: 8, right: 8, zIndex: 2, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: '#202A26', borderWidth: 1, borderColor: '#52605A' },
   lockText: { color: '#BBC4BF', fontSize: 7.5, letterSpacing: 0.7, fontWeight: '900' },
+  favoriteButton: { position: 'absolute', top: 8, right: 8, zIndex: 3, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#49584F', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
+  favoriteButtonActive: { borderColor: '#F5C341', backgroundColor: '#332D16' },
+  favoriteStar: { color: '#7F8B85', fontSize: 18, lineHeight: 21 },
+  favoriteStarActive: { color: '#F5C341' },
   cardTitle: { color: '#F7F8F3', fontSize: 13, lineHeight: 16, fontWeight: '900', textAlign: 'center', marginTop: 1 },
   cardTitleLocked: { color: '#B2BBB6' },
   status: { fontSize: 10.5, lineHeight: 14, textAlign: 'center', marginTop: 4, minHeight: 14 },
