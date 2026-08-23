@@ -31,7 +31,7 @@ export default function TrailGuidePlaceDetailScreen() {
     );
   }
 
-  function planOuting() {
+  const planOuting = () => {
     router.push({
       pathname: '/local-events/create',
       params: {
@@ -45,7 +45,7 @@ export default function TrailGuidePlaceDetailScreen() {
         city: trailGuideCity(place.city),
       },
     });
-  }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
