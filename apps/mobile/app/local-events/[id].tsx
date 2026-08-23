@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getLocalEvent, setLocalEventRsvp, type LocalEvent } from '../../src/local-events/api';
+import { getTrailGuidePlace } from '../../src/trailGuide/catalog';
 
 export default function LocalEventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -49,6 +50,7 @@ export default function LocalEventDetailScreen() {
   if (!event) return <SafeAreaView style={styles.center}><Text style={styles.error}>{error ?? 'Campfire not found.'}</Text></SafeAreaView>;
 
   const start = new Date(event.starts_at);
+  const trailGuidePlace = event.trail_guide_place_id ? getTrailGuidePlace(event.trail_guide_place_id) : undefined;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -57,6 +59,21 @@ export default function LocalEventDetailScreen() {
         <Text style={styles.badge}>MEMBER-LED CAMPFIRE</Text>
         <Text style={styles.title}>{event.title}</Text>
         <Text style={styles.host}>Hosted by {event.host_name}</Text>
+
+        {trailGuidePlace ? (
+          <Pressable
+            onPress={() => router.push({ pathname: '/trail-guide/[id]', params: { id: trailGuidePlace.id } })}
+            style={({ pressed }) => [styles.trailGuideCard, pressed && styles.pressed]}
+          >
+            <View style={styles.trailGuideMark}><Text style={styles.trailGuideMarkText}>TG</Text></View>
+            <View style={styles.trailGuideCopy}>
+              <Text style={styles.trailGuideEyebrow}>FROM TRAIL GUIDE</Text>
+              <Text style={styles.trailGuideName}>{trailGuidePlace.name}</Text>
+              <Text style={styles.trailGuideMeta}>{trailGuidePlace.area} · {trailGuidePlace.category}</Text>
+            </View>
+            <Text style={styles.trailGuideArrow}>›</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.panel}>
           <Text style={styles.label}>When</Text>
@@ -106,6 +123,14 @@ const styles = StyleSheet.create({
   badge: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 11, marginTop: 6 },
   title: { color: '#FFF8E8', fontSize: 34, lineHeight: 38, fontWeight: '900' },
   host: { color: '#D7B45A', fontWeight: '700' },
+  trailGuideCard: { backgroundColor: '#191B12', borderRadius: 16, borderWidth: 1, borderColor: '#4A4423', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  trailGuideMark: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2A2818' },
+  trailGuideMarkText: { color: '#D7B45A', fontWeight: '900', fontSize: 12 },
+  trailGuideCopy: { flex: 1 },
+  trailGuideEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
+  trailGuideName: { color: '#FFF8E8', fontSize: 14, fontWeight: '900', marginTop: 1 },
+  trailGuideMeta: { color: '#9EAAA2', fontSize: 11, marginTop: 2 },
+  trailGuideArrow: { color: '#D7B45A', fontSize: 24, fontWeight: '800' },
   panel: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#29372F', padding: 17, gap: 4 },
   label: { color: '#8E9A92', fontSize: 11, fontWeight: '900', letterSpacing: 0.8, marginTop: 7, textTransform: 'uppercase' },
   value: { color: '#FFF8E8', fontSize: 16, lineHeight: 22 },
@@ -126,4 +151,5 @@ const styles = StyleSheet.create({
   groupText: { color: '#FFF8E8', fontWeight: '900' },
   disclaimer: { color: '#7E8B83', fontSize: 12, lineHeight: 18, marginTop: 8 },
   error: { color: '#FFB4A9', textAlign: 'center' },
+  pressed: { opacity: 0.72 },
 });
