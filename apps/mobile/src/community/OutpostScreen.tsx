@@ -151,15 +151,16 @@ function CommunityRow({ group, joining, onJoin, reason, managementType }: { grou
     <Pressable style={({ pressed }) => [styles.listRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
       <View style={styles.groupAvatar}>{group.image_url ? <Image source={{ uri: group.image_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
-        <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
-        <View style={styles.rowMetaLine}>
-          <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
-          <Text style={styles.rowMetaDot}>·</Text>
+        <View style={styles.rowTitleLine}>
+          <Text style={styles.rowTitle} numberOfLines={1}>{group.name}</Text>
           <CommunityTypeBadge type={managementType} compact />
         </View>
-        {reason ? <Text style={styles.rowReason}>{reason}</Text> : null}
+        <View style={styles.rowMetaLine}>
+          <Text style={styles.rowMeta}>{joining ? 'Joining…' : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`}</Text>
+          {reason ? <><Text style={styles.rowMetaDot}>·</Text><Text style={styles.rowReason} numberOfLines={1}>{reason}</Text></> : null}
+        </View>
       </View>
-      <Ionicons name={group.is_member ? 'chevron-forward' : 'add-circle-outline'} size={20} color={group.is_member ? MUTED : GOLD} />
+      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={MUTED} /> : <Pressable style={styles.joinPill} onPress={(event) => { event.stopPropagation(); onJoin(group); }} disabled={joining}><Text style={styles.joinPillText}>{joining ? 'Joining' : 'Join'}</Text></Pressable>}
     </Pressable>
   );
 }
@@ -220,6 +221,7 @@ export default function OutpostScreen() {
   const [myCommunityQuery, setMyCommunityQuery] = useState('');
   const [discoverQuery, setDiscoverQuery] = useState('');
   const [discoverFilter, setDiscoverFilter] = useState<DiscoverFilter>('recommended');
+  const [showAllDiscover, setShowAllDiscover] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -331,6 +333,11 @@ export default function OutpostScreen() {
     });
   }, [discoverFilter, discoverGroups, discoverQuery, isLocalGroup, isRegionalGroup, managementFor]);
 
+  const displayedDiscoverGroups = useMemo(() => {
+    const shouldCap = discoverFilter === 'recommended' && !discoverQuery.trim() && !showAllDiscover;
+    return shouldCap ? visibleDiscoverGroups.slice(0, 5) : visibleDiscoverGroups;
+  }, [discoverFilter, discoverQuery, showAllDiscover, visibleDiscoverGroups]);
+
   const reasonForCommunity = useCallback((group: CommunityGroup) => {
     if (isLocalGroup(group)) return 'Near you';
     if (discoverFilter === 'popular') return 'Popular';
@@ -440,9 +447,10 @@ export default function OutpostScreen() {
 
           <View style={styles.communitySection}>
             <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover Communities</Text><Text style={styles.sectionCopy}>Find new communities based on interests, activity, and location.</Text></View>
-            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={setDiscoverQuery} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => setDiscoverFilter(filter.value)}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
-            <View style={styles.list}>{visibleDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={reasonForCommunity(group)} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match this search and filter.</Text> : null}</View>
+            <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={discoverQuery} onChangeText={(value) => { setDiscoverQuery(value); setShowAllDiscover(false); }} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRail}>{discoverFilters.map((filter) => <Pressable key={filter.value} style={[styles.filterChip, discoverFilter === filter.value && styles.filterChipActive]} onPress={() => { setDiscoverFilter(filter.value); setShowAllDiscover(false); }}><Text style={[styles.filterText, discoverFilter === filter.value && styles.filterTextActive]}>{filter.label}</Text></Pressable>)}</ScrollView>
+            <View style={styles.list}>{displayedDiscoverGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} managementType={managementFor(group)} reason={reasonForCommunity(group)} />)}{!visibleDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match this search and filter.</Text> : null}</View>
+            {discoverFilter === 'recommended' && !discoverQuery.trim() && visibleDiscoverGroups.length > 5 ? <Pressable style={styles.seeAllButton} onPress={() => setShowAllDiscover((value) => !value)}><Text style={styles.seeAllText}>{showAllDiscover ? 'Show less' : `See all ${visibleDiscoverGroups.length}`}</Text><Ionicons name={showAllDiscover ? 'chevron-up' : 'chevron-down'} size={14} color={GOLD} /></Pressable> : null}
           </View>
         </> : null}
 
@@ -545,14 +553,18 @@ const styles = StyleSheet.create({
   postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
   engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
   list: { borderWidth: 1, borderColor: '#334139', borderRadius: 14, overflow: 'hidden' },
-  listRow: { minHeight: 68, paddingHorizontal: 10, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
-  groupAvatar: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 },
-  rowTitle: { color: TEXT, fontSize: 14, fontWeight: '900', flexShrink: 1 },
-  rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' },
-  rowMeta: { color: MUTED, fontSize: 11.5, lineHeight: 16 },
+  listRow: { minHeight: 58, paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#37443D' },
+  groupAvatar: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#213229', borderWidth: 1, borderColor: '#47554C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
+  rowTitle: { color: TEXT, fontSize: 13.5, fontWeight: '900', flexShrink: 1 },
+  rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3, minWidth: 0 },
+  rowMeta: { color: MUTED, fontSize: 10.5, lineHeight: 14 },
   rowMetaDot: { color: '#667269', fontSize: 10 },
-  rowReason: { color: GOLD, fontSize: 10.5, fontWeight: '800', marginTop: 4 },
+  rowReason: { color: '#8FA097', fontSize: 10.5, fontWeight: '700', flexShrink: 1 },
+  joinPill: { minWidth: 48, minHeight: 30, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: '#6F643D', backgroundColor: '#282519', alignItems: 'center', justifyContent: 'center' },
+  joinPillText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
+  seeAllButton: { alignSelf: 'center', minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 14, borderRadius: 99 },
+  seeAllText: { color: GOLD, fontSize: 11.5, fontWeight: '900' },
   campfireHero: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#171F1B', borderWidth: 1, borderColor: '#3B423B', borderRadius: 17, padding: 14 },
   campfireHeroIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#25281F', alignItems: 'center', justifyContent: 'center' },
   startCampfireButton: { minHeight: 46, borderRadius: 14, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
