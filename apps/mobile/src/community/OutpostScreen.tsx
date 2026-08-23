@@ -311,10 +311,22 @@ export default function OutpostScreen() {
 
     return [...next].sort((a, b) => {
       if (discoverFilter === 'popular') return b.member_count - a.member_count;
-      const score = (group: CommunityGroup) => (isLocalGroup(group) ? 20 : isRegionalGroup(group) ? 10 : 0) + group.member_count;
+      const score = (group: CommunityGroup) => {
+        let value = group.member_count;
+        if (discoverFilter === 'recommended') {
+          if (isLocalGroup(group)) value += 24;
+          else if (isRegionalGroup(group)) value += 7;
+          if (managementFor(group) === 'official') value += 18;
+          if (group.kind === 'interest') value += 4;
+        } else {
+          if (isLocalGroup(group)) value += 20;
+          else if (isRegionalGroup(group)) value += 10;
+        }
+        return value;
+      };
       return score(b) - score(a);
     });
-  }, [discoverFilter, discoverGroups, discoverQuery, isLocalGroup, isRegionalGroup]);
+  }, [discoverFilter, discoverGroups, discoverQuery, isLocalGroup, isRegionalGroup, managementFor]);
 
   const sortedCampfires = useMemo(() => [...campfires].sort((a, b) => {
     const locality = (event: LocalEvent) => isLocalCampfire(event) ? 2 : isRegionalCampfire(event) ? 1 : 0;
