@@ -6,6 +6,7 @@ import { Image, useWindowDimensions, View } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
 import { getMyPassportRank } from '../passport/rankApi';
 import type { RankName } from '../passport/RankEmblem';
+import { TrailheadHeader } from './TrailheadHeader';
 import { TrailheadOptimizedCover } from './TrailheadOptimizedCover';
 import { backgroundFor, dayPhaseFor } from './trailheadBannerConfig';
 
@@ -13,6 +14,7 @@ type TrailheadCoverProps = Parameters<typeof TrailheadOptimizedCover>[0];
 
 const RANK_CACHE_PREFIX = 'ma-trailhead-rank:v1:';
 const VALID_RANKS: RankName[] = ['Explorer', 'Pathfinder', 'Trailblazer', 'Adventurer', 'Summit Seeker', 'Ascendant'];
+const HEADER_INSET = 78;
 
 function isRankName(value: unknown): value is RankName {
   return typeof value === 'string' && VALID_RANKS.includes(value as RankName);
@@ -74,14 +76,26 @@ export function TrailheadCover(props: TrailheadCoverProps) {
   }, [props.rank, userId]));
 
   const waitingForProfile = Boolean(userId) && props.displayName.trim() === 'Adventurer';
-  const fallbackHeight = width < 370 ? 286 : width < 420 ? 300 : 318;
+  const fallbackHeight = (width < 370 ? 286 : width < 420 ? 300 : 318) + HEADER_INSET;
 
   if (!rankReady || !effectiveRank || waitingForProfile) {
     const fallbackBackground = backgroundFor(props.rank, 'clear', dayPhaseFor(null, new Date()));
     return (
-      <View accessibilityLabel="Trailhead loading" style={{ height: fallbackHeight, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10232A' }}>
+      <View
+        accessibilityLabel="Trailhead loading"
+        style={{
+          height: fallbackHeight,
+          marginTop: -HEADER_INSET,
+          zIndex: 8,
+          elevation: 8,
+          borderRadius: 22,
+          overflow: 'hidden',
+          backgroundColor: '#10232A',
+        }}
+      >
         <Image source={fallbackBackground} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
         <View pointerEvents="none" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(5, 16, 20, 0.12)' }} />
+        <TrailheadHeader />
       </View>
     );
   }
