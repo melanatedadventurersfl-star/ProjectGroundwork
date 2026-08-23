@@ -160,11 +160,11 @@ export function TrailheadOptimizedCover({
 
   const heroHeight = veryCompact ? 286 : compact ? 300 : 318;
   const emblemSize = veryCompact ? 82 : compact ? 96 : 108;
-  const badgeSize = veryCompact ? 32 : compact ? 37 : 42;
-  const stampWidth = veryCompact ? 21 : compact ? 23 : 26;
+  const badgeSize = veryCompact ? 40 : compact ? 46 : 52;
+  const stampWidth = veryCompact ? 27 : compact ? 30 : 34;
 
   return (
-    <View style={[styles.cover, { height: heroHeight, borderColor: theme.accent, shadowColor: theme.accent }]}>
+    <View style={[styles.cover, { height: heroHeight, shadowColor: '#000000' }]}>
       <Image source={background} resizeMode="cover" style={styles.background} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.identityScrim} />
@@ -259,11 +259,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: '#07100D',
-    borderWidth: 1.4,
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    elevation: 6,
   },
   background: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   identityScrim: {
@@ -333,19 +332,19 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
   },
 
-  achievementShelf: { position: 'absolute', right: 16, width: '43%', bottom: 18, zIndex: 5 },
-  achievementShelfCompact: { right: 12, width: '44%', bottom: 15 },
-  achievementShelfVeryCompact: { right: 9, width: '45%', bottom: 12 },
+  achievementShelf: { position: 'absolute', right: 8, width: '43%', bottom: 18, zIndex: 5 },
+  achievementShelfCompact: { right: 6, width: '44%', bottom: 15 },
+  achievementShelfVeryCompact: { right: 4, width: '45%', bottom: 12 },
   achievementGroup: { minWidth: 0, paddingVertical: 2 },
   stampGroup: { marginTop: 7 },
   achievementLabel: {
     fontSize: 8, lineHeight: 10, fontWeight: '800', letterSpacing: 2.2, opacity: 0.9,
     textShadowColor: 'rgba(0,0,0,0.96)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 },
   },
-  achievementRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3, minWidth: 0 },
+  achievementRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 },
   badgeSlot: { overflow: 'visible', alignItems: 'center', justifyContent: 'center' },
   badgeFallback: { borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.20)', alignItems: 'center', justifyContent: 'center' },
   stampSlot: { alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
-  genericStamp: { borderWidth: 1, borderRadius: 6, backgroundColor: 'rgba(5,10,9,0.34)', alignItems: 'center', justifyContent: 'center' },
-  genericStampText: { fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
+  genericStamp: { borderWidth: 1, borderRadius: 7, backgroundColor: 'rgba(5,10,9,0.34)', alignItems: 'center', justifyContent: 'center' },
+  genericStampText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
 });
