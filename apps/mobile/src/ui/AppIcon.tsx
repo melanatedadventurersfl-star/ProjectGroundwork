@@ -34,7 +34,10 @@ export type AppIconName =
   | 'camera'
   | 'checkmark'
   | 'search'
-  | 'badge';
+  | 'badge'
+  | 'time'
+  | 'close'
+  | 'delete';
 
 const icons: Record<AppIconName, IoniconName> = {
   trailhead: 'home-outline',
@@ -67,6 +70,9 @@ const icons: Record<AppIconName, IoniconName> = {
   checkmark: 'checkmark-circle',
   search: 'search-outline',
   badge: 'medal-outline',
+  time: 'time-outline',
+  close: 'close-circle-outline',
+  delete: 'trash-outline',
 };
 
 export function AppIcon({
