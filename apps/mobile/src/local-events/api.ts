@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 
 const EVENT_MEDIA_BUCKET = 'event-media';
+const EVENT_MEDIA_PUBLIC_PATH = `/storage/v1/object/public/${EVENT_MEDIA_BUCKET}/`;
 
 export type LocalEvent = {
   id: string;
@@ -28,6 +29,16 @@ export type EventHostAccess = {
   canCreate: boolean;
   level: 'member' | 'trusted_host' | 'community_lead' | 'staff';
 };
+
+function approvedEventImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const url = value.trim();
+  if (!url) return null;
+
+  // Trailhead and Outings should never inherit arbitrary seeded/stock imagery.
+  // Only images uploaded through the app's event-media flow are eligible here.
+  return url.includes(EVENT_MEDIA_PUBLIC_PATH) ? url : null;
+}
 
 export async function getEventHostAccess(): Promise<EventHostAccess> {
   const { data: sessionData } = await supabase.auth.getSession();
@@ -80,7 +91,11 @@ async function attachMyRsvps(events: any[]): Promise<LocalEvent[]> {
     myRsvps = data ?? [];
   }
   const mine = new Map(myRsvps.map((row: any) => [row.local_event_id, row.status]));
-  return events.map((event: any) => ({ ...event, my_rsvp: mine.get(event.id) ?? null })) as LocalEvent[];
+  return events.map((event: any) => ({
+    ...event,
+    image_url: approvedEventImageUrl(event.image_url),
+    my_rsvp: mine.get(event.id) ?? null,
+  })) as LocalEvent[];
 }
 
 export async function listLocalEvents(): Promise<LocalEvent[]> {
