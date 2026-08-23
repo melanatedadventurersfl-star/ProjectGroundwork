@@ -231,14 +231,18 @@ function AppShell() {
       </KeyboardAvoidingView>
       {hideBottomNav ? null : <PersistentBottomNav />}
 
-      <GuidedTutorial
-        visible={tutorialVisible}
-        step={tutorialStep}
-        onStepChange={setTutorialStep}
-        onFinish={finishTutorial}
-        onSkip={skipTutorial}
-      />
-      <WhatsNewModal visible={whatsNewVisible} release={currentReleaseNotes} onDismiss={dismissWhatsNew} />
+      {tutorialVisible ? (
+        <GuidedTutorial
+          visible
+          step={tutorialStep}
+          onStepChange={setTutorialStep}
+          onFinish={finishTutorial}
+          onSkip={skipTutorial}
+        />
+      ) : null}
+      {whatsNewVisible ? (
+        <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} />
+      ) : null}
     </View>
   );
 }
