@@ -19,8 +19,9 @@ import { listAdventures } from '../../src/adventures/api';
 import { AdventureImageBackground } from '../../src/adventures/AdventureImage';
 import type { AdventureSummary } from '../../src/adventures/types';
 import { useAuth } from '../../src/auth/AuthProvider';
-import { getCommunityFeed, type CommunityPost } from '../../src/community/api';
-import { getCircles } from '../../src/community/circles';
+import { getCommunityFeed, getGroups, type CommunityPost } from '../../src/community/api';
+import { getCircles, getConnections } from '../../src/community/circles';
+import { listLocalEvents, type LocalEvent } from '../../src/local-events/api';
 import { removeProfileCover, uploadProfileCover } from '../../src/member/api';
 import { supabase } from '../../src/lib/supabase';
 import { getJourney } from '../../src/passport/api';
@@ -31,10 +32,9 @@ import { TrailheadCover } from '../../src/trailhead/TrailheadCover';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const COMPACT_CARD_WIDTH = 176;
 const WIDE_CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 430);
+const EVENT_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.72, 248), 310);
 const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.64, 214), 264);
-type CampfireMode = 'general' | 'circle';
 
 function greeting(hour: number) {
   if (hour < 12) return 'Good morning';
@@ -44,6 +44,14 @@ function greeting(hour: number) {
 
 function shortDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function eventDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function eventTime(value: string) {
+  return new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 function countdown(value: string) {
@@ -88,19 +96,19 @@ export default function TrailheadScreen() {
   const { session } = useAuth();
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
+  const [localEvents, setLocalEvents] = useState<LocalEvent[]>([]);
   const [displayName, setDisplayName] = useState('Adventurer');
   const [completedCount, setCompletedCount] = useState(0);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
-  const [circleCount, setCircleCount] = useState(0);
-  const [campfireMode, setCampfireMode] = useState<CampfireMode>('general');
+  const [connectionIds, setConnectionIds] = useState<Set<string>>(new Set());
+  const [joinedGroupIds, setJoinedGroupIds] = useState<Set<string>>(new Set());
+  const [circleIds, setCircleIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const activeAdventures = useMemo(() => adventures.filter((item) => item.status !== 'cancelled'), [adventures]);
-  const featured = useMemo(() => activeAdventures.slice(0, 8), [activeAdventures]);
   const adventureById = useMemo(() => new Map(adventures.map((item) => [item.id, item])), [adventures]);
   const reservedAdventures = useMemo(() => {
     const startOfToday = new Date();
@@ -114,16 +122,43 @@ export default function TrailheadScreen() {
       });
     return [...unique.values()];
   }, [queue]);
+
+  const reservedAdventureIds = useMemo(
+    () => new Set(reservedAdventures.map((item) => item.adventure_id)),
+    [reservedAdventures],
+  );
+
   const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
+
+  const upcomingCampfires = useMemo(() => {
+    const rank = (event: LocalEvent) => {
+      if (event.my_rsvp === 'going') return 0;
+      if (event.my_rsvp === 'interested') return 1;
+      if (event.group_id && joinedGroupIds.has(event.group_id)) return 2;
+      return 3;
+    };
+    return [...localEvents]
+      .sort((a, b) => rank(a) - rank(b) || new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
+      .slice(0, 6);
+  }, [localEvents, joinedGroupIds]);
+
   const campfirePosts = useMemo(() => {
-    const filtered = communityPosts.filter((post) => {
-      const matchesAudience = campfireMode === 'circle'
-        ? post.audience === 'circle'
-        : post.audience === 'everyone' || post.audience === 'connections';
-      return matchesAudience && Boolean(post.image_url?.trim());
-    });
-    return filtered.slice(0, 3);
-  }, [communityPosts, campfireMode]);
+    const userId = session?.user.id;
+    if (!userId) return [];
+
+    return communityPosts
+      .filter((post) => {
+        if (!post.image_url?.trim()) return false;
+        if (post.author_id === userId) return true;
+        if (connectionIds.has(post.author_id)) return true;
+        if (post.audience === 'connections') return true;
+        if (post.audience === 'circle' && post.circle_id && circleIds.has(post.circle_id)) return true;
+        if (post.audience === 'group' && post.group_id && joinedGroupIds.has(post.group_id)) return true;
+        if (post.adventure_id && reservedAdventureIds.has(post.adventure_id)) return true;
+        return false;
+      })
+      .slice(0, 4);
+  }, [communityPosts, connectionIds, joinedGroupIds, circleIds, reservedAdventureIds, session?.user.id]);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -131,20 +166,27 @@ export default function TrailheadScreen() {
 
     try {
       const userId = session?.user.id;
-      const [nextQueue, nextJourney, nextAdventures, profileResult, nextPosts, nextCircles] = await Promise.all([
+      const [nextQueue, nextJourney, nextAdventures, nextEvents, profileResult, nextPosts, nextCircles, nextConnections, nextGroups] = await Promise.all([
         userId ? getAdventureQueue() : Promise.resolve([] as AdventureQueueItem[]),
         userId ? getJourney() : Promise.resolve([]),
         listAdventures(),
+        listLocalEvents().catch(() => [] as LocalEvent[]),
         userId ? supabase.from('profiles').select('*').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
         userId ? getCommunityFeed().catch(() => [] as CommunityPost[]) : Promise.resolve([] as CommunityPost[]),
         userId ? getCircles().catch(() => []) : Promise.resolve([]),
+        userId ? getConnections().catch(() => []) : Promise.resolve([]),
+        userId ? getGroups().catch(() => []) : Promise.resolve([]),
       ]);
 
       setQueue(nextQueue);
       setCompletedCount(nextJourney.length);
       setAdventures(nextAdventures);
+      setLocalEvents(nextEvents);
       setCommunityPosts(nextPosts);
-      setCircleCount(nextCircles.length);
+      setCircleIds(new Set(nextCircles.map((circle) => circle.id)));
+      setConnectionIds(new Set(nextConnections.filter((connection) => connection.status === 'accepted').map((connection) => connection.profile_id)));
+      setJoinedGroupIds(new Set(nextGroups.filter((group) => group.is_member).map((group) => group.id)));
+
       const profile = profileResult.data as {
         first_name?: string | null;
         display_name?: string | null;
@@ -221,7 +263,10 @@ export default function TrailheadScreen() {
 
       <View style={styles.section}>
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Your Next Adventure</Text>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>Your Next Adventure</Text>
+            <Text style={styles.sectionSubtitle}>What you’re doing next.</Text>
+          </View>
           {reservedAdventures.length > 1 ? <Text style={styles.count}>{reservedAdventures.length} reserved</Text> : null}
         </View>
         {reservedAdventures.length ? (
@@ -229,13 +274,7 @@ export default function TrailheadScreen() {
             {reservedAdventures.map((item, index) => {
               const adventure = adventureById.get(item.adventure_id);
               return (
-                <Pressable
-                  key={item.adventure_id}
-                  style={styles.wideCard}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${item.title}`}
-                  onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: item.order_id } })}
-                >
+                <Pressable key={item.adventure_id} style={styles.wideCard} accessibilityRole="button" accessibilityLabel={`Open ${item.title}`} onPress={() => router.push({ pathname: '/readiness/[orderId]', params: { orderId: item.order_id } })}>
                   <AdventureImageBackground uri={adventure?.hero_image_url} style={styles.wideImage} imageStyle={styles.wideRadius}>
                     <View style={styles.wideShade} />
                     <View style={styles.wideBody}>
@@ -261,54 +300,56 @@ export default function TrailheadScreen() {
         )}
       </View>
 
-      {featured.length ? (
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Featured Adventures</Text>
-            <Pressable onPress={() => router.push('/(tabs)/explore')}><Text style={styles.linkBare}>See all →</Text></Pressable>
+      <View style={styles.section}>
+        <View style={styles.sectionRow}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>Upcoming Campfires</Text>
+            <Text style={styles.sectionSubtitle}>Small gatherings and community plans you can join.</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.compactRow}>
-            {featured.map((item) => (
-              <Pressable key={item.id} style={styles.compactCard} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: item.id } })}>
-                <AdventureImageBackground uri={item.hero_image_url} style={styles.compactImage} imageStyle={styles.compactRadius}>
-                  <View style={styles.compactShade} />
-                  <View style={styles.compactBody}>
-                    {item.is_demo ? <Text style={styles.compactEyebrow}>DEMO</Text> : item.is_featured ? <Text style={styles.compactEyebrow}>FEATURED</Text> : null}
-                    <Text style={styles.compactTitle} numberOfLines={2}>{item.title}</Text>
-                    <Text style={styles.compactMeta} numberOfLines={1}>{shortDate(item.starts_at)} · {item.city}</Text>
+          <Pressable onPress={() => router.push('/(tabs)/community')}><Text style={styles.linkBare}>See community →</Text></Pressable>
+        </View>
+        {upcomingCampfires.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={EVENT_CARD_WIDTH + 12} contentContainerStyle={styles.eventRow}>
+            {upcomingCampfires.map((event) => (
+              <Pressable key={event.id} style={styles.eventCard} accessibilityRole="button" accessibilityLabel={`Open ${event.title}`} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
+                {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.eventImage} /> : null}
+                <View pointerEvents="none" style={[styles.eventShade, !event.image_url && styles.eventShadeNoImage]} />
+                <View style={styles.eventBody}>
+                  <View style={styles.eventTopRow}>
+                    <Text style={styles.eventBadge}>{event.my_rsvp === 'going' ? 'GOING' : event.my_rsvp === 'interested' ? 'INTERESTED' : event.group_id && joinedGroupIds.has(event.group_id) ? 'YOUR COMMUNITY' : 'CAMPFIRE'}</Text>
+                    <Text style={styles.eventCountdown}>{countdown(event.starts_at)}</Text>
                   </View>
-                </AdventureImageBackground>
+                  <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
+                  <Text style={styles.eventMeta}>{eventDate(event.starts_at)} · {eventTime(event.starts_at)}</Text>
+                  <Text style={styles.eventMeta} numberOfLines={1}>{event.venue_name ? `${event.venue_name} · ` : ''}{event.city}, {event.state}</Text>
+                  <View style={styles.eventFooter}>
+                    <Text style={styles.eventHost} numberOfLines={1}>Hosted by {event.host_name}</Text>
+                    <Text style={styles.eventLink}>View →</Text>
+                  </View>
+                </View>
               </Pressable>
             ))}
           </ScrollView>
-        </View>
-      ) : null}
+        ) : (
+          <View style={styles.campfireEmpty}>
+            <Text style={styles.campfireEmptyTitle}>No upcoming Campfires yet.</Text>
+            <Text style={styles.campfireEmptyText}>When your communities start planning local meetups, they’ll show up here.</Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.campfireSection}>
-        <View style={styles.campfireTopRow}>
-          <Text style={styles.campfireTitle}>Around the Campfire</Text>
+        <View style={styles.sectionRow}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.campfireTitle}>Around the Campfire</Text>
+            <Text style={styles.sectionSubtitle}>Updates from your trailmates, crews, groups, and upcoming adventures.</Text>
+          </View>
           <Pressable onPress={() => session ? router.push('/(tabs)/community') : promptForAccount('Campfire')} accessibilityRole="button"><Text style={styles.linkBare}>{session ? 'See all →' : 'Sign in →'}</Text></Pressable>
         </View>
-        {session ? (
-          <View style={styles.campfireSwitch} accessibilityRole="tablist">
-            <Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'general' }} style={[styles.campfireSwitchButton, campfireMode === 'general' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('general')}>
-              <Text style={[styles.campfireSwitchText, campfireMode === 'general' && styles.campfireSwitchTextActive]}>General</Text>
-            </Pressable>
-            <Pressable accessibilityRole="tab" accessibilityState={{ selected: campfireMode === 'circle' }} style={[styles.campfireSwitchButton, campfireMode === 'circle' && styles.campfireSwitchActive]} onPress={() => setCampfireMode('circle')}>
-              <Text style={[styles.campfireSwitchText, campfireMode === 'circle' && styles.campfireSwitchTextActive]}>Crew</Text>
-            </Pressable>
-          </View>
-        ) : null}
         {session && campfirePosts.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={CAMPFIRE_CARD_WIDTH + 12} contentContainerStyle={styles.campfireCardRow}>
             {campfirePosts.map((post) => (
-              <Pressable
-                key={post.id}
-                style={({ pressed }) => [styles.campfireCard, pressed && styles.campfirePostPressed]}
-                onPress={() => router.push(`/community/${post.id}`)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open photo post from ${post.author_name}`}
-              >
+              <Pressable key={post.id} style={({ pressed }) => [styles.campfireCard, pressed && styles.campfirePostPressed]} onPress={() => router.push(`/community/${post.id}`)} accessibilityRole="button" accessibilityLabel={`Open photo post from ${post.author_name}`}>
                 <Image source={{ uri: post.image_url! }} style={styles.campfireCardImage} />
                 <View pointerEvents="none" style={styles.campfireCardShade} />
                 <View style={styles.campfireCardContent}>
@@ -330,8 +371,8 @@ export default function TrailheadScreen() {
           </ScrollView>
         ) : (
           <View style={styles.campfireEmpty}>
-            <Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'No photo posts around the fire yet.') : 'Meet your outdoor community.'}</Text>
-            <Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see Crew photo posts here.' : campfireMode === 'circle' ? 'Photo posts from your Crews will show up here.' : 'Recent community photo posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text>
+            <Text style={styles.campfireEmptyTitle}>{session ? 'Your circle is quiet right now.' : 'Meet your outdoor community.'}</Text>
+            <Text style={styles.campfireEmptyText}>{session ? 'Posts from your trailmates, crews, groups, and adventures will show up here.' : 'Sign in to see what your trailmates and communities are doing.'}</Text>
           </View>
         )}
       </View>
@@ -341,7 +382,7 @@ export default function TrailheadScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0F1713' },
-  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 48, gap: 20 },
+  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 48, gap: 22 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 58 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
   brandMark: { width: 50, height: 50 },
@@ -351,25 +392,18 @@ const styles = StyleSheet.create({
   loader: { margin: 18 },
   error: { color: '#FFB4A9' },
   section: { gap: 11 },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  sectionHeading: { flex: 1, minWidth: 0, gap: 2 },
   sectionTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900', flexShrink: 1 },
-  count: { color: '#95A39A', fontSize: 12, fontWeight: '700' },
+  sectionSubtitle: { color: '#91A096', fontSize: 11.5, lineHeight: 16, fontWeight: '600' },
+  count: { color: '#95A39A', fontSize: 12, fontWeight: '700', paddingTop: 5 },
   link: { color: '#D7B45A', fontWeight: '900', marginTop: 8 },
-  linkBare: { color: '#D7B45A', fontWeight: '900' },
-  compactRow: { gap: 10, paddingRight: 18 },
-  compactCard: { width: COMPACT_CARD_WIDTH },
-  compactImage: { height: 166, justifyContent: 'flex-end', borderRadius: 18, overflow: 'hidden', backgroundColor: '#26372D' },
-  compactRadius: { borderRadius: 18 },
-  compactShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(5,10,8,0.38)' },
-  compactBody: { padding: 12, gap: 4 },
-  compactEyebrow: { alignSelf: 'flex-start', color: '#17211C', backgroundColor: '#E3C350', borderRadius: 7, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, fontSize: 9, fontWeight: '900', letterSpacing: 0.7, marginBottom: 2 },
-  compactTitle: { color: '#FFF8E8', fontSize: 16, lineHeight: 19, fontWeight: '900' },
-  compactMeta: { color: '#D7DFDA', fontSize: 11, fontWeight: '700' },
+  linkBare: { color: '#D7B45A', fontWeight: '900', fontSize: 11.5, paddingTop: 5 },
   wideRow: { gap: 12, paddingRight: 18 },
   wideCard: { width: WIDE_CARD_WIDTH },
   wideImage: { height: 206, justifyContent: 'flex-end', borderRadius: 22, overflow: 'hidden', backgroundColor: '#26372D' },
   wideRadius: { borderRadius: 22 },
-  wideShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(5,10,8,0.46)' },
+  wideShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,8,0.46)' },
   wideBody: { padding: 16, gap: 6 },
   wideTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   wideLabel: { color: '#142019', backgroundColor: '#E3C350', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 4, fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
@@ -381,19 +415,27 @@ const styles = StyleSheet.create({
   emptyAdventureCard: { minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: '#34463C', backgroundColor: '#17211C', paddingHorizontal: 18, paddingVertical: 16, justifyContent: 'center' },
   emptyAdventureTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900' },
   emptyAdventureText: { color: '#AFC0B6', fontSize: 12, lineHeight: 17, marginTop: 4 },
+  eventRow: { gap: 12, paddingRight: 24 },
+  eventCard: { width: EVENT_CARD_WIDTH, height: 225, borderRadius: 20, overflow: 'hidden', backgroundColor: '#1B2A22', borderWidth: 1, borderColor: '#31443A' },
+  eventImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', resizeMode: 'cover' },
+  eventShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.48)' },
+  eventShadeNoImage: { backgroundColor: '#203128' },
+  eventBody: { flex: 1, padding: 14, justifyContent: 'flex-end', gap: 5 },
+  eventTopRow: { position: 'absolute', top: 13, left: 13, right: 13, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  eventBadge: { color: '#17211C', backgroundColor: '#E3C350', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, fontSize: 8.5, fontWeight: '900', letterSpacing: 0.6 },
+  eventCountdown: { color: '#FFF8E8', backgroundColor: 'rgba(10,16,13,0.72)', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 4, fontSize: 9, fontWeight: '800' },
+  eventTitle: { color: '#FFF8E8', fontSize: 20, lineHeight: 23, fontWeight: '900' },
+  eventMeta: { color: '#D8E0DB', fontSize: 11, lineHeight: 15, fontWeight: '700' },
+  eventFooter: { marginTop: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  eventHost: { color: '#AFC0B6', fontSize: 10, fontWeight: '700', flex: 1 },
+  eventLink: { color: '#F0D083', fontSize: 11, fontWeight: '900' },
   campfireSection: { gap: 10, paddingTop: 2 },
-  campfireTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   campfireTitle: { color: '#FFF8E8', fontSize: 22, lineHeight: 26, fontWeight: '900', flexShrink: 1 },
-  campfireSwitch: { alignSelf: 'flex-start', flexDirection: 'row', backgroundColor: '#132019', borderRadius: 999, padding: 3, gap: 2, borderWidth: 1, borderColor: '#31443A' },
-  campfireSwitchButton: { minWidth: 82, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, alignItems: 'center' },
-  campfireSwitchActive: { backgroundColor: '#D7B45A' },
-  campfireSwitchText: { color: '#AFC0B6', fontSize: 11, fontWeight: '800' },
-  campfireSwitchTextActive: { color: '#17211C' },
   campfireCardRow: { gap: 12, paddingRight: 26 },
   campfireCard: { width: CAMPFIRE_CARD_WIDTH, height: 280, borderRadius: 18, overflow: 'hidden', backgroundColor: '#121D18', borderWidth: 1, borderColor: '#2B3B33' },
   campfirePostPressed: { opacity: 0.78 },
-  campfireCardImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%', resizeMode: 'cover' },
-  campfireCardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,8,7,0.10)' },
+  campfireCardImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%', resizeMode: 'cover' },
+  campfireCardShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,8,7,0.10)' },
   campfireCardContent: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 112, paddingHorizontal: 12, paddingVertical: 10, gap: 6, justifyContent: 'space-between', backgroundColor: 'rgba(5,10,8,0.82)' },
   campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 28 },
   campfireAvatar: { width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
