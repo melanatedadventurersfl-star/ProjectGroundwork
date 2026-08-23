@@ -116,9 +116,12 @@ export default function TrailheadScreen() {
   }, [queue]);
   const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
   const campfirePosts = useMemo(() => {
-    const filtered = communityPosts.filter((post) => campfireMode === 'circle'
-      ? post.audience === 'circle'
-      : post.audience === 'everyone' || post.audience === 'connections');
+    const filtered = communityPosts.filter((post) => {
+      const matchesAudience = campfireMode === 'circle'
+        ? post.audience === 'circle'
+        : post.audience === 'everyone' || post.audience === 'connections';
+      return matchesAudience && Boolean(post.image_url?.trim());
+    });
     return filtered.slice(0, 3);
   }, [communityPosts, campfireMode]);
 
@@ -304,16 +307,9 @@ export default function TrailheadScreen() {
                 style={({ pressed }) => [styles.campfireCard, pressed && styles.campfirePostPressed]}
                 onPress={() => router.push(`/community/${post.id}`)}
                 accessibilityRole="button"
-                accessibilityLabel={`Open post from ${post.author_name}${post.image_url ? ', with photo' : ''}`}
+                accessibilityLabel={`Open photo post from ${post.author_name}`}
               >
-                {post.image_url ? (
-                  <Image source={{ uri: post.image_url }} style={styles.campfireCardImage} />
-                ) : (
-                  <View style={styles.campfireCardFallback}>
-                    <AppIcon name="community" color="#D7B45A" size={38} />
-                    <Text style={styles.campfireFallbackText}>Campfire post</Text>
-                  </View>
-                )}
+                <Image source={{ uri: post.image_url! }} style={styles.campfireCardImage} />
                 <View pointerEvents="none" style={styles.campfireCardShade} />
                 <View style={styles.campfireCardContent}>
                   <View style={styles.campfireAuthorRow}>
@@ -334,8 +330,8 @@ export default function TrailheadScreen() {
           </ScrollView>
         ) : (
           <View style={styles.campfireEmpty}>
-            <Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'Quiet around the fire right now.') : 'Meet your outdoor community.'}</Text>
-            <Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see your Crew posts here.' : campfireMode === 'circle' ? 'New posts from your Crews will show up here.' : 'Recent community posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text>
+            <Text style={styles.campfireEmptyTitle}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Your Crew starts here.' : 'No photo posts around the fire yet.') : 'Meet your outdoor community.'}</Text>
+            <Text style={styles.campfireEmptyText}>{session ? (campfireMode === 'circle' && circleCount === 0 ? 'Join or create a Crew to see Crew photo posts here.' : campfireMode === 'circle' ? 'Photo posts from your Crews will show up here.' : 'Recent community photo posts will show up here.') : 'Sign in to join Campfire conversations, groups, and crews.'}</Text>
           </View>
         )}
       </View>
@@ -397,8 +393,6 @@ const styles = StyleSheet.create({
   campfireCard: { width: CAMPFIRE_CARD_WIDTH, height: 304, borderRadius: 20, overflow: 'hidden', backgroundColor: '#121D18', borderWidth: 1, borderColor: '#2B3B33' },
   campfirePostPressed: { opacity: 0.78 },
   campfireCardImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%', resizeMode: 'cover' },
-  campfireCardFallback: { ...StyleSheet.absoluteFill, backgroundColor: '#17251F', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  campfireFallbackText: { color: '#B8C4BD', fontSize: 12, fontWeight: '800' },
   campfireCardShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(3,8,7,0.16)' },
   campfireCardContent: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 14, paddingTop: 34, gap: 8, backgroundColor: 'rgba(5,10,8,0.78)' },
   campfireAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
