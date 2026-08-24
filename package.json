@@ -13,7 +13,9 @@
     "mobile:start": "npm --workspace @ma/mobile run start",
     "mobile:lint": "npm --workspace @ma/mobile run lint",
     "mobile:typecheck": "npm --workspace @ma/mobile run typecheck",
-    "check": "npm run mobile:lint && npm run mobile:typecheck"
+    "mobile:bundlecheck": "npm --workspace @ma/mobile run bundlecheck",
+    "verify:mobile": "npm run mobile:lint && npm run mobile:typecheck && npm run mobile:bundlecheck",
+    "check": "npm run verify:mobile"
   },
   "engines": {
     "node": ">=22"

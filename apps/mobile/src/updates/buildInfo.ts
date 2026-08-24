@@ -10,15 +10,19 @@ export function getBuildInfo() {
   const commit = extraValue('buildCommit');
   const timestamp = extraValue('buildTimestamp');
   const profile = extraValue('buildProfile');
+  const source = extraValue('buildSource');
+  const ciBuildNumber = extraValue('buildNumber');
   const shortCommit = commit && commit !== 'local' ? commit.slice(0, 7) : commit;
 
   return {
     appVersion: Constants.nativeAppVersion || Constants.expoConfig?.version || 'Unknown',
-    buildNumber: Constants.nativeBuildVersion || 'Not set',
+    nativeBuildNumber: Constants.nativeBuildVersion || 'Not set',
+    ciBuildNumber: ciBuildNumber || 'Not set',
     commit,
     shortCommit,
     timestamp,
     profile,
+    source,
     channel: Updates.channel || 'embedded',
     runtimeVersion: Updates.runtimeVersion || 'Unknown',
     updateId: Updates.updateId || null,
@@ -31,7 +35,8 @@ export function getBuildInfo() {
 export function getBuildFingerprint() {
   const info = getBuildInfo();
   const versionPart = `v${info.appVersion}`;
-  const buildPart = info.buildNumber !== 'Not set' ? `(${info.buildNumber})` : '';
+  const nativeBuildPart = info.nativeBuildNumber !== 'Not set' ? `native ${info.nativeBuildNumber}` : '';
+  const ciBuildPart = info.ciBuildNumber !== 'Not set' ? `CI ${info.ciBuildNumber}` : '';
   const commitPart = info.shortCommit && info.shortCommit !== 'local' ? info.shortCommit : 'local';
-  return [versionPart, buildPart, commitPart].filter(Boolean).join(' · ');
+  return [versionPart, nativeBuildPart, ciBuildPart, commitPart].filter(Boolean).join(' · ');
 }

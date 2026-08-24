@@ -31,7 +31,7 @@ jobs:
   validate:
     name: Validate mobile
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Check out triggering commit
@@ -144,6 +144,17 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+
+      - name: Production bundle smoke test
+        run: npm run mobile:bundlecheck
+        env:
+          EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_PROFILE: ci
+          EXPO_PUBLIC_BUILD_SOURCE: github-actions
 
       - name: Verify repository stayed clean
         run: |
