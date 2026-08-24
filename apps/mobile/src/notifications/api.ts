@@ -50,6 +50,15 @@ export async function registerPushToken(expoPushToken: string, platform: string)
 export async function markNotificationRead(id: string) {
   const { error } = await supabase.rpc('mark_notification_read', { notification_uuid: id });
   if (error) throw error;
+
+  const { data: persisted, error: verifyError } = await supabase
+    .from('notifications')
+    .select('read_at')
+    .eq('id', id)
+    .single();
+  if (verifyError) throw verifyError;
+  if (!persisted?.read_at) throw new Error('Notification read state did not persist.');
+
   emitNotificationStateChanged();
 }
 
