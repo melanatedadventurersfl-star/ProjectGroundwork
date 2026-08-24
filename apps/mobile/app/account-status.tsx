@@ -4,12 +4,14 @@ import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleShe
 
 import { supabase } from '../src/lib/supabase';
 
+type ActiveEnforcementAction = 'posting_restriction' | 'suspension' | 'ban';
+
 type ModerationStatus = {
   profile_status: 'pending' | 'active' | 'restricted' | 'suspended';
   active_warning_count: number;
   enforcement: null | {
     id: string;
-    action_type: 'posting_restriction' | 'suspension' | 'ban';
+    action_type: ActiveEnforcementAction;
     reason: string;
     message: string;
     starts_at: string;
@@ -18,7 +20,7 @@ type ModerationStatus = {
   };
 };
 
-function actionTitle(action: ModerationStatus['enforcement'] extends infer T ? T extends { action_type: infer A } ? A : never : never) {
+function actionTitle(action: ActiveEnforcementAction) {
   if (action === 'posting_restriction') return 'Posting temporarily restricted';
   if (action === 'suspension') return 'Account temporarily suspended';
   return 'Account permanently suspended';
