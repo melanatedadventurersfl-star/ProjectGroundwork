@@ -57,6 +57,8 @@ export function PersistentTopNav() {
     ? `Notifications, ${unreadCount} unread`
     : 'Notifications';
 
+  if (pathname === '/account-status') return null;
+
   return (
     <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
       <View style={styles.bar}>
