@@ -24,6 +24,7 @@ export type AppIconName =
   | 'about'
   | 'privacy'
   | 'adventure'
+  | 'bookmark'
   | 'stamp'
   | 'photos'
   | 'photo'
@@ -61,6 +62,7 @@ const icons: Record<AppIconName, IoniconName> = {
   about: 'information-circle-outline',
   privacy: 'shield-checkmark-outline',
   adventure: 'compass-outline',
+  bookmark: 'bookmark',
   stamp: 'ribbon-outline',
   photos: 'images-outline',
   photo: 'image-outline',
