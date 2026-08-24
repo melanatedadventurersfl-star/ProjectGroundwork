@@ -4,17 +4,13 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfilePosts } from '../../src/member/ProfilePosts';
-import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
-import { STAMP_CATALOG } from '../../src/passport/StampCatalog';
 import { AppIcon } from '../../src/ui/AppIcon';
 import {
   getCommunityProfile,
   getConnectionStatus,
   requestConnection,
   respondToConnection,
-  type CommunityFeaturedBadge,
-  type CommunityFeaturedStamp,
   type CommunityProfile,
   type ConnectionStatus,
 } from '../../src/social/api';
@@ -24,25 +20,6 @@ type ProfileTab = 'journey' | 'posts' | 'photos';
 function Avatar({ url, name }: { url?: string | null; name?: string | null }) {
   if (url) return <Image source={{ uri: url }} style={styles.avatar} />;
   return <View style={styles.avatar}><Text style={styles.avatarText}>{String(name ?? 'A').slice(0, 1).toUpperCase()}</Text></View>;
-}
-
-function FeaturedBadge({ badge }: { badge: CommunityFeaturedBadge }) {
-  return <View style={styles.badgeCard}>
-    {hasBadgeArt(badge.title)
-      ? <BadgeArt title={badge.title} size={68} />
-      : <View style={styles.genericBadge}><AppIcon name="badge" color="#F5C341" size={30} /></View>}
-    <Text style={styles.badgeTitle} numberOfLines={2}>{badge.title}</Text>
-  </View>;
-}
-
-function FeaturedStamp({ stamp }: { stamp: CommunityFeaturedStamp }) {
-  const art = STAMP_CATALOG.find(item => (stamp.code && item.code === stamp.code) || item.title.toLowerCase() === stamp.title.toLowerCase());
-  return <View style={styles.stampCard}>
-    {art
-      ? <Image source={art.source} style={styles.stampImage} resizeMode="contain" />
-      : <View style={styles.genericStamp}><AppIcon name="adventure" color="#F5C341" size={34} /></View>}
-    <Text style={styles.stampTitle} numberOfLines={2}>{stamp.title}</Text>
-  </View>;
 }
 
 export default function CommunityProfileScreen() {
@@ -157,12 +134,9 @@ export default function CommunityProfileScreen() {
       </View>
 
       {profile.can_see_full_profile ? <View style={styles.statLine}>
-        <View style={styles.statLink}><Text style={styles.statValue}>{profile.stamp_count}</Text><Text style={styles.statLabel}>Stamps</Text></View>
-        <Text style={styles.statDot}>•</Text>
-        <View style={styles.statLink}><Text style={styles.statValue}>{profile.badge_count}</Text><Text style={styles.statLabel}>Badges</Text></View>
-        <Text style={styles.statDot}>•</Text>
         <View style={styles.statLink}><Text style={styles.statValue}>{profile.adventure_count}</Text><Text style={styles.statLabel}>Adventures</Text></View>
-        {profile.post_count > 0 ? <><Text style={styles.statDot}>•</Text><View style={styles.statLink}><Text style={styles.statValue}>{profile.post_count}</Text><Text style={styles.statLabel}>Posts</Text></View></> : null}
+        <Text style={styles.statDot}>•</Text>
+        <View style={styles.statLink}><Text style={styles.statValue}>{profile.post_count}</Text><Text style={styles.statLabel}>Posts</Text></View>
       </View> : null}
 
       {profile.bio ? <Text style={styles.bioText}>{profile.bio}</Text> : null}
@@ -181,17 +155,17 @@ export default function CommunityProfileScreen() {
           </Pressable>)}
         </View>
 
-        {tab === 'journey' ? <>
-          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Badge Showcase</Text><Text style={styles.sectionCount}>{profile.badge_count ? `${profile.badge_count} earned` : ''}</Text></View>
-          {profile.featured_badges.length
-            ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgesRow}>{profile.featured_badges.map(badge => <FeaturedBadge key={badge.badge_id} badge={badge} />)}</ScrollView>
-            : <View style={styles.empty}><Text style={styles.emptyTitle}>No badges earned yet</Text><Text style={styles.muted}>Milestones they earn will appear here.</Text></View>}
-
-          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text><Text style={styles.sectionCount}>{profile.stamp_count ? `${profile.stamp_count} earned` : ''}</Text></View>
-          {profile.featured_stamps.length
-            ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stampsRow}>{profile.featured_stamps.map(stamp => <FeaturedStamp key={stamp.stamp_id} stamp={stamp} />)}</ScrollView>
-            : <View style={styles.empty}><Text style={styles.emptyTitle}>No stamps earned yet</Text><Text style={styles.muted}>Official Adventure stamps will appear here after they earn them.</Text></View>}
-        </> : null}
+        {tab === 'journey' ? <View style={styles.journeySection}>
+          <View style={styles.journeyCard}>
+            <View style={styles.journeyIcon}><RankEmblem rank={rank} size={42} /></View>
+            <View style={styles.journeyCopy}>
+              <Text style={styles.journeyEyebrow}>CURRENT RANK</Text>
+              <Text style={styles.journeyTitle}>{rank}</Text>
+              <Text style={styles.journeyBody}>{profile.adventure_count > 0 ? `${profile.adventure_count} adventure${profile.adventure_count === 1 ? '' : 's'} completed` : 'Their adventure journey is just getting started.'}</Text>
+              {nextRank ? <Text style={styles.journeyProgress}>{remaining} more to {nextRank[0]}</Text> : <Text style={styles.journeyProgress}>Highest rank reached</Text>}
+            </View>
+          </View>
+        </View> : null}
 
         {tab === 'posts' ? <ProfilePosts profileId={profile.id} /> : null}
 
@@ -265,19 +239,15 @@ const styles = StyleSheet.create({
   tabText: { color: '#A7B1AB', fontWeight: '800', fontSize: 13 },
   tabTextActive: { color: '#F7F8F3' },
   tabUnderline: { position: 'absolute', bottom: -1, left: 22, right: 22, height: 3, borderRadius: 3, backgroundColor: '#F5C341' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 3 },
+  journeySection: { paddingTop: 2 },
+  journeyCard: { backgroundColor: '#101714', borderRadius: 18, borderWidth: 1, borderColor: '#24312A', padding: 17, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  journeyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#18231E', alignItems: 'center', justifyContent: 'center' },
+  journeyCopy: { flex: 1, minWidth: 0 },
+  journeyEyebrow: { color: '#67CFC8', fontSize: 10, fontWeight: '900', letterSpacing: .8 },
+  journeyTitle: { color: '#F7F8F3', fontSize: 19, fontWeight: '900', marginTop: 2 },
+  journeyBody: { color: '#C7D0CB', fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  journeyProgress: { color: '#F5C341', fontSize: 11, fontWeight: '800', marginTop: 5 },
   sectionTitle: { color: '#F7F8F3', fontSize: 20, fontWeight: '900' },
-  sectionCount: { color: '#67CFC8', fontSize: 11, fontWeight: '800' },
-  badgesRow: { gap: 10, paddingRight: 12 },
-  badgeCard: { width: 112, minHeight: 116, backgroundColor: '#101714', borderRadius: 16, borderWidth: 1, borderColor: '#24312A', padding: 11, alignItems: 'center', justifyContent: 'center', gap: 7 },
-  badgeTitle: { color: '#E5EAE7', fontSize: 10.5, fontWeight: '800', textAlign: 'center' },
-  genericBadge: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
-  stampsRow: { gap: 10, paddingRight: 12 },
-  stampCard: { width: 112, minHeight: 122, backgroundColor: '#101714', borderRadius: 16, borderWidth: 1, borderColor: '#24312A', padding: 10, alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  stampImage: { width: 72, height: 72 },
-  genericStamp: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#26372D', alignItems: 'center', justifyContent: 'center' },
-  stampTitle: { color: '#E5EAE7', fontSize: 10, lineHeight: 13, fontWeight: '800', textAlign: 'center' },
-  empty: { backgroundColor: '#101714', borderRadius: 16, borderWidth: 1, borderColor: '#24312A', padding: 16, gap: 4 },
   emptyTitle: { color: '#E7ECE9', fontWeight: '900', fontSize: 14 },
   muted: { color: '#96A39B', lineHeight: 19, fontSize: 12.5 },
   photosSection: { gap: 10 },
