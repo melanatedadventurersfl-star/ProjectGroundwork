@@ -36,6 +36,7 @@ const WIDE_CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 430);
 const SAVED_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.66, 220), 276);
 const OUTING_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.76, 260), 318);
 const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.64, 214), 264);
+const SAVED_SORT_REFERENCE_TIME = Date.now();
 
 function greeting(hour: number) {
   if (hour < 12) return 'Good morning';
@@ -136,20 +137,17 @@ export default function TrailheadScreen() {
     [reservedAdventures],
   );
 
-  const savedAdventures = useMemo(() => {
-    const now = Date.now();
-    return adventures
-      .filter((item) => item.is_saved)
-      .sort((a, b) => {
-        const aTime = new Date(a.starts_at).getTime();
-        const bTime = new Date(b.starts_at).getTime();
-        const aPast = aTime < now;
-        const bPast = bTime < now;
-        if (aPast !== bPast) return aPast ? 1 : -1;
-        return aPast ? bTime - aTime : aTime - bTime;
-      })
-      .slice(0, 6);
-  }, [adventures]);
+  const savedAdventures = useMemo(() => adventures
+    .filter((item) => item.is_saved)
+    .sort((a, b) => {
+      const aTime = new Date(a.starts_at).getTime();
+      const bTime = new Date(b.starts_at).getTime();
+      const aPast = aTime < SAVED_SORT_REFERENCE_TIME;
+      const bPast = bTime < SAVED_SORT_REFERENCE_TIME;
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      return aPast ? bTime - aTime : aTime - bTime;
+    })
+    .slice(0, 6), [adventures]);
 
   const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
 
