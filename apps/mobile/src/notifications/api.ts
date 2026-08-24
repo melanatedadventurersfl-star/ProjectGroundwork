@@ -1,6 +1,18 @@
 import { supabase } from '../lib/supabase';
 import type { MemberNotification } from './types';
 
+type NotificationStateListener = () => void;
+const notificationStateListeners = new Set<NotificationStateListener>();
+
+function emitNotificationStateChanged() {
+  notificationStateListeners.forEach((listener) => listener());
+}
+
+export function subscribeNotificationStateChanges(listener: NotificationStateListener) {
+  notificationStateListeners.add(listener);
+  return () => notificationStateListeners.delete(listener);
+}
+
 export async function listNotifications(): Promise<MemberNotification[]> {
   const { data, error } = await supabase
     .from('notifications')
@@ -36,11 +48,13 @@ export async function registerPushToken(expoPushToken: string, platform: string)
 export async function markNotificationRead(id: string) {
   const { error } = await supabase.rpc('mark_notification_read', { notification_uuid: id });
   if (error) throw error;
+  emitNotificationStateChanged();
 }
 
 export async function markAllNotificationsRead() {
   const { error } = await supabase.rpc('mark_all_notifications_read');
   if (error) throw error;
+  emitNotificationStateChanged();
 }
 
 export async function archiveNotification(id: string) {
@@ -49,6 +63,7 @@ export async function archiveNotification(id: string) {
     .update({ archived_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+  emitNotificationStateChanged();
 }
 
 export async function archiveAllNotifications() {
@@ -57,4 +72,5 @@ export async function archiveAllNotifications() {
     .update({ archived_at: new Date().toISOString() })
     .is('archived_at', null);
   if (error) throw error;
+  emitNotificationStateChanged();
 }
