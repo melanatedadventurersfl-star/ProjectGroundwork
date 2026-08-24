@@ -1,7 +1,7 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCommunityFeed, type CommunityPost } from '../../src/community/api';
@@ -37,6 +37,15 @@ function relativeTime(value: string) {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return days < 7 ? `${days}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function videoDuration(post: CommunityPost) {
+  const value = post.metadata?.media_duration_ms;
+  if (typeof value !== 'number') return null;
+  const totalSeconds = Math.max(0, Math.round(value / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 export default function CampfireConversationScreen() {
@@ -229,7 +238,13 @@ export default function CampfireConversationScreen() {
                     </Pressable>
                   </View>
                   <Text style={styles.postBody}>{post.body}</Text>
-                  {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
+                  {post.media_type === 'video' && post.media_url ? (
+                    <Pressable style={styles.postVideo} onPress={() => void Linking.openURL(post.media_url!)} accessibilityRole="button" accessibilityLabel="Play video">
+                      <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>
+                      <Text style={styles.postVideoTitle}>Play video</Text>
+                      <Text style={styles.postVideoMeta}>{videoDuration(post) ? `${videoDuration(post)} · ` : ''}Opens in your device player</Text>
+                    </Pressable>
+                  ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
                   <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={replyCount} />
                 </View>
               ) : null}
@@ -329,6 +344,9 @@ const styles = StyleSheet.create({
   authorLine: { flexDirection: 'row', alignItems: 'center', gap: 11 }, avatar: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: '100%', height: '100%' }, avatarFallback: { color: '#F0D083', fontWeight: '900' }, authorCopy: { flex: 1 }, authorName: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' }, postTime: { color: '#8D9B92', fontSize: 12, marginTop: 2 },
   moreButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' }, postBody: { color: '#E4E9E5', fontSize: 17, lineHeight: 25 }, postImage: { width: '100%', aspectRatio: 4 / 3, borderRadius: 16, backgroundColor: '#223229' },
+  postVideo: { width: '100%', aspectRatio: 4 / 3, borderRadius: 16, backgroundColor: '#0D1511', borderWidth: 1, borderColor: '#39473F', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  postVideoPlay: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', paddingLeft: 3 },
+  postVideoTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' }, postVideoMeta: { color: '#AEB8B2', fontSize: 10.5 },
   conversationHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 }, conversationTitle: { color: '#FFF8E8', fontSize: 20, fontWeight: '900' }, replyCount: { color: '#89978F', fontSize: 12, fontWeight: '700' }, error: { color: '#FFB4A9', lineHeight: 19 },
   emptyState: { paddingVertical: 34, alignItems: 'center', gap: 5 }, emptyTitle: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' }, emptyText: { color: '#9DA9A2', fontSize: 14 },
   comment: { flexDirection: 'row', gap: 10, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#25342C' }, commentAvatar: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', backgroundColor: '#31483B', alignItems: 'center', justifyContent: 'center' }, commentAvatarFallback: { color: '#F0D083', fontSize: 11, fontWeight: '900' }, commentBody: { flex: 1, gap: 5 }, commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 7 }, commentAuthor: { color: '#FFF8E8', fontWeight: '900', fontSize: 14 }, commentTime: { color: '#849188', fontSize: 11 }, commentMore: { marginLeft: 'auto', width: 30, height: 26, alignItems: 'center', justifyContent: 'center' }, commentText: { color: '#D9E0DB', fontSize: 15, lineHeight: 22 },

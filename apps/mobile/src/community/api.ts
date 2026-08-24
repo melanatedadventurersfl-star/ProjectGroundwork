@@ -7,6 +7,10 @@ import { getNearestTrailGuideCity, TRAIL_GUIDE_CITIES } from '../trailGuide/loca
 
 export type CommunityPostType = 'update' | 'photo' | 'ask' | 'meetup' | 'buddy' | 'recommendation';
 export type CommunityAudience = 'everyone' | 'connections' | 'circle' | 'group';
+export type CommunityMediaType = 'image' | 'video';
+
+export const COMMUNITY_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+export const COMMUNITY_VIDEO_MAX_DURATION_MS = 60 * 1000;
 
 export type CommunityPost = {
   id: string;
@@ -21,6 +25,8 @@ export type CommunityPost = {
   avatar_url: string | null;
   body: string;
   image_url: string | null;
+  media_url: string | null;
+  media_type: CommunityMediaType | null;
   is_pinned: boolean;
   created_at: string;
   reaction_count: number;
@@ -51,6 +57,14 @@ export type CreateCommunityPostInput = {
   circleId?: string | null;
   imagePath?: string | null;
   metadata?: Record<string, unknown>;
+};
+
+export type CommunityVideoUploadInput = {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  duration?: number | null;
 };
 
 async function currentUserId() {
@@ -166,6 +180,11 @@ async function signCommunityMedia(path: string | null) {
   return data.signedUrl;
 }
 
+function postMediaType(post: Pick<CommunityPost, 'metadata' | 'image_url'>): CommunityMediaType | null {
+  if (!post.image_url) return null;
+  return post.metadata?.media_type === 'video' ? 'video' : 'image';
+}
+
 export async function getCommunityFeed(adventureId?: string, groupId?: string) {
   const { data, error } = await supabase.rpc('get_community_feed', {
     target_adventure_id: adventureId ?? null,
@@ -174,7 +193,16 @@ export async function getCommunityFeed(adventureId?: string, groupId?: string) {
   if (error) throw error;
 
   const rows = (data ?? []) as CommunityPost[];
-  return Promise.all(rows.map(async (post) => ({ ...post, image_url: await signCommunityMedia(post.image_url) })));
+  return Promise.all(rows.map(async (post) => {
+    const mediaType = postMediaType(post);
+    const signedUrl = await signCommunityMedia(post.image_url);
+    return {
+      ...post,
+      image_url: mediaType === 'video' ? null : signedUrl,
+      media_url: signedUrl,
+      media_type: mediaType,
+    };
+  }));
 }
 
 export async function uploadCommunityPostImage(input: { uri: string; base64?: string | null; mimeType?: string | null }) {
@@ -190,11 +218,47 @@ export async function uploadCommunityPostImage(input: { uri: string; base64?: st
   return path;
 }
 
-export async function removeCommunityPostImage(path: string) {
+function videoExtension(input: CommunityVideoUploadInput) {
+  const fromName = input.fileName?.split('.').pop()?.toLowerCase();
+  if (fromName && /^[a-z0-9]{2,5}$/.test(fromName)) return fromName;
+  if (input.mimeType === 'video/quicktime') return 'mov';
+  if (input.mimeType === 'video/webm') return 'webm';
+  return 'mp4';
+}
+
+export async function uploadCommunityPostVideo(input: CommunityVideoUploadInput) {
+  if (input.duration != null && input.duration > COMMUNITY_VIDEO_MAX_DURATION_MS) {
+    throw new Error('Videos can be up to 60 seconds long.');
+  }
+  if (input.fileSize != null && input.fileSize > COMMUNITY_VIDEO_MAX_BYTES) {
+    throw new Error('Videos can be up to 100 MB.');
+  }
+
+  const userId = await currentUserId();
+  const response = await fetch(input.uri);
+  if (!response.ok) throw new Error('That video could not be prepared. Please choose it again.');
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > COMMUNITY_VIDEO_MAX_BYTES) throw new Error('Videos can be up to 100 MB.');
+
+  const extension = videoExtension(input);
+  const contentType = input.mimeType || (extension === 'mov' ? 'video/quicktime' : extension === 'webm' ? 'video/webm' : 'video/mp4');
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extension}`;
+  const { error } = await supabase.storage.from('community-media').upload(path, bytes, {
+    contentType,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+export async function removeCommunityPostMedia(path: string) {
   if (!path || /^https?:\/\//i.test(path)) return;
   const { error } = await supabase.storage.from('community-media').remove([path]);
   if (error) throw error;
 }
+
+export const removeCommunityPostImage = removeCommunityPostMedia;
 
 export async function createPost(input: CreateCommunityPostInput): Promise<void>;
 export async function createPost(body: string, adventureId?: string, groupId?: string): Promise<void>;
@@ -210,7 +274,8 @@ export async function createPost(inputOrBody: CreateCommunityPostInput | string,
       }
     : inputOrBody;
 
-  const body = input.body.trim() || (input.imagePath ? 'Shared a photo.' : '');
+  const mediaType = input.metadata?.media_type === 'video' ? 'video' : input.imagePath ? 'image' : null;
+  const body = input.body.trim() || (mediaType === 'video' ? 'Shared a video.' : input.imagePath ? 'Shared a photo.' : '');
   if (!body) throw new Error('Add something before posting.');
 
   const audience = input.audience ?? (input.groupId ? 'group' : 'everyone');
