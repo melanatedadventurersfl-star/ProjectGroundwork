@@ -90,6 +90,15 @@ function matchesQuickTags(
   return tags.every((tag) => (tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag)));
 }
 
+function startTime(value: string) {
+  const parsed = Date.parse(value);
+  if (!Number.isNaN(parsed)) return parsed;
+  const match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const [, year, month, day] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+}
+
 function formatPrice(cents: number) {
   if (!cents) return 'Free';
   const dollars = cents / 100;
@@ -107,22 +116,14 @@ function SectionHeader({ title, expanded, onPress }: { title: string; expanded: 
   );
 }
 
-function AdventureTile({
-  adventure,
-  distance,
-  onToggleSaved,
-  wide = false,
-}: {
+function AdventureTile({ adventure, distance, onToggleSaved, wide = false }: {
   adventure: AdventureSummary;
   distance?: number | null;
   onToggleSaved: (adventure: AdventureSummary) => void;
   wide?: boolean;
 }) {
   return (
-    <Pressable
-      style={[s.adventureTile, wide && s.adventureTileWide]}
-      onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
-    >
+    <Pressable style={[s.adventureTile, wide && s.adventureTileWide]} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}>
       {adventure.hero_image_url ? (
         <ImageBackground source={{ uri: adventure.hero_image_url }} style={[s.tileImage, wide && s.tileImageWide]} imageStyle={s.tileImageCorners}>
           <View style={s.tileShade}>
@@ -131,21 +132,13 @@ function AdventureTile({
                 {adventure.is_demo ? <Text style={s.demoBadge}>DEMO</Text> : null}
                 {distance != null ? <Text style={s.distanceBadge}>⌖ {distance.toFixed(0)} mi</Text> : null}
               </View>
-              <Pressable
-                style={[s.saveButton, adventure.is_saved && s.saveButtonActive]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  onToggleSaved(adventure);
-                }}
-              >
+              <Pressable style={[s.saveButton, adventure.is_saved && s.saveButtonActive]} onPress={(event) => { event.stopPropagation(); onToggleSaved(adventure); }}>
                 <Ionicons name={adventure.is_saved ? 'bookmark' : 'bookmark-outline'} size={18} color={adventure.is_saved ? '#111816' : '#FFFFFF'} />
               </Pressable>
             </View>
           </View>
         </ImageBackground>
-      ) : (
-        <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>
-      )}
+      ) : <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>}
       <View style={s.tileCopy}>
         <Text style={s.tileTitle} numberOfLines={wide ? 2 : 1}>{adventure.title}</Text>
         <Text style={s.tileMeta} numberOfLines={1}>{adventure.category} · {adventure.city}, {adventure.state}</Text>
@@ -174,9 +167,7 @@ function FeaturedHero({ adventure }: { adventure: AdventureSummary }) {
   );
   return (
     <Pressable style={s.featureHero} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}>
-      {adventure.hero_image_url ? (
-        <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.featureHeroImage} imageStyle={s.featureHeroImageCorners}>{content}</ImageBackground>
-      ) : <View style={[s.featureHeroImage, s.featureHeroFallback]}>{content}</View>}
+      {adventure.hero_image_url ? <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.featureHeroImage} imageStyle={s.featureHeroImageCorners}>{content}</ImageBackground> : <View style={[s.featureHeroImage, s.featureHeroFallback]}>{content}</View>}
     </Pressable>
   );
 }
@@ -272,8 +263,8 @@ export default function ExploreScreen() {
   const compareAdventure = useCallback((a: AdventureSummary, b: AdventureSummary) => {
     if (sort === 'price_low') return a.starting_price_cents - b.starting_price_cents;
     if (sort === 'price_high') return b.starting_price_cents - a.starting_price_cents;
-    if (sort === 'soonest') return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
-    if (sort === 'latest') return new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime();
+    if (sort === 'soonest') return startTime(a.starts_at) - startTime(b.starts_at);
+    if (sort === 'latest') return startTime(b.starts_at) - startTime(a.starts_at);
     if (sort === 'activity') return a.category.localeCompare(b.category) || a.title.localeCompare(b.title);
     if (sort === 'title') return a.title.localeCompare(b.title);
     if (searchCenter) {
@@ -281,7 +272,7 @@ export default function ExploreScreen() {
       const bd = b.latitude == null || b.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: b.latitude, longitude: b.longitude });
       return sort === 'farthest' ? bd - ad : ad - bd;
     }
-    return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+    return startTime(a.starts_at) - startTime(b.starts_at);
   }, [searchCenter, sort]);
 
   const visibleAdventures = useMemo(() => adventures
@@ -306,12 +297,14 @@ export default function ExploreScreen() {
       && (radius === 'Anywhere' || distance == null || distance <= radiusLimit)
       && matchesQuickTags(event, selectedTags);
   }).sort((a, b) => {
+    if (sort === 'price_low') return a.event.is_free === b.event.is_free ? startTime(a.event.starts_at) - startTime(b.event.starts_at) : (a.event.is_free ? -1 : 1);
+    if (sort === 'price_high') return a.event.is_free === b.event.is_free ? startTime(a.event.starts_at) - startTime(b.event.starts_at) : (a.event.is_free ? 1 : -1);
     if (sort === 'farthest') return (b.distance ?? -1) - (a.distance ?? -1);
     if (sort === 'closest') return (a.distance ?? 9999) - (b.distance ?? 9999);
-    if (sort === 'latest') return new Date(b.event.starts_at).getTime() - new Date(a.event.starts_at).getTime();
+    if (sort === 'latest') return startTime(b.event.starts_at) - startTime(a.event.starts_at);
     if (sort === 'activity') return a.event.category.localeCompare(b.event.category) || a.event.title.localeCompare(b.event.title);
     if (sort === 'title') return a.event.title.localeCompare(b.event.title);
-    return new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime();
+    return startTime(a.event.starts_at) - startTime(b.event.starts_at);
   }), [events, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
 
   async function toggle(adventure: AdventureSummary) {
@@ -336,7 +329,7 @@ export default function ExploreScreen() {
     setSelectedTags([]);
   }
 
-  const featured = visibleAdventures.filter((item) => item.is_featured).concat(visibleAdventures.filter((item) => !item.is_featured));
+  const featured = [...visibleAdventures].sort(compareAdventure);
   const heroAdventure = adventures.find((item) => item.is_featured && item.hero_image_url) ?? adventures.find((item) => item.hero_image_url) ?? adventures[0];
   const featuredPreview = featured.slice(0, 6);
   const popular = visibleAdventures.slice(6, 18).length ? visibleAdventures.slice(6, 18) : visibleAdventures;
@@ -353,12 +346,10 @@ export default function ExploreScreen() {
         <View style={s.hero}>
           <Text style={s.title}>Melanated Adventures</Text>
           {!loading && !isSearching && heroAdventure ? <FeaturedHero adventure={heroAdventure} /> : null}
-
           <View style={s.searchWrap}>
             <Text style={s.searchIcon}>⌕</Text>
             <TextInput value={search} onChangeText={setSearch} placeholder="Search places, adventures & events" placeholderTextColor="#909A95" style={s.input} returnKeyType="search" clearButtonMode="while-editing" />
           </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.smartBar}>
             <Pressable onPress={() => setActiveSmartFilter('activity')} style={[s.smartChip, category !== 'All' && s.smartChipActive]}>
               <Text style={[s.smartChipText, category !== 'All' && s.smartChipTextActive]}>{category === 'All' ? 'Activity' : `${categoryIcons[category] ?? ''} ${category}`}</Text><Text style={s.smartChevron}>⌄</Text>
@@ -374,16 +365,13 @@ export default function ExploreScreen() {
               <Text style={s.sortChipText}>Sort: {currentSort.label}</Text><Text style={s.sortChipText}>⌄</Text>
             </Pressable>
           </ScrollView>
-
           <View style={s.smartSummary}>
             <Text style={s.smartSummaryText}>{resultCount} {resultCount === 1 ? 'result' : 'results'} · Sorted by {currentSort.label}</Text>
             {filterCount > 0 ? <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.smartClear}>Clear filters</Text></Pressable> : null}
           </View>
         </View>
-
         {error ? <Text style={s.error}>{error}</Text> : null}
         {loading ? <ActivityIndicator color="#F5C542" style={s.loader} /> : null}
-
         {!loading && featuredPreview.length ? (
           <View style={s.section}>
             <SectionHeader title="Featured Adventures" expanded={expandedSection === 'featured'} onPress={() => setExpandedSection((current) => current === 'featured' ? null : 'featured')} />
@@ -391,7 +379,6 @@ export default function ExploreScreen() {
               : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>{featuredPreview.map((adventure) => <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />)}</ScrollView>}
           </View>
         ) : null}
-
         {!loading && nearbyPreview.length ? (
           <View style={s.section}>
             <SectionHeader title="Outings Happening Near You" expanded={expandedSection === 'events'} onPress={() => setExpandedSection((current) => current === 'events' ? null : 'events')} />
@@ -399,7 +386,6 @@ export default function ExploreScreen() {
               : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>{nearbyPreview.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} />)}</ScrollView>}
           </View>
         ) : null}
-
         {!loading && popularPreview.length ? (
           <View style={s.section}>
             <SectionHeader title={`Popular Around ${currentLocationLabel.split(',')[0] ?? currentLocationLabel}`} expanded={expandedSection === 'popular'} onPress={() => setExpandedSection((current) => current === 'popular' ? null : 'popular')} />
@@ -407,10 +393,8 @@ export default function ExploreScreen() {
               : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>{popularPreview.map((adventure) => <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />)}</ScrollView>}
           </View>
         ) : null}
-
         {!loading && !featuredPreview.length && !nearbyPreview.length ? <View style={s.empty}><Text style={s.emptyTitle}>{isSearching ? 'No matches found' : 'Nothing nearby yet'}</Text><Text style={s.emptyBody}>{isSearching ? 'Try another keyword, city, or activity.' : 'Try widening your radius or clearing a filter.'}</Text></View> : null}
       </ScrollView>
-
       <Modal visible={activeSmartFilter !== null} transparent animationType="fade" onRequestClose={() => setActiveSmartFilter(null)}>
         <View style={s.quickModalRoot}>
           <Pressable style={s.quickModalBackdrop} onPress={() => setActiveSmartFilter(null)} />
@@ -420,7 +404,6 @@ export default function ExploreScreen() {
               <Text style={s.quickSheetTitle}>{activeSmartFilter === 'activity' ? 'Activity' : activeSmartFilter === 'distance' ? 'Distance' : activeSmartFilter === 'goodFor' ? 'Good for' : 'Sort results'}</Text>
               <Pressable onPress={() => setActiveSmartFilter(null)} hitSlop={8}><Text style={s.quickDone}>Done</Text></Pressable>
             </View>
-
             {activeSmartFilter === 'activity' ? <View style={s.quickOptionWrap}><Pressable onPress={() => setCategory('All')} style={[s.quickOption, category === 'All' && s.quickOptionActive]}><Text style={[s.quickOptionText, category === 'All' && s.quickOptionTextActive]}>All activities</Text></Pressable>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[s.quickOption, category === item && s.quickOptionActive]}><Text style={[s.quickOptionText, category === item && s.quickOptionTextActive]}>{categoryIcons[item] ?? ''} {item}</Text></Pressable>)}</View> : null}
             {activeSmartFilter === 'distance' ? <View style={s.quickOptionWrap}>{radii.map((value) => <Pressable key={value} onPress={() => setRadius(value)} style={[s.quickOption, radius === value && s.quickOptionActive]}><Text style={[s.quickOptionText, radius === value && s.quickOptionTextActive]}>{value === 'Anywhere' ? 'Anywhere in Florida' : `Within ${value} miles`}</Text></Pressable>)}</View> : null}
             {activeSmartFilter === 'goodFor' ? <View style={s.quickOptionWrap}>{quickTags.map((tag) => { const active = selectedTags.includes(tag); return <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.quickOption, active && s.quickOptionActive]}><Text style={[s.quickOptionText, active && s.quickOptionTextActive]}>{active ? '✓ ' : ''}{tag}</Text></Pressable>; })}</View> : null}
