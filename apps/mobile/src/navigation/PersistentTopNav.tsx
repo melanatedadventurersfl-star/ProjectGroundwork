@@ -52,7 +52,8 @@ export function PersistentTopNav() {
     };
   }, [refreshUnreadCount]);
 
-  const notificationLabel = unreadCount > 0
+  const hasUnreadNotifications = unreadCount > 0;
+  const notificationLabel = hasUnreadNotifications
     ? `Notifications, ${unreadCount} unread`
     : 'Notifications';
 
@@ -68,16 +69,27 @@ export function PersistentTopNav() {
             accessibilityRole="button"
             accessibilityLabel={notificationLabel}
             onPress={() => session ? router.navigate('/notifications' as never) : promptForAccount('Notifications')}
-            style={styles.iconButton}
+            style={({ pressed }) => [
+              styles.iconButton,
+              hasUnreadNotifications && styles.notificationButtonUnread,
+              pressed && styles.iconButtonPressed,
+            ]}
           >
-            <AppIcon name="notifications" color="#F6F4EE" size={21} />
-            {unreadCount > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text></View> : null}
+            <AppIcon name="notifications" color={hasUnreadNotifications ? '#0F1713' : '#F6F4EE'} size={hasUnreadNotifications ? 23 : 21} />
+            {hasUnreadNotifications ? (
+              <>
+                <View style={styles.unreadAccent} />
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                </View>
+              </>
+            ) : null}
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Menu"
             onPress={() => session ? router.navigate('/(tabs)/menu' as never) : promptForAccount('Menu')}
-            style={styles.iconButton}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
           >
             <AppIcon name="menu" color="#F6F4EE" size={21} />
           </Pressable>
@@ -94,6 +106,39 @@ const styles = StyleSheet.create({
   logo: { width: 40, height: 40 },
   actions: { flexDirection: 'row', gap: 9 },
   iconButton: { width: 39, height: 39, borderRadius: 20, borderWidth: 1, borderColor: '#405047', backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: -5, right: -7, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D3A94F', borderWidth: 2, borderColor: '#0F1713' },
-  badgeText: { color: '#0F1713', fontSize: 9, lineHeight: 11, fontWeight: '900' },
+  iconButtonPressed: { opacity: 0.78, transform: [{ scale: 0.96 }] },
+  notificationButtonUnread: {
+    backgroundColor: '#D7B45A',
+    borderColor: '#F2D685',
+    borderWidth: 2,
+    shadowColor: '#D7B45A',
+    shadowOpacity: 0.38,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 7,
+  },
+  unreadAccent: {
+    position: 'absolute',
+    left: -4,
+    top: 14,
+    width: 4,
+    height: 11,
+    borderRadius: 3,
+    backgroundColor: '#F2D685',
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -9,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E85D3F',
+    borderWidth: 2,
+    borderColor: '#0F1713',
+  },
+  badgeText: { color: '#FFFFFF', fontSize: 10, lineHeight: 12, fontWeight: '900' },
 });
