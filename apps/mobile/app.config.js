@@ -6,6 +6,11 @@ const buildCommit =
   process.env.EXPO_PUBLIC_GIT_SHA ||
   'local';
 
+const buildNumber =
+  process.env.EXPO_PUBLIC_BUILD_NUMBER ||
+  process.env.GITHUB_RUN_NUMBER ||
+  'local';
+
 function shareHost() {
   try {
     const value = process.env.EXPO_PUBLIC_SHARE_BASE_URL?.trim();
@@ -62,7 +67,9 @@ module.exports = {
     ...base.extra,
     nativeBuildAssetRevision: 'go-melanated-launcher-v12',
     buildCommit,
+    buildNumber,
     buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
     buildProfile: process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_BUILD_PROFILE || 'local',
+    buildSource: process.env.EXPO_PUBLIC_BUILD_SOURCE || 'local',
   },
 };
