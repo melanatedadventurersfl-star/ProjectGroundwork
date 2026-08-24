@@ -345,7 +345,7 @@ export default function ExploreScreen() {
   const isSearching = search.trim().length > 0;
   const resultCount = visibleAdventures.length + localEvents.length;
   const filterCount = (category !== 'All' ? 1 : 0) + selectedTags.length + (radius !== '50' ? 1 : 0);
-  const currentSort = sortOptions.find((option) => option.value === sort) ?? sortOptions[0];
+  const currentSort = sortOptions.find((option) => option.value === sort) ?? { value: 'closest' as SortMode, label: 'Closest', helper: 'Nearest first' };
 
   return (
     <SafeAreaView style={s.safe} edges={['left', 'right']}>
