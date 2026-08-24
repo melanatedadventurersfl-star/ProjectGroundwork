@@ -6,14 +6,14 @@ export type ReleaseNotes = {
 };
 
 export const currentReleaseNotes: ReleaseNotes = {
-  id: '2026-08-19-build-status-fingerprint-v1',
+  id: '2026-08-24-community-and-trailhead-v1',
   title: "What's New",
-  intro: 'It is now much easier to tell exactly which Melanated build is running on your device.',
+  intro: 'A fresh round of Go Melanated improvements is ready. Here are the changes you can actually see and use.',
   items: [
-    'Admin Build Status now shows the installed app version, native build number, source commit, build timestamp, profile, update channel, runtime, and update ID.',
-    'The Build Status screen can check the live update channel and clearly report Latest Build, Update Available, or Check Failed.',
-    'When an update is available, admins can download it and restart directly from Build Status.',
-    'The Admin Profile now carries a compact running-build fingerprint so screenshots immediately identify the code version being viewed.',
-    'Outpost continues to prioritize Trailmates, joined groups, relevant community activity, and audience-aware posts in For You.',
+    'Campfires used for meetups are now called Outings, making the difference between community conversation spaces and real-world plans clearer.',
+    'Trailhead now focuses more closely on Your Next Adventure and upcoming Outings connected to your community and Trail Family.',
+    'Outpost posting and discovery have been improved, including newer posts surfacing first and more useful feed filtering.',
+    'Profiles, Trail Guide screens, and community surfaces received layout and readability improvements.',
+    'Invites, reporting, blocking, permissions, support, attendance, and other member flows received reliability fixes and polish.',
   ],
 };
