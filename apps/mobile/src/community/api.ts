@@ -1,5 +1,9 @@
+import { Image } from 'react-native';
+
+import { pointForCity } from '../explore/location';
 import { prepareLocalImage } from '../lib/imageUpload';
 import { supabase } from '../lib/supabase';
+import { getNearestTrailGuideCity, TRAIL_GUIDE_CITIES } from '../trailGuide/locationBackgrounds';
 
 export type CommunityPostType = 'update' | 'photo' | 'ask' | 'meetup' | 'buddy' | 'recommendation';
 export type CommunityAudience = 'everyone' | 'connections' | 'circle' | 'group';
@@ -56,6 +60,28 @@ async function currentUserId() {
   return userId;
 }
 
+function normalizeLocation(value?: string | null) {
+  return value?.trim().toLowerCase().replace(/florida/g, 'fl').replace(/[^a-z0-9]+/g, '-') ?? '';
+}
+
+function groupCityBackgroundUri(city?: string | null, state?: string | null) {
+  if (!city || !state) return null;
+  const normalizedState = normalizeLocation(state);
+  if (normalizedState !== 'fl') return null;
+
+  const cityKey = normalizeLocation(city);
+  const exact = TRAIL_GUIDE_CITIES.find((item) => item.key === cityKey);
+  let source = exact?.source ?? null;
+
+  if (!source) {
+    const point = pointForCity(city, state);
+    const nearest = point ? getNearestTrailGuideCity(point.latitude, point.longitude) : null;
+    source = nearest?.city.source ?? null;
+  }
+
+  return source ? Image.resolveAssetSource(source)?.uri ?? null : null;
+}
+
 export async function getGroups(): Promise<CommunityGroup[]> {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
@@ -86,11 +112,15 @@ export async function getGroups(): Promise<CommunityGroup[]> {
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
 
-  return groups.map((group: any) => ({
-    ...group,
-    is_member: myGroups.has(group.id),
-    member_count: counts.get(group.id) ?? 0,
-  })) as CommunityGroup[];
+  return groups.map((group: any) => {
+    const locationBackground = groupCityBackgroundUri(group.city, group.state);
+    return {
+      ...group,
+      image_url: group.image_url || locationBackground,
+      is_member: myGroups.has(group.id),
+      member_count: counts.get(group.id) ?? 0,
+    };
+  }) as CommunityGroup[];
 }
 
 export async function getGroup(groupId: string): Promise<CommunityGroup> {
