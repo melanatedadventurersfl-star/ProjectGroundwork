@@ -88,21 +88,36 @@ jobs:
       - name: Validate every bundled raster image before EAS upload
         run: python3 apps/mobile/scripts/validate_image_assets.py
 
-      - name: Stamp preview APK with triggering commit
+      - name: Production bundle smoke test before EAS
+        run: npm run mobile:bundlecheck
+        env:
+          EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_PROFILE: preview
+          EXPO_PUBLIC_BUILD_SOURCE: github-actions
+
+      - name: Stamp preview APK with triggering commit and CI run
         working-directory: apps/mobile
         run: |
           BUILD_GIT_SHA="$(git rev-parse HEAD)"
-          export BUILD_GIT_SHA
+          BUILD_TIMESTAMP="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          export BUILD_GIT_SHA BUILD_TIMESTAMP
           node <<'NODE'
           const fs = require('fs');
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
           eas.build.preview.env = {
             ...(eas.build.preview.env || {}),
             EXPO_PUBLIC_GIT_SHA: process.env.BUILD_GIT_SHA,
-            EXPO_PUBLIC_BUILD_SOURCE: 'main'
+            EXPO_PUBLIC_BUILD_NUMBER: process.env.GITHUB_RUN_NUMBER || 'unknown',
+            EXPO_PUBLIC_BUILD_TIMESTAMP: process.env.BUILD_TIMESTAMP,
+            EXPO_PUBLIC_BUILD_PROFILE: 'preview',
+            EXPO_PUBLIC_BUILD_SOURCE: 'github-actions'
           };
           fs.writeFileSync('eas.json', `${JSON.stringify(eas, null, 2)}\n`);
-          console.log(`Stamped preview build with ${process.env.BUILD_GIT_SHA}`);
+          console.log(`Stamped preview build ${process.env.GITHUB_RUN_NUMBER || 'unknown'} with ${process.env.BUILD_GIT_SHA}`);
           NODE
 
       - name: Verify Expo authentication
