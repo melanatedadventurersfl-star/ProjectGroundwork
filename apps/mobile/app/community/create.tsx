@@ -6,10 +6,13 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  COMMUNITY_VIDEO_MAX_BYTES,
+  COMMUNITY_VIDEO_MAX_DURATION_MS,
   createPost,
   getGroups,
-  removeCommunityPostImage,
+  removeCommunityPostMedia,
   uploadCommunityPostImage,
+  uploadCommunityPostVideo,
   type CommunityAudience,
   type CommunityGroup,
   type CommunityPostType,
@@ -19,6 +22,13 @@ import { getCircles, type CommunityCircle } from '../../src/community/circles';
 type PostType = CommunityPostType;
 type Audience = CommunityAudience;
 type PickedPhoto = { uri: string; base64: string; mimeType?: string | null };
+type PickedVideo = {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  duration?: number | null;
+};
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -43,13 +53,28 @@ const audiences: Array<{ value: Audience; label: string; helper: string; icon: s
   { value: 'group', label: 'A Group', helper: 'Post inside one of your communities.', icon: 'albums-outline' },
 ];
 
-function placeholderFor(type: PostType) {
+function placeholderFor(type: PostType, hasVideo: boolean) {
+  if (hasVideo) return 'Say something about this video…';
   if (type === 'photo') return 'Say something about this moment…';
   if (type === 'ask') return 'What do you want to ask the community?';
   if (type === 'buddy') return 'What do you want to do, where, and when?';
   if (type === 'recommendation') return 'What place are you recommending and why?';
   if (type === 'meetup') return 'What are you planning?';
   return 'What’s happening outside?';
+}
+
+function formatDuration(duration?: number | null) {
+  if (duration == null) return null;
+  const totalSeconds = Math.max(0, Math.round(duration / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatFileSize(fileSize?: number | null) {
+  if (fileSize == null) return null;
+  const megabytes = fileSize / (1024 * 1024);
+  return `${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`;
 }
 
 export default function CreateCommunityPostScreen() {
@@ -65,6 +90,7 @@ export default function CreateCommunityPostScreen() {
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [body, setBody] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
+  const [video, setVideo] = useState<PickedVideo | null>(null);
   const [loadingTargets, setLoadingTargets] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,8 +124,41 @@ export default function CreateCommunityPostScreen() {
       setError('That photo could not be prepared safely. Please choose it again.');
       return;
     }
+    setVideo(null);
     setPhoto({ uri: asset.uri, base64: asset.base64, mimeType: asset.mimeType });
     setType('photo');
+  }
+
+  async function chooseVideo() {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo library access is needed to share a video.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      videoMaxDuration: 60,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (asset.duration != null && asset.duration > COMMUNITY_VIDEO_MAX_DURATION_MS) {
+      setError('Videos can be up to 60 seconds long.');
+      return;
+    }
+    if (asset.fileSize != null && asset.fileSize > COMMUNITY_VIDEO_MAX_BYTES) {
+      setError('Videos can be up to 100 MB.');
+      return;
+    }
+    setPhoto(null);
+    setVideo({
+      uri: asset.uri,
+      mimeType: asset.mimeType,
+      fileName: asset.fileName,
+      fileSize: asset.fileSize,
+      duration: asset.duration,
+    });
+    if (type === 'photo') setType('update');
   }
 
   function changeAudience(next: Audience) {
@@ -116,13 +175,14 @@ export default function CreateCommunityPostScreen() {
     } else {
       setType(next);
       if (next === 'buddy') setMoreOpen(true);
+      if (next === 'photo' && video) setVideo(null);
     }
     setError(null);
   }
 
   const needsTarget = (audience === 'circle' && !circleId) || (audience === 'group' && !groupId);
   const needsPhoto = type === 'photo' && !photo;
-  const needsBody = type !== 'photo' && type !== 'meetup' && !body.trim();
+  const needsBody = type !== 'photo' && type !== 'meetup' && !body.trim() && !video;
   const cannotSubmit = submitting || needsTarget || needsPhoto || needsBody;
 
   async function submit() {
@@ -138,6 +198,7 @@ export default function CreateCommunityPostScreen() {
     let uploadedPath: string | null = null;
     try {
       if (photo) uploadedPath = await uploadCommunityPostImage(photo);
+      if (video) uploadedPath = await uploadCommunityPostVideo(video);
       await createPost({
         body,
         postType: type,
@@ -146,10 +207,17 @@ export default function CreateCommunityPostScreen() {
         groupId,
         adventureId: selectedGroup?.adventure_id ?? null,
         imagePath: uploadedPath,
+        metadata: video ? {
+          media_type: 'video',
+          media_mime_type: video.mimeType ?? null,
+          media_file_name: video.fileName ?? null,
+          media_file_size: video.fileSize ?? null,
+          media_duration_ms: video.duration ?? null,
+        } : photo ? { media_type: 'image' } : {},
       });
       router.back();
     } catch (caught) {
-      if (uploadedPath) await removeCommunityPostImage(uploadedPath).catch(() => undefined);
+      if (uploadedPath) await removeCommunityPostMedia(uploadedPath).catch(() => undefined);
       setError(caught instanceof Error ? caught.message : 'Unable to publish this post.');
     } finally {
       setSubmitting(false);
@@ -161,6 +229,9 @@ export default function CreateCommunityPostScreen() {
     : audience === 'group' && selectedGroup
       ? selectedGroup.name
       : selectedAudience.label;
+
+  const videoDuration = formatDuration(video?.duration);
+  const videoSize = formatFileSize(video?.fileSize);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -191,14 +262,26 @@ export default function CreateCommunityPostScreen() {
             </View>
           ) : null}
 
+          {video ? (
+            <View style={styles.videoPreview}>
+              <View style={styles.videoIcon}><Ionicons name="play" size={24} color="#101510" /></View>
+              <View style={styles.flex}>
+                <Text style={styles.videoTitle} numberOfLines={1}>{video.fileName || 'Selected video'}</Text>
+                <Text style={styles.videoMeta}>{[videoDuration, videoSize].filter(Boolean).join(' · ') || 'Ready to upload'}</Text>
+                <Text style={styles.videoLimit}>Up to 60 seconds · 100 MB</Text>
+              </View>
+              <Pressable onPress={() => setVideo(null)} accessibilityLabel="Remove video"><Ionicons name="close-circle" size={23} color="#FFB4A9" /></Pressable>
+            </View>
+          ) : null}
+
           <TextInput
             value={body}
             onChangeText={setBody}
-            placeholder={placeholderFor(type)}
+            placeholder={placeholderFor(type, Boolean(video))}
             placeholderTextColor="#738078"
             multiline
             maxLength={4000}
-            autoFocus={type !== 'photo'}
+            autoFocus={type !== 'photo' && !video}
             style={styles.input}
           />
           <Text style={styles.counter}>{body.length}/4000</Text>
@@ -211,6 +294,11 @@ export default function CreateCommunityPostScreen() {
           >
             <Ionicons name="image-outline" size={18} color={type === 'photo' ? '#101510' : '#D6DDD8'} />
             <Text style={[styles.actionText, type === 'photo' && styles.actionTextActive]}>Photo</Text>
+          </Pressable>
+
+          <Pressable onPress={() => void chooseVideo()} style={[styles.actionChip, video && styles.actionChipActive]}>
+            <Ionicons name="videocam-outline" size={18} color={video ? '#101510' : '#D6DDD8'} />
+            <Text style={[styles.actionText, video && styles.actionTextActive]}>Video</Text>
           </Pressable>
 
           <Pressable onPress={() => selectType('recommendation')} style={[styles.actionChip, type === 'recommendation' && styles.actionChipActive]}>
@@ -335,6 +423,11 @@ const styles = StyleSheet.create({
   photoActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 18 },
   photoAction: { color: GOLD, fontWeight: '800' },
   removePhoto: { color: '#FFB4A9', fontWeight: '800' },
+  videoPreview: { minHeight: 82, borderWidth: 1, borderColor: '#4B4935', backgroundColor: '#20261F', borderRadius: 14, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  videoIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  videoTitle: { color: TEXT, fontWeight: '900', fontSize: 13.5 },
+  videoMeta: { color: '#D0D7D2', fontSize: 11.5, marginTop: 3 },
+  videoLimit: { color: '#8F9A93', fontSize: 10, marginTop: 3 },
 
   actionRow: { gap: 7, paddingRight: 18 },
   actionChip: { minHeight: 40, borderWidth: 1, borderColor: '#344139', borderRadius: 99, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CARD },
