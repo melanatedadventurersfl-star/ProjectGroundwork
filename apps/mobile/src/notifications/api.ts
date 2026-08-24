@@ -10,7 +10,9 @@ function emitNotificationStateChanged() {
 
 export function subscribeNotificationStateChanges(listener: NotificationStateListener) {
   notificationStateListeners.add(listener);
-  return () => notificationStateListeners.delete(listener);
+  return () => {
+    notificationStateListeners.delete(listener);
+  };
 }
 
 export async function listNotifications(): Promise<MemberNotification[]> {
