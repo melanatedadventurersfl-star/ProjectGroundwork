@@ -23,7 +23,15 @@ import { distanceMiles, pointForCity, resolveSearchCenter } from '../../src/expl
 import { listLocalEvents, type LocalEvent } from '../../src/local-events/api';
 import { supabase } from '../../src/lib/supabase';
 
-type SortMode = 'soonest' | 'closest' | 'newest' | 'price';
+type SortMode =
+  | 'closest'
+  | 'farthest'
+  | 'soonest'
+  | 'latest'
+  | 'price_low'
+  | 'price_high'
+  | 'activity'
+  | 'title';
 type Point = { latitude: number; longitude: number };
 type ExpandedSection = 'featured' | 'events' | 'popular' | null;
 type SmartFilter = 'activity' | 'distance' | 'goodFor' | 'sort' | null;
@@ -41,10 +49,14 @@ const radii = ['25', '50', '100', 'Anywhere'];
 const DEFAULT_EVENT_IMAGE = require('../../assets/explore/default-event.jpg');
 
 const sortOptions: Array<{ value: SortMode; label: string; helper: string }> = [
-  { value: 'closest', label: 'Closest', helper: 'Nearest to you' },
+  { value: 'closest', label: 'Closest', helper: 'Nearest first' },
+  { value: 'farthest', label: 'Farthest', helper: 'Farthest first' },
   { value: 'soonest', label: 'Soonest', helper: 'Coming up next' },
-  { value: 'newest', label: 'Newest', helper: 'Recently added' },
-  { value: 'price', label: 'Price', helper: 'Lowest first' },
+  { value: 'latest', label: 'Latest date', helper: 'Farthest date first' },
+  { value: 'price_low', label: 'Price: Low to High', helper: 'Lowest price first' },
+  { value: 'price_high', label: 'Price: High to Low', helper: 'Highest price first' },
+  { value: 'activity', label: 'Activity', helper: 'Activity A to Z' },
+  { value: 'title', label: 'Name', helper: 'Adventure name A to Z' },
 ];
 
 function promptForAccount(destination: string) {
@@ -78,12 +90,18 @@ function matchesQuickTags(
   return tags.every((tag) => (tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag)));
 }
 
+function formatPrice(cents: number) {
+  if (!cents) return 'Free';
+  const dollars = cents / 100;
+  return `From ${dollars.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: dollars % 1 ? 2 : 0 })}`;
+}
+
 function SectionHeader({ title, expanded, onPress }: { title: string; expanded: boolean; onPress: () => void }) {
   return (
     <View style={s.sectionHeader}>
       <Text style={s.sectionTitle}>{title}</Text>
       <Pressable onPress={onPress} hitSlop={8}>
-        <Text style={s.sectionAction}>{expanded ? 'Show less' : 'See all'}  ›</Text>
+        <Text style={s.sectionAction}>{expanded ? 'Show less' : 'See all'} ›</Text>
       </Pressable>
     </View>
   );
@@ -106,11 +124,7 @@ function AdventureTile({
       onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
     >
       {adventure.hero_image_url ? (
-        <ImageBackground
-          source={{ uri: adventure.hero_image_url }}
-          style={[s.tileImage, wide && s.tileImageWide]}
-          imageStyle={s.tileImageCorners}
-        >
+        <ImageBackground source={{ uri: adventure.hero_image_url }} style={[s.tileImage, wide && s.tileImageWide]} imageStyle={s.tileImageCorners}>
           <View style={s.tileShade}>
             <View style={s.tileTopRow}>
               <View style={s.tileBadges}>
@@ -130,51 +144,39 @@ function AdventureTile({
           </View>
         </ImageBackground>
       ) : (
-        <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}>
-          <Text style={s.tileFallbackIcon}>↗</Text>
-        </View>
+        <View style={[s.tileImage, wide && s.tileImageWide, s.tileFallback]}><Text style={s.tileFallbackIcon}>↗</Text></View>
       )}
       <View style={s.tileCopy}>
         <Text style={s.tileTitle} numberOfLines={wide ? 2 : 1}>{adventure.title}</Text>
         <Text style={s.tileMeta} numberOfLines={1}>{adventure.category} · {adventure.city}, {adventure.state}</Text>
-        <Text style={s.tileDate}>
-          {new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-        </Text>
+        <View style={s.tileBottomRow}>
+          <Text style={s.tileDate}>{new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+          <Text style={s.tilePrice}>{formatPrice(adventure.starting_price_cents)}</Text>
+        </View>
       </View>
     </Pressable>
   );
 }
 
 function FeaturedHero({ adventure }: { adventure: AdventureSummary }) {
-  const start = new Date(adventure.starts_at);
-  const dateLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-
+  const dateLabel = new Date(adventure.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const content = (
     <View style={s.featureHeroShade}>
       <View style={s.featureHeroCopy}>
         <Text style={s.featureHeroEyebrow}>FEATURED ADVENTURE</Text>
         <Text style={s.featureHeroTitle} numberOfLines={2}>{adventure.title}</Text>
-        <Text style={s.featureHeroMeta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state}   ·   {dateLabel}</Text>
+        <Text style={s.featureHeroMeta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state} · {dateLabel}</Text>
+        <Text style={s.featureHeroPrice}>{formatPrice(adventure.starting_price_cents)}</Text>
         {adventure.summary ? <Text style={s.featureHeroBody} numberOfLines={2}>{adventure.summary}</Text> : null}
-        <View style={s.featureHeroButton}>
-          <Text style={s.featureHeroButtonText}>View Adventure  →</Text>
-        </View>
+        <View style={s.featureHeroButton}><Text style={s.featureHeroButtonText}>View Adventure →</Text></View>
       </View>
     </View>
   );
-
   return (
-    <Pressable
-      style={s.featureHero}
-      onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}
-    >
+    <Pressable style={s.featureHero} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}>
       {adventure.hero_image_url ? (
-        <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.featureHeroImage} imageStyle={s.featureHeroImageCorners}>
-          {content}
-        </ImageBackground>
-      ) : (
-        <View style={[s.featureHeroImage, s.featureHeroFallback]}>{content}</View>
-      )}
+        <ImageBackground source={{ uri: adventure.hero_image_url }} style={s.featureHeroImage} imageStyle={s.featureHeroImageCorners}>{content}</ImageBackground>
+      ) : <View style={[s.featureHeroImage, s.featureHeroFallback]}>{content}</View>}
     </Pressable>
   );
 }
@@ -183,20 +185,13 @@ function EventCard({ event, distance, wide = false }: { event: LocalEvent; dista
   const date = new Date(event.starts_at);
   const imageSource = event.image_url ? { uri: event.image_url } : DEFAULT_EVENT_IMAGE;
   return (
-    <Pressable
-      style={[s.eventCard, wide && s.eventCardWide]}
-      onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}
-    >
-      <ImageBackground source={imageSource} style={s.eventVisual} imageStyle={s.eventVisualImage}>
-        <View style={s.eventVisualShade} />
-      </ImageBackground>
+    <Pressable style={[s.eventCard, wide && s.eventCardWide]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
+      <ImageBackground source={imageSource} style={s.eventVisual} imageStyle={s.eventVisualImage}><View style={s.eventVisualShade} /></ImageBackground>
       <View style={s.eventCopy}>
         <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>
         <Text style={s.eventMeta} numberOfLines={1}>{event.category} · {event.city}, {event.state}</Text>
-        <Text style={s.eventDateLine}>
-          {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-          {distance != null ? ` · ${distance.toFixed(0)} mi` : ''}
-        </Text>
+        <Text style={s.eventDateLine}>{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}{distance != null ? ` · ${distance.toFixed(0)} mi` : ''}</Text>
+        <Text style={s.eventPrice}>{event.is_free ? 'Free' : 'See outing for price'}</Text>
       </View>
     </Pressable>
   );
@@ -253,9 +248,7 @@ export default function ExploreScreen() {
       const [nextAdventures, nextEvents, profile] = await Promise.all([
         listAdventures({}),
         listLocalEvents(),
-        userId
-          ? supabase.from('profiles').select('home_city,home_state').eq('id', userId).maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+        userId ? supabase.from('profiles').select('home_city,home_state').eq('id', userId).maybeSingle() : Promise.resolve({ data: null, error: null }),
       ]);
       setAdventures(nextAdventures);
       setEvents(nextEvents);
@@ -276,6 +269,21 @@ export default function ExploreScreen() {
   const searchCenter = search.trim() ? savedCenter : currentPoint ?? savedCenter;
   const radiusLimit = radius === 'Anywhere' ? Number.POSITIVE_INFINITY : Number(radius);
 
+  const compareAdventure = useCallback((a: AdventureSummary, b: AdventureSummary) => {
+    if (sort === 'price_low') return a.starting_price_cents - b.starting_price_cents;
+    if (sort === 'price_high') return b.starting_price_cents - a.starting_price_cents;
+    if (sort === 'soonest') return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+    if (sort === 'latest') return new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime();
+    if (sort === 'activity') return a.category.localeCompare(b.category) || a.title.localeCompare(b.title);
+    if (sort === 'title') return a.title.localeCompare(b.title);
+    if (searchCenter) {
+      const ad = a.latitude == null || a.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: a.latitude, longitude: a.longitude });
+      const bd = b.latitude == null || b.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: b.latitude, longitude: b.longitude });
+      return sort === 'farthest' ? bd - ad : ad - bd;
+    }
+    return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
+  }, [searchCenter, sort]);
+
   const visibleAdventures = useMemo(() => adventures
     .filter((item) => category === 'All' || item.category === category)
     .filter((item) => matchesQuickTags({ ...item, description: item.summary }, selectedTags))
@@ -286,16 +294,7 @@ export default function ExploreScreen() {
       if (!searchCenter || item.latitude == null || item.longitude == null || radius === 'Anywhere') return true;
       return distanceMiles(searchCenter, { latitude: item.latitude, longitude: item.longitude }) <= radiusLimit;
     })
-    .sort((a, b) => {
-      if (sort === 'newest') return b.id.localeCompare(a.id);
-      if (sort === 'price') return a.starting_price_cents - b.starting_price_cents;
-      if (sort === 'closest' && searchCenter) {
-        const ad = a.latitude == null || a.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: a.latitude, longitude: a.longitude });
-        const bd = b.latitude == null || b.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: b.latitude, longitude: b.longitude });
-        return ad - bd;
-      }
-      return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime();
-    }), [adventures, category, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
+    .sort(compareAdventure), [adventures, category, compareAdventure, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags]);
 
   const localEvents = useMemo(() => events.map((event) => {
     const point = pointForCity(event.city, event.state);
@@ -303,31 +302,23 @@ export default function ExploreScreen() {
   }).filter(({ event, distance }) => {
     const query = search.trim().toLowerCase();
     const searchable = `${event.title} ${event.host_name} ${event.city} ${event.state} ${event.category} ${event.description}`.toLowerCase();
-    const textMatch = !query || searchable.includes(query) || savedCenter != null;
-    const distanceMatch = radius === 'Anywhere' || distance == null || distance <= radiusLimit;
-    return textMatch && distanceMatch && matchesQuickTags(event, selectedTags);
-  }).sort((a, b) => sort === 'closest'
-    ? (a.distance ?? 9999) - (b.distance ?? 9999)
-    : new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime()),
-  [events, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
+    return (!query || searchable.includes(query) || savedCenter != null)
+      && (radius === 'Anywhere' || distance == null || distance <= radiusLimit)
+      && matchesQuickTags(event, selectedTags);
+  }).sort((a, b) => {
+    if (sort === 'farthest') return (b.distance ?? -1) - (a.distance ?? -1);
+    if (sort === 'closest') return (a.distance ?? 9999) - (b.distance ?? 9999);
+    if (sort === 'latest') return new Date(b.event.starts_at).getTime() - new Date(a.event.starts_at).getTime();
+    if (sort === 'activity') return a.event.category.localeCompare(b.event.category) || a.event.title.localeCompare(b.event.title);
+    if (sort === 'title') return a.event.title.localeCompare(b.event.title);
+    return new Date(a.event.starts_at).getTime() - new Date(b.event.starts_at).getTime();
+  }), [events, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
 
   async function toggle(adventure: AdventureSummary) {
-    if (!session) {
-      promptForAccount('Saving adventures');
-      return;
-    }
+    if (!session) return promptForAccount('Saving adventures');
     const next = !adventure.is_saved;
     setAdventures((current) => current.map((item) => item.id === adventure.id ? { ...item, is_saved: next } : item));
-    try {
-      await setAdventureSaved(adventure.id, next);
-    } catch {
-      void load();
-    }
-  }
-
-  function chooseCategory(next: string) {
-    setCategory((current) => current === next ? 'All' : next);
-    setExpandedSection(null);
+    try { await setAdventureSaved(adventure.id, next); } catch { void load(); }
   }
 
   function toggleTag(tag: string) {
@@ -339,75 +330,54 @@ export default function ExploreScreen() {
     return distanceMiles(searchCenter, { latitude: adventure.latitude, longitude: adventure.longitude });
   }
 
-  function toggleExpanded(section: Exclude<ExpandedSection, null>) {
-    setExpandedSection((current) => current === section ? null : section);
-  }
-
   function resetFilters() {
-    setSort('closest');
-    setSelectedTags([]);
+    setCategory('All');
     setRadius('50');
+    setSelectedTags([]);
   }
 
-  const featured = visibleAdventures
-    .filter((item) => item.is_featured)
-    .concat(visibleAdventures.filter((item) => !item.is_featured));
+  const featured = visibleAdventures.filter((item) => item.is_featured).concat(visibleAdventures.filter((item) => !item.is_featured));
   const heroAdventure = adventures.find((item) => item.is_featured && item.hero_image_url) ?? adventures.find((item) => item.hero_image_url) ?? adventures[0];
   const featuredPreview = featured.slice(0, 6);
   const popular = visibleAdventures.slice(6, 18).length ? visibleAdventures.slice(6, 18) : visibleAdventures;
   const popularPreview = popular.slice(0, 6);
-  const nearby = localEvents;
-  const nearbyPreview = nearby.slice(0, 6);
+  const nearbyPreview = localEvents.slice(0, 6);
   const isSearching = search.trim().length > 0;
   const resultCount = visibleAdventures.length + localEvents.length;
-  const filterCount = (sort !== 'closest' ? 1 : 0) + selectedTags.length + (radius !== '50' ? 1 : 0);
+  const filterCount = (category !== 'All' ? 1 : 0) + selectedTags.length + (radius !== '50' ? 1 : 0);
+  const currentSort = sortOptions.find((option) => option.value === sort) ?? sortOptions[0];
 
   return (
     <SafeAreaView style={s.safe} edges={['left', 'right']}>
-      <ScrollView
-        contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#F5C542" />}
-      >
+      <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#F5C542" />}>
         <View style={s.hero}>
           <Text style={s.title}>Melanated Adventures</Text>
-
           {!loading && !isSearching && heroAdventure ? <FeaturedHero adventure={heroAdventure} /> : null}
 
           <View style={s.searchWrap}>
             <Text style={s.searchIcon}>⌕</Text>
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search places, adventures & events"
-              placeholderTextColor="#909A95"
-              style={s.input}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-            />
+            <TextInput value={search} onChangeText={setSearch} placeholder="Search places, adventures & events" placeholderTextColor="#909A95" style={s.input} returnKeyType="search" clearButtonMode="while-editing" />
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.smartBar}>
             <Pressable onPress={() => setActiveSmartFilter('activity')} style={[s.smartChip, category !== 'All' && s.smartChipActive]}>
-              <Text style={[s.smartChipText, category !== 'All' && s.smartChipTextActive]}>{category === 'All' ? 'Activity' : `${categoryIcons[category] ?? ''} ${category}`}</Text>
-              <Text style={[s.smartChevron, category !== 'All' && s.smartChipTextActive]}>⌄</Text>
+              <Text style={[s.smartChipText, category !== 'All' && s.smartChipTextActive]}>{category === 'All' ? 'Activity' : `${categoryIcons[category] ?? ''} ${category}`}</Text><Text style={s.smartChevron}>⌄</Text>
             </Pressable>
             <Pressable onPress={() => setActiveSmartFilter('distance')} style={[s.smartChip, radius !== '50' && s.smartChipActive]}>
-              <Text style={[s.smartChipText, radius !== '50' && s.smartChipTextActive]}>{radius === 'Anywhere' ? 'Florida' : `${radius} mi`}</Text>
-              <Text style={[s.smartChevron, radius !== '50' && s.smartChipTextActive]}>⌄</Text>
+              <Text style={[s.smartChipText, radius !== '50' && s.smartChipTextActive]}>{radius === 'Anywhere' ? 'Florida' : `${radius} mi`}</Text><Text style={s.smartChevron}>⌄</Text>
             </Pressable>
             <Pressable onPress={() => setActiveSmartFilter('goodFor')} style={[s.smartChip, selectedTags.length > 0 && s.smartChipActive]}>
-              <Text style={[s.smartChipText, selectedTags.length > 0 && s.smartChipTextActive]} numberOfLines={1}>{selectedTags.length ? (selectedTags.length === 1 ? (selectedTags[0]?.replace(' Friendly', '') ?? 'Preference') : `${selectedTags.length} preferences`) : '+ Good for'}</Text>
-              <Text style={[s.smartChevron, selectedTags.length > 0 && s.smartChipTextActive]}>⌄</Text>
+              <Text style={[s.smartChipText, selectedTags.length > 0 && s.smartChipTextActive]}>{selectedTags.length ? `${selectedTags.length} good for` : 'Good for'}</Text><Text style={s.smartChevron}>⌄</Text>
             </Pressable>
-            <Pressable onPress={() => setActiveSmartFilter('sort')} style={[s.smartChip, sort !== 'closest' && s.smartChipActive]}>
-              <Text style={[s.smartChipText, sort !== 'closest' && s.smartChipTextActive]}>{sortOptions.find((option) => option.value === sort)?.label ?? 'Closest'}</Text>
-              <Text style={[s.smartChevron, sort !== 'closest' && s.smartChipTextActive]}>⌄</Text>
+            <Pressable onPress={() => setActiveSmartFilter('sort')} style={s.sortChip}>
+              <Ionicons name="swap-vertical" size={14} color="#111816" />
+              <Text style={s.sortChipText}>Sort: {currentSort.label}</Text><Text style={s.sortChipText}>⌄</Text>
             </Pressable>
           </ScrollView>
 
           <View style={s.smartSummary}>
-            <Text style={s.smartSummaryText}>{resultCount} {resultCount === 1 ? 'adventure' : 'adventures'}{filterCount > 0 ? ` · ${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}` : ''}</Text>
-            {filterCount > 0 ? <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.smartClear}>Clear</Text></Pressable> : null}
+            <Text style={s.smartSummaryText}>{resultCount} {resultCount === 1 ? 'result' : 'results'} · Sorted by {currentSort.label}</Text>
+            {filterCount > 0 ? <Pressable onPress={resetFilters} hitSlop={8}><Text style={s.smartClear}>Clear filters</Text></Pressable> : null}
           </View>
         </View>
 
@@ -416,67 +386,29 @@ export default function ExploreScreen() {
 
         {!loading && featuredPreview.length ? (
           <View style={s.section}>
-            <SectionHeader title="Featured Adventures" expanded={expandedSection === 'featured'} onPress={() => toggleExpanded('featured')} />
-            {expandedSection === 'featured' ? (
-              <View style={s.expandedList}>
-                {featured.map((adventure) => (
-                  <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} wide />
-                ))}
-              </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
-                {featuredPreview.map((adventure) => (
-                  <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
-                ))}
-              </ScrollView>
-            )}
+            <SectionHeader title="Featured Adventures" expanded={expandedSection === 'featured'} onPress={() => setExpandedSection((current) => current === 'featured' ? null : 'featured')} />
+            {expandedSection === 'featured' ? <View style={s.expandedList}>{featured.map((adventure) => <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} wide />)}</View>
+              : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>{featuredPreview.map((adventure) => <AdventureTile key={adventure.id} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />)}</ScrollView>}
           </View>
         ) : null}
 
         {!loading && nearbyPreview.length ? (
           <View style={s.section}>
-            <SectionHeader title="Outings Happening Near You" expanded={expandedSection === 'events'} onPress={() => toggleExpanded('events')} />
-            {expandedSection === 'events' ? (
-              <View style={s.expandedList}>
-                {nearby.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} wide />)}
-              </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
-                {nearbyPreview.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} />)}
-              </ScrollView>
-            )}
+            <SectionHeader title="Outings Happening Near You" expanded={expandedSection === 'events'} onPress={() => setExpandedSection((current) => current === 'events' ? null : 'events')} />
+            {expandedSection === 'events' ? <View style={s.expandedList}>{localEvents.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} wide />)}</View>
+              : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>{nearbyPreview.map(({ event, distance }) => <EventCard key={event.id} event={event} distance={distance} />)}</ScrollView>}
           </View>
         ) : null}
 
         {!loading && popularPreview.length ? (
           <View style={s.section}>
-            <SectionHeader
-              title={`Popular Around ${currentLocationLabel.split(',')[0] ?? currentLocationLabel}`}
-              expanded={expandedSection === 'popular'}
-              onPress={() => toggleExpanded('popular')}
-            />
-            {expandedSection === 'popular' ? (
-              <View style={s.expandedList}>
-                {popular.map((adventure) => (
-                  <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} wide />
-                ))}
-              </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>
-                {popularPreview.map((adventure) => (
-                  <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />
-                ))}
-              </ScrollView>
-            )}
+            <SectionHeader title={`Popular Around ${currentLocationLabel.split(',')[0] ?? currentLocationLabel}`} expanded={expandedSection === 'popular'} onPress={() => setExpandedSection((current) => current === 'popular' ? null : 'popular')} />
+            {expandedSection === 'popular' ? <View style={s.expandedList}>{popular.map((adventure) => <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} wide />)}</View>
+              : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.horizontalContent}>{popularPreview.map((adventure) => <AdventureTile key={`popular-${adventure.id}`} adventure={adventure} distance={distanceFor(adventure)} onToggleSaved={toggle} />)}</ScrollView>}
           </View>
         ) : null}
 
-        {!loading && !featuredPreview.length && !nearbyPreview.length ? (
-          <View style={s.empty}>
-            <Text style={s.emptyTitle}>{isSearching ? 'No matches found' : 'Nothing nearby yet'}</Text>
-            <Text style={s.emptyBody}>{isSearching ? 'Try another keyword, city, or activity.' : 'Try widening your radius or clearing a filter.'}</Text>
-          </View>
-        ) : null}
+        {!loading && !featuredPreview.length && !nearbyPreview.length ? <View style={s.empty}><Text style={s.emptyTitle}>{isSearching ? 'No matches found' : 'Nothing nearby yet'}</Text><Text style={s.emptyBody}>{isSearching ? 'Try another keyword, city, or activity.' : 'Try widening your radius or clearing a filter.'}</Text></View> : null}
       </ScrollView>
 
       <Modal visible={activeSmartFilter !== null} transparent animationType="fade" onRequestClose={() => setActiveSmartFilter(null)}>
@@ -485,36 +417,14 @@ export default function ExploreScreen() {
           <View style={[s.quickSheet, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
             <View style={s.quickSheetHandle} />
             <View style={s.quickSheetHeader}>
-              <Text style={s.quickSheetTitle}>
-                {activeSmartFilter === 'activity' ? 'Activity' : activeSmartFilter === 'distance' ? 'Distance' : activeSmartFilter === 'goodFor' ? 'Good for' : 'Sort by'}
-              </Text>
+              <Text style={s.quickSheetTitle}>{activeSmartFilter === 'activity' ? 'Activity' : activeSmartFilter === 'distance' ? 'Distance' : activeSmartFilter === 'goodFor' ? 'Good for' : 'Sort results'}</Text>
               <Pressable onPress={() => setActiveSmartFilter(null)} hitSlop={8}><Text style={s.quickDone}>Done</Text></Pressable>
             </View>
 
-            {activeSmartFilter === 'activity' ? (
-              <View style={s.quickOptionWrap}>
-                <Pressable onPress={() => setCategory('All')} style={[s.quickOption, category === 'All' && s.quickOptionActive]}><Text style={[s.quickOptionText, category === 'All' && s.quickOptionTextActive]}>All activities</Text></Pressable>
-                {categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[s.quickOption, category === item && s.quickOptionActive]}><Text style={[s.quickOptionText, category === item && s.quickOptionTextActive]}>{categoryIcons[item] ?? ''} {item}</Text></Pressable>)}
-              </View>
-            ) : null}
-
-            {activeSmartFilter === 'distance' ? (
-              <View style={s.quickOptionWrap}>
-                {radii.map((value) => <Pressable key={value} onPress={() => setRadius(value)} style={[s.quickOption, radius === value && s.quickOptionActive]}><Text style={[s.quickOptionText, radius === value && s.quickOptionTextActive]}>{value === 'Anywhere' ? 'Anywhere in Florida' : `Within ${value} miles`}</Text></Pressable>)}
-              </View>
-            ) : null}
-
-            {activeSmartFilter === 'goodFor' ? (
-              <View style={s.quickOptionWrap}>
-                {quickTags.map((tag) => { const active = selectedTags.includes(tag); return <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.quickOption, active && s.quickOptionActive]}><Text style={[s.quickOptionText, active && s.quickOptionTextActive]}>{active ? '✓ ' : ''}{tag}</Text></Pressable>; })}
-              </View>
-            ) : null}
-
-            {activeSmartFilter === 'sort' ? (
-              <View style={s.quickOptionWrap}>
-                {sortOptions.map((option) => <Pressable key={option.value} onPress={() => { setSort(option.value); setActiveSmartFilter(null); }} style={[s.quickOption, sort === option.value && s.quickOptionActive]}><View><Text style={[s.quickOptionText, sort === option.value && s.quickOptionTextActive]}>{option.label}</Text><Text style={s.quickOptionHelper}>{option.helper}</Text></View></Pressable>)}
-              </View>
-            ) : null}
+            {activeSmartFilter === 'activity' ? <View style={s.quickOptionWrap}><Pressable onPress={() => setCategory('All')} style={[s.quickOption, category === 'All' && s.quickOptionActive]}><Text style={[s.quickOptionText, category === 'All' && s.quickOptionTextActive]}>All activities</Text></Pressable>{categories.map((item) => <Pressable key={item} onPress={() => setCategory(item)} style={[s.quickOption, category === item && s.quickOptionActive]}><Text style={[s.quickOptionText, category === item && s.quickOptionTextActive]}>{categoryIcons[item] ?? ''} {item}</Text></Pressable>)}</View> : null}
+            {activeSmartFilter === 'distance' ? <View style={s.quickOptionWrap}>{radii.map((value) => <Pressable key={value} onPress={() => setRadius(value)} style={[s.quickOption, radius === value && s.quickOptionActive]}><Text style={[s.quickOptionText, radius === value && s.quickOptionTextActive]}>{value === 'Anywhere' ? 'Anywhere in Florida' : `Within ${value} miles`}</Text></Pressable>)}</View> : null}
+            {activeSmartFilter === 'goodFor' ? <View style={s.quickOptionWrap}>{quickTags.map((tag) => { const active = selectedTags.includes(tag); return <Pressable key={tag} onPress={() => toggleTag(tag)} style={[s.quickOption, active && s.quickOptionActive]}><Text style={[s.quickOptionText, active && s.quickOptionTextActive]}>{active ? '✓ ' : ''}{tag}</Text></Pressable>; })}</View> : null}
+            {activeSmartFilter === 'sort' ? <View style={s.sortOptionList}>{sortOptions.map((option) => <Pressable key={option.value} onPress={() => { setSort(option.value); setActiveSmartFilter(null); }} style={[s.sortOption, sort === option.value && s.sortOptionActive]}><View style={s.sortOptionCopy}><Text style={[s.quickOptionText, sort === option.value && s.quickOptionTextActive]}>{option.label}</Text><Text style={[s.quickOptionHelper, sort === option.value && s.quickOptionHelperActive]}>{option.helper}</Text></View>{sort === option.value ? <Ionicons name="checkmark-circle" size={20} color="#111816" /> : null}</Pressable>)}</View> : null}
           </View>
         </View>
       </Modal>
@@ -527,48 +437,36 @@ const s = StyleSheet.create({
   content: { paddingBottom: 120 },
   hero: { paddingHorizontal: 18, paddingTop: 22, gap: 13 },
   title: { color: '#F8F8F4', fontSize: 39, lineHeight: 43, fontWeight: '900', letterSpacing: -1.2 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 },
-  locationMarker: { color: '#F5C542', fontSize: 17, fontWeight: '900' },
-  location: { color: '#F5C542', fontSize: 16, fontWeight: '900' },
-  featureHero: { height: 194, overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: '#5C5631', backgroundColor: '#16241F' },
+  featureHero: { height: 205, overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: '#5C5631', backgroundColor: '#16241F' },
   featureHeroImage: { flex: 1 },
   featureHeroImageCorners: { borderRadius: 19 },
   featureHeroFallback: { backgroundColor: '#173127' },
   featureHeroShade: { flex: 1, justifyContent: 'flex-end', padding: 16, backgroundColor: 'rgba(3,8,7,.43)' },
-  featureHeroCopy: { maxWidth: '88%' },
+  featureHeroCopy: { maxWidth: '90%' },
   featureHeroEyebrow: { color: '#F5C542', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
   featureHeroTitle: { color: '#FFFFFF', fontSize: 25, lineHeight: 28, fontWeight: '900', marginTop: 4, letterSpacing: -.5 },
   featureHeroMeta: { color: '#F0F3F1', fontSize: 10, fontWeight: '700', marginTop: 6 },
-  featureHeroBody: { color: '#D6DED9', fontSize: 10, lineHeight: 14, marginTop: 6 },
-  featureHeroButton: { alignSelf: 'flex-start', marginTop: 11, borderRadius: 999, backgroundColor: '#F5C542', paddingHorizontal: 15, paddingVertical: 9 },
+  featureHeroPrice: { color: '#F5C542', fontSize: 12, fontWeight: '900', marginTop: 5 },
+  featureHeroBody: { color: '#D6DED9', fontSize: 10, lineHeight: 14, marginTop: 5 },
+  featureHeroButton: { alignSelf: 'flex-start', marginTop: 9, borderRadius: 999, backgroundColor: '#F5C542', paddingHorizontal: 15, paddingVertical: 8 },
   featureHeroButtonText: { color: '#121816', fontSize: 11, fontWeight: '900' },
   searchWrap: { height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#151C1A', paddingLeft: 15 },
   searchIcon: { color: '#C7CECA', fontSize: 26, marginRight: 7, marginTop: -2 },
   input: { flex: 1, color: '#F7F7F4', fontSize: 15, paddingVertical: 13 },
-  filterIconButton: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  filterIconButtonActive: { backgroundColor: '#F5C542' },
-  filterIcon: { color: '#C7CECA', fontSize: 20, fontWeight: '900' },
-  filterIconActive: { color: '#111816' },
-  filterCountBadge: { position: 'absolute', top: 2, right: 2, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7F4' },
-  filterCountText: { color: '#111816', fontSize: 9, fontWeight: '900' },
-  categoryRow: { gap: 9, paddingRight: 18, paddingBottom: 2 },
-  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#111715', paddingHorizontal: 15, paddingVertical: 10 },
-  categoryChipActive: { backgroundColor: '#F5C542', borderColor: '#F5C542' },
-  categoryIcon: { color: '#E5E9E6', fontSize: 15, fontWeight: '900' },
-  categoryText: { color: '#E5E9E6', fontSize: 13, fontWeight: '800' },
-  categoryTextActive: { color: '#121816' },
   smartBar: { gap: 8, paddingRight: 18, paddingBottom: 1 },
   smartChip: { minHeight: 38, maxWidth: 170, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: '#3A4540', backgroundColor: '#111715', paddingHorizontal: 13 },
   smartChipActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
   smartChipText: { color: '#E2E7E4', fontSize: 11, fontWeight: '800' },
   smartChipTextActive: { color: '#111816' },
-  smartChevron: { color: '#8F9A94', fontSize: 12, fontWeight: '900', marginTop: -2 },
+  smartChevron: { color: '#8F9A94', fontSize: 12, fontWeight: '900' },
+  sortChip: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: '#F5C542', paddingHorizontal: 13 },
+  sortChipText: { color: '#111816', fontSize: 11, fontWeight: '900' },
   smartSummary: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#26312C', paddingTop: 8 },
   smartSummaryText: { color: '#AEB7B2', fontSize: 10, fontWeight: '700' },
   smartClear: { color: '#F5C542', fontSize: 10, fontWeight: '900' },
   quickModalRoot: { flex: 1, justifyContent: 'flex-end' },
   quickModalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.58)' },
-  quickSheet: { backgroundColor: '#101714', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 18, paddingTop: 9 },
+  quickSheet: { maxHeight: '82%', backgroundColor: '#101714', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 18, paddingTop: 9 },
   quickSheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 12 },
   quickSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   quickSheetTitle: { color: '#F7F7F4', fontSize: 20, fontWeight: '900' },
@@ -579,6 +477,11 @@ const s = StyleSheet.create({
   quickOptionText: { color: '#E3E8E5', fontSize: 12, fontWeight: '800' },
   quickOptionTextActive: { color: '#111816' },
   quickOptionHelper: { color: '#7F8B84', fontSize: 9, marginTop: 2 },
+  quickOptionHelperActive: { color: '#3B3A2C' },
+  sortOptionList: { gap: 8 },
+  sortOption: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 13, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18', paddingHorizontal: 14, paddingVertical: 9 },
+  sortOptionActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
+  sortOptionCopy: { flex: 1 },
   loader: { marginTop: 28 },
   error: { color: '#FF9B8F', paddingHorizontal: 18, paddingTop: 14, fontWeight: '700' },
   section: { marginTop: 25 },
@@ -604,8 +507,10 @@ const s = StyleSheet.create({
   tileCopy: { padding: 11 },
   tileTitle: { color: '#F7F7F4', fontSize: 15, fontWeight: '900' },
   tileMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 4 },
-  tileDate: { color: '#F5C542', fontSize: 10, fontWeight: '800', marginTop: 6 },
-  eventCard: { width: 320, minHeight: 112, flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
+  tileBottomRow: { marginTop: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  tileDate: { color: '#F5C542', fontSize: 10, fontWeight: '800' },
+  tilePrice: { color: '#F7F7F4', fontSize: 10, fontWeight: '900' },
+  eventCard: { width: 320, minHeight: 120, flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#303A35', backgroundColor: '#111715' },
   eventCardWide: { width: '100%' },
   eventVisual: { width: 112, alignSelf: 'stretch' },
   eventVisualImage: { resizeMode: 'cover' },
@@ -613,55 +518,9 @@ const s = StyleSheet.create({
   eventCopy: { flex: 1, justifyContent: 'center', padding: 12 },
   eventTitle: { color: '#F7F7F4', fontSize: 15, lineHeight: 19, fontWeight: '900' },
   eventMeta: { color: '#AEB8B2', fontSize: 10, marginTop: 5 },
-  eventDateLine: { color: '#F5C542', fontSize: 10, fontWeight: '800', marginTop: 6 },
+  eventDateLine: { color: '#D6DED9', fontSize: 10, fontWeight: '700', marginTop: 6 },
+  eventPrice: { color: '#F5C542', fontSize: 10, fontWeight: '900', marginTop: 5 },
   empty: { marginHorizontal: 18, marginTop: 28, padding: 20, borderRadius: 18, borderWidth: 1, borderColor: '#2E3934', backgroundColor: '#111715', alignItems: 'center' },
   emptyTitle: { color: '#F7F7F4', fontSize: 18, fontWeight: '900' },
   emptyBody: { color: '#AAB5AF', fontSize: 12, marginTop: 5, textAlign: 'center' },
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,.70)' },
-  filterSheet: { maxHeight: '82%', backgroundColor: '#101714', borderTopLeftRadius: 30, borderTopRightRadius: 30, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 18, paddingTop: 10 },
-  sheetHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: '#52605A', alignSelf: 'center', marginBottom: 14 },
-  filterPanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, marginBottom: 4 },
-  filterHeadingCopy: { flex: 1 },
-  filterPanelTitle: { color: '#F7F7F4', fontSize: 23, lineHeight: 28, fontWeight: '900', letterSpacing: -.4 },
-  filterPanelSubtitle: { color: '#98A49E', fontSize: 11, lineHeight: 15, marginTop: 4 },
-  resetButton: { minHeight: 36, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1, borderColor: '#47534C', alignItems: 'center', justifyContent: 'center' },
-  resetFilter: { color: '#F5C542', fontSize: 11, fontWeight: '900' },
-  filterScrollContent: { paddingTop: 14, paddingBottom: 10 },
-  filterSection: { gap: 10 },
-  filterSectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  filterLabel: { color: '#89958E', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
-  filterSectionValue: { color: '#D9DEDB', fontSize: 10, fontWeight: '800' },
-  filterDivider: { height: 1, backgroundColor: '#26312C', marginVertical: 17 },
-  sortGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  sortCard: { width: '48.7%', minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 15, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18' },
-  sortCardActive: { borderColor: '#F5C542', backgroundColor: '#1D2117' },
-  radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#66736C', alignItems: 'center', justifyContent: 'center' },
-  radioOuterActive: { borderColor: '#F5C542' },
-  radioInner: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#F5C542' },
-  sortCardCopy: { flex: 1 },
-  sortCardTitle: { color: '#E4E9E6', fontSize: 12, fontWeight: '900' },
-  sortCardTitleActive: { color: '#F7F7F4' },
-  sortCardHelper: { color: '#7F8B84', fontSize: 9, marginTop: 2 },
-  sortCardHelperActive: { color: '#B6BDAF' },
-  radiusRail: { flexDirection: 'row', gap: 7 },
-  radiusOption: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18' },
-  radiusOptionActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
-  radiusOptionText: { color: '#E0E5E2', fontSize: 13, fontWeight: '900' },
-  radiusOptionUnit: { color: '#78857E', fontSize: 8, fontWeight: '800', marginTop: 1 },
-  radiusOptionTextActive: { color: '#111816' },
-  quickFilterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  quickFilterCard: { width: '48.7%', minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderRadius: 14, borderWidth: 1, borderColor: '#3B4841', backgroundColor: '#131B18' },
-  quickFilterCardActive: { borderColor: '#6C6230', backgroundColor: '#222315' },
-  checkBox: { width: 19, height: 19, borderRadius: 6, borderWidth: 1.5, borderColor: '#66736C', alignItems: 'center', justifyContent: 'center' },
-  checkBoxActive: { borderColor: '#F5C542', backgroundColor: '#F5C542' },
-  checkMark: { color: '#111816', fontSize: 12, lineHeight: 14, fontWeight: '900' },
-  quickFilterText: { flex: 1, color: '#D9DEDB', fontSize: 10, fontWeight: '800' },
-  quickFilterTextActive: { color: '#F7F7F4' },
-  filterFooter: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#26312C' },
-  filterSummary: { minWidth: 58, alignItems: 'center' },
-  filterSummaryNumber: { color: '#F7F7F4', fontSize: 20, lineHeight: 21, fontWeight: '900' },
-  filterSummaryLabel: { color: '#89958E', fontSize: 9, fontWeight: '800', marginTop: 2 },
-  showResultsButton: { flex: 1, minHeight: 50, borderRadius: 16, backgroundColor: '#F5C542', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  showResultsText: { color: '#111816', fontSize: 14, fontWeight: '900' },
 });
