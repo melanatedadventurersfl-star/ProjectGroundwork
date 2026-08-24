@@ -4,7 +4,7 @@ import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
-import { getUnreadNotificationCount } from '../notifications/api';
+import { getUnreadNotificationCount, subscribeNotificationStateChanges } from '../notifications/api';
 import { AppIcon } from '../ui/AppIcon';
 
 function promptForAccount(destination: string) {
@@ -40,6 +40,10 @@ export function PersistentTopNav() {
   useEffect(() => {
     void refreshUnreadCount();
   }, [pathname, refreshUnreadCount]);
+
+  useEffect(() => subscribeNotificationStateChanges(() => {
+    void refreshUnreadCount();
+  }), [refreshUnreadCount]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
