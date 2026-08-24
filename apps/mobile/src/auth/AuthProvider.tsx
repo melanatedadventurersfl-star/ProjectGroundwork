@@ -1,5 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
+import { router, usePathname } from 'expo-router';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { supabase } from '../lib/supabase';
 import { redeemPendingInvite } from '../referrals/pendingInvite';
@@ -10,11 +12,18 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
 };
 
+type ModerationStatus = {
+  enforcement?: null | {
+    action_type?: 'posting_restriction' | 'suspension' | 'ban';
+  };
+};
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const pathname = usePathname();
 
   useEffect(() => {
     let isMounted = true;
@@ -55,6 +64,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       timers.forEach(clearTimeout);
     };
   }, [session?.user.id]);
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    let cancelled = false;
+
+    async function enforceModerationGate() {
+      const { data, error } = await supabase.rpc('get_my_moderation_status');
+      if (cancelled) return;
+      if (error) {
+        // A missing RPC during a rolling deployment must not lock members out.
+        console.warn('[moderation] Unable to check account status', error.message);
+        return;
+      }
+      const moderation = data as ModerationStatus | null;
+      const action = moderation?.enforcement?.action_type;
+      if ((action === 'suspension' || action === 'ban') && pathname !== '/account-status') {
+        router.replace('/account-status' as never);
+      }
+    }
+
+    void enforceModerationGate();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void enforceModerationGate();
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [pathname, session?.user.id]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
