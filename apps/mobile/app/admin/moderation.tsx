@@ -147,7 +147,7 @@ export default function ModerationQueueScreen() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>COMMUNITY SAFETY</Text>
           <Text style={styles.title}>Moderation Queue</Text>
-          <Text style={styles.subtitle}>Use progressive enforcement for ordinary violations. Serious safety issues can move directly to suspension or permanent removal. Every formal action becomes part of the member’s moderation history.</Text>
+          <Text style={styles.subtitle}>Use progressive enforcement for ordinary violations. Serious safety issues can move directly to suspension or permanent removal. Every formal action becomes part of the member&apos;s moderation history.</Text>
         </View>
 
         <View style={styles.policyCard}>
