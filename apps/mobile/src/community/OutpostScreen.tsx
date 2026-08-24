@@ -2,16 +2,19 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  COMMUNITY_VIDEO_MAX_BYTES,
+  COMMUNITY_VIDEO_MAX_DURATION_MS,
   createPost,
   getCommunityFeed,
   getGroups,
   joinGroup,
-  removeCommunityPostImage,
+  removeCommunityPostMedia,
   uploadCommunityPostImage,
+  uploadCommunityPostVideo,
   type CommunityGroup,
   type CommunityPost,
   type CommunityPostType,
@@ -35,6 +38,13 @@ type OutpostTab = 'for-you' | 'groups' | 'campfires';
 type BasecampFilter = 'for-you' | 'latest' | 'trailmates' | 'communities' | 'nearby';
 type CampfireFilter = 'nearby' | 'today' | 'week';
 type PickedPhoto = { uri: string; mimeType?: string | null };
+type PickedVideo = {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  duration?: number | null;
+};
 type AuthorLocation = { city: string | null; state: string | null };
 
 const tabs: { value: OutpostTab; label: string }[] = [
@@ -80,6 +90,25 @@ function relativeTime(value: string) {
   return days < 7 ? `${days}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function formatDuration(duration?: number | null) {
+  if (duration == null) return null;
+  const totalSeconds = Math.max(0, Math.round(duration / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatFileSize(fileSize?: number | null) {
+  if (fileSize == null) return null;
+  const megabytes = fileSize / (1024 * 1024);
+  return `${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`;
+}
+
+function metadataNumber(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'number' ? value : null;
+}
+
 function formatCampfireTime(value: string) {
   const date = new Date(value);
   const today = new Date();
@@ -104,6 +133,7 @@ function isWithinWeek(value: string) {
 
 function PostCard({ post }: { post: CommunityPost }) {
   const badge = post.post_type === 'ask' ? 'Ask' : post.post_type === 'buddy' ? 'Adventure Buddy' : post.post_type === 'recommendation' ? 'Place' : post.post_type === 'meetup' ? 'Outing' : null;
+  const videoDuration = formatDuration(metadataNumber(post.metadata, 'media_duration_ms'));
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.postHeader}>
@@ -128,7 +158,21 @@ function PostCard({ post }: { post: CommunityPost }) {
         <PostOptionsButton postId={post.id} authorId={post.author_id} body={post.body} />
       </View>
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
-      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
+      {post.media_type === 'video' && post.media_url ? (
+        <Pressable
+          style={styles.postVideo}
+          accessibilityRole="button"
+          accessibilityLabel="Play video"
+          onPress={(event) => {
+            event.stopPropagation();
+            void Linking.openURL(post.media_url!);
+          }}
+        >
+          <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>
+          <Text style={styles.postVideoTitle}>Play video</Text>
+          <Text style={styles.postVideoMeta}>{videoDuration ? `${videoDuration} · ` : ''}Opens in your device player</Text>
+        </Pressable>
+      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       <View style={styles.engagementWrap}>
         <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} />
       </View>
@@ -231,6 +275,7 @@ export default function OutpostScreen() {
   const [composerBody, setComposerBody] = useState('');
   const [composerType, setComposerType] = useState<CommunityPostType>('update');
   const [composerPhoto, setComposerPhoto] = useState<PickedPhoto | null>(null);
+  const [composerVideo, setComposerVideo] = useState<PickedVideo | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [communityQuery, setCommunityQuery] = useState('');
@@ -368,25 +413,70 @@ export default function OutpostScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) { setError('Photo library access is needed to upload a photo.'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.88 });
-    if (!result.canceled && result.assets?.[0]) setComposerPhoto({ uri: result.assets[0].uri, mimeType: result.assets[0].mimeType });
+    if (!result.canceled && result.assets?.[0]) {
+      setComposerVideo(null);
+      setComposerPhoto({ uri: result.assets[0].uri, mimeType: result.assets[0].mimeType });
+    }
+  }
+
+  async function chooseVideo() {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) { setError('Photo library access is needed to upload a video.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], videoMaxDuration: 60 });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (asset.duration != null && asset.duration > COMMUNITY_VIDEO_MAX_DURATION_MS) {
+      setError('Videos can be up to 60 seconds long.');
+      return;
+    }
+    if (asset.fileSize != null && asset.fileSize > COMMUNITY_VIDEO_MAX_BYTES) {
+      setError('Videos can be up to 100 MB.');
+      return;
+    }
+    setComposerPhoto(null);
+    setComposerVideo({
+      uri: asset.uri,
+      mimeType: asset.mimeType,
+      fileName: asset.fileName,
+      fileSize: asset.fileSize,
+      duration: asset.duration,
+    });
   }
 
   async function submitPost() {
     if (composerType === 'meetup') { router.push('/local-events/create'); return; }
-    if ((!composerBody.trim() && !composerPhoto) || submitting) return;
+    if ((!composerBody.trim() && !composerPhoto && !composerVideo) || submitting) return;
     setSubmitting(true);
     setError(null);
     let uploadedPath: string | null = null;
     try {
       if (composerPhoto) uploadedPath = await uploadCommunityPostImage(composerPhoto);
-      await createPost({ body: composerBody, postType: composerType, audience: 'everyone', circleId: null, groupId: null, adventureId: null, imagePath: uploadedPath, metadata: {} });
+      if (composerVideo) uploadedPath = await uploadCommunityPostVideo(composerVideo);
+      await createPost({
+        body: composerBody,
+        postType: composerType,
+        audience: 'everyone',
+        circleId: null,
+        groupId: null,
+        adventureId: null,
+        imagePath: uploadedPath,
+        metadata: composerVideo ? {
+          media_type: 'video',
+          media_mime_type: composerVideo.mimeType ?? null,
+          media_file_name: composerVideo.fileName ?? null,
+          media_file_size: composerVideo.fileSize ?? null,
+          media_duration_ms: composerVideo.duration ?? null,
+        } : composerPhoto ? { media_type: 'image' } : {},
+      });
       setComposerBody('');
       setComposerPhoto(null);
+      setComposerVideo(null);
       setComposerType('update');
       setTypeOpen(false);
       await load();
     } catch (caught) {
-      if (uploadedPath) await removeCommunityPostImage(uploadedPath).catch(() => undefined);
+      if (uploadedPath) await removeCommunityPostMedia(uploadedPath).catch(() => undefined);
       setError(caught instanceof Error ? caught.message : 'Unable to publish this post.');
     } finally {
       setSubmitting(false);
@@ -416,6 +506,10 @@ export default function OutpostScreen() {
     }
   }
 
+  const composerVideoDuration = formatDuration(composerVideo?.duration);
+  const composerVideoSize = formatFileSize(composerVideo?.fileSize);
+  const composerHasMedia = Boolean(composerPhoto || composerVideo);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <ScrollView
@@ -443,14 +537,25 @@ export default function OutpostScreen() {
           <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Around the Campfire</Text><Text style={styles.tabIntroCopy}>Your people, communities, and nearby conversation in one place.</Text></View>
           <View style={styles.composer}>
             {composerPhoto ? <View style={styles.photoWrap}><Image source={{ uri: composerPhoto.uri }} style={styles.composerPhoto} /><Pressable style={styles.removePhoto} onPress={() => setComposerPhoto(null)}><Ionicons name="close" size={18} color={TEXT} /></Pressable></View> : null}
+            {composerVideo ? (
+              <View style={styles.composerVideoCard}>
+                <View style={styles.composerVideoIcon}><Ionicons name="play" size={19} color="#101510" /></View>
+                <View style={styles.flex}>
+                  <Text style={styles.composerVideoTitle} numberOfLines={1}>{composerVideo.fileName || 'Selected video'}</Text>
+                  <Text style={styles.composerVideoMeta}>{[composerVideoDuration, composerVideoSize].filter(Boolean).join(' · ') || 'Ready to upload'}</Text>
+                </View>
+                <Pressable onPress={() => setComposerVideo(null)} accessibilityLabel="Remove video"><Ionicons name="close-circle" size={22} color="#FFB4A9" /></Pressable>
+              </View>
+            ) : null}
             <View style={styles.composerPromptRow}>
               <View style={styles.composerAvatar}>{profileAvatarUrl ? <Image source={{ uri: profileAvatarUrl }} style={styles.avatarImage} /> : <Text style={styles.composerAvatarText}>{initials(profileName)}</Text>}</View>
-              <TextInput value={composerBody} onChangeText={setComposerBody} placeholder={composerType === 'ask' ? 'Ask around the Campfire…' : composerType === 'buddy' ? 'Find an adventure buddy…' : 'What’s happening outside?'} placeholderTextColor="#7F8B83" multiline maxLength={4000} style={styles.composerInput} />
+              <TextInput value={composerBody} onChangeText={setComposerBody} placeholder={composerType === 'ask' ? 'Ask around the Campfire…' : composerType === 'buddy' ? 'Find an adventure buddy…' : composerVideo ? 'Say something about this video…' : 'What’s happening outside?'} placeholderTextColor="#7F8B83" multiline maxLength={4000} style={styles.composerInput} />
             </View>
             <View style={styles.composerActions}>
               <Pressable style={styles.actionButton} onPress={() => void choosePhoto()}><Ionicons name="image-outline" size={16} color={GOLD} /><Text style={styles.actionText}>Photo</Text></Pressable>
+              <Pressable style={styles.actionButton} onPress={() => void chooseVideo()}><Ionicons name="videocam-outline" size={16} color={GOLD} /><Text style={styles.actionText}>Video</Text></Pressable>
               <Pressable style={styles.actionButton} onPress={() => setTypeOpen((value) => !value)}><Ionicons name={selectedType.icon as never} size={16} color={GOLD} /><Text style={styles.actionText}>{selectedType.label}</Text><Ionicons name={typeOpen ? 'chevron-up' : 'chevron-down'} size={12} color={MUTED} /></Pressable>
-              <Pressable disabled={submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)} style={[styles.postButton, (submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerPhoto)) && styles.disabled]} onPress={() => void submitPost()}><Text style={styles.postButtonText}>{composerType === 'meetup' ? 'Set up' : submitting ? 'Posting…' : 'Post'}</Text></Pressable>
+              <Pressable disabled={submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerHasMedia)} style={[styles.postButton, (submitting || (composerType !== 'meetup' && !composerBody.trim() && !composerHasMedia)) && styles.disabled]} onPress={() => void submitPost()}><Text style={styles.postButtonText}>{composerType === 'meetup' ? 'Set up' : submitting ? 'Posting…' : 'Post'}</Text></Pressable>
             </View>
             {typeOpen ? <View style={styles.typeMenu}>{postTypes.map((item) => <Pressable key={item.value} style={styles.typeRow} onPress={() => { setComposerType(item.value); setTypeOpen(false); }}><Ionicons name={item.icon as never} size={18} color={item.value === composerType ? GOLD : MUTED} /><Text style={[styles.typeText, item.value === composerType && styles.typeTextActive]}>{item.label}</Text></Pressable>)}</View> : null}
           </View>
@@ -536,10 +641,14 @@ const styles = StyleSheet.create({
   photoWrap: { position: 'relative' },
   composerPhoto: { width: '100%', height: 180, borderRadius: 13, backgroundColor: '#101813' },
   removePhoto: { position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(15,23,19,0.88)', alignItems: 'center', justifyContent: 'center' },
-  composerActions: { flexDirection: 'row', alignItems: 'center', gap: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#334139', paddingTop: 6 },
-  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 31, paddingHorizontal: 8, borderRadius: 9 },
-  actionText: { color: '#D8DED9', fontSize: 11, fontWeight: '800' },
-  postButton: { marginLeft: 'auto', minHeight: 31, paddingHorizontal: 14, borderRadius: 9, backgroundColor: GOLD, justifyContent: 'center' },
+  composerVideoCard: { minHeight: 64, borderRadius: 13, borderWidth: 1, borderColor: '#4A4938', backgroundColor: '#1D251F', flexDirection: 'row', alignItems: 'center', gap: 9, padding: 9 },
+  composerVideoIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  composerVideoTitle: { color: TEXT, fontSize: 12.5, fontWeight: '900' },
+  composerVideoMeta: { color: MUTED, fontSize: 10.5, marginTop: 3 },
+  composerActions: { flexDirection: 'row', alignItems: 'center', gap: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#334139', paddingTop: 6 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 31, paddingHorizontal: 6, borderRadius: 9 },
+  actionText: { color: '#D8DED9', fontSize: 10.5, fontWeight: '800' },
+  postButton: { marginLeft: 'auto', minHeight: 31, paddingHorizontal: 12, borderRadius: 9, backgroundColor: GOLD, justifyContent: 'center' },
   postButtonText: { color: '#101510', fontWeight: '900', fontSize: 11.5 },
   disabled: { opacity: 0.42 },
   typeMenu: { borderWidth: 1, borderColor: '#38473E', borderRadius: 12, overflow: 'hidden', backgroundColor: '#121C17' },
@@ -559,6 +668,10 @@ const styles = StyleSheet.create({
   badgeText: { color: '#D7C792', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.2 },
   postBody: { color: '#E5E9E6', fontSize: 14, lineHeight: 21 },
   postImage: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#101813' },
+  postVideo: { width: '100%', height: 230, borderRadius: 13, backgroundColor: '#0D1511', borderWidth: 1, borderColor: '#39473F', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  postVideoPlay: { width: 58, height: 58, borderRadius: 29, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingLeft: 3 },
+  postVideoTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  postVideoMeta: { color: MUTED, fontSize: 10.5 },
   engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
   searchBox: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 14, paddingHorizontal: 12 },
   searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 9 },
