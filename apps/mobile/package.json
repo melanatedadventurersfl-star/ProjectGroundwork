@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "bundlecheck": "rm -rf /tmp/go-melanated-export && expo export --platform android --output-dir /tmp/go-melanated-export --clear",
     "eas:preview:android": "eas build --platform android --profile preview",
     "eas:preview:ios": "eas build --platform ios --profile preview",
     "eas:production:android": "eas build --platform android --profile production",
