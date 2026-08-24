@@ -92,6 +92,8 @@ export function PersistentBottomNav() {
     };
   }, [session?.user.id]);
 
+  if (pathname === '/account-status') return null;
+
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {items.map((item) => {
