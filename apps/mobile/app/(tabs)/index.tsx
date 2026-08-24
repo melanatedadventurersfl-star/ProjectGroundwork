@@ -33,6 +33,7 @@ import { AppIcon } from '../../src/ui/AppIcon';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const WIDE_CARD_WIDTH = Math.min(SCREEN_WIDTH - 48, 430);
+const SAVED_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.66, 220), 276);
 const OUTING_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.76, 260), 318);
 const CAMPFIRE_CARD_WIDTH = Math.min(Math.max(SCREEN_WIDTH * 0.64, 214), 264);
 
@@ -134,6 +135,21 @@ export default function TrailheadScreen() {
     () => new Set(reservedAdventures.map((item) => item.adventure_id)),
     [reservedAdventures],
   );
+
+  const savedAdventures = useMemo(() => {
+    const now = Date.now();
+    return adventures
+      .filter((item) => item.is_saved)
+      .sort((a, b) => {
+        const aTime = new Date(a.starts_at).getTime();
+        const bTime = new Date(b.starts_at).getTime();
+        const aPast = aTime < now;
+        const bPast = bTime < now;
+        if (aPast !== bPast) return aPast ? 1 : -1;
+        return aPast ? bTime - aTime : aTime - bTime;
+      })
+      .slice(0, 6);
+  }, [adventures]);
 
   const memberRank = useMemo(() => rankFor(completedCount), [completedCount]);
 
@@ -310,6 +326,45 @@ export default function TrailheadScreen() {
       <View style={styles.section}>
         <View style={styles.sectionRow}>
           <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>Saved Adventures</Text>
+            <Text style={styles.sectionSubtitle}>The adventures you bookmarked to come back to.</Text>
+          </View>
+          {savedAdventures.length ? <Text style={styles.count}>{savedAdventures.length} saved</Text> : null}
+        </View>
+        {session && savedAdventures.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={SAVED_CARD_WIDTH + 12} contentContainerStyle={styles.savedRow}>
+            {savedAdventures.map((adventure) => (
+              <Pressable key={adventure.id} style={styles.savedCard} accessibilityRole="button" accessibilityLabel={`Open saved adventure ${adventure.title}`} onPress={() => router.push({ pathname: '/adventures/[id]', params: { id: adventure.id } })}>
+                <AdventureImageBackground uri={adventure.hero_image_url} style={styles.savedImage} imageStyle={styles.savedImageRadius}>
+                  <View style={styles.savedShade} />
+                  <View style={styles.savedTopRow}>
+                    <View style={styles.savedBadge}><AppIcon name="bookmark" color="#17211C" size={13} /><Text style={styles.savedBadgeText}>SAVED</Text></View>
+                    <Text style={styles.savedDate}>{shortDate(adventure.starts_at)}</Text>
+                  </View>
+                </AdventureImageBackground>
+                <View style={styles.savedBody}>
+                  <Text style={styles.savedTitle} numberOfLines={2}>{adventure.title}</Text>
+                  <Text style={styles.savedMeta} numberOfLines={1}>{adventure.category} · {adventure.city}, {adventure.state}</Text>
+                  <Text style={styles.savedLink}>View adventure →</Text>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : (
+          <Pressable style={styles.emptySavedCard} onPress={() => session ? router.push('/(tabs)/explore') : promptForAccount('Saved adventures')}>
+            <View style={styles.emptySavedIcon}><AppIcon name="bookmark" color="#D7B45A" size={22} /></View>
+            <View style={styles.emptySavedCopy}>
+              <Text style={styles.emptySavedTitle}>{session ? 'Nothing saved yet.' : 'Keep adventures for later.'}</Text>
+              <Text style={styles.emptySavedText}>{session ? 'Tap the bookmark on any adventure and it’ll live here on your Trailhead.' : 'Sign in to save adventures and find them here anytime.'}</Text>
+              <Text style={styles.link}>{session ? 'Explore Adventures →' : 'Sign in →'}</Text>
+            </View>
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionRow}>
+          <View style={styles.sectionHeading}>
             <Text style={styles.sectionTitle}>Upcoming Outings</Text>
             <Text style={styles.sectionSubtitle}>Gatherings from your communities and nearby.</Text>
           </View>
@@ -425,6 +480,24 @@ const styles = StyleSheet.create({
   emptyAdventureCard: { minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: '#34463C', backgroundColor: '#17211C', paddingHorizontal: 18, paddingVertical: 16, justifyContent: 'center' },
   emptyAdventureTitle: { color: '#FFF8E8', fontSize: 19, lineHeight: 23, fontWeight: '900' },
   emptyAdventureText: { color: '#AFC0B6', fontSize: 12, lineHeight: 17, marginTop: 4 },
+  savedRow: { gap: 12, paddingRight: 24 },
+  savedCard: { width: SAVED_CARD_WIDTH, borderRadius: 18, overflow: 'hidden', backgroundColor: '#17211C', borderWidth: 1, borderColor: '#31443A' },
+  savedImage: { height: 132, padding: 10, backgroundColor: '#26372D' },
+  savedImageRadius: { borderTopLeftRadius: 18, borderTopRightRadius: 18 },
+  savedShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.16)' },
+  savedTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  savedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E3C350', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  savedBadgeText: { color: '#17211C', fontSize: 8.5, lineHeight: 10, fontWeight: '900', letterSpacing: 0.6 },
+  savedDate: { color: '#FFF8E8', backgroundColor: 'rgba(10,16,13,0.78)', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, fontSize: 9.5, fontWeight: '800' },
+  savedBody: { padding: 12, gap: 4 },
+  savedTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 21, fontWeight: '900' },
+  savedMeta: { color: '#B8C4BD', fontSize: 10.5, lineHeight: 14, fontWeight: '700' },
+  savedLink: { color: '#F0D083', fontSize: 10.5, fontWeight: '900', marginTop: 4 },
+  emptySavedCard: { minHeight: 118, borderRadius: 18, borderWidth: 1, borderColor: '#31443A', backgroundColor: '#17211C', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  emptySavedIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#223128', alignItems: 'center', justifyContent: 'center' },
+  emptySavedCopy: { flex: 1, minWidth: 0 },
+  emptySavedTitle: { color: '#FFF8E8', fontSize: 16, lineHeight: 20, fontWeight: '900' },
+  emptySavedText: { color: '#AFC0B6', fontSize: 11.5, lineHeight: 16, marginTop: 3 },
   outingRow: { gap: 12, paddingRight: 24 },
   outingCard: { width: OUTING_CARD_WIDTH, borderRadius: 18, overflow: 'hidden', backgroundColor: '#17211C', borderWidth: 1, borderColor: '#31443A' },
   outingImageWrap: { height: 112, backgroundColor: '#203128', position: 'relative' },
