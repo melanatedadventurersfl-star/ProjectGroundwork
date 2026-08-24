@@ -55,7 +55,10 @@ function AppShell() {
   const tutorialCheckedRef = useRef(false);
   const tutorialUserRef = useRef<string | null>(null);
   const whatsNewCheckedRef = useRef(false);
-  const releaseSeenKey = `${currentReleaseNotes.id}:${Updates.updateId ?? 'embedded'}`;
+  // Release-note visibility is keyed to the changelog release, not the Expo OTA
+  // update ID. Multiple OTA publishes for the same user-facing release must not
+  // make the same notes appear new again.
+  const releaseSeenKey = currentReleaseNotes.id;
 
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
@@ -119,8 +122,6 @@ function AppShell() {
     tutorialCheckedRef.current = true;
     try {
       if (!hasCompletedGuidedTutorial()) {
-        // The Guide is a required post-sign-up gate. Do not expose persistent
-        // navigation or let a loading-state tap bypass it before it appears.
         markReleaseSeen(releaseSeenKey);
         setWhatsNewVisible(false);
         setTutorialStep(0);
@@ -171,32 +172,18 @@ function AppShell() {
   }
 
   function skipTutorial() {
-    try {
-      markGuidedTutorialCompleted();
-    } catch (error) {
-      console.warn('[tutorial] Unable to save guided tutorial preference', error);
-    }
+    try { markGuidedTutorialCompleted(); } catch (error) { console.warn('[tutorial] Unable to save guided tutorial preference', error); }
     closeTutorial();
   }
 
   function finishTutorial() {
-    try {
-      markGuidedTutorialFinished();
-    } catch (error) {
-      console.warn('[tutorial] Unable to save guided tutorial completion', error);
-    }
-    void awardTutorialCompletionStamp().catch((error) => {
-      console.warn('[tutorial] Unable to award tutorial completion stamp', error);
-    });
+    try { markGuidedTutorialFinished(); } catch (error) { console.warn('[tutorial] Unable to save guided tutorial completion', error); }
+    void awardTutorialCompletionStamp().catch((error) => console.warn('[tutorial] Unable to award tutorial completion stamp', error));
     closeTutorial();
   }
 
   function dismissWhatsNew() {
-    try {
-      markReleaseSeen(releaseSeenKey);
-    } catch (error) {
-      console.warn('[updates] Unable to save release-note preference', error);
-    }
+    try { markReleaseSeen(releaseSeenKey); } catch (error) { console.warn('[updates] Unable to save release-note preference', error); }
     setWhatsNewVisible(false);
   }
 
@@ -204,45 +191,20 @@ function AppShell() {
     <View style={styles.appShell}>
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       {hideTopNav ? null : <PersistentTopNav />}
-      <KeyboardAvoidingView
-        style={styles.stackArea}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        enabled
-      >
+      <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="onboarding" />
-          <Stack.Screen name="onboarding-v2" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="auth" />
-          <Stack.Screen name="reset-password" />
-          <Stack.Screen name="adventures" />
-          <Stack.Screen name="checkout" />
-          <Stack.Screen name="readiness" />
-          <Stack.Screen name="notifications" />
-          <Stack.Screen name="passport" />
-          <Stack.Screen name="member" />
-          <Stack.Screen name="host" />
-          <Stack.Screen name="trail-guide" />
-          <Stack.Screen name="community-guidelines" />
+          <Stack.Screen name="index" /><Stack.Screen name="onboarding" /><Stack.Screen name="onboarding-v2" />
+          <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
+          <Stack.Screen name="reset-password" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
+          <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
+          <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="trail-guide" />
+          <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
         </Stack>
       </KeyboardAvoidingView>
       {hideBottomNav ? null : <PersistentBottomNav />}
-
-      {tutorialVisible ? (
-        <GuidedTutorial
-          visible
-          step={tutorialStep}
-          onStepChange={setTutorialStep}
-          onFinish={finishTutorial}
-          onSkip={skipTutorial}
-        />
-      ) : null}
-      {whatsNewVisible ? (
-        <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} />
-      ) : null}
+      {tutorialVisible ? <GuidedTutorial visible step={tutorialStep} onStepChange={setTutorialStep} onFinish={finishTutorial} onSkip={skipTutorial} /> : null}
+      {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
   );
 }
@@ -268,34 +230,22 @@ export default function RootLayout() {
       } catch (error) {
         console.warn('[updates] Unable to apply OTA update', error);
         setApplyingUpdate(false);
-      } finally {
-        checkingRef.current = false;
-      }
+      } finally { checkingRef.current = false; }
     }
     void checkForUpdate(true);
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void checkForUpdate();
-    });
+    const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') void checkForUpdate(); });
     return () => subscription.remove();
   }, []);
 
   if (applyingUpdate) {
-    return (
-      <View style={styles.updateScreen}>
-        <ActivityIndicator size="large" color="#D7B45A" />
-        <Text style={styles.updateEyebrow}>MELANATED ADVENTURERS</Text>
-        <Text style={styles.updateTitle}>Updating your trail…</Text>
-        <Text style={styles.updateCopy}>Loading the latest app experience.</Text>
-      </View>
-    );
+    return <View style={styles.updateScreen}><ActivityIndicator size="large" color="#D7B45A" /><Text style={styles.updateEyebrow}>MELANATED ADVENTURERS</Text><Text style={styles.updateTitle}>Updating your trail…</Text><Text style={styles.updateCopy}>Loading the latest app experience.</Text></View>;
   }
 
   return <AuthProvider><AppShell /></AuthProvider>;
 }
 
 const styles = StyleSheet.create({
-  appShell: { flex: 1, backgroundColor: '#0F1713' },
-  stackArea: { flex: 1 },
+  appShell: { flex: 1, backgroundColor: '#0F1713' }, stackArea: { flex: 1 },
   updateScreen: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 10 },
   updateEyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginTop: 12 },
   updateTitle: { color: '#FFF8E8', fontSize: 26, lineHeight: 31, fontWeight: '900', textAlign: 'center' },
