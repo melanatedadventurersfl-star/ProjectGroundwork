@@ -51,7 +51,7 @@ export default function BuildStatusScreen() {
     try {
       const fetched = await Updates.fetchUpdateAsync();
       if (fetched.isNew) {
-        setMessage('Update downloaded. Restarting Melanated…');
+        setMessage('Update downloaded. Restarting Go Melanated…');
         await Updates.reloadAsync();
         return;
       }
@@ -104,10 +104,12 @@ export default function BuildStatusScreen() {
         <Text style={styles.sectionTitle}>BUILD FINGERPRINT</Text>
         <View style={styles.card}>
           <InfoRow label="App version" value={info.appVersion} />
-          <InfoRow label="Native build" value={info.buildNumber} />
+          <InfoRow label="Native build" value={info.nativeBuildNumber} />
+          <InfoRow label="CI build" value={info.ciBuildNumber} />
           <InfoRow label="Commit" value={info.shortCommit || 'Not embedded'} />
           <InfoRow label="Build time" value={formatTimestamp(info.timestamp)} />
           <InfoRow label="Build profile" value={info.profile || 'Unknown'} />
+          <InfoRow label="Build source" value={info.source || 'Unknown'} />
           <InfoRow label="Update channel" value={info.channel} />
           <InfoRow label="Runtime" value={info.runtimeVersion} />
           <InfoRow label="Update ID" value={info.updateId ? info.updateId.slice(0, 12) : 'Embedded'} last />
@@ -127,7 +129,7 @@ export default function BuildStatusScreen() {
           ))}
         </View>
 
-        <Text style={styles.footer}>Use the version, build, and commit together when reporting a screen that looks out of date.</Text>
+        <Text style={styles.footer}>Use the version, native build, CI build, and commit together when reporting a screen that looks out of date.</Text>
       </ScrollView>
     </SafeAreaView>
   );
