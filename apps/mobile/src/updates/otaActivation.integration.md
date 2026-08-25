@@ -1,0 +1,1 @@
+Integration target: BackgroundUpdateManager records expected update identity before reload; app root verifies activation on next render.
