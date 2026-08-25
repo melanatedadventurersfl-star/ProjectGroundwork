@@ -58,9 +58,10 @@ jobs:
           )
           old = '''      {post.media_type === 'video' && post.media_url ? (\n        <Pressable\n          style={styles.postVideo}\n          accessibilityRole="button"\n          accessibilityLabel="Play video"\n          onPress={(event) => {\n            event.stopPropagation();\n            void Linking.openURL(post.media_url!);\n          }}\n        >\n          <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>\n          <Text style={styles.postVideoTitle}>Play video</Text>\n          <Text style={styles.postVideoMeta}>{videoDuration ? `${videoDuration} · ` : ''}Opens in your device player</Text>\n        </Pressable>\n      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}'''
           new = '''      {post.media_type === 'video' && post.media_url ? (\n        <CommunityVideoPlayer uri={post.media_url} />\n      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}'''
-          if old not in text:
+          if old in text:
+              text = text.replace(old, new)
+          elif '<CommunityVideoPlayer uri={post.media_url} />' not in text:
               raise SystemExit('Outpost video block did not match expected source')
-          text = text.replace(old, new)
           outpost.write_text(text)
 
           thread = Path('apps/mobile/app/community/[id].tsx')
@@ -69,7 +70,7 @@ jobs:
               "import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';",
               "import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';",
           )
-          if "CommunityVideoPlayer" not in text:
+          if "import { CommunityVideoPlayer } from '../../src/community/CommunityVideoPlayer';" not in text:
               text = text.replace(
                   "import { getCommunityFeed, type CommunityPost } from '../../src/community/api';",
                   "import { getCommunityFeed, type CommunityPost } from '../../src/community/api';\nimport { CommunityVideoPlayer } from '../../src/community/CommunityVideoPlayer';",
@@ -82,9 +83,10 @@ jobs:
               text = text[:start] + "\n\nexport default function CampfireConversationScreen" + text[end + len("\n}\n\nexport default function CampfireConversationScreen"):]
           old = '''                  {post.media_type === 'video' && post.media_url ? (\n                    <Pressable style={styles.postVideo} onPress={() => void Linking.openURL(post.media_url!)} accessibilityRole="button" accessibilityLabel="Play video">\n                      <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>\n                      <Text style={styles.postVideoTitle}>Play video</Text>\n                      <Text style={styles.postVideoMeta}>{videoDuration(post) ? `${videoDuration(post)} · ` : ''}Opens in your device player</Text>\n                    </Pressable>\n                  ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}'''
           new = '''                  {post.media_type === 'video' && post.media_url ? (\n                    <CommunityVideoPlayer uri={post.media_url} aspectRatio={4 / 3} />\n                  ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}'''
-          if old not in text:
+          if old in text:
+              text = text.replace(old, new)
+          elif '<CommunityVideoPlayer uri={post.media_url} aspectRatio={4 / 3} />' not in text:
               raise SystemExit('Thread video block did not match expected source')
-          text = text.replace(old, new)
           thread.write_text(text)
 
           Path('apps/mobile/src/community/CommunityVideoOverlayProvider.tsx').unlink(missing_ok=True)
@@ -109,6 +111,8 @@ jobs:
             exit 0
           fi
           git commit -m "fix: play community videos inside the app"
+          git reset --hard HEAD
+          git clean -fd
           git fetch origin fix/inline-community-video-player
           git rebase origin/fix/inline-community-video-player
           git push origin HEAD:fix/inline-community-video-player
