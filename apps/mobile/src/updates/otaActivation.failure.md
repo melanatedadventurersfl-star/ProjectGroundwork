@@ -1,0 +1,1 @@
+Failure mode: downloaded OTA enters white screen during reload, process is killed, then prior bundle reopens. This work verifies activation instead of assuming reload success.
