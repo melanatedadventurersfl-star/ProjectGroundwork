@@ -122,7 +122,9 @@ export default function MemberViolationsScreen() {
       if (!profile || items.length === 0) return;
       const current = [...items].filter(isCurrent).sort((a, b) => currentSeverity(b) - currentSeverity(a) || new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())[0] ?? null;
       const activeWarnings = items.filter((item) => item.action_type === 'warning' && isCurrent(item)).length;
-      nextCases.push({ profile, history: items, activeWarnings, current, latest: items[0] });
+      const latest = items[0];
+      if (!latest) return;
+      nextCases.push({ profile, history: items, activeWarnings, current, latest });
     });
 
     nextCases.sort((a, b) => {
