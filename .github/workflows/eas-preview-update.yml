@@ -99,10 +99,10 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
-          eas update:list --channel preview --limit 1 --json --non-interactive > /tmp/latest-preview-update.json
-          cat /tmp/latest-preview-update.json
-          grep -q "${GITHUB_SHA}" /tmp/latest-preview-update.json || {
-            echo "Latest preview update does not reference triggering commit ${GITHUB_SHA}."
+          eas channel:view preview --limit 20 --json --non-interactive > /tmp/preview-channel.json
+          cat /tmp/preview-channel.json
+          grep -q "${GITHUB_SHA}" /tmp/preview-channel.json || {
+            echo "Preview channel does not reference triggering commit ${GITHUB_SHA}."
             exit 1
           }
           echo "Verified preview OTA for ${GITHUB_SHA}."
