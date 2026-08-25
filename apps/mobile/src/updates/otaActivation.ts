@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Storage from 'expo-sqlite/kv-store';
 import * as Updates from 'expo-updates';
 
 const EXPECTED_UPDATE_KEY = 'go-melanated:expected-ota-update';
@@ -40,18 +40,18 @@ export function getActiveUpdateIdentity() {
 }
 
 export async function rememberExpectedOtaUpdate(expected: ExpectedOtaUpdate) {
-  await AsyncStorage.setItem(EXPECTED_UPDATE_KEY, JSON.stringify(expected));
+  await Storage.setItem(EXPECTED_UPDATE_KEY, JSON.stringify(expected));
 }
 
 export async function verifyExpectedOtaActivation() {
-  const raw = await AsyncStorage.getItem(EXPECTED_UPDATE_KEY);
+  const raw = await Storage.getItem(EXPECTED_UPDATE_KEY);
   if (!raw) return null;
 
   let expected: ExpectedOtaUpdate;
   try {
     expected = JSON.parse(raw) as ExpectedOtaUpdate;
   } catch {
-    await AsyncStorage.removeItem(EXPECTED_UPDATE_KEY);
+    await Storage.removeItem(EXPECTED_UPDATE_KEY);
     return null;
   }
 
@@ -68,20 +68,20 @@ export async function verifyExpectedOtaActivation() {
     checkedAt: new Date().toISOString(),
   };
 
-  await AsyncStorage.setItem(LAST_ACTIVATION_RESULT_KEY, JSON.stringify(result));
+  await Storage.setItem(LAST_ACTIVATION_RESULT_KEY, JSON.stringify(result));
   if (activated) {
-    await AsyncStorage.removeItem(EXPECTED_UPDATE_KEY);
+    await Storage.removeItem(EXPECTED_UPDATE_KEY);
   }
 
   return result;
 }
 
 export async function clearExpectedOtaUpdate() {
-  await AsyncStorage.removeItem(EXPECTED_UPDATE_KEY);
+  await Storage.removeItem(EXPECTED_UPDATE_KEY);
 }
 
 export async function getLastOtaActivationResult() {
-  const raw = await AsyncStorage.getItem(LAST_ACTIVATION_RESULT_KEY);
+  const raw = await Storage.getItem(LAST_ACTIVATION_RESULT_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as OtaActivationResult;
