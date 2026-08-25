@@ -65,7 +65,7 @@ module.exports = {
   ios,
   extra: {
     ...base.extra,
-    nativeBuildAssetRevision: 'go-melanated-launcher-v12',
+    nativeBuildAssetRevision: 'go-melanated-launcher-v14',
     buildCommit,
     buildNumber,
     buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
