@@ -25,59 +25,84 @@ permissions:
   contents: read
   actions: write
 
-# The newest main commit always wins. Normal JS/UI/image changes are delivered
-# OTA immediately. If native/runtime files also changed, request one fresh APK
-# in parallel instead of withholding the OTA from already-installed previews.
-# Retriggered 2026-08-24 22:42 ET to republish the full current main experience
-# after obsolete one-time repair workflows were removed.
+# Every main commit that changes the mobile experience gets a publish attempt.
+# Do not cancel an in-flight OTA publish when another merge lands: cancelling
+# between bundle upload and channel assignment can leave installed previews
+# behind while GitHub appears healthy.
 concurrency:
   group: eas-preview-ota-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   update:
     if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ota]') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out triggering mobile commit
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify publish target
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          echo "event_sha=${GITHUB_SHA}"
+          echo "checked_out=${CHECKED_OUT}"
+          test "${CHECKED_OUT}" = "${GITHUB_SHA}"
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Resolve Expo account
-        id: expo-account
+      - name: Require Expo authentication
         shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${EXPO_TOKEN:-}" ]; then
-            echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "No EXPO_TOKEN available; OTA publish cannot run."
-          else
-            echo "has_token=true" >> "$GITHUB_OUTPUT"
+            echo "EXPO_TOKEN is required. Refusing to report success without publishing an OTA update."
+            exit 1
           fi
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install EAS CLI
-        if: steps.expo-account.outputs.has_token == 'true'
         run: npm install --global eas-cli
 
       - name: Publish preview update
-        if: steps.expo-account.outputs.has_token == 'true'
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas update --channel preview --message "Preview OTA ${{ github.sha }}" --non-interactive
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_PROFILE: preview
+          EXPO_PUBLIC_BUILD_SOURCE: github-actions-ota
+        run: |
+          set -euo pipefail
+          eas update \
+            --channel preview \
+            --message "Preview OTA ${GITHUB_SHA}" \
+            --non-interactive
 
-      - name: Note skipped publish
-        if: steps.expo-account.outputs.has_token != 'true'
-        run: echo "Skipped OTA publish because EXPO_TOKEN is not configured."
+      - name: Verify channel received triggering commit
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          eas update:list --channel preview --limit 1 --json --non-interactive > /tmp/latest-preview-update.json
+          cat /tmp/latest-preview-update.json
+          grep -q "${GITHUB_SHA}" /tmp/latest-preview-update.json || {
+            echo "Latest preview update does not reference triggering commit ${GITHUB_SHA}."
+            exit 1
+          }
+          echo "Verified preview OTA for ${GITHUB_SHA}."
