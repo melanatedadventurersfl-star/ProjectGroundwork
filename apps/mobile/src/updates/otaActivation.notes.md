@@ -1,0 +1,1 @@
+Implementation note: the expected update identity must be recorded from fetchUpdateAsync before reloadAsync and verified after the next boot.
