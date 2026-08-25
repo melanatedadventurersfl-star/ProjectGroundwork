@@ -9,6 +9,9 @@ export type StartupStage =
   | 'update-check'
   | 'update-fetch'
   | 'update-reload'
+  | 'background-update-check'
+  | 'background-update-fetch'
+  | 'background-update-reload'
   | 'first-screen';
 
 const BOOT_WATCHDOG_MS = 12000;
