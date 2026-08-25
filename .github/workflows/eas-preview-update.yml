@@ -64,6 +64,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Load preview bundle environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_ENV"
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('apps/mobile/eas.json', 'utf8'));
+          const preview = eas?.build?.preview?.env || {};
+          const required = [
+            'EXPO_PUBLIC_APP_ENV',
+            'EXPO_PUBLIC_SUPABASE_URL',
+            'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+          ];
+          for (const name of required) {
+            const value = preview[name];
+            if (typeof value !== 'string' || value.trim().length === 0) {
+              throw new Error(`Missing ${name} in apps/mobile/eas.json preview env`);
+            }
+            console.log(`${name}=${value}`);
+          }
+          NODE
+
+      - name: Verify preview runtime environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_PUBLIC_APP_ENV:-}"
+          test -n "${EXPO_PUBLIC_SUPABASE_URL:-}"
+          test -n "${EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}"
+          echo "Preview OTA runtime environment is present."
+
       - name: Require Expo authentication
         shell: bash
         env:
