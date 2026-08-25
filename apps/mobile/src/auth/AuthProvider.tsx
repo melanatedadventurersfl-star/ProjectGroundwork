@@ -13,12 +13,14 @@ type AuthContextValue = {
 };
 
 type ModerationStatus = {
+  profile_status?: 'pending' | 'active' | 'restricted' | 'suspended' | null;
   enforcement?: null | {
     action_type?: 'posting_restriction' | 'suspension' | 'ban';
   };
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const MODERATION_GATE_POLL_MS = 5000;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -68,9 +70,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session?.user.id) return;
     let cancelled = false;
+    let checking = false;
 
     async function enforceModerationGate() {
+      if (checking || cancelled) return;
+      checking = true;
       const { data, error } = await supabase.rpc('get_my_moderation_status');
+      checking = false;
       if (cancelled) return;
       if (error) {
         // A missing RPC during a rolling deployment must not lock members out.
@@ -79,18 +85,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const moderation = data as ModerationStatus | null;
       const action = moderation?.enforcement?.action_type;
-      if ((action === 'suspension' || action === 'ban') && pathname !== '/account-status') {
+      const blocked = action === 'suspension' || action === 'ban' || moderation?.profile_status === 'suspended';
+      if (blocked && pathname !== '/account-status') {
         router.replace('/account-status' as never);
       }
     }
 
     void enforceModerationGate();
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void enforceModerationGate();
+    }, MODERATION_GATE_POLL_MS);
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void enforceModerationGate();
     });
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
       subscription.remove();
     };
   }, [pathname, session?.user.id]);
