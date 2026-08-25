@@ -1,1 +1,1 @@
-Retrigger preview OTA delivery after adding guarded Outpost route diagnostics on 2026-08-24.
+Retrigger preview OTA delivery after restoring Outpost without native video dependency on 2026-08-24.
