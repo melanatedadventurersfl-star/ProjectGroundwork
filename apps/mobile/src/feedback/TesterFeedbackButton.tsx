@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FeedbackCategory, submitTesterFeedback } from './api';
 
@@ -23,7 +24,40 @@ const options: Array<{ key: FeedbackCategory; label: string; icon: string }> = [
   { key: 'other', label: 'Other', icon: 'chatbubble-ellipses-outline' },
 ];
 
+const friendlyScreenNames: Record<string, string> = {
+  '/': 'Trailhead',
+  '/(tabs)': 'Trailhead',
+  '/(tabs)/': 'Trailhead',
+  '/(tabs)/explore': 'Explore',
+  '/(tabs)/community': 'Outpost',
+  '/trail-guide': 'Trail Guide',
+  '/member/profile': 'Profile',
+  '/member/journey': 'Your Trail',
+  '/member/stamps': 'Stamps',
+  '/member/badges': 'Badges',
+  '/passport': 'Passport',
+  '/notifications': 'Notifications',
+};
+
+function getFriendlyScreenName(screenPath: string) {
+  if (friendlyScreenNames[screenPath]) return friendlyScreenNames[screenPath];
+
+  if (screenPath.startsWith('/community/')) return 'Outpost';
+  if (screenPath.startsWith('/adventures/')) return 'Adventure';
+  if (screenPath.startsWith('/local-events/')) return 'Outing';
+  if (screenPath.startsWith('/trail-guide/')) return 'Trail Guide';
+  if (screenPath.startsWith('/member/')) return 'Profile';
+
+  const segment = screenPath.split('/').filter(Boolean).at(-1);
+  if (!segment) return 'Trailhead';
+  return segment
+    .replace(/[\[\]()]/g, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPath: string; hidden?: boolean }) {
+  const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
   const [category, setCategory] = useState<FeedbackCategory>('problem');
   const [message, setMessage] = useState('');
@@ -32,6 +66,9 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
   const [confirmationId, setConfirmationId] = useState<string | null>(null);
 
   const selectedLabel = useMemo(() => options.find((option) => option.key === category)?.label ?? 'Feedback', [category]);
+  const friendlyScreenName = useMemo(() => getFriendlyScreenName(screenPath || '/'), [screenPath]);
+  const fabBottom = Math.max(96, insets.bottom + 78);
+  const sheetBottomPadding = Math.max(20, insets.bottom + 14);
 
   if (hidden) return null;
 
@@ -61,7 +98,12 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
 
   return (
     <>
-      <Pressable accessibilityRole="button" accessibilityLabel="Send tester feedback" style={styles.fab} onPress={() => setVisible(true)}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Send tester feedback"
+        style={[styles.fab, { bottom: fabBottom }]}
+        onPress={() => setVisible(true)}
+      >
         <Ionicons name="chatbubble-ellipses-outline" size={18} color="#102018" />
         <Text style={styles.fabLabel}>Feedback</Text>
       </Pressable>
@@ -69,7 +111,7 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
       <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
         <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: sheetBottomPadding }]}>
             <View style={styles.handle} />
             <View style={styles.headerRow}>
               <View style={styles.headerCopy}>
@@ -91,7 +133,11 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
                 <Pressable style={styles.primaryButton} onPress={close}><Text style={styles.primaryButtonText}>Done</Text></Pressable>
               </View>
             ) : (
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.formContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionRow}>
                   {options.map((option) => {
                     const selected = option.key === category;
@@ -117,7 +163,7 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
                 />
                 <View style={styles.metaCard}>
                   <Ionicons name="navigate-circle-outline" size={18} color="#D7B45A" />
-                  <Text style={styles.metaText} numberOfLines={2}>Screen: {screenPath || '/'}</Text>
+                  <Text style={styles.metaText} numberOfLines={2}>Screen: {friendlyScreenName}</Text>
                 </View>
                 {error ? <Text style={styles.error}>{error}</Text> : null}
                 <Pressable style={[styles.primaryButton, (!message.trim() || submitting) && styles.primaryButtonDisabled]} disabled={!message.trim() || submitting} onPress={submit}>
@@ -137,7 +183,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 14,
-    bottom: 86,
     zIndex: 50,
     flexDirection: 'row',
     alignItems: 'center',
@@ -154,28 +199,36 @@ const styles = StyleSheet.create({
   },
   fabLabel: { color: '#102018', fontWeight: '900', fontSize: 13 },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(4, 10, 7, 0.58)' },
-  sheet: { maxHeight: '86%', backgroundColor: '#142119', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 18, paddingBottom: 22, borderWidth: 1, borderColor: '#263B2D' },
-  handle: { width: 46, height: 5, borderRadius: 4, backgroundColor: '#425449', alignSelf: 'center', marginTop: 9, marginBottom: 14 },
+  sheet: {
+    maxHeight: '82%',
+    backgroundColor: '#142119',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: '#263B2D',
+  },
+  handle: { width: 46, height: 5, borderRadius: 4, backgroundColor: '#425449', alignSelf: 'center', marginTop: 9, marginBottom: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   headerCopy: { flex: 1 },
   eyebrow: { color: '#D7B45A', fontSize: 10, letterSpacing: 1.4, fontWeight: '900' },
   title: { color: '#FFF8E8', fontSize: 24, lineHeight: 29, fontWeight: '900', marginTop: 4 },
   subtitle: { color: '#A7B0AA', fontSize: 13, lineHeight: 19, marginTop: 5 },
-  formContent: { paddingTop: 18, paddingBottom: 10 },
-  optionRow: { gap: 8, paddingBottom: 18 },
+  formContent: { paddingTop: 14, paddingBottom: 4 },
+  optionRow: { gap: 8, paddingBottom: 14, paddingRight: 6 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#34483A', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#1B2A20' },
   optionSelected: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
   optionLabel: { color: '#D9D4C6', fontSize: 12, fontWeight: '800' },
   optionLabelSelected: { color: '#102018' },
   fieldLabel: { color: '#EDE5D3', fontSize: 13, fontWeight: '800', marginBottom: 8 },
-  input: { minHeight: 150, borderRadius: 18, borderWidth: 1, borderColor: '#34483A', backgroundColor: '#0F1813', color: '#FFF8E8', padding: 14, fontSize: 15, lineHeight: 21 },
-  metaCard: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 13, backgroundColor: '#1A291F' },
+  input: { minHeight: 122, borderRadius: 18, borderWidth: 1, borderColor: '#34483A', backgroundColor: '#0F1813', color: '#FFF8E8', padding: 14, fontSize: 15, lineHeight: 21 },
+  metaCard: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 13, backgroundColor: '#1A291F' },
   metaText: { flex: 1, color: '#AAB5AE', fontSize: 12 },
   error: { color: '#FF9A91', fontSize: 13, marginTop: 10 },
-  primaryButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#D7B45A', marginTop: 16, paddingHorizontal: 18 },
+  primaryButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#D7B45A', marginTop: 14, paddingHorizontal: 18 },
   primaryButtonDisabled: { opacity: 0.48 },
   primaryButtonText: { color: '#102018', fontSize: 15, fontWeight: '900' },
-  privacyNote: { color: '#76827B', fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
+  privacyNote: { color: '#76827B', fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 10, paddingHorizontal: 12 },
   successCard: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 12 },
   successTitle: { color: '#FFF8E8', fontSize: 22, fontWeight: '900', marginTop: 10 },
   successBody: { color: '#A7B0AA', fontSize: 14, textAlign: 'center', marginTop: 5 },
