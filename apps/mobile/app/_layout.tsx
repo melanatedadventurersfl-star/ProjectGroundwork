@@ -1,8 +1,7 @@
-import * as Updates from 'expo-updates';
 import { router, Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
 import { supabase } from '../src/lib/supabase';
@@ -18,14 +17,11 @@ import {
   markGuidedTutorialFinished,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
-import { logStartupStage, StartupFailureView, StartupLoadingView, withStartupTimeout } from '../src/reliability/startup';
+import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
+import { BackgroundUpdateManager } from '../src/updates/BackgroundUpdateManager';
 import { currentReleaseNotes } from '../src/updates/releaseNotes';
 import { hasSeenRelease, markReleaseSeen } from '../src/updates/releasePreference';
 import { WhatsNewModal } from '../src/updates/WhatsNewModal';
-
-const UPDATE_NETWORK_TIMEOUT_MS = 10000;
-
-type UpdateStartupPhase = 'checking' | 'downloading' | 'ready';
 
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   console.error('[startup] Unhandled root render error', error);
@@ -205,6 +201,7 @@ function AppShell() {
   return (
     <View style={styles.appShell} testID="app-shell">
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
+      <BackgroundUpdateManager disabled={tutorialVisible} />
       {hideTopNav ? null : <PersistentTopNav />}
       <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
         <StatusBar style="light" />
@@ -224,89 +221,15 @@ function AppShell() {
   );
 }
 
-function UpdateStartupScreen({ phase }: { phase: Exclude<UpdateStartupPhase, 'ready'> }) {
-  const isDownloading = phase === 'downloading';
-  return (
-    <View style={styles.updateScreen}>
-      <StatusBar style="light" />
-      <ActivityIndicator size="large" color="#D7B45A" />
-      <Text style={styles.updateEyebrow}>GO MELANATED</Text>
-      <Text style={styles.updateTitle}>{isDownloading ? 'Updating your trail…' : 'Getting the trail ready…'}</Text>
-      <Text style={styles.updateCopy}>
-        {isDownloading ? 'Loading the latest app experience.' : 'Checking for the latest experience.'}
-      </Text>
-    </View>
-  );
-}
-
 export default function RootLayout() {
-  const [updatePhase, setUpdatePhase] = useState<UpdateStartupPhase>('checking');
-  const startupCheckStartedRef = useRef(false);
-
   useEffect(() => {
     logStartupStage('root-mounted');
-    if (startupCheckStartedRef.current) return;
-    startupCheckStartedRef.current = true;
-
-    let active = true;
-
-    async function runStartupUpdateCheck() {
-      if (!Updates.isEnabled) {
-        if (active) setUpdatePhase('ready');
-        return;
-      }
-
-      logStartupStage('update-check');
-      try {
-        const result = await withStartupTimeout(
-          Updates.checkForUpdateAsync(),
-          'Update check',
-          UPDATE_NETWORK_TIMEOUT_MS,
-        );
-
-        if (!result.isAvailable) {
-          if (active) setUpdatePhase('ready');
-          return;
-        }
-
-        if (active) setUpdatePhase('downloading');
-        logStartupStage('update-fetch');
-        const fetched = await withStartupTimeout(
-          Updates.fetchUpdateAsync(),
-          'Update download',
-          UPDATE_NETWORK_TIMEOUT_MS,
-        );
-
-        if (fetched.isNew) {
-          logStartupStage('update-reload');
-          await Updates.reloadAsync();
-          return;
-        }
-
-        if (active) setUpdatePhase('ready');
-      } catch (error) {
-        console.warn('[updates] Unable to apply OTA update', error);
-        if (active) setUpdatePhase('ready');
-      }
-    }
-
-    void runStartupUpdateCheck();
-    return () => {
-      active = false;
-    };
   }, []);
-
-  if (updatePhase !== 'ready') {
-    return <UpdateStartupScreen phase={updatePhase} />;
-  }
 
   return <AuthProvider><AppShell /></AuthProvider>;
 }
 
 const styles = StyleSheet.create({
-  appShell: { flex: 1, backgroundColor: '#0F1713' }, stackArea: { flex: 1 },
-  updateScreen: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 10 },
-  updateEyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginTop: 12 },
-  updateTitle: { color: '#FFF8E8', fontSize: 26, lineHeight: 31, fontWeight: '900', textAlign: 'center' },
-  updateCopy: { color: '#8F9A93', fontSize: 14, textAlign: 'center' },
+  appShell: { flex: 1, backgroundColor: '#0F1713' },
+  stackArea: { flex: 1 },
 });
