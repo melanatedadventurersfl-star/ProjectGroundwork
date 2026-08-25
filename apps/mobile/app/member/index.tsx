@@ -4,11 +4,17 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMemberBasecamp } from '../../src/member/api';
+import { getJourney } from '../../src/passport/api';
 
 export default function MemberBasecampScreen() {
   const [data, setData] = useState<any>(null);
+  const [journeyCount, setJourneyCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { getMemberBasecamp().then(setData).catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load member details.')); }, []);
+  useEffect(() => {
+    Promise.all([getMemberBasecamp(), getJourney()])
+      .then(([nextData, journey]) => { setData(nextData); setJourneyCount(journey.length); })
+      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load member details.'));
+  }, []);
   if (!data && !error) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -17,6 +23,12 @@ export default function MemberBasecampScreen() {
         <Text style={styles.eyebrow}>ACCOUNT & SUPPORT</Text>
         <Text style={styles.title}>{data?.profile?.display_name ?? 'Your account'}</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Pressable style={styles.featureCard} onPress={() => router.push('/member/journey' as never)}>
+          <Text style={styles.featureEyebrow}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
+          <Text style={styles.featureTitle}>Your Trail</Text>
+          <Text style={styles.featureDetail}>{journeyCount ? `${journeyCount} adventure${journeyCount === 1 ? '' : 's'} already part of your story.` : 'Your first adventure becomes chapter one.'}</Text>
+          <Text style={styles.featureLink}>Follow your Trail →</Text>
+        </Pressable>
         <Pressable style={styles.card} onPress={() => router.push('/member/profile')}><Text style={styles.cardTitle}>Profile</Text><Text style={styles.detail}>{data?.profile?.home_city ?? 'Location not set'}, {data?.profile?.home_state ?? ''}</Text><Text style={styles.link}>Manage profile & privacy →</Text></Pressable>
         <Pressable style={styles.card} onPress={() => router.push('/member/discovery-settings' as never)}><Text style={styles.cardTitle}>Profile Discovery</Text><Text style={styles.detail}>{data?.profile?.is_searchable === false ? 'Hidden from member search' : 'Searchable by name and username'}</Text><Text style={styles.link}>Manage search visibility →</Text></Pressable>
         <Pressable style={styles.card} onPress={() => router.push('/member/trail-family')}><Text style={styles.cardTitle}>Trail Family</Text><Text style={styles.detail}>{data?.households?.length ?? 0} Trail Family connection(s)</Text><Text style={styles.link}>Open Trail Family →</Text></Pressable>
@@ -31,5 +43,6 @@ export default function MemberBasecampScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0F1713' }, center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, paddingBottom: 48, gap: 12 }, back: { color: '#D7B45A', fontWeight: '800', fontSize: 16 }, eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 34, fontWeight: '900', marginBottom: 6 },
+  featureCard: { backgroundColor: '#223128', borderRadius: 20, padding: 19, gap: 6, borderWidth: 1, borderColor: '#536A59', marginBottom: 2 }, featureEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, featureTitle: { color: '#FFF8E8', fontSize: 24, fontWeight: '900' }, featureDetail: { color: '#C7D0CA', lineHeight: 20 }, featureLink: { color: '#F0D083', fontWeight: '900', marginTop: 5 },
   card: { backgroundColor: '#17211C', borderRadius: 16, padding: 18, gap: 6 }, cardTitle: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' }, detail: { color: '#AEB8B2', lineHeight: 21 }, link: { color: '#D7B45A', fontWeight: '800', marginTop: 4 }, error: { color: '#FFB4A9' },
 });
