@@ -1,0 +1,68 @@
+name: Fix Outpost and Explore white screen once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-outpost-explore-white-screen-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Patch Outpost and Explore guards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          outpost = Path('apps/mobile/src/community/OutpostScreen.tsx')
+          text = outpost.read_text()
+          text = text.replace("import { CommunityVideoPlayer } from './CommunityVideoPlayer';\n", "")
+          text = text.replace(
+              "function initials(name: string) {\n  return name.split(/\\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';\n}",
+              "function initials(name?: string | null) {\n  return (name ?? '').split(/\\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';\n}"
+          )
+          old_video = """      {post.media_type === 'video' && post.media_url ? (\n        <CommunityVideoPlayer uri={post.media_url} />\n      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode=\"cover\" /> : null}"""
+          new_video = """      {post.media_type === 'video' && post.media_url ? (\n        <View style={styles.postVideo}>\n          <View style={styles.postVideoPlay}><Ionicons name=\"play\" size={26} color=\"#101510\" /></View>\n          <Text style={styles.postVideoTitle}>Video post</Text>\n          <Text style={styles.postVideoMeta}>Open the post to play this video</Text>\n        </View>\n      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode=\"cover\" /> : null}"""
+          if old_video not in text:
+              raise SystemExit('Outpost video target not found')
+          outpost.write_text(text.replace(old_video, new_video, 1))
+
+          explore = Path('apps/mobile/app/(tabs)/explore.tsx')
+          text = explore.read_text()
+          text = text.replace("function startTime(value: string) {", "function startTime(value?: string | null) {")
+          text = text.replace("  const parsed = Date.parse(value);", "  if (!value) return Number.POSITIVE_INFINITY;\n  const parsed = Date.parse(value);", 1)
+          text = text.replace("function formatPrice(cents: number) {", "function formatPrice(cents?: number | null) {")
+          text = text.replace("    if (sort === 'activity') return a.category.localeCompare(b.category) || a.title.localeCompare(b.title);", "    if (sort === 'activity') return (a.category ?? '').localeCompare(b.category ?? '') || (a.title ?? '').localeCompare(b.title ?? '');")
+          text = text.replace("    if (sort === 'title') return a.title.localeCompare(b.title);", "    if (sort === 'title') return (a.title ?? '').localeCompare(b.title ?? '');")
+          text = text.replace("    if (sort === 'activity') return a.event.category.localeCompare(b.event.category) || a.event.title.localeCompare(b.event.title);", "    if (sort === 'activity') return (a.event.category ?? '').localeCompare(b.event.category ?? '') || (a.event.title ?? '').localeCompare(b.event.title ?? '');")
+          text = text.replace("    if (sort === 'title') return a.event.title.localeCompare(b.event.title);", "    if (sort === 'title') return (a.event.title ?? '').localeCompare(b.event.title ?? '');")
+          explore.write_text(text)
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Verify mobile typecheck
+        run: |
+          npm ci
+          npm run mobile:typecheck
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile/src/community/OutpostScreen.tsx 'apps/mobile/app/(tabs)/explore.tsx'
+          git commit -m "Fix Outpost white screen and harden Explore" || exit 0
+          git push
