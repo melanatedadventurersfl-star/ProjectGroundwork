@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 
 import { supabase } from '../lib/supabase';
 import { redeemPendingInvite } from '../referrals/pendingInvite';
+import { logStartupStage, withStartupTimeout } from '../reliability/startup';
 
 type AuthContextValue = {
   session: Session | null;
@@ -21,6 +22,7 @@ type ModerationStatus = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const MODERATION_GATE_POLL_MS = 5000;
+const AUTH_RESTORE_TIMEOUT_MS = 10000;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -29,17 +31,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    logStartupStage('auth-restoring');
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!isMounted) return;
-      if (error) console.warn('Unable to restore session', error.message);
-      setSession(data.session ?? null);
-      setIsLoading(false);
-    });
+    void withStartupTimeout(supabase.auth.getSession(), 'Session restore', AUTH_RESTORE_TIMEOUT_MS)
+      .then(({ data, error }) => {
+        if (!isMounted) return;
+        if (error) console.warn('Unable to restore session', error.message);
+        setSession(data.session ?? null);
+        logStartupStage('auth-ready', { restored: Boolean(data.session), source: 'getSession' });
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        console.warn('[startup] Session restore failed open', error instanceof Error ? error.message : error);
+        setSession(null);
+        logStartupStage('auth-ready', { restored: false, source: 'timeout-fallback' });
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return;
       setSession(nextSession);
       setIsLoading(false);
+      logStartupStage('auth-ready', { restored: Boolean(nextSession), source: 'auth-event' });
     });
 
     return () => {
@@ -79,7 +94,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       checking = false;
       if (cancelled) return;
       if (error) {
-        // A missing RPC during a rolling deployment must not lock members out.
         console.warn('[moderation] Unable to check account status', error.message);
         return;
       }
