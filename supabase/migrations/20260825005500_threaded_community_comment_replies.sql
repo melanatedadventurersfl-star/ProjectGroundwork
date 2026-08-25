@@ -47,9 +47,9 @@ begin
       else 'Sent a reply'
     end,
     '/community/' || new.post_id::text || '?comment=' || new.id::text,
-    'community-comment-reply:' || new.id::text || ':' || new.reply_to_profile_id::text
+    'community-comment-reply:' || new.id::text
   )
-  on conflict (dedupe_key) where dedupe_key is not null do nothing;
+  on conflict (recipient_id, dedupe_key) do nothing;
 
   return new;
 end;
