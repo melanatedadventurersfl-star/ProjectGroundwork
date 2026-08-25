@@ -28,7 +28,8 @@ permissions:
 # The newest main commit always wins. Normal JS/UI/image changes are delivered
 # OTA immediately. If native/runtime files also changed, request one fresh APK
 # in parallel instead of withholding the OTA from already-installed previews.
-# Retriggered 2026-08-24 21:54 ET to deliver the community-thread white-screen fix.
+# Retriggered 2026-08-24 22:42 ET to republish the full current main experience
+# after obsolete one-time repair workflows were removed.
 concurrency:
   group: eas-preview-ota-main
   cancel-in-progress: true
