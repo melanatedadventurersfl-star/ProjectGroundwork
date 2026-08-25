@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "scheme": "melanatedadventurers",
     "userInterfaceStyle": "automatic",
-    "icon": "./assets/golden_mountain_sunrise_go_melanated.png",
+    "icon": "./assets/branding/app-icon/go-melanated-icon-master.png",
     "splash": {
       "image": "./assets/ma-splash-icon.png",
       "resizeMode": "contain",
@@ -54,7 +54,7 @@
     },
     "android": {
       "package": "com.melanatedadventurers.app",
-      "icon": "./assets/golden_mountain_sunrise_go_melanated.png",
+      "icon": "./assets/branding/app-icon/go-melanated-icon-master.png",
       "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
@@ -63,7 +63,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "go-melanated-launcher-v14",
+      "nativeBuildAssetRevision": "go-melanated-launcher-v15",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
