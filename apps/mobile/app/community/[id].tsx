@@ -6,7 +6,6 @@ import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platfo
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCommunityFeed, removeCommunityPostMedia, uploadCommunityPostImage, type CommunityPost } from '../../src/community/api';
-import { CommunityVideoPlayer } from '../../src/community/CommunityVideoPlayer';
 import { PostEngagementBar } from '../../src/community/PostEngagementBar';
 import {
   COMMUNITY_REPORT_REASONS,
@@ -29,8 +28,8 @@ type Comment = {
   profiles: { display_name: string | null; first_name: string | null; avatar_url: string | null } | null;
 };
 
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
+function initials(name?: string | null) {
+  return (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
 }
 
 function relativeTime(value: string) {
@@ -303,7 +302,11 @@ export default function CampfireConversationScreen() {
                   </View>
                   <Text style={styles.postBody}>{post.body}</Text>
                   {post.media_type === 'video' && post.media_url ? (
-                    <CommunityVideoPlayer uri={post.media_url} aspectRatio={4 / 3} />
+                    <View style={styles.postVideo}>
+                      <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>
+                      <Text style={styles.postVideoTitle}>Video post</Text>
+                      <Text style={styles.postVideoMeta}>Playback will be available after installing the new preview APK.</Text>
+                    </View>
                   ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
                   <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={replyCount} />
                 </View>
