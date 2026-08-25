@@ -2,7 +2,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -19,6 +19,7 @@ import {
   type CommunityPost,
   type CommunityPostType,
 } from './api';
+import { CommunityVideoPlayer } from './CommunityVideoPlayer';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
 import { distanceMiles, pointForCity } from '../explore/location';
@@ -104,10 +105,6 @@ function formatFileSize(fileSize?: number | null) {
   return `${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`;
 }
 
-function metadataNumber(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return typeof value === 'number' ? value : null;
-}
 
 function formatCampfireTime(value: string) {
   const date = new Date(value);
@@ -133,7 +130,6 @@ function isWithinWeek(value: string) {
 
 function PostCard({ post }: { post: CommunityPost }) {
   const badge = post.post_type === 'ask' ? 'Ask' : post.post_type === 'buddy' ? 'Adventure Buddy' : post.post_type === 'recommendation' ? 'Place' : post.post_type === 'meetup' ? 'Outing' : null;
-  const videoDuration = formatDuration(metadataNumber(post.metadata, 'media_duration_ms'));
   return (
     <Pressable style={({ pressed }) => [styles.postCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
       <View style={styles.postHeader}>
@@ -159,19 +155,7 @@ function PostCard({ post }: { post: CommunityPost }) {
       </View>
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
       {post.media_type === 'video' && post.media_url ? (
-        <Pressable
-          style={styles.postVideo}
-          accessibilityRole="button"
-          accessibilityLabel="Play video"
-          onPress={(event) => {
-            event.stopPropagation();
-            void Linking.openURL(post.media_url!);
-          }}
-        >
-          <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>
-          <Text style={styles.postVideoTitle}>Play video</Text>
-          <Text style={styles.postVideoMeta}>{videoDuration ? `${videoDuration} · ` : ''}Opens in your device player</Text>
-        </Pressable>
+        <CommunityVideoPlayer uri={post.media_url} />
       ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       <View style={styles.engagementWrap}>
         <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} />
