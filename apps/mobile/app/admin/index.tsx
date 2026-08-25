@@ -6,14 +6,7 @@ import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 import { getBuildFingerprint } from '../../src/updates/buildInfo';
 
-type AdminProfile = {
-  display_name: string | null;
-  username: string | null;
-  avatar_url: string | null;
-  home_city: string | null;
-  home_state: string | null;
-  platform_role: string | null;
-};
+type AdminProfile = { display_name: string | null; username: string | null; avatar_url: string | null; home_city: string | null; home_state: string | null; platform_role: string | null };
 
 export default function AdminProfileScreen() {
   const { session } = useAuth();
@@ -37,8 +30,7 @@ export default function AdminProfileScreen() {
       const isAdmin = adminResult.data === true;
       setAuthorized(isAdmin);
       if (!isAdmin) { setProfile(null); setLoading(false); return; }
-      if (profileResult.error) setError(profileResult.error.message);
-      else setProfile(profileResult.data as AdminProfile);
+      if (profileResult.error) setError(profileResult.error.message); else setProfile(profileResult.data as AdminProfile);
       setLoading(false);
     }
     void loadAdminProfile();
@@ -46,51 +38,30 @@ export default function AdminProfileScreen() {
   }, [session?.user.id]);
 
   const displayName = profile?.display_name?.trim() || profile?.username?.trim() || 'Administrator';
-  const initials = useMemo(() => {
-    const parts = displayName.split(/\s+/).filter(Boolean);
-    const first = parts[0]?.[0] ?? '';
-    const last = parts[parts.length - 1]?.[0] ?? '';
-    return (parts.length > 1 ? `${first}${last}` : displayName.slice(0, 2)).toUpperCase();
-  }, [displayName]);
+  const initials = useMemo(() => { const parts = displayName.split(/\s+/).filter(Boolean); const first = parts[0]?.[0] ?? ''; const last = parts[parts.length - 1]?.[0] ?? ''; return (parts.length > 1 ? `${first}${last}` : displayName.slice(0, 2)).toUpperCase(); }, [displayName]);
   const handle = profile?.username ? `@${profile.username.replace(/^@/, '')}` : session?.user.email ?? 'Melanated administrator';
   const location = [profile?.home_city, profile?.home_state].filter(Boolean).join(', ');
 
   if (loading) return <SafeAreaView style={styles.safe}><View style={styles.centered}><ActivityIndicator color="#D7B45A" size="large" /><Text style={styles.loadingText}>Checking admin access…</Text></View></SafeAreaView>;
-
   if (!authorized) return <SafeAreaView style={styles.safe}><View style={styles.deniedWrap}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Back</Text></Pressable><View style={styles.deniedCard}><Text style={styles.deniedEyebrow}>PROTECTED AREA</Text><Text style={styles.deniedTitle}>Admin access required</Text><Text style={styles.deniedCopy}>This profile is only available to accounts authorized by the platform security role.</Text>{error ? <Text style={styles.errorText}>{error}</Text> : null}</View></View></SafeAreaView>;
 
   const toolRows = [
-    { title: 'Build Status', subtitle: 'Verify version, build, commit, update channel, and whether a newer update exists.', route: '/build-status' },
-    { title: 'App Media', subtitle: 'Publish verified imagery used across the app.', route: '/admin-media' },
+    { title: 'Community Safety', subtitle: 'Open reports, escalations, appeals, restrictions, suspensions, and bans in one control room.', route: '/admin/community-safety' },
     { title: 'Moderation Queue', subtitle: 'Review newly reported posts and replies and take enforcement action.', route: '/admin/moderation' },
     { title: 'Members with Violations', subtitle: 'See everyone with moderation history, warnings, restrictions, suspensions, or bans.', route: '/admin/violations' },
     { title: 'Moderation Appeals', subtitle: 'Review member appeals and uphold or reverse enforcement decisions.', route: '/admin/moderation-appeals' },
+    { title: 'Build Status', subtitle: 'Verify version, build, commit, update channel, and whether a newer update exists.', route: '/build-status' },
+    { title: 'App Media', subtitle: 'Publish verified imagery used across the app.', route: '/admin-media' },
   ];
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}>
     <Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Back</Text></Pressable>
     <View style={styles.header}><Text style={styles.eyebrow}>ADMINISTRATION</Text><Text style={styles.title}>Admin Profile</Text><Text style={styles.subtitle}>Your Melanated member identity with protected platform access.</Text></View>
-
-    <View style={styles.profileCard}>
-      <View style={styles.identityRow}>
-        <View style={styles.avatar}>{profile?.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarInitials}>{initials}</Text>}</View>
-        <View style={styles.identityCopy}><View style={styles.badge}><Text style={styles.badgeText}>PLATFORM ADMIN</Text></View><Text style={styles.name} numberOfLines={1}>{displayName}</Text><Text style={styles.handle} numberOfLines={1}>{handle}</Text>{location ? <Text style={styles.location}>{location}</Text> : null}</View>
-      </View>
-      <View style={styles.securityStrip}><View style={styles.securityDot} /><View style={styles.securityCopy}><Text style={styles.securityTitle}>Protected administrator access</Text><Text style={styles.securityBody}>Role changes are locked behind Supabase authorization and cannot be changed from this profile.</Text></View></View>
-    </View>
-
-    <View style={styles.section}><Text style={styles.sectionTitle}>ADMIN TOOLS</Text><View style={styles.card}>
-      {toolRows.map((item, index) => <Pressable key={item.route} style={[styles.row, index > 0 && styles.divider]} onPress={() => router.push(item.route as never)}><View style={styles.rowCopy}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowSubtitle}>{item.subtitle}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}
-    </View></View>
-
-    <View style={styles.section}><Text style={styles.sectionTitle}>MEMBER PROFILE</Text><View style={styles.card}>
-      <Pressable style={styles.row} onPress={() => router.push('/member/profile' as never)}><View style={styles.rowCopy}><Text style={styles.rowTitle}>View Profile</Text><Text style={styles.rowSubtitle}>See your member-facing profile and activity.</Text></View><Text style={styles.chevron}>›</Text></Pressable>
-      <Pressable style={[styles.row, styles.divider]} onPress={() => router.push('/member/profile?edit=1' as never)}><View style={styles.rowCopy}><Text style={styles.rowTitle}>Edit Member Profile</Text><Text style={styles.rowSubtitle}>Update public profile details without changing admin access.</Text></View><Text style={styles.chevron}>›</Text></Pressable>
-    </View></View>
-
+    <View style={styles.profileCard}><View style={styles.identityRow}><View style={styles.avatar}>{profile?.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarInitials}>{initials}</Text>}</View><View style={styles.identityCopy}><View style={styles.badge}><Text style={styles.badgeText}>PLATFORM ADMIN</Text></View><Text style={styles.name} numberOfLines={1}>{displayName}</Text><Text style={styles.handle} numberOfLines={1}>{handle}</Text>{location ? <Text style={styles.location}>{location}</Text> : null}</View></View><View style={styles.securityStrip}><View style={styles.securityDot} /><View style={styles.securityCopy}><Text style={styles.securityTitle}>Protected administrator access</Text><Text style={styles.securityBody}>Role changes are locked behind Supabase authorization and cannot be changed from this profile.</Text></View></View></View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>ADMIN TOOLS</Text><View style={styles.card}>{toolRows.map((item, index) => <Pressable key={item.route} style={[styles.row, index > 0 && styles.divider]} onPress={() => router.push(item.route as never)}><View style={styles.rowCopy}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowSubtitle}>{item.subtitle}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}</View></View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>MEMBER PROFILE</Text><View style={styles.card}><Pressable style={styles.row} onPress={() => router.push('/member/profile' as never)}><View style={styles.rowCopy}><Text style={styles.rowTitle}>View Profile</Text><Text style={styles.rowSubtitle}>See your member-facing profile and activity.</Text></View><Text style={styles.chevron}>›</Text></Pressable><Pressable style={[styles.row, styles.divider]} onPress={() => router.push('/member/profile?edit=1' as never)}><View style={styles.rowCopy}><Text style={styles.rowTitle}>Edit Member Profile</Text><Text style={styles.rowSubtitle}>Update public profile details without changing admin access.</Text></View><Text style={styles.chevron}>›</Text></Pressable></View></View>
     {error ? <Text style={styles.errorText}>{error}</Text> : null}
-    <View style={styles.buildFooter}><Text style={styles.buildFooterLabel}>RUNNING</Text><Text style={styles.buildFooterValue}>{buildFingerprint}</Text></View>
-    <Text style={styles.note}>Admin status is evaluated from the signed-in account every time this screen loads.</Text>
+    <View style={styles.buildFooter}><Text style={styles.buildFooterLabel}>RUNNING</Text><Text style={styles.buildFooterValue}>{buildFingerprint}</Text></View><Text style={styles.note}>Admin status is evaluated from the signed-in account every time this screen loads.</Text>
   </ScrollView></SafeAreaView>;
 }
 
