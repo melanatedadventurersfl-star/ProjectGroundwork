@@ -1,0 +1,66 @@
+name: Fix typecheck once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-typecheck-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Patch strict TypeScript guards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          violations = Path('apps/mobile/app/admin/violations.tsx')
+          text = violations.read_text()
+          old = """      nextCases.push({ profile, history: items, activeWarnings, current, latest: items[0] });"""
+          new = """      const latest = items[0];
+      if (!latest) return;
+      nextCases.push({ profile, history: items, activeWarnings, current, latest });"""
+          if old not in text:
+              raise SystemExit('violations.tsx target not found')
+          violations.write_text(text.replace(old, new, 1))
+
+          gallery = Path('apps/mobile/app/passport/photos/[adventureId].tsx')
+          text = gallery.read_text()
+          old = """    const next = (selectedIndex + direction + photos.length) % photos.length;
+    setSelectedId(photos[next].id);"""
+          new = """    const next = (selectedIndex + direction + photos.length) % photos.length;
+    const nextPhoto = photos[next];
+    if (!nextPhoto) return;
+    setSelectedId(nextPhoto.id);"""
+          if old not in text:
+              raise SystemExit('gallery target not found')
+          gallery.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Verify typecheck
+        run: |
+          npm ci
+          npm run mobile:typecheck
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile/app/admin/violations.tsx 'apps/mobile/app/passport/photos/[adventureId].tsx'
+          git commit -m "fix: satisfy strict typecheck guards"
+          git push
