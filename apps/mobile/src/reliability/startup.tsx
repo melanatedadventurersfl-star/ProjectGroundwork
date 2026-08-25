@@ -8,6 +8,7 @@ export type StartupStage =
   | 'navigation-ready'
   | 'update-check'
   | 'update-fetch'
+  | 'update-reload'
   | 'first-screen';
 
 const BOOT_WATCHDOG_MS = 12000;
