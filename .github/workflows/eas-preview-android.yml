@@ -14,7 +14,7 @@ on:
       - 'apps/mobile/android/**'
       - 'apps/mobile/ios/**'
       - 'apps/mobile/plugins/**'
-      - 'apps/mobile/assets/golden_mountain_sunrise_go_melanated.png'
+      - 'apps/mobile/assets/branding/app-icon/go-melanated-icon-master.png'
       - 'apps/mobile/assets/ma-splash-icon.png'
       - 'apps/mobile/assets/ma-pathfinder-mark.png'
   workflow_dispatch:
@@ -72,7 +72,7 @@ jobs:
           from PIL import Image
 
           for path in [
-              Path('apps/mobile/assets/golden_mountain_sunrise_go_melanated.png'),
+              Path('apps/mobile/assets/branding/app-icon/go-melanated-icon-master.png'),
               Path('apps/mobile/assets/ma-splash-icon.png'),
               Path('apps/mobile/assets/ma-pathfinder-mark.png'),
           ]:
