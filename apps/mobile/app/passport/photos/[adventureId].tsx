@@ -54,7 +54,9 @@ export default function AdventurePhotoGalleryScreen() {
   function move(direction: -1 | 1) {
     if (!photos.length || selectedIndex < 0) return;
     const next = (selectedIndex + direction + photos.length) % photos.length;
-    setSelectedId(photos[next].id);
+    const nextPhoto = photos[next];
+    if (!nextPhoto) return;
+    setSelectedId(nextPhoto.id);
   }
 
   if (loading) {
