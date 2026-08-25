@@ -1,6 +1,6 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEffect } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 type Props = {
   uri: string;
@@ -8,11 +8,13 @@ type Props = {
 };
 
 export function CommunityVideoPlayer({ uri, aspectRatio = 16 / 9 }: Props) {
+  const [firstFrameReady, setFirstFrameReady] = useState(false);
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
   });
 
   useEffect(() => {
+    setFirstFrameReady(false);
     return () => {
       try {
         player.pause();
@@ -20,7 +22,7 @@ export function CommunityVideoPlayer({ uri, aspectRatio = 16 / 9 }: Props) {
         // The hook owns player disposal; pause is only a best-effort guard on unmount.
       }
     };
-  }, [player]);
+  }, [player, uri]);
 
   return (
     <Pressable
@@ -35,8 +37,15 @@ export function CommunityVideoPlayer({ uri, aspectRatio = 16 / 9 }: Props) {
           nativeControls
           contentFit="contain"
           fullscreenOptions={{ enable: true }}
-          surfaceType="textureView"
+          surfaceType="surfaceView"
+          onFirstFrameRender={() => setFirstFrameReady(true)}
         />
+        {!firstFrameReady ? (
+          <View pointerEvents="none" style={styles.loadingOverlay}>
+            <ActivityIndicator color="#D7B45A" />
+            <Text style={styles.loadingText}>Loading video…</Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -62,5 +71,17 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: '#080D0B',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#080D0B',
+  },
+  loadingText: {
+    color: '#AEB8B2',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
