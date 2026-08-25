@@ -18,11 +18,18 @@ import {
   markGuidedTutorialFinished,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
+import { logStartupStage, StartupFailureView, StartupLoadingView, withStartupTimeout } from '../src/reliability/startup';
 import { currentReleaseNotes } from '../src/updates/releaseNotes';
 import { hasSeenRelease, markReleaseSeen } from '../src/updates/releasePreference';
 import { WhatsNewModal } from '../src/updates/WhatsNewModal';
 
 const UPDATE_CHECK_THROTTLE_MS = 15000;
+const UPDATE_NETWORK_TIMEOUT_MS = 10000;
+
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
+  console.error('[startup] Unhandled root render error', error);
+  return <StartupFailureView error={error} onRetry={retry} />;
+}
 
 function isGuestPublicPath(pathname: string) {
   const isPublicLocalEvent = pathname.startsWith('/local-events/') && !pathname.startsWith('/local-events/create');
@@ -55,9 +62,7 @@ function AppShell() {
   const tutorialCheckedRef = useRef(false);
   const tutorialUserRef = useRef<string | null>(null);
   const whatsNewCheckedRef = useRef(false);
-  // Release-note visibility is keyed to the changelog release, not the Expo OTA
-  // update ID. Multiple OTA publishes for the same user-facing release must not
-  // make the same notes appear new again.
+  const firstScreenLoggedRef = useRef(false);
   const releaseSeenKey = currentReleaseNotes.id;
 
   const isAuthScreen =
@@ -72,6 +77,13 @@ function AppShell() {
   const tutorialGateLocked = Boolean(session) && !isAuthScreen && !tutorialGateReady;
   const hideBottomNav = isLoading || isAuthScreen || keyboardVisible || tutorialGateLocked || tutorialVisible;
   const hideTopNav = isLoading || isAuthScreen || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+
+  useEffect(() => {
+    if (isLoading || firstScreenLoggedRef.current) return;
+    firstScreenLoggedRef.current = true;
+    logStartupStage('navigation-ready', { pathname });
+    requestAnimationFrame(() => logStartupStage('first-screen', { pathname }));
+  }, [isLoading, pathname]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -187,8 +199,10 @@ function AppShell() {
     setWhatsNewVisible(false);
   }
 
+  if (isLoading) return <StartupLoadingView message="Restoring your session…" />;
+
   return (
-    <View style={styles.appShell}>
+    <View style={styles.appShell} testID="app-shell">
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       {hideTopNav ? null : <PersistentTopNav />}
       <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
@@ -215,30 +229,38 @@ export default function RootLayout() {
   const lastCheckRef = useRef(0);
 
   useEffect(() => {
+    logStartupStage('root-mounted');
+
     async function checkForUpdate(force = false) {
       if (!Updates.isEnabled || checkingRef.current) return;
       const now = Date.now();
       if (!force && now - lastCheckRef.current < UPDATE_CHECK_THROTTLE_MS) return;
       checkingRef.current = true;
       lastCheckRef.current = now;
+      logStartupStage('update-check');
       try {
-        const result = await Updates.checkForUpdateAsync();
+        const result = await withStartupTimeout(Updates.checkForUpdateAsync(), 'Update check', UPDATE_NETWORK_TIMEOUT_MS);
         if (!result.isAvailable) return;
         setApplyingUpdate(true);
-        const fetched = await Updates.fetchUpdateAsync();
+        logStartupStage('update-fetch');
+        const fetched = await withStartupTimeout(Updates.fetchUpdateAsync(), 'Update download', UPDATE_NETWORK_TIMEOUT_MS);
         if (fetched.isNew) await Updates.reloadAsync();
+        setApplyingUpdate(false);
       } catch (error) {
         console.warn('[updates] Unable to apply OTA update', error);
         setApplyingUpdate(false);
-      } finally { checkingRef.current = false; }
+      } finally {
+        checkingRef.current = false;
+      }
     }
+
     void checkForUpdate(true);
     const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') void checkForUpdate(); });
     return () => subscription.remove();
   }, []);
 
   if (applyingUpdate) {
-    return <View style={styles.updateScreen}><ActivityIndicator size="large" color="#D7B45A" /><Text style={styles.updateEyebrow}>MELANATED ADVENTURERS</Text><Text style={styles.updateTitle}>Updating your trail…</Text><Text style={styles.updateCopy}>Loading the latest app experience.</Text></View>;
+    return <View style={styles.updateScreen}><ActivityIndicator size="large" color="#D7B45A" /><Text style={styles.updateEyebrow}>GO MELANATED</Text><Text style={styles.updateTitle}>Updating your trail…</Text><Text style={styles.updateCopy}>Loading the latest app experience.</Text></View>;
   }
 
   return <AuthProvider><AppShell /></AuthProvider>;
