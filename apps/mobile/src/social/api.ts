@@ -70,6 +70,14 @@ export async function getCommunityProfile(profileId: string): Promise<CommunityP
   };
 }
 
+export async function getViewerInterests(): Promise<string[]> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
+  const { data, error } = await supabase.from('profiles').select('interests').eq('id', userData.user.id).single();
+  if (error) throw error;
+  return Array.isArray(data?.interests) ? data.interests.filter((interest): interest is string => typeof interest === 'string') : [];
+}
+
 export async function getConnectionStatus(profileId: string): Promise<{ status: ConnectionStatus; connectionId: string | null }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) throw userError ?? new Error('Sign in required.');
