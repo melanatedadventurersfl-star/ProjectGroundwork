@@ -63,7 +63,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "go-melanated-launcher-v13",
+      "nativeBuildAssetRevision": "go-melanated-launcher-v14",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
