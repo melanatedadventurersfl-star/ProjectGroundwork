@@ -17,31 +17,8 @@ jobs:
 
       - name: Patch strict TypeScript guards
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          violations = Path('apps/mobile/app/admin/violations.tsx')
-          text = violations.read_text()
-          old = """      nextCases.push({ profile, history: items, activeWarnings, current, latest: items[0] });"""
-          new = """      const latest = items[0];
-      if (!latest) return;
-      nextCases.push({ profile, history: items, activeWarnings, current, latest });"""
-          if old not in text:
-              raise SystemExit('violations.tsx target not found')
-          violations.write_text(text.replace(old, new, 1))
-
-          gallery = Path('apps/mobile/app/passport/photos/[adventureId].tsx')
-          text = gallery.read_text()
-          old = """    const next = (selectedIndex + direction + photos.length) % photos.length;
-    setSelectedId(photos[next].id);"""
-          new = """    const next = (selectedIndex + direction + photos.length) % photos.length;
-    const nextPhoto = photos[next];
-    if (!nextPhoto) return;
-    setSelectedId(nextPhoto.id);"""
-          if old not in text:
-              raise SystemExit('gallery target not found')
-          gallery.write_text(text.replace(old, new, 1))
-          PY
+          node -e "const fs=require('fs');const p='apps/mobile/app/admin/violations.tsx';let s=fs.readFileSync(p,'utf8');const a='      nextCases.push({ profile, history: items, activeWarnings, current, latest: items[0] });';const b='      const latest = items[0];\n      if (!latest) return;\n      nextCases.push({ profile, history: items, activeWarnings, current, latest });';if(!s.includes(a))throw new Error('violations target not found');fs.writeFileSync(p,s.replace(a,b));"
+          node -e "const fs=require('fs');const p='apps/mobile/app/passport/photos/[adventureId].tsx';let s=fs.readFileSync(p,'utf8');const a='    const next = (selectedIndex + direction + photos.length) % photos.length;\n    setSelectedId(photos[next].id);';const b='    const next = (selectedIndex + direction + photos.length) % photos.length;\n    const nextPhoto = photos[next];\n    if (!nextPhoto) return;\n    setSelectedId(nextPhoto.id);';if(!s.includes(a))throw new Error('gallery target not found');fs.writeFileSync(p,s.replace(a,b));"
 
       - name: Set up Node
         uses: actions/setup-node@v4
