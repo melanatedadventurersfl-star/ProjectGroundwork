@@ -39,6 +39,7 @@ export type AppIconName =
   | 'badge'
   | 'time'
   | 'calendar'
+  | 'share'
   | 'close'
   | 'delete';
 
@@ -77,6 +78,7 @@ const icons: Record<AppIconName, IoniconName> = {
   badge: 'medal-outline',
   time: 'time-outline',
   calendar: 'calendar-outline',
+  share: 'share-social-outline',
   close: 'close-circle-outline',
   delete: 'trash-outline',
 };
