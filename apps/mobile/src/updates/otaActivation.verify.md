@@ -1,0 +1,1 @@
+Verification must occur after a successful boot and compare the expected OTA identity to the active Expo update identity.
