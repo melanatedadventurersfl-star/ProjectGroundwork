@@ -1,229 +1,235 @@
-import * as ImagePicker from 'expo-image-picker';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { uploadMemoryPhoto } from '../../../src/passport/api';
+import { getJourney, getOwnedMemoryPhotos, type MemoryPhoto } from '../../../src/passport/api';
+import { AppIcon } from '../../../src/ui/AppIcon';
 
-type SelectedPhoto = {
-  uri: string;
-  mimeType?: string | null;
-};
-
-type Visibility = 'private' | 'group';
-
-function uploadErrorMessage(caught: unknown) {
-  if (caught instanceof Error && caught.message.trim()) return caught.message;
-  if (caught && typeof caught === 'object' && 'message' in caught) {
-    const message = (caught as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim()) return message;
-  }
-  return 'Please try again.';
-}
-
-export default function AddAdventurePhotoScreen() {
+export default function AdventurePhotoGalleryScreen() {
   const { adventureId } = useLocalSearchParams<{ adventureId: string }>();
-  const [photo, setPhoto] = useState<SelectedPhoto | null>(null);
-  const [caption, setCaption] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>('private');
-  const [uploading, setUploading] = useState(false);
+  const [photos, setPhotos] = useState<MemoryPhoto[]>([]);
+  const [title, setTitle] = useState('Adventure Photos');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  async function chooseFromLibrary() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photo access needed', 'Allow photo access to choose an adventure memory.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: false,
-      quality: 0.9,
-      exif: false,
-    });
-
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      const asset = result.assets[0];
-      setPhoto({ uri: asset.uri, mimeType: asset.mimeType });
-    }
-  }
-
-  async function takePhoto() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Camera access needed', 'Allow camera access to take an adventure photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.9,
-      exif: false,
-    });
-
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      const asset = result.assets[0];
-      setPhoto({ uri: asset.uri, mimeType: asset.mimeType });
-    }
-  }
-
-  function addPhotoMenu() {
-    Alert.alert('Add a photo', 'Choose where your memory should come from.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Photo Library', onPress: () => void chooseFromLibrary() },
-      { text: 'Take Photo', onPress: () => void takePhoto() },
-    ]);
-  }
-
-  async function upload() {
-    if (!adventureId || !photo) return;
-    setUploading(true);
-
+  const load = useCallback(async () => {
+    if (!adventureId) return;
     try {
-      await uploadMemoryPhoto({
-        adventureId,
-        localUri: photo.uri,
-        mimeType: photo.mimeType,
-        caption,
-        visibility,
-      });
-
-      Alert.alert(
-        'Memory saved',
-        visibility === 'group'
-          ? 'Your photo was saved and submitted for the Event Gallery. It will appear there after moderation.'
-          : 'Your photo was saved privately to this adventure.',
-        [{ text: 'Done', onPress: () => router.back() }],
-      );
+      const [ownedPhotos, journey] = await Promise.all([
+        getOwnedMemoryPhotos(adventureId),
+        getJourney(),
+      ]);
+      setPhotos(ownedPhotos.filter((photo) => photo.source_kind !== 'event_upload'));
+      setTitle(journey.find((item) => item.adventure_id === adventureId)?.title ?? 'Adventure Photos');
+      setError(null);
     } catch (caught) {
-      Alert.alert('Unable to save memory', uploadErrorMessage(caught));
+      setError(caught instanceof Error ? caught.message : 'Unable to load these photos.');
     } finally {
-      setUploading(false);
+      setLoading(false);
+      setRefreshing(false);
     }
+  }, [adventureId]);
+
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const selectedIndex = useMemo(
+    () => photos.findIndex((photo) => photo.id === selectedId),
+    [photos, selectedId],
+  );
+  const selectedPhoto = selectedIndex >= 0 ? photos[selectedIndex] : null;
+
+  function move(direction: -1 | 1) {
+    if (!photos.length || selectedIndex < 0) return;
+    const next = (selectedIndex + direction + photos.length) % photos.length;
+    setSelectedId(photos[next].id);
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator color="#F5C341" />
+        <Text style={styles.loadingText}>Opening gallery…</Text>
+      </SafeAreaView>
+    );
   }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); void load(); }}
+            tintColor="#F5C341"
+          />
+        )}
+      >
         <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Text style={styles.back}>‹</Text>
+          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconButton}>
+            <AppIcon name="chevron-forward" color="#FFF8E8" size={23} style={{ transform: [{ rotate: '180deg' }] }} />
           </Pressable>
-          <Text style={styles.topTitle}>ADD A MEMORY</Text>
-          <View style={styles.spacer} />
+          <Text style={styles.topTitle}>PHOTO GALLERY</Text>
+          <Pressable
+            onPress={() => adventureId && router.push(`/passport/photos/add/${adventureId}`)}
+            hitSlop={8}
+            style={styles.iconButton}
+            accessibilityRole="button"
+            accessibilityLabel="Add photos"
+          >
+            <Text style={styles.addPlus}>＋</Text>
+          </Pressable>
         </View>
 
-        <View style={styles.intro}>
-          <Text style={styles.eyebrow}>PHOTOS FROM THIS ADVENTURE</Text>
-          <Text style={styles.title}>Keep a moment from the trail.</Text>
-          <Text style={styles.body}>Add a photo, a quick caption, and choose whether it stays private or is submitted to the Event Gallery.</Text>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>YOUR ADVENTURE</Text>
+          <Text style={styles.title}>{title}</Text>
+          <View style={styles.headerMeta}>
+            <Text style={styles.count}>{photos.length} photo{photos.length === 1 ? '' : 's'}</Text>
+            <Pressable
+              style={styles.addButton}
+              onPress={() => adventureId && router.push(`/passport/photos/add/${adventureId}`)}
+            >
+              <AppIcon name="camera" color="#17211C" size={15} />
+              <Text style={styles.addButtonText}>Add Photos</Text>
+            </Pressable>
+          </View>
         </View>
 
-        {photo ? (
-          <View style={styles.previewCard}>
-            <Image source={{ uri: photo.uri }} style={styles.preview} />
-            <View style={styles.previewActions}>
-              <Text style={styles.previewReady}>Photo ready</Text>
-              <Pressable onPress={addPhotoMenu} hitSlop={8}>
-                <Text style={styles.changeText}>Change</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {photos.length ? (
+          <View style={styles.grid}>
+            {photos.map((photo) => (
+              <Pressable
+                key={photo.id}
+                style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+                onPress={() => setSelectedId(photo.id)}
+                accessibilityRole="imagebutton"
+                accessibilityLabel={photo.caption ? `Open photo: ${photo.caption}` : 'Open photo'}
+              >
+                <Image source={{ uri: photo.image_url }} style={styles.tileImage} />
+                <View style={styles.tileShade} />
+                {photo.caption ? <Text style={styles.tileCaption} numberOfLines={2}>{photo.caption}</Text> : null}
+                {photo.visibility === 'private' ? (
+                  <View style={styles.privatePill}><Text style={styles.privateText}>PRIVATE</Text></View>
+                ) : null}
               </Pressable>
-            </View>
+            ))}
           </View>
         ) : (
-          <Pressable style={styles.addPhotoButton} onPress={addPhotoMenu}>
-            <View style={styles.addPhotoIcon}><Text style={styles.addPhotoIconText}>＋</Text></View>
-            <View style={styles.addPhotoCopy}>
-              <Text style={styles.addPhotoTitle}>Add Photo</Text>
-              <Text style={styles.addPhotoBody}>Choose from your library or take one now</Text>
-            </View>
-            <Text style={styles.addPhotoChevron}>›</Text>
-          </Pressable>
-        )}
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Caption <Text style={styles.optional}>(optional)</Text></Text>
-          <TextInput
-            value={caption}
-            onChangeText={setCaption}
-            maxLength={240}
-            placeholder="What was happening in this moment?"
-            placeholderTextColor="#738078"
-            style={styles.input}
-            multiline
-          />
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Visibility</Text>
-          <View style={styles.visibilityToggle}>
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}><AppIcon name="photos" color="#D7B45A" size={30} /></View>
+            <Text style={styles.emptyTitle}>No photos in this adventure yet</Text>
+            <Text style={styles.emptyBody}>Add a few moments and this becomes your visual scrapbook from the trip.</Text>
             <Pressable
-              style={[styles.visibilityOption, visibility === 'private' && styles.visibilitySelected]}
-              onPress={() => setVisibility('private')}
+              style={styles.emptyButton}
+              onPress={() => adventureId && router.push(`/passport/photos/add/${adventureId}`)}
             >
-              <Text style={[styles.visibilityTitle, visibility === 'private' && styles.visibilityTitleSelected]}>Only me</Text>
-              <Text style={[styles.visibilityHint, visibility === 'private' && styles.visibilityHintSelected]}>Private memory</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.visibilityOption, visibility === 'group' && styles.visibilitySelected]}
-              onPress={() => setVisibility('group')}
-            >
-              <Text style={[styles.visibilityTitle, visibility === 'group' && styles.visibilityTitleSelected]}>Event Gallery</Text>
-              <Text style={[styles.visibilityHint, visibility === 'group' && styles.visibilityHintSelected]}>After moderation</Text>
+              <Text style={styles.emptyButtonText}>Add Your First Photo</Text>
             </Pressable>
           </View>
-          <Text style={styles.visibilityNote}>{visibility === 'private' ? 'Only you can see this memory.' : 'Attendees can see it in the adventure gallery after approval.'}</Text>
-        </View>
-
-        <Pressable
-          style={[styles.uploadButton, (!photo || uploading) && styles.disabled]}
-          disabled={!photo || uploading}
-          onPress={() => void upload()}
-        >
-          <Text style={styles.uploadText}>{uploading ? 'Saving…' : 'Save Memory'}</Text>
-        </Pressable>
+        )}
       </ScrollView>
+
+      <Modal visible={Boolean(selectedPhoto)} transparent animationType="fade" onRequestClose={() => setSelectedId(null)}>
+        <View style={styles.viewer}>
+          <SafeAreaView style={styles.viewerSafe}>
+            <View style={styles.viewerTopBar}>
+              <Pressable onPress={() => setSelectedId(null)} style={styles.viewerClose} hitSlop={10}>
+                <Text style={styles.viewerCloseText}>×</Text>
+              </Pressable>
+              <Text style={styles.viewerCount}>{selectedIndex + 1} / {photos.length}</Text>
+              <View style={styles.viewerSpacer} />
+            </View>
+
+            {selectedPhoto ? (
+              <View style={styles.viewerBody}>
+                <Image source={{ uri: selectedPhoto.image_url }} style={styles.viewerImage} resizeMode="contain" />
+
+                {photos.length > 1 ? (
+                  <>
+                    <Pressable style={[styles.navButton, styles.navLeft]} onPress={() => move(-1)}>
+                      <Text style={styles.navText}>‹</Text>
+                    </Pressable>
+                    <Pressable style={[styles.navButton, styles.navRight]} onPress={() => move(1)}>
+                      <Text style={styles.navText}>›</Text>
+                    </Pressable>
+                  </>
+                ) : null}
+
+                <View style={styles.viewerInfo}>
+                  {selectedPhoto.caption ? <Text style={styles.viewerCaption}>{selectedPhoto.caption}</Text> : null}
+                  <Text style={styles.viewerMeta}>{selectedPhoto.visibility === 'private' ? 'Only you can see this photo' : 'Shared with the adventure'}</Text>
+                </View>
+              </View>
+            ) : null}
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0F1713' },
-  content: { padding: 18, paddingBottom: 48, gap: 18 },
-  topBar: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  back: { width: 42, color: '#FFF8E8', fontSize: 38, lineHeight: 40, fontWeight: '300' },
-  topTitle: { color: '#D7B45A', fontSize: 12, fontWeight: '900', letterSpacing: 1.2 },
-  spacer: { width: 42 },
-  intro: { gap: 6 },
+  safe: { flex: 1, backgroundColor: '#09110F' },
+  center: { flex: 1, backgroundColor: '#09110F', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  loadingText: { color: '#A7B1AB', fontWeight: '700' },
+  content: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 90, gap: 18 },
+  topBar: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  topTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
+  iconButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  addPlus: { color: '#F5C341', fontSize: 29, lineHeight: 32, fontWeight: '500' },
+  header: { gap: 5 },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
-  title: { color: '#FFF8E8', fontSize: 28, lineHeight: 32, fontWeight: '900' },
-  body: { color: '#96A199', lineHeight: 19, fontSize: 13 },
-  addPhotoButton: { minHeight: 82, borderWidth: 1, borderColor: '#35463C', backgroundColor: '#151F1A', borderRadius: 18, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  addPhotoIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D7B45A' },
-  addPhotoIconText: { color: '#17211C', fontSize: 27, lineHeight: 30, fontWeight: '700' },
-  addPhotoCopy: { flex: 1 },
-  addPhotoTitle: { color: '#FFF8E8', fontWeight: '900', fontSize: 16 },
-  addPhotoBody: { color: '#89968E', fontSize: 12, marginTop: 3 },
-  addPhotoChevron: { color: '#D7B45A', fontSize: 30, lineHeight: 32 },
-  previewCard: { borderRadius: 18, overflow: 'hidden', backgroundColor: '#151F1A', borderWidth: 1, borderColor: '#2D3B33' },
-  preview: { width: '100%', aspectRatio: 1.35, backgroundColor: '#1D2822' },
-  previewActions: { minHeight: 46, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  previewReady: { color: '#AAB6AF', fontSize: 12, fontWeight: '700' },
-  changeText: { color: '#D7B45A', fontWeight: '900' },
-  fieldGroup: { gap: 9 },
-  label: { color: '#FFF8E8', fontWeight: '900', fontSize: 15 },
-  optional: { color: '#7F8A83', fontWeight: '600' },
-  input: { minHeight: 86, backgroundColor: '#151F1A', borderWidth: 1, borderColor: '#2D3B33', borderRadius: 14, color: '#FFF8E8', padding: 14, textAlignVertical: 'top', fontSize: 15 },
-  visibilityToggle: { flexDirection: 'row', gap: 8 },
-  visibilityOption: { flex: 1, minHeight: 62, borderWidth: 1, borderColor: '#35463C', backgroundColor: '#151F1A', borderRadius: 14, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  visibilitySelected: { borderColor: '#D7B45A', backgroundColor: '#253127' },
-  visibilityTitle: { color: '#D8DFDB', fontWeight: '900', fontSize: 13 },
-  visibilityTitleSelected: { color: '#F5C341' },
-  visibilityHint: { color: '#748078', fontSize: 10.5, marginTop: 2 },
-  visibilityHintSelected: { color: '#B8C1BB' },
-  visibilityNote: { color: '#829087', fontSize: 11.5, lineHeight: 16 },
-  uploadButton: { backgroundColor: '#D7B45A', borderRadius: 15, padding: 16, alignItems: 'center' },
-  uploadText: { color: '#17211C', fontWeight: '900', fontSize: 16 },
-  disabled: { opacity: 0.45 },
+  title: { color: '#FFF8E8', fontSize: 25, lineHeight: 30, fontWeight: '900' },
+  headerMeta: { marginTop: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  count: { color: '#8F9C95', fontSize: 12.5, fontWeight: '800' },
+  addButton: { minHeight: 38, borderRadius: 19, paddingHorizontal: 14, backgroundColor: '#F5C341', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  addButtonText: { color: '#17211C', fontSize: 12, fontWeight: '900' },
+  error: { color: '#F3A6A6', backgroundColor: '#2C1818', borderRadius: 12, padding: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tile: { width: '48.7%', aspectRatio: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#17211C', position: 'relative', borderWidth: 1, borderColor: '#26342D' },
+  tileImage: { width: '100%', height: '100%' },
+  tileShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,8,.08)' },
+  tileCaption: { position: 'absolute', left: 9, right: 9, bottom: 9, color: '#FFF8E8', fontSize: 11, lineHeight: 14, fontWeight: '800', textShadowColor: 'rgba(0,0,0,.8)', textShadowRadius: 5 },
+  privatePill: { position: 'absolute', left: 8, top: 8, backgroundColor: 'rgba(9,17,15,.78)', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 4 },
+  privateText: { color: '#F0D37A', fontSize: 8.5, fontWeight: '900', letterSpacing: .6 },
+  pressed: { opacity: .7 },
+  emptyCard: { borderWidth: 1, borderColor: '#2A3831', backgroundColor: '#111A17', borderRadius: 20, alignItems: 'center', paddingHorizontal: 24, paddingVertical: 34, gap: 8 },
+  emptyIcon: { width: 58, height: 58, borderRadius: 18, backgroundColor: '#1A2821', alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  emptyTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900', textAlign: 'center' },
+  emptyBody: { color: '#8F9C95', fontSize: 12.5, lineHeight: 18, textAlign: 'center' },
+  emptyButton: { marginTop: 8, backgroundColor: '#D7B45A', borderRadius: 16, paddingHorizontal: 18, paddingVertical: 12 },
+  emptyButtonText: { color: '#17211C', fontWeight: '900', fontSize: 12.5 },
+  viewer: { flex: 1, backgroundColor: 'rgba(4,8,7,.98)' },
+  viewerSafe: { flex: 1 },
+  viewerTopBar: { minHeight: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  viewerClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#17211C', alignItems: 'center', justifyContent: 'center' },
+  viewerCloseText: { color: '#FFF8E8', fontSize: 28, lineHeight: 30, fontWeight: '300' },
+  viewerCount: { color: '#D8DFDB', fontWeight: '900', fontSize: 12 },
+  viewerSpacer: { width: 42 },
+  viewerBody: { flex: 1, position: 'relative', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '76%' },
+  navButton: { position: 'absolute', top: '43%', width: 42, height: 54, borderRadius: 21, backgroundColor: 'rgba(9,17,15,.72)', alignItems: 'center', justifyContent: 'center' },
+  navLeft: { left: 10 },
+  navRight: { right: 10 },
+  navText: { color: '#FFF8E8', fontSize: 36, lineHeight: 40, fontWeight: '300' },
+  viewerInfo: { minHeight: 90, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20, gap: 5 },
+  viewerCaption: { color: '#FFF8E8', fontSize: 15, lineHeight: 21, fontWeight: '800' },
+  viewerMeta: { color: '#84918A', fontSize: 11.5 },
 });
