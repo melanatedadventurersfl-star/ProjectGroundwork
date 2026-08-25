@@ -19,6 +19,7 @@ import {
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
 import { BackgroundUpdateManager } from '../src/updates/BackgroundUpdateManager';
+import { OtaActivationGuard } from '../src/updates/OtaActivationGuard';
 import { currentReleaseNotes } from '../src/updates/releaseNotes';
 import { hasSeenRelease, markReleaseSeen } from '../src/updates/releasePreference';
 import { WhatsNewModal } from '../src/updates/WhatsNewModal';
@@ -202,6 +203,7 @@ function AppShell() {
     <View style={styles.appShell} testID="app-shell">
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
+      <OtaActivationGuard />
       {hideTopNav ? null : <PersistentTopNav />}
       <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
         <StatusBar style="light" />
