@@ -1,0 +1,68 @@
+name: Fix community thread white screen once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/fix-community-thread-white-screen-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove native video dependency from community thread until new APK is installed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("apps/mobile/app/community/[id].tsx")
+          text = path.read_text()
+          text = text.replace("import { CommunityVideoPlayer } from '../../src/community/CommunityVideoPlayer';\n", "")
+          text = text.replace(
+              "function initials(name: string) {\n  return name.split(/\\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';\n}",
+              "function initials(name?: string | null) {\n  return (name ?? '').split(/\\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';\n}"
+          )
+          old = '''                  {post.media_type === 'video' && post.media_url ? (\n                    <CommunityVideoPlayer uri={post.media_url} aspectRatio={4 / 3} />\n                  ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}'''
+          new = '''                  {post.media_type === 'video' && post.media_url ? (\n                    <View style={styles.postVideo}>\n                      <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>\n                      <Text style={styles.postVideoTitle}>Video post</Text>\n                      <Text style={styles.postVideoMeta}>Playback will be available after installing the new preview APK.</Text>\n                    </View>\n                  ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}'''
+          if old not in text:
+              raise SystemExit('Expected community thread video block was not found')
+          text = text.replace(old, new)
+          path.write_text(text)
+          PY
+
+      - name: Assert thread no longer imports native video player
+        run: |
+          if grep -q "CommunityVideoPlayer\|expo-video" "apps/mobile/app/community/[id].tsx"; then
+            echo "Community thread still references native video playback"
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify mobile typecheck
+        run: |
+          npm ci
+          npm run mobile:typecheck
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "apps/mobile/app/community/[id].tsx"
+          git commit -m "Fix community thread white screen before native video APK" || exit 0
+          git push
