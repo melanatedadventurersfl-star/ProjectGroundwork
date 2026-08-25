@@ -31,6 +31,13 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Assert native video player is not imported by Outpost
+        run: |
+          if grep -q "CommunityVideoPlayer\|expo-video" apps/mobile/src/community/OutpostScreen.tsx; then
+            echo "Outpost still references the native video player"
+            exit 1
+          fi
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -50,5 +57,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/mobile/src/community/OutpostScreen.tsx
-          git commit -m "Restore known-good Outpost screen" || exit 0
+          git commit -m "Restore Outpost without native video dependency" || exit 0
           git push
+
+# retriggered 2026-08-24 21:24 ET after confirming CommunityVideoPlayer had been reintroduced on main
