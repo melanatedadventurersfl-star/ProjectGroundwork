@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { CommunityVideoPlayer } from '../../src/community/CommunityVideoPlayer';
 import { supabase } from '../../src/lib/supabase';
 
+type MediaType = 'image' | 'video';
 type ReportRow = {
   id: string;
   post_id: string | null;
@@ -16,6 +18,8 @@ type ReportRow = {
   content_snapshot: string | null;
   created_at: string;
   action_taken: string | null;
+  media_url: string | null;
+  media_type: MediaType | null;
 };
 
 type EnforcementAction = 'advisory' | 'warning' | 'posting_restriction' | 'suspension' | 'ban';
@@ -34,6 +38,13 @@ const DURATIONS = [
   { label: '7 days', hours: 168 },
   { label: '30 days', hours: 720 },
 ];
+
+async function signedMediaUrl(path: string | null | undefined) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const { data, error } = await supabase.storage.from('community-media').createSignedUrl(path, 60 * 60);
+  return error ? null : data.signedUrl;
+}
 
 export default function ModerationQueueScreen() {
   const [loading, setLoading] = useState(true);
@@ -66,8 +77,55 @@ export default function ModerationQueueScreen() {
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
-    if (reportError) setError(reportError.message);
-    else setReports((data ?? []) as ReportRow[]);
+    if (reportError) {
+      setError(reportError.message);
+      setLoading(false);
+      return;
+    }
+
+    const raw = (data ?? []) as Omit<ReportRow, 'media_url' | 'media_type'>[];
+    const postIds = raw.map((item) => item.post_id).filter((value): value is string => Boolean(value));
+    const commentIds = raw.map((item) => item.comment_id).filter((value): value is string => Boolean(value));
+
+    const [postResult, commentResult] = await Promise.all([
+      postIds.length
+        ? supabase.from('community_posts').select('id,image_url,metadata').in('id', postIds)
+        : Promise.resolve({ data: [], error: null }),
+      commentIds.length
+        ? supabase.from('community_comments').select('id,image_paths').in('id', commentIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (postResult.error || commentResult.error) {
+      setError(postResult.error?.message ?? commentResult.error?.message ?? 'Unable to load reported media.');
+      setLoading(false);
+      return;
+    }
+
+    const postMap = new Map((postResult.data ?? []).map((item: any) => [item.id as string, item]));
+    const commentMap = new Map((commentResult.data ?? []).map((item: any) => [item.id as string, item]));
+
+    const enriched = await Promise.all(raw.map(async (report): Promise<ReportRow> => {
+      if (report.post_id) {
+        const post: any = postMap.get(report.post_id);
+        const path = post?.image_url as string | null | undefined;
+        return {
+          ...report,
+          media_url: await signedMediaUrl(path),
+          media_type: path ? (post?.metadata?.media_type === 'video' ? 'video' : 'image') : null,
+        };
+      }
+
+      if (report.comment_id) {
+        const comment: any = commentMap.get(report.comment_id);
+        const path = Array.isArray(comment?.image_paths) ? comment.image_paths[0] : null;
+        return { ...report, media_url: await signedMediaUrl(path), media_type: path ? 'image' : null };
+      }
+
+      return { ...report, media_url: null, media_type: null };
+    }));
+
+    setReports(enriched);
     setLoading(false);
   }
 
@@ -132,13 +190,9 @@ export default function ModerationQueueScreen() {
   const selectedDefinition = useMemo(() => ACTIONS.find((item) => item.value === selectedAction), [selectedAction]);
   const needsDuration = selectedAction === 'posting_restriction' || selectedAction === 'suspension';
 
-  if (loading) {
-    return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" size="large" /><Text style={styles.muted}>Loading moderation queue…</Text></View></SafeAreaView>;
-  }
+  if (loading) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" size="large" /><Text style={styles.muted}>Loading moderation queue…</Text></View></SafeAreaView>;
 
-  if (!authorized) {
-    return <SafeAreaView style={styles.safe}><View style={styles.content}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable><View style={styles.denied}><Text style={styles.eyebrow}>PROTECTED AREA</Text><Text style={styles.title}>Admin access required</Text>{error ? <Text style={styles.error}>{error}</Text> : null}</View></View></SafeAreaView>;
-  }
+  if (!authorized) return <SafeAreaView style={styles.safe}><View style={styles.content}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable><View style={styles.denied}><Text style={styles.eyebrow}>PROTECTED AREA</Text><Text style={styles.title}>Admin access required</Text>{error ? <Text style={styles.error}>{error}</Text> : null}</View></View></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -169,7 +223,14 @@ export default function ModerationQueueScreen() {
             </View>
             <Text style={styles.target}>{targetLabel} report</Text>
             <Text style={styles.reason}>{report.reason}</Text>
-            {report.content_snapshot ? <View style={styles.snapshot}><Text style={styles.snapshotLabel}>REPORTED CONTENT</Text><Text style={styles.snapshotText}>{report.content_snapshot}</Text></View> : null}
+            <View style={styles.snapshot}>
+              <Text style={styles.snapshotLabel}>REPORTED CONTENT</Text>
+              {report.media_url && report.media_type === 'image' ? <Image source={{ uri: report.media_url }} style={styles.reportImage} resizeMode="contain" /> : null}
+              {report.media_url && report.media_type === 'video' ? <CommunityVideoPlayer uri={report.media_url} /> : null}
+              {report.content_snapshot ? <Text style={styles.snapshotText}>{report.content_snapshot}</Text> : null}
+              {!report.media_url && report.content_snapshot?.toLowerCase().includes('photo') ? <Text style={styles.mediaMissing}>Photo evidence could not be loaded. Refresh the queue or verify the stored media file.</Text> : null}
+              {!report.media_url && report.content_snapshot?.toLowerCase().includes('video') ? <Text style={styles.mediaMissing}>Video evidence could not be loaded. Refresh the queue or verify the stored media file.</Text> : null}
+            </View>
             {report.details ? <Text style={styles.details}>Reporter note: {report.details}</Text> : null}
 
             <View style={styles.actions}>
@@ -186,28 +247,13 @@ export default function ModerationQueueScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.sheet}>
             <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
-              <View style={styles.sheetHeader}>
-                <View style={styles.flex}><Text style={styles.eyebrow}>ENFORCEMENT</Text><Text style={styles.sheetTitle}>Choose an action</Text></View>
-                <Pressable onPress={() => setSelectedReport(null)}><Text style={styles.close}>Close</Text></Pressable>
-              </View>
-
+              <View style={styles.sheetHeader}><View style={styles.flex}><Text style={styles.eyebrow}>ENFORCEMENT</Text><Text style={styles.sheetTitle}>Choose an action</Text></View><Pressable onPress={() => setSelectedReport(null)}><Text style={styles.close}>Close</Text></Pressable></View>
               <Text style={styles.sheetReason}>Report reason: {selectedReport?.reason}</Text>
-
-              <View style={styles.optionList}>
-                {ACTIONS.map((action) => <Pressable key={action.value} onPress={() => chooseAction(action.value)} style={[styles.option, selectedAction === action.value && styles.optionSelected]}>
-                  <View style={[styles.radio, selectedAction === action.value && styles.radioSelected]} />
-                  <View style={styles.flex}><Text style={styles.optionTitle}>{action.label}</Text><Text style={styles.optionDetail}>{action.detail}</Text></View>
-                </Pressable>)}
-              </View>
-
+              <View style={styles.optionList}>{ACTIONS.map((action) => <Pressable key={action.value} onPress={() => chooseAction(action.value)} style={[styles.option, selectedAction === action.value && styles.optionSelected]}><View style={[styles.radio, selectedAction === action.value && styles.radioSelected]} /><View style={styles.flex}><Text style={styles.optionTitle}>{action.label}</Text><Text style={styles.optionDetail}>{action.detail}</Text></View></Pressable>)}</View>
               {needsDuration ? <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>DURATION</Text><View style={styles.durationRow}>{DURATIONS.map((item) => <Pressable key={item.hours} onPress={() => setDurationHours(item.hours)} style={[styles.durationChip, durationHours === item.hours && styles.durationChipSelected]}><Text style={[styles.durationText, durationHours === item.hours && styles.durationTextSelected]}>{item.label}</Text></Pressable>)}</View></View> : null}
-
               <View style={styles.toggleRow}><View style={styles.flex}><Text style={styles.fieldLabel}>REMOVE REPORTED CONTENT</Text><Text style={styles.toggleHint}>The report snapshot remains in moderation history.</Text></View><Switch value={removeContent} onValueChange={setRemoveContent} trackColor={{ false: '#39483F', true: '#8C7133' }} thumbColor={removeContent ? '#F2D17E' : '#C7CEC9'} /></View>
-
               <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>INTERNAL MODERATOR NOTE{selectedAction === 'ban' ? ' · REQUIRED' : ''}</Text><TextInput value={note} onChangeText={setNote} placeholder="Why are you taking this action? Add context for future moderators." placeholderTextColor="#68766E" multiline style={styles.noteInput} /></View>
-
               <View style={styles.selectionSummary}><Text style={styles.summaryTitle}>{selectedDefinition?.label}</Text><Text style={styles.summaryCopy}>{selectedDefinition?.detail}</Text>{needsDuration ? <Text style={styles.summaryMeta}>Ends after {DURATIONS.find((item) => item.hours === durationHours)?.label ?? `${durationHours} hours`}</Text> : null}</View>
-
               <Pressable disabled={Boolean(busyId)} style={[styles.confirmButton, selectedAction === 'ban' && styles.banButton]} onPress={() => void confirmEnforcement()}><Text style={styles.confirmText}>{busyId ? 'Applying action…' : selectedAction === 'ban' ? 'Confirm permanent ban' : 'Confirm enforcement'}</Text></Pressable>
             </ScrollView>
           </View>
@@ -223,7 +269,7 @@ const styles = StyleSheet.create({
   policyCard: { borderRadius: 16, borderWidth: 1, borderColor: '#5B4E2B', backgroundColor: '#211E14', padding: 14, gap: 4 }, policyTitle: { color: '#F2D17E', fontSize: 14, fontWeight: '900' }, policyCopy: { color: '#FFF8E8', fontSize: 12, lineHeight: 18, fontWeight: '800' }, policyHint: { color: '#A99E79', fontSize: 11, lineHeight: 16 },
   denied: { marginTop: 28, padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#523B35', backgroundColor: '#211817', gap: 8 }, errorBox: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#5C3A36', backgroundColor: '#241817' }, error: { color: '#FFB4A9', fontSize: 12, lineHeight: 18 },
   empty: { marginTop: 18, alignItems: 'center', gap: 6, borderRadius: 18, borderWidth: 1, borderColor: '#2D3B33', backgroundColor: '#17211C', padding: 24 }, emptyTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
-  card: { borderRadius: 18, borderWidth: 1, borderColor: '#33443A', backgroundColor: '#17211C', padding: 15, gap: 10 }, cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, priorityBadge: { borderRadius: 999, borderWidth: 1, borderColor: '#53665A', backgroundColor: '#213028', paddingHorizontal: 8, paddingVertical: 4 }, highPriority: { borderColor: '#7A433C', backgroundColor: '#2A1D1B' }, priorityText: { color: '#B8C5BD', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 }, highPriorityText: { color: '#FFB4A9' }, date: { color: '#7F8B83', fontSize: 10 }, target: { color: '#8D9A92', fontSize: 11, fontWeight: '800' }, reason: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' }, snapshot: { borderRadius: 12, backgroundColor: '#101914', borderWidth: 1, borderColor: '#2A3A31', padding: 12, gap: 5 }, snapshotLabel: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 }, snapshotText: { color: '#E2E8E4', fontSize: 14, lineHeight: 20 }, details: { color: '#A9B4AD', fontSize: 12, lineHeight: 18 }, actions: { gap: 8, marginTop: 2 },
+  card: { borderRadius: 18, borderWidth: 1, borderColor: '#33443A', backgroundColor: '#17211C', padding: 15, gap: 10 }, cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }, priorityBadge: { borderRadius: 999, borderWidth: 1, borderColor: '#53665A', backgroundColor: '#213028', paddingHorizontal: 8, paddingVertical: 4 }, highPriority: { borderColor: '#7A433C', backgroundColor: '#2A1D1B' }, priorityText: { color: '#B8C5BD', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 }, highPriorityText: { color: '#FFB4A9' }, date: { color: '#7F8B83', fontSize: 10 }, target: { color: '#8D9A92', fontSize: 11, fontWeight: '800' }, reason: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' }, snapshot: { borderRadius: 12, backgroundColor: '#101914', borderWidth: 1, borderColor: '#2A3A31', padding: 12, gap: 8 }, snapshotLabel: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 }, snapshotText: { color: '#E2E8E4', fontSize: 14, lineHeight: 20 }, reportImage: { width: '100%', height: 260, borderRadius: 12, backgroundColor: '#080D0B' }, mediaMissing: { color: '#FFB4A9', fontSize: 11, lineHeight: 16 }, details: { color: '#A9B4AD', fontSize: 12, lineHeight: 18 }, actions: { gap: 8, marginTop: 2 },
   secondaryButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#45584D', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C2822' }, secondaryText: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' }, enforceButton: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#9A7B34', alignItems: 'center', justifyContent: 'center', backgroundColor: '#D7B45A' }, enforceText: { color: '#17150E', fontSize: 13, fontWeight: '900' }, removeButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#7A433C', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2A1D1B' }, removeText: { color: '#FFB4A9', fontSize: 12, fontWeight: '900' }, dismissButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center' }, dismissText: { color: '#8D9A92', fontSize: 12, fontWeight: '800' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(3,8,5,0.72)', justifyContent: 'flex-end' }, sheet: { maxHeight: '92%', backgroundColor: '#121C17', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: '#33443A' }, sheetContent: { padding: 20, paddingBottom: 40, gap: 16 }, sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 }, sheetTitle: { color: '#FFF8E8', fontSize: 25, fontWeight: '900', marginTop: 3 }, close: { color: '#D7B45A', fontSize: 13, fontWeight: '900', paddingVertical: 6 }, sheetReason: { color: '#A9B4AD', fontSize: 12, lineHeight: 18 },
   optionList: { gap: 8 }, option: { flexDirection: 'row', gap: 11, padding: 13, borderRadius: 14, borderWidth: 1, borderColor: '#314138', backgroundColor: '#17211C' }, optionSelected: { borderColor: '#9A7B34', backgroundColor: '#211E14' }, radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#617067', marginTop: 2 }, radioSelected: { borderColor: '#D7B45A', backgroundColor: '#D7B45A' }, optionTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' }, optionDetail: { color: '#94A199', fontSize: 11, lineHeight: 16, marginTop: 2 },
