@@ -16,7 +16,6 @@ import {
   type CommunityPost,
   type CommunityPostType,
 } from './api';
-import { CommunityVideoPlayer } from './CommunityVideoPlayer';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
 import { distanceMiles, pointForCity } from '../explore/location';
@@ -129,9 +128,7 @@ function PostCard({ post }: { post: CommunityPost }) {
         <PostOptionsButton postId={post.id} authorId={post.author_id} body={post.body} />
       </View>
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
-      {post.media_type === 'video' && post.media_url ? (
-        <CommunityVideoPlayer uri={post.media_url} />
-      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
+      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       <View style={styles.engagementWrap}>
         <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} />
       </View>
