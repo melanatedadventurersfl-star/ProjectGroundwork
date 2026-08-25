@@ -1,4 +1,4 @@
-name: Restore Outpost known good once
+name: Restore current Outpost once
 
 on:
   push:
@@ -17,9 +17,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore last known-good Outpost screen
+      - name: Restore current Outpost screen
         run: |
-          git show 2288919d8dda894a4e8f363b7a2a724e8e5e24cd:'apps/mobile/src/community/OutpostScreen.tsx' > apps/mobile/src/community/OutpostScreen.tsx
+          git show 47c1670fba607a8528afcb75c745cd6d3f42bd63:'apps/mobile/src/community/OutpostScreen.tsx' > apps/mobile/src/community/OutpostScreen.tsx
           python3 - <<'PY'
           from pathlib import Path
           path = Path('apps/mobile/src/community/OutpostScreen.tsx')
@@ -57,7 +57,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/mobile/src/community/OutpostScreen.tsx
-          git commit -m "Restore Outpost without native video dependency" || exit 0
+          git commit -m "Restore current Outpost experience" || exit 0
           git push
 
-# retriggered 2026-08-24 21:24 ET after confirming CommunityVideoPlayer had been reintroduced on main
+# 2026-08-24: legacy restore target replaced with the latest full Outpost experience before white-screen recovery work.
