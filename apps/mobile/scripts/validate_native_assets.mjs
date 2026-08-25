@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const files = [
-  'apps/mobile/assets/golden_mountain_sunrise_go_melanated.png',
+  'apps/mobile/assets/branding/app-icon/go-melanated-icon-master.png',
   'apps/mobile/assets/ma-splash-icon.png',
   'apps/mobile/assets/ma-pathfinder-mark.png',
 ];
