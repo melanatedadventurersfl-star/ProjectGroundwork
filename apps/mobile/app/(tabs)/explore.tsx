@@ -90,7 +90,8 @@ function matchesQuickTags(
   return tags.every((tag) => (tag === 'Weekend' ? isWeekend(item.starts_at) : tagsForItem.includes(tag)));
 }
 
-function startTime(value: string) {
+function startTime(value?: string | null) {
+  if (!value) return Number.POSITIVE_INFINITY;
   const parsed = Date.parse(value);
   if (!Number.isNaN(parsed)) return parsed;
   const match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -99,7 +100,7 @@ function startTime(value: string) {
   return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
 }
 
-function formatPrice(cents: number) {
+function formatPrice(cents?: number | null) {
   if (!cents) return 'Free';
   const dollars = cents / 100;
   return `From ${dollars.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: dollars % 1 ? 2 : 0 })}`;
@@ -265,8 +266,8 @@ export default function ExploreScreen() {
     if (sort === 'price_high') return b.starting_price_cents - a.starting_price_cents;
     if (sort === 'soonest') return startTime(a.starts_at) - startTime(b.starts_at);
     if (sort === 'latest') return startTime(b.starts_at) - startTime(a.starts_at);
-    if (sort === 'activity') return a.category.localeCompare(b.category) || a.title.localeCompare(b.title);
-    if (sort === 'title') return a.title.localeCompare(b.title);
+    if (sort === 'activity') return (a.category ?? '').localeCompare(b.category ?? '') || (a.title ?? '').localeCompare(b.title ?? '');
+    if (sort === 'title') return (a.title ?? '').localeCompare(b.title ?? '');
     if (searchCenter) {
       const ad = a.latitude == null || a.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: a.latitude, longitude: a.longitude });
       const bd = b.latitude == null || b.longitude == null ? 9999 : distanceMiles(searchCenter, { latitude: b.latitude, longitude: b.longitude });
@@ -302,8 +303,8 @@ export default function ExploreScreen() {
     if (sort === 'farthest') return (b.distance ?? -1) - (a.distance ?? -1);
     if (sort === 'closest') return (a.distance ?? 9999) - (b.distance ?? 9999);
     if (sort === 'latest') return startTime(b.event.starts_at) - startTime(a.event.starts_at);
-    if (sort === 'activity') return a.event.category.localeCompare(b.event.category) || a.event.title.localeCompare(b.event.title);
-    if (sort === 'title') return a.event.title.localeCompare(b.event.title);
+    if (sort === 'activity') return (a.event.category ?? '').localeCompare(b.event.category ?? '') || (a.event.title ?? '').localeCompare(b.event.title ?? '');
+    if (sort === 'title') return (a.event.title ?? '').localeCompare(b.event.title ?? '');
     return startTime(a.event.starts_at) - startTime(b.event.starts_at);
   }), [events, radius, radiusLimit, savedCenter, search, searchCenter, selectedTags, sort]);
 
