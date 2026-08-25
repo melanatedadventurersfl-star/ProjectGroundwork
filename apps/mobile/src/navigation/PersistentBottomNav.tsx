@@ -4,6 +4,7 @@ import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
+import { TesterFeedbackButton } from '../feedback/TesterFeedbackButton';
 import { getProfileAvatarUrl, subscribeProfileAvatar } from '../member/api';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 
@@ -96,6 +97,7 @@ export function PersistentBottomNav() {
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+      <TesterFeedbackButton screenPath={pathname} hidden={!session} />
       {items.map((item) => {
         const active = item.isActive(pathname);
         const color = active ? '#D7B45A' : '#E7DFCF';
