@@ -1,0 +1,70 @@
+name: Fix Android community video rendering
+
+on:
+  push:
+    branches:
+      - fix/android-community-video-rendering
+    paths:
+      - .github/workflows/fix-android-community-video-rendering.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate-video-rendering:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/android-community-video-rendering
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore inline video in Outpost feed
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/mobile/src/community/OutpostScreen.tsx')
+          text = path.read_text()
+
+          import_line = "import { CommunityVideoPlayer } from './CommunityVideoPlayer';"
+          if import_line not in text:
+              anchor = "import { PostEngagementBar } from './PostEngagementBar';"
+              if anchor not in text:
+                  raise SystemExit('Could not find Outpost import anchor')
+              text = text.replace(anchor, import_line + "\n" + anchor, 1)
+
+          old = "      {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode=\"cover\" /> : null}"
+          new = "      {post.media_type === 'video' && post.media_url ? (\n        <CommunityVideoPlayer uri={post.media_url} />\n      ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode=\"cover\" /> : null}"
+          if old not in text:
+              if '<CommunityVideoPlayer uri={post.media_url}' not in text:
+                  raise SystemExit('Could not find Outpost media render block')
+          else:
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Verify clean install
+        run: npm ci
+
+      - name: Validate mobile app
+        run: npm run verify:mobile
+
+      - name: Commit validated fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "apps/mobile/src/community/OutpostScreen.tsx" "apps/mobile/src/community/CommunityVideoPlayer.tsx"
+          git restore .
+          git clean -fd
+          git rm ".github/workflows/fix-android-community-video-rendering.yml"
+          git commit -m "fix: render community videos reliably on Android"
+          git push origin HEAD:fix/android-community-video-rendering
