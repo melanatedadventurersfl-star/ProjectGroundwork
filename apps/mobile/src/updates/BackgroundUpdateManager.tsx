@@ -10,7 +10,7 @@ const UPDATE_NETWORK_TIMEOUT_MS = 10000;
 const FIRST_CHECK_DELAY_MS = 2500;
 const FOREGROUND_CHECK_THROTTLE_MS = 15 * 60 * 1000;
 
-type UpdateState = 'idle' | 'checking' | 'ready' | 'applying' | 'error';
+type UpdateState = 'idle' | 'checking' | 'ready' | 'error';
 type DownloadedUpdateIdentity = { updateId: string | null; commit: string | null };
 
 function downloadedUpdateIdentity(fetched: unknown): DownloadedUpdateIdentity {
@@ -27,13 +27,11 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
   const [state, setState] = useState<UpdateState>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const checkingRef = useRef(false);
-  const applyingRef = useRef(false);
   const lastCheckRef = useRef(0);
   const dismissedRef = useRef(false);
-  const downloadedUpdateRef = useRef<DownloadedUpdateIdentity | null>(null);
 
   const checkForUpdate = useCallback(async (force = false) => {
-    if (disabled || !Updates.isEnabled || checkingRef.current || applyingRef.current || dismissedRef.current) return;
+    if (disabled || !Updates.isEnabled || checkingRef.current || dismissedRef.current) return;
 
     const now = Date.now();
     if (!force && now - lastCheckRef.current < FOREGROUND_CHECK_THROTTLE_MS) return;
@@ -64,52 +62,30 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
       );
 
       if (!fetched.isNew) {
-        downloadedUpdateRef.current = null;
         setState('idle');
         setMessage(null);
         return;
       }
 
-      downloadedUpdateRef.current = downloadedUpdateIdentity(fetched);
-      logStartupStage('background-update-downloaded', downloadedUpdateRef.current);
+      const expected = downloadedUpdateIdentity(fetched);
+      await rememberExpectedOtaUpdate({ ...expected, createdAt: new Date().toISOString() });
+      logStartupStage('background-update-downloaded', expected);
+
+      // Do not call Updates.reloadAsync() here. The regression introduced by the
+      // background updater occurs during in-process OTA activation: Android can
+      // hang on the reload screen and then reopen the previous bundle. Expo will
+      // select the downloaded update on the next cold launch, which avoids that
+      // failing activation path while preserving rollback protection.
       setState('ready');
-      setMessage('The update is downloaded and ready to open.');
+      setMessage('Update downloaded. Close and reopen Go Melanated to finish updating.');
     } catch (error) {
       console.warn('[updates] Background OTA check failed', error);
-      downloadedUpdateRef.current = null;
       setState('error');
       setMessage(null);
     } finally {
       checkingRef.current = false;
     }
   }, [disabled]);
-
-  async function applyDownloadedUpdate() {
-    if (applyingRef.current) return;
-    applyingRef.current = true;
-    setState('applying');
-    setMessage('Opening the new version…');
-
-    const expected = downloadedUpdateRef.current;
-    try {
-      if (expected) {
-        await rememberExpectedOtaUpdate({ ...expected, createdAt: new Date().toISOString() });
-      }
-      logStartupStage('background-update-reload', expected ?? undefined);
-      await Updates.reloadAsync({
-        reloadScreenOptions: {
-          backgroundColor: '#0F1713',
-          fade: true,
-          spinner: { enabled: true, color: '#D7B45A', size: 'large' },
-        },
-      });
-    } catch (error) {
-      console.warn('[updates] Unable to reload downloaded OTA update', error);
-      applyingRef.current = false;
-      setState('ready');
-      setMessage('The update is downloaded. Close and reopen the app to finish applying it.');
-    }
-  }
 
   useEffect(() => {
     if (disabled || !Updates.isEnabled) return;
@@ -125,28 +101,26 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
     };
   }, [checkForUpdate, disabled]);
 
-  if ((state !== 'ready' && state !== 'applying') || !message) return null;
+  if (state !== 'ready' || !message) return null;
 
   return (
     <View style={[styles.banner, { top: Math.max(insets.top, 8) + 8 }]}>
       <View style={styles.copy}>
-        <Text style={styles.eyebrow}>{state === 'applying' ? 'APPLYING UPDATE' : 'UPDATE READY'}</Text>
+        <Text style={styles.eyebrow}>UPDATE DOWNLOADED</Text>
         <Text style={styles.message}>{message}</Text>
       </View>
-      {state === 'ready' ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Open downloaded update" style={styles.restartButton} onPress={() => void applyDownloadedUpdate()}>
-          <Text style={styles.restartText}>Update</Text>
-        </Pressable>
-      ) : null}
-      {state === 'ready' ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Apply update later" hitSlop={10} onPress={() => {
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss update instructions"
+        style={styles.restartButton}
+        onPress={() => {
           dismissedRef.current = true;
           setState('idle');
           setMessage(null);
-        }}>
-          <Text style={styles.laterText}>Later</Text>
-        </Pressable>
-      ) : null}
+        }}
+      >
+        <Text style={styles.restartText}>Got it</Text>
+      </Pressable>
     </View>
   );
 }
@@ -163,5 +137,4 @@ const styles = StyleSheet.create({
   message: { color: '#FFF8E8', fontSize: 12, lineHeight: 17, fontWeight: '700' },
   restartButton: { borderRadius: 12, backgroundColor: '#D7B45A', paddingHorizontal: 12, paddingVertical: 9 },
   restartText: { color: '#102018', fontSize: 12, fontWeight: '900' },
-  laterText: { color: '#A7B0AA', fontSize: 12, fontWeight: '800' },
 });
