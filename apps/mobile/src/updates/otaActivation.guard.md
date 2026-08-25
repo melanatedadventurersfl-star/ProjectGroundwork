@@ -1,0 +1,1 @@
+Activation guard should surface a rollback/mismatch and prevent diagnostics from calling an old bundle current.
