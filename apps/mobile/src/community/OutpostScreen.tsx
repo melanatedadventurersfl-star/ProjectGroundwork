@@ -19,7 +19,6 @@ import {
   type CommunityPost,
   type CommunityPostType,
 } from './api';
-import { CommunityVideoPlayer } from './CommunityVideoPlayer';
 import { PostEngagementBar } from './PostEngagementBar';
 import { PostOptionsButton } from './PostOptionsButton';
 import { distanceMiles, pointForCity } from '../explore/location';
@@ -76,8 +75,8 @@ const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
   { value: 'meetup', label: 'Outing', icon: 'calendar-outline' },
 ];
 
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
+function initials(name?: string | null) {
+  return (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
 }
 
 function relativeTime(value: string) {
@@ -155,7 +154,11 @@ function PostCard({ post }: { post: CommunityPost }) {
       </View>
       {post.body ? <Text style={styles.postBody}>{post.body}</Text> : null}
       {post.media_type === 'video' && post.media_url ? (
-        <CommunityVideoPlayer uri={post.media_url} />
+        <View style={styles.postVideo}>
+          <View style={styles.postVideoPlay}><Ionicons name="play" size={26} color="#101510" /></View>
+          <Text style={styles.postVideoTitle}>Video post</Text>
+          <Text style={styles.postVideoMeta}>Open the post to play this video</Text>
+        </View>
       ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
       <View style={styles.engagementWrap}>
         <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} />
