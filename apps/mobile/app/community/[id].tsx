@@ -2,10 +2,11 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getCommunityFeed, removeCommunityPostMedia, uploadCommunityPostImage, type CommunityPost } from '../../src/community/api';
+import { CommunityVideoPlayer } from '../../src/community/CommunityVideoPlayer';
 import { PostEngagementBar } from '../../src/community/PostEngagementBar';
 import {
   COMMUNITY_REPORT_REASONS,
@@ -43,14 +44,6 @@ function relativeTime(value: string) {
   return days < 7 ? `${days}d` : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function videoDuration(post: CommunityPost) {
-  const value = post.metadata?.media_duration_ms;
-  if (typeof value !== 'number') return null;
-  const totalSeconds = Math.max(0, Math.round(value / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
 
 async function signedReplyImages(paths: string[]) {
   if (!paths.length) return [];
@@ -310,11 +303,7 @@ export default function CampfireConversationScreen() {
                   </View>
                   <Text style={styles.postBody}>{post.body}</Text>
                   {post.media_type === 'video' && post.media_url ? (
-                    <Pressable style={styles.postVideo} onPress={() => void Linking.openURL(post.media_url!)} accessibilityRole="button" accessibilityLabel="Play video">
-                      <View style={styles.postVideoPlay}><Ionicons name="play" size={30} color="#101510" /></View>
-                      <Text style={styles.postVideoTitle}>Play video</Text>
-                      <Text style={styles.postVideoMeta}>{videoDuration(post) ? `${videoDuration(post)} · ` : ''}Opens in your device player</Text>
-                    </Pressable>
+                    <CommunityVideoPlayer uri={post.media_url} aspectRatio={4 / 3} />
                   ) : post.image_url ? <Image source={{ uri: post.image_url }} style={styles.postImage} resizeMode="cover" /> : null}
                   <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={replyCount} />
                 </View>
