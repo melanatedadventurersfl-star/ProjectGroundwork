@@ -9,18 +9,19 @@ const UPDATE_NETWORK_TIMEOUT_MS = 10000;
 const FIRST_CHECK_DELAY_MS = 2500;
 const FOREGROUND_CHECK_THROTTLE_MS = 15 * 60 * 1000;
 
-type UpdateState = 'idle' | 'checking' | 'ready' | 'error';
+type UpdateState = 'idle' | 'checking' | 'ready' | 'applying' | 'error';
 
 export function BackgroundUpdateManager({ disabled = false }: { disabled?: boolean }) {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<UpdateState>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const checkingRef = useRef(false);
+  const applyingRef = useRef(false);
   const lastCheckRef = useRef(0);
   const dismissedRef = useRef(false);
 
   async function checkForUpdate(force = false) {
-    if (disabled || !Updates.isEnabled || checkingRef.current || dismissedRef.current) return;
+    if (disabled || !Updates.isEnabled || checkingRef.current || applyingRef.current || dismissedRef.current) return;
 
     const now = Date.now();
     if (!force && now - lastCheckRef.current < FOREGROUND_CHECK_THROTTLE_MS) return;
@@ -44,20 +45,56 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
       }
 
       logStartupStage('background-update-fetch');
-      await withStartupTimeout(
+      const fetched = await withStartupTimeout(
         Updates.fetchUpdateAsync(),
         'Background update download',
         UPDATE_NETWORK_TIMEOUT_MS,
       );
 
+      // Only offer a restart when Expo confirms that a newer bundle was
+      // actually downloaded. Rollbacks or no-op fetches must not trigger a
+      // reload loop.
+      if (!fetched.isNew) {
+        setState('idle');
+        setMessage(null);
+        return;
+      }
+
       setState('ready');
-      setMessage('An update is ready. Restart once to apply it.');
+      setMessage('The update is downloaded and ready to open.');
     } catch (error) {
       console.warn('[updates] Background OTA check failed', error);
       setState('error');
       setMessage(null);
     } finally {
       checkingRef.current = false;
+    }
+  }
+
+  async function applyDownloadedUpdate() {
+    if (applyingRef.current) return;
+    applyingRef.current = true;
+    setState('applying');
+    setMessage('Opening the new version…');
+    logStartupStage('background-update-reload');
+
+    try {
+      await Updates.reloadAsync({
+        reloadScreenOptions: {
+          backgroundColor: '#0F1713',
+          fade: true,
+          spinner: {
+            enabled: true,
+            color: '#D7B45A',
+            size: 'large',
+          },
+        },
+      });
+    } catch (error) {
+      console.warn('[updates] Unable to reload downloaded OTA update', error);
+      applyingRef.current = false;
+      setState('ready');
+      setMessage('The update is downloaded. Close and reopen the app to finish applying it.');
     }
   }
 
@@ -78,37 +115,38 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
     };
   }, [disabled]);
 
-  if (state !== 'ready' || !message) return null;
+  if ((state !== 'ready' && state !== 'applying') || !message) return null;
 
   return (
     <View style={[styles.banner, { top: Math.max(insets.top, 8) + 8 }]}>
       <View style={styles.copy}>
-        <Text style={styles.eyebrow}>UPDATE READY</Text>
+        <Text style={styles.eyebrow}>{state === 'applying' ? 'APPLYING UPDATE' : 'UPDATE READY'}</Text>
         <Text style={styles.message}>{message}</Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Restart to apply update"
-        style={styles.restartButton}
-        onPress={() => {
-          logStartupStage('background-update-reload');
-          void Updates.reloadAsync();
-        }}
-      >
-        <Text style={styles.restartText}>Restart</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Apply update later"
-        hitSlop={10}
-        onPress={() => {
-          dismissedRef.current = true;
-          setState('idle');
-          setMessage(null);
-        }}
-      >
-        <Text style={styles.laterText}>Later</Text>
-      </Pressable>
+      {state === 'ready' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open downloaded update"
+          style={styles.restartButton}
+          onPress={() => void applyDownloadedUpdate()}
+        >
+          <Text style={styles.restartText}>Update</Text>
+        </Pressable>
+      ) : null}
+      {state === 'ready' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Apply update later"
+          hitSlop={10}
+          onPress={() => {
+            dismissedRef.current = true;
+            setState('idle');
+            setMessage(null);
+          }}
+        >
+          <Text style={styles.laterText}>Later</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
