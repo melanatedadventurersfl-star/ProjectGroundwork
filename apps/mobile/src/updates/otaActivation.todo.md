@@ -1,0 +1,1 @@
+Wire activation verification into BackgroundUpdateManager and app root before merge.
