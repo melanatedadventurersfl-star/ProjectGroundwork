@@ -53,6 +53,8 @@ export const TRAIL_GUIDE_CITIES: TrailGuideCity[] = [
   { key: 'key-west', label: 'Key West, FL', latitude: 24.5551, longitude: -81.78, source: require('../../../../trail-guide-key-west.png') },
 ];
 
+export const TRAIL_GUIDE_SELECTABLE_CITIES = TRAIL_GUIDE_CITIES.filter((city) => ['jacksonville', 'orlando', 'tampa'].includes(city.key));
+
 const EARTH_RADIUS_MILES = 3958.8;
 const INITIAL_CITY = TRAIL_GUIDE_CITIES[0];
 
@@ -90,7 +92,7 @@ function getTampaBackground(weather: WeatherForecast) {
   return TAMPA_BACKGROUNDS.clear;
 }
 
-async function resolveCityBackground(city: TrailGuideCity) {
+export async function resolveTrailGuideCityBackground(city: TrailGuideCity) {
   if (city.key !== 'tampa') return city.source;
   try {
     const weather = await getWeatherByQuery(city.label);
@@ -127,6 +129,7 @@ export function useTrailGuideLocationBackground() {
   const [locationLabel, setLocationLabel] = useState(INITIAL_CITY?.label ?? 'Jacksonville, FL');
   const [locationBusy, setLocationBusy] = useState(false);
   const [coordinates, setCoordinates] = useState<TrailGuideCoordinates | null>(null);
+  const [manualCityKey, setManualCityKey] = useState<string | null>(null);
 
   async function syncLocation(requestPermission: boolean) {
     setLocationBusy(true);
@@ -143,24 +146,41 @@ export function useTrailGuideLocationBackground() {
 
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude, longitude } = position.coords;
-      setCoordinates({ latitude, longitude });
-      const reverseGeocode = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const deviceCoordinates = { latitude, longitude };
+      setCoordinates(deviceCoordinates);
+      const reverseGeocode = await Location.reverseGeocodeAsync(deviceCoordinates);
       const place = reverseGeocode[0];
 
       if (isFloridaRegion(place?.region)) {
         const nearest = getNearestTrailGuideCity(latitude, longitude);
         if (nearest) {
-          setBackgroundSource(await resolveCityBackground(nearest.city));
+          setManualCityKey(null);
+          setBackgroundSource(await resolveTrailGuideCityBackground(nearest.city));
           setLocationLabel(nearest.city.label);
           return;
         }
       }
 
+      setManualCityKey(null);
       setBackgroundSource(TRAIL_GUIDE_DEFAULT_BACKGROUND);
       setLocationLabel(place?.city || place?.subregion || 'Near me');
     } catch {
       setCoordinates(null);
       setLocationLabel((current) => current || 'Jacksonville, FL');
+    } finally {
+      setLocationBusy(false);
+    }
+  }
+
+  async function selectCity(cityKey: string) {
+    const city = TRAIL_GUIDE_SELECTABLE_CITIES.find((candidate) => candidate.key === cityKey);
+    if (!city) return;
+    setLocationBusy(true);
+    try {
+      setManualCityKey(city.key);
+      setCoordinates({ latitude: city.latitude, longitude: city.longitude });
+      setLocationLabel(city.label);
+      setBackgroundSource(await resolveTrailGuideCityBackground(city));
     } finally {
       setLocationBusy(false);
     }
@@ -175,6 +195,8 @@ export function useTrailGuideLocationBackground() {
     coordinates,
     locationLabel,
     locationBusy,
+    manualCityKey,
+    selectCity,
     requestCurrentLocation: () => syncLocation(true),
   };
 }
