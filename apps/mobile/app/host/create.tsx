@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
+import { HostCopilotCard } from '../../src/hosting/HostCopilotCard';
 import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
 
 const categories = ['Hiking', 'Camping', 'Paddling', 'Beach', 'Cycling', 'Social', 'Workshop', 'Volunteer', 'Other'];
@@ -73,11 +74,32 @@ export default function CreateHostOutingScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Host dashboard</Text></Pressable>
+        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Host Hub</Text></Pressable>
         <Text style={styles.eyebrow}>NEW OUTING</Text>
         <Text style={styles.title}>What are we doing?</Text>
-        <Text style={styles.subtitle}>Start with the experience. You can refine operations and promotion after the draft exists.</Text>
+        <Text style={styles.subtitle}>Start with an idea. Copilot can shape the first draft, or you can build it yourself below.</Text>
 
+        <HostCopilotCard
+          city={city}
+          state={state}
+          onApply={(plan) => {
+            setTitle(plan.title);
+            setSummary(plan.summary);
+            setDescription(plan.description);
+            setCategory(categories.includes(plan.category) ? plan.category : 'Other');
+            setDifficulty(difficulties.includes(plan.difficulty) ? plan.difficulty : 'easy');
+            if (plan.startsAt) setStartsAt(plan.startsAt);
+            if (plan.endsAt) setEndsAt(plan.endsAt);
+            if (plan.venueName) setVenueName(plan.venueName);
+            if (plan.city) setCity(plan.city);
+            if (plan.state) setState(plan.state.toUpperCase());
+            if (plan.capacity) setCapacity(String(plan.capacity));
+            setMeetingInstructions(plan.meetingInstructions);
+            setError('');
+          }}
+        />
+
+        <Text style={styles.manualLabel}>OUTING DETAILS</Text>
         <Field label="Title" value={title} onChangeText={setTitle} placeholder="Sunset paddle on the river" />
         <Field label="Short hook" value={summary} onChangeText={setSummary} placeholder="An easygoing evening paddle for beginners and regulars." />
         <Field label="Description" value={description} onChangeText={setDescription} placeholder="What should someone know before they decide to join?" multiline />
@@ -92,7 +114,7 @@ export default function CreateHostOutingScreen() {
           <View style={styles.flex}><Field label="Starts" value={startsAt} onChangeText={setStartsAt} placeholder="2026-09-12T09:00" /></View>
           <View style={styles.flex}><Field label="Ends" value={endsAt} onChangeText={setEndsAt} placeholder="2026-09-12T12:00" /></View>
         </View>
-        <Text style={styles.helper}>Use local date and time in YYYY-MM-DDTHH:MM format for this first release.</Text>
+        <Text style={styles.helper}>Use local date and time in YYYY-MM-DDTHH:MM format. Copilot leaves uncertain times blank rather than guessing.</Text>
 
         <Field label="Venue / meeting place" value={venueName} onChangeText={setVenueName} placeholder="Riverfront launch" />
         <View style={styles.twoCol}>
@@ -108,14 +130,14 @@ export default function CreateHostOutingScreen() {
           <Pressable style={[styles.segmentButton, paid && styles.segmentActive]} onPress={() => setPaid(true)}><Text style={[styles.segmentText, paid && styles.segmentTextActive]}>Paid outing</Text></Pressable>
         </View>
         {paid ? <Field label="General admission price" value={price} onChangeText={setPrice} placeholder="35.00" keyboardType="decimal-pad" prefix="$" /> : null}
-        <Text style={styles.helper}>This creates a General Admission ticket automatically. Additional ticket tiers and add-ons belong in Manage Outing.</Text>
+        <Text style={styles.helper}>Copilot never changes pricing. This creates a General Admission ticket automatically; additional tiers and add-ons belong in Manage Outing.</Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Pressable disabled={saving} style={styles.primary} onPress={() => void createOuting()}>
           {saving ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Create Draft Outing</Text>}
         </Pressable>
-        <Text style={styles.micro}>Drafts are private until you publish them.</Text>
+        <Text style={styles.micro}>Drafts are private until you publish them. Review AI-generated details before saving.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -149,7 +171,8 @@ const styles = StyleSheet.create({
   back: { color: '#D7B45A', fontWeight: '800', marginBottom: 18 },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   title: { color: '#FFF8E8', fontSize: 35, lineHeight: 41, fontWeight: '900', marginTop: 4 },
-  subtitle: { color: '#A7B0AA', fontSize: 14, lineHeight: 21, marginTop: 5, marginBottom: 20 },
+  subtitle: { color: '#A7B0AA', fontSize: 14, lineHeight: 21, marginTop: 5, marginBottom: 18 },
+  manualLabel: { color: '#8F9A93', fontSize: 9, fontWeight: '900', letterSpacing: 1.1, marginTop: 22, marginBottom: 2 },
   fieldWrap: { marginTop: 14 },
   label: { color: '#D4DAD6', fontSize: 12, fontWeight: '800', marginBottom: 7 },
   inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', borderRadius: 13 },
@@ -173,6 +196,6 @@ const styles = StyleSheet.create({
   segmentTextActive: { color: '#E7C464' },
   primary: { minHeight: 52, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginTop: 24 },
   primaryText: { color: '#172017', fontSize: 15, fontWeight: '900' },
-  micro: { color: '#707C75', fontSize: 10, textAlign: 'center', marginTop: 9 },
+  micro: { color: '#707C75', fontSize: 10, textAlign: 'center', marginTop: 9, lineHeight: 15 },
   error: { color: '#FF8A80', fontSize: 12, lineHeight: 18, marginTop: 15 },
 });
