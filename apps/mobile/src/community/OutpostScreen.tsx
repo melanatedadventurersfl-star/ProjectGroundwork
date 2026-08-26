@@ -212,7 +212,9 @@ function CampfireCard({
   return (
     <Pressable style={({ pressed }) => [styles.campfireCard, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
       <View style={styles.campfireTopRow}>
-        <View style={styles.hostAvatar}><Text style={styles.hostInitials}>{initials(event.host_name)}</Text></View>
+        <View style={styles.hostAvatar}>
+          {event.host_avatar_url ? <Image source={{ uri: event.host_avatar_url }} style={styles.avatarImage} /> : <Text style={styles.hostInitials}>{initials(event.host_name)}</Text>}
+        </View>
         <View style={styles.flex}>
           <View style={styles.hostLine}><Text style={styles.hostName}>{event.host_name}</Text><Text style={styles.hostVerb}> planned an outing</Text></View>
           <Text style={styles.campfireTime}>{formatCampfireTime(event.starts_at)}</Text>
@@ -698,7 +700,7 @@ const styles = StyleSheet.create({
   filterTextActive: { color: '#F1D879' },
   campfireCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 10 },
   campfireTopRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  hostAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#263229', borderWidth: 1, borderColor: '#425148', alignItems: 'center', justifyContent: 'center' },
+  hostAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#263229', borderWidth: 1, borderColor: '#425148', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   hostInitials: { color: GOLD, fontSize: 10, fontWeight: '900' },
   hostLine: { flexDirection: 'row', alignItems: 'baseline', minWidth: 0 },
   hostName: { color: TEXT, fontSize: 12.5, fontWeight: '900', flexShrink: 1 },
