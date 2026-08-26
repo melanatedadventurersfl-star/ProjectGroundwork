@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FeedbackCategory, submitTesterFeedback } from './api';
 
-const options: Array<{ key: FeedbackCategory; label: string; icon: string }> = [
+const options: { key: FeedbackCategory; label: string; icon: string }[] = [
   { key: 'problem', label: 'Report a problem', icon: 'bug-outline' },
   { key: 'idea', label: 'Share an idea', icon: 'bulb-outline' },
   { key: 'confusing', label: 'Something is confusing', icon: 'help-circle-outline' },
