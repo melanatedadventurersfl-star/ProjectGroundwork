@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const MODEL = "gpt-4.1-mini";
+const MEMORY_INTENT = /\b(remember|history|my trail|last time|went|visited|camped|hiked|before|past|been to|did i)\b/i;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -25,19 +26,27 @@ function fallbackAnswer(query: string, candidates: CandidatePlace[], journey: an
   const tokens = lower.split(/[^a-z0-9]+/).filter((token) => token.length > 2);
   const scored = candidates.map((place) => {
     const haystack = [place.name, place.category, place.area, place.type, ...(place.tags ?? []), place.summary, ...(place.details ?? []), ...(place.collections ?? [])].join(' ').toLowerCase();
-    const score = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0);
-    return { place, score };
+    const matchedTokens = tokens.filter((token) => haystack.includes(token));
+    return { place, score: matchedTokens.length, matchedTokens };
   }).sort((a, b) => b.score - a.score);
-  const places = scored.filter((row) => row.score > 0).slice(0, 3).map((row) => ({ id: row.place.id, reason: `Matches your request for ${row.place.category.toLowerCase()} and local outdoor options.` }));
-  const memoryHits = journey.filter((item: any) => tokens.some((token) => [item.title, item.city, item.category, item.highlight, item.reflection].filter(Boolean).join(' ').toLowerCase().includes(token))).slice(0, 3).map((item: any) => ({ adventureId: item.adventure_id, title: item.title, experiencedAt: item.experienced_at, note: item.highlight || item.reflection || 'From your outdoor history.' }));
+  const places = scored.filter((row) => row.score > 0).slice(0, 3).map((row) => ({
+    id: row.place.id,
+    reason: row.matchedTokens.length
+      ? `Matches ${row.matchedTokens.slice(0, 2).join(' and ')} from your request.`
+      : `Matches your request for ${row.place.category.toLowerCase()}.`,
+  }));
+  const wantsMemory = MEMORY_INTENT.test(query);
+  const memoryHits = wantsMemory
+    ? journey.filter((item: any) => tokens.some((token) => [item.title, item.city, item.category, item.highlight, item.reflection].filter(Boolean).join(' ').toLowerCase().includes(token))).slice(0, 3).map((item: any) => ({ adventureId: item.adventure_id, title: item.title, experiencedAt: item.experienced_at, note: item.highlight || item.reflection || 'From your outdoor history.' }))
+    : [];
   return {
-    answer: places.length ? 'I found a few Trail Guide options that match. Open one to check the details and current conditions.' : memoryHits.length ? 'I found a few matches from your outdoor history.' : 'I could not confidently match that yet. Try adding an activity, location, distance, or vibe.',
+    answer: places.length ? 'I found a few Trail Guide options that fit parts of your request. Open one to check the details and current conditions.' : memoryHits.length ? 'I found a few matches from your outdoor history.' : 'I could not confidently match that yet. Try adding an activity, location, distance, or vibe.',
     places,
     communityStops: [],
     memoryHits,
     dayPlan: [],
     followUps: ['Make it beginner friendly', 'Build a half-day plan', 'Include a verified community-owned stop'],
-    confidenceNotes: ['AI generation was unavailable, so this answer used a local matching fallback.', 'Always confirm current hours, conditions, closures, and access before leaving.'],
+    confidenceNotes: ['AI generation was unavailable, so this answer used Trail Guide matching instead.', 'Always confirm current hours, conditions, closures, and access before leaving.'],
   };
 }
 
@@ -87,7 +96,7 @@ Deno.serve(async (req: Request) => {
 
     if (!openAiKey) return json({ result: fallbackAnswer(query, candidates, journeyRows), source: 'fallback' });
 
-    const system = `You are Go Melanated's member outdoor guide. Help members FIND places, EXPLAIN why they fit, BUILD simple outdoor day plans, and REMEMBER their own past outdoor experiences. Use only the supplied Trail Guide candidates for Trail Guide place recommendations and only the supplied verified community place records for ownership claims. Never invent a place ID.\n\nCOMMUNITY PRIORITY: when relevant verified records are supplied, prioritize Black- and brown-owned/community-centered businesses as optional stops. Ownership is sensitive factual data. NEVER infer ownership from a person's name, image, neighborhood, cuisine, language, or demographics. You may only state an ownership identity that appears in ownership_tags from a supplied verified record. If none fit, say no verified match is available yet.\n\nMEMORY: Personal journey records are private context for this member. Use them only to answer this member's request. Do not claim details absent from those records.\n\nSAFETY: You are a planning assistant, not a safety authority. Never promise that a trail, venue, weather condition, route, body of water, or activity is safe. Current hours, closures, permits, accessibility, water conditions, and weather can change. Recommend checking current official information before leaving.\n\nReturn only valid JSON matching the schema.`;
+    const system = `You are Go Melanated's member outdoor guide. Help members FIND places, EXPLAIN why they fit, BUILD simple outdoor day plans, and REMEMBER their own past outdoor experiences. Use only the supplied Trail Guide candidates for Trail Guide place recommendations and only the supplied verified community place records for ownership claims. Never invent a place ID.\n\nCOMMUNITY PRIORITY: when relevant verified records are supplied, prioritize Black- and brown-owned/community-centered businesses as optional stops. Ownership is sensitive factual data. NEVER infer ownership from a person's name, image, neighborhood, cuisine, language, or demographics. You may only state an ownership identity that appears in ownership_tags from a supplied verified record. If none fit, say no verified match is available yet.\n\nMEMORY: Personal journey records are private context for this member. Only surface memoryHits when the member is actually asking about prior experiences, their history, or patterns/preferences that require that history. Do not inject unrelated past outings into an ordinary place-search request. Do not claim details absent from those records.\n\nSAFETY: You are a planning assistant, not a safety authority. Never promise that a trail, venue, weather condition, route, body of water, or activity is safe. Current hours, closures, permits, accessibility, water conditions, and weather can change. Recommend checking current official information before leaving.\n\nReturn only valid JSON matching the schema.`;
 
     const schema = {
       name: 'member_guide_result',
@@ -130,7 +139,7 @@ Deno.serve(async (req: Request) => {
       const source = communityById.get(String(item.placeId)) as any;
       return { ...item, name: source.name, ownershipTags: source.ownership_tags ?? [] };
     }) : [];
-    result.memoryHits = Array.isArray(result.memoryHits) ? result.memoryHits.filter((item: any) => journeyById.has(String(item.adventureId))).map((item: any) => {
+    result.memoryHits = MEMORY_INTENT.test(query) && Array.isArray(result.memoryHits) ? result.memoryHits.filter((item: any) => journeyById.has(String(item.adventureId))).map((item: any) => {
       const source = journeyById.get(String(item.adventureId)) as any;
       return { ...item, title: source.title, experiencedAt: source.experienced_at };
     }) : [];
