@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,7 +33,7 @@ export default function HostEngagementScreen() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!id) return;
     setError('');
     try {
@@ -50,9 +50,9 @@ export default function HostEngagementScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void refresh(); }, [id]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   async function sendMessage() {
     if (!id) return;
