@@ -34,17 +34,22 @@ export async function getEventHostAccess(): Promise<EventHostAccess> {
   const userId = sessionData.session?.user.id;
   if (!userId) return { canCreate: false, level: 'member' };
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('event_host_level, status')
-    .eq('id', userId)
-    .single();
-  if (error) throw error;
+  const [profileResult, accessResult] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('event_host_level, status')
+      .eq('id', userId)
+      .single(),
+    supabase.rpc('can_create_local_event'),
+  ]);
 
-  const level = (data.event_host_level ?? 'member') as EventHostAccess['level'];
+  if (profileResult.error) throw profileResult.error;
+  if (accessResult.error) throw accessResult.error;
+
+  const level = (profileResult.data.event_host_level ?? 'member') as EventHostAccess['level'];
   return {
     level,
-    canCreate: data.status === 'active' && ['trusted_host', 'community_lead', 'staff'].includes(level),
+    canCreate: profileResult.data.status === 'active' && accessResult.data === true,
   };
 }
 
@@ -174,6 +179,9 @@ export async function createLocalEvent(input: {
   if (input.groupId) {
     const canCreate = await getGroupCampfireAccess(input.groupId);
     if (!canCreate) throw new Error('Community Campfires are only available in local Communities and can only be created by Community Leaders or master accounts.');
+  } else {
+    const access = await getEventHostAccess();
+    if (!access.canCreate) throw new Error('Approved Host access is required to create an Outing.');
   }
 
   const { data, error } = await supabase.from('local_events').insert({
