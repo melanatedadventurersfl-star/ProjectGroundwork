@@ -12,157 +12,49 @@ export type TrailGuidePhoto = {
 };
 
 export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
-  'reddie-point-preserve': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/reddiepoint-e1445948531617.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/reddie-point-preserve/',
-    title: 'Reddie Point Preserve',
-    credit: 'Will Dickey / Timucuan Parks Foundation',
-  },
-  'blue-cypress-park': {
-    url: 'https://www.jacksonville.gov/getContentAsset/aaff1dad-ead7-4990-b68f-96ffb1e4db91/bd714d09-ccf8-4e86-a041-57e2011ebfe4/BlueCypress.png?language=en',
-    sourceUrl: 'https://www.jacksonville.gov/departments/parks-and-recreation/jaxparks/community-centers/blue-cypress-center-and-park',
-    title: 'Blue Cypress Park',
-    credit: 'City of Jacksonville',
-  },
-  'tree-hill-nature-center': {
-    url: 'https://www.treehill.org/Portals/0/adam/Content/mb_5RJtktkyAQZpuXVoIhg/Text/DSC_1076.jpg',
-    sourceUrl: 'https://www.treehill.org/visit',
-    title: 'Tree Hill Nature Center',
-    credit: 'Tree Hill Nature Center',
-  },
-  'bulls-bay-preserve': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/Bulls_Bay_waterfall-IMG_3914.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/bulls-bay-preserve/',
-    title: 'Bulls Bay Preserve',
-    credit: 'Timucuan Parks Foundation',
-  },
-  'seaton-creek-historic-preserve': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/SeatonCreek091312-37BWA-copy.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/seaton-creek-historic-preserve/',
-    title: 'Seaton Creek Historic Preserve',
-    credit: 'Will Dickey / Timucuan Parks Foundation',
-  },
-  'betz-tiger-point-preserve': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_9152_2.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/betz-tiger-point-preserve/',
-    title: 'Betz-Tiger Point Preserve',
-    credit: 'Will Dickey / Timucuan Parks Foundation',
-  },
-  'theodore-roosevelt-area': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/2019/11/SpPnd0005.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/theodore-roosevelt-area/',
-    title: 'Theodore Roosevelt Area',
-    credit: 'Timucuan Parks Foundation',
-  },
-  'jacksonville-baldwin-rail-trail': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2714-Rail-Trail-scaled.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/jacksonville-baldwin-rail-trail/',
-    title: 'Jacksonville-Baldwin Rail Trail',
-    credit: 'Will Dickey / Timucuan Parks Foundation',
-  },
-  'thomas-creek-conservation-area': {
-    url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2763_Thomas-Creek-scaled.jpg',
-    sourceUrl: 'https://www.timucuanparks.org/parks/thomas-creek-preserve/',
-    title: 'Thomas Creek Conservation Area',
-    credit: 'Will Dickey / Timucuan Parks Foundation',
-  },
-  'fort-de-soto-park': {
-    url: 'https://pinellas.gov/wp-content/uploads/2021/10/6104188822_c609b5cc6c_o-e1643223841539.jpg',
-    sourceUrl: 'https://pinellas.gov/parks/fort-de-soto-park/',
-    title: 'Fort De Soto Park',
-    credit: 'Pinellas County Parks & Conservation Resources',
-  },
-  'brooker-creek-preserve': {
-    url: 'https://pinellas.gov/wp-content/uploads/2021/10/boardwalk-banner-825x464.jpg',
-    sourceUrl: 'https://pinellas.gov/parks/brooker-creek-preserve/',
-    title: 'Brooker Creek Preserve',
-    credit: 'Pinellas County Parks & Conservation Resources',
-  },
-  'sawgrass-lake-park': {
-    url: 'https://pinellas.gov/wp-content/uploads/2022/01/Sawgrass_Park_03_11-21_SF-1-scaled.jpg',
-    sourceUrl: 'https://pinellas.gov/parks/sawgrass-lake-park/',
-    title: 'Sawgrass Lake Park',
-    credit: 'Pinellas County Parks & Conservation Resources',
-  },
-  'lettuce-lake-conservation-park': {
-    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_Observation_Lettuce_Lake',
-    sourceUrl: 'https://hcfl.gov/locations/lettuce-lake-conservation-park',
-    title: 'Lettuce Lake Conservation Park',
-    credit: 'Hillsborough County',
-  },
-  'lithia-springs-conservation-park': {
-    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Lithia%20springs_NR',
-    sourceUrl: 'https://hcfl.gov/locations/lithia-springs-park',
-    title: 'Lithia Springs Conservation Park',
-    credit: 'Hillsborough County',
-  },
-  'picnic-island-park': {
-    url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/picnic_island_beach_slideshow.jpg?itok=nkVghC5e',
-    sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/picnic-island-park',
-    title: 'Picnic Island Park',
-    credit: 'City of Tampa',
-  },
-  'cypress-point-park': {
-    url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/1sunset_slideshow.jpg?itok=1WpMnwhy',
-    sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/cypress-point-park',
-    title: 'Cypress Point Park',
-    credit: 'City of Tampa',
-  },
-  'ballast-point-park': {
-    url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/dsc00538_1600.jpg?itok=o0KCo3IZ',
-    sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/ballast-point',
-    title: 'Ballast Point Park',
-    credit: 'City of Tampa',
-  },
-  'trout-creek-park': {
-    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Bayshore_Bike_Trail_at_Trout_Creek_fthwmc',
-    sourceUrl: 'https://hcfl.gov/locations/trout-creek-wilderness-park/',
-    title: 'Trout Creek Conservation Park',
-    credit: 'Hillsborough County',
-  },
-  'morris-bridge-park': {
-    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Locations/MorrisBridgePark',
-    sourceUrl: 'https://hcfl.gov/locations/morris-bridge-conservation-park',
-    title: 'Morris Bridge Conservation Park',
-    credit: 'Hillsborough County',
-  },
-  'john-b-sargeant-park': {
-    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_rentals_at_John_B_Sargeant_lvzch6',
-    sourceUrl: 'https://hcfl.gov/locations/john-b-sargeant-conservation-park',
-    title: 'John B. Sargeant Conservation Park',
-    credit: 'Hillsborough County',
-  },
-  'upper-tampa-bay-park': {
-    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Upper%20Tampa%20Bay',
-    sourceUrl: 'https://hcfl.gov/locations/upper-tampa-bay-conservation-park',
-    title: 'Upper Tampa Bay Conservation Park',
-    credit: 'Hillsborough County',
-  },
+  'reddie-point-preserve': { url: 'https://www.timucuanparks.org/wp-content/uploads/reddiepoint-e1445948531617.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/reddie-point-preserve/', title: 'Reddie Point Preserve', credit: 'Will Dickey / Timucuan Parks Foundation' },
+  'blue-cypress-park': { url: 'https://www.jacksonville.gov/getContentAsset/aaff1dad-ead7-4990-b68f-96ffb1e4db91/bd714d09-ccf8-4e86-a041-57e2011ebfe4/BlueCypress.png?language=en', sourceUrl: 'https://www.jacksonville.gov/departments/parks-and-recreation/jaxparks/community-centers/blue-cypress-center-and-park', title: 'Blue Cypress Park', credit: 'City of Jacksonville' },
+  'tree-hill-nature-center': { url: 'https://www.treehill.org/Portals/0/adam/Content/mb_5RJtktkyAQZpuXVoIhg/Text/DSC_1076.jpg', sourceUrl: 'https://www.treehill.org/visit', title: 'Tree Hill Nature Center', credit: 'Tree Hill Nature Center' },
+  'bulls-bay-preserve': { url: 'https://www.timucuanparks.org/wp-content/uploads/Bulls_Bay_waterfall-IMG_3914.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/bulls-bay-preserve/', title: 'Bulls Bay Preserve', credit: 'Timucuan Parks Foundation' },
+  'seaton-creek-historic-preserve': { url: 'https://www.timucuanparks.org/wp-content/uploads/SeatonCreek091312-37BWA-copy.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/seaton-creek-historic-preserve/', title: 'Seaton Creek Historic Preserve', credit: 'Will Dickey / Timucuan Parks Foundation' },
+  'betz-tiger-point-preserve': { url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_9152_2.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/betz-tiger-point-preserve/', title: 'Betz-Tiger Point Preserve', credit: 'Will Dickey / Timucuan Parks Foundation' },
+  'theodore-roosevelt-area': { url: 'https://www.timucuanparks.org/wp-content/uploads/2019/11/SpPnd0005.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/theodore-roosevelt-area/', title: 'Theodore Roosevelt Area', credit: 'Timucuan Parks Foundation' },
+  'jacksonville-baldwin-rail-trail': { url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2714-Rail-Trail-scaled.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/jacksonville-baldwin-rail-trail/', title: 'Jacksonville-Baldwin Rail Trail', credit: 'Will Dickey / Timucuan Parks Foundation' },
+  'thomas-creek-conservation-area': { url: 'https://www.timucuanparks.org/wp-content/uploads/IMG_2763_Thomas-Creek-scaled.jpg', sourceUrl: 'https://www.timucuanparks.org/parks/thomas-creek-preserve/', title: 'Thomas Creek Conservation Area', credit: 'Will Dickey / Timucuan Parks Foundation' },
+
+  'fort-de-soto-park': { url: 'https://pinellas.gov/wp-content/uploads/2021/10/6104188822_c609b5cc6c_o-e1643223841539.jpg', sourceUrl: 'https://pinellas.gov/parks/fort-de-soto-park/', title: 'Fort De Soto Park', credit: 'Pinellas County Parks & Conservation Resources' },
+  'brooker-creek-preserve': { url: 'https://pinellas.gov/wp-content/uploads/2021/10/boardwalk-banner-825x464.jpg', sourceUrl: 'https://pinellas.gov/parks/brooker-creek-preserve/', title: 'Brooker Creek Preserve', credit: 'Pinellas County Parks & Conservation Resources' },
+  'sawgrass-lake-park': { url: 'https://pinellas.gov/wp-content/uploads/2022/01/Sawgrass_Park_03_11-21_SF-1-scaled.jpg', sourceUrl: 'https://pinellas.gov/parks/sawgrass-lake-park/', title: 'Sawgrass Lake Park', credit: 'Pinellas County Parks & Conservation Resources' },
+  'lettuce-lake-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_Observation_Lettuce_Lake', sourceUrl: 'https://hcfl.gov/locations/lettuce-lake-conservation-park', title: 'Lettuce Lake Conservation Park', credit: 'Hillsborough County' },
+  'lithia-springs-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Lithia%20springs_NR', sourceUrl: 'https://hcfl.gov/locations/lithia-springs-park', title: 'Lithia Springs Conservation Park', credit: 'Hillsborough County' },
+  'picnic-island-park': { url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/picnic_island_beach_slideshow.jpg?itok=nkVghC5e', sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/picnic-island-park', title: 'Picnic Island Park', credit: 'City of Tampa' },
+  'cypress-point-park': { url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/1sunset_slideshow.jpg?itok=1WpMnwhy', sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/cypress-point-park', title: 'Cypress Point Park', credit: 'City of Tampa' },
+  'ballast-point-park': { url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/dsc00538_1600.jpg?itok=o0KCo3IZ', sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/ballast-point', title: 'Ballast Point Park', credit: 'City of Tampa' },
+  'trout-creek-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Bayshore_Bike_Trail_at_Trout_Creek_fthwmc', sourceUrl: 'https://hcfl.gov/locations/trout-creek-wilderness-park/', title: 'Trout Creek Conservation Park', credit: 'Hillsborough County' },
+  'morris-bridge-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Locations/MorrisBridgePark', sourceUrl: 'https://hcfl.gov/locations/morris-bridge-conservation-park', title: 'Morris Bridge Conservation Park', credit: 'Hillsborough County' },
+  'john-b-sargeant-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_rentals_at_John_B_Sargeant_lvzch6', sourceUrl: 'https://hcfl.gov/locations/john-b-sargeant-conservation-park', title: 'John B. Sargeant Conservation Park', credit: 'Hillsborough County' },
+  'upper-tampa-bay-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Upper%20Tampa%20Bay', sourceUrl: 'https://hcfl.gov/locations/upper-tampa-bay-conservation-park', title: 'Upper Tampa Bay Conservation Park', credit: 'Hillsborough County' },
+  'hillsborough-river-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Rapids%20at%20Hillsborough%20State%20Park.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Rapids_at_Hillsborough_State_Park.jpg', title: 'Hillsborough River State Park', credit: 'Wikimedia Commons' },
+  'alafia-river-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Alafia%20River%20SP%20river01.JPG?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Alafia_River_SP_river01.JPG', title: 'Alafia River State Park', credit: 'Ebyabe / Wikimedia Commons' },
+  'little-manatee-river-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Little%20Manatee%20River%20SP%20river01.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Little_Manatee_River_SP_river01.jpg', title: 'Little Manatee River State Park', credit: 'Ebyabe / Wikimedia Commons', license: 'CC BY-SA 3.0' },
+  'honeymoon-island-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Honeymoon%20Island%20State%20Park%20%28Image%204%29.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Honeymoon_Island_State_Park_(Image_4).jpg', title: 'Honeymoon Island State Park', credit: 'Christopher Hollis / Wikimedia Commons', license: 'Public domain' },
+  'caladesi-island-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Caladesi%20island%20beach%2001.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Caladesi_island_beach_01.jpg', title: 'Caladesi Island State Park', credit: 'Wikimedia Commons' },
+  'weedon-island-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Weedon%20Island%202025%20%2850%29.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Weedon_Island_2025_(50).jpg', title: 'Weedon Island Preserve', credit: 'Evans125 / Wikimedia Commons' },
+  'boyd-hill-nature-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Boyd%20Hill%20Nature%20Preserve.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Boyd_Hill_Nature_Preserve.jpg', title: 'Boyd Hill Nature Preserve', credit: 'Calmuziclover / Wikimedia Commons' },
+  'emerson-point-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Emerson%20Point%20Preserve%20Palmetto%20Florida%202022-7298.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Emerson_Point_Preserve_Palmetto_Florida_2022-7298.jpg', title: 'Emerson Point Preserve', credit: 'Paul Burley / Wikimedia Commons', license: 'CC BY-SA 4.0' },
+
+  'lake-rogers-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Lake%20Rogers%20in%20Odessa%20Florida.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Lake_Rogers_in_Odessa_Florida.jpg', title: 'Lake Rogers Park', credit: 'Wikimedia Commons' },
+  'eg-simmons-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/simmons%20guided%20paddle_NR', sourceUrl: 'https://hcfl.gov/locations/eg-simmons-conservation-park', title: 'E.G. Simmons Conservation Park', credit: 'Hillsborough County' },
+  'aldermans-ford-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Global/HikingSpreeAlderman30', sourceUrl: 'https://hcfl.gov/locations/aldermans-ford-conservation-park', title: "Alderman's Ford Conservation Park", credit: 'Hillsborough County' },
+  'edward-medard-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Edward%20Medard_NR', sourceUrl: 'https://hcfl.gov/locations/edward-medard-conservation-park', title: 'Edward Medard Conservation Park', credit: 'Hillsborough County' },
+  'cockroach-bay-nature-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Cockroach%20Bay%20Preserve%20State%20Park%20PDFLGOV.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Cockroach_Bay_Preserve_State_Park_PDFLGOV.jpg', title: 'Cockroach Bay Nature Preserve', credit: 'Florida Department of Environmental Protection / Wikimedia Commons', license: 'Public domain' },
+  'robinson-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Robinson%20Preserve%20Observation%20Tower%20%2824946730937%29.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Robinson_Preserve_Observation_Tower_(24946730937).jpg', title: 'Robinson Preserve', credit: 'Gregory Urbano / Wikimedia Commons', license: 'CC BY 2.0' },
 };
 
-type WikiSearchPage = {
-  index?: number;
-  title?: string;
-  fullurl?: string;
-  thumbnail?: { source?: string };
-};
-
+type WikiSearchPage = { index?: number; title?: string; fullurl?: string; thumbnail?: { source?: string } };
 type WikiSearchResponse = { query?: { pages?: Record<string, WikiSearchPage> } };
-
-type WikiImageInfo = {
-  url?: string;
-  thumburl?: string;
-  descriptionurl?: string;
-  extmetadata?: {
-    Artist?: { value?: string };
-    Credit?: { value?: string };
-    LicenseShortName?: { value?: string };
-  };
-};
-
-type WikiImageResponse = {
-  query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> };
-};
+type WikiImageInfo = { url?: string; thumburl?: string; descriptionurl?: string; extmetadata?: { Artist?: { value?: string }; Credit?: { value?: string }; LicenseShortName?: { value?: string } } };
+type WikiImageResponse = { query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> } };
 
 const REQUEST_TIMEOUT_MS = 3500;
 const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v2:';
@@ -177,31 +69,19 @@ function stripHtml(value?: string) {
 }
 
 function normalizedWords(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word.length > 2 && !['the', 'and', 'florida', 'park', 'preserve', 'state', 'area'].includes(word));
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter((word) => word.length > 2 && !['the', 'and', 'florida', 'park', 'preserve', 'state', 'area'].includes(word));
 }
 
 function titleScore(place: TrailGuidePlace, title = '') {
-  const wanted = normalizedWords(place.name);
   const candidate = new Set(normalizedWords(title));
-  return wanted.reduce((score, word) => score + (candidate.has(word) ? 1 : 0), 0);
+  return normalizedWords(place.name).reduce((score, word) => score + (candidate.has(word) ? 1 : 0), 0);
 }
 
 function photoFromInfo(info: WikiImageInfo | undefined, title: string): TrailGuidePhoto | null {
   const url = info?.thumburl ?? info?.url;
   const sourceUrl = info?.descriptionurl;
   if (!url || !sourceUrl) return null;
-  return {
-    url,
-    sourceUrl,
-    title,
-    credit: stripHtml(info?.extmetadata?.Artist?.value ?? info?.extmetadata?.Credit?.value),
-    license: stripHtml(info?.extmetadata?.LicenseShortName?.value),
-  };
+  return { url, sourceUrl, title, credit: stripHtml(info?.extmetadata?.Artist?.value ?? info?.extmetadata?.Credit?.value), license: stripHtml(info?.extmetadata?.LicenseShortName?.value) };
 }
 
 async function fetchJson<T>(url: URL): Promise<T | null> {
@@ -248,11 +128,8 @@ async function searchWikipedia(place: TrailGuidePlace) {
   url.searchParams.set('piprop', 'thumbnail|name');
   url.searchParams.set('pithumbsize', '1200');
   url.searchParams.set('inprop', 'url');
-
   const data = await fetchJson<WikiSearchResponse>(url);
-  const pages = Object.values(data?.query?.pages ?? {})
-    .filter((page) => page.thumbnail?.source && page.fullurl)
-    .sort((a, b) => titleScore(place, b.title) - titleScore(place, a.title) || (a.index ?? 99) - (b.index ?? 99));
+  const pages = Object.values(data?.query?.pages ?? {}).filter((page) => page.thumbnail?.source && page.fullurl).sort((a, b) => titleScore(place, b.title) - titleScore(place, a.title) || (a.index ?? 99) - (b.index ?? 99));
   const best = pages[0];
   if (!best?.thumbnail?.source || !best.fullurl || titleScore(place, best.title) === 0) return null;
   return { url: best.thumbnail.source, sourceUrl: best.fullurl, title: best.title ?? place.name } satisfies TrailGuidePhoto;
@@ -270,11 +147,8 @@ async function searchCommons(place: TrailGuidePlace) {
   url.searchParams.set('prop', 'imageinfo');
   url.searchParams.set('iiprop', 'url|extmetadata');
   url.searchParams.set('iiurlwidth', '1200');
-
   const data = await fetchJson<WikiImageResponse>(url);
-  const pages = Object.values(data?.query?.pages ?? {})
-    .filter((page) => page.imageinfo?.[0]?.url || page.imageinfo?.[0]?.thumburl)
-    .sort((a, b) => titleScore(place, b.title) - titleScore(place, a.title) || (a.index ?? 99) - (b.index ?? 99));
+  const pages = Object.values(data?.query?.pages ?? {}).filter((page) => page.imageinfo?.[0]?.url || page.imageinfo?.[0]?.thumburl).sort((a, b) => titleScore(place, b.title) - titleScore(place, a.title) || (a.index ?? 99) - (b.index ?? 99));
   const best = pages[0];
   if (!best?.title || titleScore(place, best.title) === 0) return null;
   return photoFromInfo(best.imageinfo?.[0], best.title);
@@ -288,10 +162,8 @@ async function resolveFreshPhoto(place: TrailGuidePlace) {
 export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
   const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
   if (curated) return curated;
-
   const existing = cache.get(place.id);
   if (existing) return existing;
-
   const pending = (async () => {
     const persisted = await readPersistedPhoto(place.id);
     if (persisted) return persisted;
@@ -299,7 +171,6 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
     if (photo) await persistPhoto(place.id, photo);
     return photo;
   })();
-
   cache.set(place.id, pending);
   const result = await pending;
   if (!result) cache.delete(place.id);
@@ -307,21 +178,13 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
 }
 
 export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
-  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(
-    place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null,
-  );
-
+  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null);
   useEffect(() => {
     let active = true;
     setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null);
     if (!place) return () => { active = false; };
-
-    void resolveTrailGuidePlacePhoto(place).then((next) => {
-      if (active && next) setPhoto(next);
-    });
-
+    void resolveTrailGuidePlacePhoto(place).then((next) => { if (active && next) setPhoto(next); });
     return () => { active = false; };
   }, [place]);
-
   return photo;
 }

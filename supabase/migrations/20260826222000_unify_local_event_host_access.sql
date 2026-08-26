@@ -6,7 +6,8 @@ security definer
 set search_path = public
 as $$
   select exists (
-    select 1 from public.profiles p
+    select 1
+    from public.profiles p
     where p.id = auth.uid()
       and p.status = 'active'
       and (
@@ -16,5 +17,4 @@ as $$
   );
 $$;
 
-revoke all on function public.can_create_local_event() from public, anon;
 grant execute on function public.can_create_local_event() to authenticated;

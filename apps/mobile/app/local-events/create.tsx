@@ -66,7 +66,6 @@ export default function CreateLocalEventScreen() {
   const fromTrailGuide = source === 'trail-guide';
   const initialStateName = initialState ? US_STATES.find((item) => item.abbreviation === initialState)?.name || initialState : '';
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [accessError, setAccessError] = useState('');
   const [title, setTitle] = useState(initialTitle ?? '');
   const [description, setDescription] = useState(initialDescription ?? '');
   const [category, setCategory] = useState(categories.includes(initialCategory ?? '') ? initialCategory! : 'Hangout');
@@ -82,22 +81,11 @@ export default function CreateLocalEventScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadAccess() {
-    setAllowed(null);
-    setAccessError('');
-    try {
-      const canCreate = groupId
-        ? await getGroupCampfireAccess(groupId)
-        : (await getEventHostAccess()).canCreate;
-      setAllowed(canCreate);
-    } catch (caught) {
-      setAllowed(false);
-      setAccessError(caught instanceof Error ? caught.message : 'Unable to check Host access.');
-    }
-  }
-
   useEffect(() => {
-    void loadAccess();
+    const accessPromise = groupId
+      ? getGroupCampfireAccess(groupId)
+      : getEventHostAccess().then((access) => access.canCreate);
+    accessPromise.then(setAllowed).catch(() => setAllowed(false));
   }, [groupId]);
 
   useEffect(() => {
@@ -171,39 +159,26 @@ export default function CreateLocalEventScreen() {
     }
   }
 
-  if (allowed === null) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /><Text style={styles.loadingText}>Checking your Host access…</Text></SafeAreaView>;
-
-  if (accessError) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.denied}>
-          <View style={styles.fireMark}><Ionicons name="refresh-outline" size={28} color="#D7B45A" /></View>
-          <Text style={styles.eyebrow}>HOST TOOLS TEMPORARILY UNAVAILABLE</Text>
-          <Text style={styles.title}>We couldn’t check your Host access.</Text>
-          <Text style={styles.body}>Your account is still available. We just need to reconnect the Host tools before you plan or publish an Outing.</Text>
-          <Text style={styles.accessDetail}>{accessError}</Text>
-          <Pressable onPress={() => void loadAccess()} style={styles.primaryButton}><Ionicons name="refresh-outline" size={18} color="#17211C" /><Text style={styles.primaryButtonText}>Try again</Text></Pressable>
-          <Pressable onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Go back</Text></Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  if (allowed === null) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
 
   if (!allowed) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
-          <View style={styles.fireMark}><Ionicons name={communityScoped ? 'people-outline' : 'compass-outline'} size={28} color="#D7B45A" /></View>
-          <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY OUTING' : 'HOST AN OUTING'}</Text>
-          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Want to bring people together?'}</Text>
-          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Approved Hosts can create public Outings, invite the community, and manage the people joining them. Apply once, then your planning tools unlock here automatically.'}</Text>
-          {!communityScoped ? (
-            <View style={styles.hostBenefits}>
-              {['Create and publish community Outings', 'Manage RSVPs and attendees', 'Run check-in from your Host Hub'].map((benefit) => <View key={benefit} style={styles.hostBenefit}><Ionicons name="checkmark-circle-outline" size={18} color="#79D26A" /><Text style={styles.hostBenefitText}>{benefit}</Text></View>)}
-            </View>
-          ) : null}
-          <Pressable onPress={() => communityScoped ? router.back() : router.push('/host' as never)} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{communityScoped ? 'Go back' : 'Open Host Hub'}</Text></Pressable>
-          {!communityScoped ? <Pressable onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Not now</Text></Pressable> : null}
+          <View style={styles.fireMark}><Ionicons name="calendar-outline" size={28} color="#D7B45A" /></View>
+          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Become an approved host'}</Text>
+          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Planning public Outings is available to approved Go Melanated hosts. Complete the Host Pathway to apply, review your status, or continue an application already in progress.'}</Text>
+          {communityScoped ? (
+            <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
+          ) : (
+            <>
+              <Pressable onPress={() => router.replace('/host' as never)} style={styles.primaryButton}>
+                <Ionicons name="trail-sign-outline" size={19} color="#17211C" />
+                <Text style={styles.primaryButtonText}>Open Host Pathway</Text>
+              </Pressable>
+              <Pressable onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Not now</Text></Pressable>
+            </>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -235,7 +210,12 @@ export default function CreateLocalEventScreen() {
 
         <Text style={styles.label}>When?</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRail}>
-          {([['now', 'Now'], ['tonight', 'Tonight'], ['tomorrow', 'Tomorrow'], ['weekend', 'This weekend']] as const).map(([value, label]) => <Pressable key={value} onPress={() => chooseQuickTime(value)} style={[styles.quickChip, quickTime === value && styles.quickChipActive]}><Text style={[styles.quickChipText, quickTime === value && styles.quickChipTextActive]}>{label}</Text></Pressable>)}
+          {([
+            ['now', 'Now'],
+            ['tonight', 'Tonight'],
+            ['tomorrow', 'Tomorrow'],
+            ['weekend', 'This weekend'],
+          ] as const).map(([value, label]) => <Pressable key={value} onPress={() => chooseQuickTime(value)} style={[styles.quickChip, quickTime === value && styles.quickChipActive]}><Text style={[styles.quickChipText, quickTime === value && styles.quickChipTextActive]}>{label}</Text></Pressable>)}
           <Pressable onPress={() => setQuickTime('custom')} style={[styles.quickChip, quickTime === 'custom' && styles.quickChipActive]}><Text style={[styles.quickChipText, quickTime === 'custom' && styles.quickChipTextActive]}>Pick a time</Text></Pressable>
         </ScrollView>
         {quickTime === 'custom' ? <><TextInput value={startsAt} onChangeText={setStartsAt} autoCapitalize="none" placeholder="2026-08-23T18:30" placeholderTextColor="#718078" style={styles.input} /><Text style={styles.help}>YYYY-MM-DDTHH:MM</Text></> : <View style={styles.selectedTime}><Ionicons name="time-outline" size={16} color="#D7B45A" /><Text style={styles.selectedTimeText}>{parsedStart?.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</Text></View>}
@@ -275,8 +255,7 @@ export default function CreateLocalEventScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0F1713' },
-  center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  loadingText: { color: '#AEB8B2', fontSize: 12, fontWeight: '700' },
+  center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 18, paddingBottom: 48, gap: 11 },
   denied: { flex: 1, padding: 24, justifyContent: 'center', gap: 14 },
   flex: { flex: 1 },
@@ -286,12 +265,6 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 10 },
   title: { color: '#FFF8E8', fontSize: 27, lineHeight: 31, fontWeight: '900' },
   body: { color: '#AEB8B2', fontSize: 13, lineHeight: 19, marginBottom: 3 },
-  accessDetail: { color: '#7F8C84', fontSize: 10.5, lineHeight: 16 },
-  hostBenefits: { borderRadius: 14, borderWidth: 1, borderColor: '#2E3A32', backgroundColor: '#141D18', padding: 12, gap: 10 },
-  hostBenefit: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  hostBenefitText: { color: '#D9E0DB', fontSize: 12, fontWeight: '700', flex: 1 },
-  secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#3A4740', alignItems: 'center', justifyContent: 'center' },
-  secondaryButtonText: { color: '#D9E0DB', fontWeight: '900', fontSize: 13 },
   trailGuideContext: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#1B1A11', paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   trailGuideContextLabel: { color: '#9C8A53', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
   trailGuideContextTitle: { color: '#FFF3CE', fontSize: 13, fontWeight: '900', marginTop: 2 },
@@ -321,6 +294,8 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#17211C' },
   primaryButton: { minHeight: 50, backgroundColor: '#D7B45A', borderRadius: 14, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   primaryButtonText: { color: '#17211C', fontWeight: '900', fontSize: 14 },
+  secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#3B4941', alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: '#D7DFDA', fontWeight: '800', fontSize: 13 },
   disabled: { opacity: 0.4 },
   disclaimer: { color: '#7F8C84', fontSize: 10.5, lineHeight: 16, textAlign: 'center', marginTop: 1 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 10 },

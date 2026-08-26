@@ -43,7 +43,6 @@ export async function getEventHostAccess(): Promise<EventHostAccess> {
       .single(),
     supabase.rpc('can_create_local_event'),
   ]);
-
   if (profileResult.error) throw profileResult.error;
   if (accessResult.error) throw accessResult.error;
 
@@ -180,9 +179,6 @@ export async function createLocalEvent(input: {
   if (input.groupId) {
     const canCreate = await getGroupCampfireAccess(input.groupId);
     if (!canCreate) throw new Error('Community Campfires are only available in local Communities and can only be created by Community Leaders or master accounts.');
-  } else {
-    const access = await getEventHostAccess();
-    if (!access.canCreate) throw new Error('Approved Host access is required to create an Outing.');
   }
 
   const { data, error } = await supabase.from('local_events').insert({
