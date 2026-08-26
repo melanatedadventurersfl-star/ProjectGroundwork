@@ -35,17 +35,21 @@ export async function getEventHostAccess(): Promise<EventHostAccess> {
   const userId = sessionData.session?.user.id;
   if (!userId) return { canCreate: false, level: 'member' };
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('event_host_level, status')
-    .eq('id', userId)
-    .single();
-  if (error) throw error;
+  const [profileResult, accessResult] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('event_host_level, status')
+      .eq('id', userId)
+      .single(),
+    supabase.rpc('can_create_local_event'),
+  ]);
+  if (profileResult.error) throw profileResult.error;
+  if (accessResult.error) throw accessResult.error;
 
-  const level = (data.event_host_level ?? 'member') as EventHostAccess['level'];
+  const level = (profileResult.data.event_host_level ?? 'member') as EventHostAccess['level'];
   return {
     level,
-    canCreate: data.status === 'active' && ['trusted_host', 'community_lead', 'staff'].includes(level),
+    canCreate: profileResult.data.status === 'active' && accessResult.data === true,
   };
 }
 
