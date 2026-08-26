@@ -1,5 +1,5 @@
 export type DiscoveryCategory = 'All' | 'Hiking' | 'Camping' | 'Parks' | 'Water' | 'Scenic';
-export type TrailGuideCityKey = 'jacksonville' | 'orlando';
+export type TrailGuideCityKey = 'jacksonville' | 'orlando' | 'tampa';
 
 export type TrailGuidePlace = {
   id: string;
@@ -21,6 +21,7 @@ export const discoveryCategories: DiscoveryCategory[] = ['All', 'Hiking', 'Campi
 export const cityCollections: Record<TrailGuideCityKey, string[]> = {
   jacksonville: ['Close to the City', 'Beaches & Water', 'Paddling & Marshes', 'Trails Worth Exploring', 'Camping Nearby', 'Timucuan & Coastal Wildlands', 'Worth the Drive'],
   orlando: ['Close to Orlando', 'Springs & Water', 'Trails Worth Exploring', 'Camping Nearby', 'Easy Nature Escapes', 'Worth the Drive'],
+  tampa: ['Close to Tampa', 'Bay & Mangroves', 'Rivers & Springs', 'Trails Worth Exploring', 'Camping Nearby', 'Wildlife & Coastal Preserves', 'Worth the Drive'],
 };
 
 const categoryContent = {
@@ -119,6 +120,37 @@ const orlandoSeeds: Seed[] = [
 ['ocala-national-forest','Ocala National Forest','Camping','North of Orlando'],
 ];
 
+const tampaSeeds: Seed[] = [
+['lettuce-lake-conservation-park','Lettuce Lake Conservation Park','Scenic','Tampa'],
+['hillsborough-river-state-park','Hillsborough River State Park','Camping','Thonotosassa'],
+['lower-hillsborough-wilderness-preserve-flatwoods','Lower Hillsborough Wilderness Preserve / Flatwoods','Hiking','Tampa'],
+['morris-bridge-park','Morris Bridge Park','Water','Thonotosassa'],
+['trout-creek-park','Trout Creek Park','Water','Tampa'],
+['john-b-sargeant-park','John B. Sargeant Park','Water','Thonotosassa'],
+['cypress-point-park','Cypress Point Park','Parks','Tampa'],
+['picnic-island-park','Picnic Island Park','Water','Tampa'],
+['ballast-point-park','Ballast Point Park','Scenic','Tampa'],
+['upper-tampa-bay-park','Upper Tampa Bay Park','Scenic','Tampa'],
+['lake-rogers-park','Lake Rogers Park','Hiking','Odessa'],
+['brooker-creek-preserve','Brooker Creek Preserve','Hiking','Tarpon Springs'],
+['weedon-island-preserve','Weedon Island Preserve','Scenic','St. Petersburg'],
+['sawgrass-lake-park','Sawgrass Lake Park','Scenic','St. Petersburg'],
+['boyd-hill-nature-preserve','Boyd Hill Nature Preserve','Hiking','St. Petersburg'],
+['fort-de-soto-park','Fort De Soto Park','Camping','Tierra Verde'],
+['honeymoon-island-state-park','Honeymoon Island State Park','Water','Dunedin'],
+['caladesi-island-state-park','Caladesi Island State Park','Water','Dunedin'],
+['eg-simmons-conservation-park','E.G. Simmons Conservation Park','Camping','Ruskin'],
+['apollo-beach-nature-preserve','Apollo Beach Nature Preserve','Scenic','Apollo Beach'],
+['cockroach-bay-nature-preserve','Cockroach Bay Nature Preserve','Water','Ruskin'],
+['alafia-river-state-park','Alafia River State Park','Camping','Lithia'],
+['lithia-springs-conservation-park','Lithia Springs Conservation Park','Water','Lithia'],
+['aldermans-ford-conservation-park','Alderman’s Ford Conservation Park','Hiking','Lithia'],
+['little-manatee-river-state-park','Little Manatee River State Park','Camping','Wimauma'],
+['edward-medard-conservation-park','Edward Medard Conservation Park','Camping','Plant City'],
+['robinson-preserve','Robinson Preserve','Scenic','Bradenton'],
+['emerson-point-preserve','Emerson Point Preserve','Hiking','Palmetto'],
+];
+
 function collectionsFor(city: TrailGuideCityKey, category: Exclude<DiscoveryCategory, 'All'>, area: string) {
   const collections: string[] = [];
   if (city === 'jacksonville') {
@@ -127,13 +159,20 @@ function collectionsFor(city: TrailGuideCityKey, category: Exclude<DiscoveryCate
     if (category === 'Camping') collections.push('Camping Nearby');
     if (category === 'Scenic') collections.push('Timucuan & Coastal Wildlands');
     if (area.toLowerCase().includes('jacksonville')) collections.push('Close to the City'); else collections.push('Worth the Drive');
-  } else {
+  } else if (city === 'orlando') {
     if (category === 'Water') collections.push('Springs & Water');
     if (category === 'Hiking') collections.push('Trails Worth Exploring');
     if (category === 'Camping') collections.push('Camping Nearby');
     if (category === 'Parks' || category === 'Scenic') collections.push('Easy Nature Escapes');
     if (area.toLowerCase().includes('orlando') || area === 'Winter Park') collections.push('Close to Orlando');
     if (['Orange City','Lake County','Ocala National Forest','Lakeland','North of Orlando','De Leon Springs'].includes(area)) collections.push('Worth the Drive');
+  } else {
+    if (category === 'Water') collections.push('Bay & Mangroves', 'Rivers & Springs');
+    if (category === 'Hiking') collections.push('Trails Worth Exploring');
+    if (category === 'Camping') collections.push('Camping Nearby');
+    if (category === 'Scenic') collections.push('Wildlife & Coastal Preserves');
+    if (area.toLowerCase().includes('tampa')) collections.push('Close to Tampa');
+    else collections.push('Worth the Drive');
   }
   return [...new Set(collections)];
 }
@@ -145,6 +184,15 @@ function expandSeeds(city: TrailGuideCityKey, seeds: Seed[]): TrailGuidePlace[] 
   });
 }
 
-export const trailGuidePlaces = [...expandSeeds('jacksonville', jacksonvilleSeeds), ...expandSeeds('orlando', orlandoSeeds)];
+export const trailGuidePlaces = [
+  ...expandSeeds('jacksonville', jacksonvilleSeeds),
+  ...expandSeeds('orlando', orlandoSeeds),
+  ...expandSeeds('tampa', tampaSeeds),
+];
 export function getTrailGuidePlace(id?: string) { return id ? trailGuidePlaces.find((place) => place.id === id) : undefined; }
-export function cityKeyFromLocationLabel(label: string): TrailGuideCityKey { return label.toLowerCase().includes('orlando') ? 'orlando' : 'jacksonville'; }
+export function cityKeyFromLocationLabel(label: string): TrailGuideCityKey {
+  const normalized = label.toLowerCase();
+  if (normalized.includes('tampa')) return 'tampa';
+  if (normalized.includes('orlando')) return 'orlando';
+  return 'jacksonville';
+}
