@@ -166,9 +166,19 @@ export default function CreateLocalEventScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
           <View style={styles.fireMark}><Ionicons name="calendar-outline" size={28} color="#D7B45A" /></View>
-          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Hosting is invitation-based'}</Text>
-          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Trusted Hosts, Community Leads, and staff can plan Outings. Everyone can browse and join them.'}</Text>
-          <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
+          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Become an approved host'}</Text>
+          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Planning public Outings is available to approved Go Melanated hosts. Complete the Host Pathway to apply, review your status, or continue an application already in progress.'}</Text>
+          {communityScoped ? (
+            <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
+          ) : (
+            <>
+              <Pressable onPress={() => router.replace('/host' as never)} style={styles.primaryButton}>
+                <Ionicons name="trail-sign-outline" size={19} color="#17211C" />
+                <Text style={styles.primaryButtonText}>Open Host Pathway</Text>
+              </Pressable>
+              <Pressable onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Not now</Text></Pressable>
+            </>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -284,6 +294,8 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#17211C' },
   primaryButton: { minHeight: 50, backgroundColor: '#D7B45A', borderRadius: 14, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   primaryButtonText: { color: '#17211C', fontWeight: '900', fontSize: 14 },
+  secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#3B4941', alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: '#D7DFDA', fontWeight: '800', fontSize: 13 },
   disabled: { opacity: 0.4 },
   disclaimer: { color: '#7F8C84', fontSize: 10.5, lineHeight: 16, textAlign: 'center', marginTop: 1 },
   error: { color: '#FFB4A9', backgroundColor: '#301A18', padding: 10, borderRadius: 10 },
