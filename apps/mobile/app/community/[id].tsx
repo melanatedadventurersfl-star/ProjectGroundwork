@@ -1,7 +1,7 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -79,7 +79,7 @@ export default function CampfireConversationScreen() {
   const composerLabel = useMemo(() => `Reply to ${authorName}`, [authorName]);
   const canSend = Boolean(draft.trim() || photos.length) && !submitting;
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
@@ -100,7 +100,7 @@ export default function CampfireConversationScreen() {
 
       const hiddenCommentIds = new Set((hiddenResult.data ?? []).map((row) => row.comment_id).filter(Boolean));
       const blockedIds = new Set((blockResult.data ?? []).map((row) => row.blocked_id).filter(Boolean));
-      const visibleRaw = ((commentResult.data ?? []) as unknown as Array<Omit<Comment, 'image_urls'>>)
+      const visibleRaw = ((commentResult.data ?? []) as unknown as Omit<Comment, 'image_urls'>[])
         .filter((comment) => !hiddenCommentIds.has(comment.id) && !blockedIds.has(comment.author_id));
       const visibleComments = await Promise.all(visibleRaw.map(async (comment) => ({
         ...comment,
@@ -114,9 +114,9 @@ export default function CampfireConversationScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void load(); }, [id]);
+  useEffect(() => { void load(); }, [load]);
 
   async function requestLibraryPhoto() {
     setMediaPickerOpen(false);

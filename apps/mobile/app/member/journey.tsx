@@ -75,7 +75,7 @@ export default function JourneyScreen() {
   const nextMilestone = [...MILESTONES].reverse().find((item) => item.threshold > journey.length) ?? null;
   const latest = sortedJourney[0] ?? null;
   const currentYear = String(new Date().getFullYear());
-  const currentYearItems = years.find((group) => group.year === currentYear)?.items ?? [];
+  const currentYearItems = useMemo(() => years.find((group) => group.year === currentYear)?.items ?? [], [currentYear, years]);
   const currentYearPlaces = new Set(currentYearItems.map(normalizePlace).filter(Boolean)).size;
   const currentYearMemories = currentYearItems.reduce((sum, item) => sum + (item.photo_count ?? 0), 0);
   const favoriteCategory = useMemo(() => {

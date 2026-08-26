@@ -37,7 +37,7 @@ const BORDER = '#2A3930';
 const TEXT = '#FFF8E8';
 const MUTED = '#9EAAA2';
 
-const postTypes: Array<{ value: PostType; label: string; helper: string; icon: string }> = [
+const postTypes: { value: PostType; label: string; helper: string; icon: string }[] = [
   { value: 'update', label: 'Update', helper: 'Share a thought, trip note, or outdoor moment.', icon: 'create-outline' },
   { value: 'photo', label: 'Photo', helper: 'Share a photo and add an optional caption.', icon: 'images-outline' },
   { value: 'ask', label: 'Ask', helper: 'Ask the community for advice or recommendations.', icon: 'help-circle-outline' },
@@ -46,7 +46,7 @@ const postTypes: Array<{ value: PostType; label: string; helper: string; icon: s
   { value: 'recommendation', label: 'Place', helper: 'Share a trail, park, campsite, or hidden gem.', icon: 'location-outline' },
 ];
 
-const audiences: Array<{ value: Audience; label: string; helper: string; icon: string }> = [
+const audiences: { value: Audience; label: string; helper: string; icon: string }[] = [
   { value: 'everyone', label: 'Everyone', helper: 'Visible across Community.', icon: 'globe-outline' },
   { value: 'connections', label: 'My Connections', helper: 'Only people you have connected with.', icon: 'people-outline' },
   { value: 'circle', label: 'A Circle', helper: 'Share with one of your private Circles.', icon: 'people-circle-outline' },

@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
-import { AppIcon } from '../../src/ui/AppIcon';
 
 type MemberInvite = {
   id: string;
@@ -35,6 +34,7 @@ function inviteShareMessage(token: string) {
 
 export default function MemberInvitesScreen() {
   const { session } = useAuth();
+  const userId = session?.user.id;
   const [invites, setInvites] = useState<MemberInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,12 +42,12 @@ export default function MemberInvitesScreen() {
   const [expandedCodeId, setExpandedCodeId] = useState<string | null>(null);
 
   const loadInvites = useCallback(async () => {
-    if (!session?.user.id) return;
+    if (!userId) return;
     setError('');
     const { data, error: inviteError } = await supabase
       .from('member_invites')
       .select('id, token, status, redeemed_at, created_at')
-      .eq('sender_profile_id', session.user.id)
+      .eq('sender_profile_id', userId)
       .order('created_at', { ascending: true });
 
     if (inviteError) {
@@ -55,7 +55,7 @@ export default function MemberInvitesScreen() {
       return;
     }
     setInvites((data ?? []) as MemberInvite[]);
-  }, [session?.user.id]);
+  }, [userId]);
 
   useEffect(() => {
     void loadInvites().finally(() => setLoading(false));

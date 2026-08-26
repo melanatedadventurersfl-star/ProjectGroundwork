@@ -62,6 +62,7 @@ function formatDate(value: string) {
 
 export default function SupportScreen() {
   const { session } = useAuth();
+  const userId = session?.user.id;
   const [category, setCategory] = useState<(typeof categories)[number]>('Account');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -81,15 +82,15 @@ export default function SupportScreen() {
   }), []);
 
   const loadRequests = useCallback(async () => {
-    if (!session?.user.id) return;
+    if (!userId) return;
     const { data, error: requestError } = await supabase
       .from('support_requests')
       .select('id,category,subject,message,status,attachments,created_at,updated_at')
-      .eq('profile_id', session.user.id)
+      .eq('profile_id', userId)
       .order('created_at', { ascending: false });
     if (requestError) throw requestError;
     setRequests((data ?? []) as SupportRequest[]);
-  }, [session?.user.id]);
+  }, [userId]);
 
   useEffect(() => {
     let mounted = true;
@@ -119,12 +120,12 @@ export default function SupportScreen() {
     setAttachment({ uri: asset.uri, mimeType: asset.mimeType, fileName: asset.fileName });
   }
 
-  async function uploadAttachment(userId: string) {
+  async function uploadAttachment(profileId: string) {
     if (!attachment) return [] as string[];
     const response = await fetch(attachment.uri);
     const bytes = await response.arrayBuffer();
     const extension = attachment.fileName?.split('.').pop()?.toLowerCase() || attachment.mimeType?.split('/').pop() || 'jpg';
-    const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extension}`;
+    const path = `${profileId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extension}`;
     const { error: uploadError } = await supabase.storage
       .from('support-attachments')
       .upload(path, bytes, { contentType: attachment.mimeType ?? 'image/jpeg', upsert: false });
@@ -133,7 +134,6 @@ export default function SupportScreen() {
   }
 
   async function submit() {
-    const userId = session?.user.id;
     if (!userId) {
       setError('Please sign in again before contacting support.');
       return;

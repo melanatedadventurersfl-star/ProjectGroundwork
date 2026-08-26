@@ -66,6 +66,7 @@ export function PersistentBottomNav() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const userId = session?.user.id;
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const showAskGo = pathname.startsWith('/trail-guide') && pathname !== '/trail-guide/ask';
 
@@ -75,7 +76,7 @@ export function PersistentBottomNav() {
       if (!cancelled) setAvatarUrl(nextAvatarUrl);
     });
 
-    if (!session) {
+    if (!userId) {
       setAvatarUrl(null);
     } else {
       getProfileAvatarUrl()
@@ -91,7 +92,7 @@ export function PersistentBottomNav() {
       cancelled = true;
       unsubscribe();
     };
-  }, [session?.user.id]);
+  }, [userId]);
 
   if (pathname === '/account-status') return null;
 

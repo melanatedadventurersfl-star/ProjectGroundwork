@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,7 +16,7 @@ export default function LiveAdventureScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!id) return;
     try {
       const [nextRoster, nextSchedule, nextHeadcounts, nextIncidents] = await Promise.all([
@@ -31,9 +31,9 @@ export default function LiveAdventureScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void refresh(); }, [id]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();

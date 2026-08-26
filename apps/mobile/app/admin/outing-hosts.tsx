@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,13 +16,14 @@ type ProfileRow={id:string;display_name:string|null;username:string|null;email:s
 
 export default function OutingHostAdminScreen(){
  const {session}=useAuth(); const [loading,setLoading]=useState(true); const [authorized,setAuthorized]=useState(false); const [hosts,setHosts]=useState<HostRow[]>([]); const [profiles,setProfiles]=useState<ProfileRow[]>([]); const [busy,setBusy]=useState<string|null>(null); const [notes,setNotes]=useState<Record<string,string>>({}); const [error,setError]=useState('');
- async function load(){ if(!session?.user.id)return; setLoading(true);setError(''); try{
+ const userId=session?.user.id;
+ const load=useCallback(async()=>{ if(!userId)return; setLoading(true);setError(''); try{
   const admin=await supabase.rpc('is_platform_admin'); if(admin.error)throw admin.error; if(admin.data!==true){setAuthorized(false);return;} setAuthorized(true);
   const hostResult=await supabase.from('outing_hosts').select('profile_id,status,host_type,host_stage,can_create_paid_outings,payout_status,application_note,desired_outing_types,home_area,leadership_experience,expected_group_size,requested_paid_access,certifications,motivation,safety_acknowledged_at,orientation_completed_at,reviewer_notes,review_reason,approved_at').order('created_at',{ascending:false}); if(hostResult.error)throw hostResult.error;
   const next=(hostResult.data??[]) as HostRow[]; setHosts(next); setNotes(Object.fromEntries(next.map((h)=>[h.profile_id,h.reviewer_notes??''])));
   if(next.length){const p=await supabase.from('profiles').select('id,display_name,username,email').in('id',next.map((h)=>h.profile_id));if(p.error)throw p.error;setProfiles((p.data??[]) as ProfileRow[]);}else setProfiles([]);
- }catch(caught){setError(caught instanceof Error?caught.message:'Unable to load outing hosts.');}finally{setLoading(false);} }
- useEffect(()=>{void load();},[session?.user.id]);
+ }catch(caught){setError(caught instanceof Error?caught.message:'Unable to load outing hosts.');}finally{setLoading(false);} },[userId]);
+ useEffect(()=>{void load();},[load]);
  const profileMap=useMemo(()=>new Map(profiles.map((p)=>[p.id,p])),[profiles]);
  async function review(host:HostRow,decision:'approved'|'needs_info'|'paused'|'declined'|'revoked'){
   const note=(notes[host.profile_id]??'').trim();

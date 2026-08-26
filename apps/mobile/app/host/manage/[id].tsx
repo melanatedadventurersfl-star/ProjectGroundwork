@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -31,7 +31,7 @@ export default function ManageHostOutingScreen() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!id) return;
     setError('');
     try {
@@ -52,9 +52,9 @@ export default function ManageHostOutingScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void refresh(); }, [id]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const attendees = useMemo(() => orders.flatMap((order) => order.order_attendees ?? []), [orders]);
   const checkedIn = attendees.filter((attendee) => firstRelation(attendee.ticket_credentials)?.checked_in_at).length;

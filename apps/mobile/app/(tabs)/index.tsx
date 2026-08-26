@@ -103,6 +103,7 @@ function outingReason(event: LocalEvent, joinedGroupIds: Set<string>) {
 
 export default function TrailheadScreen() {
   const { session } = useAuth();
+  const userId = session?.user.id;
   const [queue, setQueue] = useState<AdventureQueueItem[]>([]);
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [localEvents, setLocalEvents] = useState<LocalEvent[]>([]);
@@ -164,7 +165,6 @@ export default function TrailheadScreen() {
   }, [localEvents, joinedGroupIds]);
 
   const campfirePosts = useMemo(() => {
-    const userId = session?.user.id;
     if (!userId) return [];
 
     return communityPosts
@@ -179,14 +179,13 @@ export default function TrailheadScreen() {
         return false;
       })
       .slice(0, 4);
-  }, [communityPosts, connectionIds, joinedGroupIds, circleIds, reservedAdventureIds, session?.user.id]);
+  }, [communityPosts, connectionIds, joinedGroupIds, circleIds, reservedAdventureIds, userId]);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
 
     try {
-      const userId = session?.user.id;
       const [nextQueue, nextJourney, nextAdventures, nextEvents, profileResult, nextPosts, nextCircles, nextConnections, nextGroups] = await Promise.all([
         userId ? getAdventureQueue() : Promise.resolve([] as AdventureQueueItem[]),
         userId ? getJourney() : Promise.resolve([]),
@@ -222,7 +221,7 @@ export default function TrailheadScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.user.id]);
+  }, [userId]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
