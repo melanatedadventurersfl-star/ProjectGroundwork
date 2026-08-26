@@ -1,6 +1,6 @@
 import * as Updates from 'expo-updates';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { logStartupStage, withStartupTimeout } from '../reliability/startup';
@@ -8,9 +8,10 @@ import { rememberExpectedOtaUpdate } from './otaActivation';
 
 const UPDATE_NETWORK_TIMEOUT_MS = 10000;
 const FIRST_CHECK_DELAY_MS = 2500;
-const FOREGROUND_CHECK_THROTTLE_MS = 15 * 60 * 1000;
+const ACTIVE_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const FOREGROUND_CHECK_THROTTLE_MS = 60 * 1000;
 
-type UpdateState = 'idle' | 'checking' | 'ready' | 'error';
+type UpdateState = 'idle' | 'checking' | 'ready' | 'restarting' | 'error';
 type DownloadedUpdateIdentity = { updateId: string | null; commit: string | null };
 
 function downloadedUpdateIdentity(fetched: unknown): DownloadedUpdateIdentity {
@@ -28,10 +29,10 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
   const [message, setMessage] = useState<string | null>(null);
   const checkingRef = useRef(false);
   const lastCheckRef = useRef(0);
-  const dismissedRef = useRef(false);
+  const updateReadyRef = useRef(false);
 
   const checkForUpdate = useCallback(async (force = false) => {
-    if (disabled || !Updates.isEnabled || checkingRef.current || dismissedRef.current) return;
+    if (disabled || !Updates.isEnabled || checkingRef.current || updateReadyRef.current) return;
 
     const now = Date.now();
     if (!force && now - lastCheckRef.current < FOREGROUND_CHECK_THROTTLE_MS) return;
@@ -71,13 +72,9 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
       await rememberExpectedOtaUpdate({ ...expected, createdAt: new Date().toISOString() });
       logStartupStage('background-update-downloaded', expected);
 
-      // Do not call Updates.reloadAsync() here. The regression introduced by the
-      // background updater occurs during in-process OTA activation: Android can
-      // hang on the reload screen and then reopen the previous bundle. Expo will
-      // select the downloaded update on the next cold launch, which avoids that
-      // failing activation path while preserving rollback protection.
+      updateReadyRef.current = true;
       setState('ready');
-      setMessage('Update downloaded. Close and reopen Go Melanated to finish updating.');
+      setMessage('A new Go Melanated update is ready. Restart once to apply it.');
     } catch (error) {
       console.warn('[updates] Background OTA check failed', error);
       setState('error');
@@ -87,39 +84,62 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
     }
   }, [disabled]);
 
+  const restartAndUpdate = useCallback(async () => {
+    if (!updateReadyRef.current || state === 'restarting') return;
+
+    setState('restarting');
+    setMessage('Restarting with the new update…');
+    logStartupStage('background-update-reload-requested');
+
+    try {
+      await Updates.reloadAsync();
+    } catch (error) {
+      console.warn('[updates] In-process OTA reload failed', error);
+      setState('ready');
+      setMessage('The update is downloaded. If restart does not complete, close and reopen Go Melanated once.');
+    }
+  }, [state]);
+
   useEffect(() => {
     if (disabled || !Updates.isEnabled) return;
 
-    const timer = setTimeout(() => void checkForUpdate(true), FIRST_CHECK_DELAY_MS);
+    const initialTimer = setTimeout(() => void checkForUpdate(true), FIRST_CHECK_DELAY_MS);
+    const pollTimer = setInterval(() => {
+      if (AppState.currentState === 'active') void checkForUpdate(false);
+    }, ACTIVE_POLL_INTERVAL_MS);
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') void checkForUpdate(false);
     });
 
     return () => {
-      clearTimeout(timer);
+      clearTimeout(initialTimer);
+      clearInterval(pollTimer);
       subscription.remove();
     };
   }, [checkForUpdate, disabled]);
 
-  if (state !== 'ready' || !message) return null;
+  if ((state !== 'ready' && state !== 'restarting') || !message) return null;
+
+  const restarting = state === 'restarting';
 
   return (
     <View style={[styles.banner, { top: Math.max(insets.top, 8) + 8 }]}>
       <View style={styles.copy}>
-        <Text style={styles.eyebrow}>UPDATE DOWNLOADED</Text>
+        <Text style={styles.eyebrow}>{restarting ? 'APPLYING UPDATE' : 'UPDATE READY'}</Text>
         <Text style={styles.message}>{message}</Text>
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Dismiss update instructions"
-        style={styles.restartButton}
-        onPress={() => {
-          dismissedRef.current = true;
-          setState('idle');
-          setMessage(null);
-        }}
+        accessibilityLabel="Restart and apply update"
+        disabled={restarting}
+        style={[styles.restartButton, restarting && styles.restartButtonDisabled]}
+        onPress={() => void restartAndUpdate()}
       >
-        <Text style={styles.restartText}>Got it</Text>
+        {restarting ? (
+          <ActivityIndicator size="small" color="#102018" />
+        ) : (
+          <Text style={styles.restartText}>Restart & Update</Text>
+        )}
       </Pressable>
     </View>
   );
@@ -135,6 +155,7 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 2 },
   eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   message: { color: '#FFF8E8', fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  restartButton: { borderRadius: 12, backgroundColor: '#D7B45A', paddingHorizontal: 12, paddingVertical: 9 },
-  restartText: { color: '#102018', fontSize: 12, fontWeight: '900' },
+  restartButton: { minWidth: 92, borderRadius: 12, backgroundColor: '#D7B45A', paddingHorizontal: 12, paddingVertical: 9, alignItems: 'center', justifyContent: 'center' },
+  restartButtonDisabled: { opacity: 0.75 },
+  restartText: { color: '#102018', fontSize: 11, fontWeight: '900', textAlign: 'center' },
 });
