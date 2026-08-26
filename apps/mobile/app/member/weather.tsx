@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -74,16 +74,16 @@ export default function WeatherScreen() {
   const [searching, setSearching] = useState(false);
   const [locationSource, setLocationSource] = useState<'current' | 'home' | 'search'>('current');
 
-  async function loadHomeFallback() {
+  const loadHomeFallback = useCallback(async () => {
     const basecamp = await getMemberBasecamp();
     const city = basecamp.profile?.home_city;
     const state = basecamp.profile?.home_state;
     if (!city || !state) throw new Error('Location permission is needed, or set a home city and state in Edit Profile.');
     setData(await getWeather(city, state));
     setLocationSource('home');
-  }
+  }, []);
 
-  async function loadCurrent() {
+  const loadCurrent = useCallback(async () => {
     setLoading(true);
     setError('');
     setSuggestions([]);
@@ -102,7 +102,7 @@ export default function WeatherScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [loadHomeFallback]);
 
   async function runSearch(query = searchText) {
     const value = query.trim();
@@ -157,7 +157,7 @@ export default function WeatherScreen() {
     void listAdventures({ savedOnly: true })
       .then((items) => setUpcomingAdventures(items.filter((item) => new Date(item.ends_at).getTime() >= Date.now())))
       .catch(() => setUpcomingAdventures([]));
-  }, []);
+  }, [loadCurrent]);
 
   const hours = useMemo(() => data ? nextHours(data) : [], [data]);
   const conditions = useMemo(() => data ? adventureCondition(data) : null, [data]);
