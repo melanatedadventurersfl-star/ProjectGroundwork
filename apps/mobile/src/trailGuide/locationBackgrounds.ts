@@ -65,7 +65,8 @@ function parseClockMinutes(value?: string | null) {
   const twelveHour = value.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
   if (twelveHour) {
     let hour = Number(twelveHour[1]) % 12;
-    if (twelveHour[3].toUpperCase() === 'PM') hour += 12;
+    const meridiem = twelveHour[3]?.toUpperCase();
+    if (meridiem === 'PM') hour += 12;
     return hour * 60 + Number(twelveHour[2]);
   }
   const twentyFourHour = value.match(/(?:^|\s)(\d{1,2}):(\d{2})$/);
