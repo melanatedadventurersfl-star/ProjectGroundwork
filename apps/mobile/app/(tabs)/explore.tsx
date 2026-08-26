@@ -48,7 +48,7 @@ const quickTags = ['Weekend', 'Family Friendly', 'Beginner Friendly', 'Accessibl
 const radii = ['25', '50', '100', 'Anywhere'];
 const DEFAULT_EVENT_IMAGE = require('../../assets/explore/default-event.jpg');
 
-const sortOptions: Array<{ value: SortMode; label: string; helper: string }> = [
+const sortOptions: { value: SortMode; label: string; helper: string }[] = [
   { value: 'closest', label: 'Closest', helper: 'Nearest first' },
   { value: 'farthest', label: 'Farthest', helper: 'Farthest first' },
   { value: 'soonest', label: 'Soonest', helper: 'Coming up next' },

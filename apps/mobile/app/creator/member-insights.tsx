@@ -60,7 +60,7 @@ type Insights = {
     last_reaction_at: string | null;
     group_count: number;
     connections_count: number;
-    groups: Array<{ id: string; name: string; kind: string | null; city: string | null; state: string | null; joined_at: string | null }>;
+    groups: { id: string; name: string; kind: string | null; city: string | null; state: string | null; joined_at: string | null }[];
   };
   adventures: {
     saved_count: number;
@@ -69,13 +69,13 @@ type Insights = {
     last_rsvp_at: string | null;
     paid_order_count: number;
     last_paid_at: string | null;
-    recent_adventures: Array<{ id: string; title: string; starts_at: string; city: string | null; state: string | null; rsvp_status: string | null }>;
+    recent_adventures: { id: string; title: string; starts_at: string; city: string | null; state: string | null; rsvp_status: string | null }[];
   };
   recognition: {
     badge_count: number;
     stamp_count: number;
-    badges: Array<{ title: string; category: string | null; earned_at: string | null }>;
-    stamps: Array<{ title: string; category: string | null; earned_at: string | null }>;
+    badges: { title: string; category: string | null; earned_at: string | null }[];
+    stamps: { title: string; category: string | null; earned_at: string | null }[];
   };
   support: { request_count: number; open_request_count: number; last_request_at: string | null };
   last_activity_at: string | null;

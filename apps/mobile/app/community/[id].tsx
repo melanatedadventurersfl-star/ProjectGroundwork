@@ -100,7 +100,7 @@ export default function CampfireConversationScreen() {
 
       const hiddenCommentIds = new Set((hiddenResult.data ?? []).map((row) => row.comment_id).filter(Boolean));
       const blockedIds = new Set((blockResult.data ?? []).map((row) => row.blocked_id).filter(Boolean));
-      const visibleRaw = ((commentResult.data ?? []) as unknown as Array<Omit<Comment, 'image_urls'>>)
+      const visibleRaw = ((commentResult.data ?? []) as unknown as Omit<Comment, 'image_urls'>[])
         .filter((comment) => !hiddenCommentIds.has(comment.id) && !blockedIds.has(comment.author_id));
       const visibleComments = await Promise.all(visibleRaw.map(async (comment) => ({
         ...comment,
