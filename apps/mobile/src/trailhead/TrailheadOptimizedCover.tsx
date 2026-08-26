@@ -16,24 +16,11 @@ import {
   rankThemes,
   trailheadDebugOverride,
   weatherCopy,
-  type DayPhase,
-  type WeatherTheme,
 } from './trailheadBannerConfig';
 
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
 const HEADER_INSET = 78;
-
-function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
-  if (phase === 'night') return 'rgba(4, 13, 28, 0.10)';
-  if (weather === 'storm') return 'rgba(18, 24, 31, 0.16)';
-  if (weather === 'rain') return 'rgba(16, 31, 39, 0.12)';
-  if (weather === 'fog') return 'rgba(214, 225, 220, 0.08)';
-  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.08)';
-  if (phase === 'morning') return 'rgba(255, 224, 168, 0.06)';
-  if (phase === 'evening') return 'rgba(255, 150, 76, 0.06)';
-  return 'transparent';
-}
 
 export function TrailheadOptimizedCover({
   displayName,
@@ -106,7 +93,6 @@ export function TrailheadOptimizedCover({
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
-  const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
   const theme = rankThemes[rank];
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
@@ -123,10 +109,6 @@ export function TrailheadOptimizedCover({
   return (
     <View style={[styles.cover, { height: heroHeight, shadowColor: '#000000' }]}>
       <Image source={background} resizeMode="cover" style={styles.background} />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere }]} />
-      <View pointerEvents="none" style={styles.identityScrim} />
-      <View pointerEvents="none" style={styles.lowerScrim} />
-      <View pointerEvents="none" style={[styles.rankGlow, { backgroundColor: theme.glow }]} />
       <TrailheadHeader />
 
       <Pressable
@@ -183,15 +165,6 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   background: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
-  identityScrim: {
-    position: 'absolute', left: 0, top: HEADER_INSET, bottom: 0, width: '58%',
-    backgroundColor: 'rgba(3, 8, 7, 0.10)',
-  },
-  lowerScrim: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, height: '34%',
-    backgroundColor: 'rgba(3, 8, 7, 0.15)',
-  },
-  rankGlow: { position: 'absolute', left: -68, top: HEADER_INSET - 36, width: 240, height: 240, borderRadius: 120, opacity: 0.22 },
 
   emblem: { position: 'absolute', left: 14, top: HEADER_INSET + 44, width: 112, height: 112, alignItems: 'center', justifyContent: 'center' },
   emblemCompact: { left: 10, top: HEADER_INSET + 48, width: 100, height: 100 },
