@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { supabase } from '../../src/lib/supabase';
@@ -49,7 +49,7 @@ export default function ModerationCaseScreen() {
   const [abuseNote, setAbuseNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true); setError('');
     if (!reportId) { setError('Missing report reference.'); setLoading(false); return; }
     const admin = await supabase.rpc('is_platform_admin');
@@ -88,9 +88,9 @@ export default function ModerationCaseScreen() {
     const profile = profileResult.data as { display_name?: string | null; username?: string | null } | null;
     setData({ report, memberName: profile?.display_name ?? profile?.username ?? 'Member', mediaUrl, mediaType, activeWarnings, yearViolations, history });
     setLoading(false);
-  }
+  }, [reportId]);
 
-  useEffect(() => { void load(); }, [reportId]);
+  useEffect(() => { void load(); }, [load]);
 
   async function classifyAbuse(abusive: boolean) {
     if (!data || busy) return;
