@@ -1,5 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useState } from 'react';
+import { Image } from 'react-native';
 
 import type { TrailGuidePlace } from './catalog';
 
@@ -34,21 +35,22 @@ export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
   'morris-bridge-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Locations/MorrisBridgePark', sourceUrl: 'https://hcfl.gov/locations/morris-bridge-conservation-park', title: 'Morris Bridge Conservation Park', credit: 'Hillsborough County' },
   'john-b-sargeant-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_rentals_at_John_B_Sargeant_lvzch6', sourceUrl: 'https://hcfl.gov/locations/john-b-sargeant-conservation-park', title: 'John B. Sargeant Conservation Park', credit: 'Hillsborough County' },
   'upper-tampa-bay-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Upper%20Tampa%20Bay', sourceUrl: 'https://hcfl.gov/locations/upper-tampa-bay-conservation-park', title: 'Upper Tampa Bay Conservation Park', credit: 'Hillsborough County' },
-  'hillsborough-river-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Rapids%20at%20Hillsborough%20State%20Park.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Rapids_at_Hillsborough_State_Park.jpg', title: 'Hillsborough River State Park', credit: 'Wikimedia Commons' },
-  'alafia-river-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Alafia%20River%20SP%20river01.JPG?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Alafia_River_SP_river01.JPG', title: 'Alafia River State Park', credit: 'Ebyabe / Wikimedia Commons' },
-  'little-manatee-river-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Little%20Manatee%20River%20SP%20river01.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Little_Manatee_River_SP_river01.jpg', title: 'Little Manatee River State Park', credit: 'Ebyabe / Wikimedia Commons', license: 'CC BY-SA 3.0' },
-  'honeymoon-island-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Honeymoon%20Island%20State%20Park%20%28Image%204%29.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Honeymoon_Island_State_Park_(Image_4).jpg', title: 'Honeymoon Island State Park', credit: 'Christopher Hollis / Wikimedia Commons', license: 'Public domain' },
-  'caladesi-island-state-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Caladesi%20island%20beach%2001.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Caladesi_island_beach_01.jpg', title: 'Caladesi Island State Park', credit: 'Wikimedia Commons' },
-  'weedon-island-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Weedon%20Island%202025%20%2850%29.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Weedon_Island_2025_(50).jpg', title: 'Weedon Island Preserve', credit: 'Evans125 / Wikimedia Commons' },
-  'boyd-hill-nature-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Boyd%20Hill%20Nature%20Preserve.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Boyd_Hill_Nature_Preserve.jpg', title: 'Boyd Hill Nature Preserve', credit: 'Calmuziclover / Wikimedia Commons' },
-  'emerson-point-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Emerson%20Point%20Preserve%20Palmetto%20Florida%202022-7298.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Emerson_Point_Preserve_Palmetto_Florida_2022-7298.jpg', title: 'Emerson Point Preserve', credit: 'Paul Burley / Wikimedia Commons', license: 'CC BY-SA 4.0' },
-
-  'lake-rogers-park': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Lake%20Rogers%20in%20Odessa%20Florida.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Lake_Rogers_in_Odessa_Florida.jpg', title: 'Lake Rogers Park', credit: 'Wikimedia Commons' },
+  'lower-hillsborough-wilderness-preserve-flatwoods': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Longleaf_Pines_and_Palmettos_at_Flatwoods_nuo2dd', sourceUrl: 'https://hcfl.gov/locations/flatwoods-conservation-park', title: 'Lower Hillsborough Wilderness Preserve / Flatwoods', credit: 'Hillsborough County' },
+  'apollo-beach-nature-preserve': { url: 'https://farm66.staticflickr.com/65535/53686274002_67c0098b9d_b.jpg', sourceUrl: 'https://floridahikes.com/apollo-beach-nature-preserve/', title: 'Apollo Beach Nature Preserve', credit: 'Florida Hikes' },
+  'hillsborough-river-state-park': { url: 'https://upload.wikimedia.org/wikipedia/commons/4/4d/Rapids_at_Hillsborough_State_Park.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Rapids_at_Hillsborough_State_Park.jpg', title: 'Hillsborough River State Park', credit: 'Wikimedia Commons' },
+  'alafia-river-state-park': { url: 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Alafia_River_SP_river01.JPG', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Alafia_River_SP_river01.JPG', title: 'Alafia River State Park', credit: 'Ebyabe / Wikimedia Commons' },
+  'little-manatee-river-state-park': { url: 'https://upload.wikimedia.org/wikipedia/commons/4/49/Little_Manatee_River_SP_river01.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Little_Manatee_River_SP_river01.jpg', title: 'Little Manatee River State Park', credit: 'Ebyabe / Wikimedia Commons', license: 'CC BY-SA 3.0' },
+  'honeymoon-island-state-park': { url: 'https://upload.wikimedia.org/wikipedia/commons/6/60/Honeymoon_Island_State_Park_(Image_4).jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Honeymoon_Island_State_Park_(Image_4).jpg', title: 'Honeymoon Island State Park', credit: 'Christopher Hollis / Wikimedia Commons', license: 'Public domain' },
+  'caladesi-island-state-park': { url: 'https://upload.wikimedia.org/wikipedia/commons/c/c6/Caladesi_island_beach_01.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Caladesi_island_beach_01.jpg', title: 'Caladesi Island State Park', credit: 'Wikimedia Commons' },
+  'weedon-island-preserve': { url: 'https://upload.wikimedia.org/wikipedia/commons/a/a1/Weedon_Island_2025_(50).jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Weedon_Island_2025_(50).jpg', title: 'Weedon Island Preserve', credit: 'Evans125 / Wikimedia Commons' },
+  'boyd-hill-nature-preserve': { url: 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Boyd_Hill_Nature_Preserve.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Boyd_Hill_Nature_Preserve.jpg', title: 'Boyd Hill Nature Preserve', credit: 'Calmuziclover / Wikimedia Commons' },
+  'emerson-point-preserve': { url: 'https://upload.wikimedia.org/wikipedia/commons/9/92/Emerson_Point_Preserve_Palmetto_Florida_2022-7298.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Emerson_Point_Preserve_Palmetto_Florida_2022-7298.jpg', title: 'Emerson Point Preserve', credit: 'Paul Burley / Wikimedia Commons', license: 'CC BY-SA 4.0' },
+  'lake-rogers-park': { url: 'https://upload.wikimedia.org/wikipedia/commons/d/d0/Lake_Rogers_in_Odessa_Florida.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Lake_Rogers_in_Odessa_Florida.jpg', title: 'Lake Rogers Park', credit: 'Wikimedia Commons' },
   'eg-simmons-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/simmons%20guided%20paddle_NR', sourceUrl: 'https://hcfl.gov/locations/eg-simmons-conservation-park', title: 'E.G. Simmons Conservation Park', credit: 'Hillsborough County' },
   'aldermans-ford-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Global/HikingSpreeAlderman30', sourceUrl: 'https://hcfl.gov/locations/aldermans-ford-conservation-park', title: "Alderman's Ford Conservation Park", credit: 'Hillsborough County' },
   'edward-medard-conservation-park': { url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Edward%20Medard_NR', sourceUrl: 'https://hcfl.gov/locations/edward-medard-conservation-park', title: 'Edward Medard Conservation Park', credit: 'Hillsborough County' },
-  'cockroach-bay-nature-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Cockroach%20Bay%20Preserve%20State%20Park%20PDFLGOV.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Cockroach_Bay_Preserve_State_Park_PDFLGOV.jpg', title: 'Cockroach Bay Nature Preserve', credit: 'Florida Department of Environmental Protection / Wikimedia Commons', license: 'Public domain' },
-  'robinson-preserve': { url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Robinson%20Preserve%20Observation%20Tower%20%2824946730937%29.jpg?width=1200', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Robinson_Preserve_Observation_Tower_(24946730937).jpg', title: 'Robinson Preserve', credit: 'Gregory Urbano / Wikimedia Commons', license: 'CC BY 2.0' },
+  'cockroach-bay-nature-preserve': { url: 'https://upload.wikimedia.org/wikipedia/commons/9/90/Cockroach_Bay_Preserve_State_Park_PDFLGOV.jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Cockroach_Bay_Preserve_State_Park_PDFLGOV.jpg', title: 'Cockroach Bay Nature Preserve', credit: 'Florida Department of Environmental Protection / Wikimedia Commons', license: 'Public domain' },
+  'robinson-preserve': { url: 'https://upload.wikimedia.org/wikipedia/commons/f/fc/Robinson_Preserve_Observation_Tower_(24946730937).jpg', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Robinson_Preserve_Observation_Tower_(24946730937).jpg', title: 'Robinson Preserve', credit: 'Gregory Urbano / Wikimedia Commons', license: 'CC BY 2.0' },
 };
 
 type WikiSearchPage = { index?: number; title?: string; fullurl?: string; thumbnail?: { source?: string } };
@@ -57,7 +59,7 @@ type WikiImageInfo = { url?: string; thumburl?: string; descriptionurl?: string;
 type WikiImageResponse = { query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> } };
 
 const REQUEST_TIMEOUT_MS = 3500;
-const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v2:';
+const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v3:';
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
 
 function fallbackPhotoForPlace(place: TrailGuidePlace): TrailGuidePhoto {
@@ -177,14 +179,42 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
   return result;
 }
 
+async function preloadPhoto(photo: TrailGuidePhoto) {
+  try {
+    return await Image.prefetch(photo.url);
+  } catch {
+    return false;
+  }
+}
+
 export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
-  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null);
+  const initial = place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null;
+  const [photo, setPhoto] = useState<TrailGuidePhoto | null>(initial);
+
   useEffect(() => {
     let active = true;
-    setPhoto(place ? CURATED_TRAIL_GUIDE_PHOTOS[place.id] ?? fallbackPhotoForPlace(place) : null);
-    if (!place) return () => { active = false; };
-    void resolveTrailGuidePlacePhoto(place).then((next) => { if (active && next) setPhoto(next); });
+    if (!place) {
+      setPhoto(null);
+      return () => { active = false; };
+    }
+
+    const fallback = fallbackPhotoForPlace(place);
+    const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
+    const first = curated ?? fallback;
+    setPhoto(first);
+
+    void preloadPhoto(first).then((loaded) => {
+      if (active && !loaded && first.url !== fallback.url) setPhoto(fallback);
+    });
+
+    void resolveTrailGuidePlacePhoto(place).then(async (next) => {
+      if (!active || !next || next.url === first.url) return;
+      const loaded = await preloadPhoto(next);
+      if (active) setPhoto(loaded ? next : fallback);
+    });
+
     return () => { active = false; };
   }, [place]);
+
   return photo;
 }
