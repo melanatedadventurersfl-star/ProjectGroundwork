@@ -13,7 +13,11 @@ import {
 } from '../../src/trailGuide/catalog';
 import { getTrailGuideConditionSignal } from '../../src/trailGuide/conditions';
 import { trailGuideArticles, type TrailGuideArticle } from '../../src/trailGuide/guides';
-import { distanceMiles, useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
+import {
+  distanceMiles,
+  TRAIL_GUIDE_SELECTABLE_CITIES,
+  useTrailGuideLocationBackground,
+} from '../../src/trailGuide/locationBackgrounds';
 import {
   CURATED_TRAIL_GUIDE_PHOTOS,
   resolveTrailGuidePlacePhoto,
@@ -159,8 +163,17 @@ export default function TrailGuideScreen() {
   const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>(() => ({ ...CURATED_TRAIL_GUIDE_PHOTOS }));
   const [photoPoolBusy, setPhotoPoolBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
-  const { backgroundSource, coordinates, locationLabel, locationBusy, requestCurrentLocation } = useTrailGuideLocationBackground();
+  const {
+    backgroundSource,
+    coordinates,
+    locationLabel,
+    locationBusy,
+    manualCityKey,
+    selectCity,
+    requestCurrentLocation,
+  } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
   const cityName = cityKey === 'orlando' ? 'Orlando' : cityKey === 'tampa' ? 'Tampa' : 'Jacksonville';
 
@@ -268,17 +281,11 @@ export default function TrailGuideScreen() {
 
   const rainChance = weather?.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0;
   const quickGuides = useMemo(() => {
-    const preferred = [...GUIDE_ORDER_BY_CATEGORY[category]];
-    if (rainChance >= 60) {
-      const stormIndex = preferred.indexOf('storm-season');
-      if (stormIndex >= 0) preferred.splice(stormIndex, 1);
-      preferred.unshift('storm-season');
-    }
-    return preferred
+    return GUIDE_ORDER_BY_CATEGORY.All
       .map((id) => trailGuideArticles.find((guide) => guide.id === id))
       .filter((guide): guide is TrailGuideArticle => Boolean(guide))
       .slice(0, 5);
-  }, [category, rainChance]);
+  }, []);
 
   const categoryLabel = category === 'All' ? 'places' : `${category.toLowerCase()} spots`;
   const recommendationTitle = category === 'All' ? 'Recommended for today' : `${category} picks for today`;
@@ -295,6 +302,22 @@ export default function TrailGuideScreen() {
     setShowAll(false);
   }
 
+  async function chooseCity(cityKey: string) {
+    setShowCityPicker(false);
+    setCategory('All');
+    setShowAll(false);
+    setDistanceById({});
+    await selectCity(cityKey);
+  }
+
+  async function chooseCurrentLocation() {
+    setShowCityPicker(false);
+    setCategory('All');
+    setShowAll(false);
+    setDistanceById({});
+    await requestCurrentLocation();
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.page}>
@@ -303,10 +326,30 @@ export default function TrailGuideScreen() {
           <View style={styles.heroContent}>
             <Text style={styles.heroEyebrow}>TRAIL GUIDE</Text>
             <Text style={styles.cityTitle}>{cityName}</Text>
-            <Pressable accessibilityRole="button" onPress={() => void requestCurrentLocation()} style={({ pressed }) => [styles.locationRow, pressed && styles.chipPressed]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Change Trail Guide city" onPress={() => setShowCityPicker((current) => !current)} style={({ pressed }) => [styles.locationRow, pressed && styles.chipPressed]}>
               <AppIcon name="location" color="#F5C400" size={15} />
-              <Text style={styles.locationText}>{locationBusy ? 'Locating…' : coordinates ? locationLabel : 'Use my location'}</Text>
+              <Text style={styles.locationText}>{locationBusy ? 'Updating…' : locationLabel}</Text>
+              <AppIcon name={showCityPicker ? 'chevron-up' : 'chevron-forward'} color="#F4F7F4" size={13} />
             </Pressable>
+            {showCityPicker ? (
+              <View style={styles.cityPicker}>
+                <Text style={styles.cityPickerLabel}>View Trail Guide for</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cityPickerRow}>
+                  {TRAIL_GUIDE_SELECTABLE_CITIES.map((city) => {
+                    const active = city.key === cityKey;
+                    return (
+                      <Pressable key={city.key} accessibilityRole="button" onPress={() => void chooseCity(city.key)} style={({ pressed }) => [styles.cityOption, active && styles.cityOptionActive, pressed && styles.chipPressed]}>
+                        <Text style={[styles.cityOptionText, active && styles.cityOptionTextActive]}>{city.label.replace(', FL', '')}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable accessibilityRole="button" onPress={() => void chooseCurrentLocation()} style={({ pressed }) => [styles.cityOption, manualCityKey == null && styles.cityOptionActive, pressed && styles.chipPressed]}>
+                    <AppIcon name="location" color={manualCityKey == null ? '#0C140D' : '#F5C400'} size={12} />
+                    <Text style={[styles.cityOptionText, manualCityKey == null && styles.cityOptionTextActive]}>My location</Text>
+                  </Pressable>
+                </ScrollView>
+              </View>
+            ) : null}
             <View style={styles.heroWeatherRow}>
               <View style={styles.heroWeatherCopy}>
                 <Text style={styles.heroWeatherTitle}>{weatherBusy ? 'Checking weather…' : weather ? `${Math.round(weather.current.temp_f)}° · ${weather.current.condition.text}` : 'Weather unavailable'}</Text>
@@ -348,7 +391,7 @@ export default function TrailGuideScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{recommendationTitle}</Text>
-            <Text style={styles.sectionSubtitle}>Top picks based on current conditions{coordinates ? cityKey === 'tampa' ? ' within 50 miles of you.' : ' and your location.' : '.'}</Text>
+            <Text style={styles.sectionSubtitle}>Top picks based on {cityName} conditions{coordinates ? cityKey === 'tampa' ? ' within 50 miles.' : ' and distance.' : '.'}</Text>
           </View>
           {recommendedPlaces.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
@@ -429,14 +472,21 @@ export default function TrailGuideScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#08100C' },
   page: { paddingBottom: 76 },
-  hero: { height: 246, justifyContent: 'flex-end' },
+  hero: { minHeight: 246, justifyContent: 'flex-end' },
   heroImage: { resizeMode: 'cover' },
   heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,7,0.48)' },
-  heroContent: { paddingHorizontal: 18, paddingBottom: 16 },
+  heroContent: { paddingHorizontal: 18, paddingBottom: 16, paddingTop: 34 },
   heroEyebrow: { color: '#D7E0DA', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   cityTitle: { color: '#FFFDF6', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 3 },
   locationRow: { alignSelf: 'flex-start', minHeight: 32, borderRadius: 999, backgroundColor: 'rgba(7,15,10,0.68)', paddingHorizontal: 10, marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 6 },
   locationText: { color: '#F4F7F4', fontSize: 11, fontWeight: '800' },
+  cityPicker: { marginTop: 8, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(240,245,241,0.20)', backgroundColor: 'rgba(7,15,10,0.82)', paddingVertical: 8, paddingHorizontal: 9 },
+  cityPickerLabel: { color: '#C9D3CD', fontSize: 9, fontWeight: '800', marginBottom: 6 },
+  cityPickerRow: { gap: 6, paddingRight: 4 },
+  cityOption: { minHeight: 30, borderRadius: 999, borderWidth: 1, borderColor: '#4A5850', backgroundColor: 'rgba(18,28,22,0.92)', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  cityOptionActive: { backgroundColor: '#79D26A', borderColor: '#79D26A' },
+  cityOptionText: { color: '#F4F7F4', fontSize: 10, fontWeight: '900' },
+  cityOptionTextActive: { color: '#0C140D' },
   heroWeatherRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   heroWeatherCopy: { flex: 1 },
   heroWeatherTitle: { color: '#FFFDF6', fontSize: 17, fontWeight: '900' },
