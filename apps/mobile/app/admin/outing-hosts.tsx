@@ -1,162 +1,45 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 
+type HostStatus = 'pending'|'needs_info'|'approved'|'paused'|'declined'|'revoked';
 type HostRow = {
-  profile_id: string;
-  status: 'pending' | 'approved' | 'paused' | 'revoked';
-  host_type: 'community' | 'organization' | 'official';
-  can_create_paid_outings: boolean;
-  payout_status: 'not_started' | 'pending' | 'verified' | 'restricted';
-  application_note: string | null;
-  approved_at: string | null;
+  profile_id:string; status:HostStatus; host_type:string; host_stage:string; can_create_paid_outings:boolean; payout_status:string;
+  application_note:string|null; desired_outing_types:string[]; home_area:string|null; leadership_experience:string|null; expected_group_size:string|null;
+  requested_paid_access:boolean; certifications:string|null; motivation:string|null; safety_acknowledged_at:string|null; orientation_completed_at:string|null;
+  reviewer_notes:string|null; review_reason:string|null; approved_at:string|null;
 };
+type ProfileRow={id:string;display_name:string|null;username:string|null;email:string|null};
 
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-  username: string | null;
-  email: string | null;
-};
-
-export default function OutingHostAdminScreen() {
-  const { session } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
-  const [hosts, setHosts] = useState<HostRow[]>([]);
-  const [profiles, setProfiles] = useState<ProfileRow[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState('');
-
-  async function load() {
-    if (!session?.user.id) return;
-    setLoading(true);
-    setError('');
-    try {
-      const admin = await supabase.rpc('is_platform_admin');
-      if (admin.error) throw admin.error;
-      if (admin.data !== true) {
-        setAuthorized(false);
-        return;
-      }
-      setAuthorized(true);
-      const hostResult = await supabase.from('outing_hosts').select('profile_id,status,host_type,can_create_paid_outings,payout_status,application_note,approved_at').order('created_at', { ascending: false });
-      if (hostResult.error) throw hostResult.error;
-      const nextHosts = (hostResult.data ?? []) as HostRow[];
-      setHosts(nextHosts);
-      if (nextHosts.length) {
-        const profileResult = await supabase.from('profiles').select('id,display_name,username,email').in('id', nextHosts.map((item) => item.profile_id));
-        if (profileResult.error) throw profileResult.error;
-        setProfiles((profileResult.data ?? []) as ProfileRow[]);
-      } else {
-        setProfiles([]);
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load outing hosts.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { void load(); }, [session?.user.id]);
-
-  const profileMap = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
-
-  async function updateHost(profileId: string, patch: Partial<HostRow>) {
-    setBusy(profileId);
-    try {
-      const payload: Record<string, unknown> = { ...patch };
-      if (patch.status === 'approved') {
-        payload.approved_by = session?.user.id;
-        payload.approved_at = new Date().toISOString();
-      }
-      const { error: updateError } = await supabase.from('outing_hosts').update(payload).eq('profile_id', profileId);
-      if (updateError) throw updateError;
-      await load();
-    } catch (caught) {
-      Alert.alert('Unable to update host', caught instanceof Error ? caught.message : 'Please try again.');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A" /></SafeAreaView>;
-  if (!authorized) return <SafeAreaView style={styles.center}><Text style={styles.error}>Admin access required.</Text></SafeAreaView>;
-
-  return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.eyebrow}>ADMINISTRATION</Text>
-        <Text style={styles.title}>Outing Hosts</Text>
-        <Text style={styles.subtitle}>Approve community hosts and separately control paid-outing privileges.</Text>
-
-        {hosts.length === 0 ? <Text style={styles.empty}>No host applications yet.</Text> : hosts.map((host) => {
-          const profile = profileMap.get(host.profile_id);
-          const isBusy = busy === host.profile_id;
-          return (
-            <View key={host.profile_id} style={styles.card}>
-              <View style={styles.headerRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{profile?.display_name || profile?.username || profile?.email || 'Member'}</Text>
-                  <Text style={styles.meta}>{host.status.toUpperCase()} · {host.host_type.toUpperCase()}</Text>
-                </View>
-                <View style={[styles.statusPill, host.status === 'approved' && styles.statusApproved]}><Text style={styles.statusText}>{host.status}</Text></View>
-              </View>
-              {host.application_note ? <Text style={styles.note}>{host.application_note}</Text> : null}
-              <Text style={styles.permission}>Paid outings: {host.can_create_paid_outings ? 'Enabled' : 'Not enabled'} · Payout: {host.payout_status}</Text>
-
-              <View style={styles.actions}>
-                {host.status !== 'approved' ? <Action label="Approve" disabled={isBusy} primary onPress={() => void updateHost(host.profile_id, { status: 'approved' })} /> : null}
-                {host.status === 'approved' ? <Action label="Pause" disabled={isBusy} onPress={() => void updateHost(host.profile_id, { status: 'paused' })} /> : null}
-                {host.status === 'paused' ? <Action label="Restore" disabled={isBusy} primary onPress={() => void updateHost(host.profile_id, { status: 'approved' })} /> : null}
-                {host.status !== 'revoked' ? <Action label="Revoke" disabled={isBusy} danger onPress={() => void updateHost(host.profile_id, { status: 'revoked', can_create_paid_outings: false })} /> : null}
-              </View>
-
-              {host.status === 'approved' ? (
-                <Pressable disabled={isBusy} style={styles.paidToggle} onPress={() => void updateHost(host.profile_id, { can_create_paid_outings: !host.can_create_paid_outings })}>
-                  <Text style={styles.paidToggleText}>{host.can_create_paid_outings ? 'Disable paid outings' : 'Enable paid outings'}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          );
-        })}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
+export default function OutingHostAdminScreen(){
+ const {session}=useAuth(); const [loading,setLoading]=useState(true); const [authorized,setAuthorized]=useState(false); const [hosts,setHosts]=useState<HostRow[]>([]); const [profiles,setProfiles]=useState<ProfileRow[]>([]); const [busy,setBusy]=useState<string|null>(null); const [notes,setNotes]=useState<Record<string,string>>({}); const [error,setError]=useState('');
+ async function load(){ if(!session?.user.id)return; setLoading(true);setError(''); try{
+  const admin=await supabase.rpc('is_platform_admin'); if(admin.error)throw admin.error; if(admin.data!==true){setAuthorized(false);return;} setAuthorized(true);
+  const hostResult=await supabase.from('outing_hosts').select('profile_id,status,host_type,host_stage,can_create_paid_outings,payout_status,application_note,desired_outing_types,home_area,leadership_experience,expected_group_size,requested_paid_access,certifications,motivation,safety_acknowledged_at,orientation_completed_at,reviewer_notes,review_reason,approved_at').order('created_at',{ascending:false}); if(hostResult.error)throw hostResult.error;
+  const next=(hostResult.data??[]) as HostRow[]; setHosts(next); setNotes(Object.fromEntries(next.map((h)=>[h.profile_id,h.reviewer_notes??''])));
+  if(next.length){const p=await supabase.from('profiles').select('id,display_name,username,email').in('id',next.map((h)=>h.profile_id));if(p.error)throw p.error;setProfiles((p.data??[]) as ProfileRow[]);}else setProfiles([]);
+ }catch(caught){setError(caught instanceof Error?caught.message:'Unable to load outing hosts.');}finally{setLoading(false);} }
+ useEffect(()=>{void load();},[session?.user.id]);
+ const profileMap=useMemo(()=>new Map(profiles.map((p)=>[p.id,p])),[profiles]);
+ async function review(host:HostRow,decision:'approved'|'needs_info'|'paused'|'declined'|'revoked'){
+  const note=(notes[host.profile_id]??'').trim();
+  if((decision==='needs_info'||decision==='declined'||decision==='revoked')&&!note){Alert.alert('Add a reviewer note','Explain what the applicant needs to provide or why access is changing.');return;}
+  setBusy(host.profile_id);try{const {error:rpcError}=await supabase.rpc('review_outing_host',{p_profile_id:host.profile_id,p_decision:decision,p_notes:note||null,p_reason:note||null});if(rpcError)throw rpcError;await load();}catch(caught){Alert.alert('Unable to review host',caught instanceof Error?caught.message:'Please try again.');}finally{setBusy(null);} }
+ async function paidPermission(host:HostRow){setBusy(host.profile_id);try{const {error:updateError}=await supabase.from('outing_hosts').update({can_create_paid_outings:!host.can_create_paid_outings}).eq('profile_id',host.profile_id);if(updateError)throw updateError;await load();}catch(caught){Alert.alert('Unable to update permission',caught instanceof Error?caught.message:'Please try again.');}finally{setBusy(null);} }
+ if(loading)return <SafeAreaView style={styles.center}><ActivityIndicator color="#D7B45A"/></SafeAreaView>; if(!authorized)return <SafeAreaView style={styles.center}><Text style={styles.error}>Admin access required.</Text></SafeAreaView>;
+ return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}><Text style={styles.eyebrow}>ADMINISTRATION</Text><Text style={styles.title}>Host Review</Text><Text style={styles.subtitle}>Review the person, their plan, orientation completion, and requested privileges before unlocking hosting.</Text>
+ {hosts.length===0?<Text style={styles.empty}>No host applications yet.</Text>:hosts.map((host)=>{const p=profileMap.get(host.profile_id);const isBusy=busy===host.profile_id;const ready=!!host.safety_acknowledged_at&&!!host.orientation_completed_at;return <View key={host.profile_id} style={styles.card}>
+   <View style={styles.header}><View style={{flex:1}}><Text style={styles.name}>{p?.display_name||p?.username||p?.email||'Member'}</Text><Text style={styles.meta}>{host.status.replace('_',' ').toUpperCase()} · {host.host_stage.toUpperCase()}</Text></View><View style={[styles.pill,host.status==='approved'&&styles.pillApproved]}><Text style={styles.pillText}>{host.status.replace('_',' ')}</Text></View></View>
+   <View style={styles.readiness}><Text style={ready?styles.good:styles.warn}>{ready?'✓ Pathway complete':'! Pathway incomplete'}</Text><Text style={styles.permission}>{host.requested_paid_access?'Paid hosting requested':'Free hosting requested'}</Text></View>
+   <Detail label="Outing types" value={(host.desired_outing_types??[]).join(', ')||'Not provided'}/><Detail label="Home area" value={host.home_area||'Not provided'}/><Detail label="Expected group" value={host.expected_group_size||'Not provided'}/><Detail label="Experience" value={host.leadership_experience||host.application_note||'Not provided'}/><Detail label="Why they want to host" value={host.motivation||host.application_note||'Not provided'}/>{host.certifications?<Detail label="Certifications" value={host.certifications}/>:null}
+   <Text style={styles.label}>Reviewer notes</Text><TextInput value={notes[host.profile_id]??''} onChangeText={(value)=>setNotes((current)=>({...current,[host.profile_id]:value}))} multiline placeholder="Internal note or information request…" placeholderTextColor="#68736C" style={styles.input}/>
+   <View style={styles.actions}>{host.status!=='approved'?<Action label="Approve free host" primary disabled={isBusy||!ready} onPress={()=>void review(host,'approved')}/>:null}{host.status==='pending'?<Action label="Needs info" disabled={isBusy} onPress={()=>void review(host,'needs_info')}/>:null}{host.status==='needs_info'?<Action label="Approve" primary disabled={isBusy||!ready} onPress={()=>void review(host,'approved')}/>:null}{host.status==='approved'?<Action label="Pause" disabled={isBusy} onPress={()=>void review(host,'paused')}/>:null}{host.status==='paused'?<Action label="Restore" primary disabled={isBusy} onPress={()=>void review(host,'approved')}/>:null}{!['declined','revoked'].includes(host.status)?<Action label={host.status==='approved'?'Revoke':'Decline'} danger disabled={isBusy} onPress={()=>void review(host,host.status==='approved'?'revoked':'declined')}/>:null}</View>
+   {host.status==='approved'&&host.requested_paid_access?<Pressable disabled={isBusy} onPress={()=>void paidPermission(host)} style={styles.paid}><Text style={styles.paidText}>{host.can_create_paid_outings?'Remove paid-host permission':'Grant paid-host permission'}</Text><Text style={styles.paidMeta}>Permission alone does not bypass payout onboarding.</Text></Pressable>:null}
+  </View>;})}{error?<Text style={styles.error}>{error}</Text>:null}</ScrollView></SafeAreaView>;
 }
-
-function Action({ label, onPress, primary, danger, disabled }: { label: string; onPress: () => void; primary?: boolean; danger?: boolean; disabled?: boolean }) {
-  return <Pressable disabled={disabled} style={[styles.action, primary && styles.actionPrimary, danger && styles.actionDanger, disabled && { opacity: .45 }]} onPress={onPress}><Text style={[styles.actionText, primary && styles.actionPrimaryText]}>{label}</Text></Pressable>;
-}
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0B100D' },
-  center: { flex: 1, backgroundColor: '#0B100D', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  content: { padding: 20, paddingBottom: 60 },
-  eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
-  title: { color: '#FFF8E8', fontSize: 35, fontWeight: '900', marginTop: 4 },
-  subtitle: { color: '#A6B0AA', fontSize: 14, lineHeight: 20, marginTop: 5, marginBottom: 20 },
-  empty: { color: '#7C8880', fontSize: 13, marginTop: 15 },
-  card: { borderRadius: 16, borderWidth: 1, borderColor: '#2E3932', backgroundColor: '#171D19', padding: 15, marginBottom: 12 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  name: { color: '#FFF8E8', fontSize: 17, fontWeight: '900' },
-  meta: { color: '#8D9891', fontSize: 9, fontWeight: '900', letterSpacing: .8, marginTop: 3 },
-  statusPill: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14, backgroundColor: '#2B312D' },
-  statusApproved: { backgroundColor: '#1D4A32' },
-  statusText: { color: '#D6DDD8', fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
-  note: { color: '#C5CEC8', fontSize: 12, lineHeight: 18, marginTop: 12 },
-  permission: { color: '#A68E4D', fontSize: 10, fontWeight: '800', marginTop: 10 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 13 },
-  action: { minHeight: 37, borderRadius: 10, borderWidth: 1, borderColor: '#48534C', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  actionPrimary: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
-  actionDanger: { borderColor: '#8B413A', backgroundColor: '#321A18' },
-  actionText: { color: '#E7ECE8', fontSize: 11, fontWeight: '900' },
-  actionPrimaryText: { color: '#172017' },
-  paidToggle: { marginTop: 9, minHeight: 40, borderRadius: 10, borderWidth: 1, borderColor: '#735B22', backgroundColor: '#2E2818', alignItems: 'center', justifyContent: 'center' },
-  paidToggleText: { color: '#E7C464', fontSize: 11, fontWeight: '900' },
-  error: { color: '#FF8A80', fontSize: 12, lineHeight: 18, marginTop: 14 },
-});
+function Detail({label,value}:{label:string;value:string}){return <View style={styles.detail}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>;}
+function Action({label,onPress,primary,danger,disabled}:{label:string;onPress:()=>void;primary?:boolean;danger?:boolean;disabled?:boolean}){return <Pressable disabled={disabled} onPress={onPress} style={[styles.action,primary&&styles.actionPrimary,danger&&styles.actionDanger,disabled&&styles.disabled]}><Text style={[styles.actionText,primary&&styles.actionPrimaryText]}>{label}</Text></Pressable>;}
+const styles=StyleSheet.create({safe:{flex:1,backgroundColor:'#0B100D'},center:{flex:1,backgroundColor:'#0B100D',alignItems:'center',justifyContent:'center',padding:24},content:{padding:20,paddingBottom:60},eyebrow:{color:'#D7B45A',fontSize:10,fontWeight:'900',letterSpacing:1.1},title:{color:'#FFF8E8',fontSize:35,fontWeight:'900',marginTop:4},subtitle:{color:'#A6B0AA',fontSize:14,lineHeight:20,marginTop:5,marginBottom:20},empty:{color:'#7C8880',fontSize:13},card:{borderRadius:17,borderWidth:1,borderColor:'#2E3932',backgroundColor:'#171D19',padding:15,marginBottom:13},header:{flexDirection:'row',gap:10,alignItems:'center'},name:{color:'#FFF8E8',fontSize:17,fontWeight:'900'},meta:{color:'#8D9891',fontSize:9,fontWeight:'900',letterSpacing:.8,marginTop:3},pill:{paddingHorizontal:9,paddingVertical:6,borderRadius:14,backgroundColor:'#2B312D'},pillApproved:{backgroundColor:'#1D4A32'},pillText:{color:'#D6DDD8',fontSize:9,fontWeight:'900',textTransform:'uppercase'},readiness:{flexDirection:'row',justifyContent:'space-between',marginTop:12,gap:8},good:{color:'#8FD1A9',fontSize:10,fontWeight:'900'},warn:{color:'#E7B76C',fontSize:10,fontWeight:'900'},permission:{color:'#D7B45A',fontSize:10,fontWeight:'800'},detail:{marginTop:11},detailLabel:{color:'#748078',fontSize:9,fontWeight:'900',textTransform:'uppercase'},detailValue:{color:'#C8D0CB',fontSize:12,lineHeight:18,marginTop:2},label:{color:'#D7B45A',fontSize:10,fontWeight:'900',marginTop:14,marginBottom:6},input:{minHeight:88,borderWidth:1,borderColor:'#354139',backgroundColor:'#0E1511',borderRadius:11,color:'#FFF8E8',padding:11,textAlignVertical:'top'},actions:{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:12},action:{minHeight:38,borderRadius:10,borderWidth:1,borderColor:'#48534C',paddingHorizontal:11,alignItems:'center',justifyContent:'center'},actionPrimary:{backgroundColor:'#D7B45A',borderColor:'#D7B45A'},actionDanger:{borderColor:'#8B413A',backgroundColor:'#321A18'},actionText:{color:'#E7ECE8',fontSize:10,fontWeight:'900'},actionPrimaryText:{color:'#172017'},disabled:{opacity:.4},paid:{marginTop:10,borderWidth:1,borderColor:'#735B22',backgroundColor:'#2E2818',borderRadius:11,padding:11},paidText:{color:'#E7C464',fontSize:11,fontWeight:'900',textAlign:'center'},paidMeta:{color:'#8D835F',fontSize:9,textAlign:'center',marginTop:3},error:{color:'#FF8A80',fontSize:12,lineHeight:18,marginTop:14}});
