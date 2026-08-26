@@ -66,6 +66,36 @@ export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
     title: 'Thomas Creek Conservation Area',
     credit: 'Will Dickey / Timucuan Parks Foundation',
   },
+  'fort-de-soto-park': {
+    url: 'https://pinellas.gov/wp-content/uploads/2021/10/6104188822_c609b5cc6c_o-e1643223841539.jpg',
+    sourceUrl: 'https://pinellas.gov/parks/fort-de-soto-park/',
+    title: 'Fort De Soto Park',
+    credit: 'Pinellas County Parks & Conservation Resources',
+  },
+  'brooker-creek-preserve': {
+    url: 'https://pinellas.gov/wp-content/uploads/2021/10/boardwalk-banner-825x464.jpg',
+    sourceUrl: 'https://pinellas.gov/parks/brooker-creek-preserve/',
+    title: 'Brooker Creek Preserve',
+    credit: 'Pinellas County Parks & Conservation Resources',
+  },
+  'sawgrass-lake-park': {
+    url: 'https://pinellas.gov/wp-content/uploads/2022/01/Sawgrass_Park_03_11-21_SF-1-scaled.jpg',
+    sourceUrl: 'https://pinellas.gov/parks/sawgrass-lake-park/',
+    title: 'Sawgrass Lake Park',
+    credit: 'Pinellas County Parks & Conservation Resources',
+  },
+  'lettuce-lake-conservation-park': {
+    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_Observation_Lettuce_Lake',
+    sourceUrl: 'https://hcfl.gov/locations/lettuce-lake-conservation-park',
+    title: 'Lettuce Lake Conservation Park',
+    credit: 'Hillsborough County',
+  },
+  'lithia-springs-conservation-park': {
+    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Lithia%20springs_NR',
+    sourceUrl: 'https://hcfl.gov/locations/lithia-springs-park',
+    title: 'Lithia Springs Conservation Park',
+    credit: 'Hillsborough County',
+  },
 };
 
 type WikiSearchPage = {
