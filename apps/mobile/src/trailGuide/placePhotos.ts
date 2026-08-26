@@ -138,6 +138,57 @@ export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
     title: 'Upper Tampa Bay Conservation Park',
     credit: 'Hillsborough County',
   },
+  'hillsborough-river-state-park': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Rapids%20at%20Hillsborough%20State%20Park.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Rapids_at_Hillsborough_State_Park.jpg',
+    title: 'Hillsborough River State Park',
+    credit: 'Wikimedia Commons',
+  },
+  'alafia-river-state-park': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Alafia%20River%20SP%20river01.JPG?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Alafia_River_SP_river01.JPG',
+    title: 'Alafia River State Park',
+    credit: 'Ebyabe / Wikimedia Commons',
+  },
+  'little-manatee-river-state-park': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Little%20Manatee%20River%20SP%20river01.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Little_Manatee_River_SP_river01.jpg',
+    title: 'Little Manatee River State Park',
+    credit: 'Ebyabe / Wikimedia Commons',
+    license: 'CC BY-SA 3.0',
+  },
+  'honeymoon-island-state-park': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Honeymoon%20Island%20State%20Park%20%28Image%204%29.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Honeymoon_Island_State_Park_(Image_4).jpg',
+    title: 'Honeymoon Island State Park',
+    credit: 'Christopher Hollis / Wikimedia Commons',
+    license: 'Public domain',
+  },
+  'caladesi-island-state-park': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Caladesi%20island%20beach%2001.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Caladesi_island_beach_01.jpg',
+    title: 'Caladesi Island State Park',
+    credit: 'Wikimedia Commons',
+  },
+  'weedon-island-preserve': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Weedon%20Island%202025%20%2850%29.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Weedon_Island_2025_(50).jpg',
+    title: 'Weedon Island Preserve',
+    credit: 'Evans125 / Wikimedia Commons',
+  },
+  'boyd-hill-nature-preserve': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Boyd%20Hill%20Nature%20Preserve.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Boyd_Hill_Nature_Preserve.jpg',
+    title: 'Boyd Hill Nature Preserve',
+    credit: 'Calmuziclover / Wikimedia Commons',
+  },
+  'emerson-point-preserve': {
+    url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Emerson%20Point%20Preserve%20Palmetto%20Florida%202022-7298.jpg?width=1200',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Emerson_Point_Preserve_Palmetto_Florida_2022-7298.jpg',
+    title: 'Emerson Point Preserve',
+    credit: 'Paul Burley / Wikimedia Commons',
+    license: 'CC BY-SA 4.0',
+  },
 };
 
 type WikiSearchPage = {
