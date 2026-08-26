@@ -36,6 +36,7 @@ export type MemberGuideResult = {
   dayPlan: MemberGuideDayStep[];
   followUps: string[];
   confidenceNotes: string[];
+  source?: 'ai' | 'fallback';
 };
 
 export type AskMemberGuideInput = {
@@ -91,5 +92,8 @@ export async function askMemberGuide(input: AskMemberGuideInput): Promise<Member
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
   if (!data?.result) throw new Error('I could not build that recommendation right now.');
-  return data.result as MemberGuideResult;
+  return {
+    ...(data.result as MemberGuideResult),
+    source: data.source === 'fallback' ? 'fallback' : 'ai',
+  };
 }
