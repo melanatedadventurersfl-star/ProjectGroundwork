@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ImageBackground,
@@ -52,7 +52,7 @@ export default function ReadinessScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!orderId) return;
     try {
       setLoading(true);
@@ -75,11 +75,11 @@ export default function ReadinessScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [orderId]);
 
   useEffect(() => {
     void load();
-  }, [orderId]);
+  }, [load]);
 
   const required = useMemo(() => items.filter((item) => item.is_required), [items]);
   const recommended = useMemo(() => items.filter((item) => !item.is_required), [items]);
