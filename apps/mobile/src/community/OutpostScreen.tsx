@@ -37,6 +37,7 @@ const NEAR_RADIUS_MILES = 50;
 type OutpostTab = 'for-you' | 'groups' | 'campfires';
 type BasecampFilter = 'for-you' | 'latest' | 'trailmates' | 'communities' | 'nearby';
 type CampfireFilter = 'nearby' | 'today' | 'week';
+type CommunityFilter = 'all' | 'official' | 'joined' | 'nearby';
 type PickedPhoto = { uri: string; mimeType?: string | null };
 type PickedVideo = {
   uri: string;
@@ -65,6 +66,13 @@ const campfireFilters: { value: CampfireFilter; label: string }[] = [
   { value: 'nearby', label: 'Nearby' },
   { value: 'today', label: 'Today' },
   { value: 'week', label: 'This week' },
+];
+
+const communityFilters: { value: CommunityFilter; label: string; icon: string }[] = [
+  { value: 'all', label: 'All', icon: 'apps-outline' },
+  { value: 'official', label: 'Official', icon: 'checkmark-circle-outline' },
+  { value: 'joined', label: 'Joined', icon: 'people-outline' },
+  { value: 'nearby', label: 'Near me', icon: 'location-outline' },
 ];
 
 const postTypes: { value: CommunityPostType; label: string; icon: string }[] = [
@@ -131,6 +139,35 @@ function isWithinWeek(value: string) {
   return time >= now && time <= now + (7 * 24 * 60 * 60 * 1000);
 }
 
+function isOfficialCommunity(group: CommunityGroup) {
+  return group.kind === 'interest';
+}
+
+function communityCover(group: CommunityGroup) {
+  return group.cover_image_url || group.image_url;
+}
+
+function memberLabel(group: CommunityGroup) {
+  return `${group.member_count} member${group.member_count === 1 ? '' : 's'}`;
+}
+
+function SectionHeading({ title, detail, action, onAction }: { title: string; detail?: string; action?: string; onAction?: () => void }) {
+  return (
+    <View style={styles.communitySectionHeading}>
+      <View style={styles.flex}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {detail ? <Text style={styles.communitySectionDetail}>{detail}</Text> : null}
+      </View>
+      {action && onAction ? (
+        <Pressable style={styles.sectionAction} onPress={onAction}>
+          <Text style={styles.sectionActionText}>{action}</Text>
+          <Ionicons name="chevron-forward" size={14} color={GOLD} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 function PostCard({ post }: { post: CommunityPost }) {
   const badge = post.post_type === 'ask' ? 'Ask' : post.post_type === 'buddy' ? 'Adventure Buddy' : post.post_type === 'recommendation' ? 'Place' : post.post_type === 'meetup' ? 'Outing' : null;
   const videoDuration = formatDuration(metadataNumber(post.metadata, 'media_duration_ms'));
@@ -181,17 +218,103 @@ function PostCard({ post }: { post: CommunityPost }) {
 }
 
 function CommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
-  const coverUrl = group.cover_image_url || group.image_url;
+  const coverUrl = communityCover(group);
   return (
     <Pressable style={({ pressed }) => [styles.communityCard, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
       <View style={styles.communityImageWrap}>
         {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.communityImage} /> : <View style={styles.communityFallback}><Text style={styles.communityInitials}>{initials(group.name)}</Text></View>}
       </View>
       <View style={styles.communityInfo}>
-        <Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>
-        <Text style={styles.communityMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}{group.city || group.state ? ` · ${[group.city, group.state].filter(Boolean).join(', ')}` : ''}</Text>
+        <View style={styles.communityNameLine}>
+          <Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>
+          {isOfficialCommunity(group) ? <Ionicons name="checkmark-circle" size={14} color={GOLD} /> : null}
+        </View>
+        <Text style={styles.communityMeta}>{memberLabel(group)}{group.city || group.state ? ` · ${[group.city, group.state].filter(Boolean).join(', ')}` : ''}</Text>
       </View>
       {group.is_member ? <Ionicons name="chevron-forward" size={18} color={MUTED} /> : <Pressable disabled={joining} style={styles.joinPill} onPress={(event) => { event.stopPropagation(); onJoin(group); }}><Text style={styles.joinPillText}>{joining ? 'Joining…' : 'Join'}</Text></Pressable>}
+    </Pressable>
+  );
+}
+
+function OfficialCommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const coverUrl = communityCover(group);
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.officialCard, pressed && styles.pressed]}
+      onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}
+      accessibilityRole="button"
+      accessibilityLabel={`${group.name}, official community`}
+    >
+      {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.officialCardImage} /> : <View style={styles.officialCardFallback}><Text style={styles.officialCardInitials}>{initials(group.name)}</Text></View>}
+      <View style={styles.officialCardShade} />
+      <View style={styles.officialBadge}><Ionicons name="checkmark" size={11} color="#101510" /><Text style={styles.officialBadgeText}>Official</Text></View>
+      {group.is_member ? <View style={styles.joinedBadge}><Ionicons name="checkmark" size={11} color={TEXT} /><Text style={styles.joinedBadgeText}>Joined</Text></View> : null}
+      <View style={styles.officialCardContent}>
+        <Text style={styles.officialCardTitle} numberOfLines={2}>{group.name}</Text>
+        {group.description ? <Text style={styles.officialCardDescription} numberOfLines={2}>{group.description}</Text> : null}
+        <View style={styles.officialCardFooter}>
+          <Ionicons name="people-outline" size={13} color="#E9EFEA" />
+          <Text style={styles.officialCardMeta}>{memberLabel(group)}</Text>
+          {!group.is_member ? <Text style={styles.officialJoinText}>{joining ? 'Joining…' : 'Join'}</Text> : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function YourCommunityRow({ group, latestPost }: { group: CommunityGroup; latestPost?: CommunityPost }) {
+  const coverUrl = communityCover(group);
+  const activity = latestPost ? `${latestPost.author_name} posted · ${relativeTime(latestPost.created_at)}` : `${memberLabel(group)} · You're joined`;
+  return (
+    <Pressable style={({ pressed }) => [styles.yourCommunityRow, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
+      <View style={styles.yourCommunityImageWrap}>
+        {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.communityImage} /> : <View style={styles.communityFallback}><Text style={styles.communityInitials}>{initials(group.name)}</Text></View>}
+      </View>
+      <View style={styles.flex}>
+        <Text style={styles.yourCommunityName} numberOfLines={1}>{group.name}</Text>
+        <Text style={[styles.yourCommunityActivity, latestPost && styles.yourCommunityActivityLive]} numberOfLines={1}>{activity}</Text>
+      </View>
+      {latestPost ? <View style={styles.activityDot} /> : null}
+      <Ionicons name="chevron-forward" size={18} color={GOLD} />
+    </Pressable>
+  );
+}
+
+function CommunityActivityCard({ post, group }: { post: CommunityPost; group: CommunityGroup }) {
+  const coverUrl = communityCover(group);
+  return (
+    <Pressable style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]} onPress={() => router.push(`/community/${post.id}`)}>
+      <View style={styles.activityCardTop}>
+        <View style={styles.activityGroupIcon}>
+          {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.communityImage} /> : <Text style={styles.activityGroupInitials}>{initials(group.name)}</Text>}
+        </View>
+        <View style={styles.flex}>
+          <Text style={styles.activityGroupName} numberOfLines={1}>{group.name}</Text>
+          <Text style={styles.activityMeta}>{post.author_name} · {relativeTime(post.created_at)}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={MUTED} />
+      </View>
+      <Text style={styles.activityBody} numberOfLines={2}>{post.body || (post.media_type === 'video' ? 'Shared a video' : post.image_url ? 'Shared a photo' : 'New community activity')}</Text>
+    </Pressable>
+  );
+}
+
+function DiscoveryCommunityCard({ group, reason, joining, onJoin }: { group: CommunityGroup; reason: string; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const coverUrl = communityCover(group);
+  return (
+    <Pressable style={({ pressed }) => [styles.discoveryCard, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
+      <View style={styles.discoveryImageWrap}>
+        {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.discoveryImage} /> : <View style={styles.discoveryFallback}><Text style={styles.discoveryInitials}>{initials(group.name)}</Text></View>}
+        {group.is_member ? <View style={styles.discoveryJoined}><Ionicons name="checkmark" size={11} color={TEXT} /><Text style={styles.discoveryJoinedText}>Joined</Text></View> : null}
+      </View>
+      <View style={styles.discoveryContent}>
+        <Text style={styles.discoveryTitle} numberOfLines={1}>{group.name}</Text>
+        <Text style={styles.discoveryReason} numberOfLines={1}>{reason}</Text>
+        <View style={styles.discoveryFooter}>
+          <Text style={styles.discoveryMeta}>{memberLabel(group)}</Text>
+          {!group.is_member ? <Text style={styles.discoveryJoin}>{joining ? 'Joining…' : 'Join'}</Text> : null}
+        </View>
+      </View>
     </Pressable>
   );
 }
@@ -282,6 +405,8 @@ export default function OutpostScreen() {
   const [typeOpen, setTypeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [communityQuery, setCommunityQuery] = useState('');
+  const [communityFilter, setCommunityFilter] = useState<CommunityFilter>('all');
+  const [communitySearchFocused, setCommunitySearchFocused] = useState(false);
   const [campfireFilter, setCampfireFilter] = useState<CampfireFilter>('nearby');
 
   const load = useCallback(async () => {
@@ -346,9 +471,11 @@ export default function OutpostScreen() {
   const selectedBasecampFilter = basecampFilters.find((item) => item.value === basecampFilter) ?? basecampFilters[0]!;
   const myGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member), [groups]);
+  const officialGroups = useMemo(() => groups.filter(isOfficialCommunity), [groups]);
   const homePoint = useMemo(() => homeCity && homeState ? pointForCity(homeCity, homeState) : null, [homeCity, homeState]);
   const trailmateIdSet = useMemo(() => new Set(trailmateIds), [trailmateIds]);
   const myGroupIdSet = useMemo(() => new Set(myGroups.map((group) => group.id)), [myGroups]);
+  const groupById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
 
   const isPostNearby = useCallback((post: CommunityPost) => {
     const location = authorLocations[post.author_id];
@@ -358,6 +485,20 @@ export default function OutpostScreen() {
     if (homePoint && authorPoint) return distanceMiles(homePoint, authorPoint) <= NEAR_RADIUS_MILES;
     return Boolean(homeState && location.state === homeState && (!homeCity || location.city === homeCity));
   }, [authorLocations, homeCity, homePoint, homeState]);
+
+  const distanceForGroup = useCallback((group: CommunityGroup) => {
+    if (!homePoint || !group.city || !group.state) return null;
+    const groupPoint = pointForCity(group.city, group.state);
+    return groupPoint ? distanceMiles(homePoint, groupPoint) : null;
+  }, [homePoint]);
+
+  const isGroupNearby = useCallback((group: CommunityGroup) => {
+    if (!group.city && !group.state) return false;
+    if (homeCity && homeState && group.city === homeCity && group.state === homeState) return true;
+    const distance = distanceForGroup(group);
+    if (distance != null) return distance <= NEAR_RADIUS_MILES;
+    return Boolean(homeState && group.state === homeState && (!homeCity || group.city === homeCity));
+  }, [distanceForGroup, homeCity, homeState]);
 
   const visiblePosts = useMemo(() => {
     let next = [...posts];
@@ -402,15 +543,51 @@ export default function OutpostScreen() {
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
   }, [campfireFilter, campfires, homeState, visibleCampfires]);
 
-  const filteredMyGroups = useMemo(() => {
-    const query = communityQuery.trim().toLowerCase();
-    return myGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
-  }, [communityQuery, myGroups]);
+  const latestPostByGroup = useMemo(() => {
+    const map = new Map<string, CommunityPost>();
+    const orderedPosts = [...posts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    for (const post of orderedPosts) {
+      if (post.group_id && !map.has(post.group_id)) map.set(post.group_id, post);
+    }
+    return map;
+  }, [posts]);
 
-  const filteredDiscoverGroups = useMemo(() => {
+  const communityActivity = useMemo(() => posts
+    .filter((post) => Boolean(post.group_id && myGroupIdSet.has(post.group_id) && groupById.has(post.group_id)))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3), [groupById, myGroupIdSet, posts]);
+
+  const recommendedGroups = useMemo(() => discoverGroups
+    .filter((group) => !isOfficialCommunity(group))
+    .sort((a, b) => b.member_count - a.member_count)
+    .slice(0, 8), [discoverGroups]);
+
+  const nearbyGroups = useMemo(() => groups
+    .filter(isGroupNearby)
+    .sort((a, b) => (distanceForGroup(a) ?? Number.MAX_SAFE_INTEGER) - (distanceForGroup(b) ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 8), [distanceForGroup, groups, isGroupNearby]);
+
+  const filteredCommunityResults = useMemo(() => {
     const query = communityQuery.trim().toLowerCase();
-    return discoverGroups.filter((group) => !query || `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query));
-  }, [communityQuery, discoverGroups]);
+    return groups.filter((group) => {
+      const searchable = `${group.name} ${group.description ?? ''} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase();
+      if (query && !searchable.includes(query)) return false;
+      if (communityFilter === 'official' && !isOfficialCommunity(group)) return false;
+      if (communityFilter === 'joined' && !group.is_member) return false;
+      if (communityFilter === 'nearby' && !isGroupNearby(group)) return false;
+      return true;
+    });
+  }, [communityFilter, communityQuery, groups, isGroupNearby]);
+
+  const searchMode = Boolean(communityQuery.trim()) || communityFilter !== 'all';
+  const showCommunityFilters = communitySearchFocused || searchMode;
+
+  const recommendationReason = useCallback((group: CommunityGroup) => {
+    if (isGroupNearby(group)) return homeCity ? `Near ${homeCity}` : 'Near your basecamp';
+    if (group.kind === 'adventure') return 'Built around an adventure';
+    if (group.city || group.state) return [group.city, group.state].filter(Boolean).join(', ');
+    return group.member_count > 0 ? 'Growing in the community' : 'A new space to explore';
+  }, [homeCity, isGroupNearby]);
 
   async function choosePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -570,14 +747,78 @@ export default function OutpostScreen() {
           {!visiblePosts.length && !loading ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>{basecampFilter === 'trailmates' ? 'No Trailmate posts yet' : basecampFilter === 'communities' ? 'No community posts yet' : basecampFilter === 'nearby' ? 'Nothing nearby yet' : 'Start the conversation'}</Text><Text style={styles.emptyText}>{basecampFilter === 'latest' || basecampFilter === 'for-you' ? 'Share what you’re doing outside.' : 'Try another filter or add something to the Outpost.'}</Text></View> : null}
         </> : null}
 
-        {tab === 'groups' ? <>
-          <View style={styles.tabIntro}><Text style={styles.tabIntroTitle}>Communities</Text><Text style={styles.tabIntroCopy}>Ongoing spaces built around interests, locations, and shared experiences.</Text></View>
-          <View style={styles.searchBox}><Ionicons name="search-outline" size={18} color={MUTED} /><TextInput value={communityQuery} onChangeText={setCommunityQuery} placeholder="Search communities" placeholderTextColor="#77847C" style={styles.searchInput} /></View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Your Communities</Text></View>
-          <View style={styles.cardList}>{filteredMyGroups.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!filteredMyGroups.length ? <Text style={styles.emptyListText}>{myGroups.length ? 'No joined communities match that search.' : 'You have not joined a community yet.'}</Text> : null}</View>
-          <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Discover</Text></View>
-          <View style={styles.cardList}>{filteredDiscoverGroups.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}{!filteredDiscoverGroups.length ? <Text style={styles.emptyListText}>No discoverable communities match that search.</Text> : null}</View>
-        </> : null}
+        {tab === 'groups' ? <View style={styles.communitiesExperience}>
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={19} color={MUTED} />
+            <TextInput
+              value={communityQuery}
+              onChangeText={setCommunityQuery}
+              onFocus={() => setCommunitySearchFocused(true)}
+              onBlur={() => setCommunitySearchFocused(false)}
+              placeholder="Search communities, interests, or locations"
+              placeholderTextColor="#77847C"
+              style={styles.searchInput}
+              returnKeyType="search"
+            />
+            {communityQuery ? <Pressable onPress={() => setCommunityQuery('')} accessibilityLabel="Clear community search"><Ionicons name="close-circle" size={18} color="#78847D" /></Pressable> : null}
+          </View>
+
+          {showCommunityFilters ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.communityFilterRail} keyboardShouldPersistTaps="handled">
+            {communityFilters.map((filter) => <Pressable key={filter.value} style={[styles.communityFilterChip, communityFilter === filter.value && styles.communityFilterChipActive]} onPress={() => setCommunityFilter(filter.value)}>
+              <Ionicons name={filter.icon as never} size={14} color={communityFilter === filter.value ? '#101510' : MUTED} />
+              <Text style={[styles.communityFilterText, communityFilter === filter.value && styles.communityFilterTextActive]}>{filter.label}</Text>
+            </Pressable>)}
+          </ScrollView> : null}
+
+          {searchMode ? <>
+            <SectionHeading title="Community results" detail={`${filteredCommunityResults.length} match${filteredCommunityResults.length === 1 ? '' : 'es'}`} />
+            <View style={styles.cardList}>
+              {filteredCommunityResults.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
+              {!filteredCommunityResults.length ? <View style={styles.emptyCard}><Ionicons name="search-outline" size={26} color={GOLD} /><Text style={styles.emptyTitle}>No communities found</Text><Text style={styles.emptyText}>Try another search or filter.</Text></View> : null}
+            </View>
+          </> : <>
+            <SectionHeading title="Official Communities" detail="Curated by Go Melanated" action="See all" onAction={() => setCommunityFilter('official')} />
+            {officialGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.officialRail}>
+              {officialGroups.map((group) => <OfficialCommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
+            </ScrollView> : <Text style={styles.emptyListText}>Official communities are being prepared.</Text>}
+
+            <SectionHeading title="Your Communities" detail={`${myGroups.length} joined`} action="See all" onAction={() => setCommunityFilter('joined')} />
+            <View style={styles.yourCommunityList}>
+              {myGroups.slice(0, 5).map((group) => <YourCommunityRow key={group.id} group={group} latestPost={latestPostByGroup.get(group.id)} />)}
+              {!myGroups.length ? <View style={styles.emptyCommunityCallout}><Ionicons name="people-outline" size={22} color={GOLD} /><View style={styles.flex}><Text style={styles.emptyCommunityCalloutTitle}>Find your people</Text><Text style={styles.emptyCommunityCalloutText}>Join an official or recommended community to make this space yours.</Text></View></View> : null}
+            </View>
+
+            {communityActivity.length ? <>
+              <SectionHeading title="Happening in Your Communities" detail="What changed since you checked in" />
+              <View style={styles.activityList}>
+                {communityActivity.map((post) => {
+                  const group = post.group_id ? groupById.get(post.group_id) : undefined;
+                  return group ? <CommunityActivityCard key={post.id} post={post} group={group} /> : null;
+                })}
+              </View>
+            </> : null}
+
+            {recommendedGroups.length ? <>
+              <SectionHeading title="Recommended for You" detail="More spaces worth exploring" />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoveryRail}>
+                {recommendedGroups.map((group) => <DiscoveryCommunityCard key={group.id} group={group} reason={recommendationReason(group)} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
+              </ScrollView>
+            </> : null}
+
+            {nearbyGroups.length ? <>
+              <SectionHeading title={`Near ${homeCity || 'Your Basecamp'}`} detail="Communities connected to your area" action="See all" onAction={() => setCommunityFilter('nearby')} />
+              <View style={styles.cardList}>
+                {nearbyGroups.slice(0, 4).map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={(next) => void handleJoin(next)} />)}
+              </View>
+            </> : null}
+
+            <Pressable style={({ pressed }) => [styles.exploreAllButton, pressed && styles.pressed]} onPress={() => { setCommunityFilter('all'); setCommunitySearchFocused(true); }}>
+              <View style={styles.exploreAllIcon}><Ionicons name="compass-outline" size={18} color={GOLD} /></View>
+              <View style={styles.flex}><Text style={styles.exploreAllTitle}>Explore all communities</Text><Text style={styles.exploreAllCopy}>Search by interest, location, or what you want to do next.</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={GOLD} />
+            </Pressable>
+          </>}
+        </View> : null}
 
         {tab === 'campfires' ? <>
           <View style={styles.campfireHeader}>
@@ -676,8 +917,72 @@ const styles = StyleSheet.create({
   postVideoTitle: { color: TEXT, fontSize: 14, fontWeight: '900' },
   postVideoMeta: { color: MUTED, fontSize: 10.5 },
   engagementWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#344139', paddingTop: 5 },
-  searchBox: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 14, paddingHorizontal: 12 },
-  searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 9 },
+
+  communitiesExperience: { gap: 12 },
+  searchBox: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: '#334139', backgroundColor: '#121B16', borderRadius: 15, paddingHorizontal: 13 },
+  searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 10 },
+  communityFilterRail: { gap: 7, paddingRight: 8, paddingVertical: 1 },
+  communityFilterChip: { minHeight: 34, paddingHorizontal: 11, borderRadius: 99, borderWidth: 1, borderColor: '#37443C', backgroundColor: '#121A16', flexDirection: 'row', alignItems: 'center', gap: 5 },
+  communityFilterChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  communityFilterText: { color: MUTED, fontSize: 11, fontWeight: '800' },
+  communityFilterTextActive: { color: '#101510' },
+  communitySectionHeading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, paddingTop: 4 },
+  communitySectionDetail: { color: '#86928A', fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 1, paddingVertical: 4, paddingLeft: 8 },
+  sectionActionText: { color: GOLD, fontSize: 11, fontWeight: '900' },
+  officialRail: { gap: 10, paddingRight: 8 },
+  officialCard: { width: 172, height: 214, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#4A4938', backgroundColor: '#18221D' },
+  officialCardImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  officialCardFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: '#223129', alignItems: 'center', justifyContent: 'center' },
+  officialCardInitials: { color: GOLD, fontSize: 28, fontWeight: '900' },
+  officialCardShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.42)' },
+  officialBadge: { position: 'absolute', top: 10, left: 10, height: 24, paddingHorizontal: 8, borderRadius: 99, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  officialBadgeText: { color: '#101510', fontSize: 8.5, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.35 },
+  joinedBadge: { position: 'absolute', top: 10, right: 10, height: 24, paddingHorizontal: 7, borderRadius: 99, backgroundColor: 'rgba(15,23,19,0.86)', flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  joinedBadgeText: { color: TEXT, fontSize: 8.5, fontWeight: '900' },
+  officialCardContent: { position: 'absolute', left: 12, right: 12, bottom: 12 },
+  officialCardTitle: { color: '#FFFFFF', fontSize: 19, lineHeight: 21, fontWeight: '900' },
+  officialCardDescription: { color: '#E5ECE7', fontSize: 10.5, lineHeight: 14, marginTop: 5 },
+  officialCardFooter: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 9 },
+  officialCardMeta: { color: '#EEF3EF', fontSize: 9.5, fontWeight: '700', flex: 1 },
+  officialJoinText: { color: '#F5D66C', fontSize: 10, fontWeight: '900' },
+  yourCommunityList: { gap: 8 },
+  yourCommunityRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#151F1A', borderWidth: 1, borderColor: '#2D3B33', borderRadius: 16, padding: 8 },
+  yourCommunityImageWrap: { width: 50, height: 50, borderRadius: 13, overflow: 'hidden', backgroundColor: '#213229' },
+  yourCommunityName: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  yourCommunityActivity: { color: '#8D9991', fontSize: 10.5, marginTop: 4 },
+  yourCommunityActivityLive: { color: '#C7D0CA' },
+  activityDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: GOLD },
+  emptyCommunityCallout: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 16, borderWidth: 1, borderColor: '#3B4235', backgroundColor: '#192019', padding: 13 },
+  emptyCommunityCalloutTitle: { color: TEXT, fontSize: 13, fontWeight: '900' },
+  emptyCommunityCalloutText: { color: MUTED, fontSize: 10.5, lineHeight: 15, marginTop: 3 },
+  activityList: { gap: 8 },
+  activityCard: { backgroundColor: '#151F1A', borderWidth: 1, borderColor: '#2E3B34', borderRadius: 16, padding: 11, gap: 8 },
+  activityCardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activityGroupIcon: { width: 34, height: 34, borderRadius: 9, overflow: 'hidden', backgroundColor: '#25332B', alignItems: 'center', justifyContent: 'center' },
+  activityGroupInitials: { color: GOLD, fontSize: 9, fontWeight: '900' },
+  activityGroupName: { color: TEXT, fontSize: 12.5, fontWeight: '900' },
+  activityMeta: { color: '#8F9B93', fontSize: 9.5, marginTop: 2 },
+  activityBody: { color: '#D9E0DB', fontSize: 12, lineHeight: 17 },
+  discoveryRail: { gap: 10, paddingRight: 8 },
+  discoveryCard: { width: 186, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#304037', backgroundColor: '#151F1A' },
+  discoveryImageWrap: { height: 94, backgroundColor: '#213129' },
+  discoveryImage: { width: '100%', height: '100%' },
+  discoveryFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#24342C' },
+  discoveryInitials: { color: GOLD, fontWeight: '900', fontSize: 24 },
+  discoveryJoined: { position: 'absolute', top: 8, right: 8, minHeight: 22, paddingHorizontal: 7, borderRadius: 99, backgroundColor: 'rgba(15,23,19,0.88)', flexDirection: 'row', alignItems: 'center', gap: 3 },
+  discoveryJoinedText: { color: TEXT, fontSize: 8.5, fontWeight: '900' },
+  discoveryContent: { padding: 10 },
+  discoveryTitle: { color: TEXT, fontSize: 13.5, fontWeight: '900' },
+  discoveryReason: { color: '#A9B5AD', fontSize: 9.5, marginTop: 3 },
+  discoveryFooter: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 8 },
+  discoveryMeta: { color: '#849088', fontSize: 9, flex: 1 },
+  discoveryJoin: { color: GOLD, fontSize: 10, fontWeight: '900' },
+  exploreAllButton: { minHeight: 74, borderRadius: 17, borderWidth: 1, borderColor: '#4A4938', backgroundColor: '#1B211A', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  exploreAllIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#262B1B', borderWidth: 1, borderColor: '#47442A', alignItems: 'center', justifyContent: 'center' },
+  exploreAllTitle: { color: TEXT, fontSize: 13, fontWeight: '900' },
+  exploreAllCopy: { color: MUTED, fontSize: 10, lineHeight: 14, marginTop: 3 },
+
   cardList: { gap: 9 },
   communityCard: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 15, padding: 9 },
   communityImageWrap: { width: 50, height: 50, borderRadius: 13, overflow: 'hidden', backgroundColor: '#213229' },
@@ -685,7 +990,8 @@ const styles = StyleSheet.create({
   communityFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   communityInitials: { color: GOLD, fontWeight: '900', fontSize: 12 },
   communityInfo: { flex: 1, minWidth: 0 },
-  communityName: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  communityNameLine: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
+  communityName: { color: TEXT, fontSize: 14, fontWeight: '900', flexShrink: 1 },
   communityMeta: { color: MUTED, fontSize: 10.5, marginTop: 4 },
   joinPill: { minWidth: 50, minHeight: 32, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: GOLD, alignItems: 'center', justifyContent: 'center' },
   joinPillText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
