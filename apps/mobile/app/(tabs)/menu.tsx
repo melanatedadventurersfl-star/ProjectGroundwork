@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 import { startGuidedTutorial } from '../../src/onboarding/tutorialController';
+import { getBuildInfo } from '../../src/updates/buildInfo';
 import { currentReleaseNotes } from '../../src/updates/releaseNotes';
 import { hasSeenRelease } from '../../src/updates/releasePreference';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
@@ -33,6 +34,7 @@ export default function MenuScreen() {
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
+  const buildInfo = useMemo(() => getBuildInfo(), []);
 
   const displayName = useMemo(() => {
     const metadata = session?.user.user_metadata ?? {};
@@ -186,12 +188,6 @@ export default function MenuScreen() {
 
   const appRows: MenuRow[] = [
     { label: 'What’s New', route: '/whats-new', icon: 'guide', badge: showWhatsNew ? 'NEW' : undefined },
-    {
-      label: updateState === 'available' ? 'Install Update' : 'Check for Updates',
-      icon: 'about',
-      action: updateState === 'available' ? 'install-update' : 'check-update',
-      meta: updateState === 'current' ? 'Latest version installed' : updateState === 'error' ? 'Tap to try again' : undefined,
-    },
     { label: 'About Go Melanated', route: '/about', icon: 'about' },
   ];
 
@@ -199,6 +195,15 @@ export default function MenuScreen() {
     { label: signingOut ? 'Signing out…' : 'Sign Out', icon: 'profile', action: 'sign-out' },
     { label: 'Delete Account', route: '/delete-account', icon: 'privacy', destructive: true, meta: 'This action cannot be undone.' },
   ];
+
+  const updateBusy = updateState === 'checking' || updateState === 'installing';
+  const updateActionLabel = updateState === 'available'
+    ? 'Install Update'
+    : updateState === 'checking'
+      ? 'Checking…'
+      : updateState === 'installing'
+        ? 'Installing…'
+        : 'Check for Updates';
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -222,17 +227,6 @@ export default function MenuScreen() {
           </View>
         </Pressable>
 
-        <MenuSection title="Your Go Melanated" rows={yourGoRows} onPress={handleRow} />
-        <MenuSection title="Preferences" rows={preferenceRows} onPress={handleRow} />
-        <MenuSection title="Help & Safety" rows={helpRows} onPress={handleRow} />
-        <MenuSection title="App" rows={appRows} onPress={handleRow} busy={updateState === 'checking' || updateState === 'installing'} />
-
-        {updateMessage ? (
-          <View style={styles.updateNotice}>
-            <Text style={styles.updateNoticeText}>{updateMessage}</Text>
-          </View>
-        ) : null}
-
         {isPlatformAdmin ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{isFounder ? 'Founder' : 'Admin'}</Text>
@@ -251,6 +245,47 @@ export default function MenuScreen() {
           </View>
         ) : null}
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Update & Build</Text>
+          <View style={styles.buildCard}>
+            <View style={styles.buildHeader}>
+              <View style={styles.buildHeaderCopy}>
+                <Text style={styles.buildTitle}>Go Melanated {buildInfo.appVersion}</Text>
+                <Text style={styles.buildMeta}>
+                  Native {buildInfo.nativeBuildNumber} · CI {buildInfo.ciBuildNumber} · {buildInfo.activeSource.toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.buildPill}>
+                <Text style={styles.buildPillText}>{buildInfo.channel}</Text>
+              </View>
+            </View>
+
+            <View style={styles.buildDetailRow}>
+              <Text style={styles.buildDetailLabel}>Commit</Text>
+              <Text style={styles.buildDetailValue}>{buildInfo.shortCommit || 'Unknown'}</Text>
+            </View>
+            <View style={styles.buildDetailRow}>
+              <Text style={styles.buildDetailLabel}>Runtime</Text>
+              <Text style={styles.buildDetailValue}>{buildInfo.runtimeVersion}</Text>
+            </View>
+
+            <Pressable
+              disabled={updateBusy}
+              style={[styles.updateButton, updateState === 'available' && styles.updateButtonReady]}
+              onPress={() => void (updateState === 'available' ? installUpdate() : checkForUpdate())}
+            >
+              {updateBusy ? <ActivityIndicator size="small" color="#0B100D" /> : <AppIcon name="about" color="#0B100D" size={17} />}
+              <Text style={styles.updateButtonText}>{updateActionLabel}</Text>
+            </Pressable>
+
+            {updateMessage ? <Text style={styles.buildStatus}>{updateMessage}</Text> : null}
+          </View>
+        </View>
+
+        <MenuSection title="Your Go Melanated" rows={yourGoRows} onPress={handleRow} />
+        <MenuSection title="Preferences" rows={preferenceRows} onPress={handleRow} />
+        <MenuSection title="Help & Safety" rows={helpRows} onPress={handleRow} />
+        <MenuSection title="App" rows={appRows} onPress={handleRow} />
         <MenuSection title="Account" rows={accountRows} onPress={handleRow} busy={signingOut} />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -321,8 +356,20 @@ const styles = StyleSheet.create({
   badgeText: { color: '#E7C464', fontSize: 10, fontWeight: '900' },
   destructiveText: { color: '#FF746A' },
 
-  updateNotice: { borderRadius: 12, borderWidth: 1, borderColor: '#38463E', backgroundColor: '#111A15', paddingHorizontal: 13, paddingVertical: 10, marginTop: -10, marginBottom: 20 },
-  updateNoticeText: { color: '#AAB5AE', fontSize: 11, lineHeight: 16 },
+  buildCard: { borderRadius: 16, borderWidth: 1, borderColor: '#355342', backgroundColor: '#111C16', padding: 15 },
+  buildHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
+  buildHeaderCopy: { flex: 1, minWidth: 0 },
+  buildTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900' },
+  buildMeta: { color: '#9EAAA3', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  buildPill: { borderRadius: 999, borderWidth: 1, borderColor: '#705920', backgroundColor: '#352B15', paddingHorizontal: 9, paddingVertical: 5 },
+  buildPillText: { color: '#E7C464', fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.6 },
+  buildDetailRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#243128' },
+  buildDetailLabel: { color: '#78877E', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  buildDetailValue: { color: '#D8DFDA', fontSize: 11, fontWeight: '700' },
+  updateButton: { minHeight: 44, borderRadius: 12, backgroundColor: '#D7B45A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingHorizontal: 14 },
+  updateButtonReady: { backgroundColor: '#F5C341' },
+  updateButtonText: { color: '#0B100D', fontSize: 13, fontWeight: '900' },
+  buildStatus: { color: '#AAB5AE', fontSize: 11, lineHeight: 16, marginTop: 9, textAlign: 'center' },
 
   founderCard: { minHeight: 88, borderRadius: 16, borderWidth: 1, borderColor: '#8C6D28', backgroundColor: '#4A3716', padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   founderIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#5D461A', alignItems: 'center', justifyContent: 'center' },
