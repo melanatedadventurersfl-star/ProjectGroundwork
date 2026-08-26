@@ -46,6 +46,7 @@ export default function AskGoScreen() {
   const [query, setQuery] = useState('');
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const scrollRef = useRef<ScrollView | null>(null);
+  const nextExchangeId = useRef(0);
 
   const busy = exchanges.some((exchange) => exchange.loading);
   const latest = exchanges[exchanges.length - 1] ?? null;
@@ -59,7 +60,8 @@ export default function AskGoScreen() {
     const clean = nextQuery.trim();
     if (clean.length < 3 || busy) return;
 
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    nextExchangeId.current += 1;
+    const id = `exchange-${nextExchangeId.current}`;
     const history = exchangeConversation(exchanges).slice(-6);
     setQuery('');
     setExchanges((previous) => [...previous, { id, query: clean, result: null, error: '', loading: true }]);
