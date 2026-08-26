@@ -39,11 +39,17 @@ export type MemberGuideResult = {
   source?: 'ai' | 'fallback';
 };
 
+export type MemberGuideConversationTurn = {
+  role: 'user' | 'assistant';
+  text: string;
+};
+
 export type AskMemberGuideInput = {
   query: string;
   cityKey: TrailGuideCityKey;
   cityName: string;
   state?: string;
+  conversation?: MemberGuideConversationTurn[];
   weather?: {
     temperatureF?: number | null;
     condition?: string | null;
@@ -79,6 +85,11 @@ export async function askMemberGuide(input: AskMemberGuideInput): Promise<Member
     .slice(0, 60)
     .map(compactPlace);
 
+  const conversation = (input.conversation ?? [])
+    .slice(-6)
+    .map((turn) => ({ role: turn.role, text: turn.text.trim().slice(0, 1200) }))
+    .filter((turn) => turn.text.length > 0);
+
   const { data, error } = await supabase.functions.invoke('member-guide', {
     body: {
       query,
@@ -86,6 +97,7 @@ export async function askMemberGuide(input: AskMemberGuideInput): Promise<Member
       state: input.state ?? 'FL',
       weather: input.weather ?? null,
       candidates,
+      conversation,
     },
   });
 
