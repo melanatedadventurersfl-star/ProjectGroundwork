@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-export type OutingHostStatus = 'pending' | 'approved' | 'paused' | 'revoked';
+export type OutingHostStatus = 'pending' | 'needs_info' | 'approved' | 'paused' | 'declined' | 'revoked';
 export type OutingHostType = 'community' | 'organization' | 'official';
 
 export type OutingHostRecord = {
