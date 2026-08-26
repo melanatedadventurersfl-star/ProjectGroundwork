@@ -23,7 +23,7 @@ export const TRAIL_GUIDE_CITIES: TrailGuideCity[] = [
   { key: 'jacksonville', label: 'Jacksonville, FL', latitude: 30.3322, longitude: -81.6557, source: require('../../../../trail-guide-jacksonville.png') },
   { key: 'orlando', label: 'Orlando, FL', latitude: 28.5383, longitude: -81.3792, source: require('../../../../trail-guide-orlando.png') },
   { key: 'miami', label: 'Miami, FL', latitude: 25.7617, longitude: -80.1918, source: require('../../../../trail-guide-miami.png') },
-  { key: 'tampa', label: 'Tampa, FL', latitude: 27.9506, longitude: -82.4572, source: require('../../../../trail-guide-tampa.png') },
+  { key: 'tampa', label: 'Tampa, FL', latitude: 27.9506, longitude: -82.4572, source: require('../../assets/Trail_Guide/tampa_tropical_boardwalk_by_the_bay.png') },
   { key: 'st-petersburg', label: 'St. Petersburg, FL', latitude: 27.7676, longitude: -82.6403, source: require('../../../../trail-guide-st-petersburg.png') },
   { key: 'fort-lauderdale', label: 'Fort Lauderdale, FL', latitude: 26.1224, longitude: -80.1373, source: require('../../../../trail-guide-fort-lauderdale.png') },
   { key: 'west-palm-beach', label: 'West Palm Beach, FL', latitude: 26.7153, longitude: -80.0534, source: require('../../../../trail-guide-west-palm-beach.png') },
