@@ -68,6 +68,7 @@ export function PersistentBottomNav() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const showAskGo = pathname.startsWith('/trail-guide') && pathname !== '/trail-guide/ask';
 
   useEffect(() => {
     let cancelled = false;
@@ -96,51 +97,96 @@ export function PersistentBottomNav() {
   if (pathname === '/account-status') return null;
 
   return (
-    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-      <TesterFeedbackButton screenPath={pathname} hidden={!session} />
-      {items.map((item) => {
-        const active = item.isActive(pathname);
-        const color = active ? '#D7B45A' : '#E7DFCF';
-        const showAvatar = item.label === 'Profile' && Boolean(session && avatarUrl);
-        return (
-          <Pressable
-            key={item.label}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={item.label}
-            onPress={() => {
-              if (item.requiresAuth && !session) {
-                promptForAccount(item.label);
-                return;
-              }
-              router.navigate(item.href as never);
-            }}
-            style={styles.item}
-          >
-            {showAvatar ? (
-              <View style={[styles.avatarFrame, active && styles.avatarFrameActive]}>
-                <Image source={{ uri: avatarUrl! }} style={styles.avatar} resizeMode="cover" />
-              </View>
-            ) : (
-              <AppIcon name={item.icon} color={color} size={24} />
-            )}
-            <Text style={[styles.label, active && styles.labelActive]}>{item.label}</Text>
-          </Pressable>
-        );
-      })}
+    <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+      {showAskGo ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ask Go outdoor guide"
+          onPress={() => {
+            if (!session) {
+              promptForAccount('Ask Go');
+              return;
+            }
+            router.push('/trail-guide/ask' as never);
+          }}
+          style={({ pressed }) => [styles.askGoButton, pressed && styles.askGoPressed]}
+        >
+          <Text style={styles.askGoSpark}>✦</Text>
+          <Text style={styles.askGoText}>Ask Go</Text>
+        </Pressable>
+      ) : null}
+      <View style={styles.bar}>
+        <TesterFeedbackButton screenPath={pathname} hidden={!session} />
+        {items.map((item) => {
+          const active = item.isActive(pathname);
+          const color = active ? '#D7B45A' : '#E7DFCF';
+          const showAvatar = item.label === 'Profile' && Boolean(session && avatarUrl);
+          return (
+            <Pressable
+              key={item.label}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={item.label}
+              onPress={() => {
+                if (item.requiresAuth && !session) {
+                  promptForAccount(item.label);
+                  return;
+                }
+                router.navigate(item.href as never);
+              }}
+              style={styles.item}
+            >
+              {showAvatar ? (
+                <View style={[styles.avatarFrame, active && styles.avatarFrameActive]}>
+                  <Image source={{ uri: avatarUrl! }} style={styles.avatar} resizeMode="cover" />
+                </View>
+              ) : (
+                <AppIcon name={item.icon} color={color} size={24} />
+              )}
+              <Text style={[styles.label, active && styles.labelActive]}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shell: {
+    backgroundColor: '#121B16',
+    borderTopWidth: 1,
+    borderTopColor: '#26332B',
+  },
+  askGoButton: {
+    position: 'absolute',
+    right: 18,
+    top: -50,
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+    backgroundColor: '#D7B45A',
+    borderWidth: 1,
+    borderColor: '#F0D27B',
+    shadowColor: '#000000',
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 7,
+    zIndex: 20,
+  },
+  askGoPressed: { opacity: 0.88, transform: [{ scale: 0.98 }] },
+  askGoSpark: { color: '#172017', fontSize: 15, fontWeight: '900' },
+  askGoText: { color: '#172017', fontSize: 12, fontWeight: '900' },
   bar: {
     minHeight: 60,
     paddingTop: 6,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#121B16',
-    borderTopWidth: 1,
-    borderTopColor: '#26332B',
   },
   item: {
     flex: 1,
