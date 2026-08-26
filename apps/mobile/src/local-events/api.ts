@@ -20,6 +20,7 @@ export type LocalEvent = {
   status: 'draft' | 'published' | 'cancelled' | 'completed';
   group_id: string | null;
   host_name: string;
+  host_avatar_url: string | null;
   rsvp_count: number;
   my_rsvp: 'going' | 'interested' | 'cancelled' | null;
 };
