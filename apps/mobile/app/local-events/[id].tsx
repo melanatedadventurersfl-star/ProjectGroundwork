@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,7 +14,7 @@ export default function LocalEventDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!id) return;
     try {
       setError(null);
@@ -29,9 +29,9 @@ export default function LocalEventDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void load(); }, [id]);
+  useEffect(() => { void load(); }, [load]);
 
   async function rsvp(status: 'going' | 'interested') {
     if (!id) return;
