@@ -4,6 +4,7 @@ import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
+import { TesterFeedbackButton } from '../feedback/TesterFeedbackButton';
 import { getUnreadNotificationCount, subscribeNotificationStateChanges } from '../notifications/api';
 import { AppIcon } from '../ui/AppIcon';
 
@@ -71,6 +72,7 @@ export function PersistentTopNav() {
         </Pressable>
 
         <View style={styles.actions}>
+          <TesterFeedbackButton screenPath={pathname} hidden={!session} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={notificationLabel}
