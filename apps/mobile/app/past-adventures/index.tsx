@@ -14,7 +14,8 @@ export default function PastAdventuresScreen() {
   const [error, setError] = useState<string | null>(null);
 
   async function load(refresh = false) {
-    refresh ? setRefreshing(true) : setLoading(true);
+    if (refresh) setRefreshing(true);
+    else setLoading(true);
     try {
       setItems(await listPastAdventures());
       setError(null);
