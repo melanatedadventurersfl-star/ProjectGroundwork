@@ -2,6 +2,8 @@ import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
 
+import { getWeatherByQuery, type WeatherForecast } from '../weather/api';
+
 export type TrailGuideCity = {
   key: string;
   label: string;
@@ -19,11 +21,19 @@ export const TRAIL_GUIDE_DEFAULT_BACKGROUND: ImageSourcePropType = {
   uri: 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=82',
 };
 
+const TAMPA_BACKGROUNDS = {
+  clear: require('../../assets/Trail_Guide/tampa_tropical_boardwalk_by_the_bay.png'),
+  golden: require('../../assets/Trail_Guide/tampa_golden_boardwalk_sunset_over_the_bay.png'),
+  cloudy: require('../../assets/Trail_Guide/tampa_stormy_waterfront_boardwalk_and_bridge.png'),
+  stormy: require('../../assets/Trail_Guide/tampa_stormy_coastal_boardwalk_and_bridge.png'),
+  twilight: require('../../assets/Trail_Guide/tampa_twilight_waterfront_boardwalk_and_bridge.png'),
+} satisfies Record<string, ImageSourcePropType>;
+
 export const TRAIL_GUIDE_CITIES: TrailGuideCity[] = [
   { key: 'jacksonville', label: 'Jacksonville, FL', latitude: 30.3322, longitude: -81.6557, source: require('../../../../trail-guide-jacksonville.png') },
   { key: 'orlando', label: 'Orlando, FL', latitude: 28.5383, longitude: -81.3792, source: require('../../../../trail-guide-orlando.png') },
   { key: 'miami', label: 'Miami, FL', latitude: 25.7617, longitude: -80.1918, source: require('../../../../trail-guide-miami.png') },
-  { key: 'tampa', label: 'Tampa, FL', latitude: 27.9506, longitude: -82.4572, source: require('../../assets/Trail_Guide/tampa_tropical_boardwalk_by_the_bay.png') },
+  { key: 'tampa', label: 'Tampa, FL', latitude: 27.9506, longitude: -82.4572, source: TAMPA_BACKGROUNDS.clear },
   { key: 'st-petersburg', label: 'St. Petersburg, FL', latitude: 27.7676, longitude: -82.6403, source: require('../../../../trail-guide-st-petersburg.png') },
   { key: 'fort-lauderdale', label: 'Fort Lauderdale, FL', latitude: 26.1224, longitude: -80.1373, source: require('../../../../trail-guide-fort-lauderdale.png') },
   { key: 'west-palm-beach', label: 'West Palm Beach, FL', latitude: 26.7153, longitude: -80.0534, source: require('../../../../trail-guide-west-palm-beach.png') },
@@ -48,6 +58,45 @@ const INITIAL_CITY = TRAIL_GUIDE_CITIES[0];
 
 function toRadians(value: number) {
   return (value * Math.PI) / 180;
+}
+
+function parseClockMinutes(value?: string | null) {
+  if (!value) return null;
+  const twelveHour = value.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (twelveHour) {
+    let hour = Number(twelveHour[1]) % 12;
+    if (twelveHour[3].toUpperCase() === 'PM') hour += 12;
+    return hour * 60 + Number(twelveHour[2]);
+  }
+  const twentyFourHour = value.match(/(?:^|\s)(\d{1,2}):(\d{2})$/);
+  return twentyFourHour ? Number(twentyFourHour[1]) * 60 + Number(twentyFourHour[2]) : null;
+}
+
+function getTampaBackground(weather: WeatherForecast) {
+  const condition = weather.current.condition.text.toLowerCase();
+  const localMinutes = parseClockMinutes(weather.location.localtime);
+  const sunsetMinutes = parseClockMinutes(weather.forecast.forecastday[0]?.astro?.sunset);
+
+  if (/thunder|storm|torrential|squall|heavy rain/.test(condition)) return TAMPA_BACKGROUNDS.stormy;
+  if (/rain|drizzle|shower|overcast|cloud|mist|fog/.test(condition)) return TAMPA_BACKGROUNDS.cloudy;
+
+  if (localMinutes != null && sunsetMinutes != null) {
+    const minutesFromSunset = localMinutes - sunsetMinutes;
+    if (minutesFromSunset >= -90 && minutesFromSunset <= 30) return TAMPA_BACKGROUNDS.golden;
+  }
+
+  if (weather.current.is_day === 0) return TAMPA_BACKGROUNDS.twilight;
+  return TAMPA_BACKGROUNDS.clear;
+}
+
+async function resolveCityBackground(city: TrailGuideCity) {
+  if (city.key !== 'tampa') return city.source;
+  try {
+    const weather = await getWeatherByQuery(city.label);
+    return getTampaBackground(weather);
+  } catch {
+    return city.source;
+  }
 }
 
 export function distanceMiles(latitudeA: number, longitudeA: number, latitudeB: number, longitudeB: number) {
@@ -100,7 +149,7 @@ export function useTrailGuideLocationBackground() {
       if (isFloridaRegion(place?.region)) {
         const nearest = getNearestTrailGuideCity(latitude, longitude);
         if (nearest) {
-          setBackgroundSource(nearest.city.source);
+          setBackgroundSource(await resolveCityBackground(nearest.city));
           setLocationLabel(nearest.city.label);
           return;
         }
