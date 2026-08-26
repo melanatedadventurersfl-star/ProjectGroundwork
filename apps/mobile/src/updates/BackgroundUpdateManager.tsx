@@ -89,7 +89,7 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
 
     setState('restarting');
     setMessage('Restarting with the new update…');
-    logStartupStage('background-update-reload-requested');
+    logStartupStage('background-update-reload');
 
     try {
       await Updates.reloadAsync();
