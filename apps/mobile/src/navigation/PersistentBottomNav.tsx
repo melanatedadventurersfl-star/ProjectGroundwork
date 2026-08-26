@@ -68,6 +68,7 @@ export function PersistentBottomNav() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const showAskGo = pathname.startsWith('/trail-guide') && pathname !== '/trail-guide/ask';
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +99,23 @@ export function PersistentBottomNav() {
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       <TesterFeedbackButton screenPath={pathname} hidden={!session} />
+      {showAskGo ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ask Go"
+          onPress={() => {
+            if (!session) {
+              promptForAccount('Ask Go');
+              return;
+            }
+            router.navigate('/trail-guide/ask' as never);
+          }}
+          style={({ pressed }) => [styles.askGo, pressed && styles.askGoPressed]}
+        >
+          <Text style={styles.askGoSpark}>✦</Text>
+          <Text style={styles.askGoText}>Ask Go</Text>
+        </Pressable>
+      ) : null}
       {items.map((item) => {
         const active = item.isActive(pathname);
         const color = active ? '#D7B45A' : '#E7DFCF';
@@ -142,6 +160,26 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#26332B',
   },
+  askGo: {
+    position: 'absolute',
+    top: -46,
+    left: '50%',
+    transform: [{ translateX: -48 }],
+    width: 96,
+    minHeight: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: '#8A6A25',
+    backgroundColor: '#443616',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    zIndex: 20,
+  },
+  askGoPressed: { opacity: 0.82 },
+  askGoSpark: { color: '#F2CF72', fontSize: 15, fontWeight: '900' },
+  askGoText: { color: '#FFF3CE', fontSize: 12, fontWeight: '900' },
   item: {
     flex: 1,
     alignItems: 'center',
