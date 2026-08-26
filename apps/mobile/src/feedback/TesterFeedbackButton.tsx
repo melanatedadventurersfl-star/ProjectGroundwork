@@ -67,7 +67,6 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
 
   const selectedLabel = useMemo(() => options.find((option) => option.key === category)?.label ?? 'Feedback', [category]);
   const friendlyScreenName = useMemo(() => getFriendlyScreenName(screenPath || '/'), [screenPath]);
-  const fabBottom = Math.max(96, insets.bottom + 78);
   const sheetBottomPadding = Math.max(20, insets.bottom + 14);
 
   if (hidden) return null;
@@ -101,11 +100,11 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Send tester feedback"
-        style={[styles.fab, { bottom: fabBottom }]}
+        hitSlop={6}
+        style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}
         onPress={() => setVisible(true)}
       >
-        <Ionicons name="chatbubble-ellipses-outline" size={18} color="#102018" />
-        <Text style={styles.fabLabel}>Feedback</Text>
+        <Ionicons name="chatbubble-ellipses-outline" size={20} color="#D7B45A" />
       </Pressable>
 
       <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
@@ -180,24 +179,17 @@ export function TesterFeedbackButton({ screenPath, hidden = false }: { screenPat
 }
 
 const styles = StyleSheet.create({
-  fab: {
-    position: 'absolute',
-    right: 14,
-    zIndex: 50,
-    flexDirection: 'row',
+  headerButton: {
+    width: 39,
+    height: 39,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#405047',
+    backgroundColor: '#17211C',
     alignItems: 'center',
-    gap: 7,
-    borderRadius: 999,
-    backgroundColor: '#D7B45A',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    justifyContent: 'center',
   },
-  fabLabel: { color: '#102018', fontWeight: '900', fontSize: 13 },
+  headerButtonPressed: { opacity: 0.78, transform: [{ scale: 0.96 }] },
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(4, 10, 7, 0.58)' },
   sheet: {
     maxHeight: '82%',
