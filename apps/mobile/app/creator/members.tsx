@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -63,6 +63,7 @@ function moderationState(member: MemberRow, enforcements: EnforcementRow[]): Mod
 
 export default function CreatorMembersScreen() {
   const { session } = useAuth();
+  const userId = session?.user.id;
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [rows, setRows] = useState<MemberRow[]>([]);
@@ -72,13 +73,13 @@ export default function CreatorMembersScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  async function load() {
-    if (!session?.user.id) { setLoading(false); return; }
+  const load = useCallback(async () => {
+    if (!userId) { setLoading(false); return; }
     setLoading(true);
     setError('');
     const [adminResult, founderResult] = await Promise.all([
       supabase.rpc('is_platform_admin'),
-      supabase.from('profiles').select('platform_role').eq('id', session.user.id).single(),
+      supabase.from('profiles').select('platform_role').eq('id', userId).single(),
     ]);
     if (adminResult.error || founderResult.error || adminResult.data !== true || founderResult.data?.platform_role !== 'founder') {
       setAuthorized(false);
@@ -95,9 +96,9 @@ export default function CreatorMembersScreen() {
     if (enforcementResult.error) setError((current) => current || enforcementResult.error.message);
     else setEnforcements((enforcementResult.data ?? []) as EnforcementRow[]);
     setLoading(false);
-  }
+  }, [userId]);
 
-  useEffect(() => { void load(); }, [session?.user.id]);
+  useEffect(() => { void load(); }, [load]);
 
   const enforcementByMember = useMemo(() => {
     const map = new Map<string, EnforcementRow[]>();
@@ -142,7 +143,7 @@ export default function CreatorMembersScreen() {
   }, [memberStates, query, rows, statusFilter]);
 
   async function setRole(member: MemberRow, role: AssignableRole) {
-    if (member.id === session?.user.id) return;
+    if (member.id === userId) return;
     setBusyId(member.id);
     setError('');
     const { error: updateError } = await supabase.from('profiles').update({ platform_role: role }).eq('id', member.id);
@@ -152,7 +153,7 @@ export default function CreatorMembersScreen() {
   }
 
   function chooseRole(member: MemberRow) {
-    if (member.id === session?.user.id) return;
+    if (member.id === userId) return;
     Alert.alert('Change platform role', member.display_name ?? member.username ?? member.email ?? 'Member', [
       { text: 'Cancel', style: 'cancel' },
       ...assignableRoles.map((role) => ({ text: role.charAt(0).toUpperCase() + role.slice(1), onPress: () => void setRole(member, role) })),
@@ -160,7 +161,7 @@ export default function CreatorMembersScreen() {
   }
 
   async function toggleStatus(member: MemberRow) {
-    if (member.id === session?.user.id) return;
+    if (member.id === userId) return;
     const state = memberStates.get(member.id) ?? moderationState(member, []);
     if (state.label === 'BANNED' || state.label === 'SUSPENDED' || state.label === 'POSTING RESTRICTED') {
       Alert.alert('Moderation enforcement active', `${state.label.replace('_', ' ')} is controlled by Community Safety. Reverse or expire the enforcement before manually changing this account status.`);
@@ -198,7 +199,7 @@ export default function CreatorMembersScreen() {
 
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <View style={styles.list}>{filtered.map((member, index) => {
-      const isFounder = member.id === session?.user.id;
+      const isFounder = member.id === userId;
       const busy = busyId === member.id;
       const state = memberStates.get(member.id) ?? moderationState(member, []);
       return <View key={member.id} style={[styles.member, index > 0 && styles.divider]}>
