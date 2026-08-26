@@ -30,6 +30,19 @@ export type EventHostAccess = {
   level: 'member' | 'trusted_host' | 'community_lead' | 'staff';
 };
 
+export type UpdateLocalEventInput = {
+  title: string;
+  description: string;
+  category: string;
+  startsAt: string;
+  endsAt?: string | null;
+  city: string;
+  state: string;
+  venueName?: string | null;
+  capacity?: number | null;
+  imageUrl?: string | null;
+};
+
 export async function getEventHostAccess(): Promise<EventHostAccess> {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
@@ -120,10 +133,30 @@ export async function listGroupCampfires(groupId: string): Promise<LocalEvent[]>
 }
 
 export async function getLocalEvent(id: string): Promise<LocalEvent> {
-  const events = await listLocalEvents();
-  const event = events.find((item) => item.id === id);
-  if (!event) throw new Error('Local event not found.');
-  return event;
+  const { data, error } = await supabase
+    .from('local_event_discovery')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Local event not found.');
+  return (await attachMyRsvps([data]))[0] as LocalEvent;
+}
+
+export async function getOwnedLocalEvent(id: string): Promise<LocalEvent> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('You must be signed in.');
+
+  const { data, error } = await supabase
+    .from('local_event_discovery')
+    .select('*')
+    .eq('id', id)
+    .eq('host_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('You can only edit outings you created.');
+  return data as LocalEvent;
 }
 
 export async function setLocalEventRsvp(localEventId: string, status: 'going' | 'interested' | 'cancelled') {
@@ -157,6 +190,42 @@ export async function uploadLocalEventImage(input: {
   if (error) throw error;
   const { data } = supabase.storage.from(EVENT_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;
+}
+
+export async function updateLocalEvent(id: string, input: UpdateLocalEventInput) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) throw new Error('You must be signed in.');
+
+  const start = new Date(input.startsAt);
+  const end = input.endsAt ? new Date(input.endsAt) : null;
+  if (Number.isNaN(start.valueOf())) throw new Error('Choose a valid start time.');
+  if (end && (Number.isNaN(end.valueOf()) || end <= start)) throw new Error('The end time must be after the start time.');
+  if (!input.title.trim() || !input.description.trim() || !input.city.trim() || !input.state.trim()) throw new Error('Title, description, city, and state are required.');
+  if (input.capacity != null && (!Number.isInteger(input.capacity) || input.capacity < 1)) throw new Error('Capacity must be at least 1.');
+
+  const { data, error } = await supabase
+    .from('local_events')
+    .update({
+      title: input.title.trim(),
+      description: input.description.trim(),
+      category: input.category.trim() || 'Other',
+      starts_at: start.toISOString(),
+      ends_at: end?.toISOString() ?? null,
+      city: input.city.trim(),
+      state: input.state.trim().toUpperCase(),
+      venue_name: input.venueName?.trim() || null,
+      capacity: input.capacity ?? null,
+      image_url: input.imageUrl ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('host_id', userId)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('You can only edit outings you created.');
+  return data.id as string;
 }
 
 export async function createLocalEvent(input: {
