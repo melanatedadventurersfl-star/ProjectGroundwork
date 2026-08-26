@@ -25,14 +25,26 @@ const CLOCK_REFRESH_MS = 60 * 1000;
 const HEADER_INSET = 78;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
-  if (phase === 'night') return 'rgba(4, 13, 28, 0.10)';
-  if (weather === 'storm') return 'rgba(18, 24, 31, 0.16)';
-  if (weather === 'rain') return 'rgba(16, 31, 39, 0.12)';
-  if (weather === 'fog') return 'rgba(214, 225, 220, 0.08)';
-  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.08)';
-  if (phase === 'morning') return 'rgba(255, 224, 168, 0.06)';
-  if (phase === 'evening') return 'rgba(255, 150, 76, 0.06)';
+  if (phase === 'night') return 'rgba(4, 13, 28, 0.06)';
+  if (weather === 'storm') return 'rgba(18, 24, 31, 0.08)';
+  if (weather === 'rain') return 'rgba(16, 31, 39, 0.06)';
+  if (weather === 'fog') return 'rgba(214, 225, 220, 0.05)';
+  if (weather === 'cloudy' || weather === 'snow') return 'rgba(92, 108, 110, 0.04)';
+  if (phase === 'morning') return 'rgba(255, 224, 168, 0.04)';
+  if (phase === 'evening') return 'rgba(255, 150, 76, 0.04)';
   return 'transparent';
+}
+
+function backgroundLiftColor(weather: WeatherTheme, phase: DayPhase) {
+  if (phase === 'night') return 'rgba(255, 244, 222, 0.035)';
+  if (weather === 'storm') return 'rgba(245, 248, 250, 0.12)';
+  if (weather === 'rain') return 'rgba(245, 249, 250, 0.14)';
+  if (weather === 'cloudy' || weather === 'partly-cloudy' || weather === 'fog' || weather === 'snow' || weather === 'windy') {
+    return 'rgba(255, 252, 242, 0.18)';
+  }
+  if (phase === 'morning') return 'rgba(255, 246, 225, 0.06)';
+  if (phase === 'evening') return 'rgba(255, 226, 196, 0.05)';
+  return 'rgba(255, 255, 255, 0.025)';
 }
 
 export function TrailheadOptimizedCover({
@@ -54,6 +66,7 @@ export function TrailheadOptimizedCover({
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [clockNow, setClockNow] = useState(() => new Date());
+  const [backgroundFailed, setBackgroundFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -106,13 +119,20 @@ export function TrailheadOptimizedCover({
   const weather = trailheadDebugOverride.enabled && trailheadDebugOverride.weather ? trailheadDebugOverride.weather : liveWeather;
   const phase = trailheadDebugOverride.enabled && trailheadDebugOverride.phase ? trailheadDebugOverride.phase : livePhase;
   const background = useMemo(() => backgroundFor(rank, weather, phase), [rank, weather, phase]);
+  const fallbackBackground = useMemo(() => backgroundFor(rank, 'clear', phase), [rank, phase]);
+  const displayedBackground = backgroundFailed ? fallbackBackground : background;
   const atmosphere = useMemo(() => atmosphereColor(weather, phase), [weather, phase]);
+  const backgroundLift = useMemo(() => backgroundLiftColor(weather, phase), [weather, phase]);
   const theme = rankThemes[rank];
   const greeting = greetingFor(phase);
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
   const condition = weatherData?.current.condition.text ? weather.replace('-', ' ') : 'Local weather';
   const location = locationLabel || 'Current location';
   const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
+
+  useEffect(() => {
+    setBackgroundFailed(false);
+  }, [background]);
 
   const openRankJourney = () => router.push('/member/rank-progress');
 
@@ -122,7 +142,8 @@ export function TrailheadOptimizedCover({
 
   return (
     <View style={[styles.cover, { height: heroHeight, shadowColor: '#000000' }]}>
-      <Image source={background} resizeMode="cover" style={styles.background} />
+      <Image source={displayedBackground} resizeMode="cover" style={styles.background} onError={() => setBackgroundFailed(true)} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: backgroundLift }]} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: atmosphere }]} />
       <View pointerEvents="none" style={styles.identityScrim} />
       <View pointerEvents="none" style={styles.lowerScrim} />
@@ -185,11 +206,11 @@ const styles = StyleSheet.create({
   background: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   identityScrim: {
     position: 'absolute', left: 0, top: HEADER_INSET, bottom: 0, width: '58%',
-    backgroundColor: 'rgba(3, 8, 7, 0.10)',
+    backgroundColor: 'rgba(3, 8, 7, 0.06)',
   },
   lowerScrim: {
     position: 'absolute', left: 0, right: 0, bottom: 0, height: '34%',
-    backgroundColor: 'rgba(3, 8, 7, 0.15)',
+    backgroundColor: 'rgba(3, 8, 7, 0.10)',
   },
   rankGlow: { position: 'absolute', left: -68, top: HEADER_INSET - 36, width: 240, height: 240, borderRadius: 120, opacity: 0.22 },
 
