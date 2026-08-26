@@ -165,10 +165,22 @@ export default function CreateLocalEventScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.denied}>
-          <View style={styles.fireMark}><Ionicons name="calendar-outline" size={28} color="#D7B45A" /></View>
-          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Hosting is invitation-based'}</Text>
-          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Trusted Hosts, Community Leads, and staff can plan Outings. Everyone can browse and join them.'}</Text>
-          <Pressable onPress={() => router.back()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Go back</Text></Pressable>
+          <View style={styles.fireMark}><Ionicons name={communityScoped ? 'people-outline' : 'compass-outline'} size={28} color="#D7B45A" /></View>
+          <Text style={styles.eyebrow}>{communityScoped ? 'COMMUNITY OUTING' : 'HOST AN OUTING'}</Text>
+          <Text style={styles.title}>{communityScoped ? 'Community leaders only' : 'Want to bring people together?'}</Text>
+          <Text style={styles.body}>{communityScoped ? `Only Community Leaders and master accounts can plan Outings for ${groupName || 'this Community'}.` : 'Approved Hosts can create public Outings, invite the community, and manage the people joining them. Apply once, then your planning tools unlock here automatically.'}</Text>
+          {!communityScoped ? (
+            <View style={styles.hostBenefits}>
+              <View style={styles.hostBenefit}><Ionicons name="calendar-outline" size={17} color="#D7B45A" /><Text style={styles.hostBenefitText}>Create and publish community Outings</Text></View>
+              <View style={styles.hostBenefit}><Ionicons name="people-outline" size={17} color="#D7B45A" /><Text style={styles.hostBenefitText}>Manage RSVPs and attendees</Text></View>
+              <View style={styles.hostBenefit}><Ionicons name="checkmark-circle-outline" size={17} color="#D7B45A" /><Text style={styles.hostBenefitText}>Run check-in from your Host Hub</Text></View>
+            </View>
+          ) : null}
+          <Pressable onPress={() => communityScoped ? router.back() : router.push('/host' as never)} style={styles.primaryButton}>
+            <Ionicons name={communityScoped ? 'arrow-back-outline' : 'trail-sign-outline'} size={19} color="#17211C" />
+            <Text style={styles.primaryButtonText}>{communityScoped ? 'Go back' : 'Open Host Hub'}</Text>
+          </Pressable>
+          {!communityScoped ? <Pressable onPress={() => router.back()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Not now</Text></Pressable> : null}
         </View>
       </SafeAreaView>
     );
@@ -255,6 +267,11 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1, fontSize: 10 },
   title: { color: '#FFF8E8', fontSize: 27, lineHeight: 31, fontWeight: '900' },
   body: { color: '#AEB8B2', fontSize: 13, lineHeight: 19, marginBottom: 3 },
+  hostBenefits: { borderRadius: 16, borderWidth: 1, borderColor: '#2F4036', backgroundColor: '#131E18', padding: 14, gap: 12 },
+  hostBenefit: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  hostBenefitText: { flex: 1, color: '#D5DDD8', fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  secondaryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: '#9BA79F', fontSize: 12, fontWeight: '800' },
   trailGuideContext: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#1B1A11', paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   trailGuideContextLabel: { color: '#9C8A53', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
   trailGuideContextTitle: { color: '#FFF3CE', fontSize: 13, fontWeight: '900', marginTop: 2 },
