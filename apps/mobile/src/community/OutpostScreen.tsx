@@ -222,6 +222,7 @@ function CampfireCard({
         <Ionicons name="calendar-outline" size={19} color={GOLD} />
       </View>
 
+      {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.campfireImage} resizeMode="cover" /> : null}
       <Text style={styles.campfireTitle}>{event.title}</Text>
       {event.description ? <Text style={styles.campfireDescription} numberOfLines={3}>{event.description}</Text> : null}
 
@@ -700,6 +701,7 @@ const styles = StyleSheet.create({
   filterTextActive: { color: '#F1D879' },
   campfireCard: { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 18, padding: 13, gap: 10 },
   campfireTopRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  campfireImage: { width: '100%', aspectRatio: 16 / 9, borderRadius: 14, backgroundColor: '#101813' },
   hostAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#263229', borderWidth: 1, borderColor: '#425148', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   hostInitials: { color: GOLD, fontSize: 10, fontWeight: '900' },
   hostLine: { flexDirection: 'row', alignItems: 'baseline', minWidth: 0 },
