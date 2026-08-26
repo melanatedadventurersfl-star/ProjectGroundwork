@@ -18,6 +18,7 @@ const creatorRows: ToolRow[] = [
 
 const adminRows: ToolRow[] = [
   { label: 'Admin Profile', route: '/admin', icon: 'profile' },
+  { label: 'Outing Hosts', route: '/admin/outing-hosts', icon: 'trips', meta: 'Approve hosts and paid-outing access' },
   { label: 'App Media', route: '/admin-media', icon: 'guide' },
 ];
 

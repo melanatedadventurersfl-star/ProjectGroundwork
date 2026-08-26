@@ -164,6 +164,7 @@ export default function MenuScreen() {
   const yourGoRows: MenuRow[] = [
     { label: 'Go+ Membership', route: '/member/go-plus', icon: 'badge' },
     { label: 'Trips & Payments', route: '/member/trips', icon: 'trips', meta: 'Bookings, tickets & receipts' },
+    { label: 'Host an Outing', route: '/host', icon: 'guide', meta: 'Create, promote & manage community outings' },
     { label: 'Trail Family', route: '/member/trail-family', icon: 'community' },
     { label: 'Trailmates & Crew', route: '/circles', icon: 'connections' },
     { label: 'Invite Friends', route: '/member/invites', icon: 'connections', badge: inviteCount === null ? undefined : String(inviteCount) },
