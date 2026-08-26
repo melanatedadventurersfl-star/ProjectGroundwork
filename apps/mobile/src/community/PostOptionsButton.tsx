@@ -25,6 +25,7 @@ type Props = {
 export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) {
   const insets = useSafeAreaInsets();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [resolvedAuthorId, setResolvedAuthorId] = useState(authorId ?? null);
   const [resolvedBody, setResolvedBody] = useState(body ?? '');
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -42,12 +43,14 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
     let cancelled = false;
     void Promise.all([
       supabase.auth.getSession(),
+      supabase.rpc('is_platform_admin'),
       authorId && body !== undefined
         ? Promise.resolve({ data: { author_id: authorId, body }, error: null })
         : supabase.from('community_posts').select('author_id,body').eq('id', postId).maybeSingle(),
-    ]).then(([sessionResult, postResult]) => {
+    ]).then(([sessionResult, adminResult, postResult]) => {
       if (cancelled) return;
       setCurrentUserId(sessionResult.data.session?.user.id ?? null);
+      setIsAdmin(!adminResult.error && adminResult.data === true);
       if (postResult.data) {
         setResolvedAuthorId(postResult.data.author_id ?? null);
         setResolvedBody(postResult.data.body ?? '');
@@ -95,34 +98,43 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
 
   function confirmDelete() {
     setOptionsOpen(false);
-    Alert.alert('Delete post?', 'This permanently removes the post and cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            if (!currentUserId) return;
-            const { data, error } = await supabase
-              .from('community_posts')
-              .delete()
-              .eq('id', postId)
-              .eq('author_id', currentUserId)
-              .select('id')
-              .maybeSingle();
-            if (error) {
-              Alert.alert('Could not delete post', error.message);
-              return;
-            }
-            if (!data) {
-              Alert.alert('Could not delete post', 'You can only delete posts you created.');
-              return;
-            }
-            await refreshPostView();
-          })();
+    const adminDeletingAnotherMembersPost = isAdmin && !isOwner;
+    Alert.alert(
+      adminDeletingAnotherMembersPost ? 'Delete this member’s post?' : 'Delete post?',
+      adminDeletingAnotherMembersPost
+        ? 'This permanently removes the post for everyone. Admin deletion cannot be undone.'
+        : 'This permanently removes the post and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              if (!currentUserId) return;
+              let query = supabase
+                .from('community_posts')
+                .delete()
+                .eq('id', postId);
+              if (!isAdmin) query = query.eq('author_id', currentUserId);
+              const { data, error } = await query.select('id').maybeSingle();
+              if (error) {
+                Alert.alert('Could not delete post', error.message);
+                return;
+              }
+              if (!data) {
+                Alert.alert(
+                  'Could not delete post',
+                  isAdmin ? 'The post may already have been removed.' : 'You can only delete posts you created.',
+                );
+                return;
+              }
+              await refreshPostView();
+            })();
+          },
         },
-      },
-    ]);
+      ],
+    );
   }
 
   async function submitReport() {
@@ -144,7 +156,7 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
   function openOptions() {
     setReportStatus(null);
     setEditStatus(null);
-    if (isOwner) setOptionsOpen(true);
+    if (isOwner || isAdmin) setOptionsOpen(true);
     else setReportOpen(true);
   }
 
@@ -164,23 +176,28 @@ export function PostOptionsButton({ postId, authorId, body, onUpdated }: Props) 
         <Pressable style={styles.backdrop} onPress={() => setOptionsOpen(false)}>
           <Pressable style={[styles.optionsSheet, { paddingBottom: Math.max(16, insets.bottom + 8) }]} onPress={(event) => event.stopPropagation()}>
             <View style={styles.sheetTopRow}>
-              <Text style={styles.sheetTitle}>Post options</Text>
+              <View>
+                <Text style={styles.sheetTitle}>Post options</Text>
+                {isAdmin && !isOwner ? <Text style={styles.adminLabel}>ADMIN MODERATION</Text> : null}
+              </View>
               <Pressable style={styles.closeButton} onPress={() => setOptionsOpen(false)} accessibilityLabel="Close post options">
                 <Ionicons name="close" size={19} color={MUTED} />
               </Pressable>
             </View>
             <View style={styles.optionList}>
-              <Pressable style={styles.optionRow} onPress={() => { setOptionsOpen(false); setEditBody(resolvedBody); setEditStatus(null); setEditOpen(true); }}>
-                <Ionicons name="create-outline" size={20} color={GOLD} />
-                <Text style={styles.optionTitle}>Edit post</Text>
-              </Pressable>
+              {isOwner ? (
+                <Pressable style={styles.optionRow} onPress={() => { setOptionsOpen(false); setEditBody(resolvedBody); setEditStatus(null); setEditOpen(true); }}>
+                  <Ionicons name="create-outline" size={20} color={GOLD} />
+                  <Text style={styles.optionTitle}>Edit post</Text>
+                </Pressable>
+              ) : null}
               <Pressable style={styles.optionRow} onPress={() => void sharePost()}>
                 <Ionicons name="share-outline" size={20} color={TEXT} />
                 <Text style={styles.optionTitle}>Share post</Text>
               </Pressable>
               <Pressable style={styles.optionRow} onPress={confirmDelete}>
                 <Ionicons name="trash-outline" size={20} color={DANGER} />
-                <Text style={styles.dangerText}>Delete post</Text>
+                <Text style={styles.dangerText}>{isAdmin && !isOwner ? 'Delete post as admin' : 'Delete post'}</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -237,6 +254,7 @@ const styles = StyleSheet.create({
   reportSheet: { maxHeight: '88%', backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 14, gap: 10 },
   sheetTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sheetTitle: { color: TEXT, fontSize: 18, fontWeight: '900' },
+  adminLabel: { color: GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 0.9, marginTop: 3 },
   closeButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#202B25' },
   optionList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
   optionRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER, paddingHorizontal: 2 },
