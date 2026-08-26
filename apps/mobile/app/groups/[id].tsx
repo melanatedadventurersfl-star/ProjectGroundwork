@@ -221,7 +221,6 @@ export default function GroupDetailScreen() {
   const memberLabel = `${group?.member_count ?? 0} member${group?.member_count === 1 ? '' : 's'}`;
   const heroImage = group?.cover_image_url || group?.image_url;
   const localCommunity = group?.kind === 'local';
-  const official = !localCommunity;
   const communityLabel = localCommunity
     ? group?.city ? `${group.city.toUpperCase()} COMMUNITY` : 'LOCAL COMMUNITY'
     : 'OFFICIAL COMMUNITY';
