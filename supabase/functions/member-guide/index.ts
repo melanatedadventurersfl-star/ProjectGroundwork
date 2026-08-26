@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const MODEL = "gpt-4.1-mini";
-const MEMORY_INTENT = /\b(remember|history|my trail|last time|went|visited|camped|hiked|before|past|been to|did i)\b/i;
+const MEMORY_INTENT = /\b(remember|history|my trail|last time|went|visited|camped|hiked|before|past|been to|did i|last summer)\b/i;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -19,6 +19,11 @@ type CandidatePlace = {
   summary: string;
   details?: string[];
   collections?: string[];
+};
+
+type ConversationTurn = {
+  role: 'user' | 'assistant';
+  text: string;
 };
 
 function fallbackAnswer(query: string, candidates: CandidatePlace[], journey: any[]) {
@@ -74,6 +79,12 @@ Deno.serve(async (req: Request) => {
     const city = String(body?.city ?? '').trim().slice(0, 100);
     const state = String(body?.state ?? 'FL').trim().toUpperCase().slice(0, 2);
     const weather = body?.weather && typeof body.weather === 'object' ? body.weather : null;
+    const conversation: ConversationTurn[] = Array.isArray(body?.conversation)
+      ? body.conversation.slice(-6).map((turn: any) => ({
+        role: turn?.role === 'assistant' ? 'assistant' : 'user',
+        text: String(turn?.text ?? '').trim().slice(0, 1200),
+      })).filter((turn: ConversationTurn) => turn.text.length > 0)
+      : [];
     const candidates: CandidatePlace[] = Array.isArray(body?.candidates) ? body.candidates.slice(0, 60).map((place: any) => ({
       id: String(place?.id ?? '').slice(0, 120),
       name: String(place?.name ?? '').slice(0, 180),
@@ -96,7 +107,7 @@ Deno.serve(async (req: Request) => {
 
     if (!openAiKey) return json({ result: fallbackAnswer(query, candidates, journeyRows), source: 'fallback' });
 
-    const system = `You are Go Melanated's member outdoor guide. Help members FIND places, EXPLAIN why they fit, BUILD simple outdoor day plans, and REMEMBER their own past outdoor experiences. Use only the supplied Trail Guide candidates for Trail Guide place recommendations and only the supplied verified community place records for ownership claims. Never invent a place ID.\n\nCOMMUNITY PRIORITY: when relevant verified records are supplied, prioritize Black- and brown-owned/community-centered businesses as optional stops. Ownership is sensitive factual data. NEVER infer ownership from a person's name, image, neighborhood, cuisine, language, or demographics. You may only state an ownership identity that appears in ownership_tags from a supplied verified record. If none fit, say no verified match is available yet.\n\nMEMORY: Personal journey records are private context for this member. Only surface memoryHits when the member is actually asking about prior experiences, their history, or patterns/preferences that require that history. Do not inject unrelated past outings into an ordinary place-search request. Do not claim details absent from those records.\n\nSAFETY: You are a planning assistant, not a safety authority. Never promise that a trail, venue, weather condition, route, body of water, or activity is safe. Current hours, closures, permits, accessibility, water conditions, and weather can change. Recommend checking current official information before leaving.\n\nReturn only valid JSON matching the schema.`;
+    const system = `You are Go, Go Melanated's conversational outdoor guide. Talk like a capable guide helping a TrailMate plan in real time. Keep the answer itself warm, concise, and conversational, then use the structured fields for recommendations and planning details. Treat the recent conversation as context so follow-ups such as "make it easier", "what about lunch?", or "build a half-day plan for that" inherit the member's previous intent without forcing them to repeat it. Do not pretend to remember anything outside the supplied recent conversation and personal journey records.\n\nUse only the supplied Trail Guide candidates for Trail Guide place recommendations and only the supplied verified community place records for ownership claims. Never invent a place ID.\n\nCOMMUNITY PRIORITY: when relevant verified records are supplied, prioritize Black- and brown-owned/community-centered businesses as optional stops. Ownership is sensitive factual data. NEVER infer ownership from a person's name, image, neighborhood, cuisine, language, or demographics. You may only state an ownership identity that appears in ownership_tags from a supplied verified record. If none fit, say no verified match is available yet.\n\nMEMORY: Personal journey records are private context for this member. Only surface memoryHits when the current request or recent conversation is actually about prior experiences, their history, or patterns/preferences that require that history. Do not inject unrelated past outings into an ordinary place-search request. Do not claim details absent from those records.\n\nSAFETY: You are a planning assistant, not a safety authority. Never promise that a trail, venue, weather condition, route, body of water, or activity is safe. Current hours, closures, permits, accessibility, water conditions, and weather can change. Recommend checking current official information before leaving.\n\nReturn only valid JSON matching the schema.`;
 
     const schema = {
       name: 'member_guide_result',
@@ -116,11 +127,22 @@ Deno.serve(async (req: Request) => {
       },
     };
 
-    const context = JSON.stringify({ query, preferredCity: city || null, preferredState: state || null, weather, trailGuideCandidates: candidates, verifiedCommunityPlaces: verifiedPlaces, personalJourney: journeyRows });
+    const recentConversationText = conversation.map((turn) => `${turn.role.toUpperCase()}: ${turn.text}`).join('\n');
+    const memoryRelevant = MEMORY_INTENT.test(query) || MEMORY_INTENT.test(recentConversationText);
+    const context = JSON.stringify({
+      currentRequest: query,
+      recentConversation: conversation,
+      preferredCity: city || null,
+      preferredState: state || null,
+      weather,
+      trailGuideCandidates: candidates,
+      verifiedCommunityPlaces: verifiedPlaces,
+      personalJourney: memoryRelevant ? journeyRows : [],
+    });
     const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiKey}` },
-      body: JSON.stringify({ model: MODEL, temperature: 0.35, messages: [{ role: 'system', content: system }, { role: 'user', content: context }], response_format: { type: 'json_schema', json_schema: schema } }),
+      body: JSON.stringify({ model: MODEL, temperature: 0.45, messages: [{ role: 'system', content: system }, { role: 'user', content: context }], response_format: { type: 'json_schema', json_schema: schema } }),
     });
     const completion = await upstream.json();
     if (!upstream.ok) {
@@ -139,7 +161,7 @@ Deno.serve(async (req: Request) => {
       const source = communityById.get(String(item.placeId)) as any;
       return { ...item, name: source.name, ownershipTags: source.ownership_tags ?? [] };
     }) : [];
-    result.memoryHits = MEMORY_INTENT.test(query) && Array.isArray(result.memoryHits) ? result.memoryHits.filter((item: any) => journeyById.has(String(item.adventureId))).map((item: any) => {
+    result.memoryHits = memoryRelevant && Array.isArray(result.memoryHits) ? result.memoryHits.filter((item: any) => journeyById.has(String(item.adventureId))).map((item: any) => {
       const source = journeyById.get(String(item.adventureId)) as any;
       return { ...item, title: source.title, experiencedAt: source.experienced_at };
     }) : [];
