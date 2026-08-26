@@ -191,6 +191,7 @@ function EventCard({ event, distance, wide = false }: { event: LocalEvent; dista
 
 export default function ExploreScreen() {
   const { session } = useAuth();
+  const userId = session?.user.id;
   const insets = useSafeAreaInsets();
   const [adventures, setAdventures] = useState<AdventureSummary[]>([]);
   const [events, setEvents] = useState<LocalEvent[]>([]);
@@ -234,9 +235,9 @@ export default function ExploreScreen() {
   }, []);
 
   const load = useCallback(async (refresh = false) => {
-    refresh ? setRefreshing(true) : setLoading(true);
+    if (refresh) setRefreshing(true);
+    else setLoading(true);
     try {
-      const userId = session?.user.id;
       const [nextAdventures, nextEvents, profile] = await Promise.all([
         listAdventures({}),
         listLocalEvents(),
@@ -253,7 +254,7 @@ export default function ExploreScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.user.id]);
+  }, [userId]);
 
   useEffect(() => { void load(); }, [load]);
 
