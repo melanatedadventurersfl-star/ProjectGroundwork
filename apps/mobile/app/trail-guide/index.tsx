@@ -26,6 +26,7 @@ import { getWeatherByQuery, type WeatherForecast } from '../../src/weather/api';
 const EXPLORE_PREVIEW_LIMIT = 6;
 const RECOMMENDED_LIMIT = 3;
 const RECOMMENDED_PHOTO_POOL = 16;
+const MAX_TRAIL_GUIDE_RADIUS_MILES = 50;
 
 const GUIDE_ORDER_BY_CATEGORY: Record<DiscoveryCategory, string[]> = {
   All: ['camping-essentials', 'florida-heat-safety', 'hiking-safety', 'leave-no-trace', 'paddling-basics'],
@@ -178,7 +179,7 @@ export default function TrailGuideScreen() {
   useEffect(() => {
     if (!coordinates) return;
     let active = true;
-    const unresolved = cityPlaces.filter((place) => distanceById[place.id] == null).slice(0, 16);
+    const unresolved = cityPlaces.filter((place) => distanceById[place.id] == null);
     if (unresolved.length === 0) return;
 
     void Promise.all(unresolved.map(async (place) => {
@@ -199,13 +200,21 @@ export default function TrailGuideScreen() {
     return () => { active = false; };
   }, [cityPlaces, coordinates, distanceById]);
 
+  const radiusCityPlaces = useMemo(() => {
+    if (cityKey !== 'tampa' || !coordinates) return cityPlaces;
+    return cityPlaces.filter((place) => {
+      const distance = distanceById[place.id];
+      return typeof distance !== 'number' || distance <= MAX_TRAIL_GUIDE_RADIUS_MILES;
+    });
+  }, [cityKey, cityPlaces, coordinates, distanceById]);
+
   const rankedCityPlaces = useMemo(() => {
-    return [...cityPlaces].sort((a, b) => {
+    return [...radiusCityPlaces].sort((a, b) => {
       const conditionDelta = getTrailGuideConditionSignal(b, weather).score - getTrailGuideConditionSignal(a, weather).score;
       if (conditionDelta !== 0) return conditionDelta;
       return (distanceById[a.id] ?? Number.POSITIVE_INFINITY) - (distanceById[b.id] ?? Number.POSITIVE_INFINITY);
     });
-  }, [cityPlaces, distanceById, weather]);
+  }, [radiusCityPlaces, distanceById, weather]);
 
   const filteredPlaces = useMemo(
     () => category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category),
@@ -339,7 +348,7 @@ export default function TrailGuideScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{recommendationTitle}</Text>
-            <Text style={styles.sectionSubtitle}>Top picks based on current conditions{coordinates ? ' and your location.' : '.'}</Text>
+            <Text style={styles.sectionSubtitle}>Top picks based on current conditions{coordinates ? cityKey === 'tampa' ? ' within 50 miles of you.' : ' and your location.' : '.'}</Text>
           </View>
           {recommendedPlaces.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
@@ -361,7 +370,7 @@ export default function TrailGuideScreen() {
               <Text style={styles.sectionTitle}>{exploreTitle}</Text>
               <Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text>
             </View>
-            <Text style={styles.sectionSubtitle}>Curated outdoor places ranked for current conditions.</Text>
+            <Text style={styles.sectionSubtitle}>{cityKey === 'tampa' && coordinates ? 'Outdoor places within 50 miles, ranked for current conditions.' : 'Curated outdoor places ranked for current conditions.'}</Text>
           </View>
 
           {explorePlaces.length > 0 ? (
