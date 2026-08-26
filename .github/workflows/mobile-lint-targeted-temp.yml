@@ -1,0 +1,92 @@
+name: Mobile lint targeted temp
+
+on:
+  push:
+    branches:
+      - chore/mobile-lint-optimization
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/mobile-lint-optimization
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Apply targeted React cleanup
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected pattern not found in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          explore = 'apps/mobile/app/(tabs)/explore.tsx'
+          replace(explore,
+              "  const { session } = useAuth();\n  const insets = useSafeAreaInsets();",
+              "  const { session } = useAuth();\n  const userId = session?.user.id;\n  const insets = useSafeAreaInsets();")
+          replace(explore,
+              "  const load = useCallback(async (refresh = false) => {\n    refresh ? setRefreshing(true) : setLoading(true);\n    try {\n      const userId = session?.user.id;",
+              "  const load = useCallback(async (refresh = false) => {\n    if (refresh) setRefreshing(true);\n    else setLoading(true);\n    try {")
+          replace(explore, "  }, [session?.user.id]);", "  }, [userId]);")
+
+          index = 'apps/mobile/app/(tabs)/index.tsx'
+          replace(index,
+              "  const { session } = useAuth();",
+              "  const { session } = useAuth();\n  const userId = session?.user.id;")
+          replace(index,
+              "  const campfirePosts = useMemo(() => {\n    const userId = session?.user.id;\n    if (!userId) return [];",
+              "  const campfirePosts = useMemo(() => {\n    if (!userId) return [];")
+          replace(index,
+              "  }, [communityPosts, connectionIds, joinedGroupIds, circleIds, reservedAdventureIds, session?.user.id]);",
+              "  }, [communityPosts, connectionIds, joinedGroupIds, circleIds, reservedAdventureIds, userId]);")
+          replace(index,
+              "    try {\n      const userId = session?.user.id;\n      const [nextQueue",
+              "    try {\n      const [nextQueue")
+          replace(index, "  }, [session?.user.id]);", "  }, [userId]);")
+
+          community = 'apps/mobile/app/community/[id].tsx'
+          replace(community,
+              "import { useEffect, useMemo, useState } from 'react';",
+              "import { useCallback, useEffect, useMemo, useState } from 'react';")
+          replace(community, "  async function load() {", "  const load = useCallback(async () => {")
+          replace(community,
+              "  }\n\n  useEffect(() => { void load(); }, [id]);",
+              "  }, [id]);\n\n  useEffect(() => { void load(); }, [load]);")
+
+          groups = 'apps/mobile/app/groups/[id].tsx'
+          p = Path(groups)
+          text = p.read_text()
+          old = "  const official = Boolean((group.official ?? false) || (group.owner_id && group.owner_id === session?.user.id));\n"
+          if old in text:
+              p.write_text(text.replace(old, '', 1))
+
+          journey = 'apps/mobile/app/member/journey.tsx'
+          replace(journey,
+              "  const currentYearItems = years.find((group) => group.year === currentYear)?.items ?? [];",
+              "  const currentYearItems = useMemo(() => years.find((group) => group.year === currentYear)?.items ?? [], [currentYear, years]);")
+          PY
+      - name: Verify lint and typecheck
+        run: |
+          npm run mobile:lint
+          npm run mobile:typecheck
+      - name: Commit cleanup and remove temporary workflow
+        run: |
+          rm .github/workflows/mobile-lint-targeted-temp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile .github/workflows/mobile-lint-targeted-temp.yml
+          git commit -m "Finish mobile lint cleanup"
+          git push origin HEAD:chore/mobile-lint-optimization
