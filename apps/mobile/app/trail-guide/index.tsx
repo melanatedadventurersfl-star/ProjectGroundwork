@@ -161,7 +161,7 @@ export default function TrailGuideScreen() {
 
   const { backgroundSource, coordinates, locationLabel, locationBusy, requestCurrentLocation } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
-  const cityName = cityKey === 'orlando' ? 'Orlando' : 'Jacksonville';
+  const cityName = cityKey === 'orlando' ? 'Orlando' : cityKey === 'tampa' ? 'Tampa' : 'Jacksonville';
 
   useEffect(() => {
     let active = true;
