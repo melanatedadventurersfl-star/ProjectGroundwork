@@ -96,20 +96,58 @@ export const CURATED_TRAIL_GUIDE_PHOTOS: Record<string, TrailGuidePhoto> = {
     title: 'Lithia Springs Conservation Park',
     credit: 'Hillsborough County',
   },
+  'picnic-island-park': {
+    url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/picnic_island_beach_slideshow.jpg?itok=nkVghC5e',
+    sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/picnic-island-park',
+    title: 'Picnic Island Park',
+    credit: 'City of Tampa',
+  },
+  'cypress-point-park': {
+    url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/1sunset_slideshow.jpg?itok=1WpMnwhy',
+    sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/cypress-point-park',
+    title: 'Cypress Point Park',
+    credit: 'City of Tampa',
+  },
+  'ballast-point-park': {
+    url: 'https://www.tampa.gov/sites/default/files/styles/large_image/public/gallery/migrated/dsc00538_1600.jpg?itok=o0KCo3IZ',
+    sourceUrl: 'https://www.tampa.gov/parks-and-recreation/featured-parks/ballast-point',
+    title: 'Ballast Point Park',
+    credit: 'City of Tampa',
+  },
+  'trout-creek-park': {
+    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Bayshore_Bike_Trail_at_Trout_Creek_fthwmc',
+    sourceUrl: 'https://hcfl.gov/locations/trout-creek-wilderness-park/',
+    title: 'Trout Creek Conservation Park',
+    credit: 'Hillsborough County',
+  },
+  'morris-bridge-park': {
+    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Locations/MorrisBridgePark',
+    sourceUrl: 'https://hcfl.gov/locations/morris-bridge-conservation-park',
+    title: 'Morris Bridge Conservation Park',
+    credit: 'Hillsborough County',
+  },
+  'john-b-sargeant-park': {
+    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/Kayak_rentals_at_John_B_Sargeant_lvzch6',
+    sourceUrl: 'https://hcfl.gov/locations/john-b-sargeant-conservation-park',
+    title: 'John B. Sargeant Conservation Park',
+    credit: 'Hillsborough County',
+  },
+  'upper-tampa-bay-park': {
+    url: 'https://res.cloudinary.com/hillsboroughcounty/image/upload/c_fit,w_1200/t_WebP/v1/Web/Images/Newsroom/Upper%20Tampa%20Bay',
+    sourceUrl: 'https://hcfl.gov/locations/upper-tampa-bay-conservation-park',
+    title: 'Upper Tampa Bay Conservation Park',
+    credit: 'Hillsborough County',
+  },
 };
 
 type WikiSearchPage = {
   index?: number;
-  pageid?: number;
   title?: string;
   fullurl?: string;
-  pageimage?: string;
   thumbnail?: { source?: string };
 };
 
-type WikiSearchResponse = {
-  query?: { pages?: Record<string, WikiSearchPage> };
-};
+type WikiSearchResponse = { query?: { pages?: Record<string, WikiSearchPage> } };
 
 type WikiImageInfo = {
   url?: string;
@@ -131,16 +169,11 @@ const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v2:';
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
 
 function fallbackPhotoForPlace(place: TrailGuidePlace): TrailGuidePhoto {
-  return {
-    url: place.image,
-    sourceUrl: place.image,
-    title: place.name,
-  };
+  return { url: place.image, sourceUrl: place.image, title: place.name };
 }
 
 function stripHtml(value?: string) {
-  if (!value) return undefined;
-  return value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+  return value?.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
 }
 
 function normalizedWords(value: string) {
@@ -159,12 +192,12 @@ function titleScore(place: TrailGuidePlace, title = '') {
 }
 
 function photoFromInfo(info: WikiImageInfo | undefined, title: string): TrailGuidePhoto | null {
-  const resolvedUrl = info?.thumburl ?? info?.url;
-  const resolvedSourceUrl = info?.descriptionurl;
-  if (typeof resolvedUrl !== 'string' || typeof resolvedSourceUrl !== 'string') return null;
+  const url = info?.thumburl ?? info?.url;
+  const sourceUrl = info?.descriptionurl;
+  if (!url || !sourceUrl) return null;
   return {
-    url: resolvedUrl,
-    sourceUrl: resolvedSourceUrl,
+    url,
+    sourceUrl,
     title,
     credit: stripHtml(info?.extmetadata?.Artist?.value ?? info?.extmetadata?.Credit?.value),
     license: stripHtml(info?.extmetadata?.LicenseShortName?.value),
@@ -176,8 +209,7 @@ async function fetchJson<T>(url: URL): Promise<T | null> {
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(url.toString(), { signal: controller.signal });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
+    return response.ok ? (await response.json()) as T : null;
   } catch {
     return null;
   } finally {
@@ -190,8 +222,7 @@ async function readPersistedPhoto(placeId: string) {
     const raw = await Storage.getItem(`${PHOTO_CACHE_PREFIX}${placeId}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TrailGuidePhoto;
-    if (typeof parsed.url !== 'string' || typeof parsed.sourceUrl !== 'string' || typeof parsed.title !== 'string') return null;
-    return parsed;
+    return typeof parsed.url === 'string' && typeof parsed.sourceUrl === 'string' && typeof parsed.title === 'string' ? parsed : null;
   } catch {
     return null;
   }
@@ -201,7 +232,7 @@ async function persistPhoto(placeId: string, photo: TrailGuidePhoto) {
   try {
     await Storage.setItem(`${PHOTO_CACHE_PREFIX}${placeId}`, JSON.stringify(photo));
   } catch {
-    // A photo is still usable for this session even if local persistence fails.
+    // The photo remains usable for this session even when persistence fails.
   }
 }
 
@@ -221,21 +252,10 @@ async function searchWikipedia(place: TrailGuidePlace) {
   const data = await fetchJson<WikiSearchResponse>(url);
   const pages = Object.values(data?.query?.pages ?? {})
     .filter((page) => page.thumbnail?.source && page.fullurl)
-    .sort((a, b) => {
-      const scoreDelta = titleScore(place, b.title) - titleScore(place, a.title);
-      if (scoreDelta !== 0) return scoreDelta;
-      return (a.index ?? 99) - (b.index ?? 99);
-    });
-
+    .sort((a, b) => titleScore(place, b.title) - titleScore(place, a.title) || (a.index ?? 99) - (b.index ?? 99));
   const best = pages[0];
-  const thumbnail = best?.thumbnail?.source;
-  const fullUrl = best?.fullurl;
-  if (
-    typeof thumbnail !== 'string' ||
-    typeof fullUrl !== 'string' ||
-    titleScore(place, best?.title) === 0
-  ) return null;
-  return { url: thumbnail, sourceUrl: fullUrl, title: best?.title ?? place.name } satisfies TrailGuidePhoto;
+  if (!best?.thumbnail?.source || !best.fullurl || titleScore(place, best.title) === 0) return null;
+  return { url: best.thumbnail.source, sourceUrl: best.fullurl, title: best.title ?? place.name } satisfies TrailGuidePhoto;
 }
 
 async function searchCommons(place: TrailGuidePlace) {
@@ -254,22 +274,14 @@ async function searchCommons(place: TrailGuidePlace) {
   const data = await fetchJson<WikiImageResponse>(url);
   const pages = Object.values(data?.query?.pages ?? {})
     .filter((page) => page.imageinfo?.[0]?.url || page.imageinfo?.[0]?.thumburl)
-    .sort((a, b) => {
-      const scoreDelta = titleScore(place, b.title) - titleScore(place, a.title);
-      if (scoreDelta !== 0) return scoreDelta;
-      return (a.index ?? 99) - (b.index ?? 99);
-    });
-
+    .sort((a, b) => titleScore(place, b.title) - titleScore(place, a.title) || (a.index ?? 99) - (b.index ?? 99));
   const best = pages[0];
   if (!best?.title || titleScore(place, best.title) === 0) return null;
   return photoFromInfo(best.imageinfo?.[0], best.title);
 }
 
 async function resolveFreshPhoto(place: TrailGuidePlace) {
-  const [wikipedia, commons] = await Promise.all([
-    searchWikipedia(place),
-    searchCommons(place),
-  ]);
+  const [wikipedia, commons] = await Promise.all([searchWikipedia(place), searchCommons(place)]);
   return wikipedia ?? commons;
 }
 
@@ -283,7 +295,6 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
   const pending = (async () => {
     const persisted = await readPersistedPhoto(place.id);
     if (persisted) return persisted;
-
     const photo = await resolveFreshPhoto(place);
     if (photo) await persistPhoto(place.id, photo);
     return photo;
@@ -309,9 +320,7 @@ export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
       if (active && next) setPhoto(next);
     });
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [place]);
 
   return photo;
