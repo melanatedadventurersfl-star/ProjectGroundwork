@@ -86,7 +86,7 @@ export default function CreateHostOutingScreen() {
         <View style={styles.chips}>{categories.map((item) => <Chip key={item} label={item} active={category === item} onPress={() => setCategory(item)} />)}</View>
 
         <Text style={styles.label}>Difficulty</Text>
-        <View style={styles.chips}>{difficulties.map((item) => <Chip key={item} label={item[0].toUpperCase() + item.slice(1)} active={difficulty === item} onPress={() => setDifficulty(item)} />)}</View>
+        <View style={styles.chips}>{difficulties.map((item) => <Chip key={item} label={item.charAt(0).toUpperCase() + item.slice(1)} active={difficulty === item} onPress={() => setDifficulty(item)} />)}</View>
 
         <View style={styles.twoCol}>
           <View style={styles.flex}><Field label="Starts" value={startsAt} onChangeText={setStartsAt} placeholder="2026-09-12T09:00" /></View>
