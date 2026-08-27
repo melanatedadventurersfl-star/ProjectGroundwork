@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import {
   type MemberGuideConversationTurn,
   type MemberGuideResult,
 } from '../../src/trailGuide/assistant';
+import { getAskGoThread, saveAskGoThread } from '../../src/trailGuide/askHistory';
 import { cityKeyFromLocationLabel } from '../../src/trailGuide/catalog';
 import { useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
 import { CURATED_TRAIL_GUIDE_PHOTOS } from '../../src/trailGuide/placePhotos';
@@ -16,13 +17,15 @@ import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeatherByQuery } from '../../src/weather/api';
 
 const QUICK_PROMPTS = [
-  { title: 'Easy day near water', subtitle: 'Relaxed places nearby', icon: 'water' },
-  { title: 'Build me an adventure', subtitle: 'Tell Go how much time you have', icon: 'trail' },
-  { title: 'What should I do this weekend?', subtitle: 'Ideas based on your area', icon: 'sun' },
-  { title: 'Community-owned nearby', subtitle: 'Add a local stop to your adventure', icon: 'community' },
+  'Plan my day',
+  'Easy day near water',
+  'What should I do this weekend?',
+  'Surprise me nearby',
 ] as const;
 
-const MEMORY_INTENT = /\b(remember|history|my trail|last time|went|visited|camped|hiked|before|past|last summer)\b/i;
+const FOOD_KINDS = ['Quick bite', 'Sit-down', 'Coffee/dessert', 'Surprise me'] as const;
+const DURATION_CHOICES = ['2–3 hours', 'Half day', 'Full day'] as const;
+const VIBE_CHOICES = ['Water', 'Trails', 'Relaxed', 'Surprise me'] as const;
 
 type Exchange = {
   id: string;
@@ -32,6 +35,9 @@ type Exchange = {
   loading: boolean;
 };
 
+type PlannerStage = 'duration' | 'vibe' | null;
+type FoodStage = 'kind' | 'results' | 'loading' | null;
+
 function exchangeConversation(exchanges: Exchange[]): MemberGuideConversationTurn[] {
   return exchanges.flatMap((exchange) => {
     const turns: MemberGuideConversationTurn[] = [{ role: 'user', text: exchange.query }];
@@ -40,55 +46,85 @@ function exchangeConversation(exchanges: Exchange[]): MemberGuideConversationTur
   });
 }
 
-function promptIcon(icon: typeof QUICK_PROMPTS[number]['icon']) {
-  if (icon === 'water') return '≈';
-  if (icon === 'sun') return '☀';
-  if (icon === 'community') return '◎';
-  return '⌁';
-}
-
-function trustedPhotoUri(placeId: string) {
-  return CURATED_TRAIL_GUIDE_PHOTOS[placeId]?.url ?? null;
-}
-
 function compactFollowUp(label: string) {
   const lower = label.toLowerCase();
-  if (lower.includes('beginner')) return 'Beginner friendly';
+  if (lower.includes('beginner') || lower.includes('easier')) return 'Make easier';
   if (lower.includes('half-day')) return 'Half-day plan';
-  if (lower.includes('community-owned') || lower.includes('food stop') || lower.includes('add a food')) return 'Add food';
+  if (lower.includes('food') || lower.includes('lunch')) return 'Add food';
   if (lower.includes('near water')) return 'Near water';
-  if (lower.includes('closer')) return 'Closer';
+  if (lower.includes('quieter')) return 'Quieter';
   if (lower.includes('shorter')) return 'Shorter';
+  if (lower.includes('second')) return 'Swap second';
   return label;
 }
 
+function isFoodFollowUp(label: string) {
+  return /food|lunch|restaurant|eat/i.test(label);
+}
+
+function planLabel(result: MemberGuideResult | null) {
+  const count = result?.dayPlan.length ?? 0;
+  if (count === 0) return null;
+  return `${count} stop${count === 1 ? '' : 's'}`;
+}
+
 export default function AskGoScreen() {
+  const params = useLocalSearchParams<{ threadId?: string }>();
   const { locationLabel } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
   const cityName = cityKey === 'orlando' ? 'Orlando' : cityKey === 'tampa' ? 'Tampa' : 'Jacksonville';
   const [query, setQuery] = useState('');
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
-  const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
+  const [threadId, setThreadId] = useState(() => params.threadId ?? `ask-${Date.now()}`);
+  const [plannerStage, setPlannerStage] = useState<PlannerStage>(null);
+  const [plannerDuration, setPlannerDuration] = useState<string>('Half day');
+  const [foodStage, setFoodStage] = useState<FoodStage>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const nextExchangeId = useRef(0);
 
-  const busy = exchanges.some((exchange) => exchange.loading);
+  const busy = exchanges.some((exchange) => exchange.loading) || foodStage === 'loading';
   const latest = exchanges[exchanges.length - 1] ?? null;
-  const starterPrompts = useMemo(() => QUICK_PROMPTS, []);
+  const latestPlan = useMemo(() => [...exchanges].reverse().find((item) => (item.result?.dayPlan.length ?? 0) > 0)?.result ?? null, [exchanges]);
+  const planning = Boolean(latestPlan);
+
+  useEffect(() => {
+    if (!params.threadId) return;
+    void getAskGoThread(params.threadId).then((thread) => {
+      if (!thread) return;
+      setThreadId(thread.id);
+      setExchanges(thread.exchanges.map((exchange) => ({ ...exchange, loading: false })));
+      nextExchangeId.current = thread.exchanges.length;
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
+    });
+  }, [params.threadId]);
 
   function scrollToBottom() {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 90);
   }
 
-  async function ask(nextQuery = query) {
+  function persist(next: Exchange[]) {
+    const completed = next.filter((exchange) => !exchange.loading).map((exchange) => ({ ...exchange, loading: false as const }));
+    if (completed.length === 0) return;
+    void saveAskGoThread({
+      id: threadId,
+      cityKey,
+      cityName,
+      title: completed[0]?.query ?? 'Ask Go conversation',
+      updatedAt: new Date().toISOString(),
+      exchanges: completed,
+    });
+  }
+
+  async function ask(nextQuery = query): Promise<MemberGuideResult | null> {
     const clean = nextQuery.trim();
-    if (clean.length < 3 || busy) return;
+    if (clean.length < 3 || busy) return null;
 
     nextExchangeId.current += 1;
     const id = `exchange-${nextExchangeId.current}`;
     const history = exchangeConversation(exchanges).slice(-6);
+    const pending: Exchange = { id, query: clean, result: null, error: '', loading: true };
     setQuery('');
-    setExchanges((previous) => [...previous, { id, query: clean, result: null, error: '', loading: true }]);
+    setExchanges((previous) => [...previous, pending]);
     scrollToBottom();
 
     try {
@@ -106,66 +142,89 @@ export default function AskGoScreen() {
           windMph: weather.current.wind_mph,
         } : null,
       });
-      setExchanges((previous) => previous.map((exchange) => exchange.id === id ? { ...exchange, result, loading: false } : exchange));
+      setExchanges((previous) => {
+        const next = previous.map((exchange) => exchange.id === id ? { ...exchange, result, loading: false } : exchange);
+        persist(next);
+        return next;
+      });
+      return result;
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'I could not answer that right now.';
-      setExchanges((previous) => previous.map((exchange) => exchange.id === id ? { ...exchange, error: message, loading: false } : exchange));
+      setExchanges((previous) => {
+        const next = previous.map((exchange) => exchange.id === id ? { ...exchange, error: message, loading: false } : exchange);
+        persist(next);
+        return next;
+      });
+      return null;
     } finally {
       scrollToBottom();
     }
   }
 
-  function renderPhoto(placeId: string, compact = false) {
-    const uri = trustedPhotoUri(placeId);
-    if (uri) {
-      return <Image source={{ uri }} style={compact ? styles.compactImage : styles.heroImage} resizeMode="cover" />;
-    }
-
-    return (
-      <View style={compact ? styles.compactPhotoFallback : styles.heroPhotoFallback}>
-        <View style={styles.photoFallbackIcon}>
-          <AppIcon name="trail" color="#D7B45A" size={compact ? 18 : 24} />
-        </View>
-        {!compact ? <Text style={styles.photoFallbackText}>Place photo coming soon</Text> : null}
-      </View>
-    );
+  function startPlanMyDay() {
+    if (busy) return;
+    setPlannerStage('duration');
+    setFoodStage(null);
+    scrollToBottom();
   }
 
-  function renderPlace(item: MemberGuideResult['places'][number], index: number) {
+  function chooseDuration(duration: string) {
+    setPlannerDuration(duration);
+    setPlannerStage('vibe');
+    scrollToBottom();
+  }
+
+  function chooseVibe(vibe: string) {
+    setPlannerStage(null);
+    const durationPhrase = plannerDuration === '2–3 hours' ? '2 to 3 hour' : plannerDuration.toLowerCase();
+    void ask(`Plan a ${durationPhrase} adventure for me around ${cityName}. I want a ${vibe.toLowerCase()} vibe. Build the day for me and keep it easy to change.`);
+  }
+
+  async function findFood(kind: string) {
+    setFoodStage('loading');
+    const result = await ask(`Show me 3 ${kind.toLowerCase()} dining choices near my current adventure route. Recommend choices first and do not change the plan yet.`);
+    setFoodStage(result ? 'results' : 'kind');
+    scrollToBottom();
+  }
+
+  function handleFollowUp(follow: string) {
+    if (isFoodFollowUp(follow)) {
+      setFoodStage('kind');
+      setPlannerStage(null);
+      scrollToBottom();
+      return;
+    }
+    void ask(follow);
+  }
+
+  function addFoodStop(name: string) {
+    setFoodStage(null);
+    void ask(`Add ${name} as the food stop in my current adventure. Keep the other stops unless the route truly requires a change.`);
+  }
+
+  function startFresh() {
+    setExchanges([]);
+    setThreadId(`ask-${Date.now()}`);
+    setPlannerStage(null);
+    setFoodStage(null);
+    setQuery('');
+  }
+
+  function renderPlace(item: MemberGuideResult['places'][number]) {
     const place = findTrailGuidePlace(item.id);
     if (!place) return null;
-    const isBest = index === 0;
-
-    if (isBest) {
-      return (
-        <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.heroCard}>
-          {renderPhoto(item.id)}
-          <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>BEST MATCH</Text></View>
-          <View style={styles.heroContent}>
-            <Text style={styles.heroTitle}>{place.name}</Text>
-            <Text style={styles.heroMeta}>{place.area} · {place.category}</Text>
-            <View style={styles.tagRow}>
-              <View style={styles.tag}><Text style={styles.tagText}>{place.category}</Text></View>
-              <View style={styles.tag}><Text style={styles.tagText}>Flexible</Text></View>
-            </View>
-            <Text style={styles.heroReason} numberOfLines={3}>{item.reason}</Text>
-            <View style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>View adventure</Text>
-              <AppIcon name="chevron-forward" color="#172017" size={18} />
-            </View>
-          </View>
-        </Pressable>
-      );
-    }
-
+    const photo = CURATED_TRAIL_GUIDE_PHOTOS[item.id]?.url ?? null;
     return (
-      <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.compactCard}>
-        {renderPhoto(item.id, true)}
-        <View style={styles.compactBody}>
-          <Text style={styles.compactTitle} numberOfLines={2}>{place.name}</Text>
-          <Text style={styles.compactMeta}>{place.area}</Text>
-          <Text style={styles.compactReason} numberOfLines={3}>{item.reason}</Text>
+      <Pressable key={item.id} style={styles.placeRow} onPress={() => router.push(`/trail-guide/${item.id}` as never)}>
+        {photo ? <Image source={{ uri: photo }} style={styles.placeImage} resizeMode="cover" /> : (
+          <View style={styles.placeFallback}><AppIcon name="trail" color="#D7B45A" size={19} /></View>
+        )}
+        <View style={styles.placeCopy}>
+          <Text style={styles.placeTitle} numberOfLines={1}>{place.name}</Text>
+          <Text style={styles.placeMeta} numberOfLines={1}>{place.area} · {place.category}</Text>
+          <Text style={styles.placeReason} numberOfLines={2}>{item.reason}</Text>
         </View>
+        <AppIcon name="chevron-forward" color="#8F9D95" size={17} />
       </Pressable>
     );
   }
@@ -173,142 +232,77 @@ export default function AskGoScreen() {
   function renderPlan(result: MemberGuideResult) {
     if (result.dayPlan.length === 0) return null;
     return (
-      <View style={styles.section}>
-        <View style={styles.planCard}>
-          <View style={styles.planHeader}>
-            <View>
-              <Text style={styles.planEyebrow}>YOUR ADVENTURE PLAN</Text>
-              <Text style={styles.planHeaderText}>Half-day adventure</Text>
-            </View>
-            <AppIcon name="bookmark" color="#D7B45A" size={18} />
+      <View style={styles.planCard}>
+        <View style={styles.planTop}>
+          <View>
+            <Text style={styles.eyebrow}>YOUR PLAN</Text>
+            <Text style={styles.planHeading}>{planLabel(result)} · {cityName}</Text>
           </View>
-          {result.dayPlan.map((step, index) => (
-            <View key={`${step.time}-${step.title}-${index}`} style={styles.planRow}>
-              <View style={styles.timeline}>
-                <View style={styles.timelineDot} />
-                {index < result.dayPlan.length - 1 ? <View style={styles.timelineLine} /> : null}
-              </View>
-              <Text style={styles.planTime}>{step.time || 'Flexible'}</Text>
-              <View style={styles.flex}>
-                <Text style={styles.planTitle}>{step.title}</Text>
-                <Text style={styles.planNote}>{step.note}</Text>
-              </View>
+          <Pressable onPress={() => void ask('Undo that and bring back my previous plan')} style={styles.tinyAction}>
+            <Text style={styles.tinyActionText}>Undo</Text>
+          </Pressable>
+        </View>
+        {result.dayPlan.map((step, index) => (
+          <View key={`${step.time}-${step.title}-${index}`} style={styles.planRow}>
+            <View style={styles.planRail}>
+              <View style={styles.planDot} />
+              {index < result.dayPlan.length - 1 ? <View style={styles.planLine} /> : null}
             </View>
-          ))}
-          <View style={styles.planActions}>
-            <Pressable style={styles.secondaryButton} onPress={() => void ask('Invite TrailMates to this plan')}>
-              <AppIcon name="trail-family" color="#F4EBD4" size={16} />
-              <Text style={styles.secondaryButtonText}>Invite TrailMates</Text>
-            </Pressable>
-            <Pressable style={styles.primaryPlanButton} onPress={() => void ask('Schedule this outing')}>
-              <AppIcon name="calendar" color="#172017" size={16} />
-              <Text style={styles.primaryPlanButtonText}>Schedule outing</Text>
-            </Pressable>
+            <Text style={styles.planTime}>{step.time || 'Flex'}</Text>
+            <View style={styles.planCopy}>
+              <Text style={styles.planTitle}>{step.title}</Text>
+              <Text style={styles.planNote} numberOfLines={2}>{step.note}</Text>
+            </View>
           </View>
+        ))}
+        <View style={styles.planActions}>
+          <Pressable style={styles.actionChip} onPress={() => setFoodStage('kind')}><Text style={styles.actionChipText}>+ Food</Text></Pressable>
+          <Pressable style={styles.actionChip} onPress={() => void ask('Swap the second stop in this plan')}><Text style={styles.actionChipText}>Swap stop</Text></Pressable>
+          <Pressable style={styles.actionChip} onPress={() => void ask('Make this plan shorter')}><Text style={styles.actionChipText}>Shorter</Text></Pressable>
+          <Pressable style={styles.actionChip} onPress={() => void ask('Make this plan beginner friendly')}><Text style={styles.actionChipText}>Easier</Text></Pressable>
         </View>
       </View>
     );
   }
 
-  function renderResult(exchange: Exchange) {
+  function renderRichResult(exchange: Exchange) {
     const result = exchange.result;
     if (!result) return null;
-    const wantsMemory = MEMORY_INTENT.test(exchange.query);
-    const primary = result.places[0];
-    const expanded = Boolean(expandedResults[exchange.id]);
-    const alternates = expanded ? result.places.slice(1) : result.places.slice(1, 3);
-    const hasMore = result.places.length > 3;
-    const shouldOfferWiden = result.source === 'fallback' && result.places.length === 0;
-
     return (
-      <View style={styles.resultBlock}>
-        <View style={styles.goTurn}>
-          <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
-          <View style={styles.goBubble}>
-            <Text style={styles.goAnswer}>{result.answer}</Text>
-          </View>
-        </View>
-
-        {shouldOfferWiden ? (
-          <Pressable onPress={() => void ask(`Widen the search around ${cityName}`)} style={styles.matchAssist}>
-            <AppIcon name="search" color="#D7B45A" size={15} />
-            <Text style={styles.matchAssistText}>I do not have a strong nearby match yet. Widen the search.</Text>
-          </Pressable>
-        ) : null}
-
+      <View style={styles.richResult}>
         {renderPlan(result)}
-
-        {primary ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionEyebrow}>GO'S PICK FOR YOU ✦</Text>
-            {renderPlace(primary, 0)}
-          </View>
-        ) : null}
-
-        {alternates.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionEyebrow}>OTHER GOOD MATCHES</Text>
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  if (hasMore) {
-                    setExpandedResults((current) => ({ ...current, [exchange.id]: !expanded }));
-                  } else {
-                    void ask('Show me more nearby options');
-                  }
-                }}
-              >
-                <Text style={styles.sectionLink}>{hasMore ? (expanded ? 'Show less' : 'Show more') : 'Find more'}</Text>
+        {foodStage === 'results' ? (
+          <View style={styles.choiceCard}>
+            <Text style={styles.choiceTitle}>Pick a food stop</Text>
+            <Text style={styles.choiceText}>I’ll add it only after you choose.</Text>
+            {result.communityStops.length > 0 ? result.communityStops.slice(0, 4).map((stop) => (
+              <Pressable key={stop.placeId} style={styles.foodOption} onPress={() => addFoodStop(stop.name)}>
+                <View style={styles.foodCopy}>
+                  <Text style={styles.foodName}>{stop.name}</Text>
+                  <Text style={styles.foodReason} numberOfLines={2}>{stop.reason}</Text>
+                </View>
+                <Text style={styles.addText}>Add</Text>
               </Pressable>
-            </View>
-            <View style={styles.altGrid}>
-              {alternates.map((item, index) => <View key={item.id} style={styles.altCell}>{renderPlace(item, index + 1)}</View>)}
-            </View>
+            )) : (
+              <View style={styles.noFoodBox}>
+                <Text style={styles.noFoodText}>I don’t have a verified dining option loaded for this route yet. Try another style or ask me for a different nearby area.</Text>
+              </View>
+            )}
           </View>
         ) : null}
-
-        {result.communityStops.length > 0 ? (
+        {result.places.length > 0 && foodStage !== 'results' ? (
           <View style={styles.section}>
-            <Text style={styles.sectionEyebrow}>COMMUNITY-OWNED STOPS</Text>
-            <View style={styles.stackGap}>
-              {result.communityStops.map((stop) => (
-                <View key={stop.placeId} style={styles.communityCard}>
-                  <View style={styles.communityTopRow}>
-                    <Text style={styles.communityLabel}>COMMUNITY STOP</Text>
-                    <Text style={styles.verified}>✓ VERIFIED</Text>
-                  </View>
-                  <Text style={styles.placeTitle}>{stop.name}</Text>
-                  <Text style={styles.tags}>{stop.ownershipTags.join(' · ')}</Text>
-                  <Text style={styles.placeReason}>{stop.reason}</Text>
-                </View>
-              ))}
-            </View>
+            <Text style={styles.eyebrow}>{result.dayPlan.length > 0 ? 'STOPS & ALTERNATIVES' : 'BEST MATCHES'}</Text>
+            <View style={styles.stack}>{result.places.slice(0, 3).map(renderPlace)}</View>
           </View>
         ) : null}
-
-        {wantsMemory && result.memoryHits.length > 0 ? (
+        {result.followUps.length > 0 && foodStage !== 'results' ? (
           <View style={styles.section}>
-            <Text style={styles.sectionEyebrow}>FROM YOUR TRAIL</Text>
-            <View style={styles.stackGap}>
-              {result.memoryHits.map((memory) => (
-                <View key={memory.adventureId} style={styles.memoryCard}>
-                  <Text style={styles.placeTitle}>{memory.title}</Text>
-                  <Text style={styles.placeMeta}>{new Date(memory.experiencedAt).toLocaleDateString()}</Text>
-                  <Text style={styles.placeReason}>{memory.note}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        {result.followUps.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionEyebrow}>REFINE YOUR RESULTS</Text>
-            <View style={styles.followWrap}>
-              {result.followUps.map((follow) => (
-                <Pressable key={follow} disabled={busy} onPress={() => void ask(follow)} style={styles.followChip}>
-                  <Text style={styles.followText}>{compactFollowUp(follow)}</Text>
+            <Text style={styles.eyebrow}>{planning ? 'CHANGE THIS PLAN' : 'KEEP GOING'}</Text>
+            <View style={styles.chipWrap}>
+              {result.followUps.slice(0, 5).map((follow) => (
+                <Pressable key={follow} disabled={busy} onPress={() => handleFollowUp(follow)} style={styles.replyChip}>
+                  <Text style={styles.replyChipText}>{compactFollowUp(follow)}</Text>
                 </Pressable>
               ))}
             </View>
@@ -322,131 +316,103 @@ export default function AskGoScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.headerButton} hitSlop={10}>
-          <AppIcon name="chevron-back" color="#FFF8E8" size={22} />
+          <AppIcon name="chevron-back" color="#FFF8E8" size={21} />
         </Pressable>
         <View style={styles.headerIdentity}>
-          <View style={styles.headerSpark}><Text style={styles.headerSparkText}>✦</Text></View>
+          <View style={styles.sparkCircle}><Text style={styles.spark}>✦</Text></View>
           <View>
             <Text style={styles.headerTitle}>Ask Go</Text>
-            <Text style={styles.headerSubtitle}>Your outdoor guide</Text>
+            <Text style={styles.headerSubtitle}>{planning ? 'Planning with you' : 'Your outdoor guide'}</Text>
           </View>
         </View>
-        <View style={styles.historyPill}>
-          <AppIcon name="time" color="#C3CBC5" size={16} />
+        <Pressable onPress={() => router.push('/trail-guide/ask-history' as never)} style={styles.historyButton} hitSlop={8}>
+          <AppIcon name="time" color="#C5CEC8" size={15} />
           <Text style={styles.historyText}>History</Text>
-        </View>
+        </Pressable>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {exchanges.length === 0 ? (
           <View style={styles.emptyState}>
-            <View style={styles.introRow}>
-              <View style={styles.largeGoAvatar}><Text style={styles.largeGoAvatarText}>✦</Text></View>
-              <View style={styles.introCopy}>
-                <Text style={styles.greeting}>Hey TrailMate! 👋</Text>
-                <Text style={styles.introText}>Tell me what you're in the mood for and I'll find the best fit I can.</Text>
+            <Text style={styles.greeting}>What kind of day do you want?</Text>
+            <Text style={styles.intro}>Give me a vibe, a time limit, or nothing at all. I can build the day from there.</Text>
+            <Pressable style={styles.planMyDay} onPress={startPlanMyDay}>
+              <View style={styles.planIcon}><Text style={styles.planIconText}>✦</Text></View>
+              <View style={styles.planMyDayCopy}>
+                <Text style={styles.planMyDayTitle}>Plan my day</Text>
+                <Text style={styles.planMyDayText}>A complete adventure in a few taps</Text>
               </View>
-            </View>
-
-            <Text style={styles.sectionEyebrow}>POPULAR STARTS</Text>
-            <View style={styles.promptGrid}>
-              {starterPrompts.map((prompt) => (
-                <Pressable key={prompt.title} onPress={() => void ask(prompt.title)} style={styles.promptCard}>
-                  <Text style={styles.promptIcon}>{promptIcon(prompt.icon)}</Text>
-                  <View style={styles.promptTextWrap}>
-                    <Text style={styles.promptTitle}>{prompt.title}</Text>
-                    <Text style={styles.promptSubtitle}>{prompt.subtitle}</Text>
-                  </View>
+              <AppIcon name="chevron-forward" color="#172017" size={19} />
+            </Pressable>
+            <View style={styles.quickGrid}>
+              {QUICK_PROMPTS.slice(1).map((prompt) => (
+                <Pressable key={prompt} style={styles.quickCard} onPress={() => void ask(prompt)}>
+                  <Text style={styles.quickText}>{prompt}</Text>
                 </Pressable>
               ))}
             </View>
-
-            <Text style={styles.sectionEyebrow}>YOUR CONTEXT</Text>
-            <View style={styles.contextRow}>
-              <View style={styles.contextCard}>
-                <AppIcon name="location" color="#83B779" size={17} />
-                <View>
-                  <Text style={styles.contextTitle}>{cityName}, FL</Text>
-                  <Text style={styles.contextAction}>Current area</Text>
-                </View>
-              </View>
-              <View style={styles.contextCard}>
-                <AppIcon name="calendar" color="#83B779" size={17} />
-                <View>
-                  <Text style={styles.contextTitle}>This weekend</Text>
-                  <Text style={styles.contextAction}>Flexible timing</Text>
-                </View>
-              </View>
-            </View>
-
-            <Text style={styles.sectionEyebrow}>RECENT SEARCHES</Text>
-            <Pressable onPress={() => void ask('Easy day near water')} style={styles.recentCard}>
-              <View style={styles.recentIcon}><AppIcon name="trail" color="#D7B45A" size={19} /></View>
-              <View style={styles.flex}>
-                <Text style={styles.recentTitle}>Easy day near water</Text>
-                <Text style={styles.recentMeta}>A quick starting point for nearby ideas</Text>
-              </View>
-              <AppIcon name="chevron-forward" color="#77827B" size={18} />
-            </Pressable>
           </View>
         ) : null}
 
-        {exchanges.map((exchange) => (
-          <View key={exchange.id} style={styles.exchange}>
-            <View style={styles.userRow}>
+        {exchanges.map((exchange, index) => {
+          const isLatest = index === exchanges.length - 1;
+          return (
+            <View key={exchange.id} style={styles.exchange}>
               <View style={styles.userBubble}><Text style={styles.userText}>{exchange.query}</Text></View>
+              {exchange.loading ? (
+                <View style={styles.goLine}><View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View><ActivityIndicator color="#D7B45A" size="small" /></View>
+              ) : exchange.error ? (
+                <View style={styles.goLine}><View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View><Text style={styles.errorText}>{exchange.error}</Text></View>
+              ) : exchange.result ? (
+                <>
+                  <View style={styles.goLine}><View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View><Text style={styles.goText}>{exchange.result.answer}</Text></View>
+                  {isLatest ? renderRichResult(exchange) : null}
+                </>
+              ) : null}
             </View>
+          );
+        })}
 
-            {exchange.loading ? (
-              <View style={styles.goTurn}>
-                <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
-                <View style={styles.typingBubble}>
-                  <ActivityIndicator color="#D7B45A" size="small" />
-                  <Text style={styles.typingText}>Building your best options…</Text>
-                </View>
-              </View>
-            ) : null}
-
-            {exchange.error ? (
-              <View style={styles.goTurn}>
-                <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
-                <View style={styles.errorBubble}>
-                  <Text style={styles.errorText}>{exchange.error}</Text>
-                  <Pressable onPress={() => void ask(exchange.query)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>
-                </View>
-              </View>
-            ) : null}
-
-            {renderResult(exchange)}
+        {plannerStage === 'duration' ? (
+          <View style={styles.inlinePrompt}>
+            <Text style={styles.inlineTitle}>How much time do you have?</Text>
+            <View style={styles.chipWrap}>{DURATION_CHOICES.map((item) => <Pressable key={item} style={styles.choiceChip} onPress={() => chooseDuration(item)}><Text style={styles.choiceChipText}>{item}</Text></Pressable>)}</View>
           </View>
-        ))}
+        ) : null}
 
-        {latest?.result ? <Text style={styles.disclaimer}>Confirm current hours, closures, permits, accessibility, weather, and water conditions before leaving.</Text> : null}
+        {plannerStage === 'vibe' ? (
+          <View style={styles.inlinePrompt}>
+            <Text style={styles.inlineTitle}>What sounds good?</Text>
+            <View style={styles.chipWrap}>{VIBE_CHOICES.map((item) => <Pressable key={item} style={styles.choiceChip} onPress={() => chooseVibe(item)}><Text style={styles.choiceChipText}>{item}</Text></Pressable>)}</View>
+          </View>
+        ) : null}
+
+        {foodStage === 'kind' ? (
+          <View style={styles.inlinePrompt}>
+            <Text style={styles.inlineTitle}>Sure. What kind of food stop fits?</Text>
+            <View style={styles.chipWrap}>{FOOD_KINDS.map((item) => <Pressable key={item} style={styles.choiceChip} onPress={() => void findFood(item)}><Text style={styles.choiceChipText}>{item}</Text></Pressable>)}</View>
+          </View>
+        ) : null}
+
+        {foodStage === 'loading' ? <View style={styles.inlineLoading}><ActivityIndicator color="#D7B45A" /><Text style={styles.inlineLoadingText}>Finding food options along your route…</Text></View> : null}
+        <View style={styles.bottomClearance} />
       </ScrollView>
 
-      <View style={styles.composerDock}>
+      <View style={styles.composerShell}>
+        {exchanges.length > 0 ? <Pressable onPress={startFresh} style={styles.freshButton}><Text style={styles.freshText}>Start fresh</Text></Pressable> : null}
         <View style={styles.composer}>
           <TextInput
             value={query}
             onChangeText={setQuery}
+            placeholder={planning ? 'Change this plan…' : 'Ask Go anything…'}
+            placeholderTextColor="#7C8981"
+            style={styles.input}
             multiline
-            maxLength={2000}
-            placeholder={exchanges.length ? 'Ask Go anything…' : `Ask Go about ${cityName}…`}
-            placeholderTextColor="#77827B"
-            style={styles.composerInput}
+            maxLength={500}
+            onSubmitEditing={() => void ask()}
           />
-          <Pressable
-            disabled={busy || query.trim().length < 3}
-            onPress={() => void ask()}
-            style={[styles.sendButton, (busy || query.trim().length < 3) && styles.sendDisabled]}
-          >
-            <Text style={styles.sendText}>➤</Text>
+          <Pressable disabled={busy || query.trim().length < 3} onPress={() => void ask()} style={[styles.sendButton, (busy || query.trim().length < 3) && styles.sendDisabled]}>
+            <AppIcon name="arrow-up" color="#152019" size={18} />
           </Pressable>
         </View>
       </View>
@@ -455,121 +421,90 @@ export default function AskGoScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#09100C' },
-  header: { minHeight: 64, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#223029', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  headerIdentity: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerSpark: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#352C14', borderWidth: 1, borderColor: '#725F22', alignItems: 'center', justifyContent: 'center' },
-  headerSparkText: { color: '#F2CA5F', fontSize: 18, fontWeight: '900' },
-  headerTitle: { color: '#FFF9EA', fontSize: 17, fontWeight: '900' },
-  headerSubtitle: { color: '#9BA69F', fontSize: 9.5, marginTop: 1 },
-  historyPill: { minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 11, flexDirection: 'row', gap: 6, alignItems: 'center' },
-  historyText: { color: '#D9E0DB', fontSize: 10.5, fontWeight: '800' },
+  safe: { flex: 1, backgroundColor: '#0D1712' },
+  header: { minHeight: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#28362E' },
+  headerButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  headerIdentity: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  sparkCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#203329', alignItems: 'center', justifyContent: 'center' },
+  spark: { color: '#D7B45A', fontSize: 15 },
+  headerTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '850' },
+  headerSubtitle: { color: '#89968E', fontSize: 10.5, marginTop: 1 },
+  historyButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, height: 32, borderRadius: 16, backgroundColor: '#16221B' },
+  historyText: { color: '#C5CEC8', fontSize: 11.5, fontWeight: '700' },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 190 },
-  emptyState: { paddingTop: 8 },
-  introRow: { flexDirection: 'row', gap: 14, alignItems: 'center', marginBottom: 28 },
-  largeGoAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#2D2613', borderWidth: 1, borderColor: '#705A20', alignItems: 'center', justifyContent: 'center' },
-  largeGoAvatarText: { color: '#F2CA5F', fontSize: 28, fontWeight: '900' },
-  introCopy: { flex: 1 },
-  greeting: { color: '#FFF8E8', fontSize: 19, lineHeight: 24, fontWeight: '900' },
-  introText: { color: '#D1D8D3', fontSize: 12.5, lineHeight: 18, marginTop: 3 },
-  section: { marginTop: 18 },
-  sectionEyebrow: { color: '#C8B989', fontSize: 9.5, letterSpacing: 1.25, fontWeight: '900', marginBottom: 10 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionLink: { color: '#D7B45A', fontSize: 10.5, fontWeight: '900', paddingVertical: 4 },
-  promptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 },
-  promptCard: { width: '48.5%', minHeight: 118, borderRadius: 20, borderWidth: 1, borderColor: '#3A463F', backgroundColor: '#101914', padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  promptIcon: { color: '#D7B45A', fontSize: 25, width: 28, textAlign: 'center' },
-  promptTextWrap: { flex: 1 },
-  promptTitle: { color: '#FFF8E8', fontSize: 13.5, lineHeight: 18, fontWeight: '900' },
-  promptSubtitle: { color: '#AEB7B1', fontSize: 10.5, lineHeight: 15, marginTop: 6 },
-  contextRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
-  contextCard: { flex: 1, minHeight: 70, borderRadius: 18, borderWidth: 1, borderColor: '#355041', backgroundColor: '#0F1914', flexDirection: 'row', gap: 9, alignItems: 'center', paddingHorizontal: 13 },
-  contextTitle: { color: '#F4F1E8', fontSize: 11.5, fontWeight: '800' },
-  contextAction: { color: '#8E9A93', fontSize: 9.5, marginTop: 3 },
-  recentCard: { minHeight: 76, borderRadius: 18, borderWidth: 1, borderColor: '#334139', backgroundColor: '#101713', flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12 },
-  recentIcon: { width: 46, height: 46, borderRadius: 12, backgroundColor: '#1B241E', alignItems: 'center', justifyContent: 'center' },
-  recentTitle: { color: '#FFF8E8', fontSize: 12.5, fontWeight: '900' },
-  recentMeta: { color: '#8F9A93', fontSize: 9.5, marginTop: 4 },
-  exchange: { marginBottom: 20 },
-  userRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 3 },
-  userBubble: { maxWidth: '78%', borderRadius: 18, borderTopRightRadius: 7, backgroundColor: '#2A312D', paddingHorizontal: 14, paddingVertical: 11 },
-  userText: { color: '#F6F1E7', fontSize: 13, lineHeight: 18, fontWeight: '700' },
-  goTurn: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 12 },
-  goAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#352C14', borderWidth: 1, borderColor: '#705A20', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  goAvatarText: { color: '#F2CA5F', fontSize: 15, fontWeight: '900' },
-  goBubble: { flex: 1, borderRadius: 17, borderTopLeftRadius: 7, backgroundColor: '#111A15', borderWidth: 1, borderColor: '#2D3832', paddingHorizontal: 13, paddingVertical: 11 },
-  goAnswer: { color: '#E5EAE6', fontSize: 12.5, lineHeight: 18 },
-  typingBubble: { minHeight: 42, borderRadius: 17, borderTopLeftRadius: 7, backgroundColor: '#111A15', borderWidth: 1, borderColor: '#2D3832', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13 },
-  typingText: { color: '#9FAAA3', fontSize: 11, fontWeight: '700' },
-  errorBubble: { flex: 1, borderRadius: 17, backgroundColor: '#301A18', borderWidth: 1, borderColor: '#5D302A', padding: 12 },
-  errorText: { color: '#FFB4A9', fontSize: 11.5, lineHeight: 17 },
-  retryButton: { alignSelf: 'flex-start', marginTop: 8, borderRadius: 14, backgroundColor: '#4B2925', paddingHorizontal: 11, paddingVertical: 7 },
-  retryText: { color: '#FFD3CC', fontSize: 10.5, fontWeight: '900' },
-  resultBlock: { marginTop: 2 },
-  matchAssist: { marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#191911', padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' },
-  matchAssistText: { flex: 1, color: '#C8B982', fontSize: 10.5, lineHeight: 15 },
-  heroCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#39443E', backgroundColor: '#121A16' },
-  heroImage: { width: '100%', height: 134 },
-  heroPhotoFallback: { width: '100%', height: 118, backgroundColor: '#17211B', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  photoFallbackIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#262719', borderWidth: 1, borderColor: '#5B4C22', alignItems: 'center', justifyContent: 'center' },
-  photoFallbackText: { color: '#919C95', fontSize: 9.5, fontWeight: '700' },
-  heroBadge: { position: 'absolute', left: 12, top: 12, borderRadius: 14, backgroundColor: 'rgba(66,52,14,0.94)', borderWidth: 1, borderColor: '#8B7025', paddingHorizontal: 9, paddingVertical: 5 },
-  heroBadgeText: { color: '#F0C75F', fontSize: 8.5, letterSpacing: 0.8, fontWeight: '900' },
-  heroContent: { padding: 14 },
-  heroTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 22, fontWeight: '900' },
-  heroMeta: { color: '#AEB7B1', fontSize: 10.5, marginTop: 3 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 },
-  tag: { borderRadius: 14, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#12241A', paddingHorizontal: 9, paddingVertical: 5 },
-  tagText: { color: '#A9D995', fontSize: 9.5, fontWeight: '800' },
-  heroReason: { color: '#C6CEC8', fontSize: 11.5, lineHeight: 17, marginTop: 9 },
-  primaryButton: { height: 42, borderRadius: 13, backgroundColor: '#D7B45A', marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  primaryButtonText: { color: '#172017', fontSize: 12, fontWeight: '900' },
-  altGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  altCell: { width: '48.5%' },
-  compactCard: { minHeight: 184, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#334039', backgroundColor: '#111915' },
-  compactImage: { width: '100%', height: 82 },
-  compactPhotoFallback: { width: '100%', height: 82, backgroundColor: '#17211B', alignItems: 'center', justifyContent: 'center' },
-  compactBody: { padding: 11, minHeight: 100 },
-  compactTitle: { minHeight: 30, color: '#FFF8E8', fontSize: 11.5, lineHeight: 15, fontWeight: '900' },
-  compactMeta: { color: '#8F9A93', fontSize: 9, marginTop: 3 },
-  compactReason: { color: '#B2BBB5', fontSize: 9.5, lineHeight: 14, marginTop: 7 },
-  stackGap: { gap: 9 },
-  communityCard: { borderRadius: 16, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#102119', padding: 13 },
-  communityTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  communityLabel: { color: '#D7B45A', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  verified: { color: '#79D26A', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  placeTitle: { color: '#FFF8E8', fontSize: 14.5, lineHeight: 20, fontWeight: '900', marginTop: 8 },
-  placeMeta: { color: '#8D9891', fontSize: 10, marginTop: 3 },
-  placeReason: { color: '#AEB7B1', fontSize: 11, lineHeight: 16, marginTop: 7 },
-  tags: { color: '#D7B45A', fontSize: 10, fontWeight: '800', marginTop: 4 },
-  planCard: { borderRadius: 20, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#141811', padding: 14 },
-  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  planEyebrow: { color: '#C8B989', fontSize: 8.5, letterSpacing: 1.05, fontWeight: '900' },
-  planHeaderText: { color: '#FFF3CE', fontSize: 16, fontWeight: '900', marginTop: 3 },
-  planRow: { flexDirection: 'row', gap: 8, minHeight: 60, paddingTop: 10 },
-  timeline: { width: 14, alignItems: 'center' },
-  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#79B36A', borderWidth: 2, borderColor: '#254121', marginTop: 4, zIndex: 2 },
-  timelineLine: { width: 2, flex: 1, backgroundColor: '#36532C', marginTop: -1 },
-  flex: { flex: 1 },
-  planTime: { width: 52, color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
-  planTitle: { color: '#FFF8E8', fontSize: 11.5, fontWeight: '900' },
-  planNote: { color: '#A9B1AB', fontSize: 9.5, lineHeight: 14, marginTop: 2 },
-  planActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  secondaryButton: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#47544C', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  secondaryButtonText: { color: '#F4EBD4', fontSize: 10, fontWeight: '800' },
-  primaryPlanButton: { flex: 1, minHeight: 42, borderRadius: 12, backgroundColor: '#D7B45A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  primaryPlanButtonText: { color: '#172017', fontSize: 10, fontWeight: '900' },
-  memoryCard: { borderRadius: 16, borderWidth: 1, borderColor: '#39483F', backgroundColor: '#121A16', padding: 13 },
-  followWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  followChip: { borderRadius: 18, borderWidth: 1, borderColor: '#3D4942', backgroundColor: '#121914', paddingHorizontal: 12, paddingVertical: 8 },
-  followText: { color: '#D7DED9', fontSize: 10.5, fontWeight: '800' },
-  disclaimer: { color: '#66726B', fontSize: 9.5, lineHeight: 14, marginHorizontal: 30, marginTop: 16, textAlign: 'center' },
-  composerDock: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, backgroundColor: 'rgba(9,16,12,0.97)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#223029' },
-  composer: { minHeight: 52, borderRadius: 26, borderWidth: 1, borderColor: '#354139', backgroundColor: '#101713', flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 14, paddingRight: 6, paddingVertical: 5 },
-  composerInput: { flex: 1, minHeight: 40, maxHeight: 106, color: '#FFF8E8', fontSize: 13.5, lineHeight: 19, paddingTop: 9, paddingBottom: 8 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
-  sendDisabled: { opacity: 0.34 },
-  sendText: { color: '#172017', fontSize: 18, lineHeight: 20, fontWeight: '900' },
+  content: { padding: 14, paddingBottom: 8 },
+  emptyState: { paddingTop: 18 },
+  greeting: { color: '#FFF8E8', fontSize: 24, fontWeight: '850', lineHeight: 30 },
+  intro: { color: '#AAB5AE', fontSize: 13.5, lineHeight: 20, marginTop: 7, maxWidth: 330 },
+  planMyDay: { marginTop: 18, minHeight: 72, backgroundColor: '#D7B45A', borderRadius: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  planIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(23,32,23,0.13)', alignItems: 'center', justifyContent: 'center' },
+  planIconText: { color: '#172017', fontSize: 17 },
+  planMyDayCopy: { flex: 1 },
+  planMyDayTitle: { color: '#172017', fontSize: 16, fontWeight: '900' },
+  planMyDayText: { color: '#354238', fontSize: 11.5, marginTop: 3 },
+  quickGrid: { marginTop: 10, gap: 8 },
+  quickCard: { minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#293A30', backgroundColor: '#15221A', paddingHorizontal: 13, justifyContent: 'center' },
+  quickText: { color: '#EDE4D0', fontWeight: '700', fontSize: 13 },
+  exchange: { marginBottom: 18 },
+  userBubble: { alignSelf: 'flex-end', maxWidth: '84%', backgroundColor: '#26362D', borderRadius: 16, borderBottomRightRadius: 5, paddingHorizontal: 12, paddingVertical: 9 },
+  userText: { color: '#F5EDD9', fontSize: 13.5, lineHeight: 19 },
+  goLine: { marginTop: 9, flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingRight: 18 },
+  goAvatar: { width: 25, height: 25, borderRadius: 13, backgroundColor: '#203329', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  goAvatarText: { color: '#D7B45A', fontSize: 12 },
+  goText: { flex: 1, color: '#E6DDC9', fontSize: 13.5, lineHeight: 20 },
+  errorText: { flex: 1, color: '#E1A6A0', fontSize: 13, lineHeight: 19 },
+  richResult: { marginTop: 9, marginLeft: 33, gap: 12 },
+  section: { gap: 7 },
+  eyebrow: { color: '#B89C55', fontSize: 9.5, fontWeight: '900', letterSpacing: 1 },
+  stack: { gap: 7 },
+  placeRow: { minHeight: 82, borderRadius: 13, borderWidth: 1, borderColor: '#293A30', backgroundColor: '#15221A', padding: 8, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  placeImage: { width: 68, height: 64, borderRadius: 10 },
+  placeFallback: { width: 68, height: 64, borderRadius: 10, backgroundColor: '#203027', alignItems: 'center', justifyContent: 'center' },
+  placeCopy: { flex: 1 },
+  placeTitle: { color: '#FFF5DF', fontSize: 13.5, fontWeight: '800' },
+  placeMeta: { color: '#8E9A93', fontSize: 10.5, marginTop: 2 },
+  placeReason: { color: '#B8C1BB', fontSize: 11, lineHeight: 15, marginTop: 4 },
+  planCard: { borderRadius: 15, borderWidth: 1, borderColor: '#4A5733', backgroundColor: '#17251C', padding: 12 },
+  planTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  planHeading: { color: '#F4ECD8', fontSize: 14, fontWeight: '850', marginTop: 2 },
+  tinyAction: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 12, backgroundColor: '#243329' },
+  tinyActionText: { color: '#C9D1CC', fontSize: 10.5, fontWeight: '750' },
+  planRow: { minHeight: 48, flexDirection: 'row', alignItems: 'stretch' },
+  planRail: { width: 17, alignItems: 'center' },
+  planDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#D7B45A', marginTop: 7 },
+  planLine: { width: 1, flex: 1, backgroundColor: '#4A5733', marginVertical: 3 },
+  planTime: { width: 62, color: '#B7C0BA', fontSize: 10.5, paddingTop: 3 },
+  planCopy: { flex: 1, paddingBottom: 8 },
+  planTitle: { color: '#F7EEDB', fontSize: 12.5, fontWeight: '800' },
+  planNote: { color: '#9BA79F', fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  planActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 4 },
+  actionChip: { borderRadius: 12, backgroundColor: '#243329', paddingHorizontal: 9, paddingVertical: 7 },
+  actionChipText: { color: '#DDE5DF', fontSize: 10.5, fontWeight: '750' },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  replyChip: { borderRadius: 14, borderWidth: 1, borderColor: '#3A493F', backgroundColor: '#18271E', paddingHorizontal: 10, paddingVertical: 8 },
+  replyChipText: { color: '#E7DFCB', fontSize: 11, fontWeight: '700' },
+  inlinePrompt: { marginLeft: 33, marginBottom: 16, borderRadius: 14, backgroundColor: '#15221A', borderWidth: 1, borderColor: '#314238', padding: 12 },
+  inlineTitle: { color: '#F5EDD9', fontSize: 13.5, fontWeight: '800', marginBottom: 9 },
+  choiceChip: { borderRadius: 14, backgroundColor: '#24372B', paddingHorizontal: 11, paddingVertical: 8 },
+  choiceChipText: { color: '#F1E9D7', fontSize: 11, fontWeight: '750' },
+  inlineLoading: { marginLeft: 33, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  inlineLoadingText: { color: '#A9B5AE', fontSize: 11.5 },
+  choiceCard: { borderRadius: 14, borderWidth: 1, borderColor: '#3C4A3F', backgroundColor: '#15221A', padding: 11 },
+  choiceTitle: { color: '#FFF4DE', fontSize: 14, fontWeight: '850' },
+  choiceText: { color: '#94A199', fontSize: 10.5, marginTop: 3, marginBottom: 8 },
+  foodOption: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#314036', paddingVertical: 8 },
+  foodCopy: { flex: 1, paddingRight: 10 },
+  foodName: { color: '#F3EAD7', fontSize: 12.5, fontWeight: '800' },
+  foodReason: { color: '#9DA9A2', fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  addText: { color: '#D7B45A', fontSize: 11, fontWeight: '900' },
+  noFoodBox: { borderRadius: 10, backgroundColor: '#1B2A20', padding: 10 },
+  noFoodText: { color: '#A9B4AD', fontSize: 11, lineHeight: 16 },
+  composerShell: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A382F', backgroundColor: '#0D1712', paddingHorizontal: 12, paddingTop: 7, paddingBottom: 7 },
+  freshButton: { alignSelf: 'flex-end', paddingHorizontal: 4, paddingVertical: 3, marginBottom: 4 },
+  freshText: { color: '#89968E', fontSize: 10.5, fontWeight: '700' },
+  composer: { minHeight: 48, maxHeight: 112, borderRadius: 17, borderWidth: 1, borderColor: '#34443A', backgroundColor: '#16231B', flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 12, paddingRight: 5, paddingVertical: 5 },
+  input: { flex: 1, color: '#F6EEDB', fontSize: 13.5, lineHeight: 19, paddingVertical: 8, paddingRight: 8, maxHeight: 96 },
+  sendButton: { width: 37, height: 37, borderRadius: 19, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
+  sendDisabled: { opacity: 0.38 },
+  bottomClearance: { height: 10 },
 });
