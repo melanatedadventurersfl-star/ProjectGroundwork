@@ -267,6 +267,7 @@ export function OutpostDigestScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [errors, setErrors] = useState<LoadErrors>({});
+  const [digestNow, setDigestNow] = useState(0);
 
   const loadAll = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -301,6 +302,7 @@ export function OutpostDigestScreen() {
       nextErrors.profile = 'Your area could not be loaded.';
     }
 
+    setDigestNow(new Date().getTime());
     setErrors(nextErrors);
     setLoading(false);
     setRefreshing(false);
@@ -334,7 +336,7 @@ export function OutpostDigestScreen() {
       byGroup.set(post.group_id, current);
     }
 
-    const recentCutoff = Date.now() - RECENT_WINDOW_MS;
+    const recentCutoff = digestNow - RECENT_WINDOW_MS;
     return joinedGroups.map((group): CommunityDigest => {
       const posts = (byGroup.get(group.id) ?? []).slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       const recentPosts = posts.filter((post) => new Date(post.created_at).getTime() >= recentCutoff);
@@ -343,11 +345,11 @@ export function OutpostDigestScreen() {
       const outingCount = events.filter((event) => event.group_id === group.id).length;
       const highlight = recentPosts.slice().sort((a, b) => (b.comment_count + b.reaction_count) - (a.comment_count + a.reaction_count))[0] ?? posts[0] ?? null;
       const latestTime = posts[0] ? new Date(posts[0].created_at).getTime() : 0;
-      const recencyBoost = latestTime ? Math.max(0, 7 - ((Date.now() - latestTime) / (24 * 60 * 60 * 1000))) : 0;
+      const recencyBoost = latestTime ? Math.max(0, 7 - ((digestNow - latestTime) / (24 * 60 * 60 * 1000))) : 0;
       const score = recentPosts.length * 2 + photos + questions * 2 + outingCount * 3 + recencyBoost;
       return { group, posts, recentPosts, photos, questions, outingCount, highlight, score };
     });
-  }, [events, feed, joinedGroups]);
+  }, [digestNow, events, feed, joinedGroups]);
 
   const visibleDigests = useMemo(() => {
     if (digestFilter === 'nearby') return digests.filter((digest) => isNearbyGroup(digest.group)).sort((a, b) => b.score - a.score);
