@@ -11,6 +11,7 @@ import {
 } from '../../src/trailGuide/assistant';
 import { cityKeyFromLocationLabel } from '../../src/trailGuide/catalog';
 import { useTrailGuideLocationBackground } from '../../src/trailGuide/locationBackgrounds';
+import { CURATED_TRAIL_GUIDE_PHOTOS } from '../../src/trailGuide/placePhotos';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeatherByQuery } from '../../src/weather/api';
 
@@ -46,12 +47,28 @@ function promptIcon(icon: typeof QUICK_PROMPTS[number]['icon']) {
   return '⌁';
 }
 
+function trustedPhotoUri(placeId: string) {
+  return CURATED_TRAIL_GUIDE_PHOTOS[placeId]?.url ?? null;
+}
+
+function compactFollowUp(label: string) {
+  const lower = label.toLowerCase();
+  if (lower.includes('beginner')) return 'Beginner friendly';
+  if (lower.includes('half-day')) return 'Half-day plan';
+  if (lower.includes('community-owned') || lower.includes('food stop') || lower.includes('add a food')) return 'Add food';
+  if (lower.includes('near water')) return 'Near water';
+  if (lower.includes('closer')) return 'Closer';
+  if (lower.includes('shorter')) return 'Shorter';
+  return label;
+}
+
 export default function AskGoScreen() {
   const { locationLabel } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
   const cityName = cityKey === 'orlando' ? 'Orlando' : cityKey === 'tampa' ? 'Tampa' : 'Jacksonville';
   const [query, setQuery] = useState('');
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<ScrollView | null>(null);
   const nextExchangeId = useRef(0);
 
@@ -98,6 +115,22 @@ export default function AskGoScreen() {
     }
   }
 
+  function renderPhoto(placeId: string, compact = false) {
+    const uri = trustedPhotoUri(placeId);
+    if (uri) {
+      return <Image source={{ uri }} style={compact ? styles.compactImage : styles.heroImage} resizeMode="cover" />;
+    }
+
+    return (
+      <View style={compact ? styles.compactPhotoFallback : styles.heroPhotoFallback}>
+        <View style={styles.photoFallbackIcon}>
+          <AppIcon name="trail" color="#D7B45A" size={compact ? 18 : 24} />
+        </View>
+        {!compact ? <Text style={styles.photoFallbackText}>Place photo coming soon</Text> : null}
+      </View>
+    );
+  }
+
   function renderPlace(item: MemberGuideResult['places'][number], index: number) {
     const place = findTrailGuidePlace(item.id);
     if (!place) return null;
@@ -106,15 +139,14 @@ export default function AskGoScreen() {
     if (isBest) {
       return (
         <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.heroCard}>
-          <Image source={{ uri: place.image }} style={styles.heroImage} resizeMode="cover" />
-          <View style={styles.heroShade} />
+          {renderPhoto(item.id)}
           <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>BEST MATCH</Text></View>
           <View style={styles.heroContent}>
             <Text style={styles.heroTitle}>{place.name}</Text>
             <Text style={styles.heroMeta}>{place.area} · {place.category}</Text>
             <View style={styles.tagRow}>
-              <View style={styles.tag}><Text style={styles.tagText}>Easy</Text></View>
               <View style={styles.tag}><Text style={styles.tagText}>{place.category}</Text></View>
+              <View style={styles.tag}><Text style={styles.tagText}>Flexible</Text></View>
             </View>
             <Text style={styles.heroReason} numberOfLines={3}>{item.reason}</Text>
             <View style={styles.primaryButton}>
@@ -128,13 +160,53 @@ export default function AskGoScreen() {
 
     return (
       <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.compactCard}>
-        <Image source={{ uri: place.image }} style={styles.compactImage} resizeMode="cover" />
+        {renderPhoto(item.id, true)}
         <View style={styles.compactBody}>
           <Text style={styles.compactTitle} numberOfLines={2}>{place.name}</Text>
           <Text style={styles.compactMeta}>{place.area}</Text>
-          <Text style={styles.compactReason} numberOfLines={2}>{item.reason}</Text>
+          <Text style={styles.compactReason} numberOfLines={3}>{item.reason}</Text>
         </View>
       </Pressable>
+    );
+  }
+
+  function renderPlan(result: MemberGuideResult) {
+    if (result.dayPlan.length === 0) return null;
+    return (
+      <View style={styles.section}>
+        <View style={styles.planCard}>
+          <View style={styles.planHeader}>
+            <View>
+              <Text style={styles.planEyebrow}>YOUR ADVENTURE PLAN</Text>
+              <Text style={styles.planHeaderText}>Half-day adventure</Text>
+            </View>
+            <AppIcon name="bookmark" color="#D7B45A" size={18} />
+          </View>
+          {result.dayPlan.map((step, index) => (
+            <View key={`${step.time}-${step.title}-${index}`} style={styles.planRow}>
+              <View style={styles.timeline}>
+                <View style={styles.timelineDot} />
+                {index < result.dayPlan.length - 1 ? <View style={styles.timelineLine} /> : null}
+              </View>
+              <Text style={styles.planTime}>{step.time || 'Flexible'}</Text>
+              <View style={styles.flex}>
+                <Text style={styles.planTitle}>{step.title}</Text>
+                <Text style={styles.planNote}>{step.note}</Text>
+              </View>
+            </View>
+          ))}
+          <View style={styles.planActions}>
+            <Pressable style={styles.secondaryButton} onPress={() => void ask('Invite TrailMates to this plan')}>
+              <AppIcon name="trail-family" color="#F4EBD4" size={16} />
+              <Text style={styles.secondaryButtonText}>Invite TrailMates</Text>
+            </Pressable>
+            <Pressable style={styles.primaryPlanButton} onPress={() => void ask('Schedule this outing')}>
+              <AppIcon name="calendar" color="#172017" size={16} />
+              <Text style={styles.primaryPlanButtonText}>Schedule outing</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
     );
   }
 
@@ -143,7 +215,10 @@ export default function AskGoScreen() {
     if (!result) return null;
     const wantsMemory = MEMORY_INTENT.test(exchange.query);
     const primary = result.places[0];
-    const alternates = result.places.slice(1, 3);
+    const expanded = Boolean(expandedResults[exchange.id]);
+    const alternates = expanded ? result.places.slice(1) : result.places.slice(1, 3);
+    const hasMore = result.places.length > 3;
+    const shouldOfferWiden = result.source === 'fallback' && result.places.length === 0;
 
     return (
       <View style={styles.resultBlock}>
@@ -154,12 +229,14 @@ export default function AskGoScreen() {
           </View>
         </View>
 
-        {result.source === 'fallback' ? (
+        {shouldOfferWiden ? (
           <Pressable onPress={() => void ask(`Widen the search around ${cityName}`)} style={styles.matchAssist}>
             <AppIcon name="search" color="#D7B45A" size={15} />
-            <Text style={styles.matchAssistText}>These are the closest matches I found. Tap to widen the search.</Text>
+            <Text style={styles.matchAssistText}>I do not have a strong nearby match yet. Widen the search.</Text>
           </Pressable>
         ) : null}
+
+        {renderPlan(result)}
 
         {primary ? (
           <View style={styles.section}>
@@ -172,7 +249,18 @@ export default function AskGoScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionEyebrow}>OTHER GOOD MATCHES</Text>
-              <Text style={styles.sectionLink}>Show more</Text>
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  if (hasMore) {
+                    setExpandedResults((current) => ({ ...current, [exchange.id]: !expanded }));
+                  } else {
+                    void ask('Show me more nearby options');
+                  }
+                }}
+              >
+                <Text style={styles.sectionLink}>{hasMore ? (expanded ? 'Show less' : 'Show more') : 'Find more'}</Text>
+              </Pressable>
             </View>
             <View style={styles.altGrid}>
               {alternates.map((item, index) => <View key={item.id} style={styles.altCell}>{renderPlace(item, index + 1)}</View>)}
@@ -199,43 +287,6 @@ export default function AskGoScreen() {
           </View>
         ) : null}
 
-        {result.dayPlan.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.planCard}>
-              <View style={styles.planHeader}>
-                <View>
-                  <Text style={styles.planEyebrow}>YOUR ADVENTURE PLAN</Text>
-                  <Text style={styles.planHeaderText}>Half-day adventure</Text>
-                </View>
-                <AppIcon name="bookmark" color="#D7B45A" size={18} />
-              </View>
-              {result.dayPlan.map((step, index) => (
-                <View key={`${step.time}-${step.title}-${index}`} style={styles.planRow}>
-                  <View style={styles.timeline}>
-                    <View style={styles.timelineDot} />
-                    {index < result.dayPlan.length - 1 ? <View style={styles.timelineLine} /> : null}
-                  </View>
-                  <Text style={styles.planTime}>{step.time || 'Flexible'}</Text>
-                  <View style={styles.flex}>
-                    <Text style={styles.planTitle}>{step.title}</Text>
-                    <Text style={styles.planNote}>{step.note}</Text>
-                  </View>
-                </View>
-              ))}
-              <View style={styles.planActions}>
-                <Pressable style={styles.secondaryButton} onPress={() => void ask('Invite TrailMates to this plan')}>
-                  <AppIcon name="trail-family" color="#F4EBD4" size={16} />
-                  <Text style={styles.secondaryButtonText}>Invite TrailMates</Text>
-                </Pressable>
-                <Pressable style={styles.primaryPlanButton} onPress={() => void ask('Schedule this outing')}>
-                  <AppIcon name="calendar" color="#172017" size={16} />
-                  <Text style={styles.primaryPlanButtonText}>Schedule outing</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        ) : null}
-
         {wantsMemory && result.memoryHits.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionEyebrow}>FROM YOUR TRAIL</Text>
@@ -254,13 +305,13 @@ export default function AskGoScreen() {
         {result.followUps.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionEyebrow}>REFINE YOUR RESULTS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
+            <View style={styles.followWrap}>
               {result.followUps.map((follow) => (
                 <Pressable key={follow} disabled={busy} onPress={() => void ask(follow)} style={styles.followChip}>
-                  <Text style={styles.followText}>{follow}</Text>
+                  <Text style={styles.followText}>{compactFollowUp(follow)}</Text>
                 </Pressable>
               ))}
-            </ScrollView>
+            </View>
           </View>
         ) : null}
       </View>
@@ -299,7 +350,7 @@ export default function AskGoScreen() {
               <View style={styles.largeGoAvatar}><Text style={styles.largeGoAvatarText}>✦</Text></View>
               <View style={styles.introCopy}>
                 <Text style={styles.greeting}>Hey TrailMate! 👋</Text>
-                <Text style={styles.introText}>Tell me what you're in the mood for and I'll find the perfect adventure.</Text>
+                <Text style={styles.introText}>Tell me what you're in the mood for and I'll find the best fit I can.</Text>
               </View>
             </View>
 
@@ -322,14 +373,14 @@ export default function AskGoScreen() {
                 <AppIcon name="location" color="#83B779" size={17} />
                 <View>
                   <Text style={styles.contextTitle}>{cityName}, FL</Text>
-                  <Text style={styles.contextAction}>Change</Text>
+                  <Text style={styles.contextAction}>Current area</Text>
                 </View>
               </View>
               <View style={styles.contextCard}>
                 <AppIcon name="calendar" color="#83B779" size={17} />
                 <View>
                   <Text style={styles.contextTitle}>This weekend</Text>
-                  <Text style={styles.contextAction}>Change</Text>
+                  <Text style={styles.contextAction}>Flexible timing</Text>
                 </View>
               </View>
             </View>
@@ -339,7 +390,7 @@ export default function AskGoScreen() {
               <View style={styles.recentIcon}><AppIcon name="trail" color="#D7B45A" size={19} /></View>
               <View style={styles.flex}>
                 <Text style={styles.recentTitle}>Easy day near water</Text>
-                <Text style={styles.recentMeta}>Try one of Go's most useful starting points</Text>
+                <Text style={styles.recentMeta}>A quick starting point for nearby ideas</Text>
               </View>
               <AppIcon name="chevron-forward" color="#77827B" size={18} />
             </Pressable>
@@ -415,7 +466,7 @@ const styles = StyleSheet.create({
   historyPill: { minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 11, flexDirection: 'row', gap: 6, alignItems: 'center' },
   historyText: { color: '#D9E0DB', fontSize: 10.5, fontWeight: '800' },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 126 },
+  content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 190 },
   emptyState: { paddingTop: 8 },
   introRow: { flexDirection: 'row', gap: 14, alignItems: 'center', marginBottom: 28 },
   largeGoAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#2D2613', borderWidth: 1, borderColor: '#705A20', alignItems: 'center', justifyContent: 'center' },
@@ -423,10 +474,10 @@ const styles = StyleSheet.create({
   introCopy: { flex: 1 },
   greeting: { color: '#FFF8E8', fontSize: 19, lineHeight: 24, fontWeight: '900' },
   introText: { color: '#D1D8D3', fontSize: 12.5, lineHeight: 18, marginTop: 3 },
-  section: { marginTop: 16 },
+  section: { marginTop: 18 },
   sectionEyebrow: { color: '#C8B989', fontSize: 9.5, letterSpacing: 1.25, fontWeight: '900', marginBottom: 10 },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionLink: { color: '#D7B45A', fontSize: 10.5, fontWeight: '800' },
+  sectionLink: { color: '#D7B45A', fontSize: 10.5, fontWeight: '900', paddingVertical: 4 },
   promptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 },
   promptCard: { width: '48.5%', minHeight: 118, borderRadius: 20, borderWidth: 1, borderColor: '#3A463F', backgroundColor: '#101914', padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   promptIcon: { color: '#D7B45A', fontSize: 25, width: 28, textAlign: 'center' },
@@ -459,26 +510,29 @@ const styles = StyleSheet.create({
   resultBlock: { marginTop: 2 },
   matchAssist: { marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#191911', padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' },
   matchAssistText: { flex: 1, color: '#C8B982', fontSize: 10.5, lineHeight: 15 },
-  heroCard: { borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: '#39443E', backgroundColor: '#121A16' },
-  heroImage: { width: '100%', height: 168 },
-  heroShade: { position: 'absolute', left: 0, right: 0, top: 0, height: 168, backgroundColor: 'rgba(0,0,0,0.22)' },
-  heroBadge: { position: 'absolute', left: 12, top: 12, borderRadius: 14, backgroundColor: 'rgba(66,52,14,0.92)', borderWidth: 1, borderColor: '#8B7025', paddingHorizontal: 9, paddingVertical: 5 },
+  heroCard: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#39443E', backgroundColor: '#121A16' },
+  heroImage: { width: '100%', height: 134 },
+  heroPhotoFallback: { width: '100%', height: 118, backgroundColor: '#17211B', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  photoFallbackIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#262719', borderWidth: 1, borderColor: '#5B4C22', alignItems: 'center', justifyContent: 'center' },
+  photoFallbackText: { color: '#919C95', fontSize: 9.5, fontWeight: '700' },
+  heroBadge: { position: 'absolute', left: 12, top: 12, borderRadius: 14, backgroundColor: 'rgba(66,52,14,0.94)', borderWidth: 1, borderColor: '#8B7025', paddingHorizontal: 9, paddingVertical: 5 },
   heroBadgeText: { color: '#F0C75F', fontSize: 8.5, letterSpacing: 0.8, fontWeight: '900' },
-  heroContent: { padding: 15 },
-  heroTitle: { color: '#FFF8E8', fontSize: 18, lineHeight: 23, fontWeight: '900' },
+  heroContent: { padding: 14 },
+  heroTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 22, fontWeight: '900' },
   heroMeta: { color: '#AEB7B1', fontSize: 10.5, marginTop: 3 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 },
   tag: { borderRadius: 14, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#12241A', paddingHorizontal: 9, paddingVertical: 5 },
   tagText: { color: '#A9D995', fontSize: 9.5, fontWeight: '800' },
-  heroReason: { color: '#C6CEC8', fontSize: 11.5, lineHeight: 17, marginTop: 10 },
-  primaryButton: { height: 44, borderRadius: 13, backgroundColor: '#D7B45A', marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  primaryButtonText: { color: '#172017', fontSize: 12.5, fontWeight: '900' },
-  altGrid: { flexDirection: 'row', gap: 9 },
-  altCell: { flex: 1 },
-  compactCard: { flex: 1, minHeight: 188, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#334039', backgroundColor: '#111915' },
-  compactImage: { width: '100%', height: 88 },
-  compactBody: { padding: 11 },
-  compactTitle: { color: '#FFF8E8', fontSize: 11.5, lineHeight: 15, fontWeight: '900' },
+  heroReason: { color: '#C6CEC8', fontSize: 11.5, lineHeight: 17, marginTop: 9 },
+  primaryButton: { height: 42, borderRadius: 13, backgroundColor: '#D7B45A', marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  primaryButtonText: { color: '#172017', fontSize: 12, fontWeight: '900' },
+  altGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  altCell: { width: '48.5%' },
+  compactCard: { minHeight: 184, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#334039', backgroundColor: '#111915' },
+  compactImage: { width: '100%', height: 82 },
+  compactPhotoFallback: { width: '100%', height: 82, backgroundColor: '#17211B', alignItems: 'center', justifyContent: 'center' },
+  compactBody: { padding: 11, minHeight: 100 },
+  compactTitle: { minHeight: 30, color: '#FFF8E8', fontSize: 11.5, lineHeight: 15, fontWeight: '900' },
   compactMeta: { color: '#8F9A93', fontSize: 9, marginTop: 3 },
   compactReason: { color: '#B2BBB5', fontSize: 9.5, lineHeight: 14, marginTop: 7 },
   stackGap: { gap: 9 },
@@ -508,7 +562,7 @@ const styles = StyleSheet.create({
   primaryPlanButton: { flex: 1, minHeight: 42, borderRadius: 12, backgroundColor: '#D7B45A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   primaryPlanButtonText: { color: '#172017', fontSize: 10, fontWeight: '900' },
   memoryCard: { borderRadius: 16, borderWidth: 1, borderColor: '#39483F', backgroundColor: '#121A16', padding: 13 },
-  followRow: { gap: 8, paddingRight: 16 },
+  followWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   followChip: { borderRadius: 18, borderWidth: 1, borderColor: '#3D4942', backgroundColor: '#121914', paddingHorizontal: 12, paddingVertical: 8 },
   followText: { color: '#D7DED9', fontSize: 10.5, fontWeight: '800' },
   disclaimer: { color: '#66726B', fontSize: 9.5, lineHeight: 14, marginHorizontal: 30, marginTop: 16, textAlign: 'center' },
