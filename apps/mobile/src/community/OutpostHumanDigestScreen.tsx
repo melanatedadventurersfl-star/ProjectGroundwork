@@ -15,6 +15,7 @@ const GOLD = '#D7B45A';
 const BG = '#0F1713';
 const CARD = '#17211C';
 const CARD_SOFT = '#141E19';
+const CARD_INSET = '#101A15';
 const BORDER = '#28362E';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
@@ -95,7 +96,7 @@ function digestSummary(digest: CommunityDigest) {
   const parts: string[] = [];
   if (digest.recentPosts.length) parts.push(`${digest.recentPosts.length} conversation${digest.recentPosts.length === 1 ? '' : 's'} this week`);
   if (digest.outingCount) parts.push(`${digest.outingCount} upcoming outing${digest.outingCount === 1 ? '' : 's'}`);
-  return parts.length ? parts.join(' · ') : 'No recent activity';
+  return parts.length ? parts.join(' · ') : 'Quiet right now';
 }
 
 function GroupImage({ group, size = 56 }: { group: CommunityGroup; size?: number }) {
@@ -114,16 +115,16 @@ function SectionHeader({ title, detail, action, onAction }: { title: string; det
       </View>
       {action && onAction ? (
         <Pressable style={styles.sectionAction} onPress={onAction} accessibilityRole="button">
-          <Text style={styles.sectionActionText}>{action}</Text><Ionicons name="arrow-forward" size={14} color={GOLD} />
+          <Text style={styles.sectionActionText}>{action}</Text><Ionicons name="arrow-forward" size={13} color={GOLD} />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-function NotificationRow({ item, now, onOpen }: { item: MemberNotification; now: number; onOpen: (item: MemberNotification) => void }) {
+function NotificationRow({ item, now, onOpen, isLast }: { item: MemberNotification; now: number; onOpen: (item: MemberNotification) => void; isLast: boolean }) {
   return (
-    <Pressable style={({ pressed }) => [styles.noticeRow, pressed && styles.pressed]} onPress={() => onOpen(item)}>
+    <Pressable style={({ pressed }) => [styles.noticeRow, !isLast && styles.internalDivider, pressed && styles.pressed]} onPress={() => onOpen(item)}>
       <View style={[styles.noticeIcon, item.priority === 'critical' && styles.noticeIconCritical]}>
         <Ionicons name={notificationIcon(item) as any} size={20} color={item.priority === 'critical' ? '#FFD6CF' : GOLD} />
       </View>
@@ -144,9 +145,7 @@ function FeaturedPost({ post, now }: { post: CommunityPost; now: number }) {
       {media ? <Image source={{ uri: media }} style={styles.featuredImage} resizeMode="cover" /> : null}
       <View style={styles.featuredBody}>
         <View style={styles.authorRow}>
-          <View style={styles.avatar}>
-            {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(post.author_name)}</Text>}
-          </View>
+          <View style={styles.avatar}>{post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{initials(post.author_name)}</Text>}</View>
           <Text style={styles.authorName} numberOfLines={1}>{post.author_name}</Text>
           <Text style={styles.postTime}>{relativeTime(post.created_at, now)}</Text>
         </View>
@@ -160,10 +159,10 @@ function FeaturedPost({ post, now }: { post: CommunityPost; now: number }) {
   );
 }
 
-function CampActivityBlock({ digest, now }: { digest: CommunityDigest; now: number }) {
-  const hasActivity = digest.recentPosts.length > 0 || Boolean(digest.highlight);
+function CampActivityBlock({ digest, now, isLast }: { digest: CommunityDigest; now: number; isLast: boolean }) {
+  const hasActivity = digest.recentPosts.length > 0 && Boolean(digest.highlight);
   return (
-    <View style={styles.campBlock}>
+    <View style={[styles.campBlock, !isLast && styles.campDivider]}>
       <Pressable style={styles.campBlockHeader} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: digest.group.id } })}>
         <GroupImage group={digest.group} size={52} />
         <View style={styles.flex}>
@@ -171,7 +170,7 @@ function CampActivityBlock({ digest, now }: { digest: CommunityDigest; now: numb
             <Text style={styles.campName} numberOfLines={1}>{digest.group.name}</Text>
             {isOfficialCommunity(digest.group) ? <Ionicons name="checkmark-circle" size={14} color={GOLD} /> : null}
           </View>
-          <Text style={styles.campSummary}>{digestSummary(digest)}</Text>
+          <Text style={[styles.campSummary, !hasActivity && styles.campSummaryQuiet]}>{digestSummary(digest)}</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={GOLD} />
       </Pressable>
@@ -180,9 +179,9 @@ function CampActivityBlock({ digest, now }: { digest: CommunityDigest; now: numb
   );
 }
 
-function ComingUpCard({ event, onRsvp }: { event: LocalEvent; onRsvp: (event: LocalEvent) => void }) {
+function ComingUpCard({ event, onRsvp, fullWidth = false }: { event: LocalEvent; onRsvp: (event: LocalEvent) => void; fullWidth?: boolean }) {
   return (
-    <Pressable style={({ pressed }) => [styles.comingCard, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
+    <Pressable style={({ pressed }) => [styles.comingCard, fullWidth && styles.comingCardFull, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
       {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.comingImage} /> : <View style={[styles.comingImage, styles.eventFallback]}><Ionicons name="calendar-outline" size={30} color={GOLD} /></View>}
       <View style={styles.comingContent}>
         <View style={styles.statusRow}>
@@ -193,9 +192,7 @@ function ComingUpCard({ event, onRsvp }: { event: LocalEvent; onRsvp: (event: Lo
         <Text style={styles.comingMeta}>{eventTime(event)}</Text>
         <Text style={styles.comingMeta} numberOfLines={1}>{locationLabel(event.venue_name || event.city, event.state)}</Text>
         {!event.my_rsvp || event.my_rsvp === 'cancelled' ? (
-          <Pressable style={styles.interestedButton} onPress={(pressEvent) => { pressEvent.stopPropagation(); onRsvp(event); }}>
-            <Text style={styles.interestedText}>Interested</Text>
-          </Pressable>
+          <Pressable style={styles.interestedButton} onPress={(pressEvent) => { pressEvent.stopPropagation(); onRsvp(event); }}><Text style={styles.interestedText}>Interested</Text></Pressable>
         ) : null}
       </View>
     </Pressable>
@@ -212,9 +209,7 @@ function CommunityRow({ group, joining, onJoin }: { group: CommunityGroup; joini
         <Text style={styles.communityMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
       </View>
       {group.is_member ? <Ionicons name="chevron-forward" size={18} color={MUTED} /> : (
-        <Pressable disabled={joining} style={[styles.joinButton, joining && styles.buttonDisabled]} onPress={(event) => { event.stopPropagation(); onJoin(group); }}>
-          <Text style={styles.joinButtonText}>{joining ? 'Joining…' : 'Join'}</Text>
-        </Pressable>
+        <Pressable disabled={joining} style={[styles.joinButton, joining && styles.buttonDisabled]} onPress={(event) => { event.stopPropagation(); onJoin(group); }}><Text style={styles.joinButtonText}>{joining ? 'Joining…' : 'Join'}</Text></Pressable>
       )}
     </Pressable>
   );
@@ -238,9 +233,7 @@ export default function OutpostHumanDigestScreen() {
   const loadAll = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true); else setLoading(true);
     const snapshot = new Date().getTime();
-    const [feedResult, groupsResult, eventsResult, notificationsResult, profileResult] = await Promise.allSettled([
-      getCommunityFeed(), getGroups(), listLocalEvents(), listNotifications(), getMemberBasecamp(),
-    ]);
+    const [feedResult, groupsResult, eventsResult, notificationsResult, profileResult] = await Promise.allSettled([getCommunityFeed(), getGroups(), listLocalEvents(), listNotifications(), getMemberBasecamp()]);
     const nextErrors: LoadErrors = {};
     if (feedResult.status === 'fulfilled') setFeed(feedResult.value); else nextErrors.feed = 'Community activity is temporarily unavailable.';
     if (groupsResult.status === 'fulfilled') setGroups(groupsResult.value); else nextErrors.groups = 'Communities are temporarily unavailable.';
@@ -350,10 +343,10 @@ export default function OutpostHumanDigestScreen() {
     const noCamps = joinedGroups.length === 0;
     return (
       <>
-        <View style={styles.filterRow}>
+        <View style={styles.segmentedControl}>
           {digestFilters.map((filter) => {
             const selected = digestFilter === filter.value;
-            return <Pressable key={filter.value} style={[styles.filterButton, selected && styles.filterButtonSelected]} onPress={() => setDigestFilter(filter.value)}><Ionicons name={filter.icon as any} size={16} color={selected ? GOLD : MUTED} /><Text style={[styles.filterText, selected && styles.filterTextSelected]}>{filter.label}</Text></Pressable>;
+            return <Pressable key={filter.value} style={[styles.segment, selected && styles.segmentSelected]} onPress={() => setDigestFilter(filter.value)}><Ionicons name={filter.icon as any} size={16} color={selected ? GOLD : MUTED} /><Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{filter.label}</Text></Pressable>;
           })}
         </View>
 
@@ -368,23 +361,28 @@ export default function OutpostHumanDigestScreen() {
         ) : null}
 
         {!noCamps && digestFilter === 'for-you' ? (
-          <View style={styles.section}>
+          <View style={[styles.sectionCard, styles.importantCard]}>
             <SectionHeader title="Important" detail="Only the things that need your attention." action={important.length ? 'View all' : undefined} onAction={() => router.push('/notifications' as never)} />
-            {errors.notifications ? <Text style={styles.inlineError}>{errors.notifications}</Text> : important.length ? important.map((item) => <NotificationRow key={item.id} item={item} now={loadedAt} onOpen={handleNotification} />) : <View style={styles.quietState}><Ionicons name="checkmark-circle-outline" size={20} color={GREEN} /><Text style={styles.quietStateText}>Nothing urgent right now.</Text></View>}
+            {errors.notifications ? <Text style={styles.inlineError}>{errors.notifications}</Text> : important.length ? important.map((item, index) => <NotificationRow key={item.id} item={item} now={loadedAt} onOpen={handleNotification} isLast={index === important.length - 1} />) : (
+              <View style={styles.allClearRow}>
+                <View style={styles.allClearIcon}><Ionicons name="checkmark" size={17} color={GREEN} /></View>
+                <View style={styles.flex}><Text style={styles.allClearTitle}>Nothing urgent right now.</Text><Text style={styles.allClearCopy}>You’re all caught up.</Text></View>
+              </View>
+            )}
           </View>
         ) : null}
 
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <SectionHeader title="Coming up" detail={digestFilter === 'nearby' ? 'Outings close to your area.' : 'Plans from your communities and the people around you.'} action="See all" onAction={() => setActiveTab('outings')} />
           {errors.events ? <Text style={styles.inlineError}>{errors.events}</Text> : comingUp.length ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.comingRail}>{comingUp.map((event) => <ComingUpCard key={event.id} event={event} onRsvp={handleRsvp} />)}</ScrollView>
-          ) : <View style={styles.quietState}><Ionicons name="calendar-outline" size={20} color={GREEN} /><Text style={styles.quietStateText}>No upcoming outings found.</Text></View>}
+          ) : <View style={styles.compactEmpty}><Ionicons name="calendar-outline" size={19} color={GREEN} /><Text style={styles.compactEmptyText}>No upcoming outings found.</Text></View>}
         </View>
 
         {!noCamps ? (
-          <View style={styles.section}>
+          <View style={styles.sectionCard}>
             <SectionHeader title="Around the Campfire" detail={digestFilter === 'nearby' ? 'Highlights from camps near your area.' : 'Highlights from the communities you’re part of.'} action={digestFilter === 'for-you' && digests.length > visibleDigests.length ? 'See all' : undefined} onAction={() => setDigestFilter('my-camps')} />
-            {errors.feed || errors.groups ? <Text style={styles.inlineError}>{errors.feed ?? errors.groups}</Text> : visibleDigests.length ? visibleDigests.map((digest) => <CampActivityBlock key={digest.group.id} digest={digest} now={loadedAt} />) : <View style={styles.quietState}><Ionicons name="compass-outline" size={20} color={GREEN} /><Text style={styles.quietStateText}>No camp activity to show here yet.</Text></View>}
+            {errors.feed || errors.groups ? <Text style={styles.inlineError}>{errors.feed ?? errors.groups}</Text> : visibleDigests.length ? visibleDigests.map((digest, index) => <CampActivityBlock key={digest.group.id} digest={digest} now={loadedAt} isLast={index === visibleDigests.length - 1} />) : <View style={styles.compactEmpty}><Ionicons name="compass-outline" size={19} color={GREEN} /><Text style={styles.compactEmptyText}>No camp activity to show here yet.</Text></View>}
           </View>
         ) : null}
       </>
@@ -392,7 +390,7 @@ export default function OutpostHumanDigestScreen() {
   };
 
   const renderCommunities = () => (
-    <View style={styles.section}>
+    <View style={styles.sectionCard}>
       <SectionHeader title="Communities" detail="Find your interests, local crews, and official Go Melanated spaces." />
       {errors.groups ? <Text style={styles.inlineError}>{errors.groups}</Text> : officialGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}
       {groups.filter((group) => !isOfficialCommunity(group)).map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}
@@ -400,9 +398,9 @@ export default function OutpostHumanDigestScreen() {
   );
 
   const renderOutings = () => (
-    <View style={styles.section}>
+    <View style={styles.sectionCard}>
       <SectionHeader title="Outings" detail="Turn the conversation into a real day outside." />
-      {errors.events ? <Text style={styles.inlineError}>{errors.events}</Text> : events.length ? events.map((event) => <ComingUpCard key={event.id} event={event} onRsvp={handleRsvp} />) : <Text style={styles.emptyText}>No upcoming outings found.</Text>}
+      {errors.events ? <Text style={styles.inlineError}>{errors.events}</Text> : events.length ? events.map((event) => <ComingUpCard key={event.id} event={event} onRsvp={handleRsvp} fullWidth />) : <Text style={styles.emptyText}>No upcoming outings found.</Text>}
     </View>
   );
 
@@ -410,13 +408,9 @@ export default function OutpostHumanDigestScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadAll(true)} tintColor={GOLD} colors={[GOLD]} />}>
         <View style={styles.header}>
-          <View style={styles.flex}>
-            <Text style={styles.title}>Outpost</Text>
-            <View style={styles.locationLine}><Ionicons name="location-outline" size={16} color={GREEN} /><Text style={styles.locationText}>{homeCity ? locationLabel(homeCity, homeState) : 'Your area'}</Text></View>
-          </View>
+          <View style={styles.flex}><Text style={styles.title}>Outpost</Text><View style={styles.locationLine}><Ionicons name="location-outline" size={16} color={GREEN} /><Text style={styles.locationText}>{homeCity ? locationLabel(homeCity, homeState) : 'Your area'}</Text></View></View>
           <Pressable style={styles.headerAction} onPress={() => router.push('/notifications' as never)} accessibilityLabel="Open notifications"><Ionicons name="notifications-outline" size={21} color={TEXT} />{notifications.some((item) => !item.read_at) ? <View style={styles.unreadDot} /> : null}</Pressable>
         </View>
-
         <View style={styles.tabs}>{tabs.map((tab) => { const selected = activeTab === tab.value; return <Pressable key={tab.value} style={[styles.tab, selected && styles.tabSelected]} onPress={() => setActiveTab(tab.value)}><Text style={[styles.tabText, selected && styles.tabTextSelected]}>{tab.label}</Text></Pressable>; })}</View>
         {activeTab === 'campfires' ? renderCampfires() : activeTab === 'communities' ? renderCommunities() : renderOutings()}
       </ScrollView>
@@ -440,58 +434,67 @@ const styles = StyleSheet.create({
   tabSelected: { borderBottomColor: GOLD },
   tabText: { color: MUTED, fontSize: 15, fontWeight: '700' },
   tabTextSelected: { color: GOLD },
-  filterRow: { flexDirection: 'row', gap: 8, paddingVertical: 4, marginBottom: 2 },
-  filterButton: { flex: 1, minHeight: 42, borderRadius: 21, borderWidth: 1, borderColor: BORDER, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
-  filterButtonSelected: { borderColor: GOLD, backgroundColor: '#1B251C' },
-  filterText: { color: MUTED, fontSize: 13, fontWeight: '700' },
-  filterTextSelected: { color: TEXT },
-  section: { marginTop: 18 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 10 },
-  sectionTitle: { color: TEXT, fontSize: 24, lineHeight: 29, fontWeight: '800', letterSpacing: -0.5 },
+  segmentedControl: { flexDirection: 'row', gap: 4, padding: 4, marginTop: 2, marginBottom: 10, backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 24 },
+  segment: { flex: 1, minHeight: 40, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8 },
+  segmentSelected: { backgroundColor: '#1B251C', borderWidth: 1, borderColor: GOLD },
+  segmentText: { color: MUTED, fontSize: 13, fontWeight: '700' },
+  segmentTextSelected: { color: TEXT },
+  sectionCard: { marginTop: 14, padding: 16, backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 20, overflow: 'hidden' },
+  importantCard: { marginTop: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
+  sectionTitle: { color: TEXT, fontSize: 22, lineHeight: 27, fontWeight: '800', letterSpacing: -0.4 },
   sectionDetail: { color: MUTED, fontSize: 13, lineHeight: 18, marginTop: 2 },
-  sectionAction: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 8 },
-  sectionActionText: { color: GOLD, fontSize: 13, fontWeight: '800' },
+  sectionAction: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 8 },
+  sectionActionText: { color: GOLD, fontSize: 12, fontWeight: '800' },
   loadingWrap: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: MUTED, fontSize: 14 },
-  noticeRow: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
+  internalDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
+  noticeRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
   noticeIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#253124', alignItems: 'center', justifyContent: 'center' },
   noticeIconCritical: { backgroundColor: '#54231F' },
   noticeTitle: { color: TEXT, fontSize: 15, lineHeight: 20, fontWeight: '800' },
   noticeBody: { color: MUTED, fontSize: 13, lineHeight: 18, marginTop: 1 },
   noticeMeta: { color: GREEN, fontSize: 11, marginTop: 4, fontWeight: '700' },
-  quietState: { minHeight: 58, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: BORDER, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 3 },
-  quietStateText: { color: MUTED, fontSize: 14 },
-  comingRail: { gap: 12, paddingRight: 8 },
-  comingCard: { width: 286, backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 18, overflow: 'hidden', marginBottom: 10 },
-  comingImage: { width: '100%', height: 142, backgroundColor: CARD },
+  allClearRow: { minHeight: 58, borderRadius: 15, backgroundColor: CARD_INSET, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 10 },
+  allClearIcon: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: GREEN, alignItems: 'center', justifyContent: 'center' },
+  allClearTitle: { color: TEXT, fontSize: 14, fontWeight: '800' },
+  allClearCopy: { color: MUTED, fontSize: 12, marginTop: 2 },
+  compactEmpty: { minHeight: 52, borderRadius: 14, backgroundColor: CARD_INSET, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12 },
+  compactEmptyText: { color: MUTED, fontSize: 13 },
+  comingRail: { gap: 12, paddingRight: 4 },
+  comingCard: { width: 268, backgroundColor: CARD_INSET, borderWidth: 1, borderColor: BORDER, borderRadius: 17, overflow: 'hidden' },
+  comingCardFull: { width: '100%', marginBottom: 12 },
+  comingImage: { width: '100%', height: 132, backgroundColor: CARD },
   eventFallback: { alignItems: 'center', justifyContent: 'center' },
-  comingContent: { padding: 13 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 24 },
+  comingContent: { padding: 12 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 22 },
   statusPill: { backgroundColor: GOLD, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   statusPillText: { color: '#101510', fontSize: 10, fontWeight: '900' },
   statusPillSoft: { backgroundColor: '#253124', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   statusPillSoftText: { color: GOLD, fontSize: 10, fontWeight: '900' },
   rsvpCount: { color: MUTED, fontSize: 11, fontWeight: '700' },
-  comingTitle: { color: TEXT, fontSize: 18, lineHeight: 23, fontWeight: '900', marginTop: 6 },
+  comingTitle: { color: TEXT, fontSize: 17, lineHeight: 22, fontWeight: '900', marginTop: 6 },
   comingMeta: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 3 },
   interestedButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: GOLD, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6, marginTop: 10 },
   interestedText: { color: GOLD, fontSize: 11, fontWeight: '900' },
-  campBlock: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER, paddingTop: 10, paddingBottom: 14 },
-  campBlockHeader: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingBottom: 10 },
+  campBlock: { paddingVertical: 12 },
+  campDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
+  campBlockHeader: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  campName: { color: TEXT, fontSize: 17, fontWeight: '900', flexShrink: 1 },
+  campName: { color: TEXT, fontSize: 16, fontWeight: '900', flexShrink: 1 },
   campSummary: { color: GREEN, fontSize: 12, lineHeight: 17, marginTop: 3, fontWeight: '700' },
-  featuredPost: { backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 18, overflow: 'hidden' },
-  featuredImage: { width: '100%', height: 210, backgroundColor: CARD },
-  featuredBody: { padding: 13 },
+  campSummaryQuiet: { color: MUTED, fontWeight: '600' },
+  featuredPost: { marginTop: 10, backgroundColor: CARD_INSET, borderRadius: 16, overflow: 'hidden' },
+  featuredImage: { width: '100%', height: 190, backgroundColor: CARD },
+  featuredBody: { padding: 12 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   avatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#26352B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: GOLD, fontSize: 10, fontWeight: '900' },
   authorName: { color: TEXT, fontSize: 13, fontWeight: '900', flexShrink: 1 },
   postTime: { color: MUTED, fontSize: 11 },
-  featuredText: { color: TEXT, fontSize: 16, lineHeight: 23, marginTop: 10, fontWeight: '700' },
-  engagementRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 12 },
+  featuredText: { color: TEXT, fontSize: 15, lineHeight: 22, marginTop: 9, fontWeight: '700' },
+  engagementRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 11 },
   engagementText: { color: MUTED, fontSize: 12, marginRight: 9 },
   groupFallback: { backgroundColor: '#26352B', borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
   groupFallbackText: { color: GOLD, fontSize: 16, fontWeight: '900' },
@@ -502,14 +505,14 @@ const styles = StyleSheet.create({
   joinButton: { minWidth: 56, minHeight: 36, borderRadius: 18, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   joinButtonText: { color: '#101510', fontSize: 12, fontWeight: '900' },
   buttonDisabled: { opacity: 0.55 },
-  discoveryCard: { marginTop: 12, padding: 20, backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 20 },
+  discoveryCard: { marginTop: 6, padding: 20, backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 20 },
   discoveryIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#253124', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   discoveryEyebrow: { color: GREEN, fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   discoveryTitle: { color: TEXT, fontSize: 24, lineHeight: 29, fontWeight: '900', marginTop: 6 },
   discoveryCopy: { color: MUTED, fontSize: 14, lineHeight: 21, marginTop: 8 },
   primaryButton: { minHeight: 48, borderRadius: 15, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 18 },
   primaryButtonText: { color: '#101510', fontSize: 14, fontWeight: '900' },
-  inlineError: { color: '#F4B5AA', fontSize: 13, lineHeight: 18, paddingVertical: 12 },
+  inlineError: { color: '#F4B5AA', fontSize: 13, lineHeight: 18, paddingVertical: 8 },
   emptyText: { color: MUTED, fontSize: 13, lineHeight: 18, paddingVertical: 12 },
   pressed: { opacity: 0.72 },
 });
