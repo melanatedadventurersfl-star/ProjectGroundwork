@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
   joinedCommunityList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
   joinedCommunityRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
   joinedCommunityName: { color: TEXT, fontSize: 16, fontWeight: '900', flexShrink: 1 },
-  joinedCommunityActivity: { color: MUTED, fontSize: 11.5, marginTop: 4, fontWeight: '650' },
+  joinedCommunityActivity: { color: MUTED, fontSize: 11.5, marginTop: 4, fontWeight: '600' },
   joinedCommunityActivityLive: { color: GREEN, fontWeight: '800' },
   activityDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: GREEN },
   discoverCommunityRail: { gap: 12, paddingRight: 6 },
