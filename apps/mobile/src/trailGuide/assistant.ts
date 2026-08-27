@@ -145,8 +145,8 @@ export async function askMemberGuide(input: AskMemberGuideInput): Promise<Member
   if (data?.error) throw new Error(String(data.error));
   if (!data?.result) throw new Error('I could not build that recommendation right now.');
 
-  const source = data.source === 'fallback' ? 'fallback' : 'ai';
-  const result = {
+  const source: NonNullable<MemberGuideResult['source']> = data.source === 'fallback' ? 'fallback' : 'ai';
+  const result: MemberGuideResult = {
     ...(data.result as MemberGuideResult),
     source,
   };
