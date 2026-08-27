@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { loadAskGoHistory, type AskGoHistoryThread } from '../../src/trailGuide/askHistory';
@@ -16,9 +15,9 @@ function planSummary(thread: AskGoHistoryThread) {
 export default function AskGoHistoryScreen() {
   const [threads, setThreads] = useState<AskGoHistoryThread[]>([]);
 
-  useFocusEffect(useCallback(() => {
+  useEffect(() => {
     void loadAskGoHistory().then(setThreads);
-  }, []));
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe}>
