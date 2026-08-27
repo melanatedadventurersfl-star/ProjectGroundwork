@@ -1,0 +1,57 @@
+name: Dependency security audit temp
+
+on:
+  push:
+    branches:
+      - chore/dependency-security-audit
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out audit branch
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Capture dependency audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > /tmp/npm-audit.json
+          AUDIT_EXIT=$?
+          set -e
+          node <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          const vulns = Object.entries(audit.vulnerabilities || {});
+          const bySeverity = vulns.reduce((acc, [, value]) => {
+            acc[value.severity] = (acc[value.severity] || 0) + 1;
+            return acc;
+          }, {});
+          console.log('AUDIT_SUMMARY', JSON.stringify({ metadata: audit.metadata?.vulnerabilities, packageVulnerabilities: bySeverity }));
+          for (const [name, value] of vulns) {
+            const via = (value.via || []).map((item) => typeof item === 'string' ? item : `${item.source}:${item.title}`).join(' | ');
+            const fix = value.fixAvailable === true ? 'available' : value.fixAvailable === false ? 'none' : JSON.stringify(value.fixAvailable);
+            console.log(`VULN ${name} severity=${value.severity} direct=${value.isDirect} range=${value.range} fix=${fix} via=${via}`);
+          }
+          NODE
+          echo "npm_audit_exit=${AUDIT_EXIT}"
+
+      - name: Trace deprecated uuid dependency
+        run: npm ls uuid --all || true
+
+      - name: Show outdated direct dependencies
+        run: npm outdated --json || true
