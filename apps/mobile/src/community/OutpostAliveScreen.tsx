@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listLocalEvents, setLocalEventRsvp, type LocalEvent } from '../local-events/api';
 import { getMemberBasecamp } from '../member/api';
-import { getCommunityFeed, getGroups, type CommunityGroup, type CommunityPost } from './api';
+import { getCommunityFeed, getGroups, joinGroup, type CommunityGroup, type CommunityPost } from './api';
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -56,6 +56,10 @@ function groupCover(group?: CommunityGroup | null) {
   return group?.cover_image_url || group?.image_url || null;
 }
 
+function isOfficialCommunity(group: CommunityGroup) {
+  return group.kind === 'interest';
+}
+
 function Avatar({ post }: { post: CommunityPost }) {
   return (
     <View style={styles.avatar}>
@@ -83,10 +87,7 @@ function ConversationCard({ post, group }: { post: CommunityPost; group?: Commun
         <Text style={styles.contextText}>{group ? group.name.toUpperCase() : 'TRAILMATE UPDATE'}</Text>
         <Text style={styles.contextTime}>{relativeTime(post.created_at)}</Text>
       </View>
-      <View style={styles.authorRow}>
-        <Avatar post={post} />
-        <Text style={styles.authorName}>{post.author_name}</Text>
-      </View>
+      <View style={styles.authorRow}><Avatar post={post} /><Text style={styles.authorName}>{post.author_name}</Text></View>
       {post.body ? <Text style={styles.conversationText} numberOfLines={4}>{post.body}</Text> : null}
       {media ? <Image source={{ uri: media }} style={styles.conversationImage} resizeMode="cover" /> : null}
       <View style={styles.engagementRow}>
@@ -122,10 +123,39 @@ function CommunityRow({ group, latest }: { group: CommunityGroup; latest?: Commu
     <Pressable style={({ pressed }) => [styles.communityRow, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
       <View style={styles.communityImageWrap}>{cover ? <Image source={{ uri: cover }} style={styles.communityImage} /> : <Text style={styles.communityInitials}>{initials(group.name)}</Text>}</View>
       <View style={styles.flex}>
-        <Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>
-        <Text style={[styles.communityActivity, latest && styles.communityActivityLive]} numberOfLines={1}>{latest ? `${latest.author_name} posted · ${relativeTime(latest.created_at)}` : `${group.member_count} members · Quiet right now`}</Text>
+        <View style={styles.communityNameLine}><Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>{isOfficialCommunity(group) ? <Ionicons name="checkmark-circle" size={14} color={GOLD} /> : null}</View>
+        <Text style={[styles.communityActivity, latest && styles.communityActivityLive]} numberOfLines={1}>{latest ? `${latest.author_name} posted · ${relativeTime(latest.created_at)}` : `${group.member_count} member${group.member_count === 1 ? '' : 's'} · Quiet right now`}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={GOLD} />
+    </Pressable>
+  );
+}
+
+function OfficialCommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const cover = groupCover(group);
+  return (
+    <Pressable style={({ pressed }) => [styles.officialCard, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
+      {cover ? <Image source={{ uri: cover }} style={styles.officialCardImage} /> : <View style={[styles.officialCardImage, styles.officialFallback]}><Text style={styles.officialInitials}>{initials(group.name)}</Text></View>}
+      <View style={styles.officialShade} />
+      <View style={styles.officialBadge}><Ionicons name="checkmark" size={10} color="#101510" /><Text style={styles.officialBadgeText}>Official</Text></View>
+      {group.is_member ? <View style={styles.joinedBadge}><Ionicons name="checkmark" size={10} color={TEXT} /><Text style={styles.joinedBadgeText}>Joined</Text></View> : null}
+      <View style={styles.officialCopy}>
+        <Text style={styles.officialTitle} numberOfLines={2}>{group.name}</Text>
+        <Text style={styles.officialMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+        {!group.is_member ? <View style={styles.joinButton}><Text style={styles.joinButtonText}>{joining ? 'Joining…' : 'Join community'}</Text></View> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function DiscoverCommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const cover = groupCover(group);
+  return (
+    <Pressable style={({ pressed }) => [styles.discoverCard, pressed && styles.pressed]} onPress={() => onJoin(group)}>
+      {cover ? <Image source={{ uri: cover }} style={styles.discoverImage} /> : <View style={[styles.discoverImage, styles.officialFallback]}><Text style={styles.discoverInitials}>{initials(group.name)}</Text></View>}
+      <View style={styles.discoverShade} />
+      <View style={styles.discoverCopy}><Text style={styles.discoverTitle} numberOfLines={2}>{group.name}</Text><Text style={styles.discoverMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text></View>
+      <View style={styles.discoverJoin}><Text style={styles.discoverJoinText}>{joining ? 'Joining…' : 'Join'}</Text></View>
     </Pressable>
   );
 }
@@ -140,6 +170,7 @@ export default function OutpostAliveScreen() {
   const [homeState, setHomeState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
 
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
@@ -158,6 +189,7 @@ export default function OutpostAliveScreen() {
   useFocusEffect(useCallback(() => { void load(false); }, [load]));
 
   const joinedGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
+  const officialGroups = useMemo(() => groups.filter(isOfficialCommunity), [groups]);
   const groupMap = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
   const latestByGroup = useMemo(() => {
     const map = new Map<string, CommunityPost>();
@@ -172,6 +204,7 @@ export default function OutpostAliveScreen() {
   }, [joinedGroups, latestPosts]);
   const comingUp = useMemo(() => events.slice().sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()).slice(0, 5), [events]);
   const activeGroupCount = useMemo(() => joinedGroups.filter((group) => latestByGroup.has(group.id)).length, [joinedGroups, latestByGroup]);
+  const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member && !isOfficialCommunity(group)).slice(0, 8), [groups]);
 
   const handleInterested = useCallback(async (event: LocalEvent) => {
     try {
@@ -180,38 +213,47 @@ export default function OutpostAliveScreen() {
     } catch { /* detail screen remains available */ }
   }, []);
 
+  const handleJoin = useCallback(async (group: CommunityGroup) => {
+    if (joiningId) return;
+    setJoiningId(group.id);
+    try {
+      await joinGroup(group.id);
+      setGroups((current) => current.map((item) => item.id === group.id ? { ...item, is_member: true, member_count: item.member_count + 1 } : item));
+    } finally {
+      setJoiningId(null);
+    }
+  }, [joiningId]);
+
   const renderCampfires = () => (
     <>
       <View style={styles.filterRow}>{filters.map((item) => <Pressable key={item.value} style={[styles.filterChip, filter === item.value && styles.filterChipSelected]} onPress={() => setFilter(item.value)}><Text style={[styles.filterText, filter === item.value && styles.filterTextSelected]}>{item.label}</Text></Pressable>)}</View>
-
-      <View style={styles.sectionIntro}>
-        <Text style={styles.sectionEyebrow}>TONIGHT AROUND THE CAMPFIRE</Text>
-        <Text style={styles.sectionLead}>See who’s here, what people are talking about, and what you can join.</Text>
-      </View>
-
+      <View style={styles.sectionIntro}><Text style={styles.sectionEyebrow}>TONIGHT AROUND THE CAMPFIRE</Text><Text style={styles.sectionLead}>See who’s here, what people are talking about, and what you can join.</Text></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pulseRail}>
-        <PulseCard icon="chatbubbles-outline" eyebrow="CONVERSATIONS" title={`${featuredPosts.length || 0} worth catching up on`} detail="From your people" onPress={() => undefined} />
+        <PulseCard icon="chatbubbles-outline" eyebrow="CONVERSATIONS" title={`${featuredPosts.length || 0} worth catching up on`} detail="From your people" />
         <PulseCard icon="people-outline" eyebrow="YOUR CAMPS" title={`${activeGroupCount} active right now`} detail={`${joinedGroups.length} joined`} onPress={() => setActiveTab('communities')} />
         <PulseCard icon="calendar-outline" eyebrow="COMING UP" title={`${comingUp.length} outings on deck`} detail="Plans you can join" onPress={() => setActiveTab('outings')} />
       </ScrollView>
-
       <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>Fresh conversation from across your Outpost.</Text></View>
       {featuredPosts.length ? featuredPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} />) : <View style={styles.emptyState}><Ionicons name="bonfire-outline" size={25} color={GREEN} /><Text style={styles.emptyTitle}>The fire’s quiet for a minute.</Text><Text style={styles.emptyCopy}>New conversations from your communities will land here.</Text></View>}
-
       <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Coming up</Text><Text style={styles.sectionSubtitle}>Turn the conversation into a real day outside.</Text></View><Pressable onPress={() => setActiveTab('outings')}><Text style={styles.seeAll}>See all →</Text></Pressable></View>
       {comingUp.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={292} decelerationRate="fast" contentContainerStyle={styles.eventRail}>{comingUp.map((event) => <EventCard key={event.id} event={event} onInterested={handleInterested} />)}</ScrollView> : null}
-
       <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Your Campfires</Text><Text style={styles.sectionSubtitle}>The communities you keep coming back to.</Text></View><Pressable onPress={() => setActiveTab('communities')}><Text style={styles.seeAll}>See all →</Text></Pressable></View>
       <View style={styles.communityList}>{joinedGroups.slice(0, 3).map((group) => <CommunityRow key={group.id} group={group} latest={latestByGroup.get(group.id)} />)}</View>
     </>
   );
 
   const renderCommunities = () => (
-    <View>
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your Communities</Text><Text style={styles.sectionSubtitle}>The groups, crews, and shared interests that make up your Outpost.</Text></View>
-      <View style={styles.communityList}>{joinedGroups.length ? joinedGroups.map((group) => <CommunityRow key={group.id} group={group} latest={latestByGroup.get(group.id)} />) : <Text style={styles.emptyCopy}>You haven’t joined a community yet.</Text>}</View>
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Discover</Text><Text style={styles.sectionSubtitle}>More places to find your people outdoors.</Text></View>
-      <View style={styles.communityList}>{groups.filter((group) => !group.is_member).slice(0, 8).map((group) => <CommunityRow key={group.id} group={group} />)}</View>
+    <View style={styles.communitiesPage}>
+      <View style={styles.communityHero}><Text style={styles.communityHeroEyebrow}>GO MELANATED COMMUNITIES</Text><Text style={styles.communityHeroTitle}>Find your people. Keep getting outside.</Text><Text style={styles.communityHeroCopy}>Official spaces, the communities you already call home, and new crews worth discovering.</Text></View>
+
+      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Official Communities</Text><Text style={styles.sectionSubtitle}>Go Melanated spaces built around how you get outside.</Text></View>
+      {officialGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.officialRail}>{officialGroups.map((group) => <OfficialCommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}</ScrollView> : <Text style={styles.emptyCopy}>Official communities are being prepared.</Text>}
+
+      <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Your Communities</Text><Text style={styles.sectionSubtitle}>{joinedGroups.length ? `${joinedGroups.length} joined · activity first` : 'Your joined communities will live here.'}</Text></View></View>
+      {joinedGroups.length ? <View style={styles.communityList}>{joinedGroups.map((group) => <CommunityRow key={group.id} group={group} latest={latestByGroup.get(group.id)} />)}</View> : <View style={styles.emptyState}><Ionicons name="people-outline" size={24} color={GREEN} /><Text style={styles.emptyTitle}>Your circle starts here.</Text><Text style={styles.emptyCopy}>Join an official community or discover a crew below.</Text></View>}
+
+      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Discover More</Text><Text style={styles.sectionSubtitle}>More ways to find your people outdoors.</Text></View>
+      {discoverGroups.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoverRail}>{discoverGroups.map((group) => <DiscoverCommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}</ScrollView> : <Text style={styles.emptyCopy}>You’ve joined everything available right now.</Text>}
     </View>
   );
 
@@ -308,9 +350,40 @@ const styles = StyleSheet.create({
   communityImageWrap: { width: 52, height: 52, borderRadius: 15, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   communityImage: { width: '100%', height: '100%' },
   communityInitials: { color: GOLD, fontSize: 15, fontWeight: '900' },
-  communityName: { color: TEXT, fontSize: 16, fontWeight: '900' },
+  communityNameLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  communityName: { color: TEXT, fontSize: 16, fontWeight: '900', flexShrink: 1 },
   communityActivity: { color: MUTED, fontSize: 11.5, marginTop: 4, fontWeight: '700' },
   communityActivityLive: { color: GREEN },
+  communitiesPage: { paddingBottom: 12 },
+  communityHero: { marginTop: 10, borderRadius: 20, padding: 18, backgroundColor: '#17231C', borderWidth: 1, borderColor: '#35483A' },
+  communityHeroEyebrow: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.05 },
+  communityHeroTitle: { color: TEXT, fontSize: 23, lineHeight: 28, fontWeight: '900', marginTop: 5 },
+  communityHeroCopy: { color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 6 },
+  officialRail: { gap: 12, paddingRight: 18 },
+  officialCard: { width: 220, height: 170, borderRadius: 20, overflow: 'hidden', backgroundColor: SURFACE, borderWidth: 1, borderColor: '#425348' },
+  officialCardImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  officialFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#26352B' },
+  officialInitials: { color: GOLD, fontSize: 28, fontWeight: '900' },
+  officialShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.40)' },
+  officialBadge: { position: 'absolute', left: 10, top: 10, borderRadius: 999, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4 },
+  officialBadgeText: { color: '#101510', fontSize: 9, fontWeight: '900' },
+  joinedBadge: { position: 'absolute', right: 10, top: 10, borderRadius: 999, backgroundColor: 'rgba(17,28,22,0.86)', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4 },
+  joinedBadgeText: { color: TEXT, fontSize: 9, fontWeight: '900' },
+  officialCopy: { position: 'absolute', left: 12, right: 12, bottom: 12 },
+  officialTitle: { color: '#FFFDF6', fontSize: 18, lineHeight: 22, fontWeight: '900' },
+  officialMeta: { color: '#E6ECE8', fontSize: 11, fontWeight: '700', marginTop: 5 },
+  joinButton: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: GOLD, paddingHorizontal: 10, paddingVertical: 6, marginTop: 8 },
+  joinButtonText: { color: '#101510', fontSize: 10, fontWeight: '900' },
+  discoverRail: { gap: 12, paddingRight: 18 },
+  discoverCard: { width: 176, height: 136, borderRadius: 18, overflow: 'hidden', backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
+  discoverImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  discoverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.34)' },
+  discoverCopy: { position: 'absolute', left: 11, right: 11, bottom: 10 },
+  discoverTitle: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900' },
+  discoverMeta: { color: '#E1E8E3', fontSize: 10.5, marginTop: 4, fontWeight: '700' },
+  discoverJoin: { position: 'absolute', right: 9, top: 9, borderRadius: 999, backgroundColor: GOLD, paddingHorizontal: 9, paddingVertical: 5 },
+  discoverJoinText: { color: '#101510', fontSize: 9.5, fontWeight: '900' },
+  discoverInitials: { color: GOLD, fontSize: 24, fontWeight: '900' },
   emptyState: { borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, padding: 18, alignItems: 'flex-start' },
   emptyTitle: { color: TEXT, fontSize: 16, fontWeight: '900', marginTop: 10 },
   emptyCopy: { color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 4 },
