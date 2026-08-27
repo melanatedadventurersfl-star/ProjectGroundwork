@@ -15,10 +15,13 @@ module.exports = defineConfig([
     },
   },
   {
-    files: ['src/onboarding/GuidedOnboardingExperience.tsx'],
+    files: [
+      'src/onboarding/GuidedOnboardingExperience.tsx',
+      'app/trail-guide/ask.tsx',
+    ],
     rules: {
-      // Onboarding preview copy contains contractions/apostrophes in JSX text.
-      // Keep that punctuation from blocking mobile validation.
+      // These user-facing screens intentionally contain natural-language
+      // contractions/apostrophes in JSX copy.
       'react/no-unescaped-entities': 'off',
     },
   },
