@@ -12,6 +12,7 @@ export type StartupStage =
   | 'background-update-check'
   | 'background-update-fetch'
   | 'background-update-downloaded'
+  | 'background-update-inactive-download'
   | 'background-update-reload'
   | 'first-screen';
 
