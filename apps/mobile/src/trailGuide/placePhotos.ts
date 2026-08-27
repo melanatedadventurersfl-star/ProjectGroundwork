@@ -65,7 +65,7 @@ type WikiImageInfo = { url?: string; thumburl?: string; descriptionurl?: string;
 type WikiImageResponse = { query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> } };
 
 const REQUEST_TIMEOUT_MS = 3500;
-const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v3:';
+const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v4:';
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
 
 function fallbackPhotoForPlace(place: TrailGuidePlace): TrailGuidePhoto {
@@ -167,30 +167,37 @@ async function resolveFreshPhoto(place: TrailGuidePlace) {
   return wikipedia ?? commons;
 }
 
-export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
-  const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
-  if (curated) return curated;
-  const existing = cache.get(place.id);
-  if (existing) return existing;
-  const pending = (async () => {
-    const persisted = await readPersistedPhoto(place.id);
-    if (persisted) return persisted;
-    const photo = await resolveFreshPhoto(place);
-    if (photo) await persistPhoto(place.id, photo);
-    return photo;
-  })();
-  cache.set(place.id, pending);
-  const result = await pending;
-  if (!result) cache.delete(place.id);
-  return result;
-}
-
 async function preloadPhoto(photo: TrailGuidePhoto) {
   try {
     return await Image.prefetch(photo.url);
   } catch {
     return false;
   }
+}
+
+export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
+  const existing = cache.get(place.id);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
+    if (curated && await preloadPhoto(curated)) return curated;
+
+    const persisted = await readPersistedPhoto(place.id);
+    if (persisted && await preloadPhoto(persisted)) return persisted;
+
+    const fresh = await resolveFreshPhoto(place);
+    if (fresh && await preloadPhoto(fresh)) {
+      await persistPhoto(place.id, fresh);
+      return fresh;
+    }
+    return null;
+  })();
+
+  cache.set(place.id, pending);
+  const result = await pending;
+  if (!result) cache.delete(place.id);
+  return result;
 }
 
 export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
@@ -206,17 +213,11 @@ export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
 
     const fallback = fallbackPhotoForPlace(place);
     const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
-    const first = curated ?? fallback;
-    setPhoto(first);
+    setPhoto(curated ?? fallback);
 
-    void preloadPhoto(first).then((loaded) => {
-      if (active && !loaded && first.url !== fallback.url) setPhoto(fallback);
-    });
-
-    void resolveTrailGuidePlacePhoto(place).then(async (next) => {
-      if (!active || !next || next.url === first.url) return;
-      const loaded = await preloadPhoto(next);
-      if (active) setPhoto(loaded ? next : fallback);
+    void resolveTrailGuidePlacePhoto(place).then((resolved) => {
+      if (!active) return;
+      setPhoto(resolved ?? fallback);
     });
 
     return () => { active = false; };
