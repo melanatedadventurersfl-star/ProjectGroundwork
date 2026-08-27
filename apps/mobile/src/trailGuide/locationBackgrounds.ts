@@ -53,7 +53,20 @@ export const TRAIL_GUIDE_CITIES: TrailGuideCity[] = [
   { key: 'key-west', label: 'Key West, FL', latitude: 24.5551, longitude: -81.78, source: require('../../../../trail-guide-key-west.png') },
 ];
 
-export const TRAIL_GUIDE_SELECTABLE_CITIES = TRAIL_GUIDE_CITIES.filter((city) => ['jacksonville', 'orlando', 'tampa'].includes(city.key));
+const BATCH_ONE_CITY_KEYS = new Set([
+  'jacksonville',
+  'orlando',
+  'miami',
+  'tampa',
+  'st-petersburg',
+  'fort-lauderdale',
+  'west-palm-beach',
+  'naples',
+  'fort-myers',
+  'sarasota',
+]);
+
+export const TRAIL_GUIDE_SELECTABLE_CITIES = TRAIL_GUIDE_CITIES.filter((city) => BATCH_ONE_CITY_KEYS.has(city.key));
 
 const EARTH_RADIUS_MILES = 3958.8;
 const INITIAL_CITY = TRAIL_GUIDE_CITIES[0];
