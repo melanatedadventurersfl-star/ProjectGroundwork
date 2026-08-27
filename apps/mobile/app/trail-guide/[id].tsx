@@ -1,9 +1,21 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getTrailGuidePlace, type TrailGuideCityKey } from '../../src/trailGuide/catalog';
-import { useTrailGuidePlacePhoto } from '../../src/trailGuide/placePhotos';
+import { resolveGoogleTrailGuidePlaceGallery } from '../../src/trailGuide/googlePlacePhotos';
+import { useTrailGuidePlacePhoto, type TrailGuidePhoto } from '../../src/trailGuide/placePhotos';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 function outingCategory(category: string) {
@@ -27,10 +39,33 @@ function trailGuideCity(city: TrailGuideCityKey) {
   return cityLabels[city];
 }
 
+function photoSourceLabel(photo: TrailGuidePhoto) {
+  const source = photo.sourceUrl.toLowerCase();
+  if (source.includes('google.com') || source.includes('maps.google')) return 'Google Maps';
+  if (source.includes('wikipedia.org') || source.includes('wikimedia.org')) return 'Wikipedia / Wikimedia';
+  return 'destination source';
+}
+
 export default function TrailGuidePlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const place = getTrailGuidePlace(id);
-  const photo = useTrailGuidePlacePhoto(place);
+  const fallbackPhoto = useTrailGuidePlacePhoto(place);
+  const { width } = useWindowDimensions();
+  const [googlePhotos, setGooglePhotos] = useState<TrailGuidePhoto[]>([]);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setGooglePhotos([]);
+    setActivePhotoIndex(0);
+    if (!place) return () => { active = false; };
+
+    void resolveGoogleTrailGuidePlaceGallery(place).then((photos) => {
+      if (active && photos.length > 0) setGooglePhotos(photos);
+    });
+
+    return () => { active = false; };
+  }, [place]);
 
   if (!place) {
     return (
@@ -44,6 +79,9 @@ export default function TrailGuidePlaceDetailScreen() {
   }
 
   const currentPlace = place;
+  const heroPhotos = googlePhotos.length > 0 ? googlePhotos : fallbackPhoto ? [fallbackPhoto] : [];
+  const activePhoto = heroPhotos[Math.min(activePhotoIndex, Math.max(0, heroPhotos.length - 1))] ?? fallbackPhoto;
+
   const planOuting = () => {
     router.push({
       pathname: '/local-events/create',
@@ -60,24 +98,54 @@ export default function TrailGuidePlaceDetailScreen() {
     });
   };
 
+  const handleHeroScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (width <= 0) return;
+    const next = Math.round(event.nativeEvent.contentOffset.x / width);
+    setActivePhotoIndex(Math.max(0, Math.min(next, heroPhotos.length - 1)));
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          {photo ? (
-            <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          {heroPhotos.length > 0 ? (
+            <ScrollView
+              horizontal
+              pagingEnabled
+              bounces={false}
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleHeroScrollEnd}
+              style={StyleSheet.absoluteFill}
+            >
+              {heroPhotos.map((photo, index) => (
+                <View key={`${photo.url}-${index}`} style={{ width, height: 390 }}>
+                  <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                </View>
+              ))}
+            </ScrollView>
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}>
               <AppIcon name="photo" color="#65726B" size={38} />
-              <Text style={styles.photoLoading}>Loading destination photo…</Text>
+              <Text style={styles.photoLoading}>Loading destination photos…</Text>
             </View>
           )}
-          <View style={styles.shade} />
+
+          <View pointerEvents="none" style={styles.shade} />
           <Pressable hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.back, pressed && styles.pressed]}>
             <AppIcon name="chevron-forward" color="#FFFDF6" size={22} style={{ transform: [{ rotate: '180deg' }] }} />
             <Text style={styles.backLabel}>Trail Guide</Text>
           </Pressable>
-          <View style={styles.heroCopy}>
+
+          {heroPhotos.length > 1 ? (
+            <View pointerEvents="none" style={styles.photoPager}>
+              <Text style={styles.photoCount}>{activePhotoIndex + 1} / {heroPhotos.length}</Text>
+              <View style={styles.dots}>
+                {heroPhotos.map((_, index) => <View key={index} style={[styles.dot, index === activePhotoIndex && styles.dotActive]} />)}
+              </View>
+            </View>
+          ) : null}
+
+          <View pointerEvents="none" style={styles.heroCopy}>
             <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
             <Text style={styles.title}>{currentPlace.name}</Text>
             <Text style={styles.area}>{currentPlace.area}</Text>
@@ -85,9 +153,9 @@ export default function TrailGuidePlaceDetailScreen() {
         </View>
 
         <View style={styles.body}>
-          {photo ? (
+          {activePhoto ? (
             <Text style={styles.photoCredit} numberOfLines={2}>
-              Photo via Wikipedia{photo.credit ? ` · ${photo.credit}` : ''}{photo.license ? ` · ${photo.license}` : ''}
+              Photo via {photoSourceLabel(activePhoto)}{activePhoto.credit ? ` · ${activePhoto.credit}` : ''}{activePhoto.license ? ` · ${activePhoto.license}` : ''}
             </Text>
           ) : null}
 
@@ -117,14 +185,19 @@ export default function TrailGuidePlaceDetailScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
-  hero: { minHeight: 360, justifyContent: 'flex-end', backgroundColor: '#111914' },
-  shade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,12,9,0.28)' },
-  back: { position: 'absolute', top: 14, left: 15, minHeight: 42, paddingHorizontal: 11, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(8,14,10,0.62)' },
+  hero: { height: 390, justifyContent: 'flex-end', backgroundColor: '#111914', overflow: 'hidden' },
+  shade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,12,9,0.30)' },
+  back: { position: 'absolute', top: 14, left: 15, minHeight: 42, paddingHorizontal: 11, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(8,14,10,0.68)' },
   backLabel: { color: '#FFFDF6', fontWeight: '800', fontSize: 12 },
-  heroCopy: { padding: 22, paddingBottom: 26 },
+  heroCopy: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 22, paddingBottom: 26 },
   type: { color: '#E0BE62', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   title: { color: '#FFF9E9', fontSize: 34, lineHeight: 39, fontWeight: '900', marginTop: 5 },
   area: { color: '#D9DFDB', fontSize: 14, fontWeight: '700', marginTop: 5 },
+  photoPager: { position: 'absolute', top: 17, right: 16, alignItems: 'flex-end', gap: 6 },
+  photoCount: { color: '#FFFDF6', fontSize: 10, fontWeight: '900', backgroundColor: 'rgba(8,14,10,0.68)', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999 },
+  dots: { flexDirection: 'row', gap: 4, paddingHorizontal: 6 },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.42)' },
+  dotActive: { width: 15, backgroundColor: '#E0BE62' },
   body: { padding: 20, paddingBottom: 48 },
   photoCredit: { color: '#68746D', fontSize: 9, lineHeight: 13, marginBottom: 12 },
   summary: { color: '#D5DDD7', fontSize: 16, lineHeight: 24 },
