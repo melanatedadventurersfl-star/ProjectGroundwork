@@ -40,9 +40,9 @@ export default function CommunityTab() {
     setOutpostScreen(null);
     setLoadError(null);
 
-    import('../../src/community/OutpostDigestScreen')
+    import('../../src/community/OutpostHumanDigestScreen')
       .then((module) => {
-        if (active) setOutpostScreen(() => module.OutpostDigestScreen);
+        if (active) setOutpostScreen(() => module.default);
       })
       .catch((error: unknown) => {
         if (!active) return;
