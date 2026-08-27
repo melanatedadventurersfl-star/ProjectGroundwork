@@ -207,8 +207,7 @@ export default function TrailGuideScreen() {
   }, [filteredPlaces, photoById]);
 
   const recommendedPlaces = useMemo(() => filteredPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT), [filteredPlaces, photoById]);
-  const recommendedIds = useMemo(() => new Set(recommendedPlaces.map((place) => place.id)), [recommendedPlaces]);
-  const explorePreviewPlaces = useMemo(() => filteredPlaces.filter((place) => !recommendedIds.has(place.id)).slice(0, EXPLORE_PREVIEW_LIMIT), [filteredPlaces, recommendedIds]);
+  const explorePreviewPlaces = useMemo(() => filteredPlaces.slice(0, EXPLORE_PREVIEW_LIMIT), [filteredPlaces]);
   const explorePlaces = showAll ? filteredPlaces : explorePreviewPlaces;
 
   const rainChance = weather?.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0;
