@@ -15,6 +15,7 @@ export type AppIconName =
   | 'chevron-forward'
   | 'chevron-back'
   | 'chevron-up'
+  | 'arrow-up'
   | 'weather'
   | 'trips'
   | 'connections'
@@ -54,6 +55,7 @@ const icons: Record<AppIconName, IoniconName> = {
   'chevron-forward': 'chevron-forward',
   'chevron-back': 'chevron-back',
   'chevron-up': 'chevron-up',
+  'arrow-up': 'arrow-up',
   weather: 'partly-sunny-outline',
   trips: 'ticket-outline',
   connections: 'link-outline',
