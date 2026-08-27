@@ -26,10 +26,6 @@ permissions:
   pull-requests: read
   actions: write
 
-# Every main commit that changes the mobile experience gets a publish attempt.
-# Do not cancel an in-flight OTA publish when another merge lands: cancelling
-# between bundle upload and channel assignment can leave installed previews
-# behind while GitHub appears healthy.
 concurrency:
   group: eas-preview-ota-main
   cancel-in-progress: false
@@ -87,7 +83,7 @@ jobs:
           }
           NODE
 
-      - name: Generate What's New for this OTA
+      - name: Compose member-facing What's New manifest
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -98,14 +94,8 @@ jobs:
           const repo = process.env.GITHUB_REPOSITORY;
           const sha = process.env.GITHUB_SHA;
           const token = process.env.GITHUB_TOKEN;
+          const runNumber = process.env.GITHUB_RUN_NUMBER;
           const commitMessage = process.env.COMMIT_MESSAGE || '';
-
-          const clean = (value) => String(value || '')
-            .replace(/`([^`]+)`/g, '$1')
-            .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
-            .replace(/[*_#>]/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
 
           async function getAssociatedPullRequest() {
             try {
@@ -124,30 +114,121 @@ jobs:
             }
           }
 
+          const featureLibrary = [
+            {
+              id: 'ask-go',
+              matches: ['ask go', 'member ai', 'adventure concierge', 'member guide'],
+              title: 'Ask Go got smarter',
+              body: 'Have a real conversation, refine what you want, and get stronger nearby adventure recommendations and lightweight day plans.',
+              ctaLabel: 'Try Ask Go',
+              href: '/trail-guide/ask',
+            },
+            {
+              id: 'outpost',
+              matches: ['outpost', 'campfire', 'community digest'],
+              title: 'Outpost feels more alive',
+              body: 'Catch up on meaningful community activity, upcoming Outings, and the conversations that matter without digging through an endless feed.',
+              ctaLabel: 'Open Outpost',
+              href: '/(tabs)/community',
+            },
+            {
+              id: 'communities',
+              matches: ['communities', 'community hub', 'official communities'],
+              title: 'Communities are easier to discover',
+              body: 'Official communities, joined groups, nearby options, and recent activity now have a clearer, richer home.',
+              href: '/(tabs)/community',
+            },
+            {
+              id: 'outings',
+              matches: ['outing', 'local event', 'event photo', 'outing photo'],
+              title: 'Outings are easier to manage',
+              body: 'Creating and managing real-world plans is getting smoother, including richer outing details and photos where available.',
+            },
+            {
+              id: 'trail-guide',
+              matches: ['trail guide', 'trail-guide', 'city guide', 'trailhead'],
+              title: 'Adventure discovery keeps getting better',
+              body: 'Trail Guide and Trailhead improvements make it easier to find relevant places, understand what fits, and move from browsing to doing.',
+              ctaLabel: 'Explore Trail Guide',
+              href: '/trail-guide',
+            },
+            {
+              id: 'host',
+              matches: ['host', 'copilot', 'waitlist', 'registration question'],
+              title: 'Hosts have better planning tools',
+              body: 'New host tools make it easier to plan outings, manage people, and keep the important trip details organized.',
+              audience: ['host', 'admin'],
+            },
+            {
+              id: 'safety',
+              matches: ['moderation', 'report', 'appeal', 'warning', 'block'],
+              title: 'Community safety tools are stronger',
+              body: 'Reporting, moderation, and member-safety flows have been tightened so issues are easier to handle consistently.',
+            },
+            {
+              id: 'profile',
+              matches: ['profile', 'rank', 'member page'],
+              title: 'Profiles got more polish',
+              body: 'Member profiles and identity surfaces are cleaner, easier to read, and better organized.',
+            },
+            {
+              id: 'updates',
+              matches: ['stale cached', 'cached build', 'white screen', 'update activation', 'restart & update', 'ota activation'],
+              title: 'Updates are more reliable',
+              body: 'Go Melanated now does a better job activating downloaded updates and recovering when a device tries to reopen an older cached version.',
+            },
+          ];
+
+          const currentWave = [
+            featureLibrary.find((feature) => feature.id === 'ask-go'),
+            featureLibrary.find((feature) => feature.id === 'outpost'),
+            featureLibrary.find((feature) => feature.id === 'communities'),
+            featureLibrary.find((feature) => feature.id === 'outings'),
+            featureLibrary.find((feature) => feature.id === 'updates'),
+          ].filter(Boolean);
+
           (async () => {
             const pr = await getAssociatedPullRequest();
-            const sourceTitle = clean(pr?.title || commitMessage.split('\n')[0] || 'Go Melanated update');
-            const sourceBody = String(pr?.body || commitMessage || '');
+            const source = `${pr?.title || ''}\n${pr?.body || ''}\n${commitMessage}`.toLowerCase();
+            const releaseInfrastructureOnly =
+              /(release[- ]?note|what['’]?s new|release manifest|expo_public_release)/.test(source) &&
+              !/(ask go|outpost|communities|outing|trail guide|host|moderation|profile)/.test(source);
 
-            let items = sourceBody
-              .split('\n')
-              .map((line) => line.match(/^\s*[-*]\s+(.+)$/)?.[1])
-              .filter(Boolean)
-              .map(clean)
-              .filter((line) => line.length >= 12 && line.length <= 220)
-              .slice(0, 5);
+            let features = releaseInfrastructureOnly
+              ? currentWave
+              : featureLibrary.filter((feature) => feature.matches.some((match) => source.includes(match)));
 
-            if (!items.length) items = [sourceTitle];
+            const seen = new Set();
+            features = features.filter((feature) => {
+              if (!feature || seen.has(feature.id)) return false;
+              seen.add(feature.id);
+              return true;
+            }).slice(0, 5);
 
-            const intro = sourceTitle
-              ? `Latest update: ${sourceTitle}`
-              : 'The latest Go Melanated update is ready.';
+            if (!features.length) {
+              features = [{
+                id: 'polish',
+                title: 'Go Melanated keeps getting smoother',
+                body: 'This update includes usability, reliability, and performance improvements across the app.',
+              }];
+            }
 
-            console.log(`EXPO_PUBLIC_RELEASE_NOTES_ID=ota-${sha}`);
-            console.log("EXPO_PUBLIC_RELEASE_NOTES_TITLE=What's New");
-            console.log(`EXPO_PUBLIC_RELEASE_NOTES_INTRO=${intro}`);
-            console.log(`EXPO_PUBLIC_RELEASE_NOTES_ITEMS=${JSON.stringify(items)}`);
-            console.error('Generated OTA release notes:', { sourceTitle, items });
+            const major = features.length >= 3;
+            const manifest = {
+              id: `ota-${sha}`,
+              title: "What's New",
+              subtitle: major ? 'More ways to discover, connect, and go.' : features[0].title,
+              intro: major
+                ? 'Here are the biggest improvements included in this update.'
+                : 'A focused improvement just landed in Go Melanated.',
+              dateLabel: new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date()),
+              versionLabel: runNumber ? `Preview ${runNumber}` : undefined,
+              features: features.map(({ matches, ...feature }) => feature),
+              footer: major ? 'Plus smaller reliability and polish improvements across the app.' : undefined,
+            };
+
+            console.log(`EXPO_PUBLIC_RELEASE_MANIFEST=${JSON.stringify(manifest)}`);
+            console.error('Composed member-facing release manifest:', manifest);
           })().catch((error) => {
             console.error(error);
             process.exit(1);
@@ -161,9 +242,9 @@ jobs:
           test -n "${EXPO_PUBLIC_APP_ENV:-}"
           test -n "${EXPO_PUBLIC_SUPABASE_URL:-}"
           test -n "${EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}"
-          test -n "${EXPO_PUBLIC_RELEASE_NOTES_ID:-}"
-          test -n "${EXPO_PUBLIC_RELEASE_NOTES_ITEMS:-}"
-          echo "Preview OTA runtime environment and release notes are present."
+          test -n "${EXPO_PUBLIC_RELEASE_MANIFEST:-}"
+          node -e 'const m=JSON.parse(process.env.EXPO_PUBLIC_RELEASE_MANIFEST); if(!m.id || !Array.isArray(m.features) || !m.features.length) process.exit(1)'
+          echo "Preview OTA runtime environment and member-facing release manifest are present."
 
       - name: Require Expo authentication
         shell: bash
