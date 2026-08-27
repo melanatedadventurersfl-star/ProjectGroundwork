@@ -41,11 +41,7 @@ const GUIDE_ORDER_BY_CATEGORY: Record<DiscoveryCategory, string[]> = {
   Scenic: ['weekend-planning', 'florida-heat-safety', 'wildlife-awareness', 'leave-no-trace', 'storm-season'],
 };
 
-type ActivityIndicator = {
-  key: string;
-  label: string;
-  glyph: string;
-};
+type ActivityIndicator = { key: string; label: string; glyph: string };
 
 const ACTIVITY_DEFINITIONS: ActivityIndicator[] = [
   { key: 'hiking', label: 'Hiking', glyph: '🥾' },
@@ -58,10 +54,7 @@ const ACTIVITY_DEFINITIONS: ActivityIndicator[] = [
 ];
 
 function getActivityIndicators(place: TrailGuidePlace): ActivityIndicator[] {
-  const searchable = [place.category, place.type, ...place.tags, ...place.collections, place.meta, place.summary]
-    .join(' ')
-    .toLowerCase();
-
+  const searchable = [place.category, place.type, ...place.tags, ...place.collections, place.meta, place.summary].join(' ').toLowerCase();
   const matches = new Set<string>();
   if (place.category === 'Hiking' || /trail|hiking|walking|on foot/.test(searchable)) matches.add('hiking');
   if (place.category === 'Camping' || /camp|overnight|campground/.test(searchable)) matches.add('camping');
@@ -79,11 +72,9 @@ function getActivityIndicators(place: TrailGuidePlace): ActivityIndicator[] {
     Scenic: ['scenic', 'wildlife', 'hiking', 'water', 'family', 'camping', 'paddling'],
   };
 
-  const orderedKeys = categoryPriority[place.category]
+  return categoryPriority[place.category]
     .filter((key) => matches.has(key))
-    .slice(0, 3);
-
-  return orderedKeys
+    .slice(0, 3)
     .map((key) => ACTIVITY_DEFINITIONS.find((activity) => activity.key === key))
     .filter((activity): activity is ActivityIndicator => Boolean(activity));
 }
@@ -93,40 +84,21 @@ function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object })
   if (!photo) {
     return (
       <View style={[style, styles.photoPlaceholder]}>
-        <View style={styles.photoFallbackMark}>
-          <AppIcon name="trail" color="#79D26A" size={22} />
-        </View>
+        <View style={styles.photoFallbackMark}><AppIcon name="trail" color="#79D26A" size={22} /></View>
       </View>
     );
   }
   return <Image source={{ uri: photo.url }} style={style} resizeMode="cover" />;
 }
 
-function RecommendedCard({
-  place,
-  photo,
-  weather,
-  distance,
-}: {
-  place: TrailGuidePlace;
-  photo: TrailGuidePhoto;
-  weather: WeatherForecast | null;
-  distance: string | null;
-}) {
+function RecommendedCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo: TrailGuidePhoto; weather: WeatherForecast | null; distance: string | null }) {
   const signal = getTrailGuideConditionSignal(place, weather);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${place.name}`}
-      onPress={() => router.push(`/trail-guide/${place.id}` as never)}
-      style={({ pressed }) => [styles.recommendedCard, pressed && styles.cardPressed]}
-    >
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.recommendedCard, pressed && styles.cardPressed]}>
       <View style={styles.recommendedImage}>
         <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         <View style={styles.cardShade} />
-        <View style={[styles.signalBadge, signal.tone === 'good' && styles.signalGood, signal.tone === 'caution' && styles.signalCaution]}>
-          <Text style={styles.signalBadgeText}>{signal.label}</Text>
-        </View>
+        <View style={[styles.signalBadge, signal.tone === 'good' && styles.signalGood, signal.tone === 'caution' && styles.signalCaution]}><Text style={styles.signalBadgeText}>{signal.label}</Text></View>
       </View>
       <View style={styles.recommendedCopy}>
         <Text numberOfLines={2} style={styles.recommendedName}>{place.name}</Text>
@@ -141,12 +113,7 @@ function RecommendedCard({
 
 function QuickGuideCard({ guide }: { guide: TrailGuideArticle }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${guide.title}`}
-      onPress={() => router.push(`/trail-guide/guide/${guide.id}` as never)}
-      style={({ pressed }) => [styles.quickGuideCard, pressed && styles.cardPressed]}
-    >
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${guide.title}`} onPress={() => router.push(`/trail-guide/guide/${guide.id}` as never)} style={({ pressed }) => [styles.quickGuideCard, pressed && styles.cardPressed]}>
       <ImageBackground source={{ uri: guide.image }} style={styles.quickGuideImage} imageStyle={styles.quickGuideImageRadius}>
         <View style={styles.quickGuideShade} />
         <Text numberOfLines={2} style={styles.quickGuideTitle}>{guide.title}</Text>
@@ -165,17 +132,10 @@ export default function TrailGuideScreen() {
   const [showAll, setShowAll] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
 
-  const {
-    backgroundSource,
-    coordinates,
-    locationLabel,
-    locationBusy,
-    manualCityKey,
-    selectCity,
-    requestCurrentLocation,
-  } = useTrailGuideLocationBackground();
+  const { backgroundSource, coordinates, locationLabel, locationBusy, manualCityKey, selectCity, requestCurrentLocation } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
-  const cityName = cityKey === 'orlando' ? 'Orlando' : cityKey === 'tampa' ? 'Tampa' : 'Jacksonville';
+  const selectedCity = TRAIL_GUIDE_SELECTABLE_CITIES.find((city) => city.key === cityKey);
+  const cityName = selectedCity?.label.replace(', FL', '') ?? locationLabel.replace(', FL', '');
 
   useEffect(() => {
     let active = true;
@@ -209,84 +169,50 @@ export default function TrailGuideScreen() {
       const resolved = rows.filter((row): row is readonly [string, number] => row !== null);
       if (resolved.length > 0) setDistanceById((current) => ({ ...current, ...Object.fromEntries(resolved) }));
     });
-
     return () => { active = false; };
   }, [cityPlaces, coordinates, distanceById]);
 
   const radiusCityPlaces = useMemo(() => {
-    if (cityKey !== 'tampa' || !coordinates) return cityPlaces;
+    if (!coordinates) return cityPlaces;
     return cityPlaces.filter((place) => {
       const distance = distanceById[place.id];
       return typeof distance !== 'number' || distance <= MAX_TRAIL_GUIDE_RADIUS_MILES;
     });
-  }, [cityKey, cityPlaces, coordinates, distanceById]);
+  }, [cityPlaces, coordinates, distanceById]);
 
-  const rankedCityPlaces = useMemo(() => {
-    return [...radiusCityPlaces].sort((a, b) => {
-      const conditionDelta = getTrailGuideConditionSignal(b, weather).score - getTrailGuideConditionSignal(a, weather).score;
-      if (conditionDelta !== 0) return conditionDelta;
-      return (distanceById[a.id] ?? Number.POSITIVE_INFINITY) - (distanceById[b.id] ?? Number.POSITIVE_INFINITY);
-    });
-  }, [radiusCityPlaces, distanceById, weather]);
+  const rankedCityPlaces = useMemo(() => [...radiusCityPlaces].sort((a, b) => {
+    const conditionDelta = getTrailGuideConditionSignal(b, weather).score - getTrailGuideConditionSignal(a, weather).score;
+    if (conditionDelta !== 0) return conditionDelta;
+    return (distanceById[a.id] ?? Number.POSITIVE_INFINITY) - (distanceById[b.id] ?? Number.POSITIVE_INFINITY);
+  }), [radiusCityPlaces, distanceById, weather]);
 
-  const filteredPlaces = useMemo(
-    () => category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category),
-    [category, rankedCityPlaces],
-  );
+  const filteredPlaces = useMemo(() => category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category), [category, rankedCityPlaces]);
 
   useEffect(() => {
     const photoReadyCount = filteredPlaces.filter((place) => photoById[place.id] != null).length;
-    if (photoReadyCount >= RECOMMENDED_LIMIT) {
-      setPhotoPoolBusy(false);
-      return;
-    }
-
+    if (photoReadyCount >= RECOMMENDED_LIMIT) { setPhotoPoolBusy(false); return; }
     let active = true;
-    const candidates = filteredPlaces
-      .filter((place) => photoById[place.id] == null)
-      .slice(0, RECOMMENDED_PHOTO_POOL);
-    if (candidates.length === 0) {
-      setPhotoPoolBusy(false);
-      return;
-    }
-
+    const candidates = filteredPlaces.filter((place) => photoById[place.id] == null).slice(0, RECOMMENDED_PHOTO_POOL);
+    if (candidates.length === 0) { setPhotoPoolBusy(false); return; }
     setPhotoPoolBusy(true);
     void Promise.all(candidates.map(async (place) => {
       const photo = await resolveTrailGuidePlacePhoto(place);
       return photo ? [place.id, photo] as const : null;
-    }))
-      .then((rows) => {
-        if (!active) return;
-        const resolved = rows.filter((row): row is readonly [string, TrailGuidePhoto] => row !== null);
-        if (resolved.length > 0) setPhotoById((current) => ({ ...current, ...Object.fromEntries(resolved) }));
-      })
-      .finally(() => {
-        if (active) setPhotoPoolBusy(false);
-      });
-
+    })).then((rows) => {
+      if (!active) return;
+      const resolved = rows.filter((row): row is readonly [string, TrailGuidePhoto] => row !== null);
+      if (resolved.length > 0) setPhotoById((current) => ({ ...current, ...Object.fromEntries(resolved) }));
+    }).finally(() => { if (active) setPhotoPoolBusy(false); });
     return () => { active = false; };
   }, [filteredPlaces, photoById]);
 
-  const recommendedPlaces = useMemo(
-    () => filteredPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT),
-    [filteredPlaces, photoById],
-  );
-
+  const recommendedPlaces = useMemo(() => filteredPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT), [filteredPlaces, photoById]);
   const recommendedIds = useMemo(() => new Set(recommendedPlaces.map((place) => place.id)), [recommendedPlaces]);
-  const explorePreviewPlaces = useMemo(
-    () => filteredPlaces.filter((place) => !recommendedIds.has(place.id)).slice(0, EXPLORE_PREVIEW_LIMIT),
-    [filteredPlaces, recommendedIds],
-  );
+  const explorePreviewPlaces = useMemo(() => filteredPlaces.filter((place) => !recommendedIds.has(place.id)).slice(0, EXPLORE_PREVIEW_LIMIT), [filteredPlaces, recommendedIds]);
   const explorePlaces = showAll ? filteredPlaces : explorePreviewPlaces;
 
   const rainChance = weather?.forecast.forecastday[0]?.day.daily_chance_of_rain ?? 0;
-  const quickGuides = useMemo(() => {
-    return GUIDE_ORDER_BY_CATEGORY.All
-      .map((id) => trailGuideArticles.find((guide) => guide.id === id))
-      .filter((guide): guide is TrailGuideArticle => Boolean(guide))
-      .slice(0, 5);
-  }, []);
-
+  const quickGuides = useMemo(() => GUIDE_ORDER_BY_CATEGORY.All.map((id) => trailGuideArticles.find((guide) => guide.id === id)).filter((guide): guide is TrailGuideArticle => Boolean(guide)).slice(0, 5), []);
   const categoryLabel = category === 'All' ? 'places' : `${category.toLowerCase()} spots`;
   const recommendationTitle = category === 'All' ? 'Recommended for today' : `${category} picks for today`;
   const exploreTitle = category === 'All' ? `Explore ${cityName}` : `Explore ${category} in ${cityName}`;
@@ -297,26 +223,9 @@ export default function TrailGuideScreen() {
     return `${distance < 10 ? distance.toFixed(1) : Math.round(distance)} mi`;
   }
 
-  function selectCategory(next: DiscoveryCategory) {
-    setCategory(next);
-    setShowAll(false);
-  }
-
-  async function chooseCity(cityKey: string) {
-    setShowCityPicker(false);
-    setCategory('All');
-    setShowAll(false);
-    setDistanceById({});
-    await selectCity(cityKey);
-  }
-
-  async function chooseCurrentLocation() {
-    setShowCityPicker(false);
-    setCategory('All');
-    setShowAll(false);
-    setDistanceById({});
-    await requestCurrentLocation();
-  }
+  function selectCategory(next: DiscoveryCategory) { setCategory(next); setShowAll(false); }
+  async function chooseCity(nextCityKey: string) { setShowCityPicker(false); setCategory('All'); setShowAll(false); setDistanceById({}); await selectCity(nextCityKey); }
+  async function chooseCurrentLocation() { setShowCityPicker(false); setCategory('All'); setShowAll(false); setDistanceById({}); await requestCurrentLocation(); }
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
@@ -337,11 +246,7 @@ export default function TrailGuideScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cityPickerRow}>
                   {TRAIL_GUIDE_SELECTABLE_CITIES.map((city) => {
                     const active = city.key === cityKey;
-                    return (
-                      <Pressable key={city.key} accessibilityRole="button" onPress={() => void chooseCity(city.key)} style={({ pressed }) => [styles.cityOption, active && styles.cityOptionActive, pressed && styles.chipPressed]}>
-                        <Text style={[styles.cityOptionText, active && styles.cityOptionTextActive]}>{city.label.replace(', FL', '')}</Text>
-                      </Pressable>
-                    );
+                    return <Pressable key={city.key} accessibilityRole="button" onPress={() => void chooseCity(city.key)} style={({ pressed }) => [styles.cityOption, active && styles.cityOptionActive, pressed && styles.chipPressed]}><Text style={[styles.cityOptionText, active && styles.cityOptionTextActive]}>{city.label.replace(', FL', '')}</Text></Pressable>;
                   })}
                   <Pressable accessibilityRole="button" onPress={() => void chooseCurrentLocation()} style={({ pressed }) => [styles.cityOption, manualCityKey == null && styles.cityOptionActive, pressed && styles.chipPressed]}>
                     <AppIcon name="location" color={manualCityKey == null ? '#0C140D' : '#F5C400'} size={12} />
@@ -355,65 +260,35 @@ export default function TrailGuideScreen() {
                 <Text style={styles.heroWeatherTitle}>{weatherBusy ? 'Checking weather…' : weather ? `${Math.round(weather.current.temp_f)}° · ${weather.current.condition.text}` : 'Weather unavailable'}</Text>
                 {weather ? <Text style={styles.heroWeatherMeta}>Feels {Math.round(weather.current.feelslike_f)}° · {rainChance}% rain · {Math.round(weather.current.wind_mph)} mph wind</Text> : null}
               </View>
-              {weather && rainChance >= 60 ? (
-                <View style={styles.weatherSignal}>
-                  <AppIcon name="weather" color="#F5C400" size={17} />
-                  <Text style={styles.weatherSignalText}>High rain chance</Text>
-                </View>
-              ) : (
-                <AppIcon name="weather" color="#F5C400" size={22} />
-              )}
+              {weather && rainChance >= 60 ? <View style={styles.weatherSignal}><AppIcon name="weather" color="#F5C400" size={17} /><Text style={styles.weatherSignalText}>High rain chance</Text></View> : <AppIcon name="weather" color="#F5C400" size={22} />}
             </View>
           </View>
         </ImageBackground>
 
         <View style={styles.body}>
-          <View style={styles.quickGuidesHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Quick Guides</Text>
-              <Text style={styles.sectionSubtitle}>Helpful tips for your next adventure.</Text>
-            </View>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickGuidesRow}>
-            {quickGuides.map((guide) => <QuickGuideCard key={guide.id} guide={guide} />)}
-          </ScrollView>
+          <View style={styles.quickGuidesHeader}><View><Text style={styles.sectionTitle}>Quick Guides</Text><Text style={styles.sectionSubtitle}>Helpful tips for your next adventure.</Text></View></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickGuidesRow}>{quickGuides.map((guide) => <QuickGuideCard key={guide.id} guide={guide} />)}</ScrollView>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
             {discoveryCategories.map((item) => {
               const active = category === item;
-              return (
-                <Pressable key={item} accessibilityRole="button" onPress={() => selectCategory(item)} style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}>
-                  <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item === 'All' ? 'For You' : item}</Text>
-                </Pressable>
-              );
+              return <Pressable key={item} accessibilityRole="button" onPress={() => selectCategory(item)} style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}><Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item === 'All' ? 'For You' : item}</Text></Pressable>;
             })}
           </ScrollView>
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{recommendationTitle}</Text>
-            <Text style={styles.sectionSubtitle}>Top picks based on {cityName} conditions{coordinates ? cityKey === 'tampa' ? ' within 50 miles.' : ' and distance.' : '.'}</Text>
-          </View>
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{recommendationTitle}</Text><Text style={styles.sectionSubtitle}>Top picks based on {cityName} conditions{coordinates ? ' within 50 miles.' : '.'}</Text></View>
           {recommendedPlaces.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
               {recommendedPlaces.map((place) => {
                 const photo = photoById[place.id];
-                if (!photo) return null;
-                return <RecommendedCard key={place.id} place={place} photo={photo} weather={weather} distance={formatDistance(place)} />;
+                return photo ? <RecommendedCard key={place.id} place={place} photo={photo} weather={weather} distance={formatDistance(place)} /> : null;
               })}
             </ScrollView>
-          ) : (
-            <View style={styles.recommendationLoading}>
-              <AppIcon name="photo" color="#79D26A" size={18} />
-              <Text style={styles.recommendationLoadingText}>{photoPoolBusy ? `Finding ${category === 'All' ? '' : `${category.toLowerCase()} `}picks…` : `No photo-ready ${category === 'All' ? '' : `${category.toLowerCase()} `}picks yet.`}</Text>
-            </View>
-          )}
+          ) : <View style={styles.recommendationLoading}><AppIcon name="photo" color="#79D26A" size={18} /><Text style={styles.recommendationLoadingText}>{photoPoolBusy ? `Finding ${category === 'All' ? '' : `${category.toLowerCase()} `}picks…` : `No photo-ready ${category === 'All' ? '' : `${category.toLowerCase()} `}picks yet.`}</Text></View>}
 
           <View style={styles.exploreSectionHeader}>
-            <View style={styles.exploreTitleRow}>
-              <Text style={styles.sectionTitle}>{exploreTitle}</Text>
-              <Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text>
-            </View>
-            <Text style={styles.sectionSubtitle}>{cityKey === 'tampa' && coordinates ? 'Outdoor places within 50 miles, ranked for current conditions.' : 'Curated outdoor places ranked for current conditions.'}</Text>
+            <View style={styles.exploreTitleRow}><Text style={styles.sectionTitle}>{exploreTitle}</Text><Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text></View>
+            <Text style={styles.sectionSubtitle}>{coordinates ? 'Outdoor places within 50 miles, ranked for current conditions.' : 'Curated outdoor places ranked for current conditions.'}</Text>
           </View>
 
           {explorePlaces.length > 0 ? (
@@ -427,42 +302,18 @@ export default function TrailGuideScreen() {
                     <PlacePhoto place={place} style={styles.exploreImage} />
                     <View style={styles.exploreCopy}>
                       <Text numberOfLines={2} style={styles.exploreName}>{place.name}</Text>
-                      <View style={styles.exploreMetaRow}>
-                        <Text numberOfLines={1} style={styles.exploreType}>{place.type}</Text>
-                        {distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}
-                      </View>
-                      {activities.length > 0 ? (
-                        <View style={styles.activityRow}>
-                          {activities.map((activity) => (
-                            <View key={activity.key} style={styles.activityChip}>
-                              <Text style={styles.activityGlyph}>{activity.glyph}</Text>
-                              <Text style={styles.activityText}>{activity.label}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                      <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}>
-                        <Text style={styles.smallSignalText}>{signal.label}</Text>
-                      </View>
+                      <View style={styles.exploreMetaRow}><Text numberOfLines={1} style={styles.exploreType}>{place.type}</Text>{distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}</View>
+                      {activities.length > 0 ? <View style={styles.activityRow}>{activities.map((activity) => <View key={activity.key} style={styles.activityChip}><Text style={styles.activityGlyph}>{activity.glyph}</Text><Text style={styles.activityText}>{activity.label}</Text></View>)}</View> : null}
+                      <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}><Text style={styles.smallSignalText}>{signal.label}</Text></View>
                     </View>
                     <AppIcon name="chevron-forward" color="#738078" size={18} />
                   </Pressable>
                 );
               })}
             </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No {categoryLabel} yet</Text>
-              <Text style={styles.emptyText}>Try another category to keep exploring {cityName}.</Text>
-            </View>
-          )}
+          ) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>No {categoryLabel} yet</Text><Text style={styles.emptyText}>Try another category to keep exploring {cityName}.</Text></View>}
 
-          {filteredPlaces.length > EXPLORE_PREVIEW_LIMIT ? (
-            <Pressable accessibilityRole="button" onPress={() => setShowAll((current) => !current)} style={({ pressed }) => [styles.seeAllButton, pressed && styles.chipPressed]}>
-              <Text style={styles.seeAllText}>{showAll ? 'Show less' : `See all ${filteredPlaces.length} ${categoryLabel}`}</Text>
-              <AppIcon name={showAll ? 'chevron-up' : 'chevron-forward'} color="#79D26A" size={18} />
-            </Pressable>
-          ) : null}
+          {filteredPlaces.length > EXPLORE_PREVIEW_LIMIT ? <Pressable accessibilityRole="button" onPress={() => setShowAll((current) => !current)} style={({ pressed }) => [styles.seeAllButton, pressed && styles.chipPressed]}><Text style={styles.seeAllText}>{showAll ? 'Show less' : `See all ${filteredPlaces.length} ${categoryLabel}`}</Text><AppIcon name={showAll ? 'chevron-up' : 'chevron-forward'} color="#79D26A" size={18} /></Pressable> : null}
         </View>
       </ScrollView>
     </SafeAreaView>
