@@ -281,11 +281,13 @@ function collectionsFor(city: TrailGuideCityKey, category: Exclude<DiscoveryCate
     jacksonville: 'Jacksonville', orlando: 'Orlando', miami: 'Miami', tampa: 'Tampa', 'st-petersburg': 'St. Petersburg', 'fort-lauderdale': 'Fort Lauderdale', 'west-palm-beach': 'West Palm Beach', naples: 'Naples', 'fort-myers': 'Fort Myers', sarasota: 'Sarasota',
   };
   const localLabel = cityLabels[city].toLowerCase();
+  const localNeedle = localLabel.split(' ')[0] ?? localLabel;
+  const localCollection = cityCollections[city][0] ?? 'Worth the Drive';
   if (category === 'Water') collections.push(city === 'orlando' ? 'Springs & Water' : 'Beaches & Water');
   if (category === 'Hiking') collections.push('Trails Worth Exploring');
   if (category === 'Camping') collections.push('Camping Nearby');
   if (category === 'Scenic') collections.push('Wildlife & Coastal Preserves');
-  if (area.toLowerCase().includes(localLabel.split(' ')[0])) collections.push(cityCollections[city][0]);
+  if (area.toLowerCase().includes(localNeedle)) collections.push(localCollection);
   else collections.push('Worth the Drive');
   return [...new Set(collections)];
 }
