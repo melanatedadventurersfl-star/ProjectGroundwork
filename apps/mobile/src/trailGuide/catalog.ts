@@ -1,5 +1,15 @@
 export type DiscoveryCategory = 'All' | 'Hiking' | 'Camping' | 'Parks' | 'Water' | 'Scenic';
-export type TrailGuideCityKey = 'jacksonville' | 'orlando' | 'tampa';
+export type TrailGuideCityKey =
+  | 'jacksonville'
+  | 'orlando'
+  | 'miami'
+  | 'tampa'
+  | 'st-petersburg'
+  | 'fort-lauderdale'
+  | 'west-palm-beach'
+  | 'naples'
+  | 'fort-myers'
+  | 'sarasota';
 
 export type TrailGuidePlace = {
   id: string;
@@ -21,7 +31,14 @@ export const discoveryCategories: DiscoveryCategory[] = ['All', 'Hiking', 'Campi
 export const cityCollections: Record<TrailGuideCityKey, string[]> = {
   jacksonville: ['Close to the City', 'Beaches & Water', 'Paddling & Marshes', 'Trails Worth Exploring', 'Camping Nearby', 'Timucuan & Coastal Wildlands', 'Worth the Drive'],
   orlando: ['Close to Orlando', 'Springs & Water', 'Trails Worth Exploring', 'Camping Nearby', 'Easy Nature Escapes', 'Worth the Drive'],
+  miami: ['Close to Miami', 'Biscayne Bay & Islands', 'Everglades & Wetlands', 'Trails & Hammocks', 'Beaches & Water', 'Worth the Drive'],
   tampa: ['Close to Tampa', 'Bay & Mangroves', 'Rivers & Springs', 'Trails Worth Exploring', 'Camping Nearby', 'Wildlife & Coastal Preserves', 'Worth the Drive'],
+  'st-petersburg': ['Close to St. Pete', 'Bayfront & Beaches', 'Mangroves & Preserves', 'Trails Worth Exploring', 'Island Escapes', 'Worth the Drive'],
+  'fort-lauderdale': ['Close to Fort Lauderdale', 'Beaches & Coastal Parks', 'Everglades & Wetlands', 'Trails & Natural Areas', 'Paddling', 'Worth the Drive'],
+  'west-palm-beach': ['Close to West Palm', 'Beaches & Lagoons', 'Wetlands & Wildlife', 'Trails & Natural Areas', 'River Country', 'Worth the Drive'],
+  naples: ['Close to Naples', 'Gulf Beaches', 'Mangroves & Estuaries', 'Swamps & Wildlife', 'Trails Worth Exploring', 'Worth the Drive'],
+  'fort-myers': ['Close to Fort Myers', 'River & Sloughs', 'Beaches & Islands', 'Mangroves & Estuaries', 'Trails Worth Exploring', 'Worth the Drive'],
+  sarasota: ['Close to Sarasota', 'Beaches & Bays', 'Myakka Country', 'Trails & Preserves', 'Camping Nearby', 'Worth the Drive'],
 };
 
 const categoryContent = {
@@ -120,6 +137,21 @@ const orlandoSeeds: Seed[] = [
 ['ocala-national-forest','Ocala National Forest','Camping','North of Orlando'],
 ];
 
+const miamiSeeds: Seed[] = [
+['oleta-river-state-park','Oleta River State Park','Water','North Miami Beach'],
+['bill-baggs-cape-florida-state-park','Bill Baggs Cape Florida State Park','Water','Key Biscayne'],
+['biscayne-national-park','Biscayne National Park','Water','Homestead'],
+['everglades-national-park-shark-valley','Everglades National Park — Shark Valley','Scenic','Miami-Dade'],
+['matheson-hammock-park','Matheson Hammock Park','Water','Coral Gables'],
+['crandon-park','Crandon Park','Water','Key Biscayne'],
+['bear-cut-preserve','Bear Cut Preserve','Hiking','Key Biscayne'],
+['deering-estate','Deering Estate','Scenic','Palmetto Bay'],
+['virginia-key-beach-park','Virginia Key Beach Park','Water','Miami'],
+['greynolds-park','Greynolds Park','Parks','North Miami Beach'],
+['ad-barnes-park','A.D. Barnes Park','Parks','Miami'],
+['tropical-park','Tropical Park','Parks','Miami'],
+];
+
 const tampaSeeds: Seed[] = [
 ['lettuce-lake-conservation-park','Lettuce Lake Conservation Park','Scenic','Tampa'],
 ['hillsborough-river-state-park','Hillsborough River State Park','Camping','Thonotosassa'],
@@ -151,29 +183,110 @@ const tampaSeeds: Seed[] = [
 ['emerson-point-preserve','Emerson Point Preserve','Hiking','Palmetto'],
 ];
 
+const stPetersburgSeeds: Seed[] = [
+['clam-bayou-nature-park','Clam Bayou Nature Park','Scenic','St. Petersburg'],
+['maximo-park','Maximo Park','Water','St. Petersburg'],
+['abercrombie-park','Abercrombie Park','Hiking','St. Petersburg'],
+['north-shore-park','North Shore Park','Parks','St. Petersburg'],
+['vinoy-park','Vinoy Park','Parks','St. Petersburg'],
+['demens-landing-park','Demens Landing Park','Water','St. Petersburg'],
+['coffee-pot-bayou','Coffee Pot Bayou','Scenic','St. Petersburg'],
+['jungle-prada-park','Jungle Prada Park','Scenic','St. Petersburg'],
+['boca-ciega-millennium-park','Boca Ciega Millennium Park','Hiking','Seminole'],
+['shell-key-preserve','Shell Key Preserve','Water','Tierra Verde'],
+['egmont-key-state-park','Egmont Key State Park','Water','Egmont Key'],
+['skyway-fishing-pier-state-park','Skyway Fishing Pier State Park','Water','Tampa Bay'],
+];
+
+const fortLauderdaleSeeds: Seed[] = [
+['hugh-taylor-birch-state-park','Hugh Taylor Birch State Park','Parks','Fort Lauderdale'],
+['dr-von-d-mizell-eula-johnson-state-park','Dr. Von D. Mizell–Eula Johnson State Park','Water','Dania Beach'],
+['secret-woods-nature-center','Secret Woods Nature Center','Hiking','Fort Lauderdale'],
+['anne-kolb-nature-center','Anne Kolb Nature Center','Scenic','Hollywood'],
+['fern-forest-nature-center','Fern Forest Nature Center','Hiking','Coconut Creek'],
+['long-key-natural-area','Long Key Natural Area & Nature Center','Hiking','Davie'],
+['tree-tops-park','Tree Tops Park','Parks','Davie'],
+['tall-cypress-natural-area','Tall Cypress Natural Area','Hiking','Coral Springs'],
+['quiet-waters-park','Quiet Waters Park','Parks','Deerfield Beach'],
+['snyder-park','Snyder Park','Parks','Fort Lauderdale'],
+['west-lake-park','West Lake Park','Water','Hollywood'],
+['deerfield-island-park','Deerfield Island Park','Scenic','Deerfield Beach'],
+];
+
+const westPalmBeachSeeds: Seed[] = [
+['john-d-macarthur-beach-state-park','John D. MacArthur Beach State Park','Water','North Palm Beach'],
+['grassy-waters-preserve','Grassy Waters Preserve','Scenic','West Palm Beach'],
+['okeeheelee-park','Okeeheelee Park','Parks','West Palm Beach'],
+['winding-waters-natural-area','Winding Waters Natural Area','Hiking','West Palm Beach'],
+['loxahatchee-slough-natural-area','Loxahatchee Slough Natural Area','Hiking','Palm Beach Gardens'],
+['pine-glades-natural-area','Pine Glades Natural Area','Hiking','Jupiter'],
+['frenchmans-forest-natural-area',"Frenchman's Forest Natural Area",'Hiking','Palm Beach Gardens'],
+['jupiter-ridge-natural-area','Jupiter Ridge Natural Area','Hiking','Jupiter'],
+['juno-dunes-natural-area','Juno Dunes Natural Area','Hiking','Juno Beach'],
+['riverbend-park','Riverbend Park','Water','Jupiter'],
+['arthur-r-marshall-loxahatchee-national-wildlife-refuge','Arthur R. Marshall Loxahatchee National Wildlife Refuge','Scenic','Boynton Beach'],
+['jonathan-dickinson-state-park','Jonathan Dickinson State Park','Camping','Hobe Sound'],
+];
+
+const naplesSeeds: Seed[] = [
+['delnor-wiggins-pass-state-park','Delnor-Wiggins Pass State Park','Water','North Naples'],
+['clam-pass-park','Clam Pass Park','Water','Naples'],
+['naples-preserve','Naples Preserve','Hiking','Naples'],
+['gordon-river-greenway','Gordon River Greenway','Hiking','Naples'],
+['corkscrew-swamp-sanctuary','Corkscrew Swamp Sanctuary','Scenic','Naples'],
+['crew-bird-rookery-swamp','CREW Bird Rookery Swamp','Hiking','Naples'],
+['rookery-bay-nerr','Rookery Bay NERR','Scenic','Naples'],
+['collier-seminole-state-park','Collier-Seminole State Park','Camping','Naples'],
+['fakahatchee-strand-preserve-state-park','Fakahatchee Strand Preserve State Park','Hiking','Copeland'],
+['picayune-strand-state-forest','Picayune Strand State Forest','Hiking','Naples'],
+['barefoot-beach-preserve','Barefoot Beach Preserve','Water','Bonita Springs'],
+['sugden-regional-park','Sugden Regional Park','Parks','Naples'],
+];
+
+const fortMyersSeeds: Seed[] = [
+['six-mile-cypress-slough-preserve','Six Mile Cypress Slough Preserve','Scenic','Fort Myers'],
+['manatee-park','Manatee Park','Scenic','Fort Myers'],
+['lakes-regional-park','Lakes Regional Park','Parks','Fort Myers'],
+['caloosahatchee-regional-park','Caloosahatchee Regional Park','Hiking','Alva'],
+['hickeys-creek-mitigation-park',"Hickey's Creek Mitigation Park",'Hiking','Alva'],
+['matanzas-pass-preserve','Matanzas Pass Preserve','Hiking','Fort Myers Beach'],
+['lovers-key-state-park','Lovers Key State Park','Water','Fort Myers Beach'],
+['koreshan-state-park','Koreshan State Park','Camping','Estero'],
+['estero-bay-preserve-state-park','Estero Bay Preserve State Park','Hiking','Estero'],
+['jn-ding-darling-national-wildlife-refuge','J.N. “Ding” Darling National Wildlife Refuge','Scenic','Sanibel'],
+['bunche-beach-preserve','Bunche Beach Preserve','Water','Fort Myers'],
+['four-mile-cove-ecological-preserve','Four Mile Cove Ecological Preserve','Water','Cape Coral'],
+];
+
+const sarasotaSeeds: Seed[] = [
+['myakka-river-state-park','Myakka River State Park','Camping','Sarasota'],
+['oscar-scherer-state-park','Oscar Scherer State Park','Camping','Osprey'],
+['red-bug-slough-preserve','Red Bug Slough Preserve','Hiking','Sarasota'],
+['rothenbach-park','Rothenbach Park','Parks','Sarasota'],
+['celery-fields','The Celery Fields','Scenic','Sarasota'],
+['bay-preserve-at-osprey','Bay Preserve at Osprey','Scenic','Osprey'],
+['phillippi-estate-park','Phillippi Estate Park','Parks','Sarasota'],
+['south-lido-park','South Lido Park','Water','Sarasota'],
+['ted-sperling-park','Ted Sperling Park','Water','Lido Key'],
+['siesta-beach','Siesta Beach','Water','Siesta Key'],
+['urfer-family-park','Urfer Family Park','Hiking','Sarasota'],
+['sleeping-turtles-preserve-north','Sleeping Turtles Preserve North','Hiking','Venice'],
+['deer-prairie-creek-preserve','Deer Prairie Creek Preserve','Hiking','North Port'],
+['t-carlton-reserve','T. Mabry Carlton Jr. Memorial Reserve','Hiking','Venice'],
+];
+
 function collectionsFor(city: TrailGuideCityKey, category: Exclude<DiscoveryCategory, 'All'>, area: string) {
   const collections: string[] = [];
-  if (city === 'jacksonville') {
-    if (category === 'Water') collections.push('Beaches & Water', 'Paddling & Marshes');
-    if (category === 'Hiking') collections.push('Trails Worth Exploring');
-    if (category === 'Camping') collections.push('Camping Nearby');
-    if (category === 'Scenic') collections.push('Timucuan & Coastal Wildlands');
-    if (area.toLowerCase().includes('jacksonville')) collections.push('Close to the City'); else collections.push('Worth the Drive');
-  } else if (city === 'orlando') {
-    if (category === 'Water') collections.push('Springs & Water');
-    if (category === 'Hiking') collections.push('Trails Worth Exploring');
-    if (category === 'Camping') collections.push('Camping Nearby');
-    if (category === 'Parks' || category === 'Scenic') collections.push('Easy Nature Escapes');
-    if (area.toLowerCase().includes('orlando') || area === 'Winter Park') collections.push('Close to Orlando');
-    if (['Orange City','Lake County','Ocala National Forest','Lakeland','North of Orlando','De Leon Springs'].includes(area)) collections.push('Worth the Drive');
-  } else {
-    if (category === 'Water') collections.push('Bay & Mangroves', 'Rivers & Springs');
-    if (category === 'Hiking') collections.push('Trails Worth Exploring');
-    if (category === 'Camping') collections.push('Camping Nearby');
-    if (category === 'Scenic') collections.push('Wildlife & Coastal Preserves');
-    if (area.toLowerCase().includes('tampa')) collections.push('Close to Tampa');
-    else collections.push('Worth the Drive');
-  }
+  const cityLabels: Record<TrailGuideCityKey, string> = {
+    jacksonville: 'Jacksonville', orlando: 'Orlando', miami: 'Miami', tampa: 'Tampa', 'st-petersburg': 'St. Petersburg', 'fort-lauderdale': 'Fort Lauderdale', 'west-palm-beach': 'West Palm Beach', naples: 'Naples', 'fort-myers': 'Fort Myers', sarasota: 'Sarasota',
+  };
+  const localLabel = cityLabels[city].toLowerCase();
+  if (category === 'Water') collections.push(city === 'orlando' ? 'Springs & Water' : 'Beaches & Water');
+  if (category === 'Hiking') collections.push('Trails Worth Exploring');
+  if (category === 'Camping') collections.push('Camping Nearby');
+  if (category === 'Scenic') collections.push('Wildlife & Coastal Preserves');
+  if (area.toLowerCase().includes(localLabel.split(' ')[0])) collections.push(cityCollections[city][0]);
+  else collections.push('Worth the Drive');
   return [...new Set(collections)];
 }
 
@@ -187,12 +300,29 @@ function expandSeeds(city: TrailGuideCityKey, seeds: Seed[]): TrailGuidePlace[] 
 export const trailGuidePlaces = [
   ...expandSeeds('jacksonville', jacksonvilleSeeds),
   ...expandSeeds('orlando', orlandoSeeds),
+  ...expandSeeds('miami', miamiSeeds),
   ...expandSeeds('tampa', tampaSeeds),
+  ...expandSeeds('st-petersburg', stPetersburgSeeds),
+  ...expandSeeds('fort-lauderdale', fortLauderdaleSeeds),
+  ...expandSeeds('west-palm-beach', westPalmBeachSeeds),
+  ...expandSeeds('naples', naplesSeeds),
+  ...expandSeeds('fort-myers', fortMyersSeeds),
+  ...expandSeeds('sarasota', sarasotaSeeds),
 ];
+
 export function getTrailGuidePlace(id?: string) { return id ? trailGuidePlaces.find((place) => place.id === id) : undefined; }
+
 export function cityKeyFromLocationLabel(label: string): TrailGuideCityKey {
   const normalized = label.toLowerCase();
-  if (normalized.includes('tampa')) return 'tampa';
+  if (normalized.includes('st. petersburg') || normalized.includes('st petersburg')) return 'st-petersburg';
+  if (normalized.includes('fort lauderdale')) return 'fort-lauderdale';
+  if (normalized.includes('west palm beach')) return 'west-palm-beach';
+  if (normalized.includes('fort myers')) return 'fort-myers';
+  if (normalized.includes('jacksonville')) return 'jacksonville';
   if (normalized.includes('orlando')) return 'orlando';
+  if (normalized.includes('miami')) return 'miami';
+  if (normalized.includes('tampa')) return 'tampa';
+  if (normalized.includes('naples')) return 'naples';
+  if (normalized.includes('sarasota')) return 'sarasota';
   return 'jacksonville';
 }
