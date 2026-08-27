@@ -19,7 +19,6 @@ import {
   useTrailGuideLocationBackground,
 } from '../../src/trailGuide/locationBackgrounds';
 import {
-  CURATED_TRAIL_GUIDE_PHOTOS,
   resolveTrailGuidePlacePhoto,
   type TrailGuidePhoto,
   useTrailGuidePlacePhoto,
@@ -127,7 +126,7 @@ export default function TrailGuideScreen() {
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [distanceById, setDistanceById] = useState<Record<string, number>>({});
-  const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>(() => ({ ...CURATED_TRAIL_GUIDE_PHOTOS }));
+  const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>({});
   const [photoPoolBusy, setPhotoPoolBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
@@ -223,8 +222,8 @@ export default function TrailGuideScreen() {
   }
 
   function selectCategory(next: DiscoveryCategory) { setCategory(next); setShowAll(false); }
-  async function chooseCity(nextCityKey: string) { setShowCityPicker(false); setCategory('All'); setShowAll(false); setDistanceById({}); await selectCity(nextCityKey); }
-  async function chooseCurrentLocation() { setShowCityPicker(false); setCategory('All'); setShowAll(false); setDistanceById({}); await requestCurrentLocation(); }
+  async function chooseCity(nextCityKey: string) { setShowCityPicker(false); setCategory('All'); setShowAll(false); setDistanceById({}); setPhotoById({}); await selectCity(nextCityKey); }
+  async function chooseCurrentLocation() { setShowCityPicker(false); setCategory('All'); setShowAll(false); setDistanceById({}); setPhotoById({}); await requestCurrentLocation(); }
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
