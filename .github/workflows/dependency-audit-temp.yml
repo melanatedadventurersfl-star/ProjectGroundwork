@@ -52,26 +52,28 @@ jobs:
           set +e
           npm audit --json > /tmp/audit-after.json
           set -e
-          node <<'NODE' >> "$GITHUB_ENV"
+          node <<'NODE' > /tmp/audit-summary.txt
           const fs = require('fs');
           const audit = JSON.parse(fs.readFileSync('/tmp/audit-after.json', 'utf8'));
           const counts = audit.metadata?.vulnerabilities ?? {};
           console.log(`AUDIT_AFTER=${counts.total ?? 0}`);
           console.log(`AUDIT_AFTER_HIGH=${counts.high ?? 0}`);
           console.log(`AUDIT_AFTER_CRITICAL=${counts.critical ?? 0}`);
-          console.log('Refreshed audit:', counts);
+          console.error('Refreshed audit:', counts);
           for (const [name, value] of Object.entries(audit.vulnerabilities || {})) {
             const via = (value.via || []).map((item) => typeof item === 'string' ? item : `${item.source}:${item.title}`).join(' | ');
             const fix = value.fixAvailable === true ? 'available' : value.fixAvailable === false ? 'none' : JSON.stringify(value.fixAvailable);
-            console.log(`VULN ${name} severity=${value.severity} direct=${value.isDirect} range=${value.range} fix=${fix} via=${via}`);
+            console.error(`VULN ${name} severity=${value.severity} direct=${value.isDirect} range=${value.range} fix=${fix} via=${via}`);
           }
           NODE
+          cat /tmp/audit-summary.txt >> "$GITHUB_ENV"
 
       - name: Require security improvement
         run: |
           echo "audit_before=${AUDIT_BEFORE}"
           echo "audit_after=${AUDIT_AFTER}"
           test "${AUDIT_AFTER_CRITICAL}" = "0"
+          test "${AUDIT_AFTER_HIGH}" = "0"
           test "${AUDIT_AFTER}" -lt "${AUDIT_BEFORE}"
 
       - name: Validate mobile after dependency refresh
