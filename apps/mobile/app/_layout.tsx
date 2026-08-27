@@ -19,6 +19,7 @@ import {
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
 import { BackgroundUpdateManager } from '../src/updates/BackgroundUpdateManager';
+import { getActiveUpdateIdentity } from '../src/updates/otaActivation';
 import { OtaActivationGuard } from '../src/updates/OtaActivationGuard';
 import { currentReleaseNotes } from '../src/updates/releaseNotes';
 import { hasSeenRelease, markReleaseSeen } from '../src/updates/releasePreference';
@@ -61,7 +62,9 @@ function AppShell() {
   const tutorialUserRef = useRef<string | null>(null);
   const whatsNewCheckedRef = useRef(false);
   const firstScreenLoggedRef = useRef(false);
-  const releaseSeenKey = currentReleaseNotes.id;
+  const activeUpdateIdentity = getActiveUpdateIdentity();
+  const activeUpdateKey = activeUpdateIdentity.updateId || activeUpdateIdentity.commit || 'embedded';
+  const releaseSeenKey = `${currentReleaseNotes.id}:${activeUpdateKey}`;
 
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
@@ -155,7 +158,7 @@ function AppShell() {
   }, [isAuthScreen, isLoading, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || !isTrailhead || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -163,7 +166,7 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, isTrailhead, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
+  }, [isAuthScreen, isLoading, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
     setTutorialGateReady(false);
