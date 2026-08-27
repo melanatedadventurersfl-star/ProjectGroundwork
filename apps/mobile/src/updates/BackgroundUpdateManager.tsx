@@ -4,7 +4,7 @@ import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { logStartupStage, withStartupTimeout } from '../reliability/startup';
-import { rememberExpectedOtaUpdate } from './otaActivation';
+import { rememberExpectedOtaUpdate, verifyExpectedOtaActivation } from './otaActivation';
 
 const UPDATE_NETWORK_TIMEOUT_MS = 10000;
 const FIRST_CHECK_DELAY_MS = 2500;
@@ -31,6 +31,22 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
   const lastCheckRef = useRef(0);
   const updateReadyRef = useRef(false);
 
+  const surfaceInactiveDownloadedUpdate = useCallback(async () => {
+    const activation = await verifyExpectedOtaActivation();
+    if (!activation || activation.status !== 'mismatch') return false;
+
+    updateReadyRef.current = true;
+    setState('ready');
+    setMessage('A downloaded Go Melanated update has not activated yet. Restart to retry it.');
+    logStartupStage('background-update-inactive-download', {
+      expectedUpdateId: activation.expected.updateId,
+      expectedCommit: activation.expected.commit,
+      activeUpdateId: activation.activeUpdateId,
+      activeCommit: activation.activeCommit,
+    });
+    return true;
+  }, []);
+
   const checkForUpdate = useCallback(async (force = false) => {
     if (disabled || !Updates.isEnabled || checkingRef.current || updateReadyRef.current) return;
 
@@ -50,8 +66,10 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
       );
 
       if (!result.isAvailable) {
-        setState('idle');
-        setMessage(null);
+        if (!(await surfaceInactiveDownloadedUpdate())) {
+          setState('idle');
+          setMessage(null);
+        }
         return;
       }
 
@@ -63,8 +81,10 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
       );
 
       if (!fetched.isNew) {
-        setState('idle');
-        setMessage(null);
+        if (!(await surfaceInactiveDownloadedUpdate())) {
+          setState('idle');
+          setMessage(null);
+        }
         return;
       }
 
@@ -77,18 +97,20 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
       setMessage('A new Go Melanated update is ready. Restart once to apply it.');
     } catch (error) {
       console.warn('[updates] Background OTA check failed', error);
-      setState('error');
-      setMessage(null);
+      if (!(await surfaceInactiveDownloadedUpdate().catch(() => false))) {
+        setState('error');
+        setMessage(null);
+      }
     } finally {
       checkingRef.current = false;
     }
-  }, [disabled]);
+  }, [disabled, surfaceInactiveDownloadedUpdate]);
 
   const restartAndUpdate = useCallback(async () => {
     if (!updateReadyRef.current || state === 'restarting') return;
 
     setState('restarting');
-    setMessage('Restarting with the new update…');
+    setMessage('Restarting with the downloaded update…');
     logStartupStage('background-update-reload');
 
     try {
@@ -96,7 +118,7 @@ export function BackgroundUpdateManager({ disabled = false }: { disabled?: boole
     } catch (error) {
       console.warn('[updates] In-process OTA reload failed', error);
       setState('ready');
-      setMessage('The update is downloaded. If restart does not complete, close and reopen Go Melanated once.');
+      setMessage('The update is still downloaded but did not restart. Tap Restart & Update to try again, or fully close and reopen the app once.');
     }
   }, [state]);
 
