@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Image } from 'react-native';
 
 import type { TrailGuidePlace } from './catalog';
+import { resolveGoogleTrailGuidePlacePhoto } from './googlePlacePhotos';
 
 export type TrailGuidePhoto = {
   url: string;
@@ -65,7 +66,7 @@ type WikiImageInfo = { url?: string; thumburl?: string; descriptionurl?: string;
 type WikiImageResponse = { query?: { pages?: Record<string, { title?: string; index?: number; imageinfo?: WikiImageInfo[] }> } };
 
 const REQUEST_TIMEOUT_MS = 3500;
-const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v4:';
+const PHOTO_CACHE_PREFIX = 'trail-guide-photo:v5:';
 const cache = new Map<string, Promise<TrailGuidePhoto | null>>();
 
 function fallbackPhotoForPlace(place: TrailGuidePlace): TrailGuidePhoto {
@@ -180,6 +181,9 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
   if (existing) return existing;
 
   const pending = (async () => {
+    const google = await resolveGoogleTrailGuidePlacePhoto(place);
+    if (google) return google;
+
     const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
     if (curated && await preloadPhoto(curated)) return curated;
 
@@ -191,6 +195,7 @@ export async function resolveTrailGuidePlacePhoto(place: TrailGuidePlace) {
       await persistPhoto(place.id, fresh);
       return fresh;
     }
+
     return null;
   })();
 
@@ -213,11 +218,18 @@ export function useTrailGuidePlacePhoto(place?: TrailGuidePlace) {
 
     const fallback = fallbackPhotoForPlace(place);
     const curated = CURATED_TRAIL_GUIDE_PHOTOS[place.id];
-    setPhoto(curated ?? fallback);
+    const first = curated ?? fallback;
+    setPhoto(first);
 
-    void resolveTrailGuidePlacePhoto(place).then((resolved) => {
-      if (!active) return;
-      setPhoto(resolved ?? fallback);
+    void preloadPhoto(first).then((loaded) => {
+      if (active && !loaded && first.url !== fallback.url) setPhoto(fallback);
+    });
+
+    void resolveTrailGuidePlacePhoto(place).then(async (next) => {
+      if (!active || !next) return;
+      if (next.url === first.url) return;
+      const loaded = await preloadPhoto(next);
+      if (active) setPhoto(loaded ? next : fallback);
     });
 
     return () => { active = false; };
