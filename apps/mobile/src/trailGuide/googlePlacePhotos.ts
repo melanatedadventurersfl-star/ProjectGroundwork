@@ -4,14 +4,17 @@ import { supabase } from '../lib/supabase';
 import type { TrailGuidePlace } from './catalog';
 import type { TrailGuidePhoto } from './placePhotos';
 
+type GooglePlacePhotoItem = {
+  url?: string;
+  sourceUrl?: string;
+  title?: string;
+  credit?: string;
+  attributionUri?: string | null;
+};
+
 type GooglePlacePhotoResponse = {
-  photo?: {
-    url?: string;
-    sourceUrl?: string;
-    title?: string;
-    credit?: string;
-    attributionUri?: string | null;
-  } | null;
+  photo?: GooglePlacePhotoItem | null;
+  photos?: GooglePlacePhotoItem[];
   placeId?: string | null;
   mapsUrl?: string | null;
   formattedAddress?: string | null;
@@ -19,6 +22,7 @@ type GooglePlacePhotoResponse = {
 };
 
 const sessionCache = new Map<string, Promise<TrailGuidePhoto | null>>();
+const gallerySessionCache = new Map<string, Promise<TrailGuidePhoto[]>>();
 
 async function preload(url: string) {
   try {
@@ -28,27 +32,53 @@ async function preload(url: string) {
   }
 }
 
-export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<TrailGuidePhoto | null> {
-  const existing = sessionCache.get(place.id);
+function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, mapsUrl?: string | null): TrailGuidePhoto | null {
+  if (!item.url) return null;
+  return {
+    url: item.url,
+    sourceUrl: item.sourceUrl || mapsUrl || 'https://maps.google.com',
+    title: item.title || place.name,
+    credit: item.credit || 'Google Maps',
+  };
+}
+
+export async function resolveGoogleTrailGuidePlaceGallery(place: TrailGuidePlace): Promise<TrailGuidePhoto[]> {
+  const existing = gallerySessionCache.get(place.id);
   if (existing) return existing;
 
   const pending = (async () => {
     try {
       const { data, error } = await supabase.functions.invoke<GooglePlacePhotoResponse>('place-photo', {
-        body: { name: place.name, area: place.area, state: 'FL' },
+        body: { name: place.name, area: place.area, state: 'FL', includeGallery: true },
       });
-      if (error || data?.error || !data?.photo?.url) return null;
-      const loaded = await preload(data.photo.url);
-      if (!loaded) return null;
-      return {
-        url: data.photo.url,
-        sourceUrl: data.photo.sourceUrl || data.mapsUrl || 'https://maps.google.com',
-        title: data.photo.title || place.name,
-        credit: data.photo.credit || 'Google Maps',
-      } satisfies TrailGuidePhoto;
+      if (error || data?.error) return [];
+
+      const items = Array.isArray(data?.photos) ? data.photos : data?.photo ? [data.photo] : [];
+      const candidates = items
+        .map((item) => toTrailGuidePhoto(item, place, data?.mapsUrl))
+        .filter((photo): photo is TrailGuidePhoto => Boolean(photo));
+
+      const loaded = await Promise.all(candidates.map(async (photo) => await preload(photo.url) ? photo : null));
+      const valid = loaded.filter((photo): photo is TrailGuidePhoto => Boolean(photo));
+      return valid.filter((photo, index, all) => all.findIndex((candidate) => candidate.url === photo.url) === index);
     } catch {
-      return null;
+      return [];
     }
+  })();
+
+  gallerySessionCache.set(place.id, pending);
+  const result = await pending;
+  if (result.length === 0) gallerySessionCache.delete(place.id);
+  return result;
+}
+
+export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<TrailGuidePhoto | null> {
+  const existing = sessionCache.get(place.id);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    const gallery = await resolveGoogleTrailGuidePlaceGallery(place);
+    return gallery[0] ?? null;
   })();
 
   sessionCache.set(place.id, pending);
@@ -59,4 +89,5 @@ export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace):
 
 export function clearGoogleTrailGuidePhotoSessionCache() {
   sessionCache.clear();
+  gallerySessionCache.clear();
 }
