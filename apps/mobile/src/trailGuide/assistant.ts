@@ -125,8 +125,8 @@ function placeReason(place: CompactPlace, intent: FallbackIntent, index: number)
 
 function buildFallbackPlan(picks: CompactPlace[]): MemberGuideDayStep[] {
   if (picks.length === 0) return [];
-  const first = picks[0];
-  const second = picks[1] ?? picks[0];
+  const first = picks[0]!;
+  const second = picks[1] ?? first;
   return [
     {
       time: '10:00 AM',
