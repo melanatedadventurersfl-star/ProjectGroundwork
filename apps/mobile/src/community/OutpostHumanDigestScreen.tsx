@@ -1,7 +1,7 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { distanceMiles, pointForCity } from '../explore/location';
@@ -199,18 +199,52 @@ function ComingUpCard({ event, onRsvp, fullWidth = false }: { event: LocalEvent;
   );
 }
 
-function CommunityRow({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+function OfficialCommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const cover = communityCover(group);
   return (
-    <Pressable style={({ pressed }) => [styles.communityRow, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
-      <GroupImage group={group} size={58} />
-      <View style={styles.flex}>
-        <View style={styles.nameLine}><Text style={styles.communityName} numberOfLines={1}>{group.name}</Text>{isOfficialCommunity(group) ? <Ionicons name="checkmark-circle" size={14} color={GOLD} /> : null}</View>
-        {group.description ? <Text style={styles.communityDescription} numberOfLines={2}>{group.description}</Text> : null}
-        <Text style={styles.communityMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+    <Pressable style={({ pressed }) => [styles.officialCommunityCard, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
+      {cover ? <Image source={{ uri: cover }} style={styles.officialCommunityImage} /> : <View style={[styles.officialCommunityImage, styles.officialCommunityFallback]}><Text style={styles.officialCommunityInitials}>{initials(group.name)}</Text></View>}
+      <View style={styles.officialCommunityShade} />
+      <View style={styles.officialCommunityBadge}><Ionicons name="checkmark" size={10} color="#101510" /><Text style={styles.officialCommunityBadgeText}>Official</Text></View>
+      {group.is_member ? <View style={styles.officialJoinedBadge}><Ionicons name="checkmark" size={10} color={TEXT} /><Text style={styles.officialJoinedBadgeText}>Joined</Text></View> : null}
+      <View style={styles.officialCommunityCopy}>
+        <Text style={styles.officialCommunityTitle} numberOfLines={2}>{group.name}</Text>
+        <View style={styles.officialCommunityFooter}>
+          <Ionicons name="people-outline" size={13} color="#EEF2EF" />
+          <Text style={styles.officialCommunityMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+          {!group.is_member ? <Text style={styles.officialCommunityJoin}>{joining ? 'Joining…' : 'Join'}</Text> : null}
+        </View>
       </View>
-      {group.is_member ? <Ionicons name="chevron-forward" size={18} color={MUTED} /> : (
-        <Pressable disabled={joining} style={[styles.joinButton, joining && styles.buttonDisabled]} onPress={(event) => { event.stopPropagation(); onJoin(group); }}><Text style={styles.joinButtonText}>{joining ? 'Joining…' : 'Join'}</Text></Pressable>
-      )}
+    </Pressable>
+  );
+}
+
+function JoinedCommunityRow({ group, now, latestPost }: { group: CommunityGroup; now: number; latestPost?: CommunityPost }) {
+  const activity = latestPost ? `${latestPost.author_name} posted · ${relativeTime(latestPost.created_at, now)}` : `${group.member_count} member${group.member_count === 1 ? '' : 's'}`;
+  return (
+    <Pressable style={({ pressed }) => [styles.joinedCommunityRow, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/groups/[id]', params: { id: group.id } })}>
+      <GroupImage group={group} size={54} />
+      <View style={styles.flex}>
+        <View style={styles.nameLine}><Text style={styles.joinedCommunityName} numberOfLines={1}>{group.name}</Text>{isOfficialCommunity(group) ? <Ionicons name="checkmark-circle" size={14} color={GOLD} /> : null}</View>
+        <Text style={[styles.joinedCommunityActivity, latestPost && styles.joinedCommunityActivityLive]} numberOfLines={1}>{activity}</Text>
+      </View>
+      {latestPost ? <View style={styles.activityDot} /> : null}
+      <Ionicons name="chevron-forward" size={18} color={GOLD} />
+    </Pressable>
+  );
+}
+
+function DiscoverCommunityCard({ group, joining, onJoin }: { group: CommunityGroup; joining: boolean; onJoin: (group: CommunityGroup) => void }) {
+  const cover = communityCover(group);
+  return (
+    <Pressable style={({ pressed }) => [styles.discoverCommunityCard, pressed && styles.pressed]} onPress={() => group.is_member ? router.push({ pathname: '/groups/[id]', params: { id: group.id } }) : onJoin(group)}>
+      {cover ? <Image source={{ uri: cover }} style={styles.discoverCommunityImage} /> : <View style={[styles.discoverCommunityImage, styles.discoverCommunityFallback]}><Text style={styles.discoverCommunityInitials}>{initials(group.name)}</Text></View>}
+      <View style={styles.discoverCommunityShade} />
+      <View style={styles.discoverCommunityCopy}>
+        <Text style={styles.discoverCommunityTitle} numberOfLines={2}>{group.name}</Text>
+        <Text style={styles.discoverCommunityMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
+      </View>
+      {!group.is_member ? <View style={styles.discoverJoinPill}><Text style={styles.discoverJoinText}>{joining ? 'Joining…' : 'Join'}</Text></View> : null}
     </Pressable>
   );
 }
@@ -229,6 +263,7 @@ export default function OutpostHumanDigestScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [errors, setErrors] = useState<LoadErrors>({});
+  const [communityQuery, setCommunityQuery] = useState('');
 
   const loadAll = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true); else setLoading(true);
@@ -311,6 +346,13 @@ export default function OutpostHumanDigestScreen() {
     return (relevant.length ? relevant : sorted).slice(0, 4);
   }, [digestFilter, events, isNearbyEvent, joinedGroups]);
 
+  const latestPostByGroup = useMemo(() => {
+    const result = new Map<string, CommunityPost>();
+    const ordered = feed.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    for (const post of ordered) if (post.group_id && !result.has(post.group_id)) result.set(post.group_id, post);
+    return result;
+  }, [feed]);
+
   const handleJoin = useCallback(async (group: CommunityGroup) => {
     if (joiningId) return;
     setJoiningId(group.id);
@@ -389,13 +431,60 @@ export default function OutpostHumanDigestScreen() {
     );
   };
 
-  const renderCommunities = () => (
-    <View style={styles.sectionCard}>
-      <SectionHeader title="Communities" detail="Find your interests, local crews, and official Go Melanated spaces." />
-      {errors.groups ? <Text style={styles.inlineError}>{errors.groups}</Text> : officialGroups.map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}
-      {groups.filter((group) => !isOfficialCommunity(group)).map((group) => <CommunityRow key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}
-    </View>
-  );
+  const renderCommunities = () => {
+    const query = communityQuery.trim().toLowerCase();
+    const matches = (group: CommunityGroup) => !query || `${group.name} ${group.description ?? ''} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(query);
+    const filteredOfficial = officialGroups.filter(matches);
+    const filteredJoined = joinedGroups.filter(matches);
+    const discoverCandidates = groups.filter((group) => !group.is_member && matches(group));
+    const discover = [
+      ...discoverCandidates.filter((group) => !isOfficialCommunity(group)),
+      ...discoverCandidates.filter(isOfficialCommunity),
+    ].slice(0, 8);
+
+    return (
+      <View style={styles.communitiesPage}>
+        <View style={styles.communitySearch}>
+          <Ionicons name="search-outline" size={19} color={MUTED} />
+          <TextInput
+            value={communityQuery}
+            onChangeText={setCommunityQuery}
+            placeholder="Search communities"
+            placeholderTextColor="#7F8B84"
+            style={styles.communitySearchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {communityQuery ? <Pressable onPress={() => setCommunityQuery('')} hitSlop={10}><Ionicons name="close-circle" size={18} color={MUTED} /></Pressable> : null}
+        </View>
+
+        <View style={styles.communitySection}>
+          <SectionHeader title="Official Communities" detail="Go Melanated spaces built around how you get outside." />
+          {errors.groups ? <Text style={styles.inlineError}>{errors.groups}</Text> : filteredOfficial.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.officialCommunityRail}>
+              {filteredOfficial.map((group) => <OfficialCommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}
+            </ScrollView>
+          ) : <Text style={styles.emptyText}>No official communities match your search.</Text>}
+        </View>
+
+        <View style={styles.communitySection}>
+          <SectionHeader title="Your Communities" detail={filteredJoined.length ? `${filteredJoined.length} joined` : undefined} />
+          {filteredJoined.length ? (
+            <View style={styles.joinedCommunityList}>{filteredJoined.map((group) => <JoinedCommunityRow key={group.id} group={group} now={loadedAt} latestPost={latestPostByGroup.get(group.id)} />)}</View>
+          ) : <Text style={styles.emptyText}>{query ? 'None of your communities match this search.' : 'Join a community and it will show up here.'}</Text>}
+        </View>
+
+        <View style={styles.communitySection}>
+          <SectionHeader title="Discover More Communities" detail="More ways to find your people and get outside." />
+          {discover.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoverCommunityRail}>
+              {discover.map((group) => <DiscoverCommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}
+            </ScrollView>
+          ) : <Text style={styles.emptyText}>{query ? 'No more communities match your search.' : 'You’ve joined everything available right now.'}</Text>}
+        </View>
+      </View>
+    );
+  };
 
   const renderOutings = () => (
     <View style={styles.sectionCard}>
@@ -406,7 +495,7 @@ export default function OutpostHumanDigestScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadAll(true)} tintColor={GOLD} colors={[GOLD]} />}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadAll(true)} tintColor={GOLD} colors={[GOLD]} />} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={styles.flex}><Text style={styles.title}>Outpost</Text><View style={styles.locationLine}><Ionicons name="location-outline" size={16} color={GREEN} /><Text style={styles.locationText}>{homeCity ? locationLabel(homeCity, homeState) : 'Your area'}</Text></View></View>
           <Pressable style={styles.headerAction} onPress={() => router.push('/notifications' as never)} accessibilityLabel="Open notifications"><Ionicons name="notifications-outline" size={21} color={TEXT} />{notifications.some((item) => !item.read_at) ? <View style={styles.unreadDot} /> : null}</Pressable>
@@ -498,13 +587,42 @@ const styles = StyleSheet.create({
   engagementText: { color: MUTED, fontSize: 12, marginRight: 9 },
   groupFallback: { backgroundColor: '#26352B', borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
   groupFallbackText: { color: GOLD, fontSize: 16, fontWeight: '900' },
-  communityRow: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
-  communityName: { color: TEXT, fontSize: 16, fontWeight: '800', flexShrink: 1 },
-  communityDescription: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 2 },
-  communityMeta: { color: GREEN, fontSize: 11, marginTop: 4, fontWeight: '700' },
-  joinButton: { minWidth: 56, minHeight: 36, borderRadius: 18, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  joinButtonText: { color: '#101510', fontSize: 12, fontWeight: '900' },
-  buttonDisabled: { opacity: 0.55 },
+  communitiesPage: { paddingTop: 4 },
+  communitySearch: { minHeight: 46, borderRadius: 15, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_SOFT, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, marginTop: 4, marginBottom: 6 },
+  communitySearchInput: { flex: 1, color: TEXT, fontSize: 14, paddingVertical: 10 },
+  communitySection: { marginTop: 20 },
+  officialCommunityRail: { gap: 12, paddingRight: 6 },
+  officialCommunityCard: { width: 214, height: 154, borderRadius: 20, overflow: 'hidden', backgroundColor: CARD, borderWidth: 1, borderColor: '#405046' },
+  officialCommunityImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  officialCommunityFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#26352B' },
+  officialCommunityInitials: { color: GOLD, fontSize: 30, fontWeight: '900' },
+  officialCommunityShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.38)' },
+  officialCommunityBadge: { position: 'absolute', left: 10, top: 10, borderRadius: 999, backgroundColor: GOLD, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4 },
+  officialCommunityBadgeText: { color: '#101510', fontSize: 9, fontWeight: '900' },
+  officialJoinedBadge: { position: 'absolute', right: 10, top: 10, borderRadius: 999, backgroundColor: 'rgba(17,28,22,0.86)', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4 },
+  officialJoinedBadgeText: { color: TEXT, fontSize: 9, fontWeight: '900' },
+  officialCommunityCopy: { position: 'absolute', left: 12, right: 12, bottom: 11 },
+  officialCommunityTitle: { color: '#FFFDF6', fontSize: 18, lineHeight: 22, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  officialCommunityFooter: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7 },
+  officialCommunityMeta: { color: '#EEF2EF', fontSize: 11, fontWeight: '700' },
+  officialCommunityJoin: { marginLeft: 'auto', color: '#FFE49A', fontSize: 11, fontWeight: '900' },
+  joinedCommunityList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
+  joinedCommunityRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
+  joinedCommunityName: { color: TEXT, fontSize: 16, fontWeight: '900', flexShrink: 1 },
+  joinedCommunityActivity: { color: MUTED, fontSize: 11.5, marginTop: 4, fontWeight: '650' },
+  joinedCommunityActivityLive: { color: GREEN, fontWeight: '800' },
+  activityDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: GREEN },
+  discoverCommunityRail: { gap: 12, paddingRight: 6 },
+  discoverCommunityCard: { width: 176, height: 132, borderRadius: 18, overflow: 'hidden', backgroundColor: CARD, borderWidth: 1, borderColor: BORDER },
+  discoverCommunityImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  discoverCommunityFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#26352B' },
+  discoverCommunityInitials: { color: GOLD, fontSize: 26, fontWeight: '900' },
+  discoverCommunityShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,10,7,0.34)' },
+  discoverCommunityCopy: { position: 'absolute', left: 11, right: 11, bottom: 10 },
+  discoverCommunityTitle: { color: '#FFFDF6', fontSize: 16, lineHeight: 20, fontWeight: '900' },
+  discoverCommunityMeta: { color: '#E1E8E3', fontSize: 10.5, marginTop: 4, fontWeight: '700' },
+  discoverJoinPill: { position: 'absolute', right: 9, top: 9, borderRadius: 999, backgroundColor: GOLD, paddingHorizontal: 9, paddingVertical: 5 },
+  discoverJoinText: { color: '#101510', fontSize: 9.5, fontWeight: '900' },
   discoveryCard: { marginTop: 6, padding: 20, backgroundColor: CARD_SOFT, borderWidth: 1, borderColor: BORDER, borderRadius: 20 },
   discoveryIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#253124', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   discoveryEyebrow: { color: GREEN, fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
