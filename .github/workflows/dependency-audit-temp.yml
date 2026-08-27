@@ -6,15 +6,17 @@ on:
       - chore/dependency-security-audit
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  audit-and-refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out audit branch
         uses: actions/checkout@v7
+        with:
+          ref: chore/dependency-security-audit
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -26,32 +28,73 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
-      - name: Capture dependency audit
+      - name: Record baseline audit count
         shell: bash
         run: |
           set +e
-          npm audit --json > /tmp/npm-audit.json
-          AUDIT_EXIT=$?
+          npm audit --json > /tmp/audit-before.json
           set -e
-          node <<'NODE'
+          node <<'NODE' >> "$GITHUB_ENV"
           const fs = require('fs');
-          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
-          const vulns = Object.entries(audit.vulnerabilities || {});
-          const bySeverity = vulns.reduce((acc, [, value]) => {
-            acc[value.severity] = (acc[value.severity] || 0) + 1;
-            return acc;
-          }, {});
-          console.log('AUDIT_SUMMARY', JSON.stringify({ metadata: audit.metadata?.vulnerabilities, packageVulnerabilities: bySeverity }));
-          for (const [name, value] of vulns) {
+          const audit = JSON.parse(fs.readFileSync('/tmp/audit-before.json', 'utf8'));
+          console.log(`AUDIT_BEFORE=${audit.metadata?.vulnerabilities?.total ?? 0}`);
+          NODE
+
+      - name: Refresh lockfile within declared version ranges
+        run: npm update --package-lock-only --workspaces --include-workspace-root
+
+      - name: Reinstall refreshed dependency graph
+        run: npm ci
+
+      - name: Audit refreshed graph
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > /tmp/audit-after.json
+          set -e
+          node <<'NODE' >> "$GITHUB_ENV"
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/audit-after.json', 'utf8'));
+          const counts = audit.metadata?.vulnerabilities ?? {};
+          console.log(`AUDIT_AFTER=${counts.total ?? 0}`);
+          console.log(`AUDIT_AFTER_HIGH=${counts.high ?? 0}`);
+          console.log(`AUDIT_AFTER_CRITICAL=${counts.critical ?? 0}`);
+          console.log('Refreshed audit:', counts);
+          for (const [name, value] of Object.entries(audit.vulnerabilities || {})) {
             const via = (value.via || []).map((item) => typeof item === 'string' ? item : `${item.source}:${item.title}`).join(' | ');
             const fix = value.fixAvailable === true ? 'available' : value.fixAvailable === false ? 'none' : JSON.stringify(value.fixAvailable);
             console.log(`VULN ${name} severity=${value.severity} direct=${value.isDirect} range=${value.range} fix=${fix} via=${via}`);
           }
           NODE
-          echo "npm_audit_exit=${AUDIT_EXIT}"
 
-      - name: Trace deprecated uuid dependency
-        run: npm ls uuid --all || true
+      - name: Require security improvement
+        run: |
+          echo "audit_before=${AUDIT_BEFORE}"
+          echo "audit_after=${AUDIT_AFTER}"
+          test "${AUDIT_AFTER_CRITICAL}" = "0"
+          test "${AUDIT_AFTER}" -lt "${AUDIT_BEFORE}"
 
-      - name: Show outdated direct dependencies
-        run: npm outdated --json || true
+      - name: Validate mobile after dependency refresh
+        run: npm run verify:mobile
+        env:
+          EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_PROFILE: dependency-audit
+          EXPO_PUBLIC_BUILD_SOURCE: github-actions
+
+      - name: Commit safe lockfile refresh and remove temporary workflow
+        run: |
+          git restore -- apps/mobile/assets/ma-app-icon.png
+          rm .github/workflows/dependency-audit-temp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json .github/workflows/dependency-audit-temp.yml
+          if git diff --cached --quiet; then
+            echo "No dependency changes to commit."
+            exit 0
+          fi
+          git commit -m "Refresh dependencies within supported ranges"
+          git push origin HEAD:chore/dependency-security-audit
