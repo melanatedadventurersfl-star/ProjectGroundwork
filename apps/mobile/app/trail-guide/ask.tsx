@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -15,11 +15,11 @@ import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeatherByQuery } from '../../src/weather/api';
 
 const QUICK_PROMPTS = [
-  'Easy day near water',
-  'Build me a half-day adventure',
-  'What did I do last summer?',
-  'Find a verified community-owned food stop',
-];
+  { title: 'Easy day near water', subtitle: 'Relaxed places nearby', icon: 'water' },
+  { title: 'Build me an adventure', subtitle: 'Tell Go how much time you have', icon: 'trail' },
+  { title: 'What should I do this weekend?', subtitle: 'Ideas based on your area', icon: 'sun' },
+  { title: 'Community-owned nearby', subtitle: 'Add a local stop to your adventure', icon: 'community' },
+] as const;
 
 const MEMORY_INTENT = /\b(remember|history|my trail|last time|went|visited|camped|hiked|before|past|last summer)\b/i;
 
@@ -39,6 +39,13 @@ function exchangeConversation(exchanges: Exchange[]): MemberGuideConversationTur
   });
 }
 
+function promptIcon(icon: typeof QUICK_PROMPTS[number]['icon']) {
+  if (icon === 'water') return '≈';
+  if (icon === 'sun') return '☀';
+  if (icon === 'community') return '◎';
+  return '⌁';
+}
+
 export default function AskGoScreen() {
   const { locationLabel } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
@@ -50,7 +57,7 @@ export default function AskGoScreen() {
 
   const busy = exchanges.some((exchange) => exchange.loading);
   const latest = exchanges[exchanges.length - 1] ?? null;
-  const starterPrompts = useMemo(() => QUICK_PROMPTS.slice(0, 4), []);
+  const starterPrompts = useMemo(() => QUICK_PROMPTS, []);
 
   function scrollToBottom() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
@@ -91,51 +98,91 @@ export default function AskGoScreen() {
     }
   }
 
+  function renderPlace(item: MemberGuideResult['places'][number], index: number) {
+    const place = findTrailGuidePlace(item.id);
+    if (!place) return null;
+    const isBest = index === 0;
+
+    if (isBest) {
+      return (
+        <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.heroCard}>
+          <Image source={{ uri: place.image }} style={styles.heroImage} resizeMode="cover" />
+          <View style={styles.heroShade} />
+          <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>BEST MATCH</Text></View>
+          <View style={styles.heroContent}>
+            <Text style={styles.heroTitle}>{place.name}</Text>
+            <Text style={styles.heroMeta}>{place.area} · {place.category}</Text>
+            <View style={styles.tagRow}>
+              <View style={styles.tag}><Text style={styles.tagText}>Easy</Text></View>
+              <View style={styles.tag}><Text style={styles.tagText}>{place.category}</Text></View>
+            </View>
+            <Text style={styles.heroReason} numberOfLines={3}>{item.reason}</Text>
+            <View style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>View adventure</Text>
+              <AppIcon name="chevron-forward" color="#172017" size={18} />
+            </View>
+          </View>
+        </Pressable>
+      );
+    }
+
+    return (
+      <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.compactCard}>
+        <Image source={{ uri: place.image }} style={styles.compactImage} resizeMode="cover" />
+        <View style={styles.compactBody}>
+          <Text style={styles.compactTitle} numberOfLines={2}>{place.name}</Text>
+          <Text style={styles.compactMeta}>{place.area}</Text>
+          <Text style={styles.compactReason} numberOfLines={2}>{item.reason}</Text>
+        </View>
+      </Pressable>
+    );
+  }
+
   function renderResult(exchange: Exchange) {
     const result = exchange.result;
     if (!result) return null;
     const wantsMemory = MEMORY_INTENT.test(exchange.query);
+    const primary = result.places[0];
+    const alternates = result.places.slice(1, 3);
 
     return (
-      <View style={styles.goTurn}>
-        <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
-        <View style={styles.goContent}>
+      <View style={styles.resultBlock}>
+        <View style={styles.goTurn}>
+          <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
           <View style={styles.goBubble}>
             <Text style={styles.goAnswer}>{result.answer}</Text>
           </View>
+        </View>
 
-          {result.source === 'fallback' ? (
-            <View style={styles.limitedCard}>
-              <AppIcon name="about" color="#D7B45A" size={15} />
-              <Text style={styles.limitedText}>I’m using simpler Trail Guide matching right now. You can still open a place or keep refining your request.</Text>
+        {result.source === 'fallback' ? (
+          <Pressable onPress={() => void ask(`Widen the search around ${cityName}`)} style={styles.matchAssist}>
+            <AppIcon name="search" color="#D7B45A" size={15} />
+            <Text style={styles.matchAssistText}>These are the closest matches I found. Tap to widen the search.</Text>
+          </Pressable>
+        ) : null}
+
+        {primary ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>GO'S PICK FOR YOU ✦</Text>
+            {renderPlace(primary, 0)}
+          </View>
+        ) : null}
+
+        {alternates.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionEyebrow}>OTHER GOOD MATCHES</Text>
+              <Text style={styles.sectionLink}>Show more</Text>
             </View>
-          ) : null}
+            <View style={styles.altGrid}>
+              {alternates.map((item, index) => <View key={item.id} style={styles.altCell}>{renderPlace(item, index + 1)}</View>)}
+            </View>
+          </View>
+        ) : null}
 
-          {result.places.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeRail}>
-              {result.places.map((item, index) => {
-                const place = findTrailGuidePlace(item.id);
-                if (!place) return null;
-                return (
-                  <Pressable key={item.id} onPress={() => router.push(`/trail-guide/${item.id}` as never)} style={styles.placeCard}>
-                    <View style={styles.matchRow}>
-                      {index === 0 ? <Text style={styles.bestMatch}>BEST MATCH</Text> : <Text style={styles.pickLabel}>TRAIL GUIDE PICK</Text>}
-                      <Text style={styles.chevron}>›</Text>
-                    </View>
-                    <Text style={styles.placeTitle}>{place.name}</Text>
-                    <Text style={styles.placeMeta}>{place.area} · {place.category}</Text>
-                    <Text style={styles.placeReason}>{item.reason}</Text>
-                    <View style={styles.openRow}>
-                      <AppIcon name="trail" color="#D7B45A" size={15} />
-                      <Text style={styles.openText}>Open details</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          ) : null}
-
-          {result.communityStops.length > 0 ? (
+        {result.communityStops.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>COMMUNITY-OWNED STOPS</Text>
             <View style={styles.stackGap}>
               {result.communityStops.map((stop) => (
                 <View key={stop.placeId} style={styles.communityCard}>
@@ -149,13 +196,18 @@ export default function AskGoScreen() {
                 </View>
               ))}
             </View>
-          ) : null}
+          </View>
+        ) : null}
 
-          {result.dayPlan.length > 0 ? (
+        {result.dayPlan.length > 0 ? (
+          <View style={styles.section}>
             <View style={styles.planCard}>
               <View style={styles.planHeader}>
-                <Text style={styles.planHeaderText}>Your plan</Text>
-                <AppIcon name="calendar" color="#D7B45A" size={17} />
+                <View>
+                  <Text style={styles.planEyebrow}>YOUR ADVENTURE PLAN</Text>
+                  <Text style={styles.planHeaderText}>Half-day adventure</Text>
+                </View>
+                <AppIcon name="bookmark" color="#D7B45A" size={18} />
               </View>
               {result.dayPlan.map((step, index) => (
                 <View key={`${step.time}-${step.title}-${index}`} style={styles.planRow}>
@@ -163,39 +215,54 @@ export default function AskGoScreen() {
                     <View style={styles.timelineDot} />
                     {index < result.dayPlan.length - 1 ? <View style={styles.timelineLine} /> : null}
                   </View>
+                  <Text style={styles.planTime}>{step.time || 'Flexible'}</Text>
                   <View style={styles.flex}>
-                    <Text style={styles.planTime}>{step.time || 'Flexible'}</Text>
                     <Text style={styles.planTitle}>{step.title}</Text>
                     <Text style={styles.planNote}>{step.note}</Text>
                   </View>
                 </View>
               ))}
+              <View style={styles.planActions}>
+                <Pressable style={styles.secondaryButton} onPress={() => void ask('Invite TrailMates to this plan')}>
+                  <AppIcon name="trail-family" color="#F4EBD4" size={16} />
+                  <Text style={styles.secondaryButtonText}>Invite TrailMates</Text>
+                </Pressable>
+                <Pressable style={styles.primaryPlanButton} onPress={() => void ask('Schedule this outing')}>
+                  <AppIcon name="calendar" color="#172017" size={16} />
+                  <Text style={styles.primaryPlanButtonText}>Schedule outing</Text>
+                </Pressable>
+              </View>
             </View>
-          ) : null}
+          </View>
+        ) : null}
 
-          {wantsMemory && result.memoryHits.length > 0 ? (
+        {wantsMemory && result.memoryHits.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>FROM YOUR TRAIL</Text>
             <View style={styles.stackGap}>
               {result.memoryHits.map((memory) => (
                 <View key={memory.adventureId} style={styles.memoryCard}>
-                  <Text style={styles.memoryLabel}>FROM YOUR TRAIL</Text>
                   <Text style={styles.placeTitle}>{memory.title}</Text>
                   <Text style={styles.placeMeta}>{new Date(memory.experiencedAt).toLocaleDateString()}</Text>
                   <Text style={styles.placeReason}>{memory.note}</Text>
                 </View>
               ))}
             </View>
-          ) : null}
+          </View>
+        ) : null}
 
-          {result.followUps.length > 0 ? (
-            <View style={styles.followWrap}>
+        {result.followUps.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>REFINE YOUR RESULTS</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followRow}>
               {result.followUps.map((follow) => (
                 <Pressable key={follow} disabled={busy} onPress={() => void ask(follow)} style={styles.followChip}>
                   <Text style={styles.followText}>{follow}</Text>
                 </Pressable>
               ))}
-            </View>
-          ) : null}
-        </View>
+            </ScrollView>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -213,7 +280,10 @@ export default function AskGoScreen() {
             <Text style={styles.headerSubtitle}>Your outdoor guide</Text>
           </View>
         </View>
-        <View style={styles.headerButton}><AppIcon name="time" color="#9BA69F" size={20} /></View>
+        <View style={styles.historyPill}>
+          <AppIcon name="time" color="#C3CBC5" size={16} />
+          <Text style={styles.historyText}>History</Text>
+        </View>
       </View>
 
       <ScrollView
@@ -225,33 +295,61 @@ export default function AskGoScreen() {
       >
         {exchanges.length === 0 ? (
           <View style={styles.emptyState}>
-            <View style={styles.goTurn}>
-              <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
-              <View style={styles.goContent}>
-                <View style={styles.goBubble}>
-                  <Text style={styles.greeting}>Hey TrailMate! 👋</Text>
-                  <Text style={styles.goAnswer}>I’m Go. Tell me what kind of adventure you’re in the mood for and we can shape it together.</Text>
+            <View style={styles.introRow}>
+              <View style={styles.largeGoAvatar}><Text style={styles.largeGoAvatarText}>✦</Text></View>
+              <View style={styles.introCopy}>
+                <Text style={styles.greeting}>Hey TrailMate! 👋</Text>
+                <Text style={styles.introText}>Tell me what you're in the mood for and I'll find the perfect adventure.</Text>
+              </View>
+            </View>
+
+            <Text style={styles.sectionEyebrow}>POPULAR STARTS</Text>
+            <View style={styles.promptGrid}>
+              {starterPrompts.map((prompt) => (
+                <Pressable key={prompt.title} onPress={() => void ask(prompt.title)} style={styles.promptCard}>
+                  <Text style={styles.promptIcon}>{promptIcon(prompt.icon)}</Text>
+                  <View style={styles.promptTextWrap}>
+                    <Text style={styles.promptTitle}>{prompt.title}</Text>
+                    <Text style={styles.promptSubtitle}>{prompt.subtitle}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.sectionEyebrow}>YOUR CONTEXT</Text>
+            <View style={styles.contextRow}>
+              <View style={styles.contextCard}>
+                <AppIcon name="location" color="#83B779" size={17} />
+                <View>
+                  <Text style={styles.contextTitle}>{cityName}, FL</Text>
+                  <Text style={styles.contextAction}>Change</Text>
+                </View>
+              </View>
+              <View style={styles.contextCard}>
+                <AppIcon name="calendar" color="#83B779" size={17} />
+                <View>
+                  <Text style={styles.contextTitle}>This weekend</Text>
+                  <Text style={styles.contextAction}>Change</Text>
                 </View>
               </View>
             </View>
 
-            <Text style={styles.starterLabel}>TRY ONE OF THESE</Text>
-            <View style={styles.starterWrap}>
-              {starterPrompts.map((prompt) => (
-                <Pressable key={prompt} onPress={() => void ask(prompt)} style={styles.starterChip}>
-                  <Text style={styles.starterText}>{prompt}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <Text style={styles.sectionEyebrow}>RECENT SEARCHES</Text>
+            <Pressable onPress={() => void ask('Easy day near water')} style={styles.recentCard}>
+              <View style={styles.recentIcon}><AppIcon name="trail" color="#D7B45A" size={19} /></View>
+              <View style={styles.flex}>
+                <Text style={styles.recentTitle}>Easy day near water</Text>
+                <Text style={styles.recentMeta}>Try one of Go's most useful starting points</Text>
+              </View>
+              <AppIcon name="chevron-forward" color="#77827B" size={18} />
+            </Pressable>
           </View>
         ) : null}
 
         {exchanges.map((exchange) => (
           <View key={exchange.id} style={styles.exchange}>
             <View style={styles.userRow}>
-              <View style={styles.userBubble}>
-                <Text style={styles.userText}>{exchange.query}</Text>
-              </View>
+              <View style={styles.userBubble}><Text style={styles.userText}>{exchange.query}</Text></View>
             </View>
 
             {exchange.loading ? (
@@ -259,7 +357,7 @@ export default function AskGoScreen() {
                 <View style={styles.goAvatar}><Text style={styles.goAvatarText}>✦</Text></View>
                 <View style={styles.typingBubble}>
                   <ActivityIndicator color="#D7B45A" size="small" />
-                  <Text style={styles.typingText}>Thinking through your adventure…</Text>
+                  <Text style={styles.typingText}>Building your best options…</Text>
                 </View>
               </View>
             ) : null}
@@ -278,15 +376,17 @@ export default function AskGoScreen() {
           </View>
         ))}
 
-        {latest?.result ? <Text style={styles.disclaimer}>Go helps you plan, not certify conditions. Confirm current hours, closures, permits, accessibility, weather, and water conditions before leaving.</Text> : null}
+        {latest?.result ? <Text style={styles.disclaimer}>Confirm current hours, closures, permits, accessibility, weather, and water conditions before leaving.</Text> : null}
+      </ScrollView>
 
+      <View style={styles.composerDock}>
         <View style={styles.composer}>
           <TextInput
             value={query}
             onChangeText={setQuery}
             multiline
             maxLength={2000}
-            placeholder={exchanges.length ? 'Message Go…' : `Ask about ${cityName}…`}
+            placeholder={exchanges.length ? 'Ask Go anything…' : `Ask Go about ${cityName}…`}
             placeholderTextColor="#77827B"
             style={styles.composerInput}
           />
@@ -295,86 +395,127 @@ export default function AskGoScreen() {
             onPress={() => void ask()}
             style={[styles.sendButton, (busy || query.trim().length < 3) && styles.sendDisabled]}
           >
-            <Text style={styles.sendText}>↑</Text>
+            <Text style={styles.sendText}>➤</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0B100D' },
-  header: { minHeight: 66, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#28332D', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerButton: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: '#2E3933', alignItems: 'center', justifyContent: 'center' },
-  headerIdentity: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  headerSpark: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#3A3117', borderWidth: 1, borderColor: '#806723', alignItems: 'center', justifyContent: 'center' },
-  headerSparkText: { color: '#F1CD6B', fontSize: 16, fontWeight: '900' },
-  headerTitle: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' },
-  headerSubtitle: { color: '#8F9A93', fontSize: 9.5, marginTop: 1 },
+  safe: { flex: 1, backgroundColor: '#09100C' },
+  header: { minHeight: 64, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#223029', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerIdentity: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerSpark: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#352C14', borderWidth: 1, borderColor: '#725F22', alignItems: 'center', justifyContent: 'center' },
+  headerSparkText: { color: '#F2CA5F', fontSize: 18, fontWeight: '900' },
+  headerTitle: { color: '#FFF9EA', fontSize: 17, fontWeight: '900' },
+  headerSubtitle: { color: '#9BA69F', fontSize: 9.5, marginTop: 1 },
+  historyPill: { minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: '#344039', paddingHorizontal: 11, flexDirection: 'row', gap: 6, alignItems: 'center' },
+  historyText: { color: '#D9E0DB', fontSize: 10.5, fontWeight: '800' },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 170 },
-  emptyState: { paddingTop: 12 },
-  exchange: { marginBottom: 22 },
+  content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 126 },
+  emptyState: { paddingTop: 8 },
+  introRow: { flexDirection: 'row', gap: 14, alignItems: 'center', marginBottom: 28 },
+  largeGoAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#2D2613', borderWidth: 1, borderColor: '#705A20', alignItems: 'center', justifyContent: 'center' },
+  largeGoAvatarText: { color: '#F2CA5F', fontSize: 28, fontWeight: '900' },
+  introCopy: { flex: 1 },
+  greeting: { color: '#FFF8E8', fontSize: 19, lineHeight: 24, fontWeight: '900' },
+  introText: { color: '#D1D8D3', fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  section: { marginTop: 16 },
+  sectionEyebrow: { color: '#C8B989', fontSize: 9.5, letterSpacing: 1.25, fontWeight: '900', marginBottom: 10 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionLink: { color: '#D7B45A', fontSize: 10.5, fontWeight: '800' },
+  promptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 },
+  promptCard: { width: '48.5%', minHeight: 118, borderRadius: 20, borderWidth: 1, borderColor: '#3A463F', backgroundColor: '#101914', padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  promptIcon: { color: '#D7B45A', fontSize: 25, width: 28, textAlign: 'center' },
+  promptTextWrap: { flex: 1 },
+  promptTitle: { color: '#FFF8E8', fontSize: 13.5, lineHeight: 18, fontWeight: '900' },
+  promptSubtitle: { color: '#AEB7B1', fontSize: 10.5, lineHeight: 15, marginTop: 6 },
+  contextRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
+  contextCard: { flex: 1, minHeight: 70, borderRadius: 18, borderWidth: 1, borderColor: '#355041', backgroundColor: '#0F1914', flexDirection: 'row', gap: 9, alignItems: 'center', paddingHorizontal: 13 },
+  contextTitle: { color: '#F4F1E8', fontSize: 11.5, fontWeight: '800' },
+  contextAction: { color: '#8E9A93', fontSize: 9.5, marginTop: 3 },
+  recentCard: { minHeight: 76, borderRadius: 18, borderWidth: 1, borderColor: '#334139', backgroundColor: '#101713', flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12 },
+  recentIcon: { width: 46, height: 46, borderRadius: 12, backgroundColor: '#1B241E', alignItems: 'center', justifyContent: 'center' },
+  recentTitle: { color: '#FFF8E8', fontSize: 12.5, fontWeight: '900' },
+  recentMeta: { color: '#8F9A93', fontSize: 9.5, marginTop: 4 },
+  exchange: { marginBottom: 20 },
+  userRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 3 },
+  userBubble: { maxWidth: '78%', borderRadius: 18, borderTopRightRadius: 7, backgroundColor: '#2A312D', paddingHorizontal: 14, paddingVertical: 11 },
+  userText: { color: '#F6F1E7', fontSize: 13, lineHeight: 18, fontWeight: '700' },
   goTurn: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginTop: 12 },
-  goAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#3A3117', borderWidth: 1, borderColor: '#806723', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  goAvatarText: { color: '#F1CD6B', fontSize: 16, fontWeight: '900' },
-  goContent: { flex: 1, maxWidth: '92%' },
-  goBubble: { alignSelf: 'flex-start', maxWidth: '94%', borderRadius: 18, borderTopLeftRadius: 7, backgroundColor: '#142019', borderWidth: 1, borderColor: '#2A422F', paddingHorizontal: 14, paddingVertical: 12 },
-  greeting: { color: '#FFF8E8', fontSize: 15, lineHeight: 20, fontWeight: '900', marginBottom: 5 },
-  goAnswer: { color: '#E9EEE9', fontSize: 14, lineHeight: 20 },
-  userRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4 },
-  userBubble: { maxWidth: '82%', borderRadius: 18, borderTopRightRadius: 7, backgroundColor: '#D7B45A', paddingHorizontal: 14, paddingVertical: 11 },
-  userText: { color: '#1A211C', fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  typingBubble: { minHeight: 42, borderRadius: 17, borderTopLeftRadius: 7, backgroundColor: '#142019', borderWidth: 1, borderColor: '#2A422F', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13 },
-  typingText: { color: '#9FAAA3', fontSize: 11.5, fontWeight: '700' },
-  errorBubble: { flex: 1, borderRadius: 17, borderTopLeftRadius: 7, backgroundColor: '#301A18', borderWidth: 1, borderColor: '#5D302A', padding: 12 },
-  errorText: { color: '#FFB4A9', fontSize: 12, lineHeight: 18 },
+  goAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#352C14', borderWidth: 1, borderColor: '#705A20', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  goAvatarText: { color: '#F2CA5F', fontSize: 15, fontWeight: '900' },
+  goBubble: { flex: 1, borderRadius: 17, borderTopLeftRadius: 7, backgroundColor: '#111A15', borderWidth: 1, borderColor: '#2D3832', paddingHorizontal: 13, paddingVertical: 11 },
+  goAnswer: { color: '#E5EAE6', fontSize: 12.5, lineHeight: 18 },
+  typingBubble: { minHeight: 42, borderRadius: 17, borderTopLeftRadius: 7, backgroundColor: '#111A15', borderWidth: 1, borderColor: '#2D3832', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13 },
+  typingText: { color: '#9FAAA3', fontSize: 11, fontWeight: '700' },
+  errorBubble: { flex: 1, borderRadius: 17, backgroundColor: '#301A18', borderWidth: 1, borderColor: '#5D302A', padding: 12 },
+  errorText: { color: '#FFB4A9', fontSize: 11.5, lineHeight: 17 },
   retryButton: { alignSelf: 'flex-start', marginTop: 8, borderRadius: 14, backgroundColor: '#4B2925', paddingHorizontal: 11, paddingVertical: 7 },
   retryText: { color: '#FFD3CC', fontSize: 10.5, fontWeight: '900' },
-  starterLabel: { color: '#7E8A83', fontSize: 9.5, letterSpacing: 1.1, fontWeight: '900', marginTop: 24, marginBottom: 10, marginLeft: 41 },
-  starterWrap: { marginLeft: 41, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  starterChip: { maxWidth: '100%', borderRadius: 18, borderWidth: 1, borderColor: '#3A463F', backgroundColor: '#121914', paddingHorizontal: 12, paddingVertical: 9 },
-  starterText: { color: '#D6DED8', fontSize: 11.5, fontWeight: '800' },
-  limitedCard: { marginTop: 9, borderRadius: 13, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#1B1A11', padding: 10, flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  limitedText: { flex: 1, color: '#C8B982', fontSize: 10.5, lineHeight: 15 },
-  placeRail: { gap: 10, paddingTop: 10, paddingRight: 24 },
-  placeCard: { width: 260, minHeight: 174, borderRadius: 17, borderWidth: 1, borderColor: '#344039', backgroundColor: '#151C18', padding: 14 },
-  matchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  bestMatch: { color: '#96D66D', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  pickLabel: { color: '#D7B45A', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  chevron: { color: '#D7B45A', fontSize: 21, lineHeight: 22 },
-  placeTitle: { color: '#FFF8E8', fontSize: 15, lineHeight: 20, fontWeight: '900', marginTop: 8 },
-  placeMeta: { color: '#8D9891', fontSize: 10.5, marginTop: 3 },
-  placeReason: { color: '#AEB7B1', fontSize: 11.5, lineHeight: 17, marginTop: 7 },
-  openRow: { marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  openText: { color: '#E3C66F', fontSize: 10.5, fontWeight: '900' },
-  stackGap: { gap: 9, marginTop: 10 },
-  communityCard: { borderRadius: 15, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#11241A', padding: 13 },
+  resultBlock: { marginTop: 2 },
+  matchAssist: { marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#191911', padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' },
+  matchAssistText: { flex: 1, color: '#C8B982', fontSize: 10.5, lineHeight: 15 },
+  heroCard: { borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: '#39443E', backgroundColor: '#121A16' },
+  heroImage: { width: '100%', height: 168 },
+  heroShade: { position: 'absolute', left: 0, right: 0, top: 0, height: 168, backgroundColor: 'rgba(0,0,0,0.22)' },
+  heroBadge: { position: 'absolute', left: 12, top: 12, borderRadius: 14, backgroundColor: 'rgba(66,52,14,0.92)', borderWidth: 1, borderColor: '#8B7025', paddingHorizontal: 9, paddingVertical: 5 },
+  heroBadgeText: { color: '#F0C75F', fontSize: 8.5, letterSpacing: 0.8, fontWeight: '900' },
+  heroContent: { padding: 15 },
+  heroTitle: { color: '#FFF8E8', fontSize: 18, lineHeight: 23, fontWeight: '900' },
+  heroMeta: { color: '#AEB7B1', fontSize: 10.5, marginTop: 3 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
+  tag: { borderRadius: 14, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#12241A', paddingHorizontal: 9, paddingVertical: 5 },
+  tagText: { color: '#A9D995', fontSize: 9.5, fontWeight: '800' },
+  heroReason: { color: '#C6CEC8', fontSize: 11.5, lineHeight: 17, marginTop: 10 },
+  primaryButton: { height: 44, borderRadius: 13, backgroundColor: '#D7B45A', marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  primaryButtonText: { color: '#172017', fontSize: 12.5, fontWeight: '900' },
+  altGrid: { flexDirection: 'row', gap: 9 },
+  altCell: { flex: 1 },
+  compactCard: { flex: 1, minHeight: 188, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#334039', backgroundColor: '#111915' },
+  compactImage: { width: '100%', height: 88 },
+  compactBody: { padding: 11 },
+  compactTitle: { color: '#FFF8E8', fontSize: 11.5, lineHeight: 15, fontWeight: '900' },
+  compactMeta: { color: '#8F9A93', fontSize: 9, marginTop: 3 },
+  compactReason: { color: '#B2BBB5', fontSize: 9.5, lineHeight: 14, marginTop: 7 },
+  stackGap: { gap: 9 },
+  communityCard: { borderRadius: 16, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#102119', padding: 13 },
   communityTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   communityLabel: { color: '#D7B45A', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
   verified: { color: '#79D26A', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  tags: { color: '#D7B45A', fontSize: 10.5, fontWeight: '800', marginTop: 4 },
-  planCard: { borderRadius: 17, borderWidth: 1, borderColor: '#3D3A22', backgroundColor: '#171A12', padding: 14, marginTop: 10 },
-  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  planHeaderText: { color: '#FFF3CE', fontSize: 15, fontWeight: '900' },
-  planRow: { flexDirection: 'row', gap: 10, minHeight: 62, paddingTop: 10 },
-  timeline: { width: 16, alignItems: 'center' },
-  timelineDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#88B957', borderWidth: 2, borderColor: '#284120', marginTop: 4, zIndex: 2 },
+  placeTitle: { color: '#FFF8E8', fontSize: 14.5, lineHeight: 20, fontWeight: '900', marginTop: 8 },
+  placeMeta: { color: '#8D9891', fontSize: 10, marginTop: 3 },
+  placeReason: { color: '#AEB7B1', fontSize: 11, lineHeight: 16, marginTop: 7 },
+  tags: { color: '#D7B45A', fontSize: 10, fontWeight: '800', marginTop: 4 },
+  planCard: { borderRadius: 20, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#141811', padding: 14 },
+  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+  planEyebrow: { color: '#C8B989', fontSize: 8.5, letterSpacing: 1.05, fontWeight: '900' },
+  planHeaderText: { color: '#FFF3CE', fontSize: 16, fontWeight: '900', marginTop: 3 },
+  planRow: { flexDirection: 'row', gap: 8, minHeight: 60, paddingTop: 10 },
+  timeline: { width: 14, alignItems: 'center' },
+  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#79B36A', borderWidth: 2, borderColor: '#254121', marginTop: 4, zIndex: 2 },
   timelineLine: { width: 2, flex: 1, backgroundColor: '#36532C', marginTop: -1 },
   flex: { flex: 1 },
-  planTime: { color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
-  planTitle: { color: '#FFF8E8', fontSize: 12.5, fontWeight: '900', marginTop: 2 },
-  planNote: { color: '#A9B1AB', fontSize: 10.5, lineHeight: 15, marginTop: 2 },
-  memoryCard: { borderRadius: 15, borderWidth: 1, borderColor: '#39483F', backgroundColor: '#151C18', padding: 13 },
-  memoryLabel: { color: '#D7B45A', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
-  followWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 },
-  followChip: { borderRadius: 18, borderWidth: 1, borderColor: '#4A4021', backgroundColor: '#1B1A11', paddingHorizontal: 12, paddingVertical: 9, maxWidth: '100%' },
-  followText: { color: '#E8D59A', fontSize: 10.5, fontWeight: '800' },
-  disclaimer: { color: '#66726B', fontSize: 9.5, lineHeight: 14, marginHorizontal: 35, marginTop: 8, marginBottom: 14, textAlign: 'center' },
-  composer: { minHeight: 54, borderRadius: 27, borderWidth: 1, borderColor: '#354139', backgroundColor: '#121813', flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 14, paddingRight: 6, paddingVertical: 6, marginTop: 18 },
-  composerInput: { flex: 1, minHeight: 40, maxHeight: 110, color: '#FFF8E8', fontSize: 14, lineHeight: 19, paddingTop: 9, paddingBottom: 8 },
+  planTime: { width: 52, color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
+  planTitle: { color: '#FFF8E8', fontSize: 11.5, fontWeight: '900' },
+  planNote: { color: '#A9B1AB', fontSize: 9.5, lineHeight: 14, marginTop: 2 },
+  planActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  secondaryButton: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#47544C', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  secondaryButtonText: { color: '#F4EBD4', fontSize: 10, fontWeight: '800' },
+  primaryPlanButton: { flex: 1, minHeight: 42, borderRadius: 12, backgroundColor: '#D7B45A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  primaryPlanButtonText: { color: '#172017', fontSize: 10, fontWeight: '900' },
+  memoryCard: { borderRadius: 16, borderWidth: 1, borderColor: '#39483F', backgroundColor: '#121A16', padding: 13 },
+  followRow: { gap: 8, paddingRight: 16 },
+  followChip: { borderRadius: 18, borderWidth: 1, borderColor: '#3D4942', backgroundColor: '#121914', paddingHorizontal: 12, paddingVertical: 8 },
+  followText: { color: '#D7DED9', fontSize: 10.5, fontWeight: '800' },
+  disclaimer: { color: '#66726B', fontSize: 9.5, lineHeight: 14, marginHorizontal: 30, marginTop: 16, textAlign: 'center' },
+  composerDock: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, backgroundColor: 'rgba(9,16,12,0.97)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#223029' },
+  composer: { minHeight: 52, borderRadius: 26, borderWidth: 1, borderColor: '#354139', backgroundColor: '#101713', flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 14, paddingRight: 6, paddingVertical: 5 },
+  composerInput: { flex: 1, minHeight: 40, maxHeight: 106, color: '#FFF8E8', fontSize: 13.5, lineHeight: 19, paddingTop: 9, paddingBottom: 8 },
   sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
-  sendDisabled: { opacity: 0.35 },
-  sendText: { color: '#172017', fontSize: 22, lineHeight: 24, fontWeight: '900', marginTop: -2 },
+  sendDisabled: { opacity: 0.34 },
+  sendText: { color: '#172017', fontSize: 18, lineHeight: 20, fontWeight: '900' },
 });
