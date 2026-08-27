@@ -58,6 +58,8 @@ export type AskMemberGuideInput = {
   } | null;
 };
 
+type CompactPlace = ReturnType<typeof compactPlace>;
+
 function compactPlace(place: TrailGuidePlace) {
   return {
     id: place.id,
@@ -69,6 +71,44 @@ function compactPlace(place: TrailGuidePlace) {
     summary: place.summary,
     details: place.details,
     collections: place.collections,
+  };
+}
+
+function buildResilientFallback(query: string, candidates: CompactPlace[], original: MemberGuideResult): MemberGuideResult {
+  if (original.places.length > 0 || candidates.length === 0) return original;
+
+  const lower = query.toLowerCase();
+  const broadDiscovery = /\b(weekend|today|tonight|tomorrow|something to do|what should i do|surprise me|get outside|adventure|fun)\b/i.test(lower);
+  const wantsWater = /\b(water|beach|river|lake|spring|swim|paddle|kayak|coast)\b/i.test(lower);
+  const wantsEasy = /\b(easy|beginner|relax|chill|low key|low-key|family|kids?)\b/i.test(lower);
+  const wantsTrail = /\b(hike|hiking|trail|walk|walking)\b/i.test(lower);
+
+  const scored = candidates.map((place, index) => {
+    const haystack = [place.name, place.category, place.area, place.type, ...(place.tags ?? []), place.summary, ...(place.details ?? []), ...(place.collections ?? [])]
+      .join(' ')
+      .toLowerCase();
+    let score = Math.max(0, 20 - index) * 0.01;
+    if (wantsWater && /water|beach|river|lake|spring|paddle|kayak|coast|marsh/.test(haystack)) score += 4;
+    if (wantsEasy && /easy|beginner|family|boardwalk|short|accessible|relax/.test(haystack)) score += 3;
+    if (wantsTrail && /trail|hike|walk|boardwalk/.test(haystack)) score += 3;
+    if (broadDiscovery) score += 1;
+    return { place, score };
+  }).sort((a, b) => b.score - a.score);
+
+  const picks = scored.slice(0, 3).map(({ place }, index) => ({
+    id: place.id,
+    reason: index === 0
+      ? `A strong nearby option around ${place.area} for a flexible outing.`
+      : `Another nearby option worth considering around ${place.area}.`,
+  }));
+
+  return {
+    ...original,
+    answer: broadDiscovery
+      ? `I found a few good nearby options to get you started. Here is the one I would look at first.`
+      : `I found a few nearby options that are a reasonable fit. You can refine from here.`,
+    places: picks,
+    followUps: ['Make it beginner friendly', 'Build a half-day plan', 'Near water', 'Closer to me'],
   };
 }
 
@@ -104,8 +144,12 @@ export async function askMemberGuide(input: AskMemberGuideInput): Promise<Member
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
   if (!data?.result) throw new Error('I could not build that recommendation right now.');
-  return {
+
+  const source = data.source === 'fallback' ? 'fallback' : 'ai';
+  const result = {
     ...(data.result as MemberGuideResult),
-    source: data.source === 'fallback' ? 'fallback' : 'ai',
+    source,
   };
+
+  return source === 'fallback' ? buildResilientFallback(query, candidates, result) : result;
 }
