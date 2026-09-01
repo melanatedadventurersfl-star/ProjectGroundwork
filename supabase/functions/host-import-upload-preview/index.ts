@@ -34,7 +34,10 @@ function monthNumber(name:string){const m:any={january:"01",february:"02",march:
 function to24(hour:number,minute:number,ampm:string){let h=hour%12;if(ampm.toLowerCase()==="pm")h+=12;return `${String(h).padStart(2,"0")}:${String(minute).padStart(2,"0")}`;}
 function unique<T>(a:T[]){return [...new Set(a)];}
 function findLine(text:string,label:string){const m=text.match(new RegExp(`^${label}\\s*:\\s*(.+)$`,`im`));return clean(m?.[1]||"",1000);}
-function basePreview(){return{title:"Imported Event",summary:"",description:"",category:"Other",difficulty:"easy",startsAt:"",endsAt:"",venueName:"",address:"",city:"",state:"FL",capacity:null,meetingInstructions:"",heroImageUrl:"",tickets:[],schedule:[],meals:[],policies:[],photos:[],confidenceNotes:[] as string[]};}
+function basePreview(){return{title:"Imported Event",summary:"",description:"",category:"Other",difficulty:"easy",startsAt:"",endsAt:"",venueName:"",address:"",city:"",state:"FL",capacity:null,meetingInstructions:"",heroImageUrl:"",tickets:[],schedule:[],meals:[],policies:[],operations:[],gear:[],guestInfo:[],marketing:[],photos:[],confidenceNotes:[] as string[]};}
+function cleanListLine(value:string){return value.replace(/^[-•]\s*/,"").trim();}
+function sectionLines(text:string,startLabel:string,endLabels:string[]){const lines=text.split(/\r?\n/).map(x=>x.trim());const start=lines.findIndex(x=>x.toLowerCase()===startLabel.toLowerCase());if(start<0)return[];let end=lines.length;for(let i=start+1;i<lines.length;i++){if(endLabels.some(label=>lines[i].toLowerCase()===label.toLowerCase())){end=i;break;}}return lines.slice(start+1,end).map(cleanListLine).filter(Boolean);}
+function parseMeals(text:string){const lines=text.split(/\r?\n/).map(x=>x.trim());const result:string[]=[];let heading="";let items:string[]=[];const flush=()=>{if(heading){result.push(items.length?`${heading}: ${items.join(", ")}`:heading);}heading="";items=[];};for(const line of lines){if(/^Operations notes$/i.test(line)){flush();break;}if(/^(Friday|Saturday|Sunday)\s+(Breakfast|Lunch|Dinner)$/i.test(line)){flush();heading=line;continue;}if(heading&&line){const item=cleanListLine(line);if(item)items.push(item);}}flush();return result.slice(0,30);}
 
 function extractFromText(sources:{name:string,text:string}[],sourceNames:string[]){
   const p:any=basePreview();
@@ -51,15 +54,41 @@ function extractFromText(sources:{name:string,text:string}[],sourceNames:string[
   if(dm){const mm=monthNumber(dm[1]);const arr=current.match(/Arrival window\s*:\s*Friday beginning at\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);const dep=current.match(/Departure\s*:\s*Sunday by\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);const st=arr?to24(Number(arr[1]),Number(arr[2]||0),arr[3]):"00:00";const et=dep?to24(Number(dep[1]),Number(dep[2]||0),dep[3]):"23:59";p.startsAt=`${dm[4]}-${mm}-${String(dm[2]).padStart(2,"0")}T${st}`;p.endsAt=`${dm[4]}-${mm}-${String(dm[3]).padStart(2,"0")}T${et}`;}
   const caps=unique([...current.matchAll(/(?:capacity(?: note)?|target capacity)[^\d]{0,40}(\d{1,4})/gi)].map(m=>Number(m[1])).filter(Number.isFinite));
   if(caps.length===1)p.capacity=caps[0];else if(caps.length>1){p.capacity=null;notes.push(`Conflicting capacity values found: ${caps.join(" and ")}. Review before publishing.`);}
-  const mealSource=currentSources.find(s=>/meal|food/i.test(s.name));if(mealSource){p.meals=mealSource.text.split(/\r?\n/).map(x=>x.trim()).filter(x=>/^(Friday|Saturday|Sunday)\s+(Breakfast|Lunch|Dinner)$/i.test(x)).slice(0,30);}
+
+  const mealSource=currentSources.find(s=>/meal|food/i.test(s.name));
+  if(mealSource){
+    p.meals=parseMeals(mealSource.text);
+    const mealOps=sectionLines(mealSource.text,"Operations notes",[]);
+    p.operations.push(...mealOps.filter(x=>/^Confirm |^Assign |^Prepare |^Pack |^Check |^Inventory /i.test(x)));
+  }
+
   if(/Refund policy is not yet final/i.test(current))p.policies.push("Refund policy is not yet final.");
   const refund=current.match(/Refund requests must be submitted[^.]+\./i);if(refund)p.policies.push(clean(refund[0],1000));
   const transfer=current.match(/Transfers may be approved[^.]+\./i);if(transfer)p.policies.push(clean(transfer[0],1000));
+  const refundAdded=current.match(/Refund rule added\s*:\s*([^\n]+)/i);if(refundAdded)p.policies.push(clean(refundAdded[1],1000));
+  const transferAdded=current.match(/Transfer rule added\s*:\s*([^\n]+)/i);if(transferAdded)p.policies.push(clean(transferAdded[1],1000));
   if(/Weather may require schedule changes or early closure/i.test(current))p.policies.push("Weather may require schedule changes or early closure.");
   if(/Children must remain under the supervision/i.test(current))p.policies.push("Children must remain under the supervision of their parent or guardian.");
-  const ops=currentSources.find(s=>/operations|gear/i.test(s.name));if(ops){p.meetingInstructions=ops.text.split(/\r?\n/).map(x=>x.trim()).filter(x=>/High wind|Lightning|emergency contact/i.test(x)).join(" ").slice(0,5000);}
+
+  const ops=currentSources.find(s=>/operations|gear/i.test(s.name));
+  if(ops){
+    p.gear=sectionLines(ops.text,"Core equipment",["Operational tasks","Risk notes"]);
+    p.operations.push(...sectionLines(ops.text,"Operational tasks",["Risk notes"]));
+    p.meetingInstructions=sectionLines(ops.text,"Risk notes",[]).filter(x=>/High wind|Lightning|emergency contact/i.test(x)).join(" ").slice(0,5000);
+  }
+  p.operations=unique(p.operations.map(cleanListLine).filter(Boolean)).slice(0,40);
+  p.gear=unique(p.gear.map(cleanListLine).filter(Boolean)).slice(0,60);
+  p.policies=unique(p.policies.map(cleanListLine).filter(Boolean)).slice(0,30);
+
+  for(const s of currentSources){
+    for(const line of s.text.split(/\r?\n/).map(x=>x.trim())){
+      if(/^(Arrival|Parking|Quiet hours|What to bring)\s*:/i.test(line))p.guestInfo.push(clean(line,1000));
+    }
+  }
+  p.guestInfo=unique(p.guestInfo).slice(0,30);
+
   for(const s of sources.filter(s=>/(^|[\/_-])old([\/_-]|$)|archive/i.test(s.name)))notes.push(`${s.name} appears to be historical or archived material and was not used for current event fields.`);
-  if(/Refund policy is not yet final/i.test(current))notes.push("Refund terms are not final. Do not publish a refund deadline from this import.");
+  if(/Refund policy is not yet final/i.test(current)&&!refund&&!refundAdded)notes.push("Refund terms are not final. Do not publish a refund deadline from this import.");
   if(!sources.length)notes.push(`No readable DOCX, TXT, or HTML text was found in the ${sourceNames.length} uploaded source file${sourceNames.length===1?"":"s"}.`);
   if(p.title==="Imported Event")notes.push("No reliable event title was found in readable source text.");
   p.confidenceNotes=unique(notes).slice(0,30);
