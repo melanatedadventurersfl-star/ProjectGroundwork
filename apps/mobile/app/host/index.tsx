@@ -160,6 +160,8 @@ export default function HostOperationsScreen() {
     revoked: ['Hosting access revoked', 'Your host access is no longer active. Contact support if you need clarification.'],
   };
 
+  const firstCampaignSlug = campaigns[0]?.slug;
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -214,7 +216,7 @@ export default function HostOperationsScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
             {(['active', 'drafts', 'upcoming', 'past'] as EventFilter[]).map((filter) => (
               <Pressable key={filter} style={[styles.filterChip, eventFilter === filter && styles.filterChipActive]} onPress={() => setEventFilter(filter)}>
-                <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter[0].toUpperCase() + filter.slice(1)}</Text>
+                <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter.charAt(0).toUpperCase() + filter.slice(1)}</Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -226,7 +228,7 @@ export default function HostOperationsScreen() {
             <WorkMetric label="Blocked" value={blockedTasks.length} />
             <WorkMetric label="Unassigned" value={unassignedTasks.length} />
           </View>
-          {campaigns[0] ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${campaigns[0].slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
+          {firstCampaignSlug ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${firstCampaignSlug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
 
           <Pressable style={styles.createRow} onPress={() => router.push('/host/create' as never)}>
             <View style={styles.createIcon}><Text style={styles.createPlus}>＋</Text></View>
