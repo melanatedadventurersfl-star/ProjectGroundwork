@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useState } from 'react';
-import { AppState, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import type { MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
+import { getBrowserPosition } from '../permissions/browserPermissions';
 import { getWeatherByCoordinates, type WeatherForecast } from '../weather/api';
 import { TrailheadHeader } from './TrailheadHeader';
 import {
@@ -47,6 +48,17 @@ function backgroundLiftColor(weather: WeatherTheme, phase: DayPhase) {
   return 'rgba(255, 255, 255, 0.025)';
 }
 
+async function getCurrentCoordinates() {
+  if (Platform.OS === 'web') return getBrowserPosition();
+
+  let permission = await Location.getForegroundPermissionsAsync();
+  if (permission.status === 'undetermined') permission = await Location.requestForegroundPermissionsAsync();
+  if (permission.status !== 'granted') throw new Error('Location access is not allowed.');
+
+  const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+  return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+}
+
 export function TrailheadOptimizedCover({
   displayName,
   rank,
@@ -65,32 +77,30 @@ export function TrailheadOptimizedCover({
   const veryCompact = width < 370;
   const [weatherData, setWeatherData] = useState<WeatherForecast | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
+  const [locationMessage, setLocationMessage] = useState('');
   const [clockNow, setClockNow] = useState(() => new Date());
   const [backgroundFailed, setBackgroundFailed] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    let weatherTimer: ReturnType<typeof setInterval> | null = null;
-
-    const refreshWeather = async () => {
-      try {
-        let permission = await Location.getForegroundPermissionsAsync();
-        if (permission.status === 'undetermined') permission = await Location.requestForegroundPermissionsAsync();
-        if (!active || permission.status !== 'granted') return;
-
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const next = await getWeatherByCoordinates(position.coords.latitude, position.coords.longitude);
-        if (!active) return;
-        setWeatherData(next);
-        setLocationLabel([next.location.name, next.location.region].filter(Boolean).join(', '));
-        setClockNow(new Date());
-      } catch {
-        // Keep the last good weather snapshot if a refresh fails.
+  const refreshWeather = useCallback(async () => {
+    try {
+      setLocationMessage('');
+      const coordinates = await getCurrentCoordinates();
+      const next = await getWeatherByCoordinates(coordinates.latitude, coordinates.longitude);
+      setWeatherData(next);
+      setLocationLabel([next.location.name, next.location.region].filter(Boolean).join(', '));
+      setClockNow(new Date());
+    } catch (caught) {
+      if (Platform.OS === 'web') {
+        setLocationMessage(caught instanceof Error && caught.message
+          ? caught.message
+          : 'Tap Current location to allow location access in your browser.');
       }
-    };
+    }
+  }, []);
 
+  useEffect(() => {
     void refreshWeather();
-    weatherTimer = setInterval(() => { void refreshWeather(); }, WEATHER_REFRESH_MS);
+    const weatherTimer = setInterval(() => { void refreshWeather(); }, WEATHER_REFRESH_MS);
     const appStateSubscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         setClockNow(new Date());
@@ -99,11 +109,10 @@ export function TrailheadOptimizedCover({
     });
 
     return () => {
-      active = false;
-      if (weatherTimer) clearInterval(weatherTimer);
+      clearInterval(weatherTimer);
       appStateSubscription.remove();
     };
-  }, []);
+  }, [refreshWeather]);
 
   useEffect(() => {
     const clockTimer = setInterval(() => setClockNow(new Date()), CLOCK_REFRESH_MS);
@@ -128,7 +137,11 @@ export function TrailheadOptimizedCover({
   const temp = weatherData ? `${Math.round(weatherData.current.temp_f)}°` : '--°';
   const condition = weatherData?.current.condition.text ? weather.replace('-', ' ') : 'Local weather';
   const location = locationLabel || 'Current location';
-  const detail = weatherData ? weatherCopy(weather, phase) : 'Weather appears when location access is available.';
+  const detail = weatherData
+    ? weatherCopy(weather, phase)
+    : locationMessage || (Platform.OS === 'web'
+      ? 'Tap Current location to allow browser location access.'
+      : 'Weather appears when location access is available.');
 
   useEffect(() => {
     setBackgroundFailed(false);
@@ -181,10 +194,15 @@ export function TrailheadOptimizedCover({
           <Text style={[styles.temperature, compact && styles.temperatureCompact]}>{temp}</Text>
           <Text style={[styles.condition, compact && styles.conditionCompact]}>{condition}</Text>
         </View>
-        <View style={styles.locationRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Use current location for local weather"
+          onPress={() => void refreshWeather()}
+          style={({ pressed }) => [styles.locationRow, pressed && styles.locationRowPressed]}
+        >
           <Text style={styles.locationPin}>⌖</Text>
           <Text style={styles.location} numberOfLines={1}>{location}</Text>
-        </View>
+        </Pressable>
         <Text style={[styles.weatherCopy, { color: theme.soft }]} numberOfLines={2}>{detail}</Text>
       </View>
     </View>
@@ -257,7 +275,8 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
   },
   conditionCompact: { fontSize: 12 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9, minWidth: 0 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9, minWidth: 0, alignSelf: 'flex-start', paddingVertical: 2 },
+  locationRowPressed: { opacity: 0.7 },
   locationPin: {
     color: '#FFF8E8', fontSize: 15, fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.95)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },

@@ -1,13 +1,18 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  readBrowserPermission,
+  requestBrowserPermission,
+  type BrowserPermissionResult,
+} from '../../src/permissions/browserPermissions';
 import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
 type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unavailable';
 type PermissionKey = 'notifications' | 'location' | 'contacts' | 'camera' | 'photos';
-type PermissionResult = { status?: string; canAskAgain?: boolean };
+type PermissionResult = { status?: string; canAskAgain?: boolean; detail?: string; browserManaged?: boolean };
 
 type PermissionRow = {
   key: PermissionKey;
@@ -16,6 +21,8 @@ type PermissionRow = {
   icon: AppIconName;
   state: PermissionState;
   canAskAgain: boolean;
+  detail?: string;
+  browserManaged?: boolean;
 };
 
 const permissionMeta: Record<PermissionKey, Pick<PermissionRow, 'label' | 'description' | 'icon'>> = {
@@ -60,6 +67,7 @@ function statusLabel(state: PermissionState) {
 
 async function readPermission(key: PermissionKey): Promise<PermissionResult> {
   try {
+    if (Platform.OS === 'web') return await readBrowserPermission(key) as BrowserPermissionResult;
     if (key === 'notifications') {
       const Notifications = await import('expo-notifications');
       return await Notifications.getPermissionsAsync();
@@ -83,6 +91,7 @@ async function readPermission(key: PermissionKey): Promise<PermissionResult> {
 }
 
 async function askPermission(key: PermissionKey) {
+  if (Platform.OS === 'web') return requestBrowserPermission(key);
   if (key === 'notifications') {
     const Notifications = await import('expo-notifications');
     return Notifications.requestPermissionsAsync();
@@ -106,6 +115,7 @@ export default function AppPermissionsScreen() {
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState<PermissionKey | null>(null);
   const [error, setError] = useState('');
+  const isWeb = Platform.OS === 'web';
 
   const loadPermissions = useCallback(async () => {
     setError('');
@@ -119,6 +129,8 @@ export default function AppPermissionsScreen() {
           ...permissionMeta[key],
           state: normalizeStatus(result.status),
           canAskAgain: result.canAskAgain !== false,
+          detail: result.detail,
+          browserManaged: result.browserManaged,
         };
       }));
     } catch (caught) {
@@ -140,7 +152,16 @@ export default function AppPermissionsScreen() {
     const row = permissions.find((item) => item.key === key);
     if (!row) return;
 
-    if (row.state === 'granted' || row.state === 'unavailable' || !row.canAskAgain) {
+    if (isWeb && row.state === 'unavailable') {
+      setError(row.detail || `${row.label} is not available in this browser.`);
+      return;
+    }
+    if (isWeb && row.state === 'granted') return;
+    if (isWeb && (row.state === 'denied' || !row.canAskAgain)) {
+      setError(`Allow ${row.label.toLowerCase()} for this site in your browser settings, then reload Go Melanated.`);
+      return;
+    }
+    if (!isWeb && (row.state === 'granted' || row.state === 'unavailable' || !row.canAskAgain)) {
       await Linking.openSettings();
       return;
     }
@@ -148,7 +169,10 @@ export default function AppPermissionsScreen() {
     setRequesting(key);
     setError('');
     try {
-      await askPermission(key);
+      const result = await askPermission(key);
+      if (isWeb && result.status === 'denied') {
+        setError(`Your browser blocked ${row.label.toLowerCase()}. Change this site's permission in browser settings and reload.`);
+      }
       await loadPermissions();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : `Unable to update ${row.label.toLowerCase()} permission.`);
@@ -168,7 +192,9 @@ export default function AppPermissionsScreen() {
         <Text style={styles.eyebrow}>DEVICE ACCESS</Text>
         <Text style={styles.title}>App Permissions</Text>
         <Text style={styles.intro}>
-          See what Go Melanated can access on this device. Permission status is read directly from your phone and refreshes when you return from system settings.
+          {isWeb
+            ? 'See what this browser allows Go Melanated to access. Browser permissions belong to this website and can differ from the mobile app.'
+            : 'See what Go Melanated can access on this device. Permission status is read directly from your phone and refreshes when you return from system settings.'}
         </Text>
 
         {loading ? <ActivityIndicator color="#F5C341" style={styles.loader} /> : null}
@@ -177,7 +203,18 @@ export default function AppPermissionsScreen() {
         {!loading ? <View style={styles.card}>
           {permissions.map((permission, index) => {
             const isGranted = permission.state === 'granted';
-            const actionLabel = isGranted || permission.state === 'unavailable' || !permission.canAskAgain ? 'Manage' : 'Allow';
+            const actionLabel = isWeb
+              ? permission.state === 'granted'
+                ? 'Allowed'
+                : permission.state === 'unavailable'
+                  ? 'Unavailable'
+                  : permission.state === 'denied' || !permission.canAskAgain
+                    ? 'Browser settings'
+                    : 'Allow'
+              : isGranted || permission.state === 'unavailable' || !permission.canAskAgain
+                ? 'Manage'
+                : 'Allow';
+            const disabled = requesting === permission.key || (isWeb && (permission.state === 'granted' || permission.state === 'unavailable'));
             return (
               <View key={permission.key} style={[styles.row, index > 0 && styles.divider]}>
                 <View style={styles.iconWrap}>
@@ -191,15 +228,16 @@ export default function AppPermissionsScreen() {
                     </View>
                   </View>
                   <Text style={styles.rowDescription}>{permission.description}</Text>
+                  {permission.detail ? <Text style={styles.rowDetail}>{permission.detail}</Text> : null}
                 </View>
                 <Pressable
-                  disabled={requesting === permission.key}
+                  disabled={disabled}
                   onPress={() => void requestPermission(permission.key)}
-                  style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+                  style={({ pressed }) => [styles.action, disabled && styles.actionDisabled, pressed && !disabled && styles.actionPressed]}
                 >
                   {requesting === permission.key
                     ? <ActivityIndicator size="small" color="#F5C341" />
-                    : <Text style={styles.actionText}>{actionLabel}</Text>}
+                    : <Text style={[styles.actionText, disabled && styles.actionTextDisabled]}>{actionLabel}</Text>}
                 </Pressable>
               </View>
             );
@@ -209,14 +247,16 @@ export default function AppPermissionsScreen() {
         <View style={styles.noteCard}>
           <AppIcon name="privacy" color="#D7B45A" size={20} />
           <Text style={styles.noteText}>
-            If this installed build does not contain a newer native permission module, that permission will show as unavailable instead of preventing the app from starting.
+            {isWeb
+              ? 'Safari and Chrome manage website permissions separately. Some mobile permissions, including contact matching and full photo-library access, do not have a direct browser equivalent.'
+              : 'If this installed build does not contain a newer native permission module, that permission will show as unavailable instead of preventing the app from starting.'}
           </Text>
         </View>
 
-        <Pressable style={styles.settingsButton} onPress={() => void Linking.openSettings()}>
+        {!isWeb ? <Pressable style={styles.settingsButton} onPress={() => void Linking.openSettings()}>
           <Text style={styles.settingsButtonText}>Open Device Settings</Text>
           <AppIcon name="chevron-forward" color="#F5C341" size={20} />
-        </Pressable>
+        </Pressable> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -240,13 +280,16 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
   rowTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '800' },
   rowDescription: { color: '#8F9B93', fontSize: 11.5, lineHeight: 16, marginTop: 4 },
+  rowDetail: { color: '#D7B45A', fontSize: 10.5, lineHeight: 15, marginTop: 5 },
   statusPill: { backgroundColor: '#2C332F', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3 },
   statusPillGranted: { backgroundColor: '#3C341C' },
   statusText: { color: '#AEB8B1', fontSize: 9.5, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
   statusTextGranted: { color: '#F0D083' },
   action: { minWidth: 61, minHeight: 38, borderRadius: 11, borderWidth: 1, borderColor: '#665628', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   actionPressed: { opacity: 0.72 },
+  actionDisabled: { opacity: 0.55 },
   actionText: { color: '#F5C341', fontSize: 12, fontWeight: '900' },
+  actionTextDisabled: { color: '#AEB8B1' },
   noteCard: { flexDirection: 'row', gap: 10, backgroundColor: '#131D18', borderWidth: 1, borderColor: '#28362E', borderRadius: 15, padding: 14, marginTop: 14 },
   noteText: { color: '#8F9B93', flex: 1, fontSize: 11.5, lineHeight: 17 },
   settingsButton: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 14, borderWidth: 1, borderColor: '#665628', paddingHorizontal: 15, marginTop: 14 },
