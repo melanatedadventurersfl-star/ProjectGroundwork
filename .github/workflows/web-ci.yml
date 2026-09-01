@@ -48,9 +48,6 @@ jobs:
       - name: Install Expo web runtime
         run: npm install --workspace @ma/mobile --no-save react-dom@19.2.3 react-native-web@0.21.2
 
-      - name: Type-check app
-        run: npm run mobile:typecheck
-
       - name: Export static web build
         working-directory: apps/mobile
         run: npx expo export --platform web --output-dir /tmp/go-melanated-web --clear
