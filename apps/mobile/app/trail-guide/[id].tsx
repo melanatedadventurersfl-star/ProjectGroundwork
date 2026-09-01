@@ -3,9 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '../../src/auth/AuthProvider';
+import { markTrailheadAction } from '../../src/onboarding/trailheadProgress';
 import { getTrailGuidePlace, trailGuidePlaces, type TrailGuideCityKey, type TrailGuidePlace } from '../../src/trailGuide/catalog';
 import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePlaceDetails } from '../../src/trailGuide/googlePlacePhotos';
 import { useTrailGuidePlacePhoto, type TrailGuidePhoto } from '../../src/trailGuide/placePhotos';
+import { isTrailGuidePlaceSaved, setTrailGuidePlaceSaved } from '../../src/trailGuide/savedPlaces';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 function outingCategory(category: string) {
@@ -45,12 +48,14 @@ function NearbyCard({ place }: { place: TrailGuidePlace }) {
 
 export default function TrailGuidePlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { session } = useAuth();
   const { width } = useWindowDimensions();
   const place = getTrailGuidePlace(id);
   const fallbackPhoto = useTrailGuidePlacePhoto(place);
   const [googleDetails, setGoogleDetails] = useState<GoogleTrailGuidePlaceDetails | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [showMoreInfo, setShowMoreInfo] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +66,15 @@ export default function TrailGuidePlaceDetailScreen() {
     void resolveGoogleTrailGuidePlaceDetails(place).then((details) => { if (active) setGoogleDetails(details); });
     return () => { active = false; };
   }, [place]);
+
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || !place) {
+      setSaved(false);
+      return;
+    }
+    setSaved(isTrailGuidePlaceSaved(userId, place.id));
+  }, [place, session?.user.id]);
 
   const gallery = useMemo(() => {
     const googlePhotos = googleDetails?.photos ?? [];
@@ -91,6 +105,17 @@ export default function TrailGuidePlaceDetailScreen() {
   const openDirections = async () => { const fallback = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${currentPlace.name}, ${currentPlace.area}, Florida`)}`; await Linking.openURL(mapsUrl || fallback); };
   const openWebsite = async () => { if (googleDetails?.websiteUrl) await Linking.openURL(googleDetails.websiteUrl); };
   const sharePlace = async () => { await Share.share({ message: `${currentPlace.name} · ${currentPlace.area}\n${mapsUrl || ''}`.trim(), title: currentPlace.name }); };
+  const toggleSaved = () => {
+    const userId = session?.user.id;
+    if (!userId) {
+      router.push('/(auth)/sign-in' as never);
+      return;
+    }
+    const next = !saved;
+    setTrailGuidePlaceSaved(userId, currentPlace.id, next);
+    setSaved(next);
+    if (next) markTrailheadAction('save-place');
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
@@ -128,6 +153,7 @@ export default function TrailGuidePlaceDetailScreen() {
 
           <View style={styles.actionBar}>
             <Pressable onPress={() => void openDirections()} style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><AppIcon name="location" color="#181D18" size={18} /><Text style={styles.primaryActionText}>Directions</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={saved ? `Remove ${currentPlace.name} from saved places` : `Save ${currentPlace.name}`} accessibilityState={{ selected: saved }} onPress={toggleSaved} style={({ pressed }) => [styles.iconAction, saved && styles.iconActionSaved, pressed && styles.pressed]}><AppIcon name="bookmark" color={saved ? '#17211C' : '#E6C463'} size={18} /><Text style={[styles.iconActionText, saved && styles.iconActionTextSaved]}>{saved ? 'Saved' : 'Save'}</Text></Pressable>
             {googleDetails?.websiteUrl ? <Pressable onPress={() => void openWebsite()} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}><AppIcon name="connections" color="#E6C463" size={18} /><Text style={styles.iconActionText}>Website</Text></Pressable> : null}
             <Pressable onPress={() => void sharePlace()} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}><AppIcon name="share" color="#E6C463" size={18} /><Text style={styles.iconActionText}>Share</Text></Pressable>
           </View>
@@ -188,7 +214,9 @@ const styles = StyleSheet.create({
   primaryAction: { flex: 1.35, minHeight: 46, borderRadius: 13, backgroundColor: '#E1BE61', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   primaryActionText: { color: '#181D18', fontSize: 11, fontWeight: '900' },
   iconAction: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#364039', backgroundColor: '#141B17', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  iconActionSaved: { borderColor: '#D7B45A', backgroundColor: '#D7B45A' },
   iconActionText: { color: '#E7EDE9', fontSize: 8, fontWeight: '900' },
+  iconActionTextSaved: { color: '#17211C' },
   whyBlock: { marginTop: 20 },
   sectionEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, marginBottom: 6 },
   summary: { color: '#D5DDD7', fontSize: 15, lineHeight: 22 },
