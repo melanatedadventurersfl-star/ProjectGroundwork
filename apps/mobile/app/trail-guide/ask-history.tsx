@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 40, gap: 10 },
   thread: { backgroundColor: '#15221A', borderRadius: 14, borderWidth: 1, borderColor: '#26372D', padding: 14 },
   threadTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  threadTitle: { flex: 1, color: '#F8EFD9', fontWeight: '750', fontSize: 15, lineHeight: 20 },
+  threadTitle: { flex: 1, color: '#F8EFD9', fontWeight: '700', fontSize: 15, lineHeight: 20 },
   meta: { color: '#BAC4BE', fontSize: 12, marginTop: 8 },
   date: { color: '#718078', fontSize: 11, marginTop: 4 },
   empty: { alignItems: 'center', paddingTop: 72, paddingHorizontal: 28 },

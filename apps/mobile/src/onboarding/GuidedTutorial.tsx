@@ -1,45 +1,38 @@
 import { router } from 'expo-router';
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const steps = [
   {
-    eyebrow: 'TRAIL MARKER 1 OF 5',
-    title: 'Your Trailhead',
-    body: 'This is your home base. See featured adventures, upcoming plans, local conditions, and what’s happening in the community.',
-    route: '/(tabs)',
-    focus: 'trailhead',
+    title: 'Complete your profile',
+    body: 'Add a photo, location, and a little about yourself.',
+    route: '/member/profile',
   },
   {
-    eyebrow: 'TRAIL MARKER 2 OF 5',
-    title: 'Find Your People',
-    body: 'The Outpost is where the community gathers. Share updates, join conversations, discover people nearby, and keep up with your Crew.',
-    route: '/(tabs)/community',
-    focus: 'outpost',
+    title: 'Explore the Trail Guide',
+    body: 'Find an outdoor spot near you and see how the guide works.',
+    route: '/trail-guide',
   },
   {
-    eyebrow: 'TRAIL MARKER 3 OF 5',
-    title: 'Choose Your Next Adventure',
-    body: 'Explore upcoming adventures and local events, check the details, save what catches your eye, and reserve your spot when you’re ready.',
+    title: 'Save your first place',
+    body: 'Bookmark somewhere you want to visit.',
+    route: '/trail-guide',
+  },
+  {
+    title: 'Find an adventure',
+    body: 'Browse upcoming outings and open one that interests you.',
     route: '/(tabs)/explore',
-    focus: 'adventures',
   },
   {
-    eyebrow: 'TRAIL MARKER 4 OF 5',
-    title: 'Build Your Crew',
-    body: 'Connect with people you meet outside, organize them into Crews, and keep the people you adventure with close at hand.',
-    route: '/circles',
-    focus: 'circle',
+    title: 'Visit the Outpost',
+    body: 'See what the community is talking about and discover your Campfires.',
+    route: '/(tabs)/community',
   },
   {
-    eyebrow: 'TRAIL MARKER 5 OF 5',
-    title: 'Your Adventure Story',
-    body: 'Your Passport grows with every adventure. Collect stamps, earn badges, save memories, and climb the ranks as your story builds.',
-    route: '/(tabs)/passport',
-    focus: 'passport',
+    title: 'Ask Go something',
+    body: 'Try asking Go to plan an easy outdoor day this weekend.',
+    route: '/trail-guide/ask',
   },
 ] as const;
-
-type FocusName = (typeof steps)[number]['focus'];
 
 type Props = {
   visible: boolean;
@@ -49,181 +42,280 @@ type Props = {
   onSkip: () => void;
 };
 
-type FocusRect = {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-};
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function getFocusRect(focus: FocusName, screenWidth: number, screenHeight: number): FocusRect {
-  const left = clamp(screenWidth * 0.045, 14, 24);
-  const width = screenWidth - left * 2;
-
-  const configs: Record<FocusName, { top: number; height: number }> = {
-    trailhead: { top: 0.105, height: 0.315 },
-    outpost: { top: 0.11, height: 0.245 },
-    adventures: { top: 0.13, height: 0.34 },
-    circle: { top: 0.12, height: 0.29 },
-    passport: { top: 0.11, height: 0.34 },
-  };
-
-  const config = configs[focus];
-  const top = clamp(screenHeight * config.top, 84, 160);
-  const height = clamp(screenHeight * config.height, 190, 390);
-
-  return { top, left, width, height };
-}
-
 export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }: Props) {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const currentIndex = Math.max(0, Math.min(steps.length - 1, step));
-  const current = steps[currentIndex]!;
-  const focusRect = getFocusRect(current.focus, screenWidth, screenHeight);
-  const focusBottom = focusRect.top + focusRect.height;
-  const cardGutter = clamp(screenWidth * 0.045, 14, 24);
+  const completedCount = currentIndex;
+  const progress = `${Math.max(0, completedCount)} of ${steps.length} complete`;
 
-  function goTo(nextStep: number) {
-    const next = steps[nextStep];
-    if (!next) {
+  function continueTrailhead() {
+    const current = steps[currentIndex];
+    if (!current) {
       onFinish();
       return;
     }
-    onStepChange(nextStep);
-    router.replace(next.route as never);
+
+    router.push(current.route as never);
+    if (currentIndex === steps.length - 1) {
+      onFinish();
+      return;
+    }
+    onStepChange(currentIndex + 1);
   }
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onSkip}>
-      <View style={styles.root}>
-        <View pointerEvents="none" style={[styles.shadePiece, { top: 0, left: 0, right: 0, height: focusRect.top }]} />
-        <View pointerEvents="none" style={[styles.shadePiece, { top: focusRect.top, left: 0, width: focusRect.left, height: focusRect.height }]} />
-        <View pointerEvents="none" style={[styles.shadePiece, { top: focusRect.top, left: focusRect.left + focusRect.width, right: 0, height: focusRect.height }]} />
-        <View pointerEvents="none" style={[styles.shadePiece, { top: focusBottom, left: 0, right: 0, bottom: 0 }]} />
-
-        <View
-          pointerEvents="none"
-          style={[
-            styles.focusRing,
-            {
-              top: focusRect.top,
-              left: focusRect.left,
-              width: focusRect.width,
-              height: focusRect.height,
-            },
-          ]}
-        />
-
-        <View style={[styles.cardWrap, { left: cardGutter, right: cardGutter }]}>
+      <View style={styles.backdrop}>
+        <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
           <View style={styles.card}>
-            <View style={styles.cardTopRow}>
-              <Text style={styles.eyebrow}>{current.eyebrow}</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Skip tutorial" hitSlop={10} onPress={onSkip}>
-                <Text style={styles.skip}>Skip tutorial</Text>
+            <View style={styles.copyColumn}>
+              <View style={styles.topRow}>
+                <Text style={styles.eyebrow}>TRAILHEAD</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Close Trailhead" hitSlop={10} onPress={onSkip}>
+                  <Text style={styles.skip}>Not now</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.title}>Your first adventure starts here.</Text>
+              <Text style={styles.progressCopy}>
+                <Text style={styles.progressNumber}>{completedCount}</Text> of {steps.length} steps complete
+              </Text>
+              <View style={styles.progressTrack} accessibilityLabel={progress}>
+                <View style={[styles.progressFill, { width: `${(completedCount / steps.length) * 100}%` }]} />
+              </View>
+
+              <Pressable style={styles.primary} accessibilityRole="button" onPress={continueTrailhead}>
+                <Text style={styles.primaryText}>{currentIndex === steps.length - 1 ? 'Finish Trailhead' : 'Continue'}</Text>
+                <Text style={styles.primaryArrow}>›</Text>
               </Pressable>
             </View>
 
-            <Text style={styles.title}>{current.title}</Text>
-            <Text style={styles.body}>{current.body}</Text>
+            <View style={styles.divider} />
 
-            {currentIndex === steps.length - 1 ? (
-              <View style={styles.rewardRow}>
-                <View style={styles.rewardMark}><Text style={styles.rewardMarkText}>✓</Text></View>
-                <View style={styles.rewardCopyWrap}>
-                  <Text style={styles.rewardTitle}>Finish the trail</Text>
-                  <Text style={styles.rewardCopy}>Complete the tour to earn your Trail Ready Passport stamp.</Text>
-                </View>
-              </View>
-            ) : null}
-
-            <View style={styles.controls}>
-              <View style={styles.leadingControls}>
-                {currentIndex > 0 ? (
-                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => goTo(currentIndex - 1)}>
-                    <Text style={styles.back}>Back</Text>
+            <View style={styles.stepsColumn}>
+              {steps.map((item, index) => {
+                const completed = index < currentIndex;
+                const active = index === currentIndex;
+                return (
+                  <Pressable
+                    key={item.title}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active, checked: completed }}
+                    onPress={() => {
+                      onStepChange(index);
+                      router.push(item.route as never);
+                    }}
+                    style={[styles.stepRow, active && styles.stepRowActive]}
+                  >
+                    <View style={styles.markerColumn}>
+                      <View style={[styles.marker, completed && styles.markerDone, active && styles.markerActive]}>
+                        {completed ? <Text style={styles.check}>✓</Text> : null}
+                      </View>
+                      {index < steps.length - 1 ? <View style={[styles.connector, completed && styles.connectorDone]} /> : null}
+                    </View>
+                    <View style={styles.stepTextWrap}>
+                      <Text style={[styles.stepTitle, completed && styles.stepTitleDone, active && styles.stepTitleActive]}>{item.title}</Text>
+                      {active ? <Text style={styles.stepBody}>{item.body}</Text> : null}
+                    </View>
                   </Pressable>
-                ) : null}
-                <View style={styles.dots} accessibilityLabel={`Step ${currentIndex + 1} of ${steps.length}`}>
-                  {steps.map((_, index) => <View key={index} style={[styles.dot, index === currentIndex && styles.dotActive]} />)}
-                </View>
-              </View>
-
-              <Pressable style={styles.primary} accessibilityRole="button" onPress={() => goTo(currentIndex + 1)}>
-                <Text style={styles.primaryText}>{currentIndex === steps.length - 1 ? 'Start Exploring' : 'Next'}</Text>
-              </Pressable>
+                );
+              })}
             </View>
           </View>
-        </View>
+
+          <Text style={styles.footerHint}>Trailhead disappears once you finish. Your Trail takes it from there.</Text>
+        </ScrollView>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  shadePiece: { position: 'absolute', backgroundColor: 'rgba(3, 8, 5, 0.72)' },
-  focusRing: {
-    position: 'absolute',
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: '#E7C95F',
-    backgroundColor: 'transparent',
-    shadowColor: '#D7B45A',
-    shadowOpacity: 0.42,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(7, 12, 9, 0.72)',
   },
-  cardWrap: { position: 'absolute', bottom: 24, alignItems: 'center' },
+  page: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 28,
+  },
   card: {
     width: '100%',
-    maxWidth: 470,
-    borderRadius: 20,
+    maxWidth: 760,
+    alignSelf: 'center',
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#3E574A',
-    backgroundColor: '#17211C',
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 15,
-    gap: 8,
+    borderColor: '#315246',
+    backgroundColor: '#0B3D31',
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.36,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 14,
+    shadowOpacity: 0.34,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 16,
   },
-  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
-  skip: { color: '#AFC2B8', fontSize: 12, fontWeight: '800' },
-  title: { color: '#FFF8E8', fontSize: 24, lineHeight: 28, fontWeight: '900' },
-  body: { color: '#B7C3BC', fontSize: 14, lineHeight: 20 },
-  rewardRow: {
-    marginTop: 2,
+  copyColumn: {
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 20,
+  },
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#35493E',
-    backgroundColor: '#1D2A24',
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  rewardMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
-  rewardMarkText: { color: '#17211C', fontSize: 14, fontWeight: '900' },
-  rewardCopyWrap: { flex: 1, gap: 1 },
-  rewardTitle: { color: '#F5E6B0', fontSize: 12, fontWeight: '900' },
-  rewardCopy: { color: '#9EAEA5', fontSize: 11, lineHeight: 15 },
-  controls: { marginTop: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
-  leadingControls: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
-  back: { color: '#D5DED9', fontSize: 13, fontWeight: '800' },
-  dots: { flexDirection: 'row', gap: 5, alignItems: 'center' },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#526159' },
-  dotActive: { width: 16, backgroundColor: '#D7B45A' },
-  primary: { minHeight: 42, borderRadius: 13, backgroundColor: '#D7B45A', paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#17211C', fontSize: 13, fontWeight: '900' },
+  eyebrow: {
+    color: '#DDB64B',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+  skip: {
+    color: '#D9E2DD',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  title: {
+    marginTop: 18,
+    color: '#FFF9EB',
+    fontSize: 34,
+    lineHeight: 39,
+    fontWeight: '900',
+    maxWidth: 410,
+  },
+  progressCopy: {
+    marginTop: 18,
+    color: '#C7D3CD',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  progressNumber: {
+    color: '#DDB64B',
+    fontWeight: '900',
+  },
+  progressTrack: {
+    marginTop: 10,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#31574A',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#DDB64B',
+  },
+  primary: {
+    marginTop: 20,
+    minHeight: 48,
+    alignSelf: 'flex-start',
+    borderRadius: 15,
+    backgroundColor: '#DDB64B',
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  primaryText: {
+    color: '#0E2D25',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  primaryArrow: {
+    color: '#0E2D25',
+    fontSize: 28,
+    lineHeight: 28,
+    marginTop: -2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#2B5144',
+  },
+  stepsColumn: {
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  stepRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    gap: 13,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  stepRowActive: {
+    backgroundColor: 'rgba(221, 182, 75, 0.09)',
+  },
+  markerColumn: {
+    width: 28,
+    alignItems: 'center',
+  },
+  marker: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#78958A',
+    backgroundColor: '#0B3D31',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerDone: {
+    borderColor: '#DDB64B',
+    backgroundColor: '#DDB64B',
+  },
+  markerActive: {
+    borderColor: '#F0CC65',
+  },
+  check: {
+    color: '#12372E',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  connector: {
+    width: 2,
+    flex: 1,
+    minHeight: 24,
+    backgroundColor: '#45695C',
+  },
+  connectorDone: {
+    backgroundColor: '#DDB64B',
+  },
+  stepTextWrap: {
+    flex: 1,
+    paddingTop: 2,
+    paddingBottom: 5,
+  },
+  stepTitle: {
+    color: '#AFC0B8',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  stepTitleDone: {
+    color: '#F1F5F2',
+  },
+  stepTitleActive: {
+    color: '#FFF9EB',
+    fontWeight: '900',
+  },
+  stepBody: {
+    marginTop: 4,
+    color: '#BCCAC3',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  footerHint: {
+    alignSelf: 'center',
+    maxWidth: 520,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    color: '#C9D2CD',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
 });
