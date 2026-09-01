@@ -1,18 +1,19 @@
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { openTrailheadAction } from './trailheadExperience';
 import { startGuidedTutorial } from './tutorialController';
 import { getTrailheadProgress, type TrailheadAction } from './trailheadProgress';
 import { hasFinishedGuidedTutorial } from './tutorialPreference';
 
-const steps: { action: TrailheadAction; title: string; route: string }[] = [
-  { action: 'profile', title: 'Complete your profile', route: '/member/profile' },
-  { action: 'trail-guide', title: 'Explore the Trail Guide', route: '/trail-guide' },
-  { action: 'save-place', title: 'Save your first place', route: '/trail-guide' },
-  { action: 'adventure', title: 'Find an adventure', route: '/(tabs)/explore' },
-  { action: 'outpost', title: 'Visit the Outpost', route: '/(tabs)/community' },
-  { action: 'ask-go', title: 'Ask Go something', route: '/trail-guide/ask' },
+const steps: { action: TrailheadAction; title: string }[] = [
+  { action: 'profile', title: 'Complete your profile' },
+  { action: 'trail-guide', title: 'Explore the Trail Guide' },
+  { action: 'save-place', title: 'Save your first place' },
+  { action: 'adventure', title: 'Find an adventure' },
+  { action: 'outpost', title: 'Visit the Outpost' },
+  { action: 'ask-go', title: 'Ask Go something' },
 ];
 
 function headlineFor(completed: number) {
@@ -56,7 +57,7 @@ export function TrailheadStarterCard() {
       startGuidedTutorial();
       return;
     }
-    router.push(next.route as never);
+    openTrailheadAction(next.action);
   }
 
   return (

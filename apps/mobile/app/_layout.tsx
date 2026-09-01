@@ -10,14 +10,12 @@ import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
 import { PushNotificationsManager } from '../src/notifications/PushNotificationsManager';
 import { GuidedTutorial } from '../src/onboarding/GuidedTutorial';
 import { TrailheadProgressObserver } from '../src/onboarding/TrailheadProgressObserver';
+import { TrailheadTooltip } from '../src/onboarding/TrailheadTooltip';
 import { subscribeGuidedTutorial } from '../src/onboarding/tutorialController';
 import {
-  getGuidedTutorialStep,
   hasCompletedGuidedTutorial,
   hasFinishedGuidedTutorial,
-  markGuidedTutorialCompleted,
   markGuidedTutorialFinished,
-  setGuidedTutorialStep,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
@@ -57,7 +55,6 @@ function AppShell() {
   const { session, isLoading } = useAuth();
   const pathname = usePathname();
   const [tutorialVisible, setTutorialVisible] = useState(false);
-  const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialGateReady, setTutorialGateReady] = useState(false);
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -130,7 +127,6 @@ function AppShell() {
     tutorialCheckedRef.current = false;
     setTutorialGateReady(false);
     setTutorialVisible(false);
-    setTutorialStep(0);
   }, [session?.user.id]);
 
   useEffect(() => {
@@ -139,7 +135,6 @@ function AppShell() {
     try {
       const finished = hasFinishedGuidedTutorial();
       const completed = hasCompletedGuidedTutorial();
-      setTutorialStep(getGuidedTutorialStep());
       setTutorialGateReady(true);
 
       if (!completed) {
@@ -156,7 +151,6 @@ function AppShell() {
       console.warn('[tutorial] Unable to read guided tutorial preference', error);
       setTutorialGateReady(true);
       setTutorialVisible(false);
-      setTutorialStep(0);
     }
   }, [isAuthScreen, isLoading, releaseSeenKey, session]);
 
@@ -173,36 +167,25 @@ function AppShell() {
 
   useEffect(() => subscribeGuidedTutorial(() => {
     setWhatsNewVisible(false);
-    try {
-      setTutorialStep(getGuidedTutorialStep());
-    } catch {
-      setTutorialStep(0);
-    }
     setTutorialVisible(true);
     router.replace('/(tabs)' as never);
   }), []);
-
-  function updateTutorialStep(step: number) {
-    setTutorialStep(step);
-    try { setGuidedTutorialStep(step); } catch (error) { console.warn('[tutorial] Unable to save Trailhead progress', error); }
-  }
 
   function closeTutorial() {
     setTutorialVisible(false);
     setTutorialGateReady(true);
     whatsNewCheckedRef.current = false;
-    router.replace('/(tabs)' as never);
   }
 
-  function skipTutorial() {
-    try { markGuidedTutorialCompleted(); } catch (error) { console.warn('[tutorial] Unable to save guided tutorial preference', error); }
+  function closeTutorialToHome() {
     closeTutorial();
+    router.replace('/(tabs)' as never);
   }
 
   function finishTutorial() {
     try { markGuidedTutorialFinished(); } catch (error) { console.warn('[tutorial] Unable to save guided tutorial completion', error); }
     void awardTutorialCompletionStamp().catch((error) => console.warn('[tutorial] Unable to award tutorial completion stamp', error));
-    closeTutorial();
+    closeTutorialToHome();
   }
 
   function dismissWhatsNew() {
@@ -231,7 +214,8 @@ function AppShell() {
         </Stack>
       </KeyboardAvoidingView>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {tutorialVisible ? <GuidedTutorial visible step={tutorialStep} onStepChange={updateTutorialStep} onFinish={finishTutorial} onSkip={skipTutorial} /> : null}
+      {session && !tutorialVisible && !isAuthScreen ? <TrailheadTooltip /> : null}
+      {tutorialVisible ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
       {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
   );
