@@ -152,6 +152,8 @@ export default function HostOperationsScreen() {
     });
   }, [eventFilter, eventRows, loadedAt]);
 
+  const firstCampaign = campaigns[0];
+
   const statusCopy: Record<string, [string, string]> = {
     pending: ['Application in review', 'Your Host Pathway is complete. We’ll review your application before hosting tools unlock.'],
     needs_info: ['We need a little more information', 'Your application is still open. Go Melanated needs additional information before making a decision.'],
@@ -215,7 +217,7 @@ export default function HostOperationsScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {(['active', 'drafts', 'upcoming', 'past'] as EventFilter[]).map((filter) => (
                 <Pressable key={filter} style={[styles.filterChip, eventFilter === filter && styles.filterChipActive]} onPress={() => setEventFilter(filter)}>
-                  <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter[0].toUpperCase() + filter.slice(1)}</Text>
+                  <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter.charAt(0).toUpperCase() + filter.slice(1)}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -227,7 +229,7 @@ export default function HostOperationsScreen() {
               <WorkMetric label="Blocked" value={blockedTasks.length} />
               <WorkMetric label="Unassigned" value={unassignedTasks.length} />
             </View>
-            {campaigns[0] ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${campaigns[0].slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
+            {firstCampaign ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${firstCampaign.slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
 
             <SectionHeader title="Reusable Library" />
             <Pressable style={styles.libraryCard} onPress={() => router.push('/host/library' as never)}>
