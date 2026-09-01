@@ -4,7 +4,6 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  assignCampaignTask,
   decideCampaignDecision,
   getCampaignDaysUntil,
   getCampaignReadiness,
@@ -12,22 +11,13 @@ import {
   getHostCampaign,
   listCampaignTeam,
   updateCampaignMilestone,
-  updateCampaignTaskStatus,
   type CampaignTask,
-  type CampaignTaskStatus,
   type CampaignTeamMember,
   type HostCampaign,
 } from '../../../src/hosting/campaigns';
 
-const statusLabels: Record<CampaignTaskStatus, string> = {
-  not_started: 'Not started',
-  in_progress: 'In progress',
-  waiting: 'Waiting',
-  blocked: 'Blocked',
-  review: 'Ready for review',
-  complete: 'Complete',
-};
-
+type WorkspaceTab = 'overview' | 'work' | 'marketing' | 'guests' | 'operations';
+type WorkTab = 'tasks' | 'milestones' | 'decisions' | 'team';
 type WorkFilter = 'all' | 'mine' | 'unassigned' | 'overdue' | 'blocked';
 
 export default function HostCampaignDetailScreen() {
@@ -35,6 +25,8 @@ export default function HostCampaignDetailScreen() {
   const [campaign, setCampaign] = useState<HostCampaign | null>(null);
   const [team, setTeam] = useState<CampaignTeamMember[]>([]);
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('overview');
+  const [workTab, setWorkTab] = useState<WorkTab>('tasks');
   const [workFilter, setWorkFilter] = useState<WorkFilter>('all');
   const [referenceNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
@@ -60,7 +52,7 @@ export default function HostCampaignDetailScreen() {
       setTeam(nextTeam);
       setCurrentProfileId(profileId);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load campaign.');
+      setError(caught instanceof Error ? caught.message : 'Unable to load event workspace.');
     } finally {
       setLoading(false);
     }
@@ -68,35 +60,8 @@ export default function HostCampaignDetailScreen() {
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  async function changeTaskStatus(taskId: string, status: CampaignTaskStatus) {
-    setSavingId(taskId);
-    setError('');
-    try {
-      await updateCampaignTaskStatus(taskId, status);
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to update task.');
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function changeTaskAssignee(taskId: string, profileId: string | null) {
-    setSavingId(taskId);
-    setError('');
-    try {
-      await assignCampaignTask(taskId, profileId);
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to assign task.');
-    } finally {
-      setSavingId(null);
-    }
-  }
-
   async function toggleMilestone(milestoneId: string, complete: boolean) {
     setSavingId(milestoneId);
-    setError('');
     try {
       await updateCampaignMilestone(milestoneId, complete);
       await load();
@@ -109,7 +74,6 @@ export default function HostCampaignDetailScreen() {
 
   async function saveDecision(decisionId: string) {
     setSavingId(decisionId);
-    setError('');
     try {
       await decideCampaignDecision(decisionId, decisionDrafts[decisionId] ?? '');
       setDecisionDrafts((current) => ({ ...current, [decisionId]: '' }));
@@ -122,233 +86,209 @@ export default function HostCampaignDetailScreen() {
   }
 
   if (loading && !campaign) {
-    return <SafeAreaView style={styles.safe}><View style={styles.centerState}><ActivityIndicator color="#D7B45A" /><Text style={styles.stateText}>Loading campaign…</Text></View></SafeAreaView>;
+    return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" /><Text style={styles.muted}>Loading event workspace…</Text></View></SafeAreaView>;
   }
 
   if (!campaign) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.missing}>
-          <Text style={styles.title}>{error ? 'Campaign unavailable' : 'Campaign not found'}</Text>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <Pressable style={styles.primaryButton} onPress={() => void load()}><Text style={styles.primaryButtonText}>Try again</Text></Pressable>
-          <Pressable onPress={() => router.replace('/host/campaigns' as never)}><Text style={styles.backLink}>Back to Campaigns</Text></Pressable>
-        </View>
-      </SafeAreaView>
-    );
+    return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.title}>Event unavailable</Text>{error ? <Text style={styles.error}>{error}</Text> : null}<Pressable style={styles.primaryButton} onPress={() => void load()}><Text style={styles.primaryButtonText}>Try again</Text></Pressable></View></SafeAreaView>;
   }
 
   const readiness = getCampaignReadiness(campaign);
   const days = getCampaignDaysUntil(campaign);
-  const attention = campaign.tasks.filter((task) => task.priority === 'critical' || task.status === 'blocked' || task.status === 'waiting');
   const activeTasks = campaign.tasks.filter((task) => task.status !== 'complete');
-  const completedTasks = campaign.tasks.filter((task) => task.status === 'complete');
+  const attention = activeTasks.filter((task) => task.status === 'waiting' || task.status === 'blocked' || task.priority === 'critical');
   const openDecisions = campaign.decisions.filter((decision) => decision.status === 'open');
   const mine = activeTasks.filter((task) => Boolean(currentProfileId) && task.assigneeProfileId === currentProfileId);
   const unassigned = activeTasks.filter((task) => !task.assigneeProfileId);
   const overdue = activeTasks.filter((task) => Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() < referenceNow);
   const blocked = activeTasks.filter((task) => task.status === 'blocked');
-  const filteredTasks = workFilter === 'mine' ? mine
-    : workFilter === 'unassigned' ? unassigned
-      : workFilter === 'overdue' ? overdue
-        : workFilter === 'blocked' ? blocked
-          : activeTasks;
+  const filteredTasks = workFilter === 'mine' ? mine : workFilter === 'unassigned' ? unassigned : workFilter === 'overdue' ? overdue : workFilter === 'blocked' ? blocked : activeTasks;
+  const nextUp = activeTasks.filter((task) => task.status !== 'blocked').slice(0, 3);
+
+  function openTask(task: CampaignTask) {
+    router.push(`/host/campaigns/${campaign.slug}/tasks/${task.id}` as never);
+  }
+
+  function setTab(tab: WorkspaceTab) {
+    if (tab === 'marketing') {
+      router.push(`/host/campaigns/${campaign.slug}/marketing` as never);
+      return;
+    }
+    setWorkspaceTab(tab);
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.replace('/host' as never)}><Text style={styles.back}>‹ Host Center</Text></Pressable>
+        <Text style={styles.title}>{campaign.shortTitle}</Text>
+        <Text style={styles.meta}>{formatDateRange(campaign.startsAt, campaign.endsAt)} · {campaign.location}</Text>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.workspaceTabs}>
+        {(['overview', 'work', 'marketing', 'guests', 'operations'] as WorkspaceTab[]).map((tab) => (
+          <Pressable key={tab} style={[styles.workspaceTab, workspaceTab === tab && styles.workspaceTabActive]} onPress={() => setTab(tab)}>
+            <Text style={[styles.workspaceTabText, workspaceTab === tab && styles.workspaceTabTextActive]}>{capitalize(tab)}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Campaigns</Text></Pressable>
-        <View style={styles.headingRow}>
-          <View style={{ flex: 1 }}><Text style={styles.eyebrow}>HOST CAMPAIGN</Text><Text style={styles.title}>{campaign.shortTitle}</Text></View>
-          <View style={[styles.accessPill, campaign.canManage ? styles.accessPillManage : styles.accessPillView]}><Text style={campaign.canManage ? styles.accessManageText : styles.accessViewText}>{campaign.canManage ? 'MANAGE' : 'VIEW'}</Text></View>
-        </View>
-        <Text style={styles.meta}>{campaign.location}</Text>
-        <Text style={[styles.countdown, { color: campaign.accent }]}>{days} DAYS TO GO</Text>
-        {error ? <View style={styles.inlineError}><Text style={styles.errorText}>{error}</Text></View> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <View style={styles.readinessCard}>
-          <View style={styles.readinessTop}><Text style={styles.sectionLabel}>EVENT READINESS</Text><Text style={[styles.readinessValue, { color: campaign.accent }]}>{readiness}%</Text></View>
-          <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${readiness}%`, backgroundColor: campaign.accent }]} /></View>
-          <Text style={styles.readinessNote}>Weighted by critical milestones, not just task count.</Text>
-        </View>
+        {workspaceTab === 'overview' ? <>
+          <View style={styles.readinessCard}>
+            <View style={styles.readinessRing}><Text style={styles.readinessValue}>{readiness}%</Text></View>
+            <View style={{ flex: 1 }}><Text style={styles.cardTitle}>Readiness</Text><Text style={styles.accentText}>{days} days to go</Text></View>
+          </View>
 
-        <View style={styles.quickGrid}>
-          <QuickCard value={String(activeTasks.length)} label="Open work" />
-          <QuickCard value={String(attention.length)} label="Needs attention" />
-          <QuickCard value={String(openDecisions.length)} label="Open decisions" />
-          <QuickCard value={String(completedTasks.length)} label="Complete" />
-        </View>
+          <SectionHeader title="Needs attention" trailing={`${attention.length} item${attention.length === 1 ? '' : 's'}`} />
+          <View style={styles.listCard}>
+            {attention.length === 0 ? <Text style={styles.empty}>Nothing needs immediate attention.</Text> : attention.slice(0, 3).map((task, index) => <CompactTask key={task.id} task={task} onPress={() => openTask(task)} divider={index > 0} />)}
+          </View>
 
-        <Section title="Needs attention">
-          {attention.length === 0 ? <Text style={styles.empty}>Nothing is blocked or waiting right now.</Text> : attention.map((task) => (
-            <TaskRow key={task.id} task={task} accent={campaign.accent} canManage={campaign.canManage} saving={savingId === task.id} team={team} allowAssignment={false} onStatus={changeTaskStatus} onAssign={changeTaskAssignee} />
-          ))}
-        </Section>
+          <SectionHeader title="Next up" trailing={activeTasks.length > 3 ? 'View all' : undefined} onPress={() => setWorkspaceTab('work')} />
+          <View style={styles.listCard}>
+            {nextUp.map((task, index) => <CompactTask key={task.id} task={task} onPress={() => openTask(task)} divider={index > 0} />)}
+            {openDecisions.slice(0, 1).map((decision, index) => <Pressable key={decision.id} style={[styles.compactRow, (nextUp.length > 0 || index > 0) && styles.divider]} onPress={() => { setWorkspaceTab('work'); setWorkTab('decisions'); }}><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{decision.title}</Text><Text style={styles.rowMeta}>Decision needed · {decision.owner}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}
+          </View>
 
-        <Section title="Milestones">
-          {campaign.milestones.map((milestone) => (
-            <Pressable key={milestone.id} disabled={!campaign.canManage || savingId === milestone.id} style={styles.milestoneRow} onPress={() => void toggleMilestone(milestone.id, !milestone.complete)}>
-              <View style={[styles.check, milestone.complete && { backgroundColor: campaign.accent, borderColor: campaign.accent }]}>{savingId === milestone.id ? <ActivityIndicator size="small" color="#0B100D" /> : <Text style={styles.checkText}>{milestone.complete ? '✓' : ''}</Text>}</View>
-              <View style={{ flex: 1 }}><Text style={styles.rowTitle}>{milestone.title}</Text><Text style={styles.rowMeta}>{milestone.weight}% of readiness{campaign.canManage ? ' · Tap to update' : ''}</Text></View>
-            </Pressable>
-          ))}
-        </Section>
+          <View style={styles.moduleGrid}>
+            <ModuleCard title="Work" value={`${activeTasks.length} open tasks`} onPress={() => setWorkspaceTab('work')} />
+            <ModuleCard title="Marketing" value={`${campaign.metrics.marketingNeedsAttention} need attention`} onPress={() => setTab('marketing')} />
+            <ModuleCard title="Guests" value={campaign.metrics.capacityLabel} onPress={() => setWorkspaceTab('guests')} />
+            <ModuleCard title="Budget" value="Setup needed" onPress={() => setWorkspaceTab('operations')} />
+          </View>
+        </> : null}
 
-        <Section title="Work">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-            <FilterChip label="All" count={activeTasks.length} active={workFilter === 'all'} onPress={() => setWorkFilter('all')} />
-            <FilterChip label="Mine" count={mine.length} active={workFilter === 'mine'} onPress={() => setWorkFilter('mine')} />
-            <FilterChip label="Unassigned" count={unassigned.length} active={workFilter === 'unassigned'} onPress={() => setWorkFilter('unassigned')} />
-            <FilterChip label="Overdue" count={overdue.length} active={workFilter === 'overdue'} onPress={() => setWorkFilter('overdue')} />
-            <FilterChip label="Blocked" count={blocked.length} active={workFilter === 'blocked'} onPress={() => setWorkFilter('blocked')} />
+        {workspaceTab === 'work' ? <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subTabs}>
+            {(['tasks', 'milestones', 'decisions', 'team'] as WorkTab[]).map((tab) => <Pressable key={tab} style={[styles.subTab, workTab === tab && styles.subTabActive]} onPress={() => setWorkTab(tab)}><Text style={[styles.subTabText, workTab === tab && styles.subTabTextActive]}>{capitalize(tab)}</Text></Pressable>)}
           </ScrollView>
-          {filteredTasks.length === 0 ? <Text style={styles.empty}>No work matches this view.</Text> : filteredTasks.map((task) => (
-            <TaskRow key={task.id} task={task} accent={campaign.accent} canManage={campaign.canManage} saving={savingId === task.id} team={team} allowAssignment onStatus={changeTaskStatus} onAssign={changeTaskAssignee} />
-          ))}
-        </Section>
 
-        <Section title="Team">
-          {team.length === 0 ? <Text style={styles.empty}>No campaign team members are attached yet.</Text> : team.map((member) => {
-            const openCount = activeTasks.filter((task) => task.assigneeProfileId === member.profileId).length;
-            return <View key={member.profileId} style={styles.teamRow}><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{member.displayName}</Text><Text style={styles.rowMeta}>{member.role}</Text></View><Text style={styles.teamCount}>{openCount} open</Text></View>;
-          })}
-        </Section>
+          {workTab === 'tasks' ? <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+              <FilterChip label="All" count={activeTasks.length} active={workFilter === 'all'} onPress={() => setWorkFilter('all')} />
+              <FilterChip label="Mine" count={mine.length} active={workFilter === 'mine'} onPress={() => setWorkFilter('mine')} />
+              <FilterChip label="Unassigned" count={unassigned.length} active={workFilter === 'unassigned'} onPress={() => setWorkFilter('unassigned')} />
+              <FilterChip label="Overdue" count={overdue.length} active={workFilter === 'overdue'} onPress={() => setWorkFilter('overdue')} />
+              <FilterChip label="Blocked" count={blocked.length} active={workFilter === 'blocked'} onPress={() => setWorkFilter('blocked')} />
+            </ScrollView>
+            {filteredTasks.map((task) => <TaskCard key={task.id} task={task} team={team} onPress={() => openTask(task)} />)}
+          </> : null}
 
-        <Section title="Open decisions">
-          {openDecisions.length === 0 ? <Text style={styles.empty}>No open decisions.</Text> : openDecisions.map((decision) => (
-            <View key={decision.id} style={styles.decisionCard}>
-              <Text style={styles.decisionKicker}>DECISION NEEDED · {decision.dueLabel.toUpperCase()}</Text>
-              <Text style={styles.rowTitle}>{decision.title}</Text>
-              <Text style={styles.rowMeta}>Owner: {decision.owner}</Text>
-              {campaign.canManage ? <>
-                <TextInput style={styles.decisionInput} value={decisionDrafts[decision.id] ?? ''} onChangeText={(value) => setDecisionDrafts((current) => ({ ...current, [decision.id]: value }))} placeholder="Record the final decision…" placeholderTextColor="#6F7972" multiline />
-                <Pressable disabled={savingId === decision.id} style={styles.decisionButton} onPress={() => void saveDecision(decision.id)}>{savingId === decision.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.decisionButtonText}>Mark decided</Text>}</Pressable>
-              </> : null}
-            </View>
-          ))}
-        </Section>
+          {workTab === 'milestones' ? campaign.milestones.map((milestone) => <Pressable key={milestone.id} disabled={!campaign.canManage || savingId === milestone.id} style={styles.milestoneCard} onPress={() => void toggleMilestone(milestone.id, !milestone.complete)}><View style={[styles.check, milestone.complete && styles.checkDone]}><Text style={styles.checkText}>{milestone.complete ? '✓' : ''}</Text></View><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{milestone.title}</Text><Text style={styles.rowMeta}>{milestone.complete ? 'Complete' : 'Not complete'}{campaign.canManage ? ' · Tap to update' : ''}</Text></View></Pressable>) : null}
 
-        <Section title="Campaign pulse">
-          <Pressable style={styles.pulseCard} onPress={() => router.push(`/host/campaigns/${campaign.slug}/marketing` as never)}><Text style={styles.pulseTitle}>Marketing</Text><Text style={styles.pulseValue}>{campaign.metrics.marketingNeedsAttention} marketing task{campaign.metrics.marketingNeedsAttention === 1 ? '' : 's'} need attention.</Text><Text style={[styles.pulseAction, { color: campaign.accent }]}>Open marketing calendar →</Text></Pressable>
-          <View style={styles.pulseCard}><Text style={styles.pulseTitle}>Guests</Text><Text style={styles.pulseValue}>{campaign.metrics.capacityLabel}</Text></View>
-          <View style={styles.pulseCard}><Text style={styles.pulseTitle}>Budget</Text><Text style={styles.pulseValue}>Budget setup is ready for the next release.</Text></View>
-        </Section>
+          {workTab === 'decisions' ? <>
+            <SectionHeader title="Open decisions" />
+            {openDecisions.map((decision) => <View key={decision.id} style={styles.decisionCard}><Text style={styles.decisionKicker}>DECISION NEEDED · {decision.dueLabel.toUpperCase()}</Text><Text style={styles.cardTitle}>{decision.title}</Text><Text style={styles.rowMeta}>Owner: {decision.owner}</Text>{campaign.canManage ? <><TextInput style={styles.decisionInput} value={decisionDrafts[decision.id] ?? ''} onChangeText={(value) => setDecisionDrafts((current) => ({ ...current, [decision.id]: value }))} placeholder="Record the final decision…" placeholderTextColor="#6F7972" multiline /><Pressable disabled={savingId === decision.id} style={styles.decisionButton} onPress={() => void saveDecision(decision.id)}><Text style={styles.decisionButtonText}>Mark decided</Text></Pressable></> : null}</View>)}
+          </> : null}
+
+          {workTab === 'team' ? team.map((member) => { const openCount = activeTasks.filter((task) => task.assigneeProfileId === member.profileId).length; const memberBlocked = blocked.filter((task) => task.assigneeProfileId === member.profileId).length; return <View key={member.profileId} style={styles.teamCard}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{member.displayName}</Text><Text style={styles.rowMeta}>{member.isOwner ? 'Event owner' : member.role}</Text></View><View><Text style={styles.teamMetric}>{openCount} open</Text><Text style={styles.teamMeta}>{memberBlocked} blocked</Text></View></View>; }) : null}
+        </> : null}
+
+        {workspaceTab === 'guests' ? <Placeholder title="Guests" body={campaign.metrics.capacityLabel} secondary="Ticket sync, attendee segments, communications and check-in will live here." /> : null}
+        {workspaceTab === 'operations' ? <Placeholder title="Operations" body="Event-day command center" secondary="Run of show, food, equipment, vendors, incidents and budget will live here." /> : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{children}</View>;
+function CompactTask({ task, onPress, divider }: { task: CampaignTask; onPress: () => void; divider?: boolean }) {
+  return <Pressable style={[styles.compactRow, divider && styles.divider]} onPress={onPress}><View style={[styles.statusDot, task.status === 'blocked' ? styles.dotBlocked : styles.dotWaiting]} /><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{task.title}</Text><Text style={styles.rowMeta}>{task.status === 'blocked' ? 'Blocked' : task.status === 'waiting' ? 'Waiting' : task.dueLabel}</Text></View><Text style={styles.chevron}>›</Text></Pressable>;
 }
 
-function QuickCard({ value, label }: { value: string; label: string }) {
-  return <View style={styles.quickCard}><Text style={styles.quickValue}>{value}</Text><Text style={styles.quickLabel}>{label}</Text></View>;
+function TaskCard({ task, team, onPress }: { task: CampaignTask; team: CampaignTeamMember[]; onPress: () => void }) {
+  const assignee = team.find((member) => member.profileId === task.assigneeProfileId);
+  return <Pressable style={styles.taskCard} onPress={onPress}><View style={styles.taskTop}><Text style={[styles.taskStatus, task.status === 'blocked' && styles.blockedText]}>{task.status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.rowMeta}>{task.dueLabel}</Text></View><Text style={styles.cardTitle}>{task.title}</Text><Text style={styles.rowMeta}>{task.category} · Plan owner: {task.owner}</Text><View style={styles.taskMetaRow}><Text style={styles.rowMeta}>Assigned: {assignee?.displayName ?? 'Unassigned'}</Text><Text style={styles.chevron}>›</Text></View></Pressable>;
+}
+
+function ModuleCard({ title, value, onPress }: { title: string; value: string; onPress: () => void }) {
+  return <Pressable style={styles.moduleCard} onPress={onPress}><Text style={styles.moduleTitle}>{title}</Text><Text style={styles.moduleValue}>{value}</Text></Pressable>;
 }
 
 function FilterChip({ label, count, active, onPress }: { label: string; count: number; active: boolean; onPress: () => void }) {
   return <Pressable onPress={onPress} style={[styles.filterChip, active && styles.filterChipActive]}><Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label} {count}</Text></Pressable>;
 }
 
-function TaskRow({ task, accent, canManage, saving, team, allowAssignment, onStatus, onAssign }: { task: CampaignTask; accent: string; canManage: boolean; saving: boolean; team: CampaignTeamMember[]; allowAssignment: boolean; onStatus: (taskId: string, status: CampaignTaskStatus) => Promise<void>; onAssign: (taskId: string, profileId: string | null) => Promise<void> }) {
-  const danger = task.status === 'blocked' || task.priority === 'critical';
-  const assignee = team.find((member) => member.profileId === task.assigneeProfileId) ?? null;
-  return (
-    <View style={styles.taskCard}>
-      <View style={styles.taskTop}><Text style={[styles.taskStatus, { color: danger ? '#FF8A70' : accent }]}>{statusLabels[task.status].toUpperCase()}</Text><Text style={styles.taskDue}>{task.dueLabel}</Text></View>
-      <Text style={styles.rowTitle}>{task.title}</Text>
-      <Text style={styles.rowMeta}>{task.category} · Plan owner: {task.owner}</Text>
-      <Text style={styles.assigneeText}>Assigned: {assignee?.displayName ?? 'Unassigned'}</Text>
-      {task.blockedBy ? <Text style={styles.blockedBy}>Blocked by: {task.blockedBy}</Text> : null}
-      {canManage ? <View style={styles.taskActions}>{saving ? <ActivityIndicator size="small" color={accent} /> : <>
-        {task.status !== 'blocked' && task.status !== 'in_progress' ? <StatusAction label="Start" onPress={() => void onStatus(task.id, 'in_progress')} /> : null}
-        {task.status !== 'blocked' && task.status !== 'waiting' ? <StatusAction label="Waiting" onPress={() => void onStatus(task.id, 'waiting')} /> : null}
-        {task.status !== 'blocked' && task.status !== 'complete' ? <StatusAction label="Complete" onPress={() => void onStatus(task.id, 'complete')} /> : null}
-      </>}</View> : null}
-      {canManage && allowAssignment ? <View style={styles.assignmentBlock}><Text style={styles.assignmentLabel}>ASSIGN</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentRow}><AssignmentChip label="Unassigned" active={!task.assigneeProfileId} onPress={() => void onAssign(task.id, null)} />{team.map((member) => <AssignmentChip key={member.profileId} label={member.displayName} active={task.assigneeProfileId === member.profileId} onPress={() => void onAssign(task.id, member.profileId)} />)}</ScrollView></View> : null}
-    </View>
-  );
+function SectionHeader({ title, trailing, onPress }: { title: string; trailing?: string; onPress?: () => void }) {
+  return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{trailing ? <Pressable onPress={onPress}><Text style={styles.sectionTrailing}>{trailing}</Text></Pressable> : null}</View>;
 }
 
-function StatusAction({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Pressable style={styles.statusAction} onPress={onPress}><Text style={styles.statusActionText}>{label}</Text></Pressable>;
+function Placeholder({ title, body, secondary }: { title: string; body: string; secondary: string }) {
+  return <View style={styles.placeholder}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.placeholderTitle}>{body}</Text><Text style={styles.placeholderBody}>{secondary}</Text></View>;
 }
 
-function AssignmentChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return <Pressable style={[styles.assignmentChip, active && styles.assignmentChipActive]} onPress={onPress}><Text style={[styles.assignmentChipText, active && styles.assignmentChipTextActive]}>{label}</Text></Pressable>;
-}
+function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
+function formatDateRange(start: string, end: string) { const a = new Date(start); const b = new Date(end); return `${a.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${b.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`; }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
-  content: { padding: 20, paddingBottom: 70 },
-  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  stateText: { color: '#8E9891', fontSize: 12 },
-  missing: { flex: 1, justifyContent: 'center', padding: 24 },
-  back: { color: '#D7B45A', fontWeight: '900', marginBottom: 18 },
-  backLink: { color: '#AAB4AD', textAlign: 'center', fontWeight: '800', marginTop: 18 },
-  headingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
-  title: { color: '#FFF8E8', fontSize: 34, lineHeight: 40, fontWeight: '900', marginTop: 4 },
-  meta: { color: '#8E9891', fontSize: 12, lineHeight: 18, marginTop: 6 },
-  countdown: { fontSize: 12, fontWeight: '900', letterSpacing: 1.1, marginTop: 12 },
-  accessPill: { borderRadius: 14, paddingHorizontal: 9, paddingVertical: 6, marginTop: 2 },
-  accessPillManage: { backgroundColor: '#28371E' },
-  accessPillView: { backgroundColor: '#252C28' },
-  accessManageText: { color: '#A8CF7A', fontSize: 8, fontWeight: '900', letterSpacing: .8 },
-  accessViewText: { color: '#9AA49E', fontSize: 8, fontWeight: '900', letterSpacing: .8 },
-  inlineError: { borderRadius: 12, backgroundColor: '#211715', borderWidth: 1, borderColor: '#684139', padding: 12, marginTop: 12 },
-  errorText: { color: '#D7A398', fontSize: 11, lineHeight: 17, marginTop: 7 },
-  readinessCard: { backgroundColor: '#151B17', borderRadius: 20, borderWidth: 1, borderColor: '#303A34', padding: 17, marginTop: 18 },
-  readinessTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionLabel: { color: '#AAB4AD', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  readinessValue: { fontSize: 28, fontWeight: '900' },
-  readinessNote: { color: '#758079', fontSize: 10, marginTop: 8 },
-  progressTrack: { height: 8, borderRadius: 6, backgroundColor: '#252E29', overflow: 'hidden', marginTop: 12 },
-  progressFill: { height: '100%', borderRadius: 6 },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-  quickCard: { width: '48%', minHeight: 86, backgroundColor: '#121814', borderWidth: 1, borderColor: '#2A342E', borderRadius: 16, padding: 14 },
-  quickValue: { color: '#FFF8E8', fontSize: 24, fontWeight: '900' },
-  quickLabel: { color: '#87928B', fontSize: 11, fontWeight: '800', marginTop: 4 },
-  section: { marginTop: 26 },
-  sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 9 },
-  empty: { color: '#758079', fontSize: 12, lineHeight: 18 },
-  filterRow: { gap: 7, paddingBottom: 11 },
-  filterChip: { borderRadius: 18, borderWidth: 1, borderColor: '#39433D', backgroundColor: '#111612', paddingHorizontal: 11, paddingVertical: 8 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  header: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#222C26' },
+  back: { color: '#CBD4CE', fontSize: 12, fontWeight: '800', marginBottom: 8 },
+  title: { color: '#FFF8E8', fontSize: 26, lineHeight: 32, fontWeight: '900' },
+  meta: { color: '#909B94', fontSize: 12, lineHeight: 17, marginTop: 4 },
+  workspaceTabs: { paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: '#222C26' },
+  workspaceTab: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  workspaceTabActive: { borderBottomColor: '#A8CF55' },
+  workspaceTabText: { color: '#8F9993', fontSize: 12, fontWeight: '800' },
+  workspaceTabTextActive: { color: '#C9E678' },
+  content: { padding: 16, paddingBottom: 70 },
+  muted: { color: '#8E9891', fontSize: 12 },
+  error: { color: '#FF8A80', fontSize: 12, marginBottom: 12 },
+  readinessCard: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 18, borderWidth: 1, borderColor: '#334139', backgroundColor: '#131A16', padding: 16 },
+  readinessRing: { width: 66, height: 66, borderRadius: 33, borderWidth: 7, borderColor: '#A8CF55', alignItems: 'center', justifyContent: 'center' },
+  readinessValue: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' },
+  cardTitle: { color: '#FFF8E8', fontSize: 17, lineHeight: 22, fontWeight: '900' },
+  accentText: { color: '#A8CF55', fontSize: 12, fontWeight: '900', marginTop: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 8 },
+  sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: .9, textTransform: 'uppercase' },
+  sectionTrailing: { color: '#AAB4AD', fontSize: 10, fontWeight: '800' },
+  listCard: { borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#121814', overflow: 'hidden' },
+  compactRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingVertical: 10 },
+  divider: { borderTopWidth: 1, borderTopColor: '#2B352F' },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  dotWaiting: { backgroundColor: '#E2C64D' },
+  dotBlocked: { backgroundColor: '#FF6974' },
+  rowTitle: { color: '#F4F1E8', fontSize: 13, lineHeight: 18, fontWeight: '800' },
+  rowMeta: { color: '#8D9891', fontSize: 10.5, lineHeight: 15, marginTop: 2 },
+  chevron: { color: '#D7B45A', fontSize: 24, fontWeight: '800' },
+  moduleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 20 },
+  moduleCard: { width: '48%', minHeight: 84, borderRadius: 14, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 12 },
+  moduleTitle: { color: '#F4F1E8', fontSize: 12, fontWeight: '900' },
+  moduleValue: { color: '#909B94', fontSize: 10.5, lineHeight: 15, marginTop: 5 },
+  subTabs: { gap: 5, paddingBottom: 12 },
+  subTab: { borderRadius: 18, backgroundColor: '#151C18', borderWidth: 1, borderColor: '#2D3731', paddingHorizontal: 13, paddingVertical: 8 },
+  subTabActive: { backgroundColor: '#38401C', borderColor: '#7C8E38' },
+  subTabText: { color: '#909B94', fontSize: 10, fontWeight: '900' },
+  subTabTextActive: { color: '#DDEB79' },
+  filters: { gap: 6, paddingBottom: 12 },
+  filterChip: { borderRadius: 18, borderWidth: 1, borderColor: '#39433D', paddingHorizontal: 10, paddingVertical: 7 },
   filterChipActive: { borderColor: '#D7B45A', backgroundColor: '#352D18' },
-  filterChipText: { color: '#8D9891', fontSize: 10, fontWeight: '900' },
+  filterChipText: { color: '#8D9891', fontSize: 9.5, fontWeight: '900' },
   filterChipTextActive: { color: '#E7C464' },
-  taskCard: { borderRadius: 16, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 15, marginBottom: 9 },
-  taskTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  taskStatus: { fontSize: 9, fontWeight: '900', letterSpacing: .8 },
-  taskDue: { color: '#7D8881', fontSize: 9, fontWeight: '800' },
-  rowTitle: { color: '#FFF8E8', fontSize: 15, lineHeight: 20, fontWeight: '900', marginTop: 5 },
-  rowMeta: { color: '#89948D', fontSize: 11, lineHeight: 16, marginTop: 4 },
-  assigneeText: { color: '#B9C4BD', fontSize: 11, fontWeight: '800', marginTop: 5 },
-  blockedBy: { color: '#C7907E', fontSize: 10.5, lineHeight: 15, marginTop: 7 },
-  taskActions: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, minHeight: 31 },
-  statusAction: { borderRadius: 10, borderWidth: 1, borderColor: '#3B453F', paddingHorizontal: 10, paddingVertical: 7 },
-  statusActionText: { color: '#AAB4AD', fontSize: 9, fontWeight: '900' },
-  assignmentBlock: { marginTop: 13, borderTopWidth: 1, borderTopColor: '#263029', paddingTop: 10 },
-  assignmentLabel: { color: '#737F77', fontSize: 8, fontWeight: '900', letterSpacing: .8, marginBottom: 7 },
-  assignmentRow: { gap: 7 },
-  assignmentChip: { borderRadius: 16, borderWidth: 1, borderColor: '#3A443E', backgroundColor: '#101512', paddingHorizontal: 10, paddingVertical: 7 },
-  assignmentChipActive: { borderColor: '#64834E', backgroundColor: '#25331E' },
-  assignmentChipText: { color: '#8B968F', fontSize: 9, fontWeight: '800' },
-  assignmentChipTextActive: { color: '#B8D99E' },
-  milestoneRow: { flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 15, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
-  check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: '#546159', alignItems: 'center', justifyContent: 'center' },
-  checkText: { color: '#0B100D', fontWeight: '900' },
-  teamRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
-  teamCount: { color: '#D7B45A', fontSize: 10, fontWeight: '900' },
-  decisionCard: { borderRadius: 16, backgroundColor: '#1E1A12', borderWidth: 1, borderColor: '#574522', padding: 15, marginBottom: 9 },
-  decisionKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .8 },
-  decisionInput: { color: '#FFF8E8', borderRadius: 12, borderWidth: 1, borderColor: '#4E452E', backgroundColor: '#16140F', paddingHorizontal: 12, paddingVertical: 10, minHeight: 72, textAlignVertical: 'top', marginTop: 12 },
-  decisionButton: { alignSelf: 'flex-start', minWidth: 112, minHeight: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D7B45A', borderRadius: 11, paddingHorizontal: 13, marginTop: 9 },
+  taskCard: { borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 14, marginBottom: 9 },
+  taskTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  taskStatus: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .6 },
+  blockedText: { color: '#FF6974' },
+  taskMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 7 },
+  milestoneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 15, marginBottom: 9 },
+  check: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: '#597063', alignItems: 'center', justifyContent: 'center' },
+  checkDone: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
+  checkText: { color: '#172017', fontWeight: '900' },
+  decisionCard: { borderRadius: 16, borderWidth: 1, borderColor: '#655525', backgroundColor: '#1B1810', padding: 14, marginBottom: 10 },
+  decisionKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .6, marginBottom: 5 },
+  decisionInput: { borderRadius: 12, borderWidth: 1, borderColor: '#4E452E', backgroundColor: '#11130F', color: '#FFF8E8', minHeight: 70, padding: 11, marginTop: 11, textAlignVertical: 'top' },
+  decisionButton: { alignSelf: 'flex-start', backgroundColor: '#E6C943', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 9 },
   decisionButtonText: { color: '#172017', fontSize: 10, fontWeight: '900' },
-  pulseCard: { borderRadius: 14, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
-  pulseTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
-  pulseValue: { color: '#89948D', fontSize: 11, lineHeight: 17, marginTop: 4 },
-  pulseAction: { fontSize: 10, fontWeight: '900', marginTop: 8 },
-  primaryButton: { backgroundColor: '#D7B45A', borderRadius: 14, minHeight: 50, alignItems: 'center', justifyContent: 'center', marginTop: 18 },
+  teamCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 15, marginBottom: 9 },
+  teamMetric: { color: '#D7B45A', fontSize: 11, fontWeight: '900', textAlign: 'right' },
+  teamMeta: { color: '#8D9891', fontSize: 9.5, marginTop: 3, textAlign: 'right' },
+  placeholder: { borderRadius: 18, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 18, marginTop: 8 },
+  placeholderTitle: { color: '#FFF8E8', fontSize: 20, fontWeight: '900', marginTop: 10 },
+  placeholderBody: { color: '#8D9891', fontSize: 12, lineHeight: 18, marginTop: 7 },
+  empty: { color: '#7F8A83', fontSize: 11, padding: 14 },
+  primaryButton: { backgroundColor: '#D7B45A', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
   primaryButtonText: { color: '#172017', fontWeight: '900' },
 });
