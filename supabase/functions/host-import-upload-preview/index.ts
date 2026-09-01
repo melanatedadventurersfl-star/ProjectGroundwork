@@ -6,7 +6,12 @@ const MODEL = "gpt-4.1-mini";
 const MAX_FILES = 12;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ZIP_ENTRY_BYTES = 4 * 1024 * 1024;
-const jsonHeaders = { "Content-Type": "application/json" };
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: jsonHeaders }); }
 function clean(value: unknown, max = 5000) { return String(value ?? "").trim().slice(0, max); }
@@ -38,6 +43,7 @@ async function appendFileContent(contentItems: any[], name: string, mime: string
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return json({ error: "Authentication required" }, 401);
