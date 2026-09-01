@@ -6,7 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
+import { setPendingTrailheadTooltip } from '../../src/onboarding/trailheadExperience';
+import { resetTrailheadProgress } from '../../src/onboarding/trailheadProgress';
 import { startGuidedTutorial } from '../../src/onboarding/tutorialController';
+import { resetGuidedTutorial } from '../../src/onboarding/tutorialPreference';
 import { getBuildInfo } from '../../src/updates/buildInfo';
 import { currentReleaseNotes } from '../../src/updates/releaseNotes';
 import { hasSeenRelease } from '../../src/updates/releasePreference';
@@ -18,7 +21,7 @@ type MenuRow = {
   icon: AppIconName;
   meta?: string;
   badge?: string;
-  action?: 'tutorial' | 'check-update' | 'install-update' | 'sign-out';
+  action?: 'tutorial' | 'reset-tutorial' | 'check-update' | 'install-update' | 'sign-out';
   destructive?: boolean;
 };
 
@@ -148,6 +151,13 @@ export default function MenuScreen() {
       startGuidedTutorial();
       return;
     }
+    if (row.action === 'reset-tutorial') {
+      resetTrailheadProgress();
+      resetGuidedTutorial();
+      setPendingTrailheadTooltip(null);
+      startGuidedTutorial();
+      return;
+    }
     if (row.action === 'check-update') {
       await checkForUpdate();
       return;
@@ -183,7 +193,8 @@ export default function MenuScreen() {
     { label: 'Help Center', route: '/member/support', icon: 'support' },
     { label: 'Community Guidelines', route: '/community-guidelines', icon: 'guide' },
     { label: 'Privacy Policy', route: '/privacy-policy', icon: 'privacy' },
-    { label: 'App Tour', icon: 'guide', action: 'tutorial' },
+    { label: 'Trailhead', icon: 'guide', action: 'tutorial', meta: 'Review your starter journey' },
+    { label: 'Reset Trailhead', icon: 'guide', action: 'reset-tutorial', meta: 'Restart all six setup steps' },
   ];
 
   const appRows: MenuRow[] = [
@@ -330,7 +341,6 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.2, fontSize: 11 },
   title: { color: '#FFF8E8', fontSize: 38, lineHeight: 44, fontWeight: '900', marginTop: 4 },
   subtitle: { color: '#A7B0AA', fontSize: 14, lineHeight: 20, marginTop: 4, marginBottom: 18, maxWidth: 330 },
-
   profileCard: { minHeight: 102, borderRadius: 18, borderWidth: 1, borderColor: '#31533F', backgroundColor: '#11241A', padding: 16, flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 24 },
   avatar: { width: 58, height: 58, borderRadius: 29, borderWidth: 2, borderColor: '#D7B45A', backgroundColor: '#1E3026', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' },
@@ -340,7 +350,6 @@ const styles = StyleSheet.create({
   memberLabel: { color: '#D7B45A', fontSize: 12, fontWeight: '800' },
   profileAction: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#886F31', borderRadius: 18, paddingHorizontal: 11, minHeight: 36 },
   profileActionText: { color: '#E5C66C', fontSize: 11, fontWeight: '900' },
-
   section: { marginBottom: 20 },
   sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.05, marginBottom: 8 },
   card: { backgroundColor: '#171D19', borderRadius: 16, borderWidth: 1, borderColor: '#2B332E', overflow: 'hidden' },
@@ -355,7 +364,6 @@ const styles = StyleSheet.create({
   badge: { minWidth: 25, height: 25, borderRadius: 13, paddingHorizontal: 7, backgroundColor: '#443516', borderWidth: 1, borderColor: '#705920', alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: '#E7C464', fontSize: 10, fontWeight: '900' },
   destructiveText: { color: '#FF746A' },
-
   buildCard: { borderRadius: 16, borderWidth: 1, borderColor: '#355342', backgroundColor: '#111C16', padding: 15 },
   buildHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
   buildHeaderCopy: { flex: 1, minWidth: 0 },
@@ -370,7 +378,6 @@ const styles = StyleSheet.create({
   updateButtonReady: { backgroundColor: '#F5C341' },
   updateButtonText: { color: '#0B100D', fontSize: 13, fontWeight: '900' },
   buildStatus: { color: '#AAB5AE', fontSize: 11, lineHeight: 16, marginTop: 9, textAlign: 'center' },
-
   founderCard: { minHeight: 88, borderRadius: 16, borderWidth: 1, borderColor: '#8C6D28', backgroundColor: '#4A3716', padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   founderIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#5D461A', alignItems: 'center', justifyContent: 'center' },
   founderCopy: { flex: 1 },
@@ -378,7 +385,6 @@ const styles = StyleSheet.create({
   founderMeta: { color: '#D6C59B', fontSize: 11, lineHeight: 16, marginTop: 2 },
   restrictedLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 4 },
   restrictedText: { color: '#9B8140', fontSize: 10, fontWeight: '700' },
-
   error: { color: '#FF8A80', fontSize: 12, marginTop: -8, marginBottom: 16 },
   footer: { color: '#637169', fontSize: 11, textAlign: 'center', marginTop: 2 },
 });
