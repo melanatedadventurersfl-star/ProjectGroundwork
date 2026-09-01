@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCampaignDaysUntil, getCampaignReadiness, getHostCampaign, type CampaignTaskStatus } from '../../../src/hosting/campaigns';
+import { getCampaignDaysUntil, getCampaignReadiness, getHostCampaign, type CampaignTask, type CampaignTaskStatus } from '../../../src/hosting/campaigns';
 
 const statusLabels: Record<CampaignTaskStatus, string> = {
   not_started: 'Not started',
@@ -109,7 +109,7 @@ function QuickCard({ value, label }: { value: string; label: string }) {
   return <View style={styles.quickCard}><Text style={styles.quickValue}>{value}</Text><Text style={styles.quickLabel}>{label}</Text></View>;
 }
 
-function TaskRow({ task, accent }: { task: ReturnType<typeof getHostCampaign> extends infer _ ? import('../../../src/hosting/campaigns').CampaignTask : never; accent: string }) {
+function TaskRow({ task, accent }: { task: CampaignTask; accent: string }) {
   const danger = task.status === 'blocked' || task.priority === 'critical';
   return (
     <View style={styles.taskCard}>
