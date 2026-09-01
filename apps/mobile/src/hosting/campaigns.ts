@@ -37,6 +37,13 @@ export type CampaignDecision = {
   decisionText: string | null;
 };
 
+export type CampaignTeamMember = {
+  profileId: string;
+  displayName: string;
+  role: string;
+  isOwner: boolean;
+};
+
 export type HostCampaign = {
   id: string;
   adventureId: string;
@@ -116,6 +123,17 @@ type DecisionRow = {
 type DependencyRow = {
   task_id: string;
   depends_on_task_id: string;
+};
+
+type StaffRow = {
+  profile_id: string;
+  role: string;
+};
+
+type DirectoryRow = {
+  id: string;
+  display_name: string | null;
+  username: string | null;
 };
 
 export async function listHostCampaigns(): Promise<HostCampaign[]> {
@@ -236,6 +254,53 @@ async function resolveCanManage(row: CampaignRow) {
     supabase.from('adventure_staff_assignments').select('id').eq('adventure_id', row.adventure_id).eq('profile_id', userId).eq('role', 'lead').limit(1),
   ]);
   return adminResult.data === true || (!leadResult.error && (leadResult.data?.length ?? 0) > 0);
+}
+
+export async function getCurrentCampaignProfileId() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data.user?.id ?? null;
+}
+
+export async function listCampaignTeam(campaign: HostCampaign): Promise<CampaignTeamMember[]> {
+  const staffResult = await supabase
+    .from('adventure_staff_assignments')
+    .select('profile_id,role')
+    .eq('adventure_id', campaign.adventureId);
+  if (staffResult.error) throw staffResult.error;
+
+  const staff = (staffResult.data ?? []) as StaffRow[];
+  const ids = Array.from(new Set([campaign.ownerProfileId, ...staff.map((member) => member.profile_id)]));
+  if (ids.length === 0) return [];
+
+  const directoryResult = await supabase
+    .from('profile_directory')
+    .select('id,display_name,username')
+    .in('id', ids);
+  if (directoryResult.error) throw directoryResult.error;
+
+  const directory = new Map(((directoryResult.data ?? []) as DirectoryRow[]).map((profile) => [profile.id, profile]));
+  const staffRole = new Map(staff.map((member) => [member.profile_id, member.role]));
+
+  return ids.map((profileId) => {
+    const profile = directory.get(profileId);
+    const isOwner = profileId === campaign.ownerProfileId;
+    return {
+      profileId,
+      displayName: profile?.display_name?.trim() || profile?.username?.trim() || (isOwner ? 'Campaign owner' : 'Team member'),
+      role: isOwner ? 'Campaign owner' : (staffRole.get(profileId) ?? 'staff').replaceAll('_', ' '),
+      isOwner,
+    };
+  });
+}
+
+export async function assignCampaignTask(taskId: string, assigneeProfileId: string | null) {
+  const { data: authData } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from('host_campaign_tasks')
+    .update({ assignee_profile_id: assigneeProfileId, updated_by: authData.user?.id ?? null, updated_at: new Date().toISOString() })
+    .eq('id', taskId);
+  if (error) throw error;
 }
 
 export async function updateCampaignTaskStatus(taskId: string, status: CampaignTaskStatus) {
