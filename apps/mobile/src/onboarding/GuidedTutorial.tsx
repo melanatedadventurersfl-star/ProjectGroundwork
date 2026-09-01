@@ -43,23 +43,23 @@ type Props = {
 };
 
 export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }: Props) {
-  const currentIndex = Math.max(0, Math.min(steps.length - 1, step));
-  const completedCount = currentIndex;
-  const progress = `${Math.max(0, completedCount)} of ${steps.length} complete`;
+  const completedAll = step >= steps.length;
+  const currentIndex = completedAll ? steps.length - 1 : Math.max(0, Math.min(steps.length - 1, step));
+  const completedCount = Math.max(0, Math.min(step, steps.length));
+  const progress = `${completedCount} of ${steps.length} complete`;
 
   function continueTrailhead() {
-    const current = steps[currentIndex];
-    if (!current) {
+    if (completedAll) {
       onFinish();
       return;
     }
 
+    const current = steps[currentIndex];
+    if (!current) return;
+
+    // Navigation is not completion. The destination should advance Trailhead
+    // only after the member actually performs the qualifying action.
     router.push(current.route as never);
-    if (currentIndex === steps.length - 1) {
-      onFinish();
-      return;
-    }
-    onStepChange(currentIndex + 1);
   }
 
   return (
@@ -75,16 +75,21 @@ export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }
                 </Pressable>
               </View>
 
-              <Text style={styles.title}>Your first adventure starts here.</Text>
+              <Text style={styles.title}>{completedAll ? 'You’re ready to finish Trailhead.' : completedCount === 5 ? 'One step from Trail Ready.' : 'Your first adventure starts here.'}</Text>
               <Text style={styles.progressCopy}>
                 <Text style={styles.progressNumber}>{completedCount}</Text> of {steps.length} steps complete
               </Text>
-              <View style={styles.progressTrack} accessibilityLabel={progress}>
+              <View
+                style={styles.progressTrack}
+                accessibilityRole="progressbar"
+                accessibilityValue={{ min: 0, max: steps.length, now: completedCount }}
+                accessibilityLabel={`Trailhead progress, ${progress}`}
+              >
                 <View style={[styles.progressFill, { width: `${(completedCount / steps.length) * 100}%` }]} />
               </View>
 
               <Pressable style={styles.primary} accessibilityRole="button" onPress={continueTrailhead}>
-                <Text style={styles.primaryText}>{currentIndex === steps.length - 1 ? 'Finish Trailhead' : 'Continue'}</Text>
+                <Text style={styles.primaryText}>{completedAll ? 'Finish Trailhead' : completedCount === 5 ? 'Complete final step' : 'Continue setup'}</Text>
                 <Text style={styles.primaryArrow}>›</Text>
               </Pressable>
             </View>
@@ -93,15 +98,15 @@ export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }
 
             <View style={styles.stepsColumn}>
               {steps.map((item, index) => {
-                const completed = index < currentIndex;
-                const active = index === currentIndex;
+                const completed = index < completedCount;
+                const active = !completedAll && index === currentIndex;
                 return (
                   <Pressable
                     key={item.title}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active, checked: completed }}
                     onPress={() => {
-                      onStepChange(index);
+                      if (!completedAll) onStepChange(index);
                       router.push(item.route as never);
                     }}
                     style={[styles.stepRow, active && styles.stepRowActive]}
@@ -122,7 +127,7 @@ export function GuidedTutorial({ visible, step, onStepChange, onFinish, onSkip }
             </View>
           </View>
 
-          <Text style={styles.footerHint}>Trailhead disappears once you finish. Your Trail takes it from there.</Text>
+          <Text style={styles.footerHint}>{completedAll ? 'Trailhead is complete. Your Trail takes it from here.' : 'Complete each real action to move Trailhead forward.'}</Text>
         </ScrollView>
       </View>
     </Modal>
