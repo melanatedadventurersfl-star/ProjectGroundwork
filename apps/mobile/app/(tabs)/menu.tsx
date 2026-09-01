@@ -176,7 +176,7 @@ export default function MenuScreen() {
   const yourGoRows: MenuRow[] = [
     { label: 'Go+ Membership', route: '/member/go-plus', icon: 'badge' },
     { label: 'Trips & Payments', route: '/member/trips', icon: 'trips', meta: 'Bookings, tickets & receipts' },
-    { label: 'Host an Outing', route: '/host', icon: 'guide', meta: 'Create, promote & manage community outings' },
+    { label: 'Host Center', route: '/host', icon: 'guide', meta: 'Events, work, marketing, guests & operations' },
     { label: 'Trail Family', route: '/member/trail-family', icon: 'community' },
     { label: 'Trailmates & Crew', route: '/circles', icon: 'connections' },
     { label: 'Invite Friends', route: '/member/invites', icon: 'connections', badge: inviteCount === null ? undefined : String(inviteCount) },
@@ -262,33 +262,18 @@ export default function MenuScreen() {
             <View style={styles.buildHeader}>
               <View style={styles.buildHeaderCopy}>
                 <Text style={styles.buildTitle}>Go Melanated {buildInfo.appVersion}</Text>
-                <Text style={styles.buildMeta}>
-                  Native {buildInfo.nativeBuildNumber} · CI {buildInfo.ciBuildNumber} · {buildInfo.activeSource.toUpperCase()}
-                </Text>
+                <Text style={styles.buildMeta}>Native {buildInfo.nativeBuildNumber} · CI {buildInfo.ciBuildNumber} · {buildInfo.activeSource.toUpperCase()}</Text>
               </View>
-              <View style={styles.buildPill}>
-                <Text style={styles.buildPillText}>{buildInfo.channel}</Text>
-              </View>
+              <View style={styles.buildPill}><Text style={styles.buildPillText}>{buildInfo.channel}</Text></View>
             </View>
 
-            <View style={styles.buildDetailRow}>
-              <Text style={styles.buildDetailLabel}>Commit</Text>
-              <Text style={styles.buildDetailValue}>{buildInfo.shortCommit || 'Unknown'}</Text>
-            </View>
-            <View style={styles.buildDetailRow}>
-              <Text style={styles.buildDetailLabel}>Runtime</Text>
-              <Text style={styles.buildDetailValue}>{buildInfo.runtimeVersion}</Text>
-            </View>
+            <View style={styles.buildDetailRow}><Text style={styles.buildDetailLabel}>Commit</Text><Text style={styles.buildDetailValue}>{buildInfo.shortCommit || 'Unknown'}</Text></View>
+            <View style={styles.buildDetailRow}><Text style={styles.buildDetailLabel}>Runtime</Text><Text style={styles.buildDetailValue}>{buildInfo.runtimeVersion}</Text></View>
 
-            <Pressable
-              disabled={updateBusy}
-              style={[styles.updateButton, updateState === 'available' && styles.updateButtonReady]}
-              onPress={() => void (updateState === 'available' ? installUpdate() : checkForUpdate())}
-            >
+            <Pressable disabled={updateBusy} style={[styles.updateButton, updateState === 'available' && styles.updateButtonReady]} onPress={() => void (updateState === 'available' ? installUpdate() : checkForUpdate())}>
               {updateBusy ? <ActivityIndicator size="small" color="#0B100D" /> : <AppIcon name="about" color="#0B100D" size={17} />}
               <Text style={styles.updateButtonText}>{updateActionLabel}</Text>
             </Pressable>
-
             {updateMessage ? <Text style={styles.buildStatus}>{updateMessage}</Text> : null}
           </View>
         </View>
