@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { supabase } from '../../src/lib/supabase';
 import { ProfilePosts } from '../../src/member/ProfilePosts';
 import { BadgeArt, hasBadgeArt } from '../../src/passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder } from '../../src/passport/RankEmblem';
@@ -52,6 +53,7 @@ export default function CommunityProfileScreen() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('none');
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [viewerInterests, setViewerInterests] = useState<string[]>([]);
+  const [canViewAsMember, setCanViewAsMember] = useState(false);
   const [tab, setTab] = useState<ProfileTab>('journey');
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -60,15 +62,17 @@ export default function CommunityProfileScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [nextProfile, connection, interests] = await Promise.all([
+      const [nextProfile, connection, interests, viewAsGate] = await Promise.all([
         getCommunityProfile(id),
         getConnectionStatus(id),
         getViewerInterests(),
+        supabase.rpc('can_view_as_member'),
       ]);
       setProfile(nextProfile);
       setConnectionStatus(connection.status);
       setConnectionId(connection.connectionId);
       setViewerInterests(interests);
+      setCanViewAsMember(!viewAsGate.error && viewAsGate.data === true);
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load this member profile.');
@@ -156,10 +160,21 @@ export default function CommunityProfileScreen() {
 
       <View style={styles.identityActionsRow}>
         <View style={styles.avatarWrap}><Avatar url={profile.avatar_url} name={profile.display_name} /></View>
-        {isConnected ? <View style={styles.connectedPill}>
-          <AppIcon name="connections" color="#F7F8F3" size={17} />
-          <Text style={styles.connectedPillText}>Friends</Text>
-        </View> : null}
+        <View style={styles.profileActionStack}>
+          {canViewAsMember ? <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View as ${profile.display_name ?? 'member'}`}
+            style={styles.viewAsPill}
+            onPress={() => router.push(`/member/view-as-profile/${profile.id}` as never)}
+          >
+            <AppIcon name="privacy" color="#17211C" size={16} />
+            <Text style={styles.viewAsPillText}>View As</Text>
+          </Pressable> : null}
+          {isConnected ? <View style={styles.connectedPill}>
+            <AppIcon name="connections" color="#F7F8F3" size={17} />
+            <Text style={styles.connectedPillText}>Friends</Text>
+          </View> : null}
+        </View>
       </View>
 
       <View style={styles.identityCopy}>
@@ -264,7 +279,10 @@ const styles = StyleSheet.create({
   avatarWrap: { width: 102, height: 102, borderRadius: 51, borderWidth: 4, borderColor: '#09110F', backgroundColor: '#09110F' },
   avatar: { width: 94, height: 94, borderRadius: 47, backgroundColor: '#F5C341', alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 36, fontWeight: '900', color: '#121A17' },
-  connectedPill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#62734E', backgroundColor: '#26372D', borderRadius: 999, paddingHorizontal: 17, paddingVertical: 10, marginBottom: 8 },
+  profileActionStack: { alignItems: 'flex-end', gap: 7, marginBottom: 8 },
+  viewAsPill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#D7B45A', backgroundColor: '#F5C341', borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },
+  viewAsPillText: { color: '#17211C', fontWeight: '900', fontSize: 12.5 },
+  connectedPill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#62734E', backgroundColor: '#26372D', borderRadius: 999, paddingHorizontal: 17, paddingVertical: 10 },
   connectedPillText: { color: '#F7F8F3', fontWeight: '900', fontSize: 13 },
   identityCopy: { paddingHorizontal: 20, gap: 4 },
   name: { fontSize: 29, fontWeight: '900', lineHeight: 33, color: '#F7F8F3', letterSpacing: -.45 },
