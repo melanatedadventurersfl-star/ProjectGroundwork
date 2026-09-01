@@ -32,6 +32,12 @@ export type ImportPreviewResult = {
   sourceLabel: string;
   sourceUrl: string | null;
   extractionSource: 'ai' | 'fallback';
+  duplicate?: {
+    importId: string;
+    adventureId: string | null;
+    sourceLabel: string;
+    status: string;
+  } | null;
 };
 
 export async function previewHostImport(input: { mode: 'event_site' | 'file_url' | 'pasted_text'; sourceUrl?: string; sourceText?: string }): Promise<ImportPreviewResult> {
@@ -161,6 +167,22 @@ export async function createEventFromDraft(draft: EventDraft, options?: { import
       status: 'created',
       updated_at: new Date().toISOString(),
     }).eq('id', options.importId);
+    if (error) throw error;
+  } else if (options?.template) {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) throw authError;
+    const ownerProfileId = authData.user?.id;
+    if (!ownerProfileId) throw new Error('Sign in to record template provenance.');
+    const { error } = await supabase.from('host_event_imports').insert({
+      owner_profile_id: ownerProfileId,
+      adventure_id: outing.id,
+      source_type: 'template',
+      source_label: options.template.title,
+      source_library_item_id: options.template.id,
+      extracted_payload: { templateItemKey: options.template.itemKey, templateContent: options.template.content },
+      approved_payload: draft,
+      status: 'created',
+    });
     if (error) throw error;
   }
 
