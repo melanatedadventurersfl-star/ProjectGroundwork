@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 import JSZip from "npm:jszip@3.10.1";
 
-const MODEL = "gpt-5.6";
+const MODEL = "gpt-4.1-mini";
 const MAX_FILES = 12;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ZIP_ENTRY_BYTES = 4 * 1024 * 1024;
@@ -102,7 +102,12 @@ Deno.serve(async (req: Request) => {
     }
     const sourceLabel=sourceFiles.length===1?(sourceFiles[0]?.name??"Uploaded event file"):`${sourceFiles.length} uploaded event files`;
     let preview=basicPreview(sourceFiles.map((f:any)=>f.name)); let extractionSource:"ai"|"fallback"="fallback";
-    if(openAiKey){ let extracted=await runExtraction(openAiKey,content); if(!extracted){ const reduced=content.filter((item:any)=>item.type!=="input_file"); if(reduced.length>1) extracted=await runExtraction(openAiKey,reduced); } if(extracted){preview=extracted;extractionSource="ai";} }
+    if(openAiKey){
+      const textOnly=content.filter((item:any)=>item.type==="input_text");
+      let extracted=textOnly.length>1?await runExtraction(openAiKey,textOnly):null;
+      if(!extracted) extracted=await runExtraction(openAiKey,content);
+      if(extracted){preview=extracted;extractionSource="ai";}
+    }
     const {data:importRow,error:importError}=await userClient.from("host_event_imports").insert({owner_profile_id:userId,source_type:"uploaded_files",source_label:sourceLabel,source_url:null,extracted_payload:{preview,files:sourceFiles.map(({path,...f}:any)=>f)},approved_payload:{},status:"preview"}).select("id").single(); if(importError) throw importError;
     const {error:fileRowError}=await userClient.from("host_event_import_files").insert(sourceFiles.map((f:any)=>({import_id:importRow.id,owner_profile_id:userId,storage_path:f.path,original_name:f.name,mime_type:f.mimeType,size_bytes:f.size}))); if(fileRowError) throw fileRowError;
     return json({importId:importRow.id,preview,sourceLabel,sourceUrl:null,extractionSource,duplicate:null,files:sourceFiles.map(({path,...f}:any)=>f)});
