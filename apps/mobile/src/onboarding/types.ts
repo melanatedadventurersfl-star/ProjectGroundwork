@@ -37,6 +37,8 @@ export const INTENT_OPTIONS = [
 
 export type ExperienceLevel = 'new' | 'beginner' | 'intermediate' | 'experienced';
 export type HouseholdMode = 'skip' | 'create' | 'join';
+export type TravelRange = 'nearby' | 'one_hour' | 'two_hours' | 'weekend';
+export type LocationPermissionStatus = 'unknown' | 'granted' | 'denied' | 'manual';
 
 export type OnboardingForm = {
   firstName: string;
@@ -45,6 +47,8 @@ export type OnboardingForm = {
   homeCity: string;
   homeState: string;
   discoveryRadiusMiles: number;
+  travelRange: TravelRange;
+  locationPermissionStatus: LocationPermissionStatus;
   experienceLevel: ExperienceLevel;
   interests: string[];
   adventurePreferences: string[];
@@ -69,6 +73,8 @@ export const INITIAL_ONBOARDING_FORM: OnboardingForm = {
   homeCity: '',
   homeState: '',
   discoveryRadiusMiles: 50,
+  travelRange: 'one_hour',
+  locationPermissionStatus: 'unknown',
   experienceLevel: 'new',
   interests: [],
   adventurePreferences: [],

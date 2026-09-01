@@ -33,14 +33,7 @@ async function registerDeviceForPush() {
   }
 
   const currentPermissions = await Notifications.getPermissionsAsync();
-  let status = currentPermissions.status;
-
-  if (status !== 'granted') {
-    const requestedPermissions = await Notifications.requestPermissionsAsync();
-    status = requestedPermissions.status;
-  }
-
-  if (status !== 'granted') return;
+  if (currentPermissions.status !== 'granted') return;
 
   const projectId = getProjectId();
   if (!projectId) {
