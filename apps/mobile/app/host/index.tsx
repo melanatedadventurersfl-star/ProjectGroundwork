@@ -162,79 +162,81 @@ export default function HostOperationsScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.eyebrow}>HOST CENTER</Text>
-        <Text style={styles.title}>Host Center</Text>
-        <Text style={styles.subtitle}>Plan the adventure, manage the work, and run the event from one place.</Text>
+      <View style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <Text style={styles.eyebrow}>HOST CENTER</Text>
+          <Text style={styles.title}>Host Center</Text>
+          <Text style={styles.subtitle}>Plan the adventure, manage the work, and run the event from one place.</Text>
 
-        {loading ? <View style={styles.loadingCard}><ActivityIndicator color="#D7B45A" /><Text style={styles.loadingText}>Loading Host Center…</Text></View> : null}
+          {loading ? <View style={styles.loadingCard}><ActivityIndicator color="#D7B45A" /><Text style={styles.loadingText}>Loading Host Center…</Text></View> : null}
 
-        {!loading && accessLoadFailed ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.cardEyebrow}>HOST TOOLS TEMPORARILY UNAVAILABLE</Text>
-            <Text style={styles.cardTitle}>We couldn’t load Host Center.</Text>
-            {error ? <Text style={styles.errorDetail}>{error}</Text> : null}
-            <Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Try again</Text></Pressable>
-          </View>
-        ) : null}
+          {!loading && accessLoadFailed ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.cardEyebrow}>HOST TOOLS TEMPORARILY UNAVAILABLE</Text>
+              <Text style={styles.cardTitle}>We couldn’t load Host Center.</Text>
+              {error ? <Text style={styles.errorDetail}>{error}</Text> : null}
+              <Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Try again</Text></Pressable>
+            </View>
+          ) : null}
 
-        {!loading && !accessLoadFailed && !approved && !record ? (
-          <View style={styles.applicationCard}>
-            <Text style={styles.cardEyebrow}>BECOME A HOST</Text>
-            <Text style={styles.cardTitle}>Lead the next adventure.</Text>
-            <Text style={styles.body}>Complete the Host Pathway to create and manage community events.</Text>
-            <Pressable style={styles.primary} onPress={() => router.push('/host/apply' as never)}><Text style={styles.primaryText}>Start Host Pathway</Text></Pressable>
-          </View>
-        ) : null}
+          {!loading && !accessLoadFailed && !approved && !record ? (
+            <View style={styles.applicationCard}>
+              <Text style={styles.cardEyebrow}>BECOME A HOST</Text>
+              <Text style={styles.cardTitle}>Lead the next adventure.</Text>
+              <Text style={styles.body}>Complete the Host Pathway to create and manage community events.</Text>
+              <Pressable style={styles.primary} onPress={() => router.push('/host/apply' as never)}><Text style={styles.primaryText}>Start Host Pathway</Text></Pressable>
+            </View>
+          ) : null}
 
-        {!loading && !accessLoadFailed && !approved && record ? (() => {
-          const copy = statusCopy[record.status] ?? ['Application status', 'Your hosting application is being reviewed.'];
-          return <View style={styles.applicationCard}><Text style={styles.cardEyebrow}>{record.status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.cardTitle}>{copy[0]}</Text><Text style={styles.body}>{copy[1]}</Text></View>;
-        })() : null}
+          {!loading && !accessLoadFailed && !approved && record ? (() => {
+            const copy = statusCopy[record.status] ?? ['Application status', 'Your hosting application is being reviewed.'];
+            return <View style={styles.applicationCard}><Text style={styles.cardEyebrow}>{record.status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.cardTitle}>{copy[0]}</Text><Text style={styles.body}>{copy[1]}</Text></View>;
+          })() : null}
 
-        {!loading && !accessLoadFailed && approved ? <>
-          <View style={styles.hostLine}>
-            <View style={styles.hostDot} />
-            <Text style={styles.hostLineText}>{record?.host_type === 'official' ? 'Go Melanated Official' : 'Community Host'}</Text>
-            <Text style={styles.hostLineSep}>·</Text>
-            <Text style={paidEnabled ? styles.hostPaid : styles.hostMuted}>{paidEnabled ? 'Paid enabled' : 'Free outings'}</Text>
-          </View>
+          {!loading && !accessLoadFailed && approved ? <>
+            <View style={styles.hostLine}>
+              <View style={styles.hostDot} />
+              <Text style={styles.hostLineText}>{record?.host_type === 'official' ? 'Go Melanated Official' : 'Community Host'}</Text>
+              <Text style={styles.hostLineSep}>·</Text>
+              <Text style={paidEnabled ? styles.hostPaid : styles.hostMuted}>{paidEnabled ? 'Paid enabled' : 'Free outings'}</Text>
+            </View>
 
-          <SectionHeader title="Needs Attention" action={attentionTasks.length ? `${attentionTasks.length} items` : undefined} />
-          <View style={styles.attentionCard}>
-            {attentionTasks.length === 0 ? <Text style={styles.empty}>Nothing needs immediate attention.</Text> : attentionTasks.slice(0, 2).map((task) => (
-              <View key={task.id} style={styles.attentionRow}>
-                <View style={[styles.attentionDot, task.status === 'blocked' && styles.attentionDotDanger]} />
-                <View style={{ flex: 1 }}><Text style={styles.attentionTitle}>{task.title}</Text><Text style={styles.attentionMeta}>{task.status === 'blocked' ? 'Blocked' : task.status === 'waiting' ? 'Waiting' : 'Critical'} · {task.dueLabel}</Text></View>
-              </View>
-            ))}
-          </View>
+            <SectionHeader title="Needs Attention" action={attentionTasks.length ? `${attentionTasks.length} items` : undefined} />
+            <View style={styles.attentionCard}>
+              {attentionTasks.length === 0 ? <Text style={styles.empty}>Nothing needs immediate attention.</Text> : attentionTasks.slice(0, 2).map((task) => (
+                <View key={task.id} style={styles.attentionRow}>
+                  <View style={[styles.attentionDot, task.status === 'blocked' && styles.attentionDotDanger]} />
+                  <View style={{ flex: 1 }}><Text style={styles.attentionTitle}>{task.title}</Text><Text style={styles.attentionMeta}>{task.status === 'blocked' ? 'Blocked' : task.status === 'waiting' ? 'Waiting' : 'Critical'} · {task.dueLabel}</Text></View>
+                </View>
+              ))}
+            </View>
 
-          <SectionHeader title="Your Events" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-            {(['active', 'drafts', 'upcoming', 'past'] as EventFilter[]).map((filter) => (
-              <Pressable key={filter} style={[styles.filterChip, eventFilter === filter && styles.filterChipActive]} onPress={() => setEventFilter(filter)}>
-                <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter[0].toUpperCase() + filter.slice(1)}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-          {filteredEvents.length === 0 ? <Text style={styles.empty}>No events in this view.</Text> : filteredEvents.map((event) => <EventCard key={`${event.source}-${event.id}`} event={event} />)}
+            <SectionHeader title="Your Events" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+              {(['active', 'drafts', 'upcoming', 'past'] as EventFilter[]).map((filter) => (
+                <Pressable key={filter} style={[styles.filterChip, eventFilter === filter && styles.filterChipActive]} onPress={() => setEventFilter(filter)}>
+                  <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter[0].toUpperCase() + filter.slice(1)}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            {filteredEvents.length === 0 ? <Text style={styles.empty}>No events in this view.</Text> : filteredEvents.map((event) => <EventCard key={`${event.source}-${event.id}`} event={event} />)}
 
-          <SectionHeader title="Your Work" />
-          <View style={styles.workGrid}>
-            <WorkMetric label="Mine" value={myTasks.length} />
-            <WorkMetric label="Blocked" value={blockedTasks.length} />
-            <WorkMetric label="Unassigned" value={unassignedTasks.length} />
-          </View>
-          {campaigns[0] ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${campaigns[0].slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
+            <SectionHeader title="Your Work" />
+            <View style={styles.workGrid}>
+              <WorkMetric label="Mine" value={myTasks.length} />
+              <WorkMetric label="Blocked" value={blockedTasks.length} />
+              <WorkMetric label="Unassigned" value={unassignedTasks.length} />
+            </View>
+            {campaigns[0] ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${campaigns[0].slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
+          </> : null}
+        </ScrollView>
 
-          <Pressable style={styles.createRow} onPress={() => router.push('/host/create' as never)}>
-            <View style={styles.createIcon}><Text style={styles.createPlus}>＋</Text></View>
-            <View style={{ flex: 1 }}><Text style={styles.createTitle}>Create Adventure</Text><Text style={styles.createCopy}>Start a new community outing.</Text></View>
-            <Text style={styles.chevron}>›</Text>
+        {!loading && !accessLoadFailed && approved ? (
+          <Pressable accessibilityLabel="Create adventure" style={styles.fab} onPress={() => router.push('/host/create' as never)}>
+            <Text style={styles.fabPlus}>＋</Text>
           </Pressable>
-        </> : null}
-      </ScrollView>
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -265,7 +267,8 @@ function WorkMetric({ label, value }: { label: string; value: number }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
-  content: { padding: 20, paddingBottom: 60 },
+  screen: { flex: 1 },
+  content: { padding: 20, paddingBottom: 118 },
   eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: '#FFF8E8', fontSize: 36, lineHeight: 42, fontWeight: '900', marginTop: 4 },
   subtitle: { color: '#A8B1AB', fontSize: 15, lineHeight: 22, marginTop: 5, marginBottom: 18 },
@@ -313,11 +316,8 @@ const styles = StyleSheet.create({
   workLabel: { color: '#89948D', fontSize: 10, fontWeight: '800', marginTop: 3 },
   workAction: { alignSelf: 'flex-start', marginTop: 11 },
   workActionText: { color: '#D7B45A', fontSize: 11, fontWeight: '900' },
-  createRow: { marginTop: 24, minHeight: 72, borderRadius: 16, backgroundColor: '#121814', borderWidth: 1, borderColor: '#303A34', flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
-  createIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#2E341F', alignItems: 'center', justifyContent: 'center' },
-  createPlus: { color: '#D7B45A', fontSize: 22, fontWeight: '900' },
-  createTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900' },
-  createCopy: { color: '#89948D', fontSize: 10.5, marginTop: 3 },
   chevron: { color: '#D7B45A', fontSize: 28, fontWeight: '700' },
   empty: { color: '#758079', fontSize: 12, lineHeight: 18, padding: 14 },
+  fab: { position: 'absolute', right: 22, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D47B', shadowColor: '#000', shadowOpacity: .3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  fabPlus: { color: '#172017', fontSize: 31, lineHeight: 34, fontWeight: '500', marginTop: -2 },
 });
