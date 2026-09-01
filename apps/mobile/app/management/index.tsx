@@ -138,7 +138,7 @@ export default function ManagementScreen() {
           {!desktop && !mobile ? <CompactNavigation active={activeSection} onSelect={setActiveSection} /> : null}
 
           <ScrollView style={styles.contentScroll} contentContainerStyle={[styles.content, roomy && styles.contentRoomy, mobile && styles.contentMobile]} showsVerticalScrollIndicator={false}>
-            <SectionContent active={activeSection} data={data} roomy={roomy} mobile={mobile} search={search} onSelect={setActiveSection} />
+            <SectionContent active={activeSection} data={data} roomy={roomy} mobile={mobile} search={search} onCreate={() => setCreateOpen(true)} onSelect={setActiveSection} />
           </ScrollView>
 
           {mobile ? <MobileNavigation active={activeSection} data={data} onSelect={setActiveSection} onMore={() => setMoreOpen(true)} /> : null}
@@ -205,8 +205,8 @@ function MoreMenu({ visible, active, onClose, onSelect }: { visible: boolean; ac
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.moreBackdrop} onPress={onClose}><Pressable style={styles.moreSheet} onPress={(event) => event.stopPropagation()}><View style={styles.moreHandle} /><View style={styles.moreHeader}><View><Text style={styles.moreEyebrow}>MANAGEMENT</Text><Text style={styles.moreTitle}>More tools</Text></View><Pressable accessibilityLabel="Close more tools" style={styles.moreClose} onPress={onClose}><AppIcon name="close" color={COLORS.cream} size={18} /></Pressable></View><View style={styles.moreGrid}>{items.map((item) => <Pressable key={item.id} style={[styles.moreItem, active === item.id && styles.moreItemActive]} onPress={() => choose(item.id)}><View style={styles.moreItemIcon}><AppIcon name={item.icon} color={active === item.id ? COLORS.gold : COLORS.muted} size={19} /></View><Text style={[styles.moreItemText, active === item.id && styles.moreItemTextActive]}>{item.label}</Text><AppIcon name="chevron-forward" color={COLORS.dim} size={15} /></Pressable>)}</View><Pressable style={styles.moreMemberLink} onPress={() => { onClose(); router.replace('/(tabs)/menu' as never); }}><AppIcon name="trailhead" color={COLORS.gold} size={18} /><Text style={styles.moreMemberText}>Return to Go Melanated</Text><AppIcon name="open" color={COLORS.dim} size={15} /></Pressable></Pressable></Pressable></Modal>;
 }
 
-function SectionContent({ active, data, roomy, mobile, search, onSelect }: { active: ManagementSectionId; data: ManagementDashboardData; roomy: boolean; mobile: boolean; search: string; onSelect: (id: ManagementSectionId) => void }) {
-  if (active === 'home') return <HomeSection data={data} roomy={roomy} mobile={mobile} onSelect={onSelect} />;
+function SectionContent({ active, data, roomy, mobile, search, onCreate, onSelect }: { active: ManagementSectionId; data: ManagementDashboardData; roomy: boolean; mobile: boolean; search: string; onCreate: () => void; onSelect: (id: ManagementSectionId) => void }) {
+  if (active === 'home') return <HomeSection data={data} roomy={roomy} mobile={mobile} onCreate={onCreate} onSelect={onSelect} />;
   if (active === 'calendar') return <CalendarSection data={data} />;
   if (active === 'my-work') return <MyWorkSection data={data} />;
   if (active === 'events') return <EventsSection data={data} roomy={roomy} />;
@@ -220,31 +220,48 @@ function SectionContent({ active, data, roomy, mobile, search, onSelect }: { act
   return <AdminSection data={data} search={search} />;
 }
 
-function HomeSection({ data, roomy, mobile, onSelect }: { data: ManagementDashboardData; roomy: boolean; mobile: boolean; onSelect: (id: ManagementSectionId) => void }) {
+function HomeSection({ data, roomy, mobile, onCreate, onSelect }: { data: ManagementDashboardData; roomy: boolean; mobile: boolean; onCreate: () => void; onSelect: (id: ManagementSectionId) => void }) {
   const openTasks = data.tasks.filter((task) => task.status !== 'complete');
   const attention = openTasks.filter(needsAttention);
-  const activeEvents = data.campaigns.filter((campaign) => campaign.status !== 'complete');
+  const activeEvents = data.campaigns.filter((campaign) => campaign.status !== 'complete').sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime());
+  const featuredEvent = activeEvents[0];
+  const otherEvents = activeEvents.slice(1, 4);
   const draftContent = data.marketing.filter((item) => item.status === 'idea' || item.status === 'draft').length;
   const nextCalendar = data.calendar.filter((item) => toLocalCalendarDate(item.date).getTime() >= startOfToday()).slice(0, 5);
+  const visibleCalendar = mobile ? nextCalendar.slice(0, 3) : nextCalendar;
   const firstName = data.profile.displayName.split(/\s+/)[0];
   const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
 
-  const attentionPanel = <><PanelHeader eyebrow="NEEDS ATTENTION" title="Work that can hold up the plan" action={`${attention.length} items`} onPress={() => onSelect('my-work')} /><View style={styles.panelCard}>{attention.length === 0 ? <EmptyInline icon="checkmark" title="Nothing is blocked" copy="Open work is moving without an active blocker." /> : attention.slice(0, 4).map((task, index) => <AttentionTask key={task.id} task={task} last={index === Math.min(attention.length, 4) - 1} />)}</View></>;
+  const attentionPanel = <><PanelHeader eyebrow="NEEDS ATTENTION" title={mobile ? 'Resolve these first' : 'Work that can hold up the plan'} action={`${attention.length} items`} onPress={() => onSelect('my-work')} /><View style={styles.panelCard}>{attention.length === 0 ? <EmptyInline icon="checkmark" title="Nothing is blocked" copy="Open work is moving without an active blocker." /> : attention.slice(0, 4).map((task, index) => <AttentionTask key={task.id} task={task} last={index === Math.min(attention.length, 4) - 1} />)}</View></>;
   const eventPanel = <><PanelHeader eyebrow="ACTIVE EVENTS" title="What the team is producing" action="View all" onPress={() => onSelect('events')} /><View style={styles.eventStack}>{activeEvents.length === 0 ? <EmptyPanel title="No active events" copy="Create an event to begin planning work." /> : activeEvents.slice(0, 3).map((campaign) => <HomeEventCard key={campaign.id} campaign={campaign} />)}</View></>;
-  const calendarPanel = <><PanelHeader eyebrow="COMING UP" title="Next on the calendar" action="Calendar" onPress={() => onSelect('calendar')} /><View style={styles.panelCard}>{nextCalendar.length === 0 ? <EmptyInline icon="calendar" title="Calendar is clear" copy="Dated tasks and events will appear here." /> : nextCalendar.map((item, index) => <CalendarRow key={item.id} item={item} last={index === nextCalendar.length - 1} />)}</View></>;
+  const calendarPanel = <><PanelHeader eyebrow={mobile ? 'TODAY & NEXT UP' : 'COMING UP'} title={mobile ? 'Upcoming work' : 'Next on the calendar'} action="Calendar" onPress={() => onSelect('calendar')} /><View style={styles.panelCard}>{visibleCalendar.length === 0 ? <EmptyInline icon="calendar" title="Calendar is clear" copy="Dated tasks and events will appear here." /> : visibleCalendar.map((item, index) => <CalendarRow key={item.id} item={item} last={index === visibleCalendar.length - 1} />)}</View></>;
   const opportunityPanel = <><PanelHeader eyebrow="OPPORTUNITIES" title="Build the research pipeline" /><Pressable style={[styles.importCard, mobile && styles.importCardMobile]} onPress={() => onSelect('opportunities')}><View style={[styles.importIcon, mobile && styles.importIconMobile]}><AppIcon name="open" color={COLORS.gold} size={mobile ? 18 : 22} /></View><View style={mobile ? styles.importMobileCopy : undefined}><Text style={[styles.importTitle, mobile && styles.importTitleMobile]}>Import an event from a URL</Text><Text style={[styles.importCopy, mobile && styles.importCopyMobile]}>{mobile ? 'Turn a public event page into a reviewable opportunity.' : 'Paste an Eventbrite page, venue calendar, festival site or public event link. Review the extracted details before saving.'}</Text><View style={[styles.importAction, mobile && styles.importActionMobile]}><Text style={styles.importActionText}>Open importer</Text><AppIcon name="chevron-forward" color={COLORS.gold} size={16} /></View></View></Pressable></>;
 
   return <View style={styles.sectionPage}>
     <View style={[styles.pageHeader, mobile && styles.pageHeaderMobile]}><View><Text style={styles.pageEyebrow}>{todayLabel}</Text><Text style={[styles.pageTitle, mobile && styles.pageTitleMobile]}>{getGreeting()}, {firstName}.</Text><Text style={[styles.pageSubtitle, mobile && styles.pageSubtitleMobile]}>Here is what needs attention across Melanated Adventurers.</Text></View>{!mobile ? <View style={styles.statusPill}><View style={styles.statusDot} /><Text style={styles.statusPillText}>Event data connected</Text></View> : null}</View>
 
-    {mobile ? <View style={styles.mobileHomeFlow}>{attentionPanel}{eventPanel}{calendarPanel}</View> : null}
+    {mobile ? <View style={styles.mobileHomeFlow}>
+      {attentionPanel}
+      {calendarPanel}
+      <PanelHeader eyebrow="FEATURED EVENT" title="Closest active event" action="All events" onPress={() => onSelect('events')} />
+      {featuredEvent ? <HomeEventCard campaign={featuredEvent} /> : <EmptyPanel title="No active events" copy="Create an event to begin planning work." />}
+      {otherEvents.length ? <View style={styles.mobileOtherEvents}>{otherEvents.map((campaign, index) => <MobileEventRow key={campaign.id} campaign={campaign} last={index === otherEvents.length - 1} />)}</View> : null}
+      <MobileBusinessSummary activeEvents={activeEvents.length} openTasks={openTasks.length} draftContent={draftContent} onSelect={onSelect} />
+      <PanelHeader eyebrow="QUICK ACTIONS" title="Start something" />
+      <View style={styles.mobileQuickActions}>
+        <QuickAction label="Create task" icon="add" primary onPress={onCreate} />
+        <QuickAction label="Open calendar" icon="calendar" onPress={() => onSelect('calendar')} />
+        <QuickAction label="Import URL" icon="open" onPress={() => onSelect('opportunities')} />
+        <QuickAction label="Create content" icon="megaphone" onPress={() => onSelect('marketing')} />
+      </View>
+    </View> : null}
 
-    <View style={[styles.metricGrid, mobile && styles.metricGridMobile]}>
-      <MetricCard compact={mobile} label="Active events" value={String(activeEvents.length)} detail="Planning or live" icon="adventure" tone="gold" onPress={() => onSelect('events')} />
-      <MetricCard compact={mobile} label="Open work" value={String(openTasks.length)} detail={`${attention.length} need attention`} icon="tasks" tone={attention.length ? 'danger' : 'green'} onPress={() => onSelect('my-work')} />
-      <MetricCard compact={mobile} label="Content drafts" value={String(draftContent)} detail={`${data.marketing.length} total items`} icon="megaphone" tone="teal" onPress={() => onSelect('marketing')} />
-      <MetricCard compact={mobile} label="Opportunities" value="0" detail="Import from URL" icon="briefcase" tone="orange" onPress={() => onSelect('opportunities')} />
-    </View>
+    {!mobile ? <View style={styles.metricGrid}>
+      <MetricCard compact={false} label="Active events" value={String(activeEvents.length)} detail="Planning or live" icon="adventure" tone="gold" onPress={() => onSelect('events')} />
+      <MetricCard compact={false} label="Open work" value={String(openTasks.length)} detail={`${attention.length} need attention`} icon="tasks" tone={attention.length ? 'danger' : 'green'} onPress={() => onSelect('my-work')} />
+      <MetricCard compact={false} label="Content drafts" value={String(draftContent)} detail={`${data.marketing.length} total items`} icon="megaphone" tone="teal" onPress={() => onSelect('marketing')} />
+      <MetricCard compact={false} label="Opportunities" value="0" detail="Import from URL" icon="briefcase" tone="orange" onPress={() => onSelect('opportunities')} />
+    </View> : null}
 
     {!mobile ? <View style={[styles.dashboardColumns, !roomy && styles.dashboardColumnsStack]}>
       <View style={styles.dashboardPrimary}>
@@ -256,8 +273,27 @@ function HomeSection({ data, roomy, mobile, onSelect }: { data: ManagementDashbo
         {calendarPanel}
         {opportunityPanel}
       </View>
-    </View> : opportunityPanel}
+    </View> : null}
   </View>;
+}
+
+function MobileEventRow({ campaign, last }: { campaign: ManagementDashboardData['campaigns'][number]; last: boolean }) {
+  const open = campaign.tasks.filter((task) => task.status !== 'complete').length;
+  return <Pressable style={[styles.mobileEventRow, !last && styles.rowDivider]} onPress={() => router.push(`/host/campaigns/${campaign.slug}` as never)}><View style={[styles.eventAccent, { backgroundColor: campaign.accent }]} /><View style={styles.mobileEventCopy}><Text style={styles.mobileEventTitle} numberOfLines={1}>{campaign.shortTitle}</Text><Text style={styles.mobileEventMeta}>{getCampaignDaysUntil(campaign)} days · {open} open {open === 1 ? 'task' : 'tasks'}</Text></View><AppIcon name="chevron-forward" color={COLORS.dim} size={17} /></Pressable>;
+}
+
+function MobileBusinessSummary({ activeEvents, openTasks, draftContent, onSelect }: { activeEvents: number; openTasks: number; draftContent: number; onSelect: (id: ManagementSectionId) => void }) {
+  const items: { label: string; value: number; section: ManagementSectionId }[] = [
+    { label: 'Events', value: activeEvents, section: 'events' },
+    { label: 'Open work', value: openTasks, section: 'my-work' },
+    { label: 'Drafts', value: draftContent, section: 'marketing' },
+    { label: 'Opportunities', value: 0, section: 'opportunities' },
+  ];
+  return <View style={styles.mobileBusinessSummary}>{items.map((item, index) => <Pressable key={item.label} style={[styles.mobileBusinessItem, index > 0 && styles.mobileBusinessDivider]} onPress={() => onSelect(item.section)}><Text style={styles.mobileBusinessValue}>{item.value}</Text><Text style={styles.mobileBusinessLabel}>{item.label}</Text></Pressable>)}</View>;
+}
+
+function QuickAction({ label, icon, primary = false, onPress }: { label: string; icon: AppIconName; primary?: boolean; onPress: () => void }) {
+  return <Pressable style={[styles.mobileQuickAction, primary && styles.mobileQuickActionPrimary]} onPress={onPress}><AppIcon name={icon} color={primary ? COLORS.ink : COLORS.gold} size={17} /><Text style={[styles.mobileQuickActionText, primary && styles.mobileQuickActionTextPrimary]}>{label}</Text></Pressable>;
 }
 
 function MetricCard({ compact, label, value, detail, icon, tone, onPress }: { compact: boolean; label: string; value: string; detail: string; icon: AppIconName; tone: 'gold' | 'danger' | 'green' | 'teal' | 'orange'; onPress: () => void }) {
@@ -587,6 +623,21 @@ const styles = StyleSheet.create({
   homeEventTaskMeta: { color: COLORS.muted, fontSize: 9.5 },
   openCampaign: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3 },
   openCampaignText: { fontSize: 9.5, fontWeight: '900' },
+  mobileOtherEvents: { borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, overflow: 'hidden', marginTop: 8, marginBottom: 3 },
+  mobileEventRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12, paddingVertical: 9 },
+  mobileEventCopy: { flex: 1, minWidth: 0 },
+  mobileEventTitle: { color: COLORS.cream, fontSize: 11.5, fontWeight: '900' },
+  mobileEventMeta: { color: COLORS.muted, fontSize: 8.5, marginTop: 3 },
+  mobileBusinessSummary: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, overflow: 'hidden', marginTop: 20, marginBottom: 3 },
+  mobileBusinessItem: { flex: 1, minWidth: 0, minHeight: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, paddingVertical: 9 },
+  mobileBusinessDivider: { borderLeftWidth: 1, borderLeftColor: COLORS.line },
+  mobileBusinessValue: { color: COLORS.cream, fontSize: 18, fontWeight: '900' },
+  mobileBusinessLabel: { color: COLORS.muted, fontSize: 7.5, fontWeight: '800', marginTop: 2, textAlign: 'center' },
+  mobileQuickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 3 },
+  mobileQuickAction: { minWidth: 0, flexBasis: '47%', flexGrow: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11 },
+  mobileQuickActionPrimary: { backgroundColor: COLORS.gold, borderColor: COLORS.gold },
+  mobileQuickActionText: { color: COLORS.cream, fontSize: 9.5, fontWeight: '900' },
+  mobileQuickActionTextPrimary: { color: COLORS.ink },
   calendarRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, paddingVertical: 8 },
   calendarDate: { width: 37, alignItems: 'center' },
   calendarMonth: { color: COLORS.gold, fontSize: 7.5, fontWeight: '900', letterSpacing: .7 },
