@@ -107,14 +107,15 @@ export default function HostCampaignDetailScreen() {
   const blocked = activeTasks.filter((task) => task.status === 'blocked');
   const filteredTasks = workFilter === 'mine' ? mine : workFilter === 'unassigned' ? unassigned : workFilter === 'overdue' ? overdue : workFilter === 'blocked' ? blocked : activeTasks;
   const nextUp = activeTasks.filter((task) => !attentionIds.has(task.id) && task.status !== 'blocked').slice(0, 3);
+  const campaignSlug = campaign.slug;
 
   function openTask(task: CampaignTask) {
-    router.push(`/host/campaigns/${campaign.slug}/tasks/${task.id}` as never);
+    router.push(`/host/campaigns/${campaignSlug}/tasks/${task.id}` as never);
   }
 
   function setTab(tab: WorkspaceTab) {
     if (tab === 'marketing') {
-      router.push(`/host/campaigns/${campaign.slug}/marketing` as never);
+      router.push(`/host/campaigns/${campaignSlug}/marketing` as never);
       return;
     }
     setWorkspaceTab(tab);
