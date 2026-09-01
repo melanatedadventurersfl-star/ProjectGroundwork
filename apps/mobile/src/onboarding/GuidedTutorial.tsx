@@ -30,7 +30,7 @@ const steps = [
   {
     title: 'Ask Go something',
     body: 'Try asking Go to plan an easy outdoor day this weekend.',
-    route: '/ask-go',
+    route: '/trail-guide/ask',
   },
 ] as const;
 
