@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { createDraftOuting } from './api';
 import { addGeneralAdmissionTicket } from './tickets';
 import type { HostLibraryItem } from './library';
+import { contentFromDraft, saveEventContentSections } from './eventContent';
 
 export type EventDraft = {
   title: string;
@@ -22,6 +23,10 @@ export type EventDraft = {
   schedule: { time: string; title: string }[];
   meals: string[];
   policies: string[];
+  operations: string[];
+  gear: string[];
+  guestInfo: string[];
+  marketing: string[];
   photos: string[];
   confidenceNotes: string[];
 };
@@ -124,10 +129,36 @@ export async function createCampaignWorkspace(input: {
   return campaign;
 }
 
+async function addImportedOperationsTasks(campaignId: string, ownerProfileId: string, operations: string[]) {
+  if (!operations.length) return;
+  const rows = operations.map((title, index) => ({
+    campaign_id: campaignId,
+    task_key: `imported-operations-${keyify(title)}-${index + 1}`,
+    title,
+    category: 'Operations',
+    owner_label: 'Event owner',
+    assignee_profile_id: null,
+    due_label: 'Imported from event materials',
+    due_at: null,
+    status: 'not_started',
+    priority: 'normal',
+    sort_order: 500 + index,
+    created_by: ownerProfileId,
+    updated_by: ownerProfileId,
+  }));
+  const { error } = await supabase.from('host_campaign_tasks').insert(rows);
+  if (error) throw error;
+}
+
 export async function createEventFromDraft(draft: EventDraft, options?: { importId?: string; template?: HostLibraryItem | null }) {
   if (!draft.title.trim()) throw new Error('Add an event title.');
   if (!draft.startsAt || !draft.endsAt) throw new Error('Add the event start and end time before creating the draft.');
   if (!draft.city.trim() || !draft.state.trim()) throw new Error('Add the event city and state.');
+
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  const ownerProfileId = authData.user?.id;
+  if (!ownerProfileId) throw new Error('Sign in to create an event.');
 
   const outing = await createDraftOuting({
     title: draft.title,
@@ -160,6 +191,14 @@ export async function createEventFromDraft(draft: EventDraft, options?: { import
     template: options?.template ?? null,
   });
 
+  await saveEventContentSections({
+    adventureId: outing.id,
+    ownerProfileId,
+    importId: options?.importId,
+    content: contentFromDraft(draft),
+  });
+  await addImportedOperationsTasks(campaign.id, ownerProfileId, draft.operations ?? []);
+
   if (options?.importId) {
     const { error } = await supabase.from('host_event_imports').update({
       adventure_id: outing.id,
@@ -169,10 +208,6 @@ export async function createEventFromDraft(draft: EventDraft, options?: { import
     }).eq('id', options.importId);
     if (error) throw error;
   } else if (options?.template) {
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError) throw authError;
-    const ownerProfileId = authData.user?.id;
-    if (!ownerProfileId) throw new Error('Sign in to record template provenance.');
     const { error } = await supabase.from('host_event_imports').insert({
       owner_profile_id: ownerProfileId,
       adventure_id: outing.id,
@@ -191,6 +226,6 @@ export async function createEventFromDraft(draft: EventDraft, options?: { import
 
 export function draftFromTemplate(template: HostLibraryItem): EventDraft {
   return {
-    title: '', summary: template.summary, description: template.summary, category: 'Camping', difficulty: 'easy', startsAt: '', endsAt: '', venueName: '', address: '', city: '', state: 'FL', capacity: 20, meetingInstructions: '', heroImageUrl: '', tickets: [], schedule: [], meals: [], policies: [], photos: [], confidenceNotes: [`Starting from ${template.title}. Review dates, location, capacity, pricing, and guest-facing details before publishing.`],
+    title: '', summary: template.summary, description: template.summary, category: 'Camping', difficulty: 'easy', startsAt: '', endsAt: '', venueName: '', address: '', city: '', state: 'FL', capacity: 20, meetingInstructions: '', heroImageUrl: '', tickets: [], schedule: [], meals: [], policies: [], operations: [], gear: [], guestInfo: [], marketing: [], photos: [], confidenceNotes: [`Starting from ${template.title}. Review dates, location, capacity, pricing, and guest-facing details before publishing.`],
   };
 }
