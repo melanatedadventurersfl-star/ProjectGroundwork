@@ -13,11 +13,13 @@ type ToolRow = {
 };
 
 const creatorRows: ToolRow[] = [
+  { label: 'Go Melanated Management', route: '/management', icon: 'dashboard', meta: 'Events, work, calendar, opportunities, directories and team operations' },
   { label: 'Creator Console', route: '/creator', icon: 'badge', meta: 'Publishing, creator tools and operations' },
 ];
 
 const adminRows: ToolRow[] = [
   { label: 'Admin Profile', route: '/admin', icon: 'profile' },
+  { label: 'New Members', route: '/admin/new-members', icon: 'community', meta: 'Review new app signups and onboarding' },
   { label: 'Outing Hosts', route: '/admin/outing-hosts', icon: 'trips', meta: 'Approve hosts and paid-outing access' },
   { label: 'App Media', route: '/admin-media', icon: 'guide' },
 ];

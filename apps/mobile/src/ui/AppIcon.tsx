@@ -40,6 +40,19 @@ export type AppIconName =
   | 'badge'
   | 'time'
   | 'calendar'
+  | 'dashboard'
+  | 'tasks'
+  | 'briefcase'
+  | 'megaphone'
+  | 'storefront'
+  | 'directory'
+  | 'library'
+  | 'team'
+  | 'reports'
+  | 'settings'
+  | 'filter'
+  | 'more'
+  | 'open'
   | 'share'
   | 'close'
   | 'delete';
@@ -80,6 +93,19 @@ const icons: Record<AppIconName, IoniconName> = {
   badge: 'medal-outline',
   time: 'time-outline',
   calendar: 'calendar-outline',
+  dashboard: 'grid-outline',
+  tasks: 'checkmark-done-outline',
+  briefcase: 'briefcase-outline',
+  megaphone: 'megaphone-outline',
+  storefront: 'storefront-outline',
+  directory: 'albums-outline',
+  library: 'library-outline',
+  team: 'people-circle-outline',
+  reports: 'bar-chart-outline',
+  settings: 'settings-outline',
+  filter: 'filter-outline',
+  more: 'ellipsis-horizontal',
+  open: 'open-outline',
   share: 'share-social-outline',
   close: 'close-circle-outline',
   delete: 'trash-outline',
