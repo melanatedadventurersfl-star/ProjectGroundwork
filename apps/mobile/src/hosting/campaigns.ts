@@ -1,18 +1,25 @@
+import { supabase } from '../lib/supabase';
+
 export type CampaignTaskStatus = 'not_started' | 'in_progress' | 'waiting' | 'blocked' | 'review' | 'complete';
+export type CampaignTaskPriority = 'critical' | 'high' | 'normal';
 
 export type CampaignTask = {
   id: string;
+  taskKey: string;
   title: string;
   category: string;
   owner: string;
+  assigneeProfileId: string | null;
   dueLabel: string;
+  dueAt: string | null;
   status: CampaignTaskStatus;
-  priority: 'critical' | 'high' | 'normal';
+  priority: CampaignTaskPriority;
   blockedBy?: string;
 };
 
 export type CampaignMilestone = {
   id: string;
+  milestoneKey: string;
   title: string;
   weight: number;
   complete: boolean;
@@ -20,14 +27,21 @@ export type CampaignMilestone = {
 
 export type CampaignDecision = {
   id: string;
+  decisionKey: string;
   title: string;
   owner: string;
+  ownerProfileId: string | null;
   dueLabel: string;
+  dueAt: string | null;
   status: 'open' | 'decided';
+  decisionText: string | null;
 };
 
 export type HostCampaign = {
   id: string;
+  adventureId: string;
+  slug: string;
+  ownerProfileId: string;
   title: string;
   shortTitle: string;
   location: string;
@@ -35,6 +49,7 @@ export type HostCampaign = {
   endsAt: string;
   status: 'planning' | 'live' | 'complete';
   accent: string;
+  canManage: boolean;
   tasks: CampaignTask[];
   milestones: CampaignMilestone[];
   decisions: CampaignDecision[];
@@ -48,104 +63,212 @@ export type HostCampaign = {
   };
 };
 
-const littleCampOfHorrors: HostCampaign = {
-  id: 'little-camp-of-horrors-2026',
-  title: 'The Great Melanated Little Camp of Horrors',
-  shortTitle: 'Little Camp of Horrors 2026',
-  location: 'Florida Sand Music Ranch · Brooksville, FL',
-  startsAt: '2026-10-30T15:00:00-04:00',
-  endsAt: '2026-11-01T12:00:00-05:00',
-  status: 'planning',
-  accent: '#E88633',
-  tasks: [
-    {
-      id: 'decor-inventory',
-      title: 'Confirm campground décor inventory',
-      category: 'Decor & Production',
-      owner: 'Jonathan + Shannette',
-      dueLabel: 'Needs follow-up',
-      status: 'waiting',
-      priority: 'critical',
-    },
-    {
-      id: 'decor-gaps',
-      title: 'Identify décor gaps',
-      category: 'Decor & Production',
-      owner: 'Unassigned',
-      dueLabel: 'After inventory',
-      status: 'blocked',
-      priority: 'high',
-      blockedBy: 'Confirm campground décor inventory',
-    },
-    {
-      id: 'ticket-policy',
-      title: 'Finalize refund and transfer policy',
-      category: 'Ticketing',
-      owner: 'Jonathan',
-      dueLabel: 'This week',
-      status: 'not_started',
-      priority: 'high',
-    },
-    {
-      id: 'costume-categories',
-      title: 'Finalize costume contest categories',
-      category: 'Experience',
-      owner: 'Shannette',
-      dueLabel: 'Open decision',
-      status: 'not_started',
-      priority: 'normal',
-    },
-    {
-      id: 'rule-drop',
-      title: 'Prepare Tuesday Rule Drop',
-      category: 'Marketing',
-      owner: 'Jonathan',
-      dueLabel: 'Tuesday',
-      status: 'in_progress',
-      priority: 'high',
-    },
-    {
-      id: 'food-plan',
-      title: 'Lock Saturday dinner menu',
-      category: 'Food & Hospitality',
-      owner: 'Jonathan + Shannette',
-      dueLabel: 'Complete',
-      status: 'complete',
-      priority: 'normal',
-    },
-  ],
-  milestones: [
-    { id: 'venue', title: 'Venue locked', weight: 30, complete: true },
-    { id: 'ticketing', title: 'Ticketing ready', weight: 20, complete: false },
-    { id: 'experience', title: 'Experience locked', weight: 20, complete: false },
-    { id: 'operations', title: 'Event ready', weight: 30, complete: false },
-  ],
-  decisions: [
-    { id: 'costume', title: 'Costume contest categories', owner: 'Shannette', dueLabel: 'Sep 20', status: 'open' },
-    { id: 'checkin', title: 'Final check-in window', owner: 'Jonathan', dueLabel: 'Before final attendee email', status: 'open' },
-  ],
-  metrics: {
-    attendees: 0,
-    capacityLabel: 'Ticket sync not connected',
-    scheduledMarketing: 1,
-    marketingNeedsAttention: 2,
-    budgetCommitted: 500,
-    budgetRemaining: 0,
-  },
+type CampaignRow = {
+  id: string;
+  adventure_id: string;
+  slug: string;
+  owner_profile_id: string;
+  title: string;
+  short_title: string;
+  location: string;
+  starts_at: string;
+  ends_at: string;
+  status: HostCampaign['status'];
+  accent: string;
 };
 
-export const seededHostCampaigns: HostCampaign[] = [littleCampOfHorrors];
+type TaskRow = {
+  id: string;
+  task_key: string;
+  title: string;
+  category: string;
+  owner_label: string;
+  assignee_profile_id: string | null;
+  due_label: string;
+  due_at: string | null;
+  status: CampaignTaskStatus;
+  priority: CampaignTaskPriority;
+  sort_order: number;
+};
 
-export function getHostCampaign(id: string) {
-  return seededHostCampaigns.find((campaign) => campaign.id === id) ?? null;
+type MilestoneRow = {
+  id: string;
+  milestone_key: string;
+  title: string;
+  weight: number;
+  complete: boolean;
+  sort_order: number;
+};
+
+type DecisionRow = {
+  id: string;
+  decision_key: string;
+  title: string;
+  owner_label: string;
+  owner_profile_id: string | null;
+  due_label: string;
+  due_at: string | null;
+  status: 'open' | 'decided';
+  decision_text: string | null;
+  sort_order: number;
+};
+
+type DependencyRow = {
+  task_id: string;
+  depends_on_task_id: string;
+};
+
+export async function listHostCampaigns(): Promise<HostCampaign[]> {
+  const { data, error } = await supabase
+    .from('host_campaigns')
+    .select('id,adventure_id,slug,owner_profile_id,title,short_title,location,starts_at,ends_at,status,accent')
+    .order('starts_at', { ascending: true });
+  if (error) throw error;
+  return Promise.all((data ?? []).map((row) => hydrateCampaign(row as CampaignRow)));
+}
+
+export async function getHostCampaign(idOrSlug: string): Promise<HostCampaign | null> {
+  let query = supabase
+    .from('host_campaigns')
+    .select('id,adventure_id,slug,owner_profile_id,title,short_title,location,starts_at,ends_at,status,accent');
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idOrSlug);
+  query = isUuid ? query.eq('id', idOrSlug) : query.eq('slug', idOrSlug);
+
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return data ? hydrateCampaign(data as CampaignRow) : null;
+}
+
+async function hydrateCampaign(row: CampaignRow): Promise<HostCampaign> {
+  const [tasksResult, milestonesResult, decisionsResult, dependenciesResult, adventureResult, manageResult] = await Promise.all([
+    supabase.from('host_campaign_tasks').select('id,task_key,title,category,owner_label,assignee_profile_id,due_label,due_at,status,priority,sort_order').eq('campaign_id', row.id).order('sort_order'),
+    supabase.from('host_campaign_milestones').select('id,milestone_key,title,weight,complete,sort_order').eq('campaign_id', row.id).order('sort_order'),
+    supabase.from('host_campaign_decisions').select('id,decision_key,title,owner_label,owner_profile_id,due_label,due_at,status,decision_text,sort_order').eq('campaign_id', row.id).order('sort_order'),
+    supabase.from('host_campaign_task_dependencies').select('task_id,depends_on_task_id').eq('campaign_id', row.id),
+    supabase.from('adventures').select('capacity,spots_remaining').eq('id', row.adventure_id).maybeSingle(),
+    resolveCanManage(row),
+  ]);
+
+  if (tasksResult.error) throw tasksResult.error;
+  if (milestonesResult.error) throw milestonesResult.error;
+  if (decisionsResult.error) throw decisionsResult.error;
+  if (dependenciesResult.error) throw dependenciesResult.error;
+
+  const rawTasks = (tasksResult.data ?? []) as TaskRow[];
+  const taskTitleById = new Map(rawTasks.map((task) => [task.id, task.title]));
+  const blockedByByTask = new Map<string, string>();
+  for (const dependency of (dependenciesResult.data ?? []) as DependencyRow[]) {
+    const blocker = taskTitleById.get(dependency.depends_on_task_id);
+    if (blocker) blockedByByTask.set(dependency.task_id, blocker);
+  }
+
+  const capacity = adventureResult.data?.capacity ?? null;
+  const spotsRemaining = adventureResult.data?.spots_remaining ?? null;
+  const attendees = capacity !== null && spotsRemaining !== null ? Math.max(0, capacity - spotsRemaining) : 0;
+  const capacityLabel = capacity !== null && spotsRemaining !== null
+    ? `${attendees} registered · ${spotsRemaining} spots remaining`
+    : 'Ticket capacity sync pending';
+
+  return {
+    id: row.id,
+    adventureId: row.adventure_id,
+    slug: row.slug,
+    ownerProfileId: row.owner_profile_id,
+    title: row.title,
+    shortTitle: row.short_title,
+    location: row.location,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    status: row.status,
+    accent: row.accent,
+    canManage: manageResult,
+    tasks: rawTasks.map((task) => ({
+      id: task.id,
+      taskKey: task.task_key,
+      title: task.title,
+      category: task.category,
+      owner: task.owner_label,
+      assigneeProfileId: task.assignee_profile_id,
+      dueLabel: task.due_label,
+      dueAt: task.due_at,
+      status: task.status,
+      priority: task.priority,
+      blockedBy: blockedByByTask.get(task.id),
+    })),
+    milestones: ((milestonesResult.data ?? []) as MilestoneRow[]).map((milestone) => ({
+      id: milestone.id,
+      milestoneKey: milestone.milestone_key,
+      title: milestone.title,
+      weight: milestone.weight,
+      complete: milestone.complete,
+    })),
+    decisions: ((decisionsResult.data ?? []) as DecisionRow[]).map((decision) => ({
+      id: decision.id,
+      decisionKey: decision.decision_key,
+      title: decision.title,
+      owner: decision.owner_label,
+      ownerProfileId: decision.owner_profile_id,
+      dueLabel: decision.due_label,
+      dueAt: decision.due_at,
+      status: decision.status,
+      decisionText: decision.decision_text,
+    })),
+    metrics: {
+      attendees,
+      capacityLabel,
+      scheduledMarketing: 0,
+      marketingNeedsAttention: rawTasks.filter((task) => task.category === 'Marketing' && task.status !== 'complete').length,
+      budgetCommitted: 0,
+      budgetRemaining: 0,
+    },
+  };
+}
+
+async function resolveCanManage(row: CampaignRow) {
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData.user?.id;
+  if (!userId) return false;
+  if (userId === row.owner_profile_id) return true;
+
+  const [adminResult, leadResult] = await Promise.all([
+    supabase.rpc('is_platform_admin'),
+    supabase.from('adventure_staff_assignments').select('id').eq('adventure_id', row.adventure_id).eq('profile_id', userId).eq('role', 'lead').limit(1),
+  ]);
+  return adminResult.data === true || (!leadResult.error && (leadResult.data?.length ?? 0) > 0);
+}
+
+export async function updateCampaignTaskStatus(taskId: string, status: CampaignTaskStatus) {
+  const { data: authData } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from('host_campaign_tasks')
+    .update({ status, updated_by: authData.user?.id ?? null, updated_at: new Date().toISOString() })
+    .eq('id', taskId);
+  if (error) throw error;
+}
+
+export async function updateCampaignMilestone(milestoneId: string, complete: boolean) {
+  const { error } = await supabase
+    .from('host_campaign_milestones')
+    .update({ complete, updated_at: new Date().toISOString() })
+    .eq('id', milestoneId);
+  if (error) throw error;
+}
+
+export async function decideCampaignDecision(decisionId: string, decisionText: string) {
+  const trimmed = decisionText.trim();
+  if (!trimmed) throw new Error('Add the decision before marking it decided.');
+  const { error } = await supabase
+    .from('host_campaign_decisions')
+    .update({ status: 'decided', decision_text: trimmed, decided_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', decisionId);
+  if (error) throw error;
 }
 
 export function getCampaignReadiness(campaign: HostCampaign) {
   const totalWeight = campaign.milestones.reduce((sum, milestone) => sum + milestone.weight, 0);
   if (!totalWeight) return 0;
-  const completedWeight = campaign.milestones
-    .filter((milestone) => milestone.complete)
-    .reduce((sum, milestone) => sum + milestone.weight, 0);
+  const completedWeight = campaign.milestones.filter((milestone) => milestone.complete).reduce((sum, milestone) => sum + milestone.weight, 0);
   return Math.round((completedWeight / totalWeight) * 100);
 }
 
