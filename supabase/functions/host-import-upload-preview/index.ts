@@ -21,7 +21,30 @@ function mimeFor(name: string, supplied = "") { if (supplied && supplied !== "ap
 function supportedMime(mime: string) { return mime === "application/pdf" || mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || mime === "text/plain" || mime === "text/html" || mime === "application/zip" || mime.startsWith("image/"); }
 function schema() { return { type: "object", additionalProperties: false, required: ["title","summary","description","category","difficulty","startsAt","endsAt","venueName","address","city","state","capacity","meetingInstructions","heroImageUrl","tickets","schedule","meals","policies","photos","confidenceNotes"], properties: { title: { type: "string" }, summary: { type: "string" }, description: { type: "string" }, category: { type: "string", enum: ["Hiking","Camping","Paddling","Beach","Cycling","Social","Workshop","Volunteer","Other"] }, difficulty: { type: "string", enum: ["easy","moderate","challenging"] }, startsAt: { type: "string" }, endsAt: { type: "string" }, venueName: { type: "string" }, address: { type: "string" }, city: { type: "string" }, state: { type: "string" }, capacity: { type: ["integer","null"] }, meetingInstructions: { type: "string" }, heroImageUrl: { type: "string" }, tickets: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["label","priceText"], properties: { label: { type: "string" }, priceText: { type: "string" } } } }, schedule: { type: "array", maxItems: 50, items: { type: "object", additionalProperties: false, required: ["time","title"], properties: { time: { type: "string" }, title: { type: "string" } } } }, meals: { type: "array", maxItems: 30, items: { type: "string" } }, policies: { type: "array", maxItems: 30, items: { type: "string" } }, photos: { type: "array", maxItems: 20, items: { type: "string" } }, confidenceNotes: { type: "array", maxItems: 20, items: { type: "string" } } } }; }
 function readOutputText(payload: any) { if (typeof payload?.output_text === "string") return payload.output_text; for (const item of payload?.output ?? []) for (const content of item?.content ?? []) if (content?.type === "output_text" && typeof content.text === "string") return content.text; return ""; }
-function basicPreview(label: string, files: string[]) { return { title: label || "Imported Event", summary: "", description: "", category: "Other", difficulty: "easy", startsAt: "", endsAt: "", venueName: "", address: "", city: "", state: "FL", capacity: null, meetingInstructions: "", heroImageUrl: "", tickets: [], schedule: [], meals: [], policies: [], photos: [], confidenceNotes: [`Automatic extraction was unavailable. Review the ${files.length} uploaded source file${files.length === 1 ? "" : "s"} manually.`] }; }
+function basicPreview(files: string[]) { return { title: "Imported Event", summary: "", description: "", category: "Other", difficulty: "easy", startsAt: "", endsAt: "", venueName: "", address: "", city: "", state: "FL", capacity: null, meetingInstructions: "", heroImageUrl: "", tickets: [], schedule: [], meals: [], policies: [], photos: [], confidenceNotes: [`Automatic extraction was unavailable. Review the ${files.length} uploaded source file${files.length === 1 ? "" : "s"} manually.`] }; }
+
+function decodeXmlEntities(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+async function extractDocxText(bytes: Uint8Array) {
+  const docx = await JSZip.loadAsync(bytes);
+  const documentXml = docx.file("word/document.xml");
+  if (!documentXml) return "";
+  const xml = await documentXml.async("string");
+  return decodeXmlEntities(
+    xml
+      .replace(/<w:tab[^>]*\/>/g, "\t")
+      .replace(/<w:br[^>]*\/>/g, "\n")
+      .replace(/<\/w:p>/g, "\n")
+      .replace(/<[^>]+>/g, "")
+  ).replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, 30000);
+}
 
 async function appendFileContent(contentItems: any[], name: string, mime: string, bytes: Uint8Array) {
   if (bytes.byteLength > MAX_FILE_BYTES) throw new Error(`${name} is larger than 10 MB.`);
@@ -34,12 +57,17 @@ async function appendFileContent(contentItems: any[], name: string, mime: string
     contentItems.push({ type: "input_text", text: `The preceding image came from source file: ${name}` });
     return;
   }
+  if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    const text = await extractDocxText(bytes);
+    contentItems.push({ type: "input_text", text: `SOURCE FILE: ${name}\n${text || "No readable Word document text was found."}` });
+    return;
+  }
   if (mime === "text/plain" || mime === "text/html") {
     const text = new TextDecoder().decode(bytes).replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 30000);
     contentItems.push({ type: "input_text", text: `SOURCE FILE: ${name}\n${text}` });
     return;
   }
-  contentItems.push({ type: "input_file", filename: name, file_data: `data:${mime};base64,${bytesToBase64(bytes)}` });
+  contentItems.push({ type: "input_file", filename: name, file_data: bytesToBase64(bytes) });
 }
 
 Deno.serve(async (req: Request) => {
@@ -102,7 +130,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const sourceLabel = sourceFiles.length === 1 ? sourceFiles[0]?.name ?? "Uploaded event file" : `${sourceFiles.length} uploaded event files`;
-    let preview = basicPreview(sourceLabel, sourceFiles.map((file) => file.name));
+    let preview = basicPreview(sourceFiles.map((file) => file.name));
     let extractionSource: "ai" | "fallback" = "fallback";
 
     if (openAiKey) {
@@ -122,9 +150,11 @@ Deno.serve(async (req: Request) => {
         if (outputText) {
           preview = JSON.parse(outputText);
           extractionSource = "ai";
+        } else {
+          console.error("host-import-upload-preview empty OpenAI output", responseJson);
         }
       } else {
-        console.error("host-import-upload-preview upstream", responseJson);
+        console.error("host-import-upload-preview upstream", upstream.status, responseJson);
       }
     }
 
