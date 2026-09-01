@@ -1,0 +1,94 @@
+name: EAS iOS Preview
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/app.config.js'
+      - 'apps/mobile/app.config.ts'
+      - 'apps/mobile/eas.json'
+      - 'apps/mobile/package.json'
+      - 'package-lock.json'
+      - 'apps/mobile/ios/**'
+      - 'apps/mobile/plugins/**'
+      - 'apps/mobile/assets/branding/app-icon/go-melanated-icon-master.png'
+      - 'apps/mobile/assets/ma-splash-icon.png'
+      - 'apps/mobile/assets/ma-pathfinder-mark.png'
+  workflow_dispatch:
+
+concurrency:
+  group: eas-preview-ios-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out native delivery commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify build target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Repair recoverable bundled raster assets before EAS upload
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 apps/mobile/scripts/prepare_image_assets.py
+
+      - name: Validate bundled raster images
+        run: python3 apps/mobile/scripts/validate_image_assets.py
+
+      - name: Production bundle smoke test before EAS
+        run: npm run mobile:bundlecheck
+        env:
+          EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_PROFILE: preview
+          EXPO_PUBLIC_BUILD_SOURCE: github-actions-ios
+
+      - name: Verify Expo authentication
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}"
+
+      - name: Verify EAS project link
+        working-directory: apps/mobile
+        run: node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) process.exit(1)"
+
+      - name: Build installable iOS preview
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
+          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
+          EXPO_PUBLIC_BUILD_PROFILE: preview
+          EXPO_PUBLIC_BUILD_SOURCE: github-actions-ios
+        run: npx eas-cli@latest build --platform ios --profile preview --non-interactive --clear-cache
