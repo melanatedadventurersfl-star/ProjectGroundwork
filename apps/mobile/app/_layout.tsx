@@ -9,6 +9,7 @@ import { PersistentBottomNav } from '../src/navigation/PersistentBottomNav';
 import { PersistentTopNav } from '../src/navigation/PersistentTopNav';
 import { PushNotificationsManager } from '../src/notifications/PushNotificationsManager';
 import { GuidedTutorial } from '../src/onboarding/GuidedTutorial';
+import { TrailheadProgressObserver } from '../src/onboarding/TrailheadProgressObserver';
 import { subscribeGuidedTutorial } from '../src/onboarding/tutorialController';
 import {
   getGuidedTutorialStep,
@@ -142,7 +143,6 @@ function AppShell() {
       setTutorialGateReady(true);
 
       if (!completed) {
-        // Trailhead now lives on Home. Do not block a new member with a modal.
         markReleaseSeen(releaseSeenKey);
         setWhatsNewVisible(false);
       }
@@ -214,6 +214,7 @@ function AppShell() {
 
   return (
     <View style={styles.appShell} testID="app-shell">
+      <TrailheadProgressObserver />
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
