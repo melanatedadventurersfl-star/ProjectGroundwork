@@ -49,8 +49,10 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
-      - name: Install Expo web runtime
-        run: npm install --workspace @ma/mobile --no-save --legacy-peer-deps react-dom@19.2.3 react-native-web@0.21.0
+      - name: Align browser React runtime
+        run: |
+          npm pkg set overrides.react=19.2.8
+          npm install --workspace @ma/mobile --no-save react@19.2.8 react-dom@19.2.8 react-native-web@0.21.0
 
       - name: Export Go Melanated web app
         working-directory: apps/mobile
