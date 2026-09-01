@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -13,6 +13,15 @@ import {
   type HostCampaign,
 } from '../../../../../src/hosting/campaigns';
 
+const statusOptions: { value: CampaignTaskStatus; label: string; help: string }[] = [
+  { value: 'not_started', label: 'Not Started', help: 'Ready to work on.' },
+  { value: 'in_progress', label: 'In Progress', help: 'Someone is actively working on it.' },
+  { value: 'waiting', label: 'Waiting', help: 'Waiting on another person or outside response.' },
+  { value: 'blocked', label: 'Blocked', help: 'Cannot proceed until another item is resolved.' },
+  { value: 'review', label: 'Ready for Review', help: 'Work is done and needs approval.' },
+  { value: 'complete', label: 'Complete', help: 'Finished.' },
+];
+
 export default function CampaignTaskDetailScreen() {
   const params = useLocalSearchParams<{ id: string; taskId: string }>();
   const [campaign, setCampaign] = useState<HostCampaign | null>(null);
@@ -20,6 +29,7 @@ export default function CampaignTaskDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [picker, setPicker] = useState<'status' | 'assignee' | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +52,7 @@ export default function CampaignTaskDetailScreen() {
 
   async function changeStatus(status: CampaignTaskStatus) {
     if (!task) return;
+    setPicker(null);
     setSaving(true);
     setError('');
     try {
@@ -56,6 +67,7 @@ export default function CampaignTaskDetailScreen() {
 
   async function assign(profileId: string | null) {
     if (!task) return;
+    setPicker(null);
     setSaving(true);
     setError('');
     try {
@@ -72,12 +84,13 @@ export default function CampaignTaskDetailScreen() {
   if (!campaign || !task) return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.title}>Task unavailable</Text>{error ? <Text style={styles.error}>{error}</Text> : null}<Pressable onPress={() => router.back()}><Text style={styles.back}>Back</Text></Pressable></View></SafeAreaView>;
 
   const blocked = task.status === 'blocked';
+  const statusLabel = statusOptions.find((option) => option.value === task.status)?.label ?? task.status;
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹ {campaign.shortTitle}</Text></Pressable><Text style={styles.headerLabel}>TASK</Text></View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.status, blocked && styles.blocked]}>{task.status.replace('_', ' ').toUpperCase()}</Text>
+        <Text style={[styles.status, blocked && styles.blocked]}>{statusLabel.toUpperCase()}</Text>
         <Text style={styles.title}>{task.title}</Text>
         <Text style={styles.meta}>{task.category}</Text>
         <Text style={styles.meta}>Plan owner: {task.owner}</Text>
@@ -90,38 +103,45 @@ export default function CampaignTaskDetailScreen() {
         {task.blockedBy ? <View style={styles.blockerCard}><Text style={styles.sectionLabel}>DEPENDENCY</Text><Text style={styles.blockerText}>Blocked by {task.blockedBy}</Text></View> : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>DESCRIPTION</Text>
-          <Text style={styles.body}>Use this task page for execution details, notes, dependencies and assignment. The campaign record currently stores the task title, category, owner, due date, status and dependency relationship.</Text>
+          <Text style={styles.sectionLabel}>DETAILS</Text>
+          <Text style={styles.body}>Status, assignment, due date, ownership and dependency information are stored with this event task.</Text>
         </View>
 
-        {campaign.canManage ? <>
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>ASSIGN</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              <Chip label="Unassigned" active={!task.assigneeProfileId} onPress={() => void assign(null)} />
-              {team.map((member) => <Chip key={member.profileId} label={member.displayName} active={task.assigneeProfileId === member.profileId} onPress={() => void assign(member.profileId)} />)}
-            </ScrollView>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>STATUS</Text>
-            {saving ? <ActivityIndicator color="#D7B45A" /> : <View style={styles.actions}>
-              {!blocked && task.status !== 'in_progress' ? <Action label="Start" onPress={() => void changeStatus('in_progress')} /> : null}
-              {!blocked && task.status !== 'waiting' ? <Action label="Waiting" onPress={() => void changeStatus('waiting')} /> : null}
-              {!blocked && task.status !== 'complete' ? <Action label="Complete" primary onPress={() => void changeStatus('complete')} /> : null}
-            </View>}
-          </View>
-        </> : null}
+        {campaign.canManage ? <View style={styles.controls}>
+          <Pressable style={styles.controlRow} onPress={() => setPicker('status')} disabled={saving}>
+            <View><Text style={styles.controlLabel}>STATUS</Text><Text style={styles.controlValue}>{statusLabel}</Text></View><Text style={styles.chevron}>›</Text>
+          </Pressable>
+          <Pressable style={styles.controlRow} onPress={() => setPicker('assignee')} disabled={saving}>
+            <View><Text style={styles.controlLabel}>ASSIGNED TO</Text><Text style={styles.controlValue}>{assignee?.displayName ?? 'Unassigned'}</Text></View><Text style={styles.chevron}>›</Text>
+          </Pressable>
+          {saving ? <ActivityIndicator style={styles.saving} color="#D7B45A" /> : null}
+        </View> : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
+
+      <Modal visible={picker !== null} transparent animationType="slide" onRequestClose={() => setPicker(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPicker(null)}>
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{picker === 'status' ? 'Change status' : 'Assign task'}</Text>
+            {picker === 'status' ? statusOptions.map((option) => (
+              <Pressable key={option.value} style={styles.optionRow} onPress={() => void changeStatus(option.value)}>
+                <View style={{ flex: 1 }}><Text style={styles.optionTitle}>{option.label}</Text><Text style={styles.optionHelp}>{option.help}</Text></View>
+                {task.status === option.value ? <Text style={styles.selected}>✓</Text> : null}
+              </Pressable>
+            )) : <>
+              <Pressable style={styles.optionRow} onPress={() => void assign(null)}><Text style={styles.optionTitle}>Unassigned</Text>{!task.assigneeProfileId ? <Text style={styles.selected}>✓</Text> : null}</Pressable>
+              {team.map((member) => <Pressable key={member.profileId} style={styles.optionRow} onPress={() => void assign(member.profileId)}><View style={{ flex: 1 }}><Text style={styles.optionTitle}>{member.displayName}</Text><Text style={styles.optionHelp}>{member.isOwner ? 'Event owner' : member.role}</Text></View>{task.assigneeProfileId === member.profileId ? <Text style={styles.selected}>✓</Text> : null}</Pressable>)}
+            </>}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) { return <View style={styles.info}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>; }
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) { return <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>; }
-function Action({ label, primary, onPress }: { label: string; primary?: boolean; onPress: () => void }) { return <Pressable onPress={onPress} style={[styles.action, primary && styles.actionPrimary]}><Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{label}</Text></Pressable>; }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
@@ -144,15 +164,19 @@ const styles = StyleSheet.create({
   section: { marginTop: 24 },
   sectionLabel: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: .8 },
   body: { color: '#B1BAB4', fontSize: 13, lineHeight: 20, marginTop: 8 },
-  chips: { gap: 7, paddingTop: 10 },
-  chip: { borderRadius: 17, borderWidth: 1, borderColor: '#39433D', paddingHorizontal: 11, paddingVertical: 8 },
-  chipActive: { borderColor: '#5E8B57', backgroundColor: '#213321' },
-  chipText: { color: '#8D9891', fontSize: 10, fontWeight: '900' },
-  chipTextActive: { color: '#B8D99E' },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  action: { borderRadius: 11, borderWidth: 1, borderColor: '#465149', paddingHorizontal: 13, paddingVertical: 10 },
-  actionPrimary: { backgroundColor: '#A8CF55', borderColor: '#A8CF55' },
-  actionText: { color: '#C7D0CA', fontSize: 10, fontWeight: '900' },
-  actionTextPrimary: { color: '#172017' },
+  controls: { marginTop: 24, borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', overflow: 'hidden' },
+  controlRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2B352F' },
+  controlLabel: { color: '#77827B', fontSize: 9, fontWeight: '900', letterSpacing: .7 },
+  controlValue: { color: '#F4F1E8', fontSize: 14, fontWeight: '800', marginTop: 4 },
+  chevron: { color: '#D7B45A', fontSize: 24 },
+  saving: { marginVertical: 12 },
   error: { color: '#FF8A80', fontSize: 12, marginTop: 16 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.58)', justifyContent: 'flex-end' },
+  sheet: { maxHeight: '78%', backgroundColor: '#121814', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 28, borderWidth: 1, borderColor: '#2F3933' },
+  sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#47514B', marginBottom: 13 },
+  sheetTitle: { color: '#FFF8E8', fontSize: 20, fontWeight: '900', marginBottom: 8 },
+  optionRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2B352F' },
+  optionTitle: { color: '#F4F1E8', fontSize: 14, fontWeight: '800' },
+  optionHelp: { color: '#849087', fontSize: 10.5, lineHeight: 15, marginTop: 3 },
+  selected: { color: '#A8CF55', fontSize: 18, fontWeight: '900' },
 });
