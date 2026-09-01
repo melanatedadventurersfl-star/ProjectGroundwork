@@ -1,7 +1,7 @@
 import { router, Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '../src/auth/AuthProvider';
 import { supabase } from '../src/lib/supabase';
@@ -54,6 +54,8 @@ function isGuestPublicPath(pathname: string) {
 function AppShell() {
   const { session, isLoading } = useAuth();
   const pathname = usePathname();
+  const { width } = useWindowDimensions();
+  const desktopWeb = Platform.OS === 'web' && width >= 1024;
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialGateReady, setTutorialGateReady] = useState(false);
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
@@ -201,18 +203,20 @@ function AppShell() {
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      {hideTopNav ? null : <PersistentTopNav />}
-      <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
-        <StatusBar style="light" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" /><Stack.Screen name="onboarding" /><Stack.Screen name="onboarding-v2" />
-          <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
-          <Stack.Screen name="reset-password" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
-          <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
-          <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="trail-guide" />
-          <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
-        </Stack>
-      </KeyboardAvoidingView>
+      <View style={[styles.mainShell, desktopWeb && styles.desktopMainShell]}>
+        {hideTopNav ? null : <PersistentTopNav />}
+        <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
+          <StatusBar style="light" />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" /><Stack.Screen name="onboarding" /><Stack.Screen name="onboarding-v2" />
+            <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
+            <Stack.Screen name="reset-password" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
+            <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
+            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="trail-guide" />
+            <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
+          </Stack>
+        </KeyboardAvoidingView>
+      </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
       {session && !tutorialVisible && !isAuthScreen ? <TrailheadTooltip /> : null}
       {tutorialVisible ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
@@ -231,5 +235,7 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   appShell: { flex: 1, backgroundColor: '#0F1713' },
+  mainShell: { flex: 1 },
+  desktopMainShell: { marginLeft: 248 },
   stackArea: { flex: 1 },
 });

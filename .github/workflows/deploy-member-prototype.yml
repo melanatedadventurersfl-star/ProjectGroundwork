@@ -1,4 +1,4 @@
-name: Deploy Member App Prototype
+name: Deploy Go Melanated Web
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'apps/member-app-prototype/**'
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/deploy-member-prototype.yml'
   workflow_dispatch:
 
@@ -24,17 +27,53 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_PUBLIC_APP_ENV: web
+      EXPO_PUBLIC_SUPABASE_URL: https://hqndxityqrdiiwqyjagu.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K
+      EXPO_PUBLIC_WEB_BASE_URL: /ProjectGroundwork/app
+      EXPO_PUBLIC_BUILD_SOURCE: github-pages
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Align browser React runtime
+        run: |
+          npm pkg set overrides.react=19.2.8
+          npm install --workspace @ma/mobile --no-save react@19.2.8 react-dom@19.2.8 react-native-web@0.21.0
+
+      - name: Export Go Melanated web app
+        working-directory: apps/mobile
+        run: npx expo export --platform web --output-dir dist-web --clear
+
+      - name: Assemble Pages site
+        run: |
+          rm -rf _site
+          mkdir -p _site/app
+          cp -R apps/member-app-prototype/. _site/
+          cp -R apps/mobile/dist-web/. _site/app/
+          cp apps/mobile/dist-web/index.html _site/404.html
+          touch _site/.nojekyll
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload member prototype
+      - name: Upload web site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/member-app-prototype
+          path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment

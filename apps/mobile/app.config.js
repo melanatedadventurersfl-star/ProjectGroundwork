@@ -23,6 +23,7 @@ function shareHost() {
 }
 
 const publicShareHost = shareHost();
+const webBaseUrl = process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() || null;
 
 // The selected Go Melanated launcher artwork is a complete, finished icon.
 // Do not feed that same finished square into Android's adaptive foreground
@@ -63,6 +64,14 @@ module.exports = {
   ...base,
   android,
   ios,
+  web: {
+    ...(base.web || {}),
+    ...(webBaseUrl ? { output: 'single' } : {}),
+  },
+  experiments: {
+    ...(base.experiments || {}),
+    ...(webBaseUrl ? { baseUrl: webBaseUrl } : {}),
+  },
   extra: {
     ...base.extra,
     nativeBuildAssetRevision: 'go-melanated-launcher-v15',
