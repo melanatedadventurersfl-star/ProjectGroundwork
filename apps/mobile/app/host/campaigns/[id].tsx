@@ -93,6 +93,7 @@ export default function HostCampaignDetailScreen() {
     return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.title}>Event unavailable</Text>{error ? <Text style={styles.error}>{error}</Text> : null}<Pressable style={styles.primaryButton} onPress={() => void load()}><Text style={styles.primaryButtonText}>Try again</Text></Pressable></View></SafeAreaView>;
   }
 
+  const campaignSlug = campaign.slug;
   const readiness = getCampaignReadiness(campaign);
   const days = getCampaignDaysUntil(campaign);
   const activeTasks = campaign.tasks.filter((task) => task.status !== 'complete');
@@ -106,12 +107,12 @@ export default function HostCampaignDetailScreen() {
   const nextUp = activeTasks.filter((task) => task.status !== 'blocked').slice(0, 3);
 
   function openTask(task: CampaignTask) {
-    router.push(`/host/campaigns/${campaign.slug}/tasks/${task.id}` as never);
+    router.push(`/host/campaigns/${campaignSlug}/tasks/${task.id}` as never);
   }
 
   function setTab(tab: WorkspaceTab) {
     if (tab === 'marketing') {
-      router.push(`/host/campaigns/${campaign.slug}/marketing` as never);
+      router.push(`/host/campaigns/${campaignSlug}/marketing` as never);
       return;
     }
     setWorkspaceTab(tab);
