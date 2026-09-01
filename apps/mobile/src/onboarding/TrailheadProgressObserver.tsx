@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../auth/AuthProvider';
 import { supabase } from '../lib/supabase';
 import { loadAskGoHistory } from '../trailGuide/askHistory';
+import { getSavedTrailGuidePlaceIds } from '../trailGuide/savedPlaces';
 import { markTrailheadAction } from './trailheadProgress';
 
 export function TrailheadProgressObserver() {
@@ -24,6 +25,10 @@ export function TrailheadProgressObserver() {
 
     if (/^\/adventures\/[^/]+$/.test(pathname)) {
       markTrailheadAction('adventure');
+    }
+
+    if (getSavedTrailGuidePlaceIds(session.user.id).length > 0) {
+      markTrailheadAction('save-place');
     }
 
     const returnedHome = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
