@@ -13,6 +13,9 @@ function communicationPreferences(form: OnboardingForm) {
     sms: form.smsEnabled,
     discovery_intents: form.intents,
     adventure_preferences: form.adventurePreferences,
+    travel_range: form.travelRange,
+    location_permission_status: form.locationPermissionStatus,
+    onboarding_version: 3,
   };
 }
 
@@ -20,7 +23,7 @@ export async function loadOnboardingProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')
     .select(
-      'first_name,last_name,display_name,home_city,home_state,discovery_radius_miles,experience_level,interests,communication_preferences,phone_number,sms_consent_at,accessibility_needs,dietary_needs,support_notes,onboarding_step,onboarding_completed_at',
+      'first_name,last_name,display_name,avatar_url,home_city,home_state,discovery_radius_miles,experience_level,interests,communication_preferences,phone_number,sms_consent_at,accessibility_needs,dietary_needs,support_notes,onboarding_step,onboarding_completed_at',
     )
     .eq('id', userId)
     .single();

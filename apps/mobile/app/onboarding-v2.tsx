@@ -1,1 +1,1 @@
-export { default } from '../src/onboarding/GuidedOnboardingExperience';
+export { default } from '../src/onboarding/FirstUseOnboardingExperience';
