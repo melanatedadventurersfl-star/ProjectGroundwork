@@ -1,0 +1,59 @@
+name: Web CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/web-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/web-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-web:
+    name: Validate Expo web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPO_PUBLIC_APP_ENV: web-ci
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
+      EXPO_PUBLIC_WEB_BASE_URL: /ProjectGroundwork/app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Install Expo web runtime
+        run: npm install --workspace @ma/mobile --no-save react-dom@19.2.3 react-native-web@0.21.2
+
+      - name: Type-check app
+        run: npm run mobile:typecheck
+
+      - name: Export static web build
+        working-directory: apps/mobile
+        run: npx expo export --platform web --output-dir /tmp/go-melanated-web --clear
+
+      - name: Verify web entry point
+        run: test -f /tmp/go-melanated-web/index.html
