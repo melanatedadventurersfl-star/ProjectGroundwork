@@ -4,14 +4,18 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  assignCampaignTask,
   decideCampaignDecision,
   getCampaignDaysUntil,
   getCampaignReadiness,
+  getCurrentCampaignProfileId,
   getHostCampaign,
+  listCampaignTeam,
   updateCampaignMilestone,
   updateCampaignTaskStatus,
   type CampaignTask,
   type CampaignTaskStatus,
+  type CampaignTeamMember,
   type HostCampaign,
 } from '../../../src/hosting/campaigns';
 
@@ -24,9 +28,14 @@ const statusLabels: Record<CampaignTaskStatus, string> = {
   complete: 'Complete',
 };
 
+type WorkFilter = 'all' | 'mine' | 'unassigned' | 'overdue' | 'blocked';
+
 export default function HostCampaignDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const [campaign, setCampaign] = useState<HostCampaign | null>(null);
+  const [team, setTeam] = useState<CampaignTeamMember[]>([]);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+  const [workFilter, setWorkFilter] = useState<WorkFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -36,7 +45,19 @@ export default function HostCampaignDetailScreen() {
     setLoading(true);
     setError('');
     try {
-      setCampaign(await getHostCampaign(String(params.id)));
+      const nextCampaign = await getHostCampaign(String(params.id));
+      setCampaign(nextCampaign);
+      if (!nextCampaign) {
+        setTeam([]);
+        setCurrentProfileId(null);
+        return;
+      }
+      const [nextTeam, profileId] = await Promise.all([
+        listCampaignTeam(nextCampaign),
+        getCurrentCampaignProfileId(),
+      ]);
+      setTeam(nextTeam);
+      setCurrentProfileId(profileId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load campaign.');
     } finally {
@@ -54,6 +75,19 @@ export default function HostCampaignDetailScreen() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to update task.');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function changeTaskAssignee(taskId: string, profileId: string | null) {
+    setSavingId(taskId);
+    setError('');
+    try {
+      await assignCampaignTask(taskId, profileId);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to assign task.');
     } finally {
       setSavingId(null);
     }
@@ -109,6 +143,16 @@ export default function HostCampaignDetailScreen() {
   const activeTasks = campaign.tasks.filter((task) => task.status !== 'complete');
   const completedTasks = campaign.tasks.filter((task) => task.status === 'complete');
   const openDecisions = campaign.decisions.filter((decision) => decision.status === 'open');
+  const now = Date.now();
+  const mine = activeTasks.filter((task) => Boolean(currentProfileId) && task.assigneeProfileId === currentProfileId);
+  const unassigned = activeTasks.filter((task) => !task.assigneeProfileId);
+  const overdue = activeTasks.filter((task) => Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() < now);
+  const blocked = activeTasks.filter((task) => task.status === 'blocked');
+  const filteredTasks = workFilter === 'mine' ? mine
+    : workFilter === 'unassigned' ? unassigned
+      : workFilter === 'overdue' ? overdue
+        : workFilter === 'blocked' ? blocked
+          : activeTasks;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -141,7 +185,7 @@ export default function HostCampaignDetailScreen() {
 
         <Section title="Needs attention">
           {attention.length === 0 ? <Text style={styles.empty}>Nothing is blocked or waiting right now.</Text> : attention.map((task) => (
-            <TaskRow key={task.id} task={task} accent={campaign.accent} canManage={campaign.canManage} saving={savingId === task.id} onStatus={changeTaskStatus} />
+            <TaskRow key={task.id} task={task} accent={campaign.accent} canManage={campaign.canManage} saving={savingId === task.id} team={team} allowAssignment={false} onStatus={changeTaskStatus} onAssign={changeTaskAssignee} />
           ))}
         </Section>
 
@@ -155,9 +199,23 @@ export default function HostCampaignDetailScreen() {
         </Section>
 
         <Section title="Work">
-          {activeTasks.map((task) => (
-            <TaskRow key={task.id} task={task} accent={campaign.accent} canManage={campaign.canManage} saving={savingId === task.id} onStatus={changeTaskStatus} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            <FilterChip label="All" count={activeTasks.length} active={workFilter === 'all'} onPress={() => setWorkFilter('all')} />
+            <FilterChip label="Mine" count={mine.length} active={workFilter === 'mine'} onPress={() => setWorkFilter('mine')} />
+            <FilterChip label="Unassigned" count={unassigned.length} active={workFilter === 'unassigned'} onPress={() => setWorkFilter('unassigned')} />
+            <FilterChip label="Overdue" count={overdue.length} active={workFilter === 'overdue'} onPress={() => setWorkFilter('overdue')} />
+            <FilterChip label="Blocked" count={blocked.length} active={workFilter === 'blocked'} onPress={() => setWorkFilter('blocked')} />
+          </ScrollView>
+          {filteredTasks.length === 0 ? <Text style={styles.empty}>No work matches this view.</Text> : filteredTasks.map((task) => (
+            <TaskRow key={task.id} task={task} accent={campaign.accent} canManage={campaign.canManage} saving={savingId === task.id} team={team} allowAssignment onStatus={changeTaskStatus} onAssign={changeTaskAssignee} />
           ))}
+        </Section>
+
+        <Section title="Team">
+          {team.length === 0 ? <Text style={styles.empty}>No campaign team members are attached yet.</Text> : team.map((member) => {
+            const openCount = activeTasks.filter((task) => task.assigneeProfileId === member.profileId).length;
+            return <View key={member.profileId} style={styles.teamRow}><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{member.displayName}</Text><Text style={styles.rowMeta}>{member.role}</Text></View><Text style={styles.teamCount}>{openCount} open</Text></View>;
+          })}
         </Section>
 
         <Section title="Open decisions">
@@ -201,13 +259,19 @@ function QuickCard({ value, label }: { value: string; label: string }) {
   return <View style={styles.quickCard}><Text style={styles.quickValue}>{value}</Text><Text style={styles.quickLabel}>{label}</Text></View>;
 }
 
-function TaskRow({ task, accent, canManage, saving, onStatus }: { task: CampaignTask; accent: string; canManage: boolean; saving: boolean; onStatus: (taskId: string, status: CampaignTaskStatus) => Promise<void> }) {
+function FilterChip({ label, count, active, onPress }: { label: string; count: number; active: boolean; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={[styles.filterChip, active && styles.filterChipActive]}><Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label} {count}</Text></Pressable>;
+}
+
+function TaskRow({ task, accent, canManage, saving, team, allowAssignment, onStatus, onAssign }: { task: CampaignTask; accent: string; canManage: boolean; saving: boolean; team: CampaignTeamMember[]; allowAssignment: boolean; onStatus: (taskId: string, status: CampaignTaskStatus) => Promise<void>; onAssign: (taskId: string, profileId: string | null) => Promise<void> }) {
   const danger = task.status === 'blocked' || task.priority === 'critical';
+  const assignee = team.find((member) => member.profileId === task.assigneeProfileId) ?? null;
   return (
     <View style={styles.taskCard}>
       <View style={styles.taskTop}><Text style={[styles.taskStatus, { color: danger ? '#FF8A70' : accent }]}>{statusLabels[task.status].toUpperCase()}</Text><Text style={styles.taskDue}>{task.dueLabel}</Text></View>
       <Text style={styles.rowTitle}>{task.title}</Text>
-      <Text style={styles.rowMeta}>{task.category} · {task.owner}</Text>
+      <Text style={styles.rowMeta}>{task.category} · Plan owner: {task.owner}</Text>
+      <Text style={styles.assigneeText}>Assigned: {assignee?.displayName ?? 'Unassigned'}</Text>
       {task.blockedBy ? <Text style={styles.blockedBy}>Blocked by: {task.blockedBy}</Text> : null}
       {canManage ? (
         <View style={styles.taskActions}>
@@ -218,12 +282,25 @@ function TaskRow({ task, accent, canManage, saving, onStatus }: { task: Campaign
           </>}
         </View>
       ) : null}
+      {canManage && allowAssignment ? (
+        <View style={styles.assignmentBlock}>
+          <Text style={styles.assignmentLabel}>ASSIGN</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentRow}>
+            <AssignmentChip label="Unassigned" active={!task.assigneeProfileId} onPress={() => void onAssign(task.id, null)} />
+            {team.map((member) => <AssignmentChip key={member.profileId} label={member.displayName} active={task.assigneeProfileId === member.profileId} onPress={() => void onAssign(task.id, member.profileId)} />)}
+          </ScrollView>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 function StatusAction({ label, onPress }: { label: string; onPress: () => void }) {
   return <Pressable style={styles.statusAction} onPress={onPress}><Text style={styles.statusActionText}>{label}</Text></Pressable>;
+}
+
+function AssignmentChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return <Pressable style={[styles.assignmentChip, active && styles.assignmentChipActive]} onPress={onPress}><Text style={[styles.assignmentChipText, active && styles.assignmentChipTextActive]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -260,19 +337,34 @@ const styles = StyleSheet.create({
   section: { marginTop: 26 },
   sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 9 },
   empty: { color: '#758079', fontSize: 12, lineHeight: 18 },
+  filterRow: { gap: 7, paddingBottom: 11 },
+  filterChip: { borderRadius: 18, borderWidth: 1, borderColor: '#39433D', backgroundColor: '#111612', paddingHorizontal: 11, paddingVertical: 8 },
+  filterChipActive: { borderColor: '#D7B45A', backgroundColor: '#352D18' },
+  filterChipText: { color: '#8D9891', fontSize: 10, fontWeight: '900' },
+  filterChipTextActive: { color: '#E7C464' },
   taskCard: { borderRadius: 16, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 15, marginBottom: 9 },
   taskTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   taskStatus: { fontSize: 9, fontWeight: '900', letterSpacing: .8 },
   taskDue: { color: '#7D8881', fontSize: 9, fontWeight: '800' },
   rowTitle: { color: '#FFF8E8', fontSize: 15, lineHeight: 20, fontWeight: '900', marginTop: 5 },
   rowMeta: { color: '#89948D', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  assigneeText: { color: '#B9C4BD', fontSize: 11, fontWeight: '800', marginTop: 5 },
   blockedBy: { color: '#C7907E', fontSize: 10.5, lineHeight: 15, marginTop: 7 },
   taskActions: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, minHeight: 31 },
   statusAction: { borderRadius: 10, borderWidth: 1, borderColor: '#3B453F', paddingHorizontal: 10, paddingVertical: 7 },
   statusActionText: { color: '#AAB4AD', fontSize: 9, fontWeight: '900' },
+  assignmentBlock: { marginTop: 13, borderTopWidth: 1, borderTopColor: '#263029', paddingTop: 10 },
+  assignmentLabel: { color: '#737F77', fontSize: 8, fontWeight: '900', letterSpacing: .8, marginBottom: 7 },
+  assignmentRow: { gap: 7 },
+  assignmentChip: { borderRadius: 16, borderWidth: 1, borderColor: '#3A443E', backgroundColor: '#101512', paddingHorizontal: 10, paddingVertical: 7 },
+  assignmentChipActive: { borderColor: '#64834E', backgroundColor: '#25331E' },
+  assignmentChipText: { color: '#8B968F', fontSize: 9, fontWeight: '800' },
+  assignmentChipTextActive: { color: '#B8D99E' },
   milestoneRow: { flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 15, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: '#546159', alignItems: 'center', justifyContent: 'center' },
   checkText: { color: '#0B100D', fontWeight: '900' },
+  teamRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
+  teamCount: { color: '#D7B45A', fontSize: 10, fontWeight: '900' },
   decisionCard: { borderRadius: 16, backgroundColor: '#1E1A12', borderWidth: 1, borderColor: '#574522', padding: 15, marginBottom: 9 },
   decisionKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .8 },
   decisionInput: { color: '#FFF8E8', borderRadius: 12, borderWidth: 1, borderColor: '#4E452E', backgroundColor: '#16140F', paddingHorizontal: 12, paddingVertical: 10, minHeight: 72, textAlignVertical: 'top', marginTop: 12 },
