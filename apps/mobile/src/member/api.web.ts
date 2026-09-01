@@ -1,3 +1,3 @@
 import './webProfileMediaCompat';
 
-export * from './api';
+export * from './api.ts';
