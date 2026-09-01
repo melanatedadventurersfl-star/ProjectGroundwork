@@ -22,6 +22,7 @@
     "expo": "~57.0.9",
     "expo-constants": "~57.0.1",
     "expo-contacts": "~57.0.3",
+    "expo-document-picker": "~57.0.1",
     "expo-font": "~57.0.1",
     "expo-image-picker": "~57.0.5",
     "expo-location": "~57.0.5",
@@ -45,4 +46,3 @@
     "typescript": "~6.0.3"
   }
 }
-
