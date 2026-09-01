@@ -31,7 +31,7 @@ export type ImportPreviewResult = {
   preview: EventDraft;
   sourceLabel: string;
   sourceUrl: string | null;
-  extractionSource: 'ai' | 'fallback';
+  extractionSource: 'ai' | 'source' | 'fallback';
   duplicate?: {
     importId: string;
     adventureId: string | null;
@@ -80,7 +80,7 @@ export async function createCampaignWorkspace(input: {
     starts_at: new Date(input.startsAt).toISOString(),
     ends_at: new Date(input.endsAt).toISOString(),
     status: 'planning',
-    accent: 'gold',
+    accent: '#D7B45A',
     owner_profile_id: ownerProfileId,
   }).select('id,slug').single();
   if (campaignError) throw campaignError;
