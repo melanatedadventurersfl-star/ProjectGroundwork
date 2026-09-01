@@ -50,7 +50,7 @@ jobs:
         run: npm ci
 
       - name: Install Expo web runtime
-        run: npm install --workspace @ma/mobile --no-save react-dom@19.2.3 react-native-web@0.21.2
+        run: npm install --workspace @ma/mobile --no-save --legacy-peer-deps react-dom@19.2.3 react-native-web@0.21.0
 
       - name: Export Go Melanated web app
         working-directory: apps/mobile
