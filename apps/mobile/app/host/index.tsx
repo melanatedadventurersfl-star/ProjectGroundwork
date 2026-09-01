@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getOutingHostAccess, listMyHostOutings, type HostOuting, type OutingHostRecord } from '../../src/hosting/api';
-import { getCampaignDaysUntil, getCampaignReadiness, seededHostCampaigns } from '../../src/hosting/campaigns';
+import { getCampaignDaysUntil, getCampaignReadiness, listHostCampaigns, type HostCampaign } from '../../src/hosting/campaigns';
 import { getAssignedAdventures } from '../../src/operations/api';
 
 export default function HostOperationsScreen() {
@@ -152,8 +152,28 @@ export default function HostOperationsScreen() {
 }
 
 function CampaignCenterCard() {
-  const campaign = seededHostCampaigns[0];
+  const [campaign, setCampaign] = useState<HostCampaign | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const campaigns = await listHostCampaigns();
+      setCampaign(campaigns[0] ?? null);
+    } catch {
+      setCampaign(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  if (loading) {
+    return <View style={styles.campaignCard}><ActivityIndicator color="#E88633" /><Text style={styles.campaignMeta}>Loading active campaign…</Text></View>;
+  }
   if (!campaign) return null;
+
   const readiness = getCampaignReadiness(campaign);
   const days = getCampaignDaysUntil(campaign);
   const attention = campaign.tasks.filter((task) => task.status === 'waiting' || task.status === 'blocked' || task.priority === 'critical').length;
