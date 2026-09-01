@@ -143,7 +143,7 @@ Deno.serve(async (req: Request) => {
     if (Array.isArray(body?.files) && body.files.length > MAX_FILES) return json({error:`Upload up to ${MAX_FILES} files at a time.`},400);
 
     const sourceFiles:any[]=[];
-    const opening = {type:"input_text",text:"Build one event draft from all source material. Keep facts tied to source filenames. Detect contradictions. Leave missing values empty."};
+    const opening = {type:"input_text",text:"Return the extracted event as one JSON object. Build one event draft from all source material. Keep facts tied to source filenames. Detect contradictions. Leave missing values empty."};
     const textItems:any[]=[opening];
     const richItems:any[]=[opening];
 
@@ -208,8 +208,7 @@ Deno.serve(async (req: Request) => {
       storage_path:f.path,
       original_name:f.name,
       mime_type:f.mimeType,
-      size_bytes:f.size,
-      status:extractionSource==="ai"?"analyzed":"failed"
+      size_bytes:f.size
     })));
     if(fileRowError) throw fileRowError;
 
