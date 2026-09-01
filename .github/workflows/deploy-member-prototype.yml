@@ -64,6 +64,7 @@ jobs:
           mkdir -p _site/app
           cp -R apps/member-app-prototype/. _site/
           cp -R apps/mobile/dist-web/. _site/app/
+          cp apps/mobile/dist-web/index.html _site/404.html
           touch _site/.nojekyll
 
       - name: Configure GitHub Pages
