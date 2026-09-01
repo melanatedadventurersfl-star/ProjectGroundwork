@@ -46,7 +46,10 @@ jobs:
         run: npm ci
 
       - name: Install Expo web runtime
-        run: npm install --workspace @ma/mobile --no-save react-dom@19.2.3 react-native-web@0.21.2
+        run: npm install --workspace @ma/mobile --no-save react@19.2.3 react-dom@19.2.3 react-native-web@0.21.2
+
+      - name: Show React runtime tree
+        run: npm ls react react-dom --all || true
 
       - name: Export static web build
         working-directory: apps/mobile
