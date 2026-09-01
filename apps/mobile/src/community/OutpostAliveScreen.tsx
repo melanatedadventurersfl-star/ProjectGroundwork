@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { listLocalEvents, setLocalEventRsvp, type LocalEvent } from '../local-events/api';
 import { getMemberBasecamp } from '../member/api';
 import { getCommunityFeed, getGroups, joinGroup, type CommunityGroup, type CommunityPost } from './api';
+import { getConnections, type Connection } from './circles';
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -166,6 +167,7 @@ export default function OutpostAliveScreen() {
   const [feed, setFeed] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [events, setEvents] = useState<LocalEvent[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [homeCity, setHomeCity] = useState<string | null>(null);
   const [homeState, setHomeState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -174,10 +176,11 @@ export default function OutpostAliveScreen() {
 
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
-    const [feedResult, groupsResult, eventsResult, profileResult] = await Promise.allSettled([getCommunityFeed(), getGroups(), listLocalEvents(), getMemberBasecamp()]);
+    const [feedResult, groupsResult, eventsResult, profileResult, connectionsResult] = await Promise.allSettled([getCommunityFeed(), getGroups(), listLocalEvents(), getMemberBasecamp(), getConnections()]);
     if (feedResult.status === 'fulfilled') setFeed(feedResult.value);
     if (groupsResult.status === 'fulfilled') setGroups(groupsResult.value);
     if (eventsResult.status === 'fulfilled') setEvents(eventsResult.value);
+    if (connectionsResult.status === 'fulfilled') setConnections(connectionsResult.value);
     if (profileResult.status === 'fulfilled') {
       setHomeCity((profileResult.value.profile?.home_city as string | null | undefined) ?? null);
       setHomeState((profileResult.value.profile?.home_state as string | null | undefined) ?? null);
@@ -205,6 +208,9 @@ export default function OutpostAliveScreen() {
   const comingUp = useMemo(() => events.slice().sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()).slice(0, 5), [events]);
   const activeGroupCount = useMemo(() => joinedGroups.filter((group) => latestByGroup.has(group.id)).length, [joinedGroups, latestByGroup]);
   const discoverGroups = useMemo(() => groups.filter((group) => !group.is_member && !isOfficialCommunity(group)).slice(0, 8), [groups]);
+  const trailmates = useMemo(() => connections.filter((row) => row.status === 'accepted'), [connections]);
+  const pendingTrailmates = useMemo(() => connections.filter((row) => row.status === 'pending' && row.direction === 'incoming'), [connections]);
+  const trailmatePreview = trailmates.slice(0, 5);
 
   const handleInterested = useCallback(async (event: LocalEvent) => {
     try {
@@ -233,6 +239,29 @@ export default function OutpostAliveScreen() {
         <PulseCard icon="people-outline" eyebrow="YOUR CAMPS" title={`${activeGroupCount} active right now`} detail={`${joinedGroups.length} joined`} onPress={() => setActiveTab('communities')} />
         <PulseCard icon="calendar-outline" eyebrow="COMING UP" title={`${comingUp.length} outings on deck`} detail="Plans you can join" onPress={() => setActiveTab('outings')} />
       </ScrollView>
+
+      <Pressable style={({ pressed }) => [styles.trailCrewCard, pressed && styles.pressed]} onPress={() => router.push('/connections' as never)}>
+        <View style={styles.trailCrewTopRow}>
+          <View>
+            <Text style={styles.trailCrewEyebrow}>YOUR TRAIL CREW</Text>
+            <Text style={styles.trailCrewTitle}>{trailmates.length} Trailmate{trailmates.length === 1 ? '' : 's'}</Text>
+          </View>
+          <View style={styles.trailCrewOpen}><Text style={styles.trailCrewOpenText}>View crew</Text><Ionicons name="chevron-forward" size={16} color={GOLD} /></View>
+        </View>
+        <View style={styles.trailCrewBottomRow}>
+          <View style={styles.trailCrewAvatars}>
+            {trailmatePreview.map((row, index) => (
+              <View key={row.connection_id} style={[styles.trailCrewAvatar, index > 0 && styles.trailCrewAvatarOverlap]}>
+                {row.avatar_url ? <Image source={{ uri: row.avatar_url }} style={styles.trailCrewAvatarImage} /> : <Text style={styles.trailCrewAvatarText}>{initials(row.display_name)}</Text>}
+              </View>
+            ))}
+            {trailmates.length > trailmatePreview.length ? <View style={[styles.trailCrewAvatar, styles.trailCrewAvatarOverlap, styles.trailCrewMore]}><Text style={styles.trailCrewMoreText}>+{trailmates.length - trailmatePreview.length}</Text></View> : null}
+            {!trailmates.length ? <View style={styles.trailCrewEmptyIcon}><Ionicons name="people-outline" size={18} color={GOLD} /></View> : null}
+          </View>
+          <Text style={styles.trailCrewMeta}>{pendingTrailmates.length ? `${pendingTrailmates.length} request${pendingTrailmates.length === 1 ? '' : 's'} waiting` : trailmates.length ? 'Your people across Go Melanated' : 'Start connecting with people you meet'}</Text>
+        </View>
+      </Pressable>
+
       <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>Fresh conversation from across your Outpost.</Text></View>
       {featuredPosts.length ? featuredPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} />) : <View style={styles.emptyState}><Ionicons name="bonfire-outline" size={25} color={GREEN} /><Text style={styles.emptyTitle}>The fire’s quiet for a minute.</Text><Text style={styles.emptyCopy}>New conversations from your communities will land here.</Text></View>}
       <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Coming up</Text><Text style={styles.sectionSubtitle}>Turn the conversation into a real day outside.</Text></View><Pressable onPress={() => setActiveTab('outings')}><Text style={styles.seeAll}>See all →</Text></Pressable></View>
@@ -311,6 +340,22 @@ const styles = StyleSheet.create({
   pulseEyebrow: { color: GREEN, fontSize: 9.5, fontWeight: '900', letterSpacing: 0.85 },
   pulseTitle: { color: TEXT, fontSize: 16, lineHeight: 20, fontWeight: '900', marginTop: 4 },
   pulseDetail: { color: MUTED, fontSize: 11.5, marginTop: 6 },
+  trailCrewCard: { minHeight: 82, marginTop: 15, marginBottom: 2, borderRadius: 18, borderWidth: 1, borderColor: '#405244', backgroundColor: SURFACE, paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
+  trailCrewTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  trailCrewEyebrow: { color: GREEN, fontSize: 9.5, fontWeight: '900', letterSpacing: 0.9 },
+  trailCrewTitle: { color: TEXT, fontSize: 16, lineHeight: 20, fontWeight: '900', marginTop: 2 },
+  trailCrewOpen: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  trailCrewOpenText: { color: GOLD, fontSize: 11, fontWeight: '900' },
+  trailCrewBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  trailCrewAvatars: { flexDirection: 'row', alignItems: 'center', paddingLeft: 1 },
+  trailCrewAvatar: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: SURFACE, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  trailCrewAvatarOverlap: { marginLeft: -9 },
+  trailCrewAvatarImage: { width: '100%', height: '100%' },
+  trailCrewAvatarText: { color: GOLD, fontSize: 10, fontWeight: '900' },
+  trailCrewMore: { backgroundColor: '#223128' },
+  trailCrewMoreText: { color: TEXT, fontSize: 9, fontWeight: '900' },
+  trailCrewEmptyIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center' },
+  trailCrewMeta: { flex: 1, color: MUTED, fontSize: 11.5, lineHeight: 16 },
   sectionHeader: { marginTop: 26, marginBottom: 10 },
   sectionHeaderRow: { marginTop: 28, marginBottom: 10, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   sectionTitle: { color: TEXT, fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: -0.45 },
