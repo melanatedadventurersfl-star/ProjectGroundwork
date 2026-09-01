@@ -1,9 +1,9 @@
-import { Image } from 'react-native';
+import { Asset } from 'expo-asset';
 
 import { supabase } from '../lib/supabase';
 import type { AdventureDetail, AdventureSummary } from './types';
 
-const DEFAULT_ADVENTURE_IMAGE_URL = Image.resolveAssetSource(
+const DEFAULT_ADVENTURE_IMAGE_URL = Asset.fromModule(
   require('../../assets/explore/default-event.jpg'),
 ).uri;
 
