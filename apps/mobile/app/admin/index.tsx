@@ -46,6 +46,8 @@ export default function AdminProfileScreen() {
   if (!authorized) return <SafeAreaView style={styles.safe}><View style={styles.deniedWrap}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Back</Text></Pressable><View style={styles.deniedCard}><Text style={styles.deniedEyebrow}>PROTECTED AREA</Text><Text style={styles.deniedTitle}>Admin access required</Text><Text style={styles.deniedCopy}>This profile is only available to accounts authorized by the platform security role.</Text>{error ? <Text style={styles.errorText}>{error}</Text> : null}</View></View></SafeAreaView>;
 
   const toolRows = [
+    { title: 'Go Melanated Management', subtitle: 'Open the protected business workspace for events, work, calendar, opportunities and internal resources.', route: '/management' },
+    { title: 'New Members', subtitle: 'Review new app signups, onboarding status, membership, and referral source.', route: '/admin/new-members' },
     { title: 'Community Safety', subtitle: 'Open reports, escalations, appeals, restrictions, suspensions, and bans in one control room.', route: '/admin/community-safety' },
     { title: 'Moderation Queue', subtitle: 'Review newly reported posts and replies and take enforcement action.', route: '/admin/moderation' },
     { title: 'Members with Violations', subtitle: 'See everyone with moderation history, warnings, restrictions, suspensions, or bans.', route: '/admin/violations' },

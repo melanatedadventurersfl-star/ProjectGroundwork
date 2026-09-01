@@ -77,9 +77,10 @@ function AppShell() {
     pathname.startsWith('/sign-up');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
+  const isManagement = pathname.startsWith('/management');
   const tutorialGateLocked = Boolean(session) && !isAuthScreen && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const hideBottomNav = isLoading || isAuthScreen || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -203,7 +204,7 @@ function AppShell() {
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
@@ -212,7 +213,7 @@ function AppShell() {
             <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
             <Stack.Screen name="reset-password" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
             <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
-            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="trail-guide" />
+            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
             <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
           </Stack>
         </KeyboardAvoidingView>
