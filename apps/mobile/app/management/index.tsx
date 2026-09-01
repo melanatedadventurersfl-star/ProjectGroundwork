@@ -84,11 +84,13 @@ export default function ManagementScreen() {
   const { width } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 1060;
   const roomy = width >= 760;
+  const mobile = width < 760;
   const [activeSection, setActiveSection] = useState<ManagementSectionId>('home');
   const [data, setData] = useState<ManagementDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
@@ -122,26 +124,29 @@ export default function ManagementScreen() {
         {desktop ? <ManagementSidebar active={activeSection} data={data} onSelect={setActiveSection} /> : null}
 
         <View style={styles.workspace}>
-          <View style={[styles.topbar, !desktop && styles.topbarCompact]}>
+          <View style={[styles.topbar, !desktop && styles.topbarCompact, mobile && styles.topbarMobile]}>
             {!desktop ? <View style={styles.compactBrand}><View style={styles.brandMarkSmall}><Text style={styles.brandMarkSmallText}>GM</Text></View><View><Text style={styles.compactBrandTitle}>Management</Text><Text style={styles.compactBrandMeta}>{currentLabel}</Text></View></View> : <View><Text style={styles.topbarEyebrow}>GO MELANATED MANAGEMENT</Text><Text style={styles.topbarSection}>{currentLabel}</Text></View>}
 
             <View style={styles.topbarActions}>
               {desktop ? <View style={styles.searchBox}><AppIcon name="search" color={COLORS.dim} size={18} /><TextInput value={search} onChangeText={setSearch} placeholder="Search everything" placeholderTextColor={COLORS.dim} style={styles.searchInput} /></View> : null}
-              <Pressable accessibilityLabel="Notifications" style={styles.iconButton}><AppIcon name="notifications" color={COLORS.cream} size={19} /><View style={styles.notificationDot} /></Pressable>
-              <Pressable style={styles.createButton} onPress={() => setCreateOpen(true)}><AppIcon name="add" color={COLORS.ink} size={18} /><Text style={styles.createButtonText}>Create</Text></Pressable>
+              <Pressable accessibilityLabel="Notifications" style={[styles.iconButton, mobile && styles.iconButtonMobile]}><AppIcon name="notifications" color={COLORS.cream} size={mobile ? 18 : 19} /><View style={styles.notificationDot} /></Pressable>
+              <Pressable style={[styles.createButton, mobile && styles.createButtonMobile]} onPress={() => setCreateOpen(true)}><AppIcon name="add" color={COLORS.ink} size={mobile ? 17 : 18} /><Text style={styles.createButtonText}>Create</Text></Pressable>
               {desktop ? <View style={styles.topAvatar}>{data.profile.avatarUrl ? <Image source={{ uri: data.profile.avatarUrl }} style={styles.topAvatarImage} /> : <Text style={styles.topAvatarText}>{initials}</Text>}</View> : null}
             </View>
           </View>
 
-          {!desktop ? <CompactNavigation active={activeSection} onSelect={setActiveSection} /> : null}
+          {!desktop && !mobile ? <CompactNavigation active={activeSection} onSelect={setActiveSection} /> : null}
 
-          <ScrollView style={styles.contentScroll} contentContainerStyle={[styles.content, roomy && styles.contentRoomy]} showsVerticalScrollIndicator={false}>
-            <SectionContent active={activeSection} data={data} roomy={roomy} search={search} onSelect={setActiveSection} />
+          <ScrollView style={styles.contentScroll} contentContainerStyle={[styles.content, roomy && styles.contentRoomy, mobile && styles.contentMobile]} showsVerticalScrollIndicator={false}>
+            <SectionContent active={activeSection} data={data} roomy={roomy} mobile={mobile} search={search} onSelect={setActiveSection} />
           </ScrollView>
+
+          {mobile ? <MobileNavigation active={activeSection} data={data} onSelect={setActiveSection} onMore={() => setMoreOpen(true)} /> : null}
         </View>
       </View>
 
       <CreateMenu visible={createOpen} data={data} onClose={() => setCreateOpen(false)} onSelect={setActiveSection} />
+      <MoreMenu visible={moreOpen} active={activeSection} onClose={() => setMoreOpen(false)} onSelect={setActiveSection} />
     </SafeAreaView>
   );
 }
@@ -178,8 +183,30 @@ function CompactNavigation({ active, onSelect }: { active: ManagementSectionId; 
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.compactNav} contentContainerStyle={styles.compactNavContent}>{all.map((item) => <Pressable key={item.id} style={[styles.compactNavItem, active === item.id && styles.compactNavItemActive]} onPress={() => onSelect(item.id)}><AppIcon name={item.icon} color={active === item.id ? COLORS.ink : COLORS.muted} size={16} /><Text style={[styles.compactNavText, active === item.id && styles.compactNavTextActive]}>{item.label}</Text></Pressable>)}</ScrollView>;
 }
 
-function SectionContent({ active, data, roomy, search, onSelect }: { active: ManagementSectionId; data: ManagementDashboardData; roomy: boolean; search: string; onSelect: (id: ManagementSectionId) => void }) {
-  if (active === 'home') return <HomeSection data={data} roomy={roomy} onSelect={onSelect} />;
+function MobileNavigation({ active, data, onSelect, onMore }: { active: ManagementSectionId; data: ManagementDashboardData; onSelect: (id: ManagementSectionId) => void; onMore: () => void }) {
+  const items: NavItem[] = [
+    { id: 'home', label: 'Home', icon: 'dashboard' },
+    { id: 'my-work', label: 'My Work', icon: 'tasks' },
+    { id: 'calendar', label: 'Calendar', icon: 'calendar' },
+    { id: 'events', label: 'Events', icon: 'adventure' },
+  ];
+  const attention = data.tasks.filter(needsAttention).length;
+  const moreActive = !items.some((item) => item.id === active);
+
+  return <View style={styles.mobileNav}>{items.map((item) => {
+    const selected = item.id === active;
+    return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected }} style={styles.mobileNavItem} onPress={() => onSelect(item.id)}><View style={styles.mobileNavIcon}><AppIcon name={item.icon} color={selected ? COLORS.gold : COLORS.muted} size={19} />{item.id === 'my-work' && attention > 0 ? <View style={styles.mobileNavBadge}><Text style={styles.mobileNavBadgeText}>{attention}</Text></View> : null}</View><Text style={[styles.mobileNavLabel, selected && styles.mobileNavLabelActive]}>{item.label}</Text></Pressable>;
+  })}<Pressable accessibilityRole="button" accessibilityState={{ selected: moreActive }} style={styles.mobileNavItem} onPress={onMore}><AppIcon name="more" color={moreActive ? COLORS.gold : COLORS.muted} size={19} /><Text style={[styles.mobileNavLabel, moreActive && styles.mobileNavLabelActive]}>More</Text></Pressable></View>;
+}
+
+function MoreMenu({ visible, active, onClose, onSelect }: { visible: boolean; active: ManagementSectionId; onClose: () => void; onSelect: (id: ManagementSectionId) => void }) {
+  const items = [...primaryNav.slice(4), ...resourceNav];
+  const choose = (id: ManagementSectionId) => { onSelect(id); onClose(); };
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><Pressable style={styles.moreBackdrop} onPress={onClose}><Pressable style={styles.moreSheet} onPress={(event) => event.stopPropagation()}><View style={styles.moreHandle} /><View style={styles.moreHeader}><View><Text style={styles.moreEyebrow}>MANAGEMENT</Text><Text style={styles.moreTitle}>More tools</Text></View><Pressable accessibilityLabel="Close more tools" style={styles.moreClose} onPress={onClose}><AppIcon name="close" color={COLORS.cream} size={18} /></Pressable></View><View style={styles.moreGrid}>{items.map((item) => <Pressable key={item.id} style={[styles.moreItem, active === item.id && styles.moreItemActive]} onPress={() => choose(item.id)}><View style={styles.moreItemIcon}><AppIcon name={item.icon} color={active === item.id ? COLORS.gold : COLORS.muted} size={19} /></View><Text style={[styles.moreItemText, active === item.id && styles.moreItemTextActive]}>{item.label}</Text><AppIcon name="chevron-forward" color={COLORS.dim} size={15} /></Pressable>)}</View><Pressable style={styles.moreMemberLink} onPress={() => { onClose(); router.replace('/(tabs)/menu' as never); }}><AppIcon name="trailhead" color={COLORS.gold} size={18} /><Text style={styles.moreMemberText}>Return to Go Melanated</Text><AppIcon name="open" color={COLORS.dim} size={15} /></Pressable></Pressable></Pressable></Modal>;
+}
+
+function SectionContent({ active, data, roomy, mobile, search, onSelect }: { active: ManagementSectionId; data: ManagementDashboardData; roomy: boolean; mobile: boolean; search: string; onSelect: (id: ManagementSectionId) => void }) {
+  if (active === 'home') return <HomeSection data={data} roomy={roomy} mobile={mobile} onSelect={onSelect} />;
   if (active === 'calendar') return <CalendarSection data={data} />;
   if (active === 'my-work') return <MyWorkSection data={data} />;
   if (active === 'events') return <EventsSection data={data} roomy={roomy} />;
@@ -193,7 +220,7 @@ function SectionContent({ active, data, roomy, search, onSelect }: { active: Man
   return <AdminSection data={data} search={search} />;
 }
 
-function HomeSection({ data, roomy, onSelect }: { data: ManagementDashboardData; roomy: boolean; onSelect: (id: ManagementSectionId) => void }) {
+function HomeSection({ data, roomy, mobile, onSelect }: { data: ManagementDashboardData; roomy: boolean; mobile: boolean; onSelect: (id: ManagementSectionId) => void }) {
   const openTasks = data.tasks.filter((task) => task.status !== 'complete');
   const attention = openTasks.filter(needsAttention);
   const activeEvents = data.campaigns.filter((campaign) => campaign.status !== 'complete');
@@ -202,41 +229,40 @@ function HomeSection({ data, roomy, onSelect }: { data: ManagementDashboardData;
   const firstName = data.profile.displayName.split(/\s+/)[0];
   const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
 
-  return <View style={styles.sectionPage}>
-    <View style={styles.pageHeader}><View><Text style={styles.pageEyebrow}>{todayLabel}</Text><Text style={styles.pageTitle}>{getGreeting()}, {firstName}.</Text><Text style={styles.pageSubtitle}>Here is what needs attention across Melanated Adventurers.</Text></View><View style={styles.statusPill}><View style={styles.statusDot} /><Text style={styles.statusPillText}>Event data connected</Text></View></View>
+  const attentionPanel = <><PanelHeader eyebrow="NEEDS ATTENTION" title="Work that can hold up the plan" action={`${attention.length} items`} onPress={() => onSelect('my-work')} /><View style={styles.panelCard}>{attention.length === 0 ? <EmptyInline icon="checkmark" title="Nothing is blocked" copy="Open work is moving without an active blocker." /> : attention.slice(0, 4).map((task, index) => <AttentionTask key={task.id} task={task} last={index === Math.min(attention.length, 4) - 1} />)}</View></>;
+  const eventPanel = <><PanelHeader eyebrow="ACTIVE EVENTS" title="What the team is producing" action="View all" onPress={() => onSelect('events')} /><View style={styles.eventStack}>{activeEvents.length === 0 ? <EmptyPanel title="No active events" copy="Create an event to begin planning work." /> : activeEvents.slice(0, 3).map((campaign) => <HomeEventCard key={campaign.id} campaign={campaign} />)}</View></>;
+  const calendarPanel = <><PanelHeader eyebrow="COMING UP" title="Next on the calendar" action="Calendar" onPress={() => onSelect('calendar')} /><View style={styles.panelCard}>{nextCalendar.length === 0 ? <EmptyInline icon="calendar" title="Calendar is clear" copy="Dated tasks and events will appear here." /> : nextCalendar.map((item, index) => <CalendarRow key={item.id} item={item} last={index === nextCalendar.length - 1} />)}</View></>;
+  const opportunityPanel = <><PanelHeader eyebrow="OPPORTUNITIES" title="Build the research pipeline" /><Pressable style={[styles.importCard, mobile && styles.importCardMobile]} onPress={() => onSelect('opportunities')}><View style={[styles.importIcon, mobile && styles.importIconMobile]}><AppIcon name="open" color={COLORS.gold} size={mobile ? 18 : 22} /></View><View style={mobile ? styles.importMobileCopy : undefined}><Text style={[styles.importTitle, mobile && styles.importTitleMobile]}>Import an event from a URL</Text><Text style={[styles.importCopy, mobile && styles.importCopyMobile]}>{mobile ? 'Turn a public event page into a reviewable opportunity.' : 'Paste an Eventbrite page, venue calendar, festival site or public event link. Review the extracted details before saving.'}</Text><View style={[styles.importAction, mobile && styles.importActionMobile]}><Text style={styles.importActionText}>Open importer</Text><AppIcon name="chevron-forward" color={COLORS.gold} size={16} /></View></View></Pressable></>;
 
-    <View style={styles.metricGrid}>
-      <MetricCard label="Active events" value={String(activeEvents.length)} detail="Planning or live" icon="adventure" tone="gold" onPress={() => onSelect('events')} />
-      <MetricCard label="Open work" value={String(openTasks.length)} detail={`${attention.length} need attention`} icon="tasks" tone={attention.length ? 'danger' : 'green'} onPress={() => onSelect('my-work')} />
-      <MetricCard label="Content drafts" value={String(draftContent)} detail={`${data.marketing.length} total items`} icon="megaphone" tone="teal" onPress={() => onSelect('marketing')} />
-      <MetricCard label="Open opportunities" value="0" detail="Start with Import URL" icon="briefcase" tone="orange" onPress={() => onSelect('opportunities')} />
+  return <View style={styles.sectionPage}>
+    <View style={[styles.pageHeader, mobile && styles.pageHeaderMobile]}><View><Text style={styles.pageEyebrow}>{todayLabel}</Text><Text style={[styles.pageTitle, mobile && styles.pageTitleMobile]}>{getGreeting()}, {firstName}.</Text><Text style={[styles.pageSubtitle, mobile && styles.pageSubtitleMobile]}>Here is what needs attention across Melanated Adventurers.</Text></View>{!mobile ? <View style={styles.statusPill}><View style={styles.statusDot} /><Text style={styles.statusPillText}>Event data connected</Text></View> : null}</View>
+
+    {mobile ? <View style={styles.mobileHomeFlow}>{attentionPanel}{eventPanel}{calendarPanel}</View> : null}
+
+    <View style={[styles.metricGrid, mobile && styles.metricGridMobile]}>
+      <MetricCard compact={mobile} label="Active events" value={String(activeEvents.length)} detail="Planning or live" icon="adventure" tone="gold" onPress={() => onSelect('events')} />
+      <MetricCard compact={mobile} label="Open work" value={String(openTasks.length)} detail={`${attention.length} need attention`} icon="tasks" tone={attention.length ? 'danger' : 'green'} onPress={() => onSelect('my-work')} />
+      <MetricCard compact={mobile} label="Content drafts" value={String(draftContent)} detail={`${data.marketing.length} total items`} icon="megaphone" tone="teal" onPress={() => onSelect('marketing')} />
+      <MetricCard compact={mobile} label="Opportunities" value="0" detail="Import from URL" icon="briefcase" tone="orange" onPress={() => onSelect('opportunities')} />
     </View>
 
-    <View style={[styles.dashboardColumns, !roomy && styles.dashboardColumnsStack]}>
+    {!mobile ? <View style={[styles.dashboardColumns, !roomy && styles.dashboardColumnsStack]}>
       <View style={styles.dashboardPrimary}>
-        <PanelHeader eyebrow="NEEDS ATTENTION" title="Work that can hold up the plan" action={`${attention.length} items`} onPress={() => onSelect('my-work')} />
-        <View style={styles.panelCard}>
-          {attention.length === 0 ? <EmptyInline icon="checkmark" title="Nothing is blocked" copy="Open work is moving without an active blocker." /> : attention.slice(0, 4).map((task, index) => <AttentionTask key={task.id} task={task} last={index === Math.min(attention.length, 4) - 1} />)}
-        </View>
-
-        <PanelHeader eyebrow="ACTIVE EVENTS" title="What the team is producing" action="View all" onPress={() => onSelect('events')} />
-        <View style={styles.eventStack}>{activeEvents.length === 0 ? <EmptyPanel title="No active events" copy="Create an event to begin planning work." /> : activeEvents.slice(0, 3).map((campaign) => <HomeEventCard key={campaign.id} campaign={campaign} />)}</View>
+        {attentionPanel}
+        {eventPanel}
       </View>
 
       <View style={styles.dashboardRail}>
-        <PanelHeader eyebrow="COMING UP" title="Next on the calendar" action="Calendar" onPress={() => onSelect('calendar')} />
-        <View style={styles.panelCard}>{nextCalendar.length === 0 ? <EmptyInline icon="calendar" title="Calendar is clear" copy="Dated tasks and events will appear here." /> : nextCalendar.map((item, index) => <CalendarRow key={item.id} item={item} last={index === nextCalendar.length - 1} />)}</View>
-
-        <PanelHeader eyebrow="OPPORTUNITIES" title="Build the research pipeline" />
-        <Pressable style={styles.importCard} onPress={() => onSelect('opportunities')}><View style={styles.importIcon}><AppIcon name="open" color={COLORS.gold} size={22} /></View><Text style={styles.importTitle}>Import an event from a URL</Text><Text style={styles.importCopy}>Paste an Eventbrite page, venue calendar, festival site or public event link. Review the extracted details before saving.</Text><View style={styles.importAction}><Text style={styles.importActionText}>Open importer</Text><AppIcon name="chevron-forward" color={COLORS.gold} size={16} /></View></Pressable>
+        {calendarPanel}
+        {opportunityPanel}
       </View>
-    </View>
+    </View> : opportunityPanel}
   </View>;
 }
 
-function MetricCard({ label, value, detail, icon, tone, onPress }: { label: string; value: string; detail: string; icon: AppIconName; tone: 'gold' | 'danger' | 'green' | 'teal' | 'orange'; onPress: () => void }) {
+function MetricCard({ compact, label, value, detail, icon, tone, onPress }: { compact: boolean; label: string; value: string; detail: string; icon: AppIconName; tone: 'gold' | 'danger' | 'green' | 'teal' | 'orange'; onPress: () => void }) {
   const toneColor = { gold: COLORS.gold, danger: COLORS.danger, green: COLORS.green, teal: COLORS.teal, orange: COLORS.orange }[tone];
-  return <Pressable style={styles.metricCard} onPress={onPress}><View style={[styles.metricIcon, { backgroundColor: `${toneColor}18`, borderColor: `${toneColor}48` }]}><AppIcon name={icon} color={toneColor} size={20} /></View><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={[styles.metricDetail, { color: toneColor }]}>{detail}</Text></Pressable>;
+  return <Pressable style={[styles.metricCard, compact && styles.metricCardCompact]} onPress={onPress}><View style={compact ? styles.metricCompactTop : undefined}><View style={[styles.metricIcon, compact && styles.metricIconCompact, { backgroundColor: `${toneColor}18`, borderColor: `${toneColor}48` }]}><AppIcon name={icon} color={toneColor} size={compact ? 17 : 20} /></View>{compact ? <Text style={[styles.metricValue, styles.metricValueCompact]}>{value}</Text> : null}</View><Text style={[styles.metricLabel, compact && styles.metricLabelCompact]}>{label}</Text>{!compact ? <Text style={styles.metricValue}>{value}</Text> : null}<Text numberOfLines={1} style={[styles.metricDetail, compact && styles.metricDetailCompact, { color: toneColor }]}>{detail}</Text></Pressable>;
 }
 
 function PanelHeader({ eyebrow, title, action, onPress }: { eyebrow: string; title: string; action?: string; onPress?: () => void }) {
@@ -382,6 +408,7 @@ function EmptyPanel({ title, copy }: { title: string; copy: string }) {
 }
 
 function CreateMenu({ visible, data, onClose, onSelect }: { visible: boolean; data: ManagementDashboardData; onClose: () => void; onSelect: (id: ManagementSectionId) => void }) {
+  const mobile = useWindowDimensions().width < 760;
   const items: { title: string; copy: string; icon: AppIconName; action: () => void }[] = [
     { title: 'Event', copy: 'Start blank, use a template or duplicate an event', icon: 'adventure', action: () => router.push('/host/create' as never) },
     { title: 'Task', copy: 'Add work to an event or project', icon: 'tasks', action: () => data.campaigns[0] ? router.push(`/host/campaigns/${data.campaigns[0].slug}` as never) : onSelect('my-work') },
@@ -390,7 +417,7 @@ function CreateMenu({ visible, data, onClose, onSelect }: { visible: boolean; da
     { title: 'Vendor or contact', copy: 'Add a business relationship to the directory', icon: 'storefront', action: () => onSelect('directories') },
     { title: 'Campaign content', copy: 'Plan a post, reel, email or announcement', icon: 'megaphone', action: () => onSelect('marketing') },
   ];
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={styles.createMenu} onPress={(event) => event.stopPropagation()}><View style={styles.createMenuHeader}><View><Text style={styles.createMenuEyebrow}>GLOBAL CREATE</Text><Text style={styles.createMenuTitle}>What are you adding?</Text></View><Pressable style={styles.iconButton} onPress={onClose}><AppIcon name="close" color={COLORS.cream} size={21} /></Pressable></View><View style={styles.createMenuGrid}>{items.map((item) => <Pressable key={item.title} style={styles.createMenuItem} onPress={() => { onClose(); item.action(); }}><View style={styles.createMenuItemIcon}><AppIcon name={item.icon} color={COLORS.gold} size={20} /></View><View style={{ flex: 1 }}><Text style={styles.createMenuItemTitle}>{item.title}</Text><Text style={styles.createMenuItemCopy}>{item.copy}</Text></View><AppIcon name="chevron-forward" color={COLORS.dim} size={17} /></Pressable>)}</View></Pressable></Pressable></Modal>;
+  return <Modal visible={visible} transparent animationType={mobile ? 'slide' : 'fade'} onRequestClose={onClose}><Pressable style={[styles.modalBackdrop, mobile && styles.modalBackdropMobile]} onPress={onClose}><Pressable style={[styles.createMenu, mobile && styles.createMenuMobile]} onPress={(event) => event.stopPropagation()}>{mobile ? <View style={styles.moreHandle} /> : null}<View style={styles.createMenuHeader}><View><Text style={styles.createMenuEyebrow}>GLOBAL CREATE</Text><Text style={styles.createMenuTitle}>What are you adding?</Text></View><Pressable style={styles.iconButton} onPress={onClose}><AppIcon name="close" color={COLORS.cream} size={21} /></Pressable></View><ScrollView style={mobile ? styles.createMenuScroll : undefined} showsVerticalScrollIndicator={false}><View style={styles.createMenuGrid}>{items.map((item) => <Pressable key={item.title} style={[styles.createMenuItem, mobile && styles.createMenuItemMobile]} onPress={() => { onClose(); item.action(); }}><View style={styles.createMenuItemIcon}><AppIcon name={item.icon} color={COLORS.gold} size={20} /></View><View style={{ flex: 1 }}><Text style={styles.createMenuItemTitle}>{item.title}</Text><Text style={styles.createMenuItemCopy}>{item.copy}</Text></View><AppIcon name="chevron-forward" color={COLORS.dim} size={17} /></Pressable>)}</View></ScrollView></Pressable></Pressable></Modal>;
 }
 
 function needsAttention(task: Pick<ManagementTask, 'status' | 'priority'> | { status: string; priority: string }) {
@@ -458,6 +485,7 @@ const styles = StyleSheet.create({
   workspace: { flex: 1, minWidth: 0, backgroundColor: COLORS.ink },
   topbar: { minHeight: 82, borderBottomWidth: 1, borderBottomColor: '#223027', backgroundColor: '#0D1410', paddingHorizontal: 25, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 18 },
   topbarCompact: { minHeight: 70, paddingHorizontal: 14 },
+  topbarMobile: { minHeight: 58, paddingHorizontal: 12, gap: 8 },
   topbarEyebrow: { color: COLORS.dim, fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
   topbarSection: { color: COLORS.cream, fontSize: 18, fontWeight: '900', marginTop: 3 },
   compactBrand: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
@@ -469,8 +497,10 @@ const styles = StyleSheet.create({
   searchBox: { width: 260, height: 40, borderRadius: 12, borderWidth: 1, borderColor: COLORS.line, backgroundColor: '#111A15', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 11 },
   searchInput: { flex: 1, color: COLORS.cream, fontSize: 11.5, outlineStyle: 'none' } as any,
   iconButton: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, borderColor: COLORS.line, backgroundColor: '#131C17', alignItems: 'center', justifyContent: 'center' },
+  iconButtonMobile: { width: 36, height: 36, borderRadius: 11 },
   notificationDot: { position: 'absolute', right: 9, top: 8, width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.danger, borderWidth: 1, borderColor: '#131C17' },
   createButton: { height: 40, borderRadius: 12, backgroundColor: COLORS.gold, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13 },
+  createButtonMobile: { height: 36, borderRadius: 11, paddingHorizontal: 10 },
   createButtonText: { color: COLORS.ink, fontSize: 11.5, fontWeight: '900' },
   topAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#26362C', borderWidth: 1.5, borderColor: COLORS.gold, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   topAvatarImage: { width: '100%', height: '100%' },
@@ -481,23 +511,42 @@ const styles = StyleSheet.create({
   compactNavItemActive: { backgroundColor: COLORS.gold },
   compactNavText: { color: COLORS.muted, fontSize: 10, fontWeight: '800' },
   compactNavTextActive: { color: COLORS.ink, fontWeight: '900' },
+  mobileNav: { minHeight: 61, borderTopWidth: 1, borderTopColor: '#2A382F', backgroundColor: '#0D1410', flexDirection: 'row', alignItems: 'stretch', paddingHorizontal: 4, paddingBottom: 2 },
+  mobileNavItem: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 3, paddingTop: 7, paddingBottom: 5 },
+  mobileNavIcon: { position: 'relative' },
+  mobileNavBadge: { position: 'absolute', right: -10, top: -7, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, backgroundColor: COLORS.danger, borderWidth: 1.5, borderColor: '#0D1410', alignItems: 'center', justifyContent: 'center' },
+  mobileNavBadgeText: { color: '#FFF', fontSize: 7, fontWeight: '900' },
+  mobileNavLabel: { color: COLORS.muted, fontSize: 8.5, fontWeight: '800' },
+  mobileNavLabelActive: { color: COLORS.goldSoft, fontWeight: '900' },
   contentScroll: { flex: 1 },
   content: { padding: 15, paddingBottom: 70 },
+  contentMobile: { paddingHorizontal: 14, paddingTop: 15, paddingBottom: 28 },
   contentRoomy: { padding: 25, paddingBottom: 80 },
   sectionPage: { width: '100%', maxWidth: 1450, alignSelf: 'center' },
   pageHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, marginBottom: 20 },
+  pageHeaderMobile: { marginBottom: 11 },
   pageEyebrow: { color: COLORS.gold, fontSize: 8.5, fontWeight: '900', letterSpacing: 1.2 },
   pageTitle: { color: COLORS.cream, fontSize: 30, lineHeight: 36, fontWeight: '900', letterSpacing: -.5, marginTop: 5 },
+  pageTitleMobile: { fontSize: 25, lineHeight: 30, letterSpacing: -.35, marginTop: 4 },
   pageSubtitle: { color: COLORS.muted, fontSize: 12.5, lineHeight: 19, marginTop: 5, maxWidth: 590 },
+  pageSubtitleMobile: { fontSize: 10.5, lineHeight: 16, marginTop: 3 },
   statusPill: { minHeight: 32, borderRadius: 16, borderWidth: 1, borderColor: '#31503D', backgroundColor: '#132219', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green },
   statusPillText: { color: '#A8C49C', fontSize: 9.5, fontWeight: '800' },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 25 },
+  metricGridMobile: { gap: 8, marginTop: 2, marginBottom: 13 },
   metricCard: { minWidth: 180, flexBasis: 200, flexGrow: 1, borderRadius: 16, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, padding: 15 },
+  metricCardCompact: { minWidth: 0, flexBasis: '47%', padding: 11, borderRadius: 14 },
+  metricCompactTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   metricIcon: { width: 36, height: 36, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 13 },
+  metricIconCompact: { width: 29, height: 29, borderRadius: 9, marginBottom: 0 },
   metricLabel: { color: COLORS.muted, fontSize: 10, fontWeight: '800' },
+  metricLabelCompact: { fontSize: 9 },
   metricValue: { color: COLORS.cream, fontSize: 28, lineHeight: 33, fontWeight: '900', marginTop: 3 },
+  metricValueCompact: { fontSize: 22, lineHeight: 25, marginTop: 0 },
   metricDetail: { fontSize: 9.5, fontWeight: '800', marginTop: 3 },
+  metricDetailCompact: { fontSize: 8, marginTop: 2 },
+  mobileHomeFlow: { width: '100%' },
   dashboardColumns: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
   dashboardColumnsStack: { flexDirection: 'column' },
   dashboardPrimary: { flex: 1.55, minWidth: 0 },
@@ -548,10 +597,16 @@ const styles = StyleSheet.create({
   calendarMeta: { color: COLORS.muted, fontSize: 8.5, marginTop: 3 },
   calendarKind: { color: COLORS.dim, fontSize: 7, fontWeight: '900', letterSpacing: .5 },
   importCard: { borderRadius: 17, borderWidth: 1, borderColor: '#4B4126', backgroundColor: '#1D1B11', padding: 17, marginBottom: 18 },
+  importCardMobile: { borderRadius: 14, padding: 13, marginBottom: 2, flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
   importIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#2E2A17', borderWidth: 1, borderColor: '#5E4F25', alignItems: 'center', justifyContent: 'center' },
+  importIconMobile: { width: 34, height: 34, borderRadius: 10 },
+  importMobileCopy: { flex: 1, minWidth: 0 },
   importTitle: { color: COLORS.cream, fontSize: 15, fontWeight: '900', marginTop: 13 },
+  importTitleMobile: { fontSize: 12, marginTop: 0 },
   importCopy: { color: '#A8A18D', fontSize: 10, lineHeight: 16, marginTop: 5 },
+  importCopyMobile: { fontSize: 9, lineHeight: 13, marginTop: 3 },
   importAction: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 13 },
+  importActionMobile: { marginTop: 7 },
   importActionText: { color: COLORS.gold, fontSize: 10, fontWeight: '900' },
   standardHeader: { marginBottom: 21 },
   standardTitle: { color: COLORS.cream, fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -.4, marginTop: 5 },
@@ -688,12 +743,31 @@ const styles = StyleSheet.create({
   primaryButton: { minHeight: 40, borderRadius: 11, backgroundColor: COLORS.gold, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { color: COLORS.ink, fontSize: 10, fontWeight: '900' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modalBackdropMobile: { alignItems: 'stretch', justifyContent: 'flex-end', padding: 0 },
+  moreBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
+  moreSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderBottomWidth: 0, borderColor: COLORS.lineStrong, backgroundColor: '#111A15', paddingHorizontal: 15, paddingTop: 8, paddingBottom: 18 },
+  moreHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: COLORS.lineStrong, alignSelf: 'center', marginBottom: 12 },
+  moreHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
+  moreEyebrow: { color: COLORS.gold, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  moreTitle: { color: COLORS.cream, fontSize: 20, fontWeight: '900', marginTop: 2 },
+  moreClose: { width: 36, height: 36, borderRadius: 11, borderWidth: 1, borderColor: COLORS.line, alignItems: 'center', justifyContent: 'center' },
+  moreGrid: { borderRadius: 15, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, overflow: 'hidden' },
+  moreItem: { minHeight: 49, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: COLORS.line },
+  moreItemActive: { backgroundColor: '#25271A' },
+  moreItemIcon: { width: 27, alignItems: 'center' },
+  moreItemText: { flex: 1, color: COLORS.muted, fontSize: 11.5, fontWeight: '800' },
+  moreItemTextActive: { color: COLORS.goldSoft, fontWeight: '900' },
+  moreMemberLink: { minHeight: 48, borderRadius: 13, backgroundColor: '#17231C', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 13, marginTop: 10 },
+  moreMemberText: { flex: 1, color: COLORS.cream, fontSize: 11, fontWeight: '900' },
   createMenu: { width: '100%', maxWidth: 650, borderRadius: 20, borderWidth: 1, borderColor: COLORS.lineStrong, backgroundColor: '#111A15', padding: 17, shadowColor: '#000', shadowOpacity: .5, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
+  createMenuMobile: { maxWidth: '100%', maxHeight: '84%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingTop: 8, paddingBottom: 18 },
+  createMenuScroll: { flexGrow: 0 },
   createMenuHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 13 },
   createMenuEyebrow: { color: COLORS.gold, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   createMenuTitle: { color: COLORS.cream, fontSize: 21, fontWeight: '900', marginTop: 4 },
   createMenuGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   createMenuItem: { minWidth: 240, flexBasis: 280, flexGrow: 1, minHeight: 76, borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 },
+  createMenuItemMobile: { width: '100%', minWidth: 0, flexBasis: 'auto', flexGrow: 0, minHeight: 63 },
   createMenuItemIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#292718', alignItems: 'center', justifyContent: 'center' },
   createMenuItemTitle: { color: COLORS.cream, fontSize: 11.5, fontWeight: '900' },
   createMenuItemCopy: { color: COLORS.muted, fontSize: 8.5, lineHeight: 13, marginTop: 3 },
