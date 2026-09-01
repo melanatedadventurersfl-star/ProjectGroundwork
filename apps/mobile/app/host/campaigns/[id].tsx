@@ -212,9 +212,9 @@ function TaskRow({ task, accent, canManage, saving, onStatus }: { task: Campaign
       {canManage ? (
         <View style={styles.taskActions}>
           {saving ? <ActivityIndicator size="small" color={accent} /> : <>
-            {task.status !== 'blocked' && task.status !== 'in_progress' ? <StatusAction label="Start" active={task.status === 'in_progress'} onPress={() => void onStatus(task.id, 'in_progress')} /> : null}
-            {task.status !== 'blocked' && task.status !== 'waiting' ? <StatusAction label="Waiting" active={task.status === 'waiting'} onPress={() => void onStatus(task.id, 'waiting')} /> : null}
-            {task.status !== 'blocked' && task.status !== 'complete' ? <StatusAction label="Complete" active={false} onPress={() => void onStatus(task.id, 'complete')} /> : null}
+            {task.status !== 'blocked' && task.status !== 'in_progress' ? <StatusAction label="Start" onPress={() => void onStatus(task.id, 'in_progress')} /> : null}
+            {task.status !== 'blocked' && task.status !== 'waiting' ? <StatusAction label="Waiting" onPress={() => void onStatus(task.id, 'waiting')} /> : null}
+            {task.status !== 'blocked' && task.status !== 'complete' ? <StatusAction label="Complete" onPress={() => void onStatus(task.id, 'complete')} /> : null}
           </>}
         </View>
       ) : null}
@@ -222,8 +222,8 @@ function TaskRow({ task, accent, canManage, saving, onStatus }: { task: Campaign
   );
 }
 
-function StatusAction({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return <Pressable style={[styles.statusAction, active && styles.statusActionActive]} onPress={onPress}><Text style={[styles.statusActionText, active && styles.statusActionTextActive]}>{label}</Text></Pressable>;
+function StatusAction({ label, onPress }: { label: string; onPress: () => void }) {
+  return <Pressable style={styles.statusAction} onPress={onPress}><Text style={styles.statusActionText}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -269,9 +269,7 @@ const styles = StyleSheet.create({
   blockedBy: { color: '#C7907E', fontSize: 10.5, lineHeight: 15, marginTop: 7 },
   taskActions: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, minHeight: 31 },
   statusAction: { borderRadius: 10, borderWidth: 1, borderColor: '#3B453F', paddingHorizontal: 10, paddingVertical: 7 },
-  statusActionActive: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
   statusActionText: { color: '#AAB4AD', fontSize: 9, fontWeight: '900' },
-  statusActionTextActive: { color: '#172017' },
   milestoneRow: { flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 15, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: '#546159', alignItems: 'center', justifyContent: 'center' },
   checkText: { color: '#0B100D', fontWeight: '900' },
