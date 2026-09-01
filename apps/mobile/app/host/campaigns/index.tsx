@@ -42,24 +42,33 @@ export default function HostCampaignsScreen() {
           const openTasks = campaign.tasks.filter((task) => task.status !== 'complete').length;
           const blocked = campaign.tasks.filter((task) => task.status === 'blocked' || task.status === 'waiting').length;
           return (
-            <Pressable key={campaign.id} style={styles.card} onPress={() => router.push(`/host/campaigns/${campaign.slug}` as never)}>
-              <View style={styles.cardTop}>
-                <View style={[styles.accentDot, { backgroundColor: campaign.accent }]} />
-                <Text style={styles.status}>{campaign.status.toUpperCase()}</Text>
-                {campaign.canManage ? <View style={styles.managerPill}><Text style={styles.managerPillText}>MANAGE</Text></View> : null}
-              </View>
-              <Text style={styles.cardTitle}>{campaign.shortTitle}</Text>
-              <Text style={styles.meta}>{campaign.location}</Text>
-              <Text style={styles.meta}>{days} days to go</Text>
+            <View key={campaign.id} style={styles.cardWrap}>
+              <Pressable style={styles.card} onPress={() => router.push(`/host/campaigns/${campaign.slug}` as never)}>
+                <View style={styles.cardTop}>
+                  <View style={[styles.accentDot, { backgroundColor: campaign.accent }]} />
+                  <Text style={styles.status}>{campaign.status.toUpperCase()}</Text>
+                  {campaign.canManage ? <View style={styles.managerPill}><Text style={styles.managerPillText}>MANAGE</Text></View> : null}
+                </View>
+                <Text style={styles.cardTitle}>{campaign.shortTitle}</Text>
+                <Text style={styles.meta}>{campaign.location}</Text>
+                <Text style={styles.meta}>{days} days to go</Text>
 
-              <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${readiness}%`, backgroundColor: campaign.accent }]} /></View>
-              <View style={styles.metrics}>
-                <Metric value={`${readiness}%`} label="Ready" />
-                <Metric value={String(openTasks)} label="Open" />
-                <Metric value={String(blocked)} label="Waiting" />
-              </View>
-              <Text style={[styles.openAction, { color: campaign.accent }]}>Open campaign →</Text>
-            </Pressable>
+                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${readiness}%`, backgroundColor: campaign.accent }]} /></View>
+                <View style={styles.metrics}>
+                  <Metric value={`${readiness}%`} label="Ready" />
+                  <Metric value={String(openTasks)} label="Open" />
+                  <Metric value={String(blocked)} label="Waiting" />
+                </View>
+                <Text style={[styles.openAction, { color: campaign.accent }]}>Open campaign →</Text>
+              </Pressable>
+              <Pressable style={styles.marketingAction} onPress={() => router.push(`/host/campaigns/${campaign.slug}/marketing` as never)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.marketingKicker}>MARKETING</Text>
+                  <Text style={styles.marketingTitle}>Open campaign calendar</Text>
+                </View>
+                <Text style={styles.marketingChevron}>›</Text>
+              </Pressable>
+            </View>
           );
         }) : null}
       </ScrollView>
@@ -86,7 +95,8 @@ const styles = StyleSheet.create({
   errorText: { color: '#BB8F87', fontSize: 11, lineHeight: 17, marginTop: 6 },
   retry: { alignSelf: 'flex-start', backgroundColor: '#D7B45A', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 11, marginTop: 12 },
   retryText: { color: '#172017', fontWeight: '900', fontSize: 11 },
-  card: { backgroundColor: '#151B17', borderWidth: 1, borderColor: '#303A34', borderRadius: 22, padding: 18, marginBottom: 12 },
+  cardWrap: { marginBottom: 14 },
+  card: { backgroundColor: '#151B17', borderWidth: 1, borderColor: '#303A34', borderRadius: 22, padding: 18 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   accentDot: { width: 9, height: 9, borderRadius: 5 },
   status: { color: '#AAB4AD', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
@@ -101,4 +111,8 @@ const styles = StyleSheet.create({
   metricValue: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' },
   metricLabel: { color: '#7F8A83', fontSize: 10, fontWeight: '800', marginTop: 2 },
   openAction: { fontWeight: '900', marginTop: 18 },
+  marketingAction: { flexDirection: 'row', alignItems: 'center', marginTop: 7, borderRadius: 14, borderWidth: 1, borderColor: '#4C3D22', backgroundColor: '#1C1810', paddingHorizontal: 14, paddingVertical: 11 },
+  marketingKicker: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: .8 },
+  marketingTitle: { color: '#D8D1BF', fontSize: 12, fontWeight: '900', marginTop: 2 },
+  marketingChevron: { color: '#D7B45A', fontSize: 23 },
 });
