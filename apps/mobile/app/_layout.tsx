@@ -11,10 +11,12 @@ import { PushNotificationsManager } from '../src/notifications/PushNotifications
 import { GuidedTutorial } from '../src/onboarding/GuidedTutorial';
 import { subscribeGuidedTutorial } from '../src/onboarding/tutorialController';
 import {
+  getGuidedTutorialStep,
   hasCompletedGuidedTutorial,
   hasFinishedGuidedTutorial,
   markGuidedTutorialCompleted,
   markGuidedTutorialFinished,
+  setGuidedTutorialStep,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
@@ -134,26 +136,27 @@ function AppShell() {
     if (isLoading || !session || isAuthScreen || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
-      if (!hasCompletedGuidedTutorial()) {
+      const finished = hasFinishedGuidedTutorial();
+      const completed = hasCompletedGuidedTutorial();
+      setTutorialStep(getGuidedTutorialStep());
+      setTutorialGateReady(true);
+
+      if (!completed) {
+        // Trailhead now lives on Home. Do not block a new member with a modal.
         markReleaseSeen(releaseSeenKey);
         setWhatsNewVisible(false);
-        setTutorialStep(0);
-        setTutorialVisible(true);
-        router.replace('/(tabs)' as never);
-      } else {
-        setTutorialGateReady(true);
-        if (hasFinishedGuidedTutorial()) {
-          void awardTutorialCompletionStamp().catch((error) => {
-            console.warn('[tutorial] Unable to sync tutorial completion stamp', error);
-          });
-        }
+      }
+
+      if (finished) {
+        void awardTutorialCompletionStamp().catch((error) => {
+          console.warn('[tutorial] Unable to sync tutorial completion stamp', error);
+        });
       }
     } catch (error) {
       console.warn('[tutorial] Unable to read guided tutorial preference', error);
-      setWhatsNewVisible(false);
+      setTutorialGateReady(true);
+      setTutorialVisible(false);
       setTutorialStep(0);
-      setTutorialVisible(true);
-      router.replace('/(tabs)' as never);
     }
   }, [isAuthScreen, isLoading, releaseSeenKey, session]);
 
@@ -169,17 +172,24 @@ function AppShell() {
   }, [isAuthScreen, isLoading, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
-    setTutorialGateReady(false);
     setWhatsNewVisible(false);
-    setTutorialStep(0);
+    try {
+      setTutorialStep(getGuidedTutorialStep());
+    } catch {
+      setTutorialStep(0);
+    }
     setTutorialVisible(true);
     router.replace('/(tabs)' as never);
   }), []);
 
+  function updateTutorialStep(step: number) {
+    setTutorialStep(step);
+    try { setGuidedTutorialStep(step); } catch (error) { console.warn('[tutorial] Unable to save Trailhead progress', error); }
+  }
+
   function closeTutorial() {
     setTutorialVisible(false);
     setTutorialGateReady(true);
-    setTutorialStep(0);
     whatsNewCheckedRef.current = false;
     router.replace('/(tabs)' as never);
   }
@@ -220,7 +230,7 @@ function AppShell() {
         </Stack>
       </KeyboardAvoidingView>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {tutorialVisible ? <GuidedTutorial visible step={tutorialStep} onStepChange={setTutorialStep} onFinish={finishTutorial} onSkip={skipTutorial} /> : null}
+      {tutorialVisible ? <GuidedTutorial visible step={tutorialStep} onStepChange={updateTutorialStep} onFinish={finishTutorial} onSkip={skipTutorial} /> : null}
       {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
   );
