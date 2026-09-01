@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const options = [
   { title: 'Create from Scratch', body: 'Build the event manually or start with Host Copilot.', route: '/host/create-scratch', icon: '＋' },
   { title: 'Start from Template', body: 'Reuse a proven event structure with fresh dates, location and work.', route: '/host/create-template', icon: '▦' },
-  { title: 'Import Files', body: 'Import a public PDF, DOCX, TXT or ZIP package, or paste existing event details.', route: '/host/import-event?mode=files', icon: '⇧' },
+  { title: 'Import Files', body: 'Upload documents, images, or one ZIP package and turn them into an event draft.', route: '/host/import-event?mode=files', icon: '⇧' },
   { title: 'Import from Event Site', body: 'Paste a public Eventbrite, Meetup, ticketing or venue event page.', route: '/host/import-event?mode=site', icon: '↗' },
 ] as const;
 
