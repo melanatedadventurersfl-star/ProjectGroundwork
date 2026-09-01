@@ -36,6 +36,7 @@ export default function HostCampaignDetailScreen() {
   const [team, setTeam] = useState<CampaignTeamMember[]>([]);
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [workFilter, setWorkFilter] = useState<WorkFilter>('all');
+  const [referenceNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -143,10 +144,9 @@ export default function HostCampaignDetailScreen() {
   const activeTasks = campaign.tasks.filter((task) => task.status !== 'complete');
   const completedTasks = campaign.tasks.filter((task) => task.status === 'complete');
   const openDecisions = campaign.decisions.filter((decision) => decision.status === 'open');
-  const now = Date.now();
   const mine = activeTasks.filter((task) => Boolean(currentProfileId) && task.assigneeProfileId === currentProfileId);
   const unassigned = activeTasks.filter((task) => !task.assigneeProfileId);
-  const overdue = activeTasks.filter((task) => Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() < now);
+  const overdue = activeTasks.filter((task) => Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() < referenceNow);
   const blocked = activeTasks.filter((task) => task.status === 'blocked');
   const filteredTasks = workFilter === 'mine' ? mine
     : workFilter === 'unassigned' ? unassigned
@@ -159,15 +159,11 @@ export default function HostCampaignDetailScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Campaigns</Text></Pressable>
         <View style={styles.headingRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>HOST CAMPAIGN</Text>
-            <Text style={styles.title}>{campaign.shortTitle}</Text>
-          </View>
+          <View style={{ flex: 1 }}><Text style={styles.eyebrow}>HOST CAMPAIGN</Text><Text style={styles.title}>{campaign.shortTitle}</Text></View>
           <View style={[styles.accessPill, campaign.canManage ? styles.accessPillManage : styles.accessPillView]}><Text style={campaign.canManage ? styles.accessManageText : styles.accessViewText}>{campaign.canManage ? 'MANAGE' : 'VIEW'}</Text></View>
         </View>
         <Text style={styles.meta}>{campaign.location}</Text>
         <Text style={[styles.countdown, { color: campaign.accent }]}>{days} DAYS TO GO</Text>
-
         {error ? <View style={styles.inlineError}><Text style={styles.errorText}>{error}</Text></View> : null}
 
         <View style={styles.readinessCard}>
@@ -225,24 +221,15 @@ export default function HostCampaignDetailScreen() {
               <Text style={styles.rowTitle}>{decision.title}</Text>
               <Text style={styles.rowMeta}>Owner: {decision.owner}</Text>
               {campaign.canManage ? <>
-                <TextInput
-                  style={styles.decisionInput}
-                  value={decisionDrafts[decision.id] ?? ''}
-                  onChangeText={(value) => setDecisionDrafts((current) => ({ ...current, [decision.id]: value }))}
-                  placeholder="Record the final decision…"
-                  placeholderTextColor="#6F7972"
-                  multiline
-                />
-                <Pressable disabled={savingId === decision.id} style={styles.decisionButton} onPress={() => void saveDecision(decision.id)}>
-                  {savingId === decision.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.decisionButtonText}>Mark decided</Text>}
-                </Pressable>
+                <TextInput style={styles.decisionInput} value={decisionDrafts[decision.id] ?? ''} onChangeText={(value) => setDecisionDrafts((current) => ({ ...current, [decision.id]: value }))} placeholder="Record the final decision…" placeholderTextColor="#6F7972" multiline />
+                <Pressable disabled={savingId === decision.id} style={styles.decisionButton} onPress={() => void saveDecision(decision.id)}>{savingId === decision.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.decisionButtonText}>Mark decided</Text>}</Pressable>
               </> : null}
             </View>
           ))}
         </Section>
 
         <Section title="Campaign pulse">
-          <View style={styles.pulseCard}><Text style={styles.pulseTitle}>Marketing</Text><Text style={styles.pulseValue}>{campaign.metrics.marketingNeedsAttention} marketing task{campaign.metrics.marketingNeedsAttention === 1 ? '' : 's'} need attention. Publishing calendar comes next.</Text></View>
+          <Pressable style={styles.pulseCard} onPress={() => router.push(`/host/campaigns/${campaign.slug}/marketing` as never)}><Text style={styles.pulseTitle}>Marketing</Text><Text style={styles.pulseValue}>{campaign.metrics.marketingNeedsAttention} marketing task{campaign.metrics.marketingNeedsAttention === 1 ? '' : 's'} need attention.</Text><Text style={[styles.pulseAction, { color: campaign.accent }]}>Open marketing calendar →</Text></Pressable>
           <View style={styles.pulseCard}><Text style={styles.pulseTitle}>Guests</Text><Text style={styles.pulseValue}>{campaign.metrics.capacityLabel}</Text></View>
           <View style={styles.pulseCard}><Text style={styles.pulseTitle}>Budget</Text><Text style={styles.pulseValue}>Budget setup is ready for the next release.</Text></View>
         </Section>
@@ -273,24 +260,12 @@ function TaskRow({ task, accent, canManage, saving, team, allowAssignment, onSta
       <Text style={styles.rowMeta}>{task.category} · Plan owner: {task.owner}</Text>
       <Text style={styles.assigneeText}>Assigned: {assignee?.displayName ?? 'Unassigned'}</Text>
       {task.blockedBy ? <Text style={styles.blockedBy}>Blocked by: {task.blockedBy}</Text> : null}
-      {canManage ? (
-        <View style={styles.taskActions}>
-          {saving ? <ActivityIndicator size="small" color={accent} /> : <>
-            {task.status !== 'blocked' && task.status !== 'in_progress' ? <StatusAction label="Start" onPress={() => void onStatus(task.id, 'in_progress')} /> : null}
-            {task.status !== 'blocked' && task.status !== 'waiting' ? <StatusAction label="Waiting" onPress={() => void onStatus(task.id, 'waiting')} /> : null}
-            {task.status !== 'blocked' && task.status !== 'complete' ? <StatusAction label="Complete" onPress={() => void onStatus(task.id, 'complete')} /> : null}
-          </>}
-        </View>
-      ) : null}
-      {canManage && allowAssignment ? (
-        <View style={styles.assignmentBlock}>
-          <Text style={styles.assignmentLabel}>ASSIGN</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentRow}>
-            <AssignmentChip label="Unassigned" active={!task.assigneeProfileId} onPress={() => void onAssign(task.id, null)} />
-            {team.map((member) => <AssignmentChip key={member.profileId} label={member.displayName} active={task.assigneeProfileId === member.profileId} onPress={() => void onAssign(task.id, member.profileId)} />)}
-          </ScrollView>
-        </View>
-      ) : null}
+      {canManage ? <View style={styles.taskActions}>{saving ? <ActivityIndicator size="small" color={accent} /> : <>
+        {task.status !== 'blocked' && task.status !== 'in_progress' ? <StatusAction label="Start" onPress={() => void onStatus(task.id, 'in_progress')} /> : null}
+        {task.status !== 'blocked' && task.status !== 'waiting' ? <StatusAction label="Waiting" onPress={() => void onStatus(task.id, 'waiting')} /> : null}
+        {task.status !== 'blocked' && task.status !== 'complete' ? <StatusAction label="Complete" onPress={() => void onStatus(task.id, 'complete')} /> : null}
+      </>}</View> : null}
+      {canManage && allowAssignment ? <View style={styles.assignmentBlock}><Text style={styles.assignmentLabel}>ASSIGN</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assignmentRow}><AssignmentChip label="Unassigned" active={!task.assigneeProfileId} onPress={() => void onAssign(task.id, null)} />{team.map((member) => <AssignmentChip key={member.profileId} label={member.displayName} active={task.assigneeProfileId === member.profileId} onPress={() => void onAssign(task.id, member.profileId)} />)}</ScrollView></View> : null}
     </View>
   );
 }
@@ -373,6 +348,7 @@ const styles = StyleSheet.create({
   pulseCard: { borderRadius: 14, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#2B332E', padding: 14, marginBottom: 8 },
   pulseTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
   pulseValue: { color: '#89948D', fontSize: 11, lineHeight: 17, marginTop: 4 },
+  pulseAction: { fontSize: 10, fontWeight: '900', marginTop: 8 },
   primaryButton: { backgroundColor: '#D7B45A', borderRadius: 14, minHeight: 50, alignItems: 'center', justifyContent: 'center', marginTop: 18 },
   primaryButtonText: { color: '#172017', fontWeight: '900' },
 });
