@@ -152,6 +152,8 @@ export default function HostOperationsScreen() {
     });
   }, [eventFilter, eventRows, loadedAt]);
 
+  const firstCampaign = campaigns[0];
+
   const statusCopy: Record<string, [string, string]> = {
     pending: ['Application in review', 'Your Host Pathway is complete. We’ll review your application before hosting tools unlock.'],
     needs_info: ['We need a little more information', 'Your application is still open. Go Melanated needs additional information before making a decision.'],
@@ -215,7 +217,7 @@ export default function HostOperationsScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {(['active', 'drafts', 'upcoming', 'past'] as EventFilter[]).map((filter) => (
                 <Pressable key={filter} style={[styles.filterChip, eventFilter === filter && styles.filterChipActive]} onPress={() => setEventFilter(filter)}>
-                  <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter[0].toUpperCase() + filter.slice(1)}</Text>
+                  <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter.charAt(0).toUpperCase() + filter.slice(1)}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -227,7 +229,17 @@ export default function HostOperationsScreen() {
               <WorkMetric label="Blocked" value={blockedTasks.length} />
               <WorkMetric label="Unassigned" value={unassignedTasks.length} />
             </View>
-            {campaigns[0] ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${campaigns[0].slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
+            {firstCampaign ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${firstCampaign.slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
+
+            <SectionHeader title="Reusable Library" />
+            <Pressable style={styles.libraryCard} onPress={() => router.push('/host/library' as never)}>
+              <View style={styles.libraryIcon}><Text style={styles.libraryIconText}>▦</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.libraryTitle}>Templates, plans and reusable pieces</Text>
+                <Text style={styles.libraryCopy}>Meals, gear, guest messages, policies, vendors, marketing and ticket structures.</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
           </> : null}
         </ScrollView>
 
@@ -316,6 +328,11 @@ const styles = StyleSheet.create({
   workLabel: { color: '#89948D', fontSize: 10, fontWeight: '800', marginTop: 3 },
   workAction: { alignSelf: 'flex-start', marginTop: 11 },
   workActionText: { color: '#D7B45A', fontSize: 11, fontWeight: '900' },
+  libraryCard: { minHeight: 88, borderRadius: 16, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#354039', flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  libraryIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#29351F', alignItems: 'center', justifyContent: 'center' },
+  libraryIconText: { color: '#C9E678', fontSize: 21, fontWeight: '900' },
+  libraryTitle: { color: '#FFF8E8', fontSize: 14, lineHeight: 19, fontWeight: '900' },
+  libraryCopy: { color: '#89948D', fontSize: 10.5, lineHeight: 15, marginTop: 4 },
   chevron: { color: '#D7B45A', fontSize: 28, fontWeight: '700' },
   empty: { color: '#758079', fontSize: 12, lineHeight: 18, padding: 14 },
   fab: { position: 'absolute', right: 22, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D47B', shadowColor: '#000', shadowOpacity: .3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
