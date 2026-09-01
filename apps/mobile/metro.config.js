@@ -12,6 +12,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     );
   }
 
+  if (platform === 'web' && moduleName === 'expo-location') {
+    return context.resolveRequest(
+      context,
+      path.resolve(__dirname, 'src/permissions/webLocation.ts'),
+      platform,
+    );
+  }
+
   return context.resolveRequest(context, moduleName, platform);
 };
 

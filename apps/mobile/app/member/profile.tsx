@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getConnections, type Connection } from '../../src/community/circles';
-import { uploadProfilePhoto } from '../../src/member/api';
+import { uploadProfileCover, uploadProfilePhoto } from '../../src/member/api';
 import { getJourney } from '../../src/passport/api';
 import { AppIcon } from '../../src/ui/AppIcon';
 import ProfileScreenBase from './profile-base';
@@ -18,6 +18,8 @@ export default function ProfileScreen() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [webPhotoBusy, setWebPhotoBusy] = useState(false);
   const [webPhotoMessage, setWebPhotoMessage] = useState('');
+  const [webCoverBusy, setWebCoverBusy] = useState(false);
+  const [webCoverMessage, setWebCoverMessage] = useState('');
   const [profileVersion, setProfileVersion] = useState(0);
 
   useEffect(() => {
@@ -56,6 +58,30 @@ export default function ProfileScreen() {
       setWebPhotoMessage(error instanceof Error ? error.message : 'Unable to update profile photo.');
     } finally {
       setWebPhotoBusy(false);
+    }
+  }
+
+  async function changeWebProfileCover() {
+    if (Platform.OS !== 'web' || webCoverBusy) return;
+    setWebCoverMessage('');
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [16, 9],
+        base64: true,
+        quality: 0.85,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      setWebCoverBusy(true);
+      const asset = result.assets[0];
+      await uploadProfileCover({ uri: asset.uri, base64: asset.base64 ?? undefined, mimeType: asset.mimeType });
+      setWebCoverMessage('Profile cover updated.');
+      setProfileVersion((current) => current + 1);
+    } catch (error) {
+      setWebCoverMessage(error instanceof Error ? error.message : 'Unable to update profile cover.');
+    } finally {
+      setWebCoverBusy(false);
     }
   }
 
@@ -113,20 +139,37 @@ export default function ProfileScreen() {
       </Pressable>
 
       {Platform.OS === 'web' ? (
-        <View style={styles.webPhotoRow}>
-          <View style={styles.webPhotoCopy}>
-            <Text style={styles.webPhotoTitle}>Profile photo</Text>
-            <Text style={styles.webPhotoDetail}>{webPhotoMessage || 'Choose a new photo from this device.'}</Text>
+        <View style={styles.webMediaStack}>
+          <View style={styles.webPhotoRow}>
+            <View style={styles.webPhotoCopy}>
+              <Text style={styles.webPhotoTitle}>Profile photo</Text>
+              <Text style={styles.webPhotoDetail}>{webPhotoMessage || 'Choose a new photo from this device.'}</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Change profile photo"
+              disabled={webPhotoBusy}
+              onPress={() => void changeWebProfilePhoto()}
+              style={({ pressed }) => [styles.webPhotoButton, pressed && styles.pressed, webPhotoBusy && styles.disabled]}
+            >
+              {webPhotoBusy ? <ActivityIndicator size="small" color="#17211C" /> : <Text style={styles.webPhotoButtonText}>Change photo</Text>}
+            </Pressable>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Change profile photo"
-            disabled={webPhotoBusy}
-            onPress={() => void changeWebProfilePhoto()}
-            style={({ pressed }) => [styles.webPhotoButton, pressed && styles.pressed, webPhotoBusy && styles.disabled]}
-          >
-            {webPhotoBusy ? <ActivityIndicator size="small" color="#17211C" /> : <Text style={styles.webPhotoButtonText}>Change photo</Text>}
-          </Pressable>
+          <View style={styles.webPhotoRow}>
+            <View style={styles.webPhotoCopy}>
+              <Text style={styles.webPhotoTitle}>Profile cover</Text>
+              <Text style={styles.webPhotoDetail}>{webCoverMessage || 'Choose a wide cover image from this device.'}</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Change profile cover"
+              disabled={webCoverBusy}
+              onPress={() => void changeWebProfileCover()}
+              style={({ pressed }) => [styles.webPhotoButton, pressed && styles.pressed, webCoverBusy && styles.disabled]}
+            >
+              {webCoverBusy ? <ActivityIndicator size="small" color="#17211C" /> : <Text style={styles.webPhotoButtonText}>Change cover</Text>}
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
@@ -198,10 +241,9 @@ const styles = StyleSheet.create({
   detail: { color: '#AEB9B4', fontSize: 11.5, lineHeight: 16 },
   openWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   openText: { color: '#D7B45A', fontSize: 11.5, fontWeight: '900' },
+  webMediaStack: { gap: 7, marginTop: 4, marginBottom: 5 },
   webPhotoRow: {
     marginHorizontal: 14,
-    marginTop: 4,
-    marginBottom: 5,
     minHeight: 66,
     borderRadius: 16,
     borderWidth: 1,
