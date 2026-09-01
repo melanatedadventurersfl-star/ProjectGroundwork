@@ -64,6 +64,10 @@ module.exports = {
   ...base,
   android,
   ios,
+  web: {
+    ...(base.web || {}),
+    ...(webBaseUrl ? { output: 'single' } : {}),
+  },
   experiments: {
     ...(base.experiments || {}),
     ...(webBaseUrl ? { baseUrl: webBaseUrl } : {}),
