@@ -64,7 +64,12 @@ async function currentProfileId() {
 
 export async function ensureMyHostProfile() {
   const profileId = await currentProfileId();
-  const { data, error } = await supabase.from('host_profiles').upsert({ profile_id: profileId }, { onConflict: 'profile_id', ignoreDuplicates: true }).select('profile_id,public_title,bio,business_name,website_url,cover_image_url,is_public').single();
+  const columns = 'profile_id,public_title,bio,business_name,website_url,cover_image_url,is_public';
+  const existing = await supabase.from('host_profiles').select(columns).eq('profile_id', profileId).maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) return existing.data;
+
+  const { data, error } = await supabase.from('host_profiles').insert({ profile_id: profileId }).select(columns).single();
   if (error) throw error;
   return data;
 }
