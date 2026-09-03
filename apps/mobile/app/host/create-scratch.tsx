@@ -5,6 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
 import { HostCopilotCard } from '../../src/hosting/HostCopilotCard';
+import { createCampaignWorkspace } from '../../src/hosting/creation';
+import { addEventComponent } from '../../src/hosting/eventBuilder';
 import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
 
 const categories = ['Hiking', 'Camping', 'Paddling', 'Beach', 'Cycling', 'Social', 'Workshop', 'Volunteer', 'Other'];
@@ -39,15 +41,29 @@ export default function CreateHostOutingScreen() {
       const dollars = Number.parseFloat(price || '0');
       const priceCents = paid ? Math.round(dollars * 100) : 0;
       if (paid && (!Number.isFinite(dollars) || dollars <= 0)) throw new Error('Enter a valid ticket price.');
+
       const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt, endsAt, city, state, venueName, capacity: capacityNumber, meetingInstructions });
       await addGeneralAdmissionTicket(outing.id, capacityNumber, priceCents);
-      router.replace(`/host/manage/${outing.id}` as never);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to create this outing.'); } finally { setSaving(false); }
+      const campaign = await createCampaignWorkspace({
+        adventureId: outing.id,
+        title: outing.title,
+        location: [outing.venue_name, outing.city, outing.state].filter(Boolean).join(', '),
+        startsAt: outing.starts_at,
+        endsAt: outing.ends_at,
+      });
+
+      await Promise.all([
+        addEventComponent(campaign.id, 'tickets', outing.starts_at),
+        addEventComponent(campaign.id, 'team', outing.starts_at),
+        addEventComponent(campaign.id, 'finance', outing.starts_at),
+      ]);
+      router.replace(`/host/build/${outing.id}` as never);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to create this event.'); } finally { setSaving(false); }
   }
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-    <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Create Event</Text></Pressable>
-    <Text style={styles.eyebrow}>FROM SCRATCH</Text><Text style={styles.title}>What are we doing?</Text><Text style={styles.subtitle}>Start with an idea. Copilot can shape the first draft, or build it yourself below.</Text>
+    <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Build an Event</Text></Pressable>
+    <Text style={styles.eyebrow}>EVENT FOUNDATION</Text><Text style={styles.title}>Start with the basics.</Text><Text style={styles.subtitle}>Create the event foundation first. After that, add the operating pieces this event needs.</Text>
     <HostCopilotCard city={city} state={state} onApply={(plan) => { setTitle(plan.title); setSummary(plan.summary); setDescription(plan.description); setCategory(categories.includes(plan.category) ? plan.category : 'Other'); setDifficulty(difficulties.includes(plan.difficulty) ? plan.difficulty : 'easy'); if (plan.startsAt) setStartsAt(plan.startsAt); if (plan.endsAt) setEndsAt(plan.endsAt); if (plan.venueName) setVenueName(plan.venueName); if (plan.city) setCity(plan.city); if (plan.state) setState(plan.state.toUpperCase()); if (plan.capacity) setCapacity(String(plan.capacity)); setMeetingInstructions(plan.meetingInstructions); setError(''); }} />
     <Text style={styles.manualLabel}>EVENT DETAILS</Text>
     <Field label="Title" value={title} onChangeText={setTitle} placeholder="Sunset paddle on the river" />
@@ -59,13 +75,13 @@ export default function CreateHostOutingScreen() {
     <Text style={styles.helper}>Use local date and time in YYYY-MM-DDTHH:MM format.</Text>
     <Field label="Venue / meeting place" value={venueName} onChangeText={setVenueName} placeholder="Riverfront launch" />
     <View style={styles.twoCol}><View style={styles.flex}><Field label="City" value={city} onChangeText={setCity} placeholder="Jacksonville" /></View><View style={styles.stateCol}><Field label="State" value={state} onChangeText={setState} placeholder="FL" /></View></View>
-    <Field label="Capacity" value={capacity} onChangeText={setCapacity} placeholder="20" keyboardType="number-pad" />
+    <Field label="Expected attendance" value={capacity} onChangeText={setCapacity} placeholder="20" keyboardType="number-pad" />
     <Field label="Meeting instructions" value={meetingInstructions} onChangeText={setMeetingInstructions} placeholder="Parking, arrival window, and meeting details." multiline />
     <Text style={styles.sectionLabel}>Admission</Text><View style={styles.segment}><Pressable style={[styles.segmentButton, !paid && styles.segmentActive]} onPress={() => { setPaid(false); setPrice('0'); }}><Text style={[styles.segmentText, !paid && styles.segmentTextActive]}>Free event</Text></Pressable><Pressable style={[styles.segmentButton, paid && styles.segmentActive]} onPress={() => setPaid(true)}><Text style={[styles.segmentText, paid && styles.segmentTextActive]}>Paid event</Text></Pressable></View>
-    {paid ? <Field label="General admission price" value={price} onChangeText={setPrice} placeholder="35.00" keyboardType="decimal-pad" prefix="$" /> : null}
+    {paid ? <Field label="Starting ticket price" value={price} onChangeText={setPrice} placeholder="35.00" keyboardType="decimal-pad" prefix="$" /> : null}
     {error ? <Text style={styles.error}>{error}</Text> : null}
-    <Pressable disabled={saving} style={styles.primary} onPress={() => void createOuting()}>{saving ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Create Draft Event</Text>}</Pressable>
-    <Text style={styles.micro}>Drafts are private until you publish them. Review generated details before saving.</Text>
+    <Pressable disabled={saving} style={styles.primary} onPress={() => void createOuting()}>{saving ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Create Event & Continue Building</Text>}</Pressable>
+    <Text style={styles.micro}>The event stays private while you build it. Tickets, Team and Finance are added as the starting operating components.</Text>
   </ScrollView></SafeAreaView>;
 }
 
