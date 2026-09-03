@@ -176,7 +176,8 @@ export default function MenuScreen() {
   const yourGoRows: MenuRow[] = [
     { label: 'Go+ Membership', route: '/member/go-plus', icon: 'badge' },
     { label: 'Trips & Payments', route: '/member/trips', icon: 'trips', meta: 'Bookings, tickets & receipts' },
-    { label: 'Host Center', route: '/host', icon: 'guide', meta: 'Events, work, marketing, guests & operations' },
+    { label: 'Host Center', route: '/host', icon: 'guide', meta: 'Build and run individual events' },
+    { label: 'Management', route: '/management', icon: 'dashboard', meta: 'Organization-wide work, team, vendors, finances & operations' },
     { label: 'Trail Family', route: '/member/trail-family', icon: 'community' },
     { label: 'Trailmates & Crew', route: '/circles', icon: 'connections' },
     { label: 'Invite Friends', route: '/member/invites', icon: 'connections', badge: inviteCount === null ? undefined : String(inviteCount) },
