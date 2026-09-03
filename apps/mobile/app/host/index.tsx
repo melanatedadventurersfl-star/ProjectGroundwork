@@ -40,6 +40,7 @@ export default function HostCenterScreen() {
 
   const [campaigns, setCampaigns] = useState<EventSummary[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [approved, setApproved] = useState(false);
   const [error, setError] = useState('');
@@ -48,8 +49,12 @@ export default function HostCenterScreen() {
     setLoading(true);
     setError('');
     try {
-      const access = await getOutingHostAccess();
+      const [access, authResult] = await Promise.all([
+        getOutingHostAccess(),
+        supabase.auth.getUser(),
+      ]);
       setApproved(access.approved);
+      setCurrentProfileId(authResult.data.user?.id ?? null);
       if (!access.approved) {
         setCampaigns([]);
         setRecentActivity([]);
@@ -119,6 +124,10 @@ export default function HostCenterScreen() {
   const openTasks = useMemo(() => active
     .flatMap(({ campaign }) => campaign.tasks.filter((task) => task.status !== 'complete').map((task) => ({ ...task, campaign })))
     .sort((a, b) => (a.dueAt || '9999').localeCompare(b.dueAt || '9999')), [active]);
+  const myTasks = useMemo(
+    () => currentProfileId ? openTasks.filter((task) => task.assigneeProfileId === currentProfileId) : [],
+    [currentProfileId, openTasks],
+  );
   const flagged = openTasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical');
   const overdue = active.reduce((sum, item) => sum + item.operations.overdueTaskCount, 0);
   const pendingVendors = active.reduce((sum, item) => sum + item.operations.pendingVendors, 0);
@@ -126,7 +135,7 @@ export default function HostCenterScreen() {
   const revenue = active.reduce((sum, item) => sum + item.operations.revenueCents, 0);
   const expenses = active.reduce((sum, item) => sum + item.operations.expenseCents, 0);
   const scheduledMarketing = active.reduce((sum, item) => sum + item.operations.scheduledCommunications, 0);
-  const attentionCount = flagged.length + overdue;
+  const attentionCount = flagged.length + overdue + pendingVendors;
   const upcoming = active.slice(0, 3);
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={COLORS.gold} size="large" /><Text style={styles.loadingText}>Opening Host Center…</Text></SafeAreaView>;
@@ -176,9 +185,9 @@ export default function HostCenterScreen() {
           </View>
 
           <View style={styles.boardColumn}>
-            <SectionHeader title="My work" action={`View all ${openTasks.length}`} onPress={() => router.push('/host/work' as never)} />
+            <SectionHeader title="My work" action={`View all ${myTasks.length}`} onPress={() => router.push('/host/work' as never)} />
             <View style={styles.listCard}>
-              {openTasks.length === 0 ? <Text style={styles.emptyText}>No open work.</Text> : openTasks.slice(0, 3).map((task, index) => <Pressable key={task.id} style={[styles.taskRow, index > 0 && styles.divider]} onPress={() => router.push('/host/work' as never)}><View style={[styles.taskDot, { backgroundColor: task.priority === 'critical' ? COLORS.danger : COLORS.gold }]} /><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.campaign.shortTitle} · {task.dueLabel || 'No due date'}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}
+              {myTasks.length === 0 ? <Text style={styles.emptyText}>No work assigned to you.</Text> : myTasks.slice(0, 3).map((task, index) => <Pressable key={task.id} style={[styles.taskRow, index > 0 && styles.divider]} onPress={() => router.push('/host/work' as never)}><View style={[styles.taskDot, { backgroundColor: task.priority === 'critical' ? COLORS.danger : COLORS.gold }]} /><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.campaign.shortTitle} · {task.dueLabel || 'No due date'}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}
             </View>
           </View>
         </View>
