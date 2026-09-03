@@ -2,8 +2,21 @@ import type { AiPlanState, AiPlannerTurn } from './aiPlanner';
 
 type PlannerHistory = { role: 'user' | 'assistant'; text: string }[];
 
+const DEFER_ATTENDANCE = '__planner_defer_attendance__';
+const DEFER_DATE = '__planner_defer_date__';
+const DEFER_VENUE = '__planner_defer_venue__';
+const DEFER_ARRIVAL = '__planner_defer_arrival__';
+
 function unique(values: string[]) {
   return [...new Set(values)];
+}
+
+function hasMarker(plan: AiPlanState, marker: string) {
+  return (plan.requirements ?? []).includes(marker);
+}
+
+function addMarker(plan: AiPlanState, marker: string) {
+  plan.requirements = unique([...(plan.requirements ?? []), marker]);
 }
 
 function wasDeferred(history: PlannerHistory, questionText: string) {
@@ -16,10 +29,6 @@ function wasDeferred(history: PlannerHistory, questionText: string) {
     if (value === 'not sure yet' || value === 'skip for now' || value === 'i’ll pick later' || value === "i'll pick later") return true;
   }
   return false;
-}
-
-function dateWindowWasChosen(history: PlannerHistory) {
-  return history.some((item) => item.role === 'user' && /^(this weekend|next weekend)$/i.test(item.text.trim()));
 }
 
 export function buildClientPlannerFallback(message: string, current: AiPlanState, history: PlannerHistory = []): AiPlannerTurn {
@@ -69,10 +78,20 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
   if (!plan.capacity && (lower.includes('25–50') || lower.includes('25-50'))) plan.capacity = 50;
   if (!plan.capacity && lower.includes('50+')) plan.capacity = 60;
 
-  const attendanceDeferred = wasDeferred(history, 'how many people') || (lower === 'not sure yet' && history.at(-2)?.text.toLowerCase().includes('how many people'));
-  const dateDeferred = wasDeferred(history, 'date or weekend') || dateWindowWasChosen(history) || lower === 'this weekend' || lower === 'next weekend';
-  const venueDeferred = wasDeferred(history, 'venue or meeting point');
-  const arrivalDeferred = wasDeferred(history, 'arrival or check-in');
+  if (lower === 'not sure yet' && plan.title && !plan.capacity) addMarker(plan, DEFER_ATTENDANCE);
+  else if ((lower === 'not sure yet' || lower === 'this weekend' || lower === 'next weekend') && !plan.startsAt) addMarker(plan, DEFER_DATE);
+  else if (lower === 'skip for now' && !plan.venueName) addMarker(plan, DEFER_VENUE);
+  else if (lower === 'skip for now' && !plan.meetingInstructions) addMarker(plan, DEFER_ARRIVAL);
+
+  if (wasDeferred(history, 'how many people')) addMarker(plan, DEFER_ATTENDANCE);
+  if (wasDeferred(history, 'date')) addMarker(plan, DEFER_DATE);
+  if (wasDeferred(history, 'venue or meeting point')) addMarker(plan, DEFER_VENUE);
+  if (wasDeferred(history, 'arrival or check-in')) addMarker(plan, DEFER_ARRIVAL);
+
+  const attendanceDeferred = hasMarker(plan, DEFER_ATTENDANCE);
+  const dateDeferred = hasMarker(plan, DEFER_DATE);
+  const venueDeferred = hasMarker(plan, DEFER_VENUE);
+  const arrivalDeferred = hasMarker(plan, DEFER_ARRIVAL);
 
   const gaps = [
     !plan.title ? 'Event idea or title' : '',
@@ -103,8 +122,8 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
     nextMessage = 'What should guests know about arrival or check-in?';
     options = ['Recommend for me', 'I’ll add instructions', 'Skip for now'];
   } else if (!plan.startsAt) {
-    nextMessage = 'We can keep planning with the date open. Tell me what you want to work on next.';
-    options = ['Location', 'Tickets', 'Activities', 'Safety', 'Date'];
+    nextMessage = 'We can keep planning with the exact date open. What do you want to work on next?';
+    options = ['Location', 'Tickets', 'Activities', 'Safety', 'Set date'];
   } else {
     nextMessage = 'The core plan is taking shape. What do you want to work on next?';
     options = ['Tickets', 'Activities', 'Safety', 'Communications', 'Review plan'];
