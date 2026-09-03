@@ -13,7 +13,7 @@ type ToolRow = {
 };
 
 const creatorRows: ToolRow[] = [
-  { label: 'Go Melanated Management', route: '/management', icon: 'dashboard', meta: 'Events, work, calendar, opportunities, directories and team operations' },
+  { label: 'Host Center', route: '/host', icon: 'dashboard', meta: 'Events, work, calendar, opportunities, vendors, finances and team operations' },
   { label: 'Creator Console', route: '/creator', icon: 'badge', meta: 'Publishing, creator tools and operations' },
 ];
 
