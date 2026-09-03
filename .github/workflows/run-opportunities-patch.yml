@@ -1,0 +1,20 @@
+name: Run Opportunities Patch
+on: [push]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/fix/opportunities-mobile-redesign'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/opportunities-mobile-redesign
+      - run: python scripts/patch_opportunities_importer.py
+      - run: |
+          git config user.name "go-melanated-build"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/run-opportunities-patch.yml .github/workflows/patch-opportunities-importer.yml scripts/patch_opportunities_importer.py
+          git add apps/mobile/app/management/index.tsx
+          git commit -m "Wire opportunity extraction into management importer"
+          git push origin HEAD:fix/opportunities-mobile-redesign
