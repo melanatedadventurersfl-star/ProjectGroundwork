@@ -146,7 +146,8 @@ export default function HostCenterScreen() {
   const scheduledMarketing = active.reduce((sum, item) => sum + item.operations.scheduledCommunications, 0);
   const attentionCount = flagged.length + overdue + pendingVendors;
   const upcoming = active.slice(0, 3);
-  const nextEventDays = active.length > 0 ? getCampaignDaysUntil(active[0].campaign) : null;
+  const nextEvent = active[0];
+  const nextEventDays = nextEvent ? getCampaignDaysUntil(nextEvent.campaign) : null;
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={COLORS.gold} size="large" /><Text style={styles.loadingText}>Opening Host Center…</Text></SafeAreaView>;
 
