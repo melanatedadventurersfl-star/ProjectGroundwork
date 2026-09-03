@@ -1,13 +1,36 @@
 import { router } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MANAGEMENT_SECTIONS, MANAGEMENT_WORKSPACES } from '../../src/management/workspace';
+import { supabase } from '../../src/lib/supabase';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 const COLORS = { bg: '#0A0F0C', panel: '#131B16', raised: '#19231C', line: '#2D3A32', cream: '#FFF8E8', muted: '#95A29A', dim: '#6F7D75', gold: '#D7B45A' };
 
 export default function ManagementMenuScreen() {
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc('is_platform_admin').then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        console.warn('Unable to resolve Management workspace access', error.message);
+        setIsPlatformAdmin(false);
+        return;
+      }
+      setIsPlatformAdmin(data === true);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const workspaces = useMemo(
+    () => MANAGEMENT_WORKSPACES.filter((workspace) => workspace.title !== 'Admin' || isPlatformAdmin),
+    [isPlatformAdmin],
+  );
+
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topbar}>
@@ -32,7 +55,7 @@ export default function ManagementMenuScreen() {
 
       <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.workspaceCard}>
-        {MANAGEMENT_WORKSPACES.map((workspace, index) => <Pressable key={workspace.title} style={[styles.workspaceRow, index > 0 && styles.divider]} onPress={() => router.replace(workspace.route as never)}>
+        {workspaces.map((workspace, index) => <Pressable key={workspace.title} style={[styles.workspaceRow, index > 0 && styles.divider]} onPress={() => router.replace(workspace.route as never)}>
           <Text style={[styles.workspaceTitle, workspace.title === 'Management' && styles.workspaceActive]}>{workspace.title}</Text>
           {workspace.title === 'Management' ? <Text style={styles.current}>CURRENT</Text> : <Text style={styles.chevron}>›</Text>}
         </Pressable>)}
