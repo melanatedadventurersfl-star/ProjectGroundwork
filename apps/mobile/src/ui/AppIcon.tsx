@@ -55,7 +55,11 @@ export type AppIconName =
   | 'open'
   | 'share'
   | 'close'
-  | 'delete';
+  | 'delete'
+  | 'food'
+  | 'map-pin'
+  | 'upload'
+  | 'sparkles';
 
 const icons: Record<AppIconName, IoniconName> = {
   trailhead: 'home-outline',
@@ -109,6 +113,10 @@ const icons: Record<AppIconName, IoniconName> = {
   share: 'share-social-outline',
   close: 'close-circle-outline',
   delete: 'trash-outline',
+  food: 'restaurant-outline',
+  'map-pin': 'location-outline',
+  upload: 'cloud-upload-outline',
+  sparkles: 'sparkles-outline',
 };
 
 export function AppIcon({
