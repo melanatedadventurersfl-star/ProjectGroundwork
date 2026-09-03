@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { buildClientPlannerFallback } from './aiPlannerFallback';
 
 export type AiPrivacyPreferences = {
   personal_memory_enabled: boolean;
@@ -68,11 +69,22 @@ export async function getAiPrivacyPreferences(): Promise<AiPrivacyPreferences> {
 }
 
 export async function runAiPlannerTurn(input: { message: string; plan: AiPlanState; history: { role: 'user' | 'assistant'; text: string }[] }): Promise<AiPlannerTurn> {
-  const preferences = await getAiPrivacyPreferences();
-  const { data, error } = await supabase.functions.invoke('host-ai-planner', { body: { ...input, preferences } });
-  if (error) throw error;
-  if (data?.error) throw new Error(String(data.error));
-  return data as AiPlannerTurn;
+  let preferences = DEFAULT_PREFS;
+  try {
+    preferences = await getAiPrivacyPreferences();
+  } catch {
+    preferences = DEFAULT_PREFS;
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('host-ai-planner', { body: { ...input, preferences } });
+    if (error || data?.error || !data?.plan || typeof data?.message !== 'string') {
+      return buildClientPlannerFallback(input.message, input.plan);
+    }
+    return data as AiPlannerTurn;
+  } catch {
+    return buildClientPlannerFallback(input.message, input.plan);
+  }
 }
 
 export const TASK_PACKS: Record<string, { title: string; category: string; daysBefore: number; priority?: 'critical' | 'high' | 'normal' }[]> = {
