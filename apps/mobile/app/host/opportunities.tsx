@@ -97,7 +97,7 @@ export default function HostOpportunitiesScreen() {
     params.set('fromOpportunity', '1'); params.set('title', event.title); params.set('summary', event.summary || '');
     params.set('startsAt', event.startsAt || ''); params.set('endsAt', event.endsAt || ''); params.set('venueName', event.venueName || '');
     params.set('city', event.city || ''); params.set('state', event.state || 'FL'); params.set('sourceUrl', event.sourceUrl); params.set('organizer', event.organizer || ''); params.set('ticketUrl', event.ticketUrl || '');
-    router.push(`/host/create-scratch?${params.toString()}` as never);
+    router.push(`/host/create-from-opportunity?${params.toString()}` as never);
   }
 
   const pipeline = saved.filter((item) => item.stage !== 'saved' && item.stage !== 'archived');
