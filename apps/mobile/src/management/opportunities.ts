@@ -35,7 +35,8 @@ export type OpportunityImportResult = {
 };
 
 export async function previewOpportunityFromUrl(sourceUrl: string): Promise<OpportunityImportResult> {
-  const normalized = sourceUrl.trim();
+  const trimmed = sourceUrl.trim();
+  const normalized = trimmed.startsWith('http://') ? `https://${trimmed.slice('http://'.length)}` : trimmed;
   if (!normalized.startsWith('https://')) throw new Error('Paste a public HTTPS link.');
 
   const { data, error } = await supabase.functions.invoke('opportunity-import-preview', {
