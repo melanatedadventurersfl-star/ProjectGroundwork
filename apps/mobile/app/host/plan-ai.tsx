@@ -12,6 +12,7 @@ import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
 
 const VALID_COMPONENTS = new Set<EventComponentKey>(['tickets','food','vendors','marketing','communications','team','volunteers','finance','venue','schedule','activities','lodging','equipment','safety','sponsors','transportation','pages']);
 const OFF_PREFS: AiPrivacyPreferences = { personal_memory_enabled: false, event_history_learning_enabled: false, organization_memory_enabled: false, save_conversations_enabled: false, product_analytics_enabled: false, recommendation_history_enabled: false };
+const RECOVERY_OPTIONS = ['Date', 'Group size', 'Location', 'Tickets', 'Activities', 'Something else'];
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
@@ -39,11 +40,13 @@ export default function AiEventPlannerScreen() {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => { void getAiPrivacyPreferences().then(setPrivacy).catch(() => setPrivacy(OFF_PREFS)); }, []);
 
   const readiness = turn?.readiness ?? 0;
-  const canCreate = readiness >= 95 && Boolean(plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state && plan.capacity);
+  const draftReady = Boolean(plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state);
+  const publishReady = readiness >= 95 && Boolean(plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state && plan.capacity && plan.venueName && plan.meetingInstructions);
   const location = useMemo(() => [plan.venueName, plan.city, plan.state].filter(Boolean).join(', '), [plan]);
 
   async function send(text = input) {
@@ -54,6 +57,7 @@ export default function AiEventPlannerScreen() {
     setInput('');
     setLoading(true);
     setError('');
+    setRecovering(false);
     try {
       const next = await runAiPlannerTurn({ message: trimmed, plan, history: nextHistory.slice(-12) });
       const completeHistory = [...nextHistory, { role: 'assistant' as const, text: next.message }];
@@ -64,14 +68,20 @@ export default function AiEventPlannerScreen() {
       setSessionId(nextSessionId);
       setPrivacy(await getAiPrivacyPreferences().catch(() => privacy));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to continue planning.');
+      const detail = caught instanceof Error ? caught.message : '';
+      setError(detail);
+      setRecovering(true);
+      setMessages([...nextHistory, {
+        role: 'assistant',
+        text: 'I couldn’t finish that step, but your event idea is still here. Choose what you want to add next or type your answer below.',
+      }]);
     } finally {
       setLoading(false);
     }
   }
 
   async function createEvent() {
-    if (!canCreate) return;
+    if (!draftReady) return;
     setCreating(true);
     setError('');
     try {
@@ -106,6 +116,8 @@ export default function AiEventPlannerScreen() {
     }
   }
 
+  const optionList = recovering ? RECOVERY_OPTIONS : turn?.options ?? [];
+
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.topRow}>
@@ -118,7 +130,7 @@ export default function AiEventPlannerScreen() {
       <Text style={styles.subtitle}>Your plan updates as you answer. Recommendations may rely on AI and available information. Verify changing details such as access, rules, prices, permits, weather and availability before publishing.</Text>
 
       <View style={styles.progressCard}>
-        <View style={styles.progressTop}><Text style={styles.progressValue}>{readiness}% ready</Text><Text style={styles.progressMeta}>{turn?.gaps?.length ?? 0} open items</Text></View>
+        <View style={styles.progressTop}><Text style={styles.progressValue}>{readiness}% planned</Text><Text style={styles.progressMeta}>{turn?.gaps?.length ?? 0} open items</Text></View>
         <View style={styles.track}><View style={[styles.fill, { width: `${readiness}%` }]} /></View>
         {plan.title ? <Text style={styles.planTitle}>{plan.title}</Text> : null}
         {location ? <Text style={styles.planMeta}>{location}</Text> : null}
@@ -130,16 +142,16 @@ export default function AiEventPlannerScreen() {
         {turn?.recommendation ? <View style={styles.recommendation}><Text style={styles.recLabel}>RECOMMENDED</Text><Text style={styles.recTitle}>{turn.recommendation.label}</Text><Text style={styles.recReason}>{turn.recommendation.reason}</Text>{turn.recommendation.needsVerification ? <Text style={styles.verify}>Needs confirmation before publishing</Text> : null}</View> : null}
       </View>
 
-      {turn?.options?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}>{turn.options.map((option) => <Pressable key={option} style={styles.option} onPress={() => void send(option)}><Text style={styles.optionText}>{option}</Text></Pressable>)}</ScrollView> : null}
+      {optionList.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}>{optionList.map((option) => <Pressable key={option} style={styles.option} onPress={() => void send(option)}><Text style={styles.optionText}>{option}</Text></Pressable>)}</ScrollView> : null}
 
       <View style={styles.composer}><TextInput value={input} onChangeText={setInput} multiline placeholder="Answer, ask for a recommendation, or change part of the plan…" placeholderTextColor="#657169" style={styles.input} textAlignVertical="top" /><Pressable disabled={loading || input.trim().length === 0} style={[styles.send, (loading || input.trim().length === 0) && styles.disabled]} onPress={() => void send()}>{loading ? <ActivityIndicator color="#172017" /> : <Text style={styles.sendText}>Send</Text>}</Pressable></View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error && !recovering ? <Text style={styles.error}>{error}</Text> : null}
 
       <View style={styles.footerCard}>
-        <Text style={styles.footerTitle}>{canCreate ? 'Your event is ready to create.' : 'AI keeps planning until the core event reaches 95%.'}</Text>
-        <Text style={styles.footerBody}>After creation, you review the recommended work packs before tasks are added. Food, Waivers, Safety, Vendors, Communications and other needs stay under your control.</Text>
-        <Pressable disabled={!canCreate || creating} onPress={() => void createEvent()} style={[styles.create, (!canCreate || creating) && styles.disabled]}>{creating ? <ActivityIndicator color="#172017" /> : <Text style={styles.createText}>Create Event</Text>}</Pressable>
+        <Text style={styles.footerTitle}>{publishReady ? 'Your event is ready to publish after review.' : draftReady ? 'Your event is ready to save as a draft.' : 'Keep planning, or save once the core draft details are set.'}</Text>
+        <Text style={styles.footerBody}>{draftReady ? 'You can create the draft now and keep working from the event workspace. Recommended work packs stay under your control.' : 'A draft needs a title, city, start date and end date. The AI will keep helping with attendance, venue, tickets, safety, communications and other planning details.'}</Text>
+        <Pressable disabled={!draftReady || creating} onPress={() => void createEvent()} style={[styles.create, (!draftReady || creating) && styles.disabled]}>{creating ? <ActivityIndicator color="#172017" /> : <Text style={styles.createText}>{publishReady ? 'Create Event' : 'Create Draft'}</Text>}</Pressable>
       </View>
     </ScrollView>
   </SafeAreaView>;
