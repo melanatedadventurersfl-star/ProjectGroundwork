@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -171,11 +171,11 @@ export default function HostProfileEditorScreen() {
   </SafeAreaView>;
 }
 
-function Section({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function Section({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.sectionSubtitle}>{subtitle}</Text><View style={styles.sectionBody}>{children}</View></View>;
 }
 
-function Field(props: React.ComponentProps<typeof TextInput> & { label: string; required?: boolean }) {
+function Field(props: ComponentProps<typeof TextInput> & { label: string; required?: boolean }) {
   const { label, required, multiline, ...inputProps } = props;
   return <View style={styles.field}><Text style={styles.label}>{label}{required ? ' *' : ''}</Text><TextInput {...inputProps} multiline={multiline} placeholderTextColor="#66736C" style={[styles.input, multiline && styles.textarea]} /></View>;
 }
