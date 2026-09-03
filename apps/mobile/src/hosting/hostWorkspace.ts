@@ -16,11 +16,6 @@ export const HOST_WORKSPACE_ITEMS: HostWorkspaceItem[] = [
   { key: 'events', title: 'Events', subtitle: 'Build, prepare, run and close out events', route: '/host/events', icon: 'adventure', accent: '#D7B45A', group: 'EVENTS' },
   { key: 'guests', title: 'Guests & Attendees', subtitle: 'Attendance, check-in and participant readiness', route: '/host/events', icon: 'connections', accent: '#77B9A6', group: 'EVENTS' },
   { key: 'calendar', title: 'Calendar', subtitle: 'Events, deadlines, meetings and schedules', route: '/host/calendar', icon: 'calendar', accent: '#75AEE8', group: 'EVENTS' },
-  { key: 'event-vendors', title: 'Event Vendors', subtitle: 'Vendors attached to current event work', route: '/host/vendors', icon: 'storefront', accent: '#75AEE8', group: 'EVENTS' },
-  { key: 'event-comms', title: 'Event Communications', subtitle: 'Guest and vendor messages tied to events', route: '/host/communications', icon: 'message', accent: '#A990ED', group: 'EVENTS' },
-  { key: 'event-marketing', title: 'Event Marketing', subtitle: 'Campaigns and promotion for individual events', route: '/host/campaigns', icon: 'megaphone', accent: '#E7A05C', group: 'EVENTS' },
-  { key: 'event-finances', title: 'Event Finances', subtitle: 'Revenue, expenses and projected event profit', route: '/host/finances', icon: 'reports', accent: '#84C992', group: 'EVENTS' },
-  { key: 'event-inventory', title: 'Event Inventory', subtitle: 'Equipment and supplies assigned to events', route: '/host/inventory-hub', icon: 'settings', accent: '#8DA19A', group: 'EVENTS' },
 
   { key: 'work', title: 'My Work', subtitle: 'Tasks and deadlines across events and operations', route: '/host/work', icon: 'tasks', accent: '#A990ED', group: 'WORK' },
   { key: 'team', title: 'Team', subtitle: 'Staff, hosts, contractors, volunteers and roles', route: '/host/teams', icon: 'team', accent: '#77B9A6', group: 'WORK' },
