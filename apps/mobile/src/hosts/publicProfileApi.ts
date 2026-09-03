@@ -145,8 +145,12 @@ export async function saveHostProfileEditorData(input: HostProfileEditorData) {
       .slice(0, 10),
   };
 
-  const { error } = await supabase.from('host_profile_settings').upsert(settings, { onConflict: 'host_profile_id' });
-  if (error) throw error;
+  const [{ error: settingsError }, { error: profileError }] = await Promise.all([
+    supabase.from('host_profile_settings').upsert(settings, { onConflict: 'host_profile_id' }),
+    supabase.from('profiles').update({ bio: cleanText(input.bio) }).eq('id', profileId),
+  ]);
+  if (settingsError) throw settingsError;
+  if (profileError) throw profileError;
 }
 
 export async function setPublicHostFollow(hostProfileId: string, follow: boolean) {
