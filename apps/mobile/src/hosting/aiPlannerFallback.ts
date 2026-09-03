@@ -23,6 +23,7 @@ function wasDeferred(history: PlannerHistory, questionText: string) {
   for (let index = 0; index < history.length - 1; index += 1) {
     const question = history[index];
     const answer = history[index + 1];
+    if (!question || !answer) continue;
     if (question.role !== 'assistant' || answer.role !== 'user') continue;
     if (!question.text.toLowerCase().includes(questionText)) continue;
     const value = answer.text.toLowerCase().trim();
