@@ -1,5 +1,5 @@
-import { HostWorkHub } from '../../src/hosting/HostWorkHub';
+import { HostWorkHubV2 } from '../../src/hosting/HostWorkHubV2';
 
 export default function HostWorkScreen() {
-  return <HostWorkHub />;
+  return <HostWorkHubV2 />;
 }
