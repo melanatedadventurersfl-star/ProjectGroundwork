@@ -64,7 +64,7 @@ export function PersistentBottomNav() {
 
   if (pathname === '/account-status') return null;
   if (desktop && inHostCenter) return <HostSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} />;
-
+  if (!desktop && inHostCenter) return null;
   if (!desktop) return <View style={styles.bottomBar}>{primaryItems.map((item) => <NavButton key={item.label} item={item} pathname={pathname} compact />)}</View>;
 
   return <View style={styles.sidebar}>
@@ -78,22 +78,13 @@ export function PersistentBottomNav() {
 }
 
 const styles = StyleSheet.create({
-  sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 272, zIndex: 50, backgroundColor: '#111A15', borderRightWidth: 1, borderRightColor: '#26332B', paddingHorizontal: 16, paddingTop: 22, paddingBottom: 14 },
-  brandBlock: { paddingHorizontal: 10, paddingBottom: 22 },
-  hostBrandBlock: { paddingHorizontal: 10, paddingBottom: 14 },
-  brandGo: { color: '#D7B45A', fontSize: 28, lineHeight: 30, fontWeight: '900', letterSpacing: 1.5 },
-  brandMelanated: { color: '#F1E8D7', fontSize: 14, fontWeight: '900', letterSpacing: 2.1 },
-  hostEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
-  hostTitle: { color: '#F1E8D7', fontSize: 25, fontWeight: '900', marginTop: 2 },
-  brandTag: { marginTop: 6, color: '#9DA99F', fontSize: 10.5, lineHeight: 15 },
-  hostScroll: { flex: 1 }, hostScrollContent: { paddingBottom: 18 },
-  navGroup: { gap: 3 },
-  sideItem: { minHeight: 40, borderRadius: 9, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sideItemActive: { backgroundColor: '#1D2A22' },
-  sideLabel: { color: '#E7DFCF', fontSize: 12.5, fontWeight: '700', flexShrink: 1 }, activeLabel: { color: '#D7B45A' }, pressed: { opacity: 0.82 },
-  divider: { height: 1, backgroundColor: '#26332B', marginVertical: 14 },
-  sectionLabel: { color: '#78857C', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, paddingHorizontal: 10, marginTop: 15, marginBottom: 5 },
+  sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 248, zIndex: 50, backgroundColor: '#111A15', borderRightWidth: 1, borderRightColor: '#26332B', paddingHorizontal: 14, paddingTop: 22, paddingBottom: 14 },
+  brandBlock: { paddingHorizontal: 10, paddingBottom: 22 }, hostBrandBlock: { paddingHorizontal: 10, paddingBottom: 14 },
+  brandGo: { color: '#D7B45A', fontSize: 28, lineHeight: 30, fontWeight: '900', letterSpacing: 1.5 }, brandMelanated: { color: '#F1E8D7', fontSize: 14, fontWeight: '900', letterSpacing: 2.1 },
+  hostEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, hostTitle: { color: '#F1E8D7', fontSize: 25, fontWeight: '900', marginTop: 2 }, brandTag: { marginTop: 6, color: '#9DA99F', fontSize: 10.5, lineHeight: 15 },
+  hostScroll: { flex: 1 }, hostScrollContent: { paddingBottom: 18 }, navGroup: { gap: 3 },
+  sideItem: { minHeight: 40, borderRadius: 9, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }, sideItemActive: { backgroundColor: '#1D2A22' }, sideLabel: { color: '#E7DFCF', fontSize: 12.5, fontWeight: '700', flexShrink: 1 }, activeLabel: { color: '#D7B45A' }, pressed: { opacity: 0.82 },
+  divider: { height: 1, backgroundColor: '#26332B', marginVertical: 14 }, sectionLabel: { color: '#78857C', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, paddingHorizontal: 10, marginTop: 15, marginBottom: 5 },
   desktopFooter: { marginTop: 'auto', paddingHorizontal: 10 }, desktopFooterText: { color: '#66736B', fontSize: 10, fontWeight: '700' },
-  bottomBar: { minHeight: 64, flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#121B16', borderTopWidth: 1, borderTopColor: '#26332B', paddingHorizontal: 6, paddingVertical: 6 },
-  compactItem: { flex: 1, minHeight: 50, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 3 }, compactLabel: { color: '#E7DFCF', fontSize: 10, fontWeight: '700' },
+  bottomBar: { minHeight: 64, flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#121B16', borderTopWidth: 1, borderTopColor: '#26332B', paddingHorizontal: 6, paddingVertical: 6 }, compactItem: { flex: 1, minHeight: 50, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 3 }, compactLabel: { color: '#E7DFCF', fontSize: 10, fontWeight: '700' },
 });
