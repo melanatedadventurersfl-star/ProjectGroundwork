@@ -85,6 +85,7 @@ export type SavedOpportunity = {
   vendor_fee_text: string;
   application_deadline: string | null;
   stage: OpportunityStage;
+  tags: string[];
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -120,7 +121,7 @@ export async function listHostOpportunities(): Promise<SavedOpportunity[]> {
   return (data ?? []) as SavedOpportunity[];
 }
 
-export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, sourceId: string, sourceLabel: string): Promise<SavedOpportunity> {
+export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, sourceId: string, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
   const ownerId = await requireProfileId();
   const payload = {
     owner_profile_id: ownerId,
@@ -142,6 +143,7 @@ export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, so
     image_url: event.imageUrl || '',
     ticket_url: event.ticketUrl || '',
     stage: 'saved' as OpportunityStage,
+    tags,
     metadata: {},
     updated_at: new Date().toISOString(),
   };
@@ -150,7 +152,7 @@ export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, so
   return data as SavedOpportunity;
 }
 
-export async function saveImportedOpportunity(preview: OpportunityPreview, sourceLabel: string): Promise<SavedOpportunity> {
+export async function saveImportedOpportunity(preview: OpportunityPreview, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
   const ownerId = await requireProfileId();
   const sourceId = preview.sourceUrl.includes('eventbrite.') ? 'eventbrite' : 'external';
   const payload = {
@@ -172,6 +174,7 @@ export async function saveImportedOpportunity(preview: OpportunityPreview, sourc
     vendor_fee_text: preview.vendorFeeText || '',
     application_deadline: preview.applicationDeadline || null,
     stage: 'saved' as OpportunityStage,
+    tags,
     metadata: { contactName: preview.contactName, contactEmail: preview.contactEmail, contactPhone: preview.contactPhone, boothDetails: preview.boothDetails, requirements: preview.requirements, ticketDetails: preview.ticketDetails },
     updated_at: new Date().toISOString(),
   };
@@ -184,4 +187,12 @@ export async function setOpportunityStage(id: string, stage: OpportunityStage) {
   const ownerId = await requireProfileId();
   const { error } = await supabase.from('host_opportunities').update({ stage, updated_at: new Date().toISOString() }).eq('id', id).eq('owner_profile_id', ownerId);
   if (error) throw error;
+}
+
+export async function updateOpportunityTags(id: string, tags: string[]) {
+  const ownerId = await requireProfileId();
+  const normalized = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean))).slice(0, 20);
+  const { data, error } = await supabase.from('host_opportunities').update({ tags: normalized, updated_at: new Date().toISOString() }).eq('id', id).eq('owner_profile_id', ownerId).select('*').single();
+  if (error) throw error;
+  return data as SavedOpportunity;
 }
