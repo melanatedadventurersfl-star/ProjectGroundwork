@@ -1,340 +1,104 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getOutingHostAccess, listMyHostOutings, type HostOuting, type OutingHostRecord } from '../../src/hosting/api';
-import {
-  getCampaignDaysUntil,
-  getCampaignReadiness,
-  getCurrentCampaignProfileId,
-  listHostCampaigns,
-  type HostCampaign,
-} from '../../src/hosting/campaigns';
-import { getAssignedAdventures } from '../../src/operations/api';
+import { getOutingHostAccess } from '../../src/hosting/api';
+import { getCampaignDaysUntil, getCampaignReadiness, listHostCampaigns, type HostCampaign } from '../../src/hosting/campaigns';
+import { getEventOperationsSummary } from '../../src/hosting/eventBuilder';
+import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
-type EventFilter = 'active' | 'drafts' | 'upcoming' | 'past';
-type EventSource = 'campaign' | 'outing' | 'assignment';
+const COLORS = { bg: '#0A0F0C', panel: '#131B16', raised: '#19231C', line: '#2D3A32', cream: '#FFF8E8', muted: '#95A29A', dim: '#6F7D75', gold: '#D7B45A', goldSoft: '#E7C464', green: '#84C992', danger: '#EA806E', purple: '#A990ED', blue: '#75AEE8', orange: '#E7A05C' };
 
-type HostEventRow = {
-  id: string;
-  title: string;
-  location: string;
-  startsAt: string;
-  endsAt: string;
-  status: string;
-  source: EventSource;
-  route: string;
-  readiness?: number;
-  days?: number;
-  attention?: number;
-};
+type EventSummary = { campaign: HostCampaign; operations: Awaited<ReturnType<typeof getEventOperationsSummary>> };
+type Tool = { title: string; subtitle: string; route: string; icon: AppIconName; accent: string };
 
-export default function HostOperationsScreen() {
+const tools: Tool[] = [
+  { title: 'Events', subtitle: 'Build, run and close out events', route: '/host/events', icon: 'adventure', accent: '#D7B45A' },
+  { title: 'Work', subtitle: 'Tasks, assignments and deadlines', route: '/host/work', icon: 'tasks', accent: '#A990ED' },
+  { title: 'Calendar', subtitle: 'Events, deadlines and schedules', route: '/host/calendar', icon: 'calendar', accent: '#75AEE8' },
+  { title: 'Teams', subtitle: 'People, roles and event crews', route: '/host/teams', icon: 'team', accent: '#77B9A6' },
+  { title: 'Vendors', subtitle: 'Directory, documents and event vendors', route: '/host/vendors', icon: 'directory', accent: '#75AEE8' },
+  { title: 'Opportunities', subtitle: 'Vending, events and partnerships', route: '/host/opportunities', icon: 'briefcase', accent: '#E7A05C' },
+  { title: 'Directories', subtitle: 'Venues, vendors and resources', route: '/host/directories', icon: 'directory', accent: '#D7B45A' },
+  { title: 'Finances', subtitle: 'Revenue, expenses and profit', route: '/host/finances', icon: 'reports', accent: '#84C992' },
+  { title: 'Marketing', subtitle: 'Campaigns, content and promotion', route: '/host/campaigns', icon: 'megaphone', accent: '#E7A05C' },
+  { title: 'Communications', subtitle: 'Templates, schedules and audiences', route: '/host/communications', icon: 'notifications', accent: '#A990ED' },
+  { title: 'Inventory', subtitle: 'Equipment, supplies and rentals', route: '/host/inventory-hub', icon: 'settings', accent: '#8DA19A' },
+  { title: 'Templates', subtitle: 'Reusable event building blocks', route: '/host/library', icon: 'library', accent: '#D7B45A' },
+];
+
+export default function HostCenterScreen() {
+  const { width } = useWindowDimensions();
+  const roomy = width >= 760;
+  const [campaigns, setCampaigns] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [accessLoadFailed, setAccessLoadFailed] = useState(false);
-  const [approved, setApproved] = useState(false);
-  const [paidEnabled, setPaidEnabled] = useState(false);
-  const [record, setRecord] = useState<OutingHostRecord | null>(null);
-  const [outings, setOutings] = useState<HostOuting[]>([]);
-  const [campaigns, setCampaigns] = useState<HostCampaign[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
-  const [loadedAt, setLoadedAt] = useState<string | null>(null);
-  const [eventFilter, setEventFilter] = useState<EventFilter>('active');
   const [error, setError] = useState('');
+  const [approved, setApproved] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setAccessLoadFailed(false);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const [access, assigned, hostCampaigns, profileId] = await Promise.all([
-        getOutingHostAccess(),
-        getAssignedAdventures().catch(() => []),
-        listHostCampaigns().catch(() => []),
-        getCurrentCampaignProfileId().catch(() => null),
-      ]);
+      const access = await getOutingHostAccess();
       setApproved(access.approved);
-      setPaidEnabled(access.paidEnabled);
-      setRecord(access.record);
-      setAssignments(assigned);
-      setCampaigns(hostCampaigns);
-      setCurrentProfileId(profileId);
-      setOutings(access.approved ? await listMyHostOutings() : []);
-      setLoadedAt(new Date().toISOString());
-    } catch (caught) {
-      setAccessLoadFailed(true);
-      setApproved(false);
-      setPaidEnabled(false);
-      setRecord(null);
-      setOutings([]);
-      setCampaigns([]);
-      setAssignments([]);
-      setError(caught instanceof Error ? caught.message : 'Unable to load host access.');
-    } finally {
-      setLoading(false);
-    }
+      if (!access.approved) { setCampaigns([]); return; }
+      const rows = await listHostCampaigns();
+      const hydrated = await Promise.all(rows.map(async (campaign) => ({ campaign, operations: await getEventOperationsSummary(campaign.id).catch(() => ({ progress: getCampaignReadiness(campaign), taskCount: campaign.tasks.length, completeTaskCount: campaign.tasks.filter((task) => task.status === 'complete').length, overdueTaskCount: 0, revenueCents: 0, expenseCents: 0, profitCents: 0, confirmedVendors: 0, pendingVendors: 0, scheduledCommunications: 0, draftCommunications: 0 })) })));
+      setCampaigns(hydrated);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load Host Center.'); }
+    finally { setLoading(false); }
   }, []);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  const activeTasks = campaigns.flatMap((campaign) => campaign.tasks.filter((task) => task.status !== 'complete'));
-  const attentionTasks = activeTasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical');
-  const myTasks = activeTasks.filter((task) => Boolean(currentProfileId) && task.assigneeProfileId === currentProfileId);
-  const blockedTasks = activeTasks.filter((task) => task.status === 'blocked');
-  const unassignedTasks = activeTasks.filter((task) => !task.assigneeProfileId);
+  const active = campaigns.filter(({ campaign }) => campaign.status !== 'complete');
+  const totalRevenue = active.reduce((sum, item) => sum + item.operations.revenueCents, 0);
+  const totalExpenses = active.reduce((sum, item) => sum + item.operations.expenseCents, 0);
+  const overdue = active.reduce((sum, item) => sum + item.operations.overdueTaskCount, 0);
+  const attention = active.reduce((sum, item) => sum + item.campaign.tasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical').length, 0);
+  const readiness = active.length ? Math.round(active.reduce((sum, item) => sum + item.operations.progress, 0) / active.length) : 0;
+  const upcomingTasks = useMemo(() => active.flatMap(({ campaign }) => campaign.tasks.filter((task) => task.status !== 'complete').map((task) => ({ ...task, campaign }))).sort((a, b) => (a.dueAt || '9999').localeCompare(b.dueAt || '9999')).slice(0, 5), [active]);
 
-  const eventRows = useMemo(() => {
-    const rows: HostEventRow[] = [];
-    const campaignIds = new Set(campaigns.map((campaign) => campaign.adventureId));
-    const outingById = new Map(outings.map((outing) => [outing.id, outing]));
+  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={COLORS.gold} size="large" /><Text style={styles.loadingText}>Opening Host Center…</Text></SafeAreaView>;
 
-    for (const campaign of campaigns) {
-      const outing = outingById.get(campaign.adventureId);
-      rows.push({
-        id: campaign.adventureId,
-        title: campaign.shortTitle,
-        location: campaign.location,
-        startsAt: campaign.startsAt,
-        endsAt: campaign.endsAt,
-        status: outing?.status ?? campaign.status,
-        source: 'campaign',
-        route: `/host/campaigns/${campaign.slug}`,
-        readiness: getCampaignReadiness(campaign),
-        days: getCampaignDaysUntil(campaign),
-        attention: campaign.tasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical').length,
-      });
-    }
+  return <SafeAreaView style={styles.safe}>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.topbar}><View><Text style={styles.eyebrow}>GO MELANATED</Text><Text style={styles.title}>Host Center</Text></View><Pressable style={styles.buildButton} onPress={() => router.push('/host/create' as never)}><AppIcon name="add" color="#172017" size={18} /><Text style={styles.buildButtonText}>Build an Event</Text></Pressable></View>
 
-    for (const outing of outings) {
-      if (campaignIds.has(outing.id)) continue;
-      rows.push({
-        id: outing.id,
-        title: outing.title,
-        location: `${outing.city}, ${outing.state}`,
-        startsAt: outing.starts_at,
-        endsAt: outing.ends_at,
-        status: outing.status,
-        source: 'outing',
-        route: `/host/manage/${outing.id}`,
-      });
-    }
+      {!approved ? <View style={styles.accessCard}><Text style={styles.accessTitle}>Host access required</Text><Text style={styles.accessBody}>Complete the Host Pathway before event and operations tools unlock.</Text><Pressable style={styles.primary} onPress={() => router.push('/host/apply' as never)}><Text style={styles.primaryText}>Open Host Pathway</Text></Pressable></View> : null}
+      {error ? <View style={styles.errorCard}><Text style={styles.error}>{error}</Text><Pressable onPress={() => void load()}><Text style={styles.retry}>Try again</Text></Pressable></View> : null}
 
-    const existingIds = new Set(rows.map((row) => row.id));
-    for (const item of assignments) {
-      if (existingIds.has(item.adventure_id)) continue;
-      const adventure = item.adventures;
-      rows.push({
-        id: item.adventure_id,
-        title: adventure?.title ?? 'Adventure',
-        location: [adventure?.city, adventure?.state].filter(Boolean).join(', '),
-        startsAt: adventure?.starts_at ?? '',
-        endsAt: adventure?.ends_at ?? '',
-        status: 'supporting',
-        source: 'assignment',
-        route: `/host/${item.adventure_id}`,
-      });
-    }
+      {approved ? <>
+        <ImageBackground source={{ uri: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=1400&q=80' }} imageStyle={styles.heroImage} style={styles.hero}>
+          <View style={styles.heroOverlay} />
+          <View style={styles.heroContent}><Text style={styles.heroKicker}>OPERATIONS AT A GLANCE</Text><Text style={styles.heroTitle}>{active.length} active event{active.length === 1 ? '' : 's'}</Text><Text style={styles.heroCopy}>{attention + overdue > 0 ? `${attention + overdue} items need attention across your current work.` : 'Your active event work has no flagged issues.'}</Text><View style={styles.heroStats}><HeroStat value={`${readiness}%`} label="Average ready" /><HeroStat value={`$${(totalRevenue / 100).toLocaleString()}`} label="Revenue" /><HeroStat value={`$${((totalRevenue - totalExpenses) / 100).toLocaleString()}`} label="Projected profit" /></View></View>
+        </ImageBackground>
 
-    return rows.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  }, [assignments, campaigns, outings]);
+        <Text style={styles.sectionTitle}>Needs attention</Text>
+        <View style={[styles.metricGrid, roomy && styles.metricGridRoomy]}>
+          <MetricCard value={String(overdue)} label="Overdue tasks" accent={COLORS.danger} onPress={() => router.push('/host/work' as never)} />
+          <MetricCard value={String(attention)} label="Flagged items" accent={COLORS.orange} onPress={() => router.push('/host/work' as never)} />
+          <MetricCard value={`$${(totalExpenses / 100).toLocaleString()}`} label="Event expenses" accent={COLORS.green} onPress={() => router.push('/host/finances' as never)} />
+          <MetricCard value={String(active.reduce((sum, item) => sum + item.operations.pendingVendors, 0))} label="Vendors pending" accent={COLORS.blue} onPress={() => router.push('/host/vendors' as never)} />
+        </View>
 
-  const filteredEvents = useMemo(() => {
-    const now = loadedAt ? new Date(loadedAt).getTime() : 0;
-    return eventRows.filter((event) => {
-      const start = event.startsAt ? new Date(event.startsAt).getTime() : 0;
-      const end = event.endsAt ? new Date(event.endsAt).getTime() : 0;
-      if (eventFilter === 'drafts') return event.status === 'draft' || event.status === 'scheduled' || event.status === 'planning';
-      if (eventFilter === 'past') return event.status === 'completed' || event.status === 'cancelled' || (end > 0 && end < now);
-      if (eventFilter === 'upcoming') return start > now && !['draft', 'scheduled', 'planning', 'completed', 'cancelled'].includes(event.status);
-      return !['completed', 'cancelled'].includes(event.status) && (end === 0 || end >= now) && !['draft', 'scheduled'].includes(event.status);
-    });
-  }, [eventFilter, eventRows, loadedAt]);
-
-  const firstCampaign = campaigns[0];
-
-  const statusCopy: Record<string, [string, string]> = {
-    pending: ['Application in review', 'Your Host Pathway is complete. We’ll review your application before hosting tools unlock.'],
-    needs_info: ['We need a little more information', 'Your application is still open. Go Melanated needs additional information before making a decision.'],
-    paused: ['Hosting is paused', 'Your host access is temporarily paused while it is reviewed.'],
-    declined: ['Application not approved', 'Your current application was not approved. Contact support if you need clarification or believe it should be reconsidered.'],
-    revoked: ['Hosting access revoked', 'Your host access is no longer active. Contact support if you need clarification.'],
-  };
-
-  return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.eyebrow}>HOST CENTER</Text>
-          <Text style={styles.title}>Host Center</Text>
-          <Text style={styles.subtitle}>Plan the adventure, manage the work, and run the event from one place.</Text>
-
-          {loading ? <View style={styles.loadingCard}><ActivityIndicator color="#D7B45A" /><Text style={styles.loadingText}>Loading Host Center…</Text></View> : null}
-
-          {!loading && accessLoadFailed ? (
-            <View style={styles.errorCard}>
-              <Text style={styles.cardEyebrow}>HOST TOOLS TEMPORARILY UNAVAILABLE</Text>
-              <Text style={styles.cardTitle}>We couldn’t load Host Center.</Text>
-              {error ? <Text style={styles.errorDetail}>{error}</Text> : null}
-              <Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Try again</Text></Pressable>
-            </View>
-          ) : null}
-
-          {!loading && !accessLoadFailed && !approved && !record ? (
-            <View style={styles.applicationCard}>
-              <Text style={styles.cardEyebrow}>BECOME A HOST</Text>
-              <Text style={styles.cardTitle}>Lead the next adventure.</Text>
-              <Text style={styles.body}>Complete the Host Pathway to create and manage community events.</Text>
-              <Pressable style={styles.primary} onPress={() => router.push('/host/apply' as never)}><Text style={styles.primaryText}>Start Host Pathway</Text></Pressable>
-            </View>
-          ) : null}
-
-          {!loading && !accessLoadFailed && !approved && record ? (() => {
-            const copy = statusCopy[record.status] ?? ['Application status', 'Your hosting application is being reviewed.'];
-            return <View style={styles.applicationCard}><Text style={styles.cardEyebrow}>{record.status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.cardTitle}>{copy[0]}</Text><Text style={styles.body}>{copy[1]}</Text></View>;
-          })() : null}
-
-          {!loading && !accessLoadFailed && approved ? <>
-            <View style={styles.hostLine}>
-              <View style={styles.hostDot} />
-              <Text style={styles.hostLineText}>{record?.host_type === 'official' ? 'Go Melanated Official' : 'Community Host'}</Text>
-              <Text style={styles.hostLineSep}>·</Text>
-              <Text style={paidEnabled ? styles.hostPaid : styles.hostMuted}>{paidEnabled ? 'Paid enabled' : 'Free outings'}</Text>
-            </View>
-
-            <SectionHeader title="Needs Attention" action={attentionTasks.length ? `${attentionTasks.length} items` : undefined} />
-            <View style={styles.attentionCard}>
-              {attentionTasks.length === 0 ? <Text style={styles.empty}>Nothing needs immediate attention.</Text> : attentionTasks.slice(0, 2).map((task) => (
-                <View key={task.id} style={styles.attentionRow}>
-                  <View style={[styles.attentionDot, task.status === 'blocked' && styles.attentionDotDanger]} />
-                  <View style={{ flex: 1 }}><Text style={styles.attentionTitle}>{task.title}</Text><Text style={styles.attentionMeta}>{task.status === 'blocked' ? 'Blocked' : task.status === 'waiting' ? 'Waiting' : 'Critical'} · {task.dueLabel}</Text></View>
-                </View>
-              ))}
-            </View>
-
-            <SectionHeader title="Your Events" />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-              {(['active', 'drafts', 'upcoming', 'past'] as EventFilter[]).map((filter) => (
-                <Pressable key={filter} style={[styles.filterChip, eventFilter === filter && styles.filterChipActive]} onPress={() => setEventFilter(filter)}>
-                  <Text style={[styles.filterText, eventFilter === filter && styles.filterTextActive]}>{filter.charAt(0).toUpperCase() + filter.slice(1)}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            {filteredEvents.length === 0 ? <Text style={styles.empty}>No events in this view.</Text> : filteredEvents.map((event) => <EventCard key={`${event.source}-${event.id}`} event={event} />)}
-
-            <SectionHeader title="Your Work" />
-            <View style={styles.workGrid}>
-              <WorkMetric label="Mine" value={myTasks.length} />
-              <WorkMetric label="Blocked" value={blockedTasks.length} />
-              <WorkMetric label="Unassigned" value={unassignedTasks.length} />
-            </View>
-            {firstCampaign ? <Pressable style={styles.workAction} onPress={() => router.push(`/host/campaigns/${firstCampaign.slug}` as never)}><Text style={styles.workActionText}>Open all event work →</Text></Pressable> : null}
-
-            <SectionHeader title="Reusable Library" />
-            <Pressable style={styles.libraryCard} onPress={() => router.push('/host/library' as never)}>
-              <View style={styles.libraryIcon}><Text style={styles.libraryIconText}>▦</Text></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.libraryTitle}>Templates, plans and reusable pieces</Text>
-                <Text style={styles.libraryCopy}>Meals, gear, guest messages, policies, vendors, marketing and ticket structures.</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
-          </> : null}
+        <View style={styles.sectionRow}><View><Text style={styles.sectionTitle}>Active events</Text><Text style={styles.sectionMeta}>Open an event to see readiness, money, people and what happens next.</Text></View><Pressable onPress={() => router.push('/host/events' as never)}><Text style={styles.sectionAction}>View all</Text></Pressable></View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventRow}>
+          {active.length === 0 ? <View style={styles.emptyEvent}><Text style={styles.emptyEventTitle}>No active events</Text><Text style={styles.emptyEventBody}>Start with a blank event or an Event Starter.</Text></View> : active.map(({ campaign, operations }) => <EventCard key={campaign.id} campaign={campaign} operations={operations} />)}
         </ScrollView>
 
-        {!loading && !accessLoadFailed && approved ? (
-          <Pressable accessibilityLabel="Create adventure" style={styles.fab} onPress={() => router.push('/host/create' as never)}>
-            <Text style={styles.fabPlus}>＋</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </SafeAreaView>
-  );
+        <View style={styles.sectionRow}><View><Text style={styles.sectionTitle}>Your work</Text><Text style={styles.sectionMeta}>The next open tasks across every event.</Text></View><Pressable onPress={() => router.push('/host/work' as never)}><Text style={styles.sectionAction}>Open work</Text></Pressable></View>
+        <View style={styles.listCard}>{upcomingTasks.length === 0 ? <Text style={styles.emptyText}>No open event work.</Text> : upcomingTasks.map((task, index) => <Pressable key={task.id} style={[styles.taskRow, index > 0 && styles.divider]} onPress={() => router.push(`/host/campaigns/${task.campaign.slug}/tasks/${task.id}` as never)}><View style={[styles.taskDot, { backgroundColor: task.priority === 'critical' ? COLORS.danger : task.status === 'blocked' ? COLORS.orange : COLORS.gold }]} /><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.campaign.shortTitle} · {task.dueLabel}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}</View>
+
+        <Text style={styles.sectionTitle}>Host tools</Text><Text style={styles.sectionMeta}>Everything that used to be split between Host Center and Management now lives here.</Text>
+        <View style={[styles.toolGrid, roomy && styles.toolGridRoomy]}>{tools.map((tool) => <Pressable key={tool.title} style={styles.toolCard} onPress={() => router.push(tool.route as never)}><View style={[styles.toolIcon, { backgroundColor: `${tool.accent}22` }]}><AppIcon name={tool.icon} color={tool.accent} size={20} /></View><View style={{ flex: 1 }}><Text style={styles.toolTitle}>{tool.title}</Text><Text style={styles.toolSubtitle}>{tool.subtitle}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}</View>
+      </> : null}
+    </ScrollView>
+  </SafeAreaView>;
 }
 
-function SectionHeader({ title, action }: { title: string; action?: string }) {
-  return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{action ? <Text style={styles.sectionAction}>{action}</Text> : null}</View>;
-}
+function HeroStat({ value, label }: { value: string; label: string }) { return <View style={styles.heroStat}><Text style={styles.heroStatValue}>{value}</Text><Text style={styles.heroStatLabel}>{label}</Text></View>; }
+function MetricCard({ value, label, accent, onPress }: { value: string; label: string; accent: string; onPress: () => void }) { return <Pressable style={styles.metricCard} onPress={onPress}><View style={[styles.metricAccent, { backgroundColor: accent }]} /><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></Pressable>; }
+function EventCard({ campaign, operations }: { campaign: HostCampaign; operations: Awaited<ReturnType<typeof getEventOperationsSummary>> }) { const days = getCampaignDaysUntil(campaign); return <Pressable style={styles.eventCard} onPress={() => router.push(`/host/campaigns/${campaign.slug}` as never)}><View style={[styles.eventVisual, { backgroundColor: campaign.accent || '#26352B' }]}><Text style={styles.eventVisualMark}>GM</Text><View style={styles.eventStatus}><Text style={styles.eventStatusText}>{campaign.status.toUpperCase()}</Text></View></View><View style={styles.eventBody}><Text style={styles.eventTitle}>{campaign.shortTitle}</Text><Text style={styles.eventMeta}>{campaign.location}</Text><View style={styles.progressRow}><Text style={styles.progressValue}>{operations.progress}% ready</Text><Text style={styles.progressMeta}>{days >= 0 ? `${days} days` : 'In progress'}</Text></View><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.max(0, Math.min(operations.progress, 100))}%` }]} /></View><View style={styles.eventNumbers}><Text style={styles.eventNumber}>{operations.overdueTaskCount} overdue</Text><Text style={styles.eventNumber}>${(operations.profitCents / 100).toLocaleString()} profit</Text></View></View></Pressable>; }
 
-function EventCard({ event }: { event: HostEventRow }) {
-  const publishedLabel = event.status === 'published' || event.status === 'sold_out' ? 'PUBLISHED' : event.status.replace('_', ' ').toUpperCase();
-  return (
-    <Pressable style={styles.eventCard} onPress={() => router.push(event.route as never)}>
-      <View style={styles.eventTop}><Text style={styles.eventStatus}>{publishedLabel}</Text><Text style={styles.chevron}>›</Text></View>
-      <Text style={styles.eventTitle}>{event.title}</Text>
-      <Text style={styles.eventMeta}>{event.location}</Text>
-      {typeof event.readiness === 'number' ? <>
-        <Text style={styles.eventMeta}>{event.days} days to go · {event.readiness}% ready{event.attention ? ` · ${event.attention} need attention` : ''}</Text>
-        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${event.readiness}%` }]} /></View>
-      </> : <Text style={styles.eventMeta}>{event.startsAt ? new Date(event.startsAt).toLocaleDateString() : 'Date pending'}</Text>}
-      <Text style={styles.manageText}>Manage Event →</Text>
-    </Pressable>
-  );
-}
-
-function WorkMetric({ label, value }: { label: string; value: number }) {
-  return <View style={styles.workMetric}><Text style={styles.workValue}>{value}</Text><Text style={styles.workLabel}>{label}</Text></View>;
-}
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0B100D' },
-  screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 118 },
-  eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
-  title: { color: '#FFF8E8', fontSize: 36, lineHeight: 42, fontWeight: '900', marginTop: 4 },
-  subtitle: { color: '#A8B1AB', fontSize: 15, lineHeight: 22, marginTop: 5, marginBottom: 18 },
-  loadingCard: { borderRadius: 16, borderWidth: 1, borderColor: '#2D3731', backgroundColor: '#151B17', padding: 18, alignItems: 'center', gap: 10 },
-  loadingText: { color: '#A8B1AB', fontSize: 12, fontWeight: '800' },
-  applicationCard: { borderRadius: 20, borderWidth: 1, borderColor: '#314438', backgroundColor: '#121C16', padding: 18 },
-  errorCard: { borderRadius: 20, borderWidth: 1, borderColor: '#684139', backgroundColor: '#211715', padding: 18 },
-  cardEyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  cardTitle: { color: '#FFF8E8', fontSize: 23, lineHeight: 29, fontWeight: '900', marginTop: 7 },
-  body: { color: '#AAB4AD', fontSize: 14, lineHeight: 21, marginTop: 8 },
-  errorDetail: { color: '#BB8F87', fontSize: 10.5, lineHeight: 16, marginTop: 11 },
-  primary: { backgroundColor: '#D7B45A', borderRadius: 14, minHeight: 50, alignItems: 'center', justifyContent: 'center', marginTop: 18 },
-  primaryText: { color: '#172017', fontWeight: '900', fontSize: 15 },
-  hostLine: { minHeight: 42, flexDirection: 'row', alignItems: 'center', borderRadius: 14, backgroundColor: '#121814', borderWidth: 1, borderColor: '#28342D', paddingHorizontal: 13, gap: 7 },
-  hostDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#9CCB74' },
-  hostLineText: { color: '#FFF8E8', fontSize: 11, fontWeight: '900' },
-  hostLineSep: { color: '#657169' },
-  hostPaid: { color: '#D7B45A', fontSize: 10, fontWeight: '900' },
-  hostMuted: { color: '#89948D', fontSize: 10, fontWeight: '900' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, marginBottom: 9 },
-  sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
-  sectionAction: { color: '#A8B1AB', fontSize: 10, fontWeight: '900' },
-  attentionCard: { borderRadius: 16, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#303A34', overflow: 'hidden' },
-  attentionRow: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#29322D' },
-  attentionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D7B45A' },
-  attentionDotDanger: { backgroundColor: '#FF806D' },
-  attentionTitle: { color: '#FFF8E8', fontSize: 13, fontWeight: '900' },
-  attentionMeta: { color: '#89948D', fontSize: 10, marginTop: 3 },
-  filterRow: { gap: 7, paddingBottom: 10 },
-  filterChip: { borderRadius: 18, borderWidth: 1, borderColor: '#38423C', backgroundColor: '#111612', paddingHorizontal: 12, paddingVertical: 8 },
-  filterChipActive: { borderColor: '#D7B45A', backgroundColor: '#352D18' },
-  filterText: { color: '#8D9891', fontSize: 10, fontWeight: '900' },
-  filterTextActive: { color: '#E7C464' },
-  eventCard: { borderRadius: 18, padding: 16, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#354039', marginBottom: 10 },
-  eventTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eventStatus: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .9 },
-  eventTitle: { color: '#FFF8E8', fontSize: 20, lineHeight: 25, fontWeight: '900', marginTop: 5 },
-  eventMeta: { color: '#8E9891', fontSize: 11, lineHeight: 17, marginTop: 4 },
-  progressTrack: { height: 6, borderRadius: 5, backgroundColor: '#26302A', overflow: 'hidden', marginTop: 11 },
-  progressFill: { height: '100%', borderRadius: 5, backgroundColor: '#D7B45A' },
-  manageText: { color: '#E7C464', fontSize: 11, fontWeight: '900', marginTop: 13 },
-  workGrid: { flexDirection: 'row', gap: 8 },
-  workMetric: { flex: 1, borderRadius: 14, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#303A34', padding: 13 },
-  workValue: { color: '#FFF8E8', fontSize: 22, fontWeight: '900' },
-  workLabel: { color: '#89948D', fontSize: 10, fontWeight: '800', marginTop: 3 },
-  workAction: { alignSelf: 'flex-start', marginTop: 11 },
-  workActionText: { color: '#D7B45A', fontSize: 11, fontWeight: '900' },
-  libraryCard: { minHeight: 88, borderRadius: 16, backgroundColor: '#151B17', borderWidth: 1, borderColor: '#354039', flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
-  libraryIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#29351F', alignItems: 'center', justifyContent: 'center' },
-  libraryIconText: { color: '#C9E678', fontSize: 21, fontWeight: '900' },
-  libraryTitle: { color: '#FFF8E8', fontSize: 14, lineHeight: 19, fontWeight: '900' },
-  libraryCopy: { color: '#89948D', fontSize: 10.5, lineHeight: 15, marginTop: 4 },
-  chevron: { color: '#D7B45A', fontSize: 28, fontWeight: '700' },
-  empty: { color: '#758079', fontSize: 12, lineHeight: 18, padding: 14 },
-  fab: { position: 'absolute', right: 22, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F0D47B', shadowColor: '#000', shadowOpacity: .3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  fabPlus: { color: '#172017', fontSize: 31, lineHeight: 34, fontWeight: '500', marginTop: -2 },
-});
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: COLORS.bg }, center: { flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', gap: 10 }, loadingText: { color: COLORS.muted, fontSize: 12 }, content: { padding: 18, paddingBottom: 90 }, topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }, eyebrow: { color: COLORS.gold, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, title: { color: COLORS.cream, fontSize: 31, fontWeight: '900', marginTop: 2 }, buildButton: { minHeight: 42, borderRadius: 12, backgroundColor: COLORS.gold, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12 }, buildButtonText: { color: '#172017', fontSize: 11, fontWeight: '900' }, hero: { minHeight: 255, borderRadius: 24, overflow: 'hidden', justifyContent: 'flex-end' }, heroImage: { borderRadius: 24 }, heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,12,8,.57)' }, heroContent: { padding: 19 }, heroKicker: { color: '#F0D27D', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, heroTitle: { color: '#FFF8E8', fontSize: 27, fontWeight: '900', marginTop: 4 }, heroCopy: { color: '#D1D9D3', fontSize: 11, lineHeight: 17, marginTop: 5, maxWidth: 480 }, heroStats: { flexDirection: 'row', gap: 8, marginTop: 16 }, heroStat: { flex: 1, borderRadius: 13, padding: 10, backgroundColor: 'rgba(7,15,10,.66)', borderWidth: 1, borderColor: 'rgba(255,255,255,.12)' }, heroStatValue: { color: '#FFF8E8', fontSize: 17, fontWeight: '900' }, heroStatLabel: { color: '#AAB4AD', fontSize: 8, marginTop: 2 }, sectionTitle: { color: COLORS.cream, fontSize: 17, fontWeight: '900', marginTop: 22 }, sectionMeta: { color: COLORS.dim, fontSize: 10, lineHeight: 15, marginTop: 3 }, sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }, sectionAction: { color: COLORS.gold, fontSize: 10, fontWeight: '900', paddingBottom: 2 }, metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }, metricGridRoomy: { flexWrap: 'nowrap' }, metricCard: { width: '48.5%', minHeight: 86, borderRadius: 15, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, padding: 12, overflow: 'hidden' }, metricAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 }, metricValue: { color: COLORS.cream, fontSize: 21, fontWeight: '900' }, metricLabel: { color: COLORS.muted, fontSize: 9, marginTop: 4 }, eventRow: { gap: 10, paddingTop: 11, paddingRight: 10 }, eventCard: { width: 270, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel }, eventVisual: { height: 96, padding: 12, justifyContent: 'space-between', flexDirection: 'row' }, eventVisualMark: { color: 'rgba(255,255,255,.42)', fontSize: 25, fontWeight: '900' }, eventStatus: { alignSelf: 'flex-start', borderRadius: 8, backgroundColor: 'rgba(7,12,8,.62)', paddingHorizontal: 7, paddingVertical: 4 }, eventStatusText: { color: '#FFF8E8', fontSize: 7, fontWeight: '900' }, eventBody: { padding: 13 }, eventTitle: { color: COLORS.cream, fontSize: 14, fontWeight: '900' }, eventMeta: { color: COLORS.muted, fontSize: 9, lineHeight: 13, marginTop: 3 }, progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 }, progressValue: { color: COLORS.goldSoft, fontSize: 9, fontWeight: '900' }, progressMeta: { color: COLORS.dim, fontSize: 9 }, progressTrack: { height: 4, borderRadius: 2, backgroundColor: '#29332D', marginTop: 5, overflow: 'hidden' }, progressFill: { height: 4, backgroundColor: COLORS.gold }, eventNumbers: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 9 }, eventNumber: { color: COLORS.muted, fontSize: 8, fontWeight: '800' }, emptyEvent: { width: 270, borderRadius: 18, borderWidth: 1, borderColor: COLORS.line, padding: 20, backgroundColor: COLORS.panel }, emptyEventTitle: { color: COLORS.cream, fontSize: 14, fontWeight: '900' }, emptyEventBody: { color: COLORS.muted, fontSize: 10, lineHeight: 15, marginTop: 4 }, listCard: { borderRadius: 16, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, marginTop: 10, overflow: 'hidden' }, taskRow: { minHeight: 61, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.line }, taskDot: { width: 8, height: 8, borderRadius: 4 }, taskTitle: { color: COLORS.cream, fontSize: 11, fontWeight: '900' }, taskMeta: { color: COLORS.dim, fontSize: 8, marginTop: 3 }, chevron: { color: COLORS.dim, fontSize: 19 }, toolGrid: { gap: 8, marginTop: 10 }, toolGridRoomy: { flexDirection: 'row', flexWrap: 'wrap' }, toolCard: { minHeight: 76, borderRadius: 15, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }, toolIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, toolTitle: { color: COLORS.cream, fontSize: 12, fontWeight: '900' }, toolSubtitle: { color: COLORS.dim, fontSize: 9, lineHeight: 13, marginTop: 2 }, accessCard: { borderRadius: 18, borderWidth: 1, borderColor: '#6C5522', backgroundColor: '#2B2415', padding: 18 }, accessTitle: { color: '#FFF0C1', fontSize: 17, fontWeight: '900' }, accessBody: { color: '#C8B98C', fontSize: 11, lineHeight: 16, marginTop: 4 }, primary: { minHeight: 44, borderRadius: 12, backgroundColor: COLORS.gold, alignItems: 'center', justifyContent: 'center', marginTop: 12 }, primaryText: { color: '#172017', fontSize: 11, fontWeight: '900' }, errorCard: { borderRadius: 14, borderWidth: 1, borderColor: '#6A3E38', backgroundColor: '#251614', padding: 13, marginBottom: 12 }, error: { color: '#F0A199', fontSize: 10 }, retry: { color: COLORS.gold, fontWeight: '900', fontSize: 10, marginTop: 7 }, emptyText: { color: COLORS.dim, fontSize: 10, padding: 14 } });
