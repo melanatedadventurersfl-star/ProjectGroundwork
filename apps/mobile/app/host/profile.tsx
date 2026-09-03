@@ -72,13 +72,15 @@ export default function HostProfileScreen() {
     if (!permission.granted) { Alert.alert('Photo access needed', 'Allow photo access to add a photo to your hosting history.'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 0.9, exif: false });
     if (result.canceled || !result.assets?.[0]?.uri) return;
-    const asset = result.assets[0];
-    Alert.prompt?.('Photo caption', 'Add an optional caption.', async (caption) => {
-      setSaving(true);
-      try { await uploadHostHistoryPhoto({ adventureId, localUri: asset.uri, caption }); await load(); }
-      catch (caught) { Alert.alert('Unable to add photo', caught instanceof Error ? caught.message : 'Please try again.'); }
-      finally { setSaving(false); }
-    });
+    setSaving(true);
+    try {
+      await uploadHostHistoryPhoto({ adventureId, localUri: result.assets[0].uri });
+      await load();
+    } catch (caught) {
+      Alert.alert('Unable to add photo', caught instanceof Error ? caught.message : 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={C.gold} size="large" /><Text style={styles.muted}>Loading host profile…</Text></SafeAreaView>;
