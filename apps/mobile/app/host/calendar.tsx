@@ -1,2 +1,5 @@
-import { HostSectionHub } from '../../src/hosting/HostSectionHub';
-export default function HostCalendarScreen() { return <HostSectionHub kind="calendar" />; }
+import { HostCalendar } from '../../src/hosting/HostCalendar';
+
+export default function HostCalendarScreen() {
+  return <HostCalendar />;
+}
