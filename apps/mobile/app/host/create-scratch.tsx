@@ -44,7 +44,7 @@ export default function CreateHostOutingScreen() {
       const dollars = Number.parseFloat(price || '0');
       const priceCents = paid ? Math.round(dollars * 100) : 0;
       if (paid && (!Number.isFinite(dollars) || dollars <= 0)) throw new Error('Enter a valid ticket price.');
-      const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt, endsAt, city, state, venueName, capacity: capacityNumber, meetingInstructions });
+      const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions });
       await addGeneralAdmissionTicket(outing.id, capacityNumber, priceCents);
       const campaign = await createCampaignWorkspace({ adventureId: outing.id, title: outing.title, location: [outing.venue_name, outing.city, outing.state].filter(Boolean).join(', '), startsAt: outing.starts_at, endsAt: outing.ends_at });
       await Promise.all([addEventComponent(campaign.id, 'tickets', outing.starts_at), addEventComponent(campaign.id, 'team', outing.starts_at), addEventComponent(campaign.id, 'finance', outing.starts_at)]);
