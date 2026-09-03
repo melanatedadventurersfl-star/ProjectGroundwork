@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getOutingHostAccess } from '../../src/hosting/api';
@@ -30,6 +30,7 @@ type RecentActivity = {
   campaignTitle: string;
 };
 
+type DashboardTask = HostCampaign['tasks'][number] & { campaign: HostCampaign };
 type AdventureImageRow = { id: string; hero_image_url: string | null };
 type ActivityRow = { id: string; title: string; status: string; updated_at: string; campaign_id: string };
 
@@ -44,11 +45,12 @@ export default function HostCenterScreen() {
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [opportunityCount, setOpportunityCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [approved, setApproved] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     setError('');
     try {
       const [access, authResult] = await Promise.all([
@@ -106,7 +108,7 @@ export default function HostCenterScreen() {
           .in('campaign_id', campaignIds)
           .neq('status', 'not_started')
           .order('updated_at', { ascending: false })
-          .limit(4);
+          .limit(12);
         const titleById = new Map(rows.map((campaign) => [campaign.id, campaign.shortTitle]));
         setRecentActivity(((data ?? []) as ActivityRow[]).map((row) => ({
           id: row.id,
@@ -121,9 +123,18 @@ export default function HostCenterScreen() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load Host Center.');
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, []);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -131,16 +142,20 @@ export default function HostCenterScreen() {
     () => campaigns.filter(({ campaign }) => campaign.status !== 'complete').sort((a, b) => a.campaign.startsAt.localeCompare(b.campaign.startsAt)),
     [campaigns],
   );
-  const openTasks = useMemo(() => active
+  const openTasks = useMemo<DashboardTask[]>(() => active
     .flatMap(({ campaign }) => campaign.tasks.filter((task) => task.status !== 'complete').map((task) => ({ ...task, campaign })))
     .sort((a, b) => (a.dueAt || '9999').localeCompare(b.dueAt || '9999')), [active]);
   const myTasks = useMemo(
     () => currentProfileId ? openTasks.filter((task) => task.assigneeProfileId === currentProfileId) : [],
     [currentProfileId, openTasks],
   );
-  const flagged = openTasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical');
+  const flagged = useMemo(
+    () => openTasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical'),
+    [openTasks],
+  );
   const overdue = active.reduce((sum, item) => sum + item.operations.overdueTaskCount, 0);
   const pendingVendors = active.reduce((sum, item) => sum + item.operations.pendingVendors, 0);
+  const confirmedVendors = active.reduce((sum, item) => sum + item.operations.confirmedVendors, 0);
   const revenue = active.reduce((sum, item) => sum + item.operations.revenueCents, 0);
   const expenses = active.reduce((sum, item) => sum + item.operations.expenseCents, 0);
   const scheduledMarketing = active.reduce((sum, item) => sum + item.operations.scheduledCommunications, 0);
@@ -148,16 +163,24 @@ export default function HostCenterScreen() {
   const upcoming = active.slice(0, 3);
   const nextEvent = active[0];
   const nextEventDays = nextEvent ? getCampaignDaysUntil(nextEvent.campaign) : null;
+  const recommendedTask = useMemo(() => pickRecommendedTask(flagged, myTasks, openTasks), [flagged, myTasks, openTasks]);
+  const subtitle = nextEvent
+    ? `${nextEvent.campaign.shortTitle} · ${nextEventDays === 0 ? 'today' : `${nextEventDays} day${nextEventDays === 1 ? '' : 's'} away`}`
+    : 'Plan events, tasks and operations from one place.';
 
-  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={COLORS.gold} size="large" /><Text style={styles.loadingText}>Opening Host Center…</Text></SafeAreaView>;
+  if (loading) return <HostCenterSkeleton />;
 
   return <SafeAreaView style={styles.safe}>
-    <ScrollView contentContainerStyle={[styles.content, roomy && styles.contentRoomy]} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={[styles.content, roomy && styles.contentRoomy]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={COLORS.gold} />}
+    >
       <View style={styles.topbar}>
         <View style={{ flex: 1 }}>
           <Text style={styles.eyebrow}>GO MELANATED</Text>
           <Text style={styles.title}>Host Center</Text>
-          <Text style={styles.subtitle}>{active.length} active event{active.length === 1 ? '' : 's'} · {openTasks.length} open task{openTasks.length === 1 ? '' : 's'} · {attentionCount} need attention</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
         <View style={styles.topActions}>
           <Pressable style={styles.createButton} onPress={() => router.push('/host/create' as never)}><AppIcon name="add" color="#171B16" size={18} /><Text style={styles.createButtonText}>Build Event</Text></Pressable>
@@ -171,10 +194,27 @@ export default function HostCenterScreen() {
       {approved ? <>
         <View style={[styles.summaryStrip, roomy && styles.summaryStripRoomy]}>
           <Summary value={String(active.length)} label="Active events" route="/host/events" roomy={roomy} />
-          <Summary value={nextEventDays === null ? '—' : nextEventDays === 0 ? 'Today' : String(nextEventDays)} label="Next event" route="/host/events" roomy={roomy} />
+          <Summary value={nextEventDays === null ? '—' : nextEventDays === 0 ? 'Today' : `${nextEventDays} days`} label="Next event" route="/host/events" roomy={roomy} />
           <Summary value={String(openTasks.length)} label="Open tasks" route="/host/work" roomy={roomy} />
           <Summary value={String(attentionCount)} label="Need attention" route="/host/work" roomy={roomy} danger={attentionCount > 0} />
         </View>
+
+        {active.length === 0 ? <View style={styles.zeroState}>
+          <View style={styles.zeroIcon}><AppIcon name="calendar" color={COLORS.gold} size={24} /></View>
+          <Text style={styles.zeroTitle}>Your Host Center is ready</Text>
+          <Text style={styles.zeroBody}>Create your first event and the dashboard will start organizing tasks, dates, vendors and operations around it.</Text>
+          <Pressable style={styles.primary} onPress={() => router.push('/host/create' as never)}><Text style={styles.primaryText}>Build first event</Text></Pressable>
+        </View> : null}
+
+        {recommendedTask ? <Pressable style={styles.nextActionCard} onPress={() => router.push('/host/work' as never)}>
+          <View style={styles.nextActionIcon}><AppIcon name="tasks" color={COLORS.gold} size={18} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.nextActionEyebrow}>RECOMMENDED NEXT ACTION</Text>
+            <Text style={styles.nextActionTitle}>{recommendedTask.title}</Text>
+            <Text style={styles.nextActionMeta}>{recommendedTask.campaign.shortTitle} · {formatTaskTiming(recommendedTask)}</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable> : null}
 
         <SectionHeader title="Active events" action="View all" onPress={() => router.push('/host/events' as never)} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + 12} decelerationRate="fast" contentContainerStyle={styles.eventRow}>
@@ -188,9 +228,9 @@ export default function HostCenterScreen() {
             <SectionHeader title="Needs attention" action={attentionCount > 3 ? `View all ${attentionCount}` : undefined} onPress={attentionCount > 3 ? () => router.push('/host/work' as never) : undefined} />
             <View style={styles.listCard}>
               {flagged.length === 0 && overdue === 0 && pendingVendors === 0 ? <Text style={styles.emptyText}>Nothing is currently flagged.</Text> : <>
-                {overdue > 0 ? <AlertRow title={`${overdue} overdue task${overdue === 1 ? '' : 's'}`} meta="Across active events" action="Review tasks" route="/host/work" /> : null}
-                {flagged.slice(0, 3).map((task) => <AlertRow key={task.id} title={task.title} meta={`${task.campaign.shortTitle} · ${task.status}`} action={task.status === 'waiting' ? 'Follow up' : task.status === 'blocked' ? 'Review dependency' : 'Open task'} route="/host/work" />)}
-                {pendingVendors > 0 ? <AlertRow title={`${pendingVendors} vendor response${pendingVendors === 1 ? '' : 's'} pending`} meta="Vendor activity" action="Open vendors" route="/host/vendors" /> : null}
+                {overdue > 0 ? <AlertRow title={`${overdue} overdue task${overdue === 1 ? '' : 's'}`} meta="Across active events · overdue" action="Review" route="/host/work" /> : null}
+                {flagged.slice(0, 3).map((task) => <AlertRow key={task.id} title={task.title} meta={`${task.campaign.shortTitle} · ${formatTaskTiming(task)}`} action={task.status === 'waiting' ? 'Follow up' : 'Review'} route="/host/work" />)}
+                {pendingVendors > 0 ? <AlertRow title={`${pendingVendors} vendor response${pendingVendors === 1 ? '' : 's'} pending`} meta="Vendor activity · waiting" action="Open vendors" route="/host/vendors" /> : null}
               </>}
             </View>
           </View>
@@ -198,19 +238,23 @@ export default function HostCenterScreen() {
           <View style={[styles.boardColumn, roomy && styles.boardColumnRoomy]}>
             <SectionHeader title="My work" action={myTasks.length > 3 ? `View all ${myTasks.length}` : undefined} onPress={myTasks.length > 3 ? () => router.push('/host/work' as never) : undefined} />
             <View style={styles.listCard}>
-              {myTasks.length === 0 ? <Text style={styles.emptyText}>No work assigned to you.</Text> : myTasks.slice(0, 3).map((task, index) => <Pressable key={task.id} style={[styles.taskRow, index > 0 && styles.divider]} onPress={() => router.push('/host/work' as never)}><View style={[styles.taskDot, { backgroundColor: task.priority === 'critical' ? COLORS.danger : COLORS.gold }]} /><View style={{ flex: 1 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.campaign.shortTitle} · {task.dueLabel || 'No due date'}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}
+              {myTasks.length === 0 ? <Text style={styles.emptyText}>No work assigned to you.</Text> : myTasks.slice(0, 3).map((task, index) => <Pressable key={task.id} style={[styles.taskRow, index > 0 && styles.divider]} onPress={() => router.push('/host/work' as never)}>
+                <View style={[styles.priorityBar, { backgroundColor: task.priority === 'critical' ? COLORS.danger : task.status === 'blocked' ? COLORS.orange : COLORS.gold }]} />
+                <View style={{ flex: 1, minWidth: 0 }}><Text style={styles.taskTitle}>{task.title}</Text><Text style={styles.taskMeta}>{task.campaign.shortTitle} · {formatTaskTiming(task)}</Text></View><Text style={styles.chevron}>›</Text>
+              </Pressable>)}
+              <Pressable style={[styles.quickAddRow, myTasks.length > 0 && styles.divider]} onPress={() => router.push('/host/work' as never)}><AppIcon name="add" color={COLORS.gold} size={16} /><Text style={styles.quickAddText}>Quick add task</Text></Pressable>
             </View>
           </View>
         </View>
 
         <View style={[styles.lowerGrid, roomy && styles.lowerGridRoomy]}>
           <View style={[styles.lowerColumn, roomy && styles.lowerColumnRoomy]}>
-            <Text style={styles.sectionTitleStandalone}>Operations</Text>
+            <View style={styles.sectionStandaloneHeader}><Text style={styles.sectionTitleStandalone}>Operations</Text><Text style={styles.scopeLabel}>Across active events</Text></View>
             <View style={styles.businessGrid}>
-              <BusinessCard title="Finances" value={revenue || expenses ? `$${(revenue / 100).toLocaleString()}` : 'No activity'} meta={revenue || expenses ? `$${(expenses / 100).toLocaleString()} expenses` : 'No financial activity yet'} icon="reports" accent={COLORS.green} route="/host/finances" />
-              <BusinessCard title="Vendors" value={pendingVendors > 0 ? String(pendingVendors) : 'Clear'} meta={pendingVendors > 0 ? 'Pending responses' : 'No vendor responses pending'} icon="storefront" accent={COLORS.blue} route="/host/vendors" />
-              <BusinessCard title="Marketing" value={scheduledMarketing > 0 ? String(scheduledMarketing) : 'None'} meta={scheduledMarketing > 0 ? 'Scheduled communications' : 'Nothing scheduled'} icon="megaphone" accent={COLORS.orange} route="/host/campaigns" />
-              <BusinessCard title="Opportunities" value={opportunityCount > 0 ? `${opportunityCount} open` : 'None'} meta={opportunityCount > 0 ? 'Vending, partnerships and sponsorships' : 'No saved opportunities'} icon="briefcase" accent={COLORS.gold} route="/host/opportunities" />
+              <BusinessCard title="Finances" value={revenue || expenses ? `$${(revenue / 100).toLocaleString()}` : '$0'} meta={revenue || expenses ? `$${(expenses / 100).toLocaleString()} expenses` : `${active.length} active event${active.length === 1 ? '' : 's'} · $0 tracked`} icon="reports" accent={COLORS.green} route="/host/finances" />
+              <BusinessCard title="Vendors" value={pendingVendors > 0 ? `${pendingVendors} pending` : 'Clear'} meta={`${confirmedVendors} confirmed · ${pendingVendors} pending`} icon="storefront" accent={COLORS.blue} route="/host/vendors" />
+              <BusinessCard title="Marketing" value={`${scheduledMarketing} scheduled`} meta={scheduledMarketing > 0 ? 'Communications queued' : 'No communications scheduled'} icon="megaphone" accent={COLORS.orange} route="/host/campaigns" />
+              <BusinessCard title="Opportunities" value={`${opportunityCount} open`} meta={opportunityCount > 0 ? 'Vending, partnerships and sponsorships' : 'No saved opportunities'} icon="briefcase" accent={COLORS.gold} route="/host/opportunities" />
             </View>
           </View>
 
@@ -220,15 +264,26 @@ export default function HostCenterScreen() {
               {upcoming.length === 0 ? <Text style={styles.emptyText}>No upcoming event dates.</Text> : upcoming.map((item, index) => <UpcomingRow key={item.campaign.id} item={item} first={index === 0} />)}
             </View>
 
-            <SectionHeader title="Recent activity" />
+            <SectionHeader title="Recent activity" action={recentActivity.length > 4 ? 'View all' : undefined} onPress={recentActivity.length > 4 ? () => router.push('/host/work' as never) : undefined} />
             <View style={styles.listCard}>
-              {recentActivity.length === 0 ? <Text style={styles.emptyText}>No meaningful task changes yet.</Text> : recentActivity.map((item, index) => <ActivityRowView key={item.id} item={item} first={index === 0} />)}
+              {recentActivity.length === 0 ? <Text style={styles.emptyText}>No meaningful task changes yet.</Text> : recentActivity.slice(0, 4).map((item, index) => <ActivityRowView key={item.id} item={item} first={index === 0} />)}
             </View>
           </View>
         </View>
       </> : null}
     </ScrollView>
   </SafeAreaView>;
+}
+
+function HostCenterSkeleton() {
+  return <SafeAreaView style={styles.safe}><View style={styles.skeletonContent}>
+    <View style={[styles.skeleton, { width: 110, height: 10 }]} />
+    <View style={[styles.skeleton, { width: 220, height: 34, marginTop: 10 }]} />
+    <View style={[styles.skeleton, { width: 260, height: 12, marginTop: 10 }]} />
+    <View style={styles.skeletonGrid}>{[0, 1, 2, 3].map((item) => <View key={item} style={[styles.skeleton, styles.skeletonMetric]} />)}</View>
+    <View style={[styles.skeleton, { height: 210, borderRadius: 18, marginTop: 28 }]} />
+    <View style={[styles.skeleton, { height: 120, borderRadius: 18, marginTop: 22 }]} />
+  </View></SafeAreaView>;
 }
 
 function SectionHeader({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
@@ -252,6 +307,7 @@ function EventCard({ campaign, operations, heroImageUrl, width }: { campaign: Ho
   const remaining = Math.max(operations.taskCount - operations.completeTaskCount, 0);
   const attention = campaign.tasks.filter((task) => task.status === 'blocked' || task.status === 'waiting' || task.priority === 'critical').length + operations.overdueTaskCount;
   const date = new Date(campaign.startsAt);
+  const readinessLabel = operations.progress === 0 && remaining > 0 ? 'Planning started' : `${operations.progress}% ready`;
   const art = <View style={styles.eventImageOverlay}><Text style={styles.eventStatus}>{campaign.status.toUpperCase()}</Text><Text style={styles.eventTitle}>{campaign.shortTitle}</Text><Text style={styles.eventLocation} numberOfLines={1}>{formatDisplayLocation(campaign.location)}</Text></View>;
 
   return <Pressable style={[styles.eventCard, { width, borderTopColor: campaign.accent || COLORS.gold }]} onPress={() => router.push(`/host/campaigns/${campaign.slug}` as never)}>
@@ -259,7 +315,7 @@ function EventCard({ campaign, operations, heroImageUrl, width }: { campaign: Ho
       ? <ImageBackground source={{ uri: heroImageUrl }} style={styles.eventArt} imageStyle={styles.eventImage} resizeMode="cover">{art}</ImageBackground>
       : <View style={[styles.eventArt, { backgroundColor: campaign.accent || '#26352B' }]}>{art}</View>}
     <View style={styles.eventBody}>
-      <View style={styles.eventProgressLine}><Text style={styles.eventReady}>{operations.progress}% ready</Text><Text style={styles.eventDays}>{days > 0 ? `${days} days to event` : 'Today'}</Text></View>
+      <View style={styles.eventProgressLine}><Text style={styles.eventReady}>{readinessLabel}</Text><Text style={styles.eventDays}>{days > 0 ? `${days} days to event` : 'Today'}</Text></View>
       <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.max(0, Math.min(operations.progress, 100))}%` }]} /></View>
       <View style={styles.eventMetrics}><View><Text style={styles.metricValue}>{remaining}</Text><Text style={styles.metricLabel}>Tasks left</Text></View><View><Text style={[styles.metricValue, attention > 0 && styles.danger]}>{attention}</Text><Text style={styles.metricLabel}>Need attention</Text></View><View><Text style={styles.dateMonth}>{date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text><Text style={styles.dateDay}>{date.getDate()}</Text></View></View>
     </View>
@@ -268,18 +324,58 @@ function EventCard({ campaign, operations, heroImageUrl, width }: { campaign: Ho
 
 function UpcomingRow({ item, first }: { item: EventSummary; first: boolean }) {
   const date = new Date(item.campaign.startsAt);
+  const showYear = date.getFullYear() !== new Date().getFullYear();
   return <Pressable style={[styles.upcomingRow, !first && styles.divider]} onPress={() => router.push(`/host/campaigns/${item.campaign.slug}` as never)}>
-    <View style={styles.dateBadge}><Text style={styles.dateBadgeMonth}>{date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text><Text style={styles.dateBadgeDay}>{date.getDate()}</Text></View>
+    <View style={styles.dateBadge}><Text style={styles.dateBadgeMonth}>{date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text><Text style={styles.dateBadgeDay}>{date.getDate()}</Text>{showYear ? <Text style={styles.dateBadgeYear}>{date.getFullYear()}</Text> : null}</View>
     {item.heroImageUrl ? <ImageBackground source={{ uri: item.heroImageUrl }} style={styles.thumb} imageStyle={styles.thumbImage} /> : <View style={[styles.thumb, { backgroundColor: item.campaign.accent || COLORS.raised }]} />}
     <View style={{ flex: 1, minWidth: 0 }}><Text style={styles.upcomingTitle} numberOfLines={2}>{item.campaign.shortTitle}</Text><Text style={styles.upcomingMeta} numberOfLines={1}>{formatDisplayLocation(item.campaign.location)}</Text></View><Text style={styles.chevron}>›</Text>
   </Pressable>;
 }
 
 function ActivityRowView({ item, first }: { item: RecentActivity; first: boolean }) {
+  const complete = item.status === 'complete';
+  const accent = complete ? COLORS.green : COLORS.purple;
   return <Pressable style={[styles.activityRow, !first && styles.divider]} onPress={() => router.push('/host/work' as never)}>
-    <View style={styles.activityIcon}><AppIcon name="tasks" color={COLORS.purple} size={17} /></View>
-    <View style={{ flex: 1, minWidth: 0 }}><Text style={styles.activityTitle}>{item.title}</Text><Text style={styles.activityMeta}>{item.campaignTitle} · {item.status.replaceAll('_', ' ')} · {formatRelativeDate(item.updatedAt)}</Text></View><Text style={styles.chevron}>›</Text>
+    <View style={[styles.activityIcon, { backgroundColor: `${accent}20` }]}><AppIcon name="tasks" color={accent} size={17} /></View>
+    <View style={{ flex: 1, minWidth: 0 }}><Text style={styles.activityTitle}>{item.title}</Text><Text style={styles.activityMeta}>{item.campaignTitle} · {formatStatus(item.status)} · {formatRelativeDate(item.updatedAt)}</Text></View><Text style={styles.chevron}>›</Text>
   </Pressable>;
+}
+
+function pickRecommendedTask(flagged: DashboardTask[], myTasks: DashboardTask[], openTasks: DashboardTask[]) {
+  const score = (task: DashboardTask) => {
+    let value = 0;
+    if (task.status === 'blocked') value += 50;
+    if (task.priority === 'critical') value += 40;
+    if (task.status === 'waiting') value += 25;
+    if (task.dueAt) {
+      const due = new Date(task.dueAt).getTime();
+      if (Number.isFinite(due)) {
+        const days = Math.floor((due - Date.now()) / 86_400_000);
+        if (days < 0) value += 60;
+        else if (days === 0) value += 35;
+        else if (days <= 2) value += 20;
+      }
+    }
+    return value;
+  };
+  const candidates = flagged.length ? flagged : myTasks.length ? myTasks : openTasks;
+  return [...candidates].sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
+function formatTaskTiming(task: DashboardTask) {
+  if (task.dueAt) {
+    const due = new Date(task.dueAt);
+    const diff = Math.ceil((due.getTime() - Date.now()) / 86_400_000);
+    if (Number.isFinite(diff)) {
+      if (diff < 0) return `${Math.abs(diff)} day${Math.abs(diff) === 1 ? '' : 's'} overdue`;
+      if (diff === 0) return 'Due today';
+      if (diff === 1) return 'Due tomorrow';
+      if (diff <= 7) return `Due in ${diff} days`;
+    }
+  }
+  if (task.status === 'blocked') return 'Blocked';
+  if (task.status === 'waiting') return 'Waiting';
+  return task.dueLabel || 'No due date';
 }
 
 function formatDisplayLocation(location: string) {
@@ -294,6 +390,10 @@ function formatDisplayLocation(location: string) {
     return `${venue} · ${city}, ${state}`;
   }
   return location;
+}
+
+function formatStatus(value: string) {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatRelativeDate(value: string) {
@@ -312,10 +412,12 @@ function formatRelativeDate(value: string) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
-  center: { flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  loadingText: { color: COLORS.muted, fontSize: 12 },
-  content: { padding: 18, paddingBottom: 150 },
-  contentRoomy: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26 },
+  skeletonContent: { padding: 18 },
+  skeleton: { backgroundColor: COLORS.raised, borderRadius: 8 },
+  skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 24 },
+  skeletonMetric: { width: '48.5%', height: 88, borderRadius: 15 },
+  content: { padding: 18, paddingBottom: 104 },
+  contentRoomy: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26, paddingBottom: 90 },
   topbar: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, marginBottom: 8 },
   eyebrow: { color: COLORS.gold, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: COLORS.cream, fontSize: 31, fontWeight: '900', marginTop: 2 },
@@ -326,19 +428,28 @@ const styles = StyleSheet.create({
   menuButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.raised, borderWidth: 1, borderColor: COLORS.line, alignItems: 'center', justifyContent: 'center' },
   summaryStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   summaryStripRoomy: { flexWrap: 'nowrap' },
-  summaryCard: { width: '48.5%', minHeight: 88, borderRadius: 15, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, padding: 12, justifyContent: 'center' },
+  summaryCard: { width: '48.5%', minHeight: 82, borderRadius: 15, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, padding: 12, justifyContent: 'center' },
   summaryCardRoomy: { width: 'auto', flex: 1, minWidth: 125 },
-  summaryValue: { color: COLORS.cream, fontSize: 22, fontWeight: '900' },
+  summaryValue: { color: COLORS.cream, fontSize: 21, fontWeight: '900' },
   summaryLabel: { color: COLORS.dim, fontSize: 9.5, marginTop: 2 },
   danger: { color: COLORS.danger },
+  zeroState: { marginTop: 18, borderRadius: 18, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, padding: 18 },
+  zeroIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#2B2617', alignItems: 'center', justifyContent: 'center' },
+  zeroTitle: { color: COLORS.cream, fontSize: 18, fontWeight: '900', marginTop: 12 },
+  zeroBody: { color: COLORS.muted, fontSize: 11, lineHeight: 17, marginTop: 5, maxWidth: 560 },
+  nextActionCard: { marginTop: 14, minHeight: 76, borderRadius: 17, borderWidth: 1, borderColor: '#594A25', backgroundColor: '#1B1B13', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nextActionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#302817', alignItems: 'center', justifyContent: 'center' },
+  nextActionEyebrow: { color: COLORS.gold, fontSize: 7.5, fontWeight: '900', letterSpacing: 1 },
+  nextActionTitle: { color: COLORS.cream, fontSize: 13, fontWeight: '900', marginTop: 2 },
+  nextActionMeta: { color: COLORS.dim, fontSize: 9, marginTop: 2 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 8 },
   sectionTitle: { color: COLORS.cream, fontSize: 18, fontWeight: '900' },
   sectionAction: { color: COLORS.gold, fontSize: 10, fontWeight: '900' },
   eventRow: { gap: 12, paddingRight: 18 },
-  eventCard: { minHeight: 252, borderRadius: 18, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, borderTopWidth: 3, overflow: 'hidden' },
-  eventArt: { height: 118, justifyContent: 'flex-end' },
+  eventCard: { minHeight: 236, borderRadius: 18, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, borderTopWidth: 3, overflow: 'hidden' },
+  eventArt: { height: 104, justifyContent: 'flex-end' },
   eventImage: { borderTopLeftRadius: 15, borderTopRightRadius: 15 },
-  eventImageOverlay: { flex: 1, justifyContent: 'flex-end', padding: 14, backgroundColor: 'rgba(8,12,9,0.32)' },
+  eventImageOverlay: { flex: 1, justifyContent: 'flex-end', padding: 13, backgroundColor: 'rgba(8,12,9,0.32)' },
   eventStatus: { color: '#FFF8E8', fontSize: 8.5, fontWeight: '900', letterSpacing: 1.2 },
   eventTitle: { color: '#FFF8E8', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4, textShadowColor: 'rgba(0,0,0,.6)', textShadowRadius: 4 },
   eventLocation: { color: '#F1E8D7', fontSize: 9.5, marginTop: 3, textShadowColor: 'rgba(0,0,0,.6)', textShadowRadius: 4 },
@@ -348,7 +459,7 @@ const styles = StyleSheet.create({
   eventDays: { color: COLORS.dim, fontSize: 9, flexShrink: 1, textAlign: 'right' },
   progressTrack: { height: 4, borderRadius: 5, backgroundColor: '#26322B', marginTop: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 5, backgroundColor: COLORS.gold },
-  eventMetrics: { marginTop: 13, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  eventMetrics: { marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   metricValue: { color: COLORS.cream, fontSize: 18, fontWeight: '900' },
   metricLabel: { color: COLORS.dim, fontSize: 8.5, marginTop: 1 },
   dateMonth: { color: COLORS.gold, fontSize: 8.5, fontWeight: '900', textAlign: 'center' },
@@ -363,37 +474,42 @@ const styles = StyleSheet.create({
   alertIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#2D1916', alignItems: 'center', justifyContent: 'center' },
   alertTitle: { color: COLORS.cream, fontSize: 12, fontWeight: '900' },
   alertMeta: { color: COLORS.dim, fontSize: 9.2, marginTop: 2 },
-  rowAction: { color: COLORS.gold, fontSize: 8.8, fontWeight: '900', marginLeft: 8, maxWidth: 100, textAlign: 'right' },
-  taskRow: { minHeight: 60, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowAction: { color: COLORS.gold, fontSize: 8.8, fontWeight: '900', marginLeft: 8, maxWidth: 76, textAlign: 'right' },
+  taskRow: { minHeight: 60, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  priorityBar: { width: 4, borderRadius: 4, marginVertical: 13 },
+  taskTitle: { color: COLORS.cream, fontSize: 12.5, fontWeight: '900', marginTop: 11 },
+  taskMeta: { color: COLORS.dim, fontSize: 9.5, marginTop: 2, marginBottom: 11 },
+  quickAddRow: { minHeight: 48, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  quickAddText: { color: COLORS.gold, fontSize: 10.5, fontWeight: '900' },
   divider: { borderTopWidth: 1, borderTopColor: COLORS.line },
-  taskDot: { width: 7, height: 7, borderRadius: 4 },
-  taskTitle: { color: COLORS.cream, fontSize: 12.5, fontWeight: '900' },
-  taskMeta: { color: COLORS.dim, fontSize: 9.5, marginTop: 2 },
-  chevron: { color: COLORS.muted, fontSize: 24 },
+  chevron: { color: COLORS.muted, fontSize: 24, alignSelf: 'center' },
   lowerGrid: { gap: 0 },
   lowerGridRoomy: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   lowerColumn: {},
   lowerColumnRoomy: { flex: 1 },
-  sectionTitleStandalone: { color: COLORS.cream, fontSize: 18, fontWeight: '900', marginTop: 20, marginBottom: 8 },
+  sectionStandaloneHeader: { marginTop: 20, marginBottom: 8 },
+  sectionTitleStandalone: { color: COLORS.cream, fontSize: 18, fontWeight: '900' },
+  scopeLabel: { color: COLORS.dim, fontSize: 8.5, marginTop: 2 },
   businessGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   businessCard: { width: '48.5%', minHeight: 112, borderRadius: 16, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, padding: 12 },
   businessIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   businessTitle: { color: COLORS.cream, fontSize: 12, fontWeight: '900' },
-  businessValue: { color: COLORS.cream, fontSize: 19, fontWeight: '900', marginTop: 5 },
+  businessValue: { color: COLORS.cream, fontSize: 18, fontWeight: '900', marginTop: 5 },
   businessMeta: { color: COLORS.dim, fontSize: 9.2, lineHeight: 13, marginTop: 2 },
   upcomingRow: { minHeight: 68, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dateBadge: { width: 40, alignItems: 'center' },
+  dateBadge: { width: 42, alignItems: 'center' },
   dateBadgeMonth: { color: COLORS.gold, fontSize: 8, fontWeight: '900' },
   dateBadgeDay: { color: COLORS.cream, fontSize: 19, fontWeight: '900' },
+  dateBadgeYear: { color: COLORS.dim, fontSize: 7, marginTop: -1 },
   thumb: { width: 50, height: 40, borderRadius: 10, overflow: 'hidden' },
   thumbImage: { borderRadius: 10 },
   upcomingTitle: { color: COLORS.cream, fontSize: 11.5, fontWeight: '900' },
   upcomingMeta: { color: COLORS.dim, fontSize: 8.8, marginTop: 2 },
   activityRow: { minHeight: 62, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  activityIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#242132', alignItems: 'center', justifyContent: 'center' },
+  activityIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   activityTitle: { color: COLORS.cream, fontSize: 11.5, fontWeight: '900' },
-  activityMeta: { color: COLORS.dim, fontSize: 8.8, marginTop: 2, textTransform: 'capitalize' },
-  emptyEvent: { width: 300, minHeight: 160, borderRadius: 18, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, padding: 18, justifyContent: 'center' },
+  activityMeta: { color: COLORS.dim, fontSize: 8.8, marginTop: 2 },
+  emptyEvent: { width: 300, minHeight: 150, borderRadius: 18, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, padding: 18, justifyContent: 'center' },
   emptyEventTitle: { color: COLORS.cream, fontSize: 16, fontWeight: '900' },
   emptyEventBody: { color: COLORS.dim, fontSize: 10.5, marginTop: 4 },
   accessCard: { borderRadius: 18, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, padding: 16 },
