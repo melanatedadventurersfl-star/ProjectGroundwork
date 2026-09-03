@@ -3,6 +3,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 
 const MODEL = "gpt-4.1-mini";
 const jsonHeaders = { "Content-Type": "application/json" };
+const DEFER_ATTENDANCE = "__planner_defer_attendance__";
+const DEFER_DATE = "__planner_defer_date__";
+const DEFER_VENUE = "__planner_defer_venue__";
+const DEFER_ARRIVAL = "__planner_defer_arrival__";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -10,6 +14,10 @@ function json(body: unknown, status = 200) {
 
 function clean(value: unknown, max = 4000) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function unique(values: string[]) {
+  return [...new Set(values)];
 }
 
 function schema() {
@@ -94,13 +102,15 @@ function fallback(message: string, current: any) {
     meetingInstructions: current?.meetingInstructions || "",
     paid: Boolean(current?.paid),
     priceCents: Number(current?.priceCents || 0),
-    components: Array.isArray(current?.components) ? current.components : [],
-    requirements: Array.isArray(current?.requirements) ? current.requirements : [],
-    safetyNotes: Array.isArray(current?.safetyNotes) ? current.safetyNotes : [],
+    components: Array.isArray(current?.components) ? [...current.components] : [],
+    requirements: Array.isArray(current?.requirements) ? [...current.requirements] : [],
+    safetyNotes: Array.isArray(current?.safetyNotes) ? [...current.safetyNotes] : [],
     backupPlan: current?.backupPlan || "",
   };
 
-  const lower = message.toLowerCase();
+  const lower = message.toLowerCase().trim();
+  const addMarker = (marker: string) => { plan.requirements = unique([...plan.requirements, marker]); };
+  const hasMarker = (marker: string) => plan.requirements.includes(marker);
 
   if (!plan.city && lower.includes("jacksonville")) plan.city = "Jacksonville";
   if (!plan.city && lower.includes("ocala")) plan.city = "Ocala";
@@ -111,7 +121,7 @@ function fallback(message: string, current: any) {
     plan.summary = plan.city ? `A group nature walk in ${plan.city}.` : "A group nature walk.";
     plan.description = plan.summary;
     plan.components = ["venue","schedule","activities","safety","communications","team"];
-  } else if (!plan.title && lower.includes("kayak")) {
+  } else if (!plan.title && (lower.includes("kayak") || lower.includes("paddle") || lower.includes("canoe"))) {
     plan.title = plan.city ? `${plan.city} Social Paddle` : "Social Paddle";
     plan.category = "Paddling";
     plan.summary = plan.city ? `A relaxed group paddle near ${plan.city}.` : "A relaxed group paddle.";
@@ -125,6 +135,18 @@ function fallback(message: string, current: any) {
     plan.components = ["venue","schedule","activities","food","equipment","safety","communications","team"];
   }
 
+  const capacityMatch = lower.match(/\b(\d{1,4})\s*(people|guests|attendees|persons)?\b/);
+  if (!plan.capacity && capacityMatch) plan.capacity = Number(capacityMatch[1]);
+  if (!plan.capacity && lower.includes("10 or fewer")) plan.capacity = 10;
+  if (!plan.capacity && (lower.includes("10–25") || lower.includes("10-25"))) plan.capacity = 25;
+  if (!plan.capacity && (lower.includes("25–50") || lower.includes("25-50"))) plan.capacity = 50;
+  if (!plan.capacity && lower.includes("50+")) plan.capacity = 60;
+
+  if (lower === "not sure yet" && plan.title && !plan.capacity) addMarker(DEFER_ATTENDANCE);
+  else if ((lower === "not sure yet" || lower === "this weekend" || lower === "next weekend") && !plan.startsAt) addMarker(DEFER_DATE);
+  else if (lower === "skip for now" && !plan.venueName) addMarker(DEFER_VENUE);
+  else if (lower === "skip for now" && !plan.meetingInstructions) addMarker(DEFER_ARRIVAL);
+
   const gaps = [
     !plan.title ? "Event idea or title" : "",
     !plan.capacity ? "Expected attendance" : "",
@@ -136,22 +158,29 @@ function fallback(message: string, current: any) {
   ].filter(Boolean);
 
   const readiness = Math.max(10, Math.min(95, 100 - gaps.length * 12));
-
   let nextMessage = "Tell me a little more about the event you want to host.";
   let options = ["Nature walk", "Camping trip", "Social meetup"];
 
-  if (plan.title && !plan.capacity) {
+  if (plan.title && !plan.capacity && !hasMarker(DEFER_ATTENDANCE)) {
     nextMessage = `${plan.title} is taking shape${plan.city ? ` in ${plan.city}` : ""}. About how many people are you planning for?`;
     options = ["10 or fewer", "10–25", "25–50", "50+", "Not sure yet"];
-  } else if (!plan.startsAt) {
-    nextMessage = "What date or weekend are you considering?";
+  } else if (!plan.startsAt && !hasMarker(DEFER_DATE)) {
+    nextMessage = "What date are you considering? You can give me an exact date, choose a weekend, or leave it open for now.";
     options = ["This weekend", "Next weekend", "I have a date", "Not sure yet"];
-  } else if (!plan.venueName) {
-    nextMessage = "Do you already have a venue or meeting point, or should I recommend options?";
+  } else if (!plan.venueName && !hasMarker(DEFER_VENUE)) {
+    nextMessage = lower === "this weekend" || lower === "next weekend"
+      ? `${message.trim()} noted. We can lock the exact day and time later. Do you already have a venue or meeting point, or should I recommend options?`
+      : "Do you already have a venue or meeting point, or should I recommend options?";
     options = ["Recommend locations", "I know the location", "Skip for now"];
-  } else if (!plan.meetingInstructions) {
+  } else if (!plan.meetingInstructions && !hasMarker(DEFER_ARRIVAL)) {
     nextMessage = "What should guests know about arrival or check-in?";
     options = ["Recommend for me", "I’ll add instructions", "Skip for now"];
+  } else if (!plan.startsAt) {
+    nextMessage = "We can keep planning with the exact date open. What do you want to work on next?";
+    options = ["Location", "Tickets", "Activities", "Safety", "Set date"];
+  } else {
+    nextMessage = "The core plan is taking shape. What do you want to work on next?";
+    options = ["Tickets", "Activities", "Safety", "Communications", "Review plan"];
   }
 
   return {
@@ -162,7 +191,7 @@ function fallback(message: string, current: any) {
     gaps,
     options,
     recommendation: null,
-    taskPacks: lower.includes("kayak") || plan.category === "Paddling" ? ["safety","waivers","equipment","communications","marketing","event_day"] : plan.category === "Camping" ? ["food","safety","equipment","communications","marketing","event_day"] : ["safety","communications","marketing","event_day"],
+    taskPacks: plan.category === "Paddling" ? ["safety","waivers","equipment","communications","marketing","event_day"] : plan.category === "Camping" ? ["food","safety","equipment","communications","marketing","event_day"] : ["safety","communications","marketing","event_day"],
   };
 }
 
@@ -197,8 +226,11 @@ Deno.serve(async (req: Request) => {
     currentPlan = body?.plan && typeof body.plan === "object" ? body.plan : {};
     const history = Array.isArray(body?.history) ? body.history.slice(-16) : [];
     const preferences = body?.preferences ?? {};
+    const lower = message.toLowerCase().trim();
 
-    if (!openAiKey) return json(fallback(message, currentPlan));
+    if (!openAiKey || ["not sure yet", "this weekend", "next weekend", "skip for now"].includes(lower)) {
+      return json(fallback(message, currentPlan));
+    }
 
     const source = JSON.stringify({ message, currentPlan, history, privacy: {
       personalMemory: Boolean(preferences.personal_memory_enabled),
@@ -208,7 +240,7 @@ Deno.serve(async (req: Request) => {
       analytics: Boolean(preferences.product_analytics_enabled),
     }});
 
-    const instructions = `You are the Go Melanated Host Center AI Event Planner. Turn a rough event idea into a usable draft through conversation. Ask one strong question at a time. Do not behave like a giant form. When the host gives a simple idea such as "a nature walk in Jacksonville," immediately infer the event type, city and sensible working title, preserve those details, then ask the next most useful question. Recommend answers when useful, and offer options such as Recommend for me, I don't know, or Skip for now. Preserve confirmed information. Never invent a business, venue rule, price, permit, weather condition, safety fact, or availability. If a recommendation depends on changing or external facts, set needsVerification=true and explain the reason briefly. Separate facts from recommendations. Keep responses concise and operational. Readiness measures planning completeness. It must not block saving a draft. A publish-ready plan needs title, category, date/start/end, venue or meeting point, city/state, attendance, admission model, arrival instructions, safety/backup needs appropriate to the event, communications and task packs. For paddling/water events, automatically consider safety, waivers, equipment, weather/condition backup, lead/sweep roles and communications. For food, add food tasks. For vendors add vendor tasks. For paid/public events consider marketing. The user must remain in control. Optional personal memory and analytics are OFF unless the privacy object says otherwise. Do not use or imply historical personalization when its toggle is off. Return the full updated plan every turn.`;
+    const instructions = `You are the Go Melanated Host Center AI Event Planner. Turn a rough event idea into a usable draft through conversation. Ask one strong question at a time. Do not behave like a giant form. When the host gives a simple idea such as "a nature walk in Jacksonville," immediately infer the event type, city and sensible working title, preserve those details, then ask the next most useful question. If the host says Not sure yet, Skip for now, This weekend, or Next weekend, acknowledge it and move to a different planning topic instead of repeating the same question. Do not invent an exact date or time from a broad weekend answer. Preserve any requirement value beginning __planner_ exactly and never mention those internal values to the user. Recommend answers when useful. Preserve confirmed information. Never invent a business, venue rule, price, permit, weather condition, safety fact, or availability. If a recommendation depends on changing or external facts, set needsVerification=true and explain the reason briefly. Separate facts from recommendations. Keep responses concise and operational. Readiness measures planning completeness. It must not block saving a draft. A publish-ready plan needs title, category, date/start/end, venue or meeting point, city/state, attendance, admission model, arrival instructions, safety/backup needs appropriate to the event, communications and task packs. For paddling/water events, automatically consider safety, waivers, equipment, weather/condition backup, lead/sweep roles and communications. For food, add food tasks. For vendors add vendor tasks. For paid/public events consider marketing. The user must remain in control. Optional personal memory and analytics are OFF unless the privacy object says otherwise. Do not use or imply historical personalization when its toggle is off. Return the full updated plan every turn.`;
 
     const upstream = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
