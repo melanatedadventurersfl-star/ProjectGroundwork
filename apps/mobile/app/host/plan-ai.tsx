@@ -1,15 +1,17 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
-import { runAiPlannerTurn, type AiPlanState, type AiPlannerTurn } from '../../src/hosting/aiPlanner';
+import { getAiPrivacyPreferences, runAiPlannerTurn, type AiPlanState, type AiPlannerTurn, type AiPrivacyPreferences } from '../../src/hosting/aiPlanner';
+import { linkAiPlannerSessionToEvent, persistAiPlannerTurn } from '../../src/hosting/aiPlannerPersistence';
 import { createCampaignWorkspace } from '../../src/hosting/creation';
 import { addEventComponent, type EventComponentKey } from '../../src/hosting/eventBuilder';
 import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
 
 const VALID_COMPONENTS = new Set<EventComponentKey>(['tickets','food','vendors','marketing','communications','team','volunteers','finance','venue','schedule','activities','lodging','equipment','safety','sponsors','transportation','pages']);
+const OFF_PREFS: AiPrivacyPreferences = { personal_memory_enabled: false, event_history_learning_enabled: false, organization_memory_enabled: false, save_conversations_enabled: false, product_analytics_enabled: false, recommendation_history_enabled: false };
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
@@ -21,14 +23,24 @@ function stageLabel(turn: AiPlannerTurn | null) {
   return 'The idea is taking shape';
 }
 
+function privacyLabel(prefs: AiPrivacyPreferences) {
+  const memory = prefs.personal_memory_enabled || prefs.event_history_learning_enabled ? 'Memory On' : 'Memory Off';
+  const analytics = prefs.product_analytics_enabled ? 'Analytics On' : 'Analytics Off';
+  return `${memory} · ${analytics} · Privacy ›`;
+}
+
 export default function AiEventPlannerScreen() {
   const [input, setInput] = useState('');
   const [plan, setPlan] = useState<AiPlanState>({ state: 'FL', components: [] });
   const [turn, setTurn] = useState<AiPlannerTurn | null>(null);
   const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', text: 'Tell me what you want to host. I’ll ask one useful question at a time and build the event as we go.' }]);
+  const [privacy, setPrivacy] = useState<AiPrivacyPreferences>(OFF_PREFS);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => { void getAiPrivacyPreferences().then(setPrivacy).catch(() => setPrivacy(OFF_PREFS)); }, []);
 
   const readiness = turn?.readiness ?? 0;
   const canCreate = readiness >= 95 && Boolean(plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state && plan.capacity);
@@ -44,9 +56,13 @@ export default function AiEventPlannerScreen() {
     setError('');
     try {
       const next = await runAiPlannerTurn({ message: trimmed, plan, history: nextHistory.slice(-12) });
+      const completeHistory = [...nextHistory, { role: 'assistant' as const, text: next.message }];
       setPlan(next.plan);
       setTurn(next);
-      setMessages((current) => [...current, { role: 'assistant', text: next.message }]);
+      setMessages(completeHistory);
+      const nextSessionId = await persistAiPlannerTurn({ sessionId, plan: next.plan, turn: next, history: completeHistory }).catch(() => sessionId);
+      setSessionId(nextSessionId);
+      setPrivacy(await getAiPrivacyPreferences().catch(() => privacy));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to continue planning.');
     } finally {
@@ -80,6 +96,7 @@ export default function AiEventPlannerScreen() {
       const campaign = await createCampaignWorkspace({ adventureId: outing.id, title: outing.title, location, startsAt: outing.starts_at, endsAt: outing.ends_at });
       const requested = [...new Set(['tickets','team','finance',...(plan.components ?? [])])].filter((key): key is EventComponentKey => VALID_COMPONENTS.has(key as EventComponentKey));
       await Promise.all(requested.map((key) => addEventComponent(campaign.id, key, outing.starts_at)));
+      await linkAiPlannerSessionToEvent(sessionId, outing.id).catch(() => undefined);
       const packs = encodeURIComponent((turn?.taskPacks ?? ['communications','event_day']).join(','));
       router.replace(`/host/work-plan/${outing.id}?packs=${packs}` as never);
     } catch (caught) {
@@ -93,7 +110,7 @@ export default function AiEventPlannerScreen() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.topRow}>
         <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Build an Event</Text></Pressable>
-        <Pressable style={styles.privacy} onPress={() => router.push('/host/ai-privacy' as never)}><Text style={styles.privacyText}>Memory Off · Analytics Off · Privacy ›</Text></Pressable>
+        <Pressable style={styles.privacy} onPress={() => router.push('/host/ai-privacy' as never)}><Text style={styles.privacyText}>{privacyLabel(privacy)}</Text></Pressable>
       </View>
 
       <Text style={styles.eyebrow}>PLAN WITH AI</Text>
