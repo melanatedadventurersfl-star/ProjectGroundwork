@@ -1,2 +1,5 @@
-import { HostSectionHub } from '../../src/hosting/HostSectionHub';
-export default function HostWorkScreen() { return <HostSectionHub kind="work" />; }
+import { HostWorkHub } from '../../src/hosting/HostWorkHub';
+
+export default function HostWorkScreen() {
+  return <HostWorkHub />;
+}
