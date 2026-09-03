@@ -1,6 +1,17 @@
 export {
+  discoverOpportunities,
+  listHostOpportunities,
   previewOpportunityFromUrl,
+  saveDiscoveredOpportunity,
+  saveImportedOpportunity,
+  setOpportunityStage,
+  type DiscoveredOpportunity,
+  type DiscoveryResult,
   type OpportunityImportResult,
   type OpportunityPreview,
+  type OpportunityRelevance,
+  type OpportunityStage,
   type OpportunityType,
+  type OpportunityVerification,
+  type SavedOpportunity,
 } from '../management/opportunities';
