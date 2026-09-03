@@ -42,7 +42,6 @@ function HostSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatfo
       <View style={styles.divider} />
       <Text style={styles.sectionLabel}>ACCOUNT</Text>
       <View style={styles.navGroup}>
-        <NavButton pathname={pathname} item={{ label: 'Messages', icon: 'message', href: '/(tabs)/community', isActive: () => false }} />
         <NavButton pathname={pathname} item={{ label: 'Notifications', icon: 'notifications', href: '/notifications', isActive: (path) => path.startsWith('/notifications') }} />
         <NavButton pathname={pathname} item={{ label: 'Back to Member App', icon: 'chevron-back', href: '/(tabs)', isActive: () => false }} />
         {isPlatformAdmin ? <NavButton pathname={pathname} item={{ label: 'Admin', icon: 'profile', href: '/admin', isActive: (path) => path.startsWith('/admin') }} /> : null}
