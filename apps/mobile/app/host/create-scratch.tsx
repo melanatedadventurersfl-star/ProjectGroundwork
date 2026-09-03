@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getGroups, type CommunityGroup } from '../../src/community/api';
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
 import { createCampaignWorkspace } from '../../src/hosting/creation';
 import { addEventComponent } from '../../src/hosting/eventBuilder';
@@ -26,6 +27,8 @@ export default function CreateHostOutingScreen() {
   const [category, setCategory] = useState('Social');
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [visibility, setVisibility] = useState<EventVisibility>('public');
+  const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [venueName, setVenueName] = useState('');
@@ -39,12 +42,21 @@ export default function CreateHostOutingScreen() {
   const [error, setError] = useState('');
   const capacityNumber = useMemo(() => { const value = Number.parseInt(capacity, 10); return Number.isFinite(value) && value > 0 ? value : null; }, [capacity]);
 
+  useEffect(() => {
+    void getGroups().then(setGroups).catch(() => setGroups([]));
+  }, []);
+
+  function toggleGroup(groupId: string) {
+    setSelectedGroupIds((current) => current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]);
+  }
+
   async function createOuting() {
     setSaving(true); setError('');
     try {
       const access = await getOutingHostAccess();
       if (!access.approved) throw new Error('Approved host access is required.');
       if (paid && !access.paidEnabled) throw new Error('Paid hosting has not been enabled for your account yet.');
+      if (visibility === 'community' && selectedGroupIds.length === 0) throw new Error('Choose at least one community for this event.');
       const start = new Date(startsAt);
       const end = new Date(endsAt);
       if (!title.trim()) throw new Error('Add an event title.');
@@ -53,7 +65,7 @@ export default function CreateHostOutingScreen() {
       const priceCents = paid ? Math.round(dollars * 100) : 0;
       if (paid && (!Number.isFinite(dollars) || dollars <= 0)) throw new Error('Enter a valid ticket price.');
       const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions });
-      await setOutingVisibility(outing.id, visibility);
+      await setOutingVisibility(outing.id, visibility, selectedGroupIds);
       await addGeneralAdmissionTicket(outing.id, capacityNumber, priceCents);
       const campaign = await createCampaignWorkspace({ adventureId: outing.id, title: outing.title, location: [outing.venue_name, outing.city, outing.state].filter(Boolean).join(', '), startsAt: outing.starts_at, endsAt: outing.ends_at });
       await Promise.all([addEventComponent(campaign.id, 'tickets', outing.starts_at), addEventComponent(campaign.id, 'team', outing.starts_at), addEventComponent(campaign.id, 'finance', outing.starts_at)]);
@@ -79,7 +91,7 @@ export default function CreateHostOutingScreen() {
 
     <Text style={styles.sectionLabel}>Who can see this event?</Text>
     <View style={styles.visibilityList}>{visibilityOptions.map((option) => <Pressable key={option.value} style={[styles.visibilityCard, visibility === option.value && styles.visibilityCardActive]} onPress={() => setVisibility(option.value)}><View style={[styles.radio, visibility === option.value && styles.radioActive]}>{visibility === option.value ? <View style={styles.radioDot} /> : null}</View><View style={styles.flex}><Text style={[styles.visibilityTitle, visibility === option.value && styles.visibilityTitleActive]}>{option.label}</Text><Text style={styles.visibilityCopy}>{option.copy}</Text></View></Pressable>)}</View>
-    {visibility === 'community' ? <Text style={styles.communityNote}>Choose the allowed community in the event builder. You do not need to create or join a community to host public, unlisted, or private events.</Text> : null}
+    {visibility === 'community' ? <View style={styles.communityPicker}><Text style={styles.label}>Allowed communities</Text>{groups.length ? <View style={styles.chips}>{groups.map((group) => <Chip key={group.id} label={group.name} active={selectedGroupIds.includes(group.id)} onPress={() => toggleGroup(group.id)} />)}</View> : <Text style={styles.communityNote}>No communities are available to select. Create or join a community before making this event community-only.</Text>}</View> : null}
 
     <Text style={styles.sectionLabel}>Admission</Text><View style={styles.segment}><Pressable style={[styles.segmentButton, !paid && styles.segmentActive]} onPress={() => { setPaid(false); setPrice('0'); }}><Text style={[styles.segmentText, !paid && styles.segmentTextActive]}>Free event</Text></Pressable><Pressable style={[styles.segmentButton, paid && styles.segmentActive]} onPress={() => setPaid(true)}><Text style={[styles.segmentText, paid && styles.segmentTextActive]}>Paid event</Text></Pressable></View>
     {paid ? <Field label="Starting ticket price" value={price} onChangeText={setPrice} placeholder="35.00" keyboardType="decimal-pad" prefix="$" /> : null}
@@ -90,4 +102,4 @@ export default function CreateHostOutingScreen() {
 
 function Field({ label, prefix, multiline = false, ...props }: any) { return <View style={styles.fieldWrap}><Text style={styles.label}>{label}</Text><View style={styles.inputWrap}>{prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}<TextInput {...props} multiline={multiline} placeholderTextColor="#66736B" style={[styles.input, multiline && styles.multiline]} textAlignVertical={multiline ? 'top' : 'center'} /></View></View>; }
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) { return <Pressable style={[styles.chip, active && styles.chipActive]} onPress={onPress}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>; }
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0B100D' }, content: { padding: 20, paddingBottom: 64 }, back: { color: '#D7B45A', fontWeight: '800', marginBottom: 18 }, eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 32, lineHeight: 38, fontWeight: '900', marginTop: 4 }, subtitle: { color: '#A7B0AA', fontSize: 13, lineHeight: 20, marginTop: 5, marginBottom: 8 }, fieldWrap: { marginTop: 13 }, label: { color: '#D4DAD6', fontSize: 12, fontWeight: '800', marginBottom: 7 }, inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', borderRadius: 13 }, input: { flex: 1, minHeight: 48, color: '#FFF8E8', paddingHorizontal: 13, fontSize: 14 }, multiline: { minHeight: 92, paddingTop: 13 }, prefix: { color: '#D7B45A', fontSize: 15, fontWeight: '900', marginLeft: 13 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 3 }, chip: { borderRadius: 18, borderWidth: 1, borderColor: '#364139', paddingHorizontal: 11, paddingVertical: 8, backgroundColor: '#151B17' }, chipActive: { backgroundColor: '#443616', borderColor: '#8A6A25' }, chipText: { color: '#A9B1AC', fontSize: 11, fontWeight: '800' }, chipTextActive: { color: '#E7C464' }, twoCol: { flexDirection: 'row', gap: 10 }, flex: { flex: 1 }, stateCol: { width: 95 }, helper: { color: '#738078', fontSize: 10, lineHeight: 15, marginTop: 7 }, sectionLabel: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 24, marginBottom: 9, textTransform: 'uppercase' }, visibilityList: { gap: 8 }, visibilityCard: { borderRadius: 14, borderWidth: 1, borderColor: '#344039', backgroundColor: '#151B17', minHeight: 66, padding: 11, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }, visibilityCardActive: { borderColor: '#8A6A25', backgroundColor: '#292314' }, radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: '#66736B', alignItems: 'center', justifyContent: 'center', marginTop: 1 }, radioActive: { borderColor: '#D7B45A' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D7B45A' }, visibilityTitle: { color: '#D4DAD6', fontSize: 12, fontWeight: '900' }, visibilityTitleActive: { color: '#E7C464' }, visibilityCopy: { color: '#7D8981', fontSize: 10, lineHeight: 14, marginTop: 3 }, communityNote: { color: '#8F9A93', fontSize: 10, lineHeight: 15, marginTop: 8 }, segment: { flexDirection: 'row', borderRadius: 13, borderWidth: 1, borderColor: '#344039', overflow: 'hidden' }, segmentButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151B17' }, segmentActive: { backgroundColor: '#443616' }, segmentText: { color: '#9FA9A3', fontWeight: '800', fontSize: 12 }, segmentTextActive: { color: '#E7C464' }, primary: { minHeight: 52, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginTop: 24 }, primaryText: { color: '#172017', fontSize: 15, fontWeight: '900' }, error: { color: '#FF8A80', fontSize: 12, lineHeight: 18, marginTop: 15 } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0B100D' }, content: { padding: 20, paddingBottom: 64 }, back: { color: '#D7B45A', fontWeight: '800', marginBottom: 18 }, eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 32, lineHeight: 38, fontWeight: '900', marginTop: 4 }, subtitle: { color: '#A7B0AA', fontSize: 13, lineHeight: 20, marginTop: 5, marginBottom: 8 }, fieldWrap: { marginTop: 13 }, label: { color: '#D4DAD6', fontSize: 12, fontWeight: '800', marginBottom: 7 }, inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', borderRadius: 13 }, input: { flex: 1, minHeight: 48, color: '#FFF8E8', paddingHorizontal: 13, fontSize: 14 }, multiline: { minHeight: 92, paddingTop: 13 }, prefix: { color: '#D7B45A', fontSize: 15, fontWeight: '900', marginLeft: 13 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 3 }, chip: { borderRadius: 18, borderWidth: 1, borderColor: '#364139', paddingHorizontal: 11, paddingVertical: 8, backgroundColor: '#151B17' }, chipActive: { backgroundColor: '#443616', borderColor: '#8A6A25' }, chipText: { color: '#A9B1AC', fontSize: 11, fontWeight: '800' }, chipTextActive: { color: '#E7C464' }, twoCol: { flexDirection: 'row', gap: 10 }, flex: { flex: 1 }, stateCol: { width: 95 }, helper: { color: '#738078', fontSize: 10, lineHeight: 15, marginTop: 7 }, sectionLabel: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 24, marginBottom: 9, textTransform: 'uppercase' }, visibilityList: { gap: 8 }, visibilityCard: { borderRadius: 14, borderWidth: 1, borderColor: '#344039', backgroundColor: '#151B17', minHeight: 66, padding: 11, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }, visibilityCardActive: { borderColor: '#8A6A25', backgroundColor: '#292314' }, radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: '#66736B', alignItems: 'center', justifyContent: 'center', marginTop: 1 }, radioActive: { borderColor: '#D7B45A' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D7B45A' }, visibilityTitle: { color: '#D4DAD6', fontSize: 12, fontWeight: '900' }, visibilityTitleActive: { color: '#E7C464' }, visibilityCopy: { color: '#7D8981', fontSize: 10, lineHeight: 14, marginTop: 3 }, communityPicker: { marginTop: 12 }, communityNote: { color: '#8F9A93', fontSize: 10, lineHeight: 15, marginTop: 4 }, segment: { flexDirection: 'row', borderRadius: 13, borderWidth: 1, borderColor: '#344039', overflow: 'hidden' }, segmentButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151B17' }, segmentActive: { backgroundColor: '#443616' }, segmentText: { color: '#9FA9A3', fontWeight: '800', fontSize: 12 }, segmentTextActive: { color: '#E7C464' }, primary: { minHeight: 52, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginTop: 24 }, primaryText: { color: '#172017', fontSize: 15, fontWeight: '900' }, error: { color: '#FF8A80', fontSize: 12, lineHeight: 18, marginTop: 15 } });
