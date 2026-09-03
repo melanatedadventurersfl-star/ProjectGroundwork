@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -73,6 +74,11 @@ export default function HostOpportunitiesScreen() {
     }
   };
 
+  const openSource = () => {
+    const source = preview?.sourceUrl || cleanUrl;
+    if (source) void Linking.openURL(source);
+  };
+
   const attentionCount = preview ? 1 : 0;
   const reviewCount = preview ? 1 : 0;
 
@@ -136,13 +142,14 @@ export default function HostOpportunitiesScreen() {
         <SectionHeader eyebrow="NEEDS ATTENTION" title={attentionCount ? 'Review imported opportunity' : 'Nothing needs attention'} count={attentionCount} />
         <View style={styles.panel}>
           {preview ? (
-            <View style={styles.attentionRow}>
+            <Pressable style={styles.attentionRow} onPress={openSource}>
               <View style={styles.attentionIcon}><AppIcon name="search" color={COLORS.orange} size={18} /></View>
               <View style={styles.flex}>
                 <Text style={styles.rowTitle}>{preview.title || 'Imported opportunity'}</Text>
-                <Text style={styles.rowMeta}>Review the extracted fields before saving or applying.</Text>
+                <Text style={styles.rowMeta}>Tap to open the original opportunity page.</Text>
               </View>
-            </View>
+              <AppIcon name="chevron-forward" color={COLORS.dim} size={16} />
+            </Pressable>
           ) : <FeaturePlaceholder icon="checkmark" title="No opportunity alerts" copy="Imported records, deadlines and follow-ups that need action will appear here." compact />}
         </View>
 
@@ -164,13 +171,14 @@ export default function HostOpportunitiesScreen() {
         <SectionHeader eyebrow="UPCOMING DEADLINES" title={preview?.applicationDeadline ? 'Application deadline found' : 'No deadlines yet'} />
         <View style={styles.panel}>
           {preview?.applicationDeadline ? (
-            <View style={styles.deadlineRow}>
+            <Pressable style={styles.deadlineRow} onPress={openSource}>
               <View style={styles.deadlineIcon}><AppIcon name="calendar" color={COLORS.gold} size={18} /></View>
               <View style={styles.flex}>
                 <Text style={styles.rowTitle}>{preview.title || 'Imported opportunity'}</Text>
                 <Text style={styles.rowMeta}>{preview.applicationDeadline}</Text>
               </View>
-            </View>
+              <AppIcon name="chevron-forward" color={COLORS.dim} size={16} />
+            </Pressable>
           ) : <FeaturePlaceholder icon="calendar" title="Nothing scheduled" copy="Application deadlines, booth payments and follow-up dates will appear here when they exist." compact />}
         </View>
       </ScrollView>
@@ -183,29 +191,48 @@ function ModeButton({ label, icon, active, onPress }: { label: string; icon: App
 }
 
 function ReviewCard({ preview, sourceUrl }: { preview: OpportunityPreview; sourceUrl: string }) {
+  const targetUrl = preview.sourceUrl || sourceUrl;
   const rows = [
     ['Type', labelize(preview.opportunityType)],
-    ['Event date', preview.eventStart],
-    ['Location', [preview.venueName, preview.city, preview.state].filter(Boolean).join(', ')],
+    ['Starts', preview.eventStart],
+    ['Ends', preview.eventEnd],
+    ['Venue', preview.venueName],
+    ['Address', preview.address],
+    ['City / State', [preview.city, preview.state].filter(Boolean).join(', ')],
     ['Organizer', preview.organizer],
     ['Vendor fee', preview.vendorFeeText],
     ['Application deadline', preview.applicationDeadline],
-    ['Contact', preview.contactEmail || preview.contactPhone || preview.contactName],
+    ['Contact name', preview.contactName],
+    ['Contact email', preview.contactEmail],
+    ['Contact phone', preview.contactPhone],
   ].filter(([, value]) => Boolean(value));
 
   return <View style={styles.reviewCard}>
-    <View style={styles.reviewTop}><View><Text style={styles.reviewEyebrow}>REVIEW IMPORTED DETAILS</Text><Text style={styles.reviewTitle}>{preview.title || 'Imported opportunity'}</Text></View><View style={styles.reviewBadge}><Text style={styles.reviewBadgeText}>REVIEWING</Text></View></View>
+    <View style={styles.reviewTop}><View style={styles.flex}><Text style={styles.reviewEyebrow}>REVIEW IMPORTED DETAILS</Text><Text style={styles.reviewTitle}>{preview.title || 'Imported opportunity'}</Text></View><View style={styles.reviewBadge}><Text style={styles.reviewBadgeText}>REVIEWING</Text></View></View>
     {preview.summary ? <Text style={styles.reviewSummary}>{preview.summary}</Text> : null}
-    <View style={styles.details}>{rows.length ? rows.map(([label, value], index) => <View key={label} style={[styles.detailRow, index > 0 && styles.divider]}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>) : <Text style={styles.reviewSummary}>The source did not expose enough structured opportunity details. Use the source link below to review it manually.</Text>}</View>
+    <View style={styles.details}>{rows.length ? rows.map(([label, value], index) => <View key={label} style={[styles.detailRow, index > 0 && styles.divider]}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>) : <Text style={styles.reviewSummary}>The source did not expose enough structured opportunity details. Open the original page below to review it.</Text>}</View>
+    {preview.ticketDetails?.length ? <ReviewList title="Ticket details" items={preview.ticketDetails} /> : null}
     {preview.boothDetails?.length ? <ReviewList title="Booth details" items={preview.boothDetails} /> : null}
     {preview.requirements?.length ? <ReviewList title="Requirements" items={preview.requirements} /> : null}
-    <Text style={styles.sourceLabel}>SOURCE</Text><Text style={styles.sourceUrl} numberOfLines={2}>{sourceUrl}</Text>
-    <Text style={styles.reviewNote}>Review every imported field before it becomes a saved opportunity. Saving and pipeline persistence are not enabled yet.</Text>
+    {preview.applicationUrl ? <LinkAction label="Open application page" url={preview.applicationUrl} /> : null}
+    <Text style={styles.sourceLabel}>SOURCE</Text>
+    <Pressable onPress={() => void Linking.openURL(targetUrl)} accessibilityRole="link">
+      <Text style={styles.sourceUrl} numberOfLines={2}>{targetUrl}</Text>
+    </Pressable>
+    <Pressable style={styles.sourceButton} onPress={() => void Linking.openURL(targetUrl)}>
+      <AppIcon name="open" color={COLORS.ink} size={15} />
+      <Text style={styles.sourceButtonText}>View original page</Text>
+    </Pressable>
+    <Text style={styles.reviewNote}>Review every imported field against the original source before saving or applying.</Text>
   </View>;
 }
 
+function LinkAction({ label, url }: { label: string; url: string }) {
+  return <Pressable style={styles.linkAction} onPress={() => void Linking.openURL(url)} accessibilityRole="link"><Text style={styles.linkActionText}>{label}</Text><AppIcon name="open" color={COLORS.gold} size={15} /></Pressable>;
+}
+
 function ReviewList({ title, items }: { title: string; items: string[] }) {
-  return <View style={styles.reviewList}><Text style={styles.reviewListTitle}>{title.toUpperCase()}</Text>{items.slice(0, 6).map((item, index) => <Text key={`${title}-${index}`} style={styles.reviewListItem}>• {item}</Text>)}</View>;
+  return <View style={styles.reviewList}><Text style={styles.reviewListTitle}>{title.toUpperCase()}</Text>{items.slice(0, 8).map((item, index) => <Text key={`${title}-${index}`} style={styles.reviewListItem}>• {item}</Text>)}</View>;
 }
 
 function SectionHeader({ eyebrow, title, count }: { eyebrow: string; title: string; count?: number }) {
@@ -262,7 +289,7 @@ const styles = StyleSheet.create({
   reviewCard: { borderRadius: 18, borderWidth: 1, borderColor: '#37513F', backgroundColor: '#122119', padding: 14, marginTop: 14 },
   reviewTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, justifyContent: 'space-between' },
   reviewEyebrow: { color: COLORS.green, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  reviewTitle: { color: COLORS.cream, fontSize: 17, fontWeight: '900', marginTop: 4, maxWidth: 250 },
+  reviewTitle: { color: COLORS.cream, fontSize: 17, fontWeight: '900', marginTop: 4 },
   reviewBadge: { borderRadius: 9, backgroundColor: '#26341F', paddingHorizontal: 7, paddingVertical: 5 },
   reviewBadgeText: { color: COLORS.green, fontSize: 7, fontWeight: '900' },
   reviewSummary: { color: COLORS.muted, fontSize: 9.5, lineHeight: 15, marginTop: 9 },
@@ -274,7 +301,11 @@ const styles = StyleSheet.create({
   reviewListTitle: { color: COLORS.gold, fontSize: 8, fontWeight: '900', letterSpacing: .8 },
   reviewListItem: { color: COLORS.muted, fontSize: 9, lineHeight: 14, marginTop: 4 },
   sourceLabel: { color: COLORS.dim, fontSize: 7.5, fontWeight: '900', letterSpacing: .8, marginTop: 13 },
-  sourceUrl: { color: COLORS.cream, fontSize: 8.5, marginTop: 3 },
+  sourceUrl: { color: COLORS.gold, fontSize: 8.5, lineHeight: 13, marginTop: 4, textDecorationLine: 'underline' },
+  sourceButton: { minHeight: 44, borderRadius: 11, backgroundColor: COLORS.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10 },
+  sourceButtonText: { color: COLORS.ink, fontSize: 10, fontWeight: '900' },
+  linkAction: { minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: COLORS.lineGold, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 12 },
+  linkActionText: { color: COLORS.cream, fontSize: 9.5, fontWeight: '900' },
   reviewNote: { color: COLORS.dim, fontSize: 8, lineHeight: 12, marginTop: 10 },
   placeholder: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.line, backgroundColor: '#111914' },
   placeholderCompact: { minHeight: 76, borderWidth: 0, backgroundColor: 'transparent' },
