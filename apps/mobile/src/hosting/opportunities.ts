@@ -5,6 +5,7 @@ export {
   saveDiscoveredOpportunity,
   saveImportedOpportunity,
   setOpportunityStage,
+  updateOpportunityTags,
   type DiscoveredOpportunity,
   type DiscoveryResult,
   type OpportunityImportResult,
