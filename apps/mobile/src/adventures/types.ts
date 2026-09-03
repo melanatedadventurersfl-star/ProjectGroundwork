@@ -29,6 +29,7 @@ export type AdventureSummary = {
   access_level?: AdventureAccessLevel;
   go_plus_early_access_at?: string | null;
   public_registration_at?: string | null;
+  created_by?: string | null;
 };
 
 export type AdventureDetail = AdventureSummary & {

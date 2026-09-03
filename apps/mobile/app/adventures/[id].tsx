@@ -25,6 +25,7 @@ import {
 } from '../../src/adventures/api';
 import type { AdventureDetail } from '../../src/adventures/types';
 import { FavoriteButton } from '../../src/components/FavoriteButton';
+import { getPublicHostProfile, type PublicHostProfile } from '../../src/hosts/publicProfileApi';
 
 function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -52,6 +53,7 @@ export default function AdventureDetailScreen() {
   const isTablet = width >= 700;
 
   const [adventure, setAdventure] = useState<AdventureDetail | null>(null);
+  const [host, setHost] = useState<PublicHostProfile | null>(null);
   const [tickets, setTickets] = useState<AdventureTicketType[]>([]);
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
   const [rsvp, setRsvp] = useState<AdventureRsvpSummary>({
@@ -69,12 +71,14 @@ export default function AdventureDetailScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [nextAdventure, nextTickets, nextRsvp] = await Promise.all([
-        getAdventure(id),
+      const nextAdventure = await getAdventure(id);
+      const [nextTickets, nextRsvp, nextHost] = await Promise.all([
         listAdventureTicketTypes(id),
         getAdventureRsvpSummary(id),
+        nextAdventure.created_by ? getPublicHostProfile(nextAdventure.created_by).catch(() => null) : Promise.resolve(null),
       ]);
       setAdventure(nextAdventure);
+      setHost(nextHost);
       setSaved(Boolean(nextAdventure.is_saved));
       setTickets(nextTickets);
       setRsvp(nextRsvp.myStatus ? nextRsvp : { ...nextRsvp, myVisibility: 'community' });
@@ -170,6 +174,9 @@ export default function AdventureDetailScreen() {
     : adventure.capacity != null
       ? `${adventure.capacity} person capacity`
       : 'Open attendance';
+  const hostName = host?.organization_name || host?.display_name || 'Melanated Adventurers';
+  const hostSubtitle = host?.tagline || host?.bio || 'Building community through adventure and connection.';
+  const hostInitials = hostName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -351,13 +358,20 @@ export default function AdventureDetailScreen() {
               <View style={styles.sectionIcon}><Text style={styles.sectionIconText}>⌂</Text></View>
               <Text style={styles.sectionTitle}>Hosted by</Text>
             </View>
-            <View style={styles.hostRow}>
-              <View style={styles.hostMark}><Text style={styles.hostMarkText}>MA</Text></View>
+            <Pressable
+              disabled={!host}
+              style={styles.hostRow}
+              accessibilityRole={host ? 'button' : undefined}
+              accessibilityLabel={host ? `View ${hostName} host profile` : undefined}
+              onPress={() => host ? router.push(`/host-profile/${host.id}`) : undefined}
+            >
+              <View style={styles.hostMark}><Text style={styles.hostMarkText}>{hostInitials}</Text></View>
               <View style={styles.hostCopy}>
-                <Text style={styles.hostName}>Melanated Adventurers</Text>
-                <Text style={styles.subtle}>Building community through adventure and connection.</Text>
+                <Text style={styles.hostName}>{hostName}</Text>
+                <Text style={styles.subtle} numberOfLines={2}>{hostSubtitle}</Text>
               </View>
-            </View>
+              {host ? <Text style={styles.hostChevron}>›</Text> : null}
+            </Pressable>
           </View>
 
           {showTicketChoices ? (
@@ -499,6 +513,7 @@ const styles = StyleSheet.create({
   hostMarkText: { color: '#F4C542', fontSize: 14, fontWeight: '900' },
   hostCopy: { flex: 1 },
   hostName: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', marginBottom: 2 },
+  hostChevron: { color: '#7F8C85', fontSize: 26, fontWeight: '700' },
   ticketBox: { backgroundColor: '#151F1A', borderRadius: 13, borderWidth: 1, borderColor: '#2C3932', padding: 11 },
   ticketBoxExpanded: { borderColor: '#55665B' },
   ticketRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

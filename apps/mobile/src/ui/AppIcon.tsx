@@ -54,6 +54,7 @@ export type AppIconName =
   | 'more'
   | 'open'
   | 'share'
+  | 'message'
   | 'close'
   | 'delete'
   | 'food'
@@ -111,6 +112,7 @@ const icons: Record<AppIconName, IoniconName> = {
   more: 'ellipsis-horizontal',
   open: 'open-outline',
   share: 'share-social-outline',
+  message: 'chatbubble-ellipses-outline',
   close: 'close-circle-outline',
   delete: 'trash-outline',
   food: 'restaurant-outline',
