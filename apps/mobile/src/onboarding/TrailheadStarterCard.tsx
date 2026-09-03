@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   reasonList: { marginTop: 14, gap: 8 },
   reasonRow: { flexDirection: 'row', gap: 9, alignItems: 'flex-start' },
   reasonDot: { width: 7, height: 7, borderRadius: 4, marginTop: 6, backgroundColor: '#DDB64B' },
-  reasonText: { flex: 1, color: '#D7E0DA', fontSize: 12.5, lineHeight: 18, fontWeight: '650' },
+  reasonText: { flex: 1, color: '#D7E0DA', fontSize: 12.5, lineHeight: 18, fontWeight: '600' },
   payoffPrimary: { marginTop: 16, minHeight: 46, borderRadius: 13, backgroundColor: '#DDB64B', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   payoffPrimaryText: { color: '#0E2D25', fontSize: 14, fontWeight: '900' },
   payoffArrow: { color: '#0E2D25', fontSize: 24, lineHeight: 24 },
