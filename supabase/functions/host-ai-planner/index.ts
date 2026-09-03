@@ -99,30 +99,70 @@ function fallback(message: string, current: any) {
     safetyNotes: Array.isArray(current?.safetyNotes) ? current.safetyNotes : [],
     backupPlan: current?.backupPlan || "",
   };
+
   const lower = message.toLowerCase();
-  if (!plan.title && lower.includes("kayak")) {
-    plan.title = "St. Johns Social Paddle";
+
+  if (!plan.city && lower.includes("jacksonville")) plan.city = "Jacksonville";
+  if (!plan.city && lower.includes("ocala")) plan.city = "Ocala";
+
+  if (!plan.title && (lower.includes("nature walk") || lower.includes("nature hike") || lower.includes("hike"))) {
+    plan.title = plan.city ? `Nature Walk in ${plan.city}` : "Nature Walk";
+    plan.category = "Hiking";
+    plan.summary = plan.city ? `A group nature walk in ${plan.city}.` : "A group nature walk.";
+    plan.description = plan.summary;
+    plan.components = ["venue","schedule","activities","safety","communications","team"];
+  } else if (!plan.title && lower.includes("kayak")) {
+    plan.title = plan.city ? `${plan.city} Social Paddle` : "Social Paddle";
     plan.category = "Paddling";
-    plan.summary = "A relaxed group paddle on the St. Johns River.";
+    plan.summary = plan.city ? `A relaxed group paddle near ${plan.city}.` : "A relaxed group paddle.";
+    plan.description = plan.summary;
     plan.components = ["venue","safety","equipment","tickets","communications","team"];
+  } else if (!plan.title && (lower.includes("camping") || lower.includes("campout") || lower.includes("camp out"))) {
+    plan.title = plan.city ? `Camping Trip in ${plan.city}` : "Camping Trip";
+    plan.category = "Camping";
+    plan.summary = plan.city ? `A group camping trip near ${plan.city}.` : "A group camping trip.";
+    plan.description = plan.summary;
+    plan.components = ["venue","schedule","activities","food","equipment","safety","communications","team"];
   }
+
   const gaps = [
-    !plan.venueName ? "Launch or venue" : "",
+    !plan.title ? "Event idea or title" : "",
+    !plan.capacity ? "Expected attendance" : "",
     !plan.startsAt ? "Date and start time" : "",
     !plan.endsAt ? "End time" : "",
-    !plan.capacity ? "Expected attendance" : "",
+    !plan.city ? "City" : "",
+    !plan.venueName ? "Venue or meeting point" : "",
     !plan.meetingInstructions ? "Arrival instructions" : "",
   ].filter(Boolean);
-  const readiness = Math.max(10, Math.min(95, 100 - gaps.length * 14));
+
+  const readiness = Math.max(10, Math.min(95, 100 - gaps.length * 12));
+
+  let nextMessage = "Tell me a little more about the event you want to host.";
+  let options = ["Nature walk", "Camping trip", "Social meetup"];
+
+  if (plan.title && !plan.capacity) {
+    nextMessage = `${plan.title} is taking shape${plan.city ? ` in ${plan.city}` : ""}. About how many people are you planning for?`;
+    options = ["10 or fewer", "10–25", "25–50", "50+", "Not sure yet"];
+  } else if (!plan.startsAt) {
+    nextMessage = "What date or weekend are you considering?";
+    options = ["This weekend", "Next weekend", "I have a date", "Not sure yet"];
+  } else if (!plan.venueName) {
+    nextMessage = "Do you already have a venue or meeting point, or should I recommend options?";
+    options = ["Recommend locations", "I know the location", "Skip for now"];
+  } else if (!plan.meetingInstructions) {
+    nextMessage = "What should guests know about arrival or check-in?";
+    options = ["Recommend for me", "I’ll add instructions", "Skip for now"];
+  }
+
   return {
-    message: !plan.venueName ? "Do you already have a launch or venue in mind, or should I recommend options?" : !plan.startsAt ? "What date are you considering? I can help recommend a start time after that." : !plan.capacity ? "About how many people are you planning for?" : "The core plan is taking shape. Tell me what you want to handle next, or ask me to finish the remaining setup.",
+    message: nextMessage,
     plan,
     readiness,
     stage: readiness >= 95 ? "ready" : readiness >= 75 ? "confidence" : readiness >= 35 ? "momentum" : "possibility",
     gaps,
-    options: !plan.venueName ? ["Recommend locations","I know the location","Skip for now"] : !plan.startsAt ? ["This weekend","Next weekend","I have a date"] : ["Continue","Show my plan","Finish what you can"],
+    options,
     recommendation: null,
-    taskPacks: lower.includes("kayak") || plan.category === "Paddling" ? ["safety","waivers","equipment","communications","marketing","event_day"] : ["communications","marketing","event_day"],
+    taskPacks: lower.includes("kayak") || plan.category === "Paddling" ? ["safety","waivers","equipment","communications","marketing","event_day"] : plan.category === "Camping" ? ["food","safety","equipment","communications","marketing","event_day"] : ["safety","communications","marketing","event_day"],
   };
 }
 
@@ -147,11 +187,14 @@ Deno.serve(async (req: Request) => {
   const { data: approved, error: accessError } = await userClient.rpc("is_approved_outing_host", { p_profile_id: userId });
   if (accessError || approved !== true) return json({ error: "Approved host access is required." }, 403);
 
+  let message = "";
+  let currentPlan: any = {};
+
   try {
     const body = await req.json();
-    const message = clean(body?.message, 2500);
+    message = clean(body?.message, 2500);
     if (!message) return json({ error: "Tell the planner what you want to work on." }, 400);
-    const currentPlan = body?.plan && typeof body.plan === "object" ? body.plan : {};
+    currentPlan = body?.plan && typeof body.plan === "object" ? body.plan : {};
     const history = Array.isArray(body?.history) ? body.history.slice(-16) : [];
     const preferences = body?.preferences ?? {};
 
@@ -165,7 +208,7 @@ Deno.serve(async (req: Request) => {
       analytics: Boolean(preferences.product_analytics_enabled),
     }});
 
-    const instructions = `You are the Go Melanated Host Center AI Event Planner. You guide an event host from a rough idea to a 95-100% ready operational plan through a conversation. Ask one strong question at a time. Do not behave like a giant form. Recommend answers when useful, and offer options such as Recommend for me, I don't know, or Skip for now. Preserve confirmed information. Never invent a business, venue rule, price, permit, weather condition, safety fact, or availability. If a recommendation depends on changing or external facts, set needsVerification=true and explain the reason briefly. Separate facts from recommendations. Use the host's language where practical. Keep responses concise and operational. For emotional design, use stage language: possibility means the idea is taking shape, momentum means essentials are coming together, confidence means almost ready to host, ready means 95% or more with no publishing blockers. Readiness must reflect actual completeness, not optimism. Required basics are title, category, date/start/end, venue or meeting point, city/state, attendance, admission model, arrival instructions, safety/backup needs appropriate to the event, communications, and task packs. For paddling/water events, automatically consider safety, waivers, equipment, weather/condition backup, lead/sweep roles and communications. For food, add food tasks. For vendors add vendor tasks. For paid/public events consider marketing. The user must remain in control. Optional personal memory and analytics are OFF unless the privacy object says otherwise. Do not use or imply historical personalization when its toggle is off. Return the full updated plan every turn.`;
+    const instructions = `You are the Go Melanated Host Center AI Event Planner. Turn a rough event idea into a usable draft through conversation. Ask one strong question at a time. Do not behave like a giant form. When the host gives a simple idea such as "a nature walk in Jacksonville," immediately infer the event type, city and sensible working title, preserve those details, then ask the next most useful question. Recommend answers when useful, and offer options such as Recommend for me, I don't know, or Skip for now. Preserve confirmed information. Never invent a business, venue rule, price, permit, weather condition, safety fact, or availability. If a recommendation depends on changing or external facts, set needsVerification=true and explain the reason briefly. Separate facts from recommendations. Keep responses concise and operational. Readiness measures planning completeness. It must not block saving a draft. A publish-ready plan needs title, category, date/start/end, venue or meeting point, city/state, attendance, admission model, arrival instructions, safety/backup needs appropriate to the event, communications and task packs. For paddling/water events, automatically consider safety, waivers, equipment, weather/condition backup, lead/sweep roles and communications. For food, add food tasks. For vendors add vendor tasks. For paid/public events consider marketing. The user must remain in control. Optional personal memory and analytics are OFF unless the privacy object says otherwise. Do not use or imply historical personalization when its toggle is off. Return the full updated plan every turn.`;
 
     const upstream = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -184,9 +227,16 @@ Deno.serve(async (req: Request) => {
     }
     const text = outputText(payload);
     if (!text) return json(fallback(message, currentPlan));
-    return json(JSON.parse(text));
+
+    try {
+      return json(JSON.parse(text));
+    } catch (parseError) {
+      console.error("host-ai-planner parse", parseError);
+      return json(fallback(message, currentPlan));
+    }
   } catch (error) {
     console.error("host-ai-planner", error);
-    return json({ error: error instanceof Error ? error.message : "Unable to continue AI planning." }, 500);
+    if (message) return json(fallback(message, currentPlan));
+    return json({ error: "Unable to start AI planning." }, 500);
   }
 });
