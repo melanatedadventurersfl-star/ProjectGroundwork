@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
-import { addAiTaskPacks, runAiPlannerTurn, type AiPlanState, type AiPlannerTurn } from '../../src/hosting/aiPlanner';
+import { runAiPlannerTurn, type AiPlanState, type AiPlannerTurn } from '../../src/hosting/aiPlanner';
 import { createCampaignWorkspace } from '../../src/hosting/creation';
 import { addEventComponent, type EventComponentKey } from '../../src/hosting/eventBuilder';
 import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
@@ -80,8 +80,8 @@ export default function AiEventPlannerScreen() {
       const campaign = await createCampaignWorkspace({ adventureId: outing.id, title: outing.title, location, startsAt: outing.starts_at, endsAt: outing.ends_at });
       const requested = [...new Set(['tickets','team','finance',...(plan.components ?? [])])].filter((key): key is EventComponentKey => VALID_COMPONENTS.has(key as EventComponentKey));
       await Promise.all(requested.map((key) => addEventComponent(campaign.id, key, outing.starts_at)));
-      await addAiTaskPacks(campaign.id, outing.starts_at, turn?.taskPacks ?? ['communications','event_day']);
-      router.replace(`/host/build/${outing.id}` as never);
+      const packs = encodeURIComponent((turn?.taskPacks ?? ['communications','event_day']).join(','));
+      router.replace(`/host/work-plan/${outing.id}?packs=${packs}` as never);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to create this event.');
     } finally {
@@ -93,7 +93,7 @@ export default function AiEventPlannerScreen() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.topRow}>
         <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Build an Event</Text></Pressable>
-        <View style={styles.privacy}><Text style={styles.privacyText}>Memory Off · Analytics Off</Text></View>
+        <Pressable style={styles.privacy} onPress={() => router.push('/host/ai-privacy' as never)}><Text style={styles.privacyText}>Memory Off · Analytics Off · Privacy ›</Text></Pressable>
       </View>
 
       <Text style={styles.eyebrow}>PLAN WITH AI</Text>
@@ -121,7 +121,7 @@ export default function AiEventPlannerScreen() {
 
       <View style={styles.footerCard}>
         <Text style={styles.footerTitle}>{canCreate ? 'Your event is ready to create.' : 'AI keeps planning until the core event reaches 95%.'}</Text>
-        <Text style={styles.footerBody}>After creation, Host Center adds the selected event components and recommended work packs so Food, Waivers, Safety, Vendors, Communications and other needs become actionable tasks.</Text>
+        <Text style={styles.footerBody}>After creation, you review the recommended work packs before tasks are added. Food, Waivers, Safety, Vendors, Communications and other needs stay under your control.</Text>
         <Pressable disabled={!canCreate || creating} onPress={() => void createEvent()} style={[styles.create, (!canCreate || creating) && styles.disabled]}>{creating ? <ActivityIndicator color="#172017" /> : <Text style={styles.createText}>Create Event</Text>}</Pressable>
       </View>
     </ScrollView>
