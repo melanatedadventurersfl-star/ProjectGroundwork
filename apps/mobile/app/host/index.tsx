@@ -14,6 +14,7 @@ type EventSummary = { campaign: HostCampaign; operations: Awaited<ReturnType<typ
 type Tool = { title: string; subtitle: string; route: string; icon: AppIconName; accent: string };
 
 const tools: Tool[] = [
+  { title: 'Host Profile', subtitle: 'Public identity, organizations, followers and history', route: '/host/profile', icon: 'profile', accent: '#D7B45A' },
   { title: 'Events', subtitle: 'Build, run and close out events', route: '/host/events', icon: 'adventure', accent: '#D7B45A' },
   { title: 'Work', subtitle: 'Tasks, assignments and deadlines', route: '/host/work', icon: 'tasks', accent: '#A990ED' },
   { title: 'Calendar', subtitle: 'Events, deadlines and schedules', route: '/host/calendar', icon: 'calendar', accent: '#75AEE8' },
