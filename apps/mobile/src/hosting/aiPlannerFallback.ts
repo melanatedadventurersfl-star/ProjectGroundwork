@@ -1,11 +1,29 @@
 import type { AiPlanState, AiPlannerTurn } from './aiPlanner';
 
+type PlannerHistory = { role: 'user' | 'assistant'; text: string }[];
+
 function unique(values: string[]) {
   return [...new Set(values)];
 }
 
-export function buildClientPlannerFallback(message: string, current: AiPlanState): AiPlannerTurn {
-  const lower = message.toLowerCase();
+function wasDeferred(history: PlannerHistory, questionText: string) {
+  for (let index = 0; index < history.length - 1; index += 1) {
+    const question = history[index];
+    const answer = history[index + 1];
+    if (question.role !== 'assistant' || answer.role !== 'user') continue;
+    if (!question.text.toLowerCase().includes(questionText)) continue;
+    const value = answer.text.toLowerCase().trim();
+    if (value === 'not sure yet' || value === 'skip for now' || value === 'i’ll pick later' || value === "i'll pick later") return true;
+  }
+  return false;
+}
+
+function dateWindowWasChosen(history: PlannerHistory) {
+  return history.some((item) => item.role === 'user' && /^(this weekend|next weekend)$/i.test(item.text.trim()));
+}
+
+export function buildClientPlannerFallback(message: string, current: AiPlanState, history: PlannerHistory = []): AiPlannerTurn {
+  const lower = message.toLowerCase().trim();
   const plan: AiPlanState = {
     ...current,
     state: current.state || 'FL',
@@ -51,6 +69,11 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
   if (!plan.capacity && (lower.includes('25–50') || lower.includes('25-50'))) plan.capacity = 50;
   if (!plan.capacity && lower.includes('50+')) plan.capacity = 60;
 
+  const attendanceDeferred = wasDeferred(history, 'how many people') || (lower === 'not sure yet' && history.at(-2)?.text.toLowerCase().includes('how many people'));
+  const dateDeferred = wasDeferred(history, 'date or weekend') || dateWindowWasChosen(history) || lower === 'this weekend' || lower === 'next weekend';
+  const venueDeferred = wasDeferred(history, 'venue or meeting point');
+  const arrivalDeferred = wasDeferred(history, 'arrival or check-in');
+
   const gaps = [
     !plan.title ? 'Event idea or title' : '',
     !plan.capacity ? 'Expected attendance' : '',
@@ -65,18 +88,26 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
   let nextMessage = 'Tell me a little more about the event you want to host.';
   let options = ['Nature walk', 'Camping trip', 'Social meetup'];
 
-  if (plan.title && !plan.capacity) {
+  if (plan.title && !plan.capacity && !attendanceDeferred) {
     nextMessage = `${plan.title} is taking shape${plan.city ? ` in ${plan.city}` : ''}. About how many people are you planning for?`;
     options = ['10 or fewer', '10–25', '25–50', '50+', 'Not sure yet'];
-  } else if (!plan.startsAt) {
-    nextMessage = 'What date or weekend are you considering?';
+  } else if (!plan.startsAt && !dateDeferred) {
+    nextMessage = 'What date are you considering? You can give me an exact date, choose a weekend, or leave it open for now.';
     options = ['This weekend', 'Next weekend', 'I have a date', 'Not sure yet'];
-  } else if (!plan.venueName) {
-    nextMessage = 'Do you already have a venue or meeting point, or should I recommend options?';
+  } else if (!plan.venueName && !venueDeferred) {
+    nextMessage = lower === 'this weekend' || lower === 'next weekend'
+      ? `${message.trim()} noted. We can lock the exact day and time later. Do you already have a venue or meeting point, or should I recommend options?`
+      : 'Do you already have a venue or meeting point, or should I recommend options?';
     options = ['Recommend locations', 'I know the location', 'Skip for now'];
-  } else if (!plan.meetingInstructions) {
+  } else if (!plan.meetingInstructions && !arrivalDeferred) {
     nextMessage = 'What should guests know about arrival or check-in?';
     options = ['Recommend for me', 'I’ll add instructions', 'Skip for now'];
+  } else if (!plan.startsAt) {
+    nextMessage = 'We can keep planning with the date open. Tell me what you want to work on next.';
+    options = ['Location', 'Tickets', 'Activities', 'Safety', 'Date'];
+  } else {
+    nextMessage = 'The core plan is taking shape. What do you want to work on next?';
+    options = ['Tickets', 'Activities', 'Safety', 'Communications', 'Review plan'];
   }
 
   const taskPacks = plan.category === 'Paddling'
