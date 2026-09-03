@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { buildClientPlannerFallback } from './aiPlannerFallback';
+import { generateHostCopilotPlan } from './copilot';
 
 export type AiPrivacyPreferences = {
   personal_memory_enabled: boolean;
@@ -9,6 +10,8 @@ export type AiPrivacyPreferences = {
   product_analytics_enabled: boolean;
   recommendation_history_enabled: boolean;
 };
+
+export type AiPlannerStep = 'city' | 'state' | 'date' | 'start_time' | 'end_time' | 'venue' | 'venue_choice' | 'arrival' | 'price' | 'backup';
 
 export type AiPlanState = {
   title?: string;
@@ -22,6 +25,8 @@ export type AiPlanState = {
   city?: string;
   state?: string;
   capacity?: number;
+  attendanceRange?: string;
+  datePreference?: string;
   meetingInstructions?: string;
   paid?: boolean;
   priceCents?: number;
@@ -29,6 +34,11 @@ export type AiPlanState = {
   requirements?: string[];
   safetyNotes?: string[];
   backupPlan?: string;
+  plannerStep?: AiPlannerStep;
+  plannerDate?: string;
+  venueDeferred?: boolean;
+  arrivalDeferred?: boolean;
+  backupDeferred?: boolean;
 };
 
 export type AiPlannerTurn = {
@@ -51,6 +61,10 @@ const DEFAULT_PREFS: AiPrivacyPreferences = {
   recommendation_history_enabled: false,
 };
 
+const CONTROL_MESSAGES = new Set([
+  'this weekend', 'next weekend', 'not sure yet', 'i have a date', 'set date', 'recommend locations', 'i know the location', 'skip for now', 'recommend for me', 'tickets', 'free', 'paid', 'safety', 'communications', 'activities', 'review plan', 'location', 'recommend a backup',
+]);
+
 export async function getAiPrivacyPreferences(): Promise<AiPrivacyPreferences> {
   const { data: auth } = await supabase.auth.getUser();
   const profileId = auth.user?.id;
@@ -68,7 +82,48 @@ export async function getAiPrivacyPreferences(): Promise<AiPrivacyPreferences> {
   };
 }
 
+async function recommendPlannerLocations(input: { message: string; plan: AiPlanState; history: { role: 'user' | 'assistant'; text: string }[] }) {
+  const base = buildClientPlannerFallback(input.message, input.plan, input.history);
+  if (!base.plan.city || !base.plan.state) return base;
+
+  try {
+    const response = await generateHostCopilotPlan({
+      prompt: `Recommend verified community place options that fit as a meeting point or useful stop for a ${base.plan.category || 'community'} event in ${base.plan.city}, ${base.plan.state}. Do not invent availability, rules, permits, prices or access details.`,
+      city: base.plan.city,
+      state: base.plan.state,
+    });
+    const stops = response.plan.communityStops ?? [];
+    const names = [...new Set(stops.map((stop) => stop.name).filter(Boolean))].slice(0, 4);
+    if (!names.length) {
+      return {
+        ...base,
+        message: `I don't have a verified community-place match for ${base.plan.city} yet. You can enter a location yourself or leave it open for now.`,
+        options: ['I know the location', 'Skip for now'],
+        recommendation: null,
+      } satisfies AiPlannerTurn;
+    }
+    const first = stops.find((stop) => stop.name === names[0]);
+    return {
+      ...base,
+      message: `I found ${names.length} verified option${names.length === 1 ? '' : 's'} in ${base.plan.city}. Pick one, enter your own location, or skip for now. Verify current access, hours, rules and availability before publishing.`,
+      options: [...names, 'I know the location', 'Skip for now'],
+      recommendation: first ? { label: first.name, reason: first.reason || 'Verified community-place match for the area.', needsVerification: true } : null,
+    } satisfies AiPlannerTurn;
+  } catch {
+    return {
+      ...base,
+      message: `I couldn't retrieve verified location matches right now. Your plan is still intact. Enter a location yourself or leave it open for now.`,
+      options: ['I know the location', 'Skip for now'],
+      recommendation: null,
+    } satisfies AiPlannerTurn;
+  }
+}
+
 export async function runAiPlannerTurn(input: { message: string; plan: AiPlanState; history: { role: 'user' | 'assistant'; text: string }[] }): Promise<AiPlannerTurn> {
+  const normalized = input.message.toLowerCase().trim();
+  if (normalized === 'recommend locations') return recommendPlannerLocations(input);
+  if (input.plan.plannerStep || CONTROL_MESSAGES.has(normalized)) return buildClientPlannerFallback(input.message, input.plan, input.history);
+
   let preferences = DEFAULT_PREFS;
   try {
     preferences = await getAiPrivacyPreferences();
@@ -79,11 +134,13 @@ export async function runAiPlannerTurn(input: { message: string; plan: AiPlanSta
   try {
     const { data, error } = await supabase.functions.invoke('host-ai-planner', { body: { ...input, preferences } });
     if (error || data?.error || !data?.plan || typeof data?.message !== 'string') {
-      return buildClientPlannerFallback(input.message, input.plan);
+      return buildClientPlannerFallback(input.message, input.plan, input.history);
     }
-    return data as AiPlannerTurn;
+    const next = data as AiPlannerTurn;
+    const noProgress = normalized.length > 0 && JSON.stringify(next.plan) === JSON.stringify(input.plan) && next.message === input.history.at(-2)?.text;
+    return noProgress ? buildClientPlannerFallback(input.message, input.plan, input.history) : next;
   } catch {
-    return buildClientPlannerFallback(input.message, input.plan);
+    return buildClientPlannerFallback(input.message, input.plan, input.history);
   }
 }
 
