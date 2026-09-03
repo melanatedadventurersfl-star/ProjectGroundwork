@@ -25,7 +25,10 @@ export default function HostMenuScreen() {
     return () => { active = false; };
   }, []);
 
-  const workspaces = useMemo(() => HOST_WORKSPACES.filter((item) => !item.adminOnly || isPlatformAdmin), [isPlatformAdmin]);
+  const workspaces = useMemo(
+    () => HOST_WORKSPACES.filter((item) => item.title !== 'Admin' || isPlatformAdmin),
+    [isPlatformAdmin],
+  );
 
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
