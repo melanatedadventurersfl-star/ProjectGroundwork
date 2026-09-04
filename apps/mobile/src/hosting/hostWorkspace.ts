@@ -15,9 +15,9 @@ export type HostWorkspaceItem = {
 export const HOST_WORKSPACE_ITEMS: HostWorkspaceItem[] = [
   { key: 'events', title: 'Events', subtitle: 'Build, prepare, run and close out events', route: '/host/events', icon: 'adventure', accent: '#D7B45A', group: 'EVENTS' },
   { key: 'guests', title: 'Guests & Attendees', subtitle: 'Attendance, check-in and participant readiness', route: '/host/events', icon: 'connections', accent: '#77B9A6', group: 'EVENTS' },
-  { key: 'calendar', title: 'Calendar', subtitle: 'Events, deadlines, meetings and schedules', route: '/host/calendar', icon: 'calendar', accent: '#75AEE8', group: 'EVENTS' },
+  { key: 'calendar', title: 'Event Calendar', subtitle: 'Upcoming event dates and schedules', route: '/host/calendar', icon: 'calendar', accent: '#75AEE8', group: 'EVENTS' },
 
-  { key: 'work', title: 'My Work', subtitle: 'Tasks and deadlines across events and operations', route: '/host/work', icon: 'tasks', accent: '#A990ED', group: 'WORK' },
+  { key: 'work', title: 'My Work', subtitle: 'Tasks, deadlines, planning and operations across events', route: '/host/work', icon: 'tasks', accent: '#A990ED', group: 'WORK' },
   { key: 'team', title: 'Team', subtitle: 'Staff, hosts, contractors, volunteers and roles', route: '/host/teams', icon: 'team', accent: '#77B9A6', group: 'WORK' },
   { key: 'opportunities', title: 'Opportunities', subtitle: 'Vending, partnerships and sponsorships', route: '/host/opportunities', icon: 'briefcase', accent: '#E7A05C', group: 'WORK' },
 
