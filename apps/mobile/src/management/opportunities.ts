@@ -23,6 +23,8 @@ export type OpportunityPreview = {
   vendorFeeText: string;
   applicationDeadline: string;
   applicationUrl: string;
+  imageUrl: string;
+  ticketUrl: string;
   boothDetails: string[];
   requirements: string[];
   ticketDetails: string[];
@@ -124,6 +126,19 @@ function stageLabel(stage: OpportunityStage) {
   return 'Archived';
 }
 
+export async function findHostOpportunityBySourceUrl(sourceUrl: string): Promise<SavedOpportunity | null> {
+  const ownerId = await requireProfileId();
+  const { data, error } = await supabase
+    .from('host_opportunities')
+    .select('*')
+    .eq('owner_profile_id', ownerId)
+    .eq('source_url', sourceUrl)
+    .neq('stage', 'archived')
+    .maybeSingle();
+  if (error) throw error;
+  return (data as SavedOpportunity | null) ?? null;
+}
+
 async function throwIfDuplicate(ownerId: string, sourceUrl: string) {
   const { data, error } = await supabase
     .from('host_opportunities')
@@ -177,12 +192,9 @@ export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, so
   return data as SavedOpportunity;
 }
 
-export async function saveImportedOpportunity(preview: OpportunityPreview, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
-  const ownerId = await requireProfileId();
-  await throwIfDuplicate(ownerId, preview.sourceUrl);
+function importedPayload(preview: OpportunityPreview, sourceLabel: string) {
   const sourceId = preview.sourceUrl.includes('eventbrite.') ? 'eventbrite' : 'external';
-  const payload = {
-    owner_profile_id: ownerId,
+  return {
     title: preview.title,
     summary: preview.summary || '',
     source_id: sourceId,
@@ -196,15 +208,45 @@ export async function saveImportedOpportunity(preview: OpportunityPreview, sourc
     address: preview.address || '',
     city: preview.city || '',
     state: preview.state || '',
+    image_url: preview.imageUrl || '',
+    ticket_url: preview.ticketUrl || preview.applicationUrl || preview.sourceUrl,
     application_url: preview.applicationUrl || '',
     vendor_fee_text: preview.vendorFeeText || '',
     application_deadline: preview.applicationDeadline || null,
-    stage: 'saved' as OpportunityStage,
-    tags,
-    metadata: { contactName: preview.contactName, contactEmail: preview.contactEmail, contactPhone: preview.contactPhone, boothDetails: preview.boothDetails, requirements: preview.requirements, ticketDetails: preview.ticketDetails },
+    metadata: {
+      contactName: preview.contactName,
+      contactEmail: preview.contactEmail,
+      contactPhone: preview.contactPhone,
+      boothDetails: preview.boothDetails,
+      requirements: preview.requirements,
+      ticketDetails: preview.ticketDetails,
+      organizerWebsite: preview.organizerWebsite,
+      opportunityType: preview.opportunityType,
+      confidenceNotes: preview.confidenceNotes,
+    },
     updated_at: new Date().toISOString(),
   };
+}
+
+export async function saveImportedOpportunity(preview: OpportunityPreview, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
+  const ownerId = await requireProfileId();
+  await throwIfDuplicate(ownerId, preview.sourceUrl);
+  const payload = { owner_profile_id: ownerId, ...importedPayload(preview, sourceLabel), stage: 'saved' as OpportunityStage, tags };
   const { data, error } = await supabase.from('host_opportunities').insert(payload).select('*').single();
+  if (error) throw error;
+  return data as SavedOpportunity;
+}
+
+export async function refreshImportedOpportunity(id: string, preview: OpportunityPreview, sourceLabel: string): Promise<SavedOpportunity> {
+  const ownerId = await requireProfileId();
+  const payload = importedPayload(preview, sourceLabel);
+  const { data, error } = await supabase
+    .from('host_opportunities')
+    .update(payload)
+    .eq('id', id)
+    .eq('owner_profile_id', ownerId)
+    .select('*')
+    .single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
