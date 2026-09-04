@@ -18,11 +18,25 @@ type OcrLine = {
 type OcrResult = { data?: { text?: string; confidence?: number; lines?: OcrLine[] } };
 type TesseractApi = { recognize: (image: unknown, language: string, options?: Record<string, unknown>) => Promise<OcrResult> };
 
+type FlyerRegions = {
+  full: string;
+  title: string;
+  details: string;
+  footer: string;
+};
+
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
 
 function clean(value: string) {
   return value.replace(/[|]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function cleanDetectedLine(value: string) {
+  return clean(value)
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .replace(/[^A-Za-z0-9),.!?'’&+\-]+$/, '')
+    .trim();
 }
 
 function titleCase(value: string) {
@@ -43,28 +57,41 @@ function textQuality(value: string) {
 }
 
 function plausibleLine(value: string, confidence = 100) {
-  const line = clean(value);
+  const line = cleanDetectedLine(value);
   if (line.length < 3 || line.length > 120 || confidence < 35) return false;
   if (textQuality(line) < 0.68) return false;
   const words = line.match(/[A-Za-z]{2,}/g) || [];
   return words.length >= 1;
 }
 
+function plausibleTitle(value: string) {
+  const line = cleanDetectedLine(value);
+  if (line.length < 5 || line.length > 80 || textQuality(line) < 0.8) return false;
+  const words = line.match(/[A-Za-z]{2,}/g) || [];
+  if (words.length < 2) return false;
+  const oneLetterWords = line.split(/\s+/).filter((word) => /^[A-Za-z]$/.test(word)).length;
+  if (oneLetterWords >= 2) return false;
+  return true;
+}
+
 function parseLocation(lines: string[]) {
+  const venueLike = /\b(park|ranch|center|centre|campground|camp|lodge|hall|museum|brewery|farm|beach|trail|lake|garden|gardens|resort|pavilion|venue)\b/i;
+  let venueName = '';
+
   for (let index = 0; index < lines.length; index += 1) {
-    const line = clean(lines[index] || '');
+    const line = cleanDetectedLine(lines[index] || '');
+    if (!venueName && venueLike.test(line)) venueName = titleCase(line);
+
     const match = line.match(/\b([A-Za-z][A-Za-z .'-]{1,40}),\s*([A-Z]{2})\b/i);
     if (!match) continue;
-    const city = titleCase(clean(match[1] || ''));
+    const city = titleCase(cleanDetectedLine(match[1] || ''));
     const state = String(match[2] || '').toUpperCase();
-    const previous = clean(lines[index - 1] || '');
-    const venueLike = /\b(park|ranch|center|centre|campground|camp|lodge|hall|museum|brewery|farm|beach|trail|lake|garden|gardens|resort|pavilion|venue)\b/i;
-    const venueName = previous && venueLike.test(previous) ? titleCase(previous) : '';
+    const previous = cleanDetectedLine(lines[index - 1] || '');
+    if (!venueName && previous && venueLike.test(previous)) venueName = titleCase(previous);
     return { city, state, venueName };
   }
 
-  const venueLine = lines.find((line) => /\b(park|ranch|center|centre|campground|lodge|hall|museum|brewery|farm|beach|trail|lake|garden|gardens|resort|pavilion)\b/i.test(line));
-  return { city: '', state: '', venueName: venueLine ? titleCase(clean(venueLine)) : '' };
+  return { city: '', state: '', venueName };
 }
 
 function parseDateNote(text: string) {
@@ -117,7 +144,7 @@ function pickTitle(result: OcrResult, fallbackLines: string[]) {
   if (explicit) return explicit;
 
   const candidates = (result.data?.lines || []).map((line, index) => ({
-    text: clean(line.text || ''),
+    text: cleanDetectedLine(line.text || ''),
     confidence: Number(line.confidence ?? 0),
     height: Math.max(0, Number(line.bbox?.y1 || 0) - Number(line.bbox?.y0 || 0)),
     index,
@@ -130,10 +157,10 @@ function pickTitle(result: OcrResult, fallbackLines: string[]) {
     .slice(0, 3)
     .sort((a, b) => a.index - b.index)
     .map((line) => line.text);
-  const joined = clean(largest.join(' ')).replace(/\bOF\b/gi, 'of');
-  if (joined.length >= 5 && joined.length <= 90 && textQuality(joined) >= 0.78) return titleCase(joined);
+  const joined = cleanDetectedLine(largest.join(' ')).replace(/\bOF\b/gi, 'of');
+  if (plausibleTitle(joined)) return titleCase(joined);
 
-  const fallback = fallbackLines.find((line) => plausibleLine(line, 60) && line.length <= 80 && !new RegExp(`\\b(?:${MONTHS}|jacksonville|brooksville|tickets?|admission|food|music|games|community)\\b`, 'i').test(line));
+  const fallback = fallbackLines.find((line) => plausibleTitle(line) && !new RegExp(`\\b(?:${MONTHS}|jacksonville|brooksville|tickets?|admission|food|music|games|community)\\b`, 'i').test(line));
   return fallback ? titleCase(fallback) : '';
 }
 
@@ -150,12 +177,31 @@ function scoreResult(result: OcrResult) {
   return usefulChars + averageConfidence * 3 + keywordHits * 120;
 }
 
-function parseOcrDraft(result: OcrResult): EventDraft {
+function mergeOcrResults(results: OcrResult[]): OcrResult {
+  const usable = results.filter(Boolean);
+  const best = [...usable].sort((a, b) => scoreResult(b) - scoreResult(a))[0] || {};
+  const texts = usable.map((result) => String(result.data?.text || '').trim()).filter(Boolean);
+  const lines = usable.flatMap((result) => result.data?.lines || []);
+  const confidence = usable.length
+    ? usable.reduce((sum, result) => sum + Number(result.data?.confidence || 0), 0) / usable.length
+    : 0;
+  return {
+    data: {
+      text: texts.join('\n'),
+      lines,
+      confidence: Math.max(confidence, Number(best.data?.confidence || 0)),
+    },
+  };
+}
+
+function parseOcrDraft(result: OcrResult, titleResult?: OcrResult): EventDraft {
   const rawText = String(result.data?.text || '').trim();
-  const textLines = rawText.split(/\r?\n/).map(clean).filter((line) => plausibleLine(line, 45));
+  const textLines = rawText.split(/\r?\n/).map(cleanDetectedLine).filter((line) => plausibleLine(line, 45));
   if (rawText.replace(/[^A-Za-z0-9]/g, '').length < 12) throw new Error('OCR could not read enough text from this flyer. Try a clearer or tighter image.');
 
-  const title = pickTitle(result, textLines);
+  const titleSource = titleResult || result;
+  const titleLines = String(titleSource.data?.text || '').split(/\r?\n/).map(cleanDetectedLine).filter(Boolean);
+  const title = pickTitle(titleSource, titleLines);
   const location = parseLocation(textLines);
   const date = parseDateNote(rawText);
   const times = parseTimes(rawText);
@@ -163,8 +209,8 @@ function parseOcrDraft(result: OcrResult): EventDraft {
   const startsAt = date && times.start ? `${date.startDate}T${times.start}` : '';
   const endsAt = date && times.end ? `${date.endDate}T${times.end}` : '';
   const category = /\bcamp(?:ing)?\b/i.test(rawText) ? 'Camping' : /\bhik(?:e|ing)\b/i.test(rawText) ? 'Hiking' : /\bpaddl|kayak|canoe|float\b/i.test(rawText) ? 'Paddling' : /\bbeach\b/i.test(rawText) ? 'Beach' : 'Other';
-  const summary = textLines.find((line) => /experience|weekend|festival|family|community|outdoor|float|chill/i.test(line) && line.toLowerCase() !== title.toLowerCase()) || '';
-  const activities = textLines.filter((line) => /haunted|games|contest|hayride|camp together|spooky|workshop|hike|paddle|float|music|food|community/i.test(line)).slice(0, 10);
+  const summary = textLines.find((line) => /experience|weekend|festival|family|community|outdoor|float|chill/i.test(line) && line.toLowerCase() !== title.toLowerCase() && textQuality(line) >= 0.8) || '';
+  const activities = textLines.filter((line) => /haunted|games|contest|hayride|camp together|spooky|workshop|hike|paddle|float|music|food|community/i.test(line) && textQuality(line) >= 0.78).slice(0, 10);
   const marketing = [...new Set([...rawText.matchAll(/(?:https?:\/\/|www\.)\S+|[\w.+-]+@[\w.-]+\.\w+|@[A-Za-z0-9_.]+/g)].map((match) => match[0]))].slice(0, 10);
   const notes: string[] = ['This draft was built with OCR text recognition only. Review every field before creating the event.'];
   if (date && !times.start) notes.push(`Date found: ${date.label}. Add the event start and end times.`);
@@ -229,8 +275,7 @@ async function loadTesseract(): Promise<TesseractApi> {
   return globalWithTesseract.Tesseract;
 }
 
-async function preprocessImage(uri: string) {
-  if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
+async function loadImage(uri: string) {
   const image = new Image();
   image.decoding = 'async';
   image.src = uri;
@@ -238,37 +283,69 @@ async function preprocessImage(uri: string) {
     image.onload = () => resolve();
     image.onerror = () => reject(new Error('Unable to prepare this flyer for OCR.'));
   });
+  return image;
+}
 
+function canvasRegion(image: HTMLImageElement, yStart: number, yEnd: number, enhance: boolean) {
+  const sourceWidth = image.naturalWidth;
+  const sourceHeight = image.naturalHeight;
+  const sourceY = Math.max(0, Math.round(sourceHeight * yStart));
+  const sourceH = Math.max(1, Math.round(sourceHeight * (yEnd - yStart)));
   const maxWidth = 2200;
-  const scale = Math.min(3, Math.max(1.4, maxWidth / Math.max(1, image.naturalWidth)));
+  const scale = Math.min(3, Math.max(1.4, maxWidth / Math.max(1, sourceWidth)));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(image.naturalWidth * scale);
-  canvas.height = Math.round(image.naturalHeight * scale);
+  canvas.width = Math.round(sourceWidth * scale);
+  canvas.height = Math.round(sourceH * scale);
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) return uri;
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  if (!context) return '';
+  context.drawImage(image, 0, sourceY, sourceWidth, sourceH, 0, 0, canvas.width, canvas.height);
 
-  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-  const data = pixels.data;
-  for (let index = 0; index < data.length; index += 4) {
-    const gray = Math.round(0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2]);
-    const contrast = gray < 148 ? Math.max(0, gray - 35) : Math.min(255, gray + 35);
-    data[index] = contrast;
-    data[index + 1] = contrast;
-    data[index + 2] = contrast;
+  if (enhance) {
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const data = pixels.data;
+    for (let index = 0; index < data.length; index += 4) {
+      const gray = Math.round(0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2]);
+      const contrast = gray < 150 ? Math.max(0, gray - 45) : Math.min(255, gray + 45);
+      data[index] = contrast;
+      data[index + 1] = contrast;
+      data[index + 2] = contrast;
+    }
+    context.putImageData(pixels, 0, 0);
   }
-  context.putImageData(pixels, 0, 0);
+
   return canvas.toDataURL('image/png');
 }
 
+async function prepareRegions(uri: string): Promise<FlyerRegions> {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return { full: uri, title: uri, details: uri, footer: uri };
+  const image = await loadImage(uri);
+  return {
+    full: canvasRegion(image, 0, 1, true) || uri,
+    title: canvasRegion(image, 0.08, 0.48, true) || uri,
+    details: canvasRegion(image, 0.42, 0.78, true) || uri,
+    footer: canvasRegion(image, 0.70, 1, true) || uri,
+  };
+}
+
 async function recognizeBest(tesseract: TesseractApi, uri: string) {
-  const prepared = await preprocessImage(uri).catch(() => uri);
-  const [original, enhanced] = await Promise.all([
-    tesseract.recognize(uri, 'eng'),
-    prepared === uri ? Promise.resolve(null) : tesseract.recognize(prepared, 'eng'),
+  const regions = await prepareRegions(uri).catch(() => ({ full: uri, title: uri, details: uri, footer: uri }));
+  const original = await tesseract.recognize(uri, 'eng');
+  const regionResults = await Promise.all([
+    tesseract.recognize(regions.full, 'eng'),
+    tesseract.recognize(regions.title, 'eng'),
+    tesseract.recognize(regions.details, 'eng'),
+    tesseract.recognize(regions.footer, 'eng'),
   ]);
-  if (!enhanced) return original;
-  return scoreResult(enhanced) >= scoreResult(original) ? enhanced : original;
+
+  const merged = mergeOcrResults([original, ...regionResults]);
+  const titleResult = [...[original, regionResults[1]]].sort((a, b) => {
+    const aExplicit = explicitTitle(String(a.data?.text || '')) ? 1 : 0;
+    const bExplicit = explicitTitle(String(b.data?.text || '')) ? 1 : 0;
+    if (aExplicit !== bExplicit) return bExplicit - aExplicit;
+    return scoreResult(b) - scoreResult(a);
+  })[0];
+
+  return { merged, titleResult };
 }
 
 export async function uploadAndPreviewFlyer(asset: FlyerAsset): Promise<ImportPreviewResult> {
@@ -278,8 +355,8 @@ export async function uploadAndPreviewFlyer(asset: FlyerAsset): Promise<ImportPr
   if (!userId) throw new Error('Sign in to scan an event flyer.');
 
   const tesseract = await loadTesseract();
-  const result = await recognizeBest(tesseract, asset.uri);
-  const preview = parseOcrDraft(result);
+  const { merged, titleResult } = await recognizeBest(tesseract, asset.uri);
+  const preview = parseOcrDraft(merged, titleResult);
   const sourceLabel = asset.fileName || 'Event flyer';
   const { data: importRow, error: importError } = await supabase.from('host_event_imports').insert({
     owner_profile_id: userId,
