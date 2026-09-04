@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -19,21 +19,34 @@ export default function OpportunityDetailScreen() {
   const [followUp,setFollowUp] = useState('');
   const [tagInput,setTagInput] = useState('');
 
-  useEffect(() => { void load(); }, [id]);
-  async function load() {
-    if (!id) return;
-    setLoading(true); setError('');
-    try { const row = await getHostOpportunity(id); setItem(row); setNotes(row.notes || ''); setFollowUp(toDateInput(row.follow_up_at)); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load opportunity.'); }
-    finally { setLoading(false); }
-  }
+  useEffect(() => {
+    let active = true;
+    if (!id) return () => { active = false; };
+    setLoading(true);
+    setError('');
+    void getHostOpportunity(id)
+      .then((row) => {
+        if (!active) return;
+        setItem(row);
+        setNotes(row.notes || '');
+        setFollowUp(toDateInput(row.follow_up_at));
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : 'Unable to load opportunity.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [id]);
 
   const metadata = (item?.metadata || {}) as Record<string, unknown>;
   const ticketDetails = Array.isArray(metadata.ticketDetails) ? metadata.ticketDetails.filter((v):v is string => typeof v === 'string') : [];
   const contact = [metadata.contactName,metadata.contactEmail,metadata.contactPhone].filter((v) => typeof v === 'string' && v).join(' · ');
   const verification = item?.verification_status === 'go_melanated_verified' ? '✓ Go Melanated Verified' : item?.verification_status === 'platform_sourced' ? `${item.source_label} sourced` : 'External source';
   const relevance = item?.relevance_label ? labelize(item.relevance_label) : 'No cultural relevance label';
-  const due = useMemo(() => item?.follow_up_at ? new Date(item.follow_up_at) : null,[item?.follow_up_at]);
+  const due = item?.follow_up_at ? new Date(item.follow_up_at) : null;
 
   async function saveWorkspace() {
     if (!item) return;
