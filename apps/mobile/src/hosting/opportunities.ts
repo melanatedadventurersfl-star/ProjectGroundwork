@@ -1,6 +1,8 @@
 export {
+  archiveOpportunity,
   discoverOpportunities,
   findHostOpportunityBySourceUrl,
+  getHostOpportunity,
   listHostOpportunities,
   previewOpportunityFromUrl,
   refreshImportedOpportunity,
@@ -8,6 +10,7 @@ export {
   saveImportedOpportunity,
   setOpportunityStage,
   updateOpportunityTags,
+  updateOpportunityWorkspace,
   type DiscoveredOpportunity,
   type DiscoveryResult,
   type OpportunityImportResult,
