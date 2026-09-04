@@ -177,6 +177,7 @@ export default function MenuScreen() {
     { label: 'Go+ Membership', route: '/member/go-plus', icon: 'badge' },
     { label: 'Trips & Payments', route: '/member/trips', icon: 'trips', meta: 'Bookings, tickets & receipts' },
     { label: 'Host Center', route: '/host', icon: 'guide', meta: 'Build and run individual events' },
+    { label: 'Vendor Center', route: '/vendor', icon: 'storefront', meta: 'Find work, manage bookings and run your vendor business' },
     { label: 'Management', route: '/management', icon: 'dashboard', meta: 'Organization-wide work, team, vendors, finances & operations' },
     { label: 'Trail Family', route: '/member/trail-family', icon: 'community' },
     { label: 'Trailmates & Crew', route: '/circles', icon: 'connections' },
