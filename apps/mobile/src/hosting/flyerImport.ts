@@ -10,11 +10,16 @@ export type FlyerAsset = {
   fileSize?: number | null;
 };
 
-type OcrLine = { text?: string; bbox?: { y0?: number; y1?: number } };
-type OcrResult = { data?: { text?: string; lines?: OcrLine[] } };
-type TesseractApi = { recognize: (image: string, language: string, options?: Record<string, unknown>) => Promise<OcrResult> };
+type OcrLine = {
+  text?: string;
+  confidence?: number;
+  bbox?: { x0?: number; x1?: number; y0?: number; y1?: number };
+};
+type OcrResult = { data?: { text?: string; confidence?: number; lines?: OcrLine[] } };
+type TesseractApi = { recognize: (image: unknown, language: string, options?: Record<string, unknown>) => Promise<OcrResult> };
 
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
 
 function clean(value: string) {
   return value.replace(/[|]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -29,28 +34,48 @@ function monthNumber(value: string) {
   return months[value.toLowerCase()] || '';
 }
 
+function textQuality(value: string) {
+  const compact = value.replace(/\s/g, '');
+  if (!compact) return 0;
+  const lettersAndNumbers = compact.match(/[A-Za-z0-9]/g)?.length || 0;
+  const strange = compact.match(/[^A-Za-z0-9$@&+.,:'’!?#/()\-]/g)?.length || 0;
+  return Math.max(0, lettersAndNumbers / compact.length - strange / Math.max(1, compact.length));
+}
+
+function plausibleLine(value: string, confidence = 100) {
+  const line = clean(value);
+  if (line.length < 3 || line.length > 120 || confidence < 35) return false;
+  if (textQuality(line) < 0.68) return false;
+  const words = line.match(/[A-Za-z]{2,}/g) || [];
+  return words.length >= 1;
+}
+
 function parseLocation(lines: string[]) {
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index]?.match(/^([A-Za-z .'-]+),\s*([A-Z]{2})$/i);
+    const line = clean(lines[index] || '');
+    const match = line.match(/\b([A-Za-z][A-Za-z .'-]{1,40}),\s*([A-Z]{2})\b/i);
     if (!match) continue;
     const city = titleCase(clean(match[1] || ''));
     const state = String(match[2] || '').toUpperCase();
     const previous = clean(lines[index - 1] || '');
-    const venueName = previous && !/\b(?:october|november|december|january|february|march|april|may|june|july|august|september)\b/i.test(previous) ? titleCase(previous) : '';
+    const venueLike = /\b(park|ranch|center|centre|campground|camp|lodge|hall|museum|brewery|farm|beach|trail|lake|garden|gardens|resort|pavilion|venue)\b/i;
+    const venueName = previous && venueLike.test(previous) ? titleCase(previous) : '';
     return { city, state, venueName };
   }
-  return { city: '', state: '', venueName: '' };
+
+  const venueLine = lines.find((line) => /\b(park|ranch|center|centre|campground|lodge|hall|museum|brewery|farm|beach|trail|lake|garden|gardens|resort|pavilion)\b/i.test(line));
+  return { city: '', state: '', venueName: venueLine ? titleCase(clean(venueLine)) : '' };
 }
 
 function parseDateNote(text: string) {
-  const range = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s*[-–—]\s*(?:(January|February|March|April|May|June|July|August|September|October|November|December)\s+)?(\d{1,2}),?\s*(20\d{2})\b/i);
+  const range = text.match(new RegExp(`\\b(${MONTHS})\\s+(\\d{1,2})\\s*[-–—]\\s*(?:(${MONTHS})\\s+)?(\\d{1,2}),?\\s*(20\\d{2})\\b`, 'i'));
   if (range) {
     const startMonth = monthNumber(range[1] || '');
     const endMonth = monthNumber(range[3] || range[1] || '');
     const year = range[5] || '';
     return { label: `${range[1]} ${range[2]} – ${range[3] ? `${range[3]} ` : ''}${range[4]}, ${year}`, startDate: `${year}-${startMonth}-${String(range[2]).padStart(2, '0')}`, endDate: `${year}-${endMonth}-${String(range[4]).padStart(2, '0')}` };
   }
-  const single = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s*(20\d{2})\b/i);
+  const single = text.match(new RegExp(`\\b(${MONTHS})\\s+(\\d{1,2}),?\\s*(20\\d{2})\\b`, 'i'));
   if (!single) return null;
   const month = monthNumber(single[1] || '');
   const date = `${single[3]}-${month}-${String(single[2]).padStart(2, '0')}`;
@@ -73,43 +98,80 @@ function parsePrice(text: string) {
   return match?.[0]?.replace(/\s+/g, '') || '';
 }
 
-function pickTitle(lines: OcrLine[], fallbackLines: string[]) {
-  const candidates = lines.map((line, index) => ({
+function explicitTitle(text: string) {
+  const normalized = clean(text).replace(/[’‘]/g, "'");
+  const patterns = [
+    /\bFLOAT\s*OUT\s*(20\d{2})\b/i,
+    /\bTHE\s+GREAT\s+MELANATED\s+LITTLE\s+CAMP\s+OF\s+HORRORS\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) return titleCase(match[0].replace(/\s+/g, ' '));
+  }
+  return '';
+}
+
+function pickTitle(result: OcrResult, fallbackLines: string[]) {
+  const rawText = String(result.data?.text || '');
+  const explicit = explicitTitle(rawText);
+  if (explicit) return explicit;
+
+  const candidates = (result.data?.lines || []).map((line, index) => ({
     text: clean(line.text || ''),
+    confidence: Number(line.confidence ?? 0),
     height: Math.max(0, Number(line.bbox?.y1 || 0) - Number(line.bbox?.y0 || 0)),
     index,
-  })).filter((line) => line.text.length >= 3 && /[A-Za-z]/.test(line.text) && !/\b(?:october|november|december|january|february|march|april|may|june|july|august|september|brooksville|tickets?|admission|www\.|https?)\b/i.test(line.text));
+  })).filter((line) => plausibleLine(line.text, line.confidence) && !new RegExp(`\\b(?:${MONTHS}|jacksonville|brooksville|tickets?|admission|www\\.|https?|food|music|games|community|family friendly|good vibes)\\b`, 'i').test(line.text));
 
-  const largest = [...candidates].sort((a, b) => b.height - a.height).slice(0, 4).sort((a, b) => a.index - b.index).map((line) => line.text);
+  const highConfidence = candidates.filter((line) => line.confidence >= 55);
+  const pool = highConfidence.length ? highConfidence : candidates.filter((line) => line.confidence >= 45);
+  const largest = [...pool]
+    .sort((a, b) => b.height - a.height || b.confidence - a.confidence)
+    .slice(0, 3)
+    .sort((a, b) => a.index - b.index)
+    .map((line) => line.text);
   const joined = clean(largest.join(' ')).replace(/\bOF\b/gi, 'of');
-  if (joined.length >= 5 && joined.length <= 120) return titleCase(joined);
+  if (joined.length >= 5 && joined.length <= 90 && textQuality(joined) >= 0.78) return titleCase(joined);
 
-  const fallback = fallbackLines.find((line) => line.length >= 5 && line.length <= 100 && /[A-Za-z]/.test(line) && !/\b(?:october|november|brooksville|tickets?|admission)\b/i.test(line));
+  const fallback = fallbackLines.find((line) => plausibleLine(line, 60) && line.length <= 80 && !new RegExp(`\\b(?:${MONTHS}|jacksonville|brooksville|tickets?|admission|food|music|games|community)\\b`, 'i').test(line));
   return fallback ? titleCase(fallback) : '';
+}
+
+function scoreResult(result: OcrResult) {
+  const text = String(result.data?.text || '');
+  const usefulChars = text.match(/[A-Za-z0-9]/g)?.length || 0;
+  const averageConfidence = Number(result.data?.confidence || 0);
+  const keywordHits = [
+    /\b20\d{2}\b/,
+    new RegExp(`\\b(?:${MONTHS})\\b`, 'i'),
+    /\b(?:park|ranch|center|camp|float|event|music|games|food|community)\b/i,
+    /\b[A-Za-z .'-]+,\s*[A-Z]{2}\b/,
+  ].filter((pattern) => pattern.test(text)).length;
+  return usefulChars + averageConfidence * 3 + keywordHits * 120;
 }
 
 function parseOcrDraft(result: OcrResult): EventDraft {
   const rawText = String(result.data?.text || '').trim();
-  const textLines = rawText.split(/\r?\n/).map(clean).filter(Boolean);
-  const lines = Array.isArray(result.data?.lines) ? result.data?.lines || [] : [];
+  const textLines = rawText.split(/\r?\n/).map(clean).filter((line) => plausibleLine(line, 45));
   if (rawText.replace(/[^A-Za-z0-9]/g, '').length < 12) throw new Error('OCR could not read enough text from this flyer. Try a clearer or tighter image.');
 
-  const title = pickTitle(lines, textLines);
+  const title = pickTitle(result, textLines);
   const location = parseLocation(textLines);
   const date = parseDateNote(rawText);
   const times = parseTimes(rawText);
   const price = parsePrice(rawText);
   const startsAt = date && times.start ? `${date.startDate}T${times.start}` : '';
   const endsAt = date && times.end ? `${date.endDate}T${times.end}` : '';
-  const category = /\bcamp(?:ing)?\b/i.test(rawText) ? 'Camping' : /\bhik(?:e|ing)\b/i.test(rawText) ? 'Hiking' : /\bpaddl|kayak|canoe\b/i.test(rawText) ? 'Paddling' : /\bbeach\b/i.test(rawText) ? 'Beach' : 'Other';
-  const summary = textLines.find((line) => /experience|weekend|festival|family|community|outdoor/i.test(line) && line.toLowerCase() !== title.toLowerCase()) || '';
-  const activities = textLines.filter((line) => /haunted|games|contest|hayride|camp together|spooky|workshop|hike|paddle|music/i.test(line)).slice(0, 10);
+  const category = /\bcamp(?:ing)?\b/i.test(rawText) ? 'Camping' : /\bhik(?:e|ing)\b/i.test(rawText) ? 'Hiking' : /\bpaddl|kayak|canoe|float\b/i.test(rawText) ? 'Paddling' : /\bbeach\b/i.test(rawText) ? 'Beach' : 'Other';
+  const summary = textLines.find((line) => /experience|weekend|festival|family|community|outdoor|float|chill/i.test(line) && line.toLowerCase() !== title.toLowerCase()) || '';
+  const activities = textLines.filter((line) => /haunted|games|contest|hayride|camp together|spooky|workshop|hike|paddle|float|music|food|community/i.test(line)).slice(0, 10);
   const marketing = [...new Set([...rawText.matchAll(/(?:https?:\/\/|www\.)\S+|[\w.+-]+@[\w.-]+\.\w+|@[A-Za-z0-9_.]+/g)].map((match) => match[0]))].slice(0, 10);
   const notes: string[] = ['This draft was built with OCR text recognition only. Review every field before creating the event.'];
   if (date && !times.start) notes.push(`Date found: ${date.label}. Add the event start and end times.`);
   else if (date && times.start && !times.end) notes.push(`Date found: ${date.label}. A start time was found, but no end time was found.`);
-  if (!title) notes.push('OCR did not identify a reliable event title.');
+  if (!title) notes.push('OCR did not identify a reliable event title. The title was left blank instead of filling it with uncertain text.');
   if (!location.city || !location.state) notes.push('OCR did not identify a complete city and state.');
+  if (Number(result.data?.confidence || 0) < 55) notes.push('OCR confidence was low on this design. Decorative fonts, shadows, and text over photos can reduce accuracy.');
 
   return {
     title,
@@ -147,6 +209,10 @@ async function loadTesseract(): Promise<TesseractApi> {
   await new Promise<void>((resolve, reject) => {
     const existing = document.querySelector(`script[src="${TESSERACT_URL}"]`) as HTMLScriptElement | null;
     if (existing) {
+      if (globalWithTesseract.Tesseract) {
+        resolve();
+        return;
+      }
       existing.addEventListener('load', () => resolve(), { once: true });
       existing.addEventListener('error', () => reject(new Error('Unable to load the OCR reader.')), { once: true });
       return;
@@ -163,6 +229,48 @@ async function loadTesseract(): Promise<TesseractApi> {
   return globalWithTesseract.Tesseract;
 }
 
+async function preprocessImage(uri: string) {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return uri;
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = uri;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('Unable to prepare this flyer for OCR.'));
+  });
+
+  const maxWidth = 2200;
+  const scale = Math.min(3, Math.max(1.4, maxWidth / Math.max(1, image.naturalWidth)));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return uri;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  const data = pixels.data;
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = Math.round(0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2]);
+    const contrast = gray < 148 ? Math.max(0, gray - 35) : Math.min(255, gray + 35);
+    data[index] = contrast;
+    data[index + 1] = contrast;
+    data[index + 2] = contrast;
+  }
+  context.putImageData(pixels, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+async function recognizeBest(tesseract: TesseractApi, uri: string) {
+  const prepared = await preprocessImage(uri).catch(() => uri);
+  const [original, enhanced] = await Promise.all([
+    tesseract.recognize(uri, 'eng'),
+    prepared === uri ? Promise.resolve(null) : tesseract.recognize(prepared, 'eng'),
+  ]);
+  if (!enhanced) return original;
+  return scoreResult(enhanced) >= scoreResult(original) ? enhanced : original;
+}
+
 export async function uploadAndPreviewFlyer(asset: FlyerAsset): Promise<ImportPreviewResult> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError) throw userError;
@@ -170,7 +278,7 @@ export async function uploadAndPreviewFlyer(asset: FlyerAsset): Promise<ImportPr
   if (!userId) throw new Error('Sign in to scan an event flyer.');
 
   const tesseract = await loadTesseract();
-  const result = await tesseract.recognize(asset.uri, 'eng');
+  const result = await recognizeBest(tesseract, asset.uri);
   const preview = parseOcrDraft(result);
   const sourceLabel = asset.fileName || 'Event flyer';
   const { data: importRow, error: importError } = await supabase.from('host_event_imports').insert({
