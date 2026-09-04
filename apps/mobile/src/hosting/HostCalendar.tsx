@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { listHostCampaigns, type CampaignDecision, type CampaignTask, type HostCampaign } from './campaigns';
+import { listHostCampaigns, type CampaignTask, type HostCampaign } from './campaigns';
 import { AppIcon } from '../ui/AppIcon';
 
 type CalendarMode = 'month' | 'week' | 'agenda';
@@ -124,7 +124,7 @@ export function HostCalendar() {
     const month = cursor.getMonth();
     const first = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const cells: Array<Date | null> = Array(first.getDay()).fill(null);
+    const cells: (Date | null)[] = Array(first.getDay()).fill(null);
     for (let day = 1; day <= daysInMonth; day += 1) cells.push(new Date(year, month, day));
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
@@ -179,7 +179,7 @@ export function HostCalendar() {
         </View>
 
         <View style={styles.modeRow}>
-          {(['month', 'week', 'agenda'] as CalendarMode[]).map((value) => <Pressable key={value} style={[styles.modeButton, mode === value && styles.modeButtonActive]} onPress={() => setMode(value)}><Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value[0].toUpperCase() + value.slice(1)}</Text></Pressable>)}
+          {(['month', 'week', 'agenda'] as CalendarMode[]).map((value) => <Pressable key={value} style={[styles.modeButton, mode === value && styles.modeButtonActive]} onPress={() => setMode(value)}><Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text></Pressable>)}
         </View>
 
         {mode === 'month' ? <View style={styles.calendarCard}>
