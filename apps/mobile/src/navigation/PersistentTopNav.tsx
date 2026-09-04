@@ -62,7 +62,7 @@ export function PersistentTopNav() {
     ? `Notifications, ${unreadCount} unread`
     : 'Notifications';
 
-  if (pathname === '/account-status' || pathname.startsWith('/host')) return null;
+  if (pathname === '/account-status' || pathname.startsWith('/host') || pathname.startsWith('/vendor')) return null;
 
   return (
     <View style={[styles.shell, { paddingTop: Math.max(insets.top, 8) }]}>
