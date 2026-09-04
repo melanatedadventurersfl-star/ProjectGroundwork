@@ -15,7 +15,7 @@ module.exports = defineConfig([
     },
   },
   {
-    files: ['src/onboarding/GuidedOnboardingExperience.tsx', 'app/trail-guide/ask.tsx'],
+    files: ['src/onboarding/GuidedOnboardingExperience.tsx', 'app/trail-guide/ask.tsx', 'app/host/index.tsx'],
     rules: {
       // These user-facing screens intentionally contain contractions/apostrophes
       // in JSX copy. Keep punctuation from blocking mobile validation.
