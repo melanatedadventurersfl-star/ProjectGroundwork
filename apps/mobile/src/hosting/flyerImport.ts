@@ -16,6 +16,26 @@ function extensionFor(mimeType: string) {
   return 'jpg';
 }
 
+async function functionErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const body = await context.clone().json();
+        if (body?.error) return String(body.error);
+      } catch {
+        try {
+          const text = await context.clone().text();
+          if (text.trim()) return text.trim();
+        } catch {
+          // Fall through to the standard message.
+        }
+      }
+    }
+  }
+  return error instanceof Error ? error.message : 'Unable to read this flyer.';
+}
+
 export async function uploadAndPreviewFlyer(asset: FlyerAsset): Promise<ImportPreviewResult> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError) throw userError;
@@ -46,8 +66,9 @@ export async function uploadAndPreviewFlyer(asset: FlyerAsset): Promise<ImportPr
     const { data, error } = await supabase.functions.invoke('host-flyer-preview', {
       body: { path, fileName: safeFileName, mimeType },
     });
-    if (error) throw error;
+    if (error) throw new Error(await functionErrorMessage(error));
     if (data?.error) throw new Error(String(data.error));
+    if (!data?.preview) throw new Error('The flyer reader returned no event draft.');
     return data as ImportPreviewResult;
   } finally {
     await supabase.storage.from('event-imports').remove([path]).catch(() => undefined);
