@@ -1,7 +1,9 @@
 export {
   discoverOpportunities,
+  findHostOpportunityBySourceUrl,
   listHostOpportunities,
   previewOpportunityFromUrl,
+  refreshImportedOpportunity,
   saveDiscoveredOpportunity,
   saveImportedOpportunity,
   setOpportunityStage,
