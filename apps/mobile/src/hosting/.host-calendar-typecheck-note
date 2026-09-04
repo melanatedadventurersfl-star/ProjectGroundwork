@@ -1,1 +1,0 @@
-Host Calendar typecheck hotfix: avoid indexed string access under strict TypeScript and clean local lint warnings.
