@@ -185,7 +185,7 @@ export function HostCalendar() {
         {mode === 'month' ? <View style={styles.calendarCard}>
           <View style={styles.monthHeader}>
             <Pressable style={styles.monthArrow} onPress={() => shiftMonth(-1)}><Text style={styles.monthArrowText}>‹</Text></Pressable>
-            <Pressable onPress={() => { setCursor(new Date()); setSelectedDate(new Date()); }}><Text style={styles.monthTitle}>{MONTHS[cursor.getMonth()]} {cursor.getFullYear()}</Text><Text style={styles.todayLink}>Jump to today</Text></Pressable>
+            <Pressable onPress={() => { setCursor(new Date()); setSelectedDate(new Date()); }}><Text style={styles.monthTitle}>{MONTHS[cursor.getMonth()] ?? ''} {cursor.getFullYear()}</Text><Text style={styles.todayLink}>Jump to today</Text></Pressable>
             <Pressable style={styles.monthArrow} onPress={() => shiftMonth(1)}><Text style={styles.monthArrowText}>›</Text></Pressable>
           </View>
           <View style={styles.weekLabels}>{DAY_LABELS.map((label, index) => <Text key={`${label}-${index}`} style={styles.weekLabel}>{label}</Text>)}</View>
