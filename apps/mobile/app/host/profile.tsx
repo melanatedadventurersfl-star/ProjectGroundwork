@@ -51,6 +51,7 @@ export default function HostProfileHubScreen() {
       </View>
       <View style={styles.actions}>
         <Pressable style={styles.primary} onPress={() => router.push(`/host/organization/${org.id}` as never)}><Text style={styles.primaryText}>Manage profile</Text></Pressable>
+        <Pressable style={styles.secondary} onPress={() => router.push({ pathname:'/host/social-profiles', params:{ organizationId:org.id } } as never)}><Text style={styles.secondaryText}>Social profile data</Text></Pressable>
         <Pressable style={styles.secondary} onPress={() => router.push(`/organization-profile/${org.slug}` as never)}><Text style={styles.secondaryText}>View public profile</Text></Pressable>
       </View>
     </View>)}
