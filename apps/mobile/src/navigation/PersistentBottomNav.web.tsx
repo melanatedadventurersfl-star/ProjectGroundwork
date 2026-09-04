@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { HOST_WORKSPACE_GROUPS, HOST_WORKSPACE_ITEMS } from '../hosting/hostWorkspace';
 import { supabase } from '../lib/supabase';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
+import { VENDOR_WORKSPACE_GROUPS, VENDOR_WORKSPACE_ITEMS } from '../vendor/vendorWorkspace';
 
 type NavItem = { label: string; icon: AppIconName; href: string; isActive: (pathname: string) => boolean };
 
@@ -40,9 +41,35 @@ function HostSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatfo
         </View>
       </View>)}
       <View style={styles.divider} />
-      <Text style={styles.sectionLabel}>ACCOUNT</Text>
+      <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.navGroup}>
-        <NavButton pathname={pathname} item={{ label: 'Notifications', icon: 'notifications', href: '/notifications', isActive: (path) => path.startsWith('/notifications') }} />
+        <NavButton pathname={pathname} item={{ label: 'Vendor Center', icon: 'storefront', href: '/vendor', isActive: () => false }} />
+        <NavButton pathname={pathname} item={{ label: 'Back to Member App', icon: 'chevron-back', href: '/(tabs)', isActive: () => false }} />
+        {isPlatformAdmin ? <NavButton pathname={pathname} item={{ label: 'Admin', icon: 'profile', href: '/admin', isActive: (path) => path.startsWith('/admin') }} /> : null}
+      </View>
+    </ScrollView>
+  </View>;
+}
+
+function VendorSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatformAdmin: boolean }) {
+  return <View style={styles.sidebar}>
+    <View style={styles.hostBrandBlock}>
+      <Text style={styles.hostEyebrow}>GO MELANATED</Text>
+      <Text style={styles.hostTitle}>Vendor Center</Text>
+      <Text style={styles.brandTag}>Leads, bookings, business and marketplace operations.</Text>
+    </View>
+    <ScrollView style={styles.hostScroll} contentContainerStyle={styles.hostScrollContent} showsVerticalScrollIndicator={false}>
+      <NavButton pathname={pathname} item={{ label: 'Overview', icon: 'dashboard', href: '/vendor', isActive: (path) => path === '/vendor' || path === '/vendor/' }} />
+      {VENDOR_WORKSPACE_GROUPS.map((group) => <View key={group}>
+        <Text style={styles.sectionLabel}>{group}</Text>
+        <View style={styles.navGroup}>
+          {VENDOR_WORKSPACE_ITEMS.filter((item) => item.group === group).map((item) => <NavButton key={item.key} pathname={pathname} item={{ label: item.title, icon: item.icon, href: item.route, isActive: (path) => path.startsWith(item.route) }} />)}
+        </View>
+      </View>)}
+      <View style={styles.divider} />
+      <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
+      <View style={styles.navGroup}>
+        <NavButton pathname={pathname} item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: () => false }} />
         <NavButton pathname={pathname} item={{ label: 'Back to Member App', icon: 'chevron-back', href: '/(tabs)', isActive: () => false }} />
         {isPlatformAdmin ? <NavButton pathname={pathname} item={{ label: 'Admin', icon: 'profile', href: '/admin', isActive: (path) => path.startsWith('/admin') }} /> : null}
       </View>
@@ -55,20 +82,23 @@ export function PersistentBottomNav() {
   const { width } = useWindowDimensions();
   const desktop = width >= 1024;
   const inHostCenter = pathname.startsWith('/host');
+  const inVendorCenter = pathname.startsWith('/vendor');
+  const inOperationsCenter = inHostCenter || inVendorCenter;
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
   useEffect(() => {
-    if (!inHostCenter) return;
+    if (!inOperationsCenter) return;
     let active = true;
     void supabase.rpc('is_platform_admin').then(({ data, error }) => {
       if (active) setIsPlatformAdmin(!error && data === true);
     });
     return () => { active = false; };
-  }, [inHostCenter]);
+  }, [inOperationsCenter]);
 
   if (pathname === '/account-status') return null;
   if (desktop && inHostCenter) return <HostSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} />;
-  if (!desktop && inHostCenter) return null;
+  if (desktop && inVendorCenter) return <VendorSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} />;
+  if (!desktop && inOperationsCenter) return null;
   if (!desktop) return <View style={styles.bottomBar}>{primaryItems.map((item) => <NavButton key={item.label} item={item} pathname={pathname} compact />)}</View>;
 
   return <View style={styles.sidebar}>
@@ -76,7 +106,10 @@ export function PersistentBottomNav() {
     <View style={styles.navGroup}>{primaryItems.map((item) => <NavButton key={item.label} item={item} pathname={pathname} />)}</View>
     <View style={styles.divider} />
     <Text style={styles.sectionLabel}>OPERATIONS</Text>
-    <View style={styles.navGroup}><NavButton item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: (path) => path.startsWith('/host') }} pathname={pathname} /></View>
+    <View style={styles.navGroup}>
+      <NavButton item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: (path) => path.startsWith('/host') }} pathname={pathname} />
+      <NavButton item={{ label: 'Vendor Center', icon: 'storefront', href: '/vendor', isActive: (path) => path.startsWith('/vendor') }} pathname={pathname} />
+    </View>
     <View style={styles.desktopFooter}><Text style={styles.desktopFooterText}>Go Melanated Web</Text></View>
   </View>;
 }
