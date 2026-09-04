@@ -114,6 +114,30 @@ async function requireProfileId() {
   return data.user.id;
 }
 
+function stageLabel(stage: OpportunityStage) {
+  if (stage === 'saved') return 'Saved';
+  if (stage === 'reviewing') return 'Reviewing';
+  if (stage === 'applied') return 'Applied / Contacted';
+  if (stage === 'approved') return 'Approved';
+  if (stage === 'scheduled') return 'Scheduled';
+  if (stage === 'discovered') return 'Discovered';
+  return 'Archived';
+}
+
+async function throwIfDuplicate(ownerId: string, sourceUrl: string) {
+  const { data, error } = await supabase
+    .from('host_opportunities')
+    .select('id,title,stage')
+    .eq('owner_profile_id', ownerId)
+    .eq('source_url', sourceUrl)
+    .maybeSingle();
+  if (error) throw error;
+  if (data) {
+    const where = stageLabel(data.stage as OpportunityStage);
+    throw new Error(`Already saved: ${data.title || 'This opportunity'} is already in ${where}. Open the ${where === 'Saved' ? 'Saved' : 'Pipeline'} tab to manage it.`);
+  }
+}
+
 export async function listHostOpportunities(): Promise<SavedOpportunity[]> {
   const ownerId = await requireProfileId();
   const { data, error } = await supabase.from('host_opportunities').select('*').eq('owner_profile_id', ownerId).neq('stage', 'archived').order('created_at', { ascending: false });
@@ -123,6 +147,7 @@ export async function listHostOpportunities(): Promise<SavedOpportunity[]> {
 
 export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, sourceId: string, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
   const ownerId = await requireProfileId();
+  await throwIfDuplicate(ownerId, event.sourceUrl);
   const payload = {
     owner_profile_id: ownerId,
     title: event.title,
@@ -147,13 +172,14 @@ export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, so
     metadata: {},
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase.from('host_opportunities').upsert(payload, { onConflict: 'owner_profile_id,source_url' }).select('*').single();
+  const { data, error } = await supabase.from('host_opportunities').insert(payload).select('*').single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
 
 export async function saveImportedOpportunity(preview: OpportunityPreview, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
   const ownerId = await requireProfileId();
+  await throwIfDuplicate(ownerId, preview.sourceUrl);
   const sourceId = preview.sourceUrl.includes('eventbrite.') ? 'eventbrite' : 'external';
   const payload = {
     owner_profile_id: ownerId,
@@ -178,7 +204,7 @@ export async function saveImportedOpportunity(preview: OpportunityPreview, sourc
     metadata: { contactName: preview.contactName, contactEmail: preview.contactEmail, contactPhone: preview.contactPhone, boothDetails: preview.boothDetails, requirements: preview.requirements, ticketDetails: preview.ticketDetails },
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase.from('host_opportunities').upsert(payload, { onConflict: 'owner_profile_id,source_url' }).select('*').single();
+  const { data, error } = await supabase.from('host_opportunities').insert(payload).select('*').single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
