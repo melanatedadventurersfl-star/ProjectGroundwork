@@ -304,7 +304,7 @@ function canvasRegion(image: HTMLImageElement, yStart: number, yEnd: number, enh
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
     const data = pixels.data;
     for (let index = 0; index < data.length; index += 4) {
-      const gray = Math.round(0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2]);
+      const gray = Math.round(0.299 * (data[index] ?? 0) + 0.587 * (data[index + 1] ?? 0) + 0.114 * (data[index + 2] ?? 0));
       const contrast = gray < 150 ? Math.max(0, gray - 45) : Math.min(255, gray + 45);
       data[index] = contrast;
       data[index + 1] = contrast;
