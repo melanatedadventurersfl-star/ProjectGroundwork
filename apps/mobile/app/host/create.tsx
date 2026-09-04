@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const options = [
   { title: 'Plan with AI', body: 'Have a guided planning conversation. AI asks what matters, recommends options, and builds toward a 95–100% ready event before creation.', route: '/host/plan-ai', icon: '✦', featured: true },
+  { title: 'Scan Flyer or Poster', body: 'Take a photo or choose a flyer screenshot. Go Melanated reads the visible event details and builds a reviewable draft.', route: '/host/scan-flyer', icon: '▧' },
   { title: 'Build Manually', body: 'Enter the event basics yourself, then add the components and work this event needs.', route: '/host/create-scratch', icon: '＋' },
   { title: 'Choose an Event Starter', body: 'Start with a proven event setup, then add, remove or change any component.', route: '/host/create-template', icon: '▦' },
   { title: 'Import Files', body: 'Upload documents, images, or one ZIP package and turn them into an event draft.', route: '/host/import-event?mode=files', icon: '⇧' },
