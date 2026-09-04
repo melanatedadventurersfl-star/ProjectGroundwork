@@ -2,9 +2,9 @@ import type { AiPlanState, AiPlannerTurn } from './aiPlanner';
 
 type PlannerHistory = { role: 'user' | 'assistant'; text: string }[];
 
-const FL_CITIES = new Set([
-  'jacksonville','ocala','tampa','orlando','miami','gainesville','tallahassee','st. augustine','saint augustine','st. petersburg','saint petersburg','fort lauderdale','west palm beach','naples','fort myers','sarasota','key west','brooksville','deland',
-]);
+const STATE_NAMES: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC',
+};
 
 function unique(values: string[]) {
   return [...new Set(values)];
@@ -14,12 +14,20 @@ function titleCase(value: string) {
   return value.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function normalizeState(value: string) {
+  const cleaned = value.trim();
+  if (/^[A-Za-z]{2}$/.test(cleaned)) return cleaned.toUpperCase();
+  return STATE_NAMES[cleaned.toLowerCase()] ?? '';
+}
+
 function parseCityState(value: string) {
   const cleaned = value.trim().replace(/^in\s+/i, '');
-  const match = cleaned.match(/^(.+?),\s*([A-Za-z]{2})$/);
-  if (match) return { city: titleCase(match[1] ?? ''), state: (match[2] ?? '').toUpperCase() };
-  const city = titleCase(cleaned);
-  return { city, state: FL_CITIES.has(cleaned.toLowerCase()) ? 'FL' : '' };
+  const commaMatch = cleaned.match(/^(.+?),\s*(.+)$/);
+  if (commaMatch) {
+    const state = normalizeState(commaMatch[2] ?? '');
+    return { city: titleCase(commaMatch[1] ?? ''), state };
+  }
+  return { city: titleCase(cleaned), state: '' };
 }
 
 function parseExactDate(value: string) {
@@ -131,7 +139,7 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
   const paddling = lower.includes('kayak') || lower.includes('paddle') || lower.includes('canoe');
   const camping = lower.includes('camping') || lower.includes('campout') || lower.includes('camp out');
 
-  const inlineLocation = lower.match(/\bin\s+([a-z .'-]+?)(?:,\s*([a-z]{2}))?(?:\s+(?:for|with|on|at|next|this)\b|$)/i);
+  const inlineLocation = lower.match(/\bin\s+([a-z .'-]+?)(?:,\s*([a-z]{2}|[a-z ]+))?(?:\s+(?:for|with|on|at|next|this)\b|$)/i);
   if (!plan.city && inlineLocation) {
     const parsed = parseCityState(`${inlineLocation[1] ?? ''}${inlineLocation[2] ? `, ${inlineLocation[2]}` : ''}`);
     plan.city = parsed.city || plan.city;
@@ -172,12 +180,12 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
     if (parsed.state) plan.state = parsed.state;
     plan.plannerStep = plan.state ? undefined : 'state';
   } else if (plan.plannerStep === 'state') {
-    const state = message.trim().toUpperCase();
-    if (/^[A-Z]{2}$/.test(state)) {
+    const state = normalizeState(message);
+    if (state) {
       plan.state = state;
       plan.plannerStep = undefined;
     } else {
-      immediateMessage = 'Enter the two-letter state abbreviation, such as FL or GA.';
+      immediateMessage = 'Enter a state name or two-letter abbreviation, such as Florida or FL.';
       immediateOptions = [];
     }
   } else if (plan.plannerStep === 'venue' || plan.plannerStep === 'venue_choice') {
@@ -256,7 +264,7 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
   if (changeCity) {
     const parsed = parseCityState(changeCity[1] ?? '');
     plan.city = parsed.city;
-    if (parsed.state) plan.state = parsed.state;
+    plan.state = parsed.state || undefined;
   }
   const changeCapacity = message.match(/(?:change|set|make).{0,12}(?:capacity|attendance).{0,8}(\d{1,4})/i);
   if (changeCapacity) {
@@ -285,9 +293,13 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
       plan.plannerStep = 'city';
       immediateMessage = 'What city should I search for location recommendations in?';
       immediateOptions = [];
+    } else if (!plan.state) {
+      plan.plannerStep = 'state';
+      immediateMessage = `What state is ${plan.city} in? You can enter the state name or two-letter abbreviation.`;
+      immediateOptions = [];
     } else {
       plan.plannerStep = 'venue_choice';
-      immediateMessage = `I’ll check verified location options in ${plan.city}${plan.state ? `, ${plan.state}` : ''}.`;
+      immediateMessage = `I’ll check verified location options in ${plan.city}, ${plan.state}.`;
       immediateOptions = ['I know the location', 'Skip for now'];
     }
   }
@@ -341,7 +353,7 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
       options = [];
     } else if (!plan.state) {
       plan.plannerStep = 'state';
-      nextMessage = `What state is ${plan.city} in? Use the two-letter abbreviation.`;
+      nextMessage = `What state is ${plan.city} in? You can enter the state name or two-letter abbreviation.`;
       options = [];
     } else if (!plan.capacity && !plan.attendanceRange) {
       nextMessage = `${plan.title} is taking shape in ${plan.city}. About how many people are you planning for?`;
