@@ -265,7 +265,7 @@ export function buildClientPlannerFallback(message: string, current: AiPlanState
   }
 
   if (lower === 'this weekend' || lower === 'next weekend' || lower === 'not sure yet') {
-    if (!plan.startsAt && plan.plannerStep !== 'city' && plan.plannerStep !== 'state') {
+    if (!plan.startsAt && plan.plannerStep !== 'state') {
       plan.datePreference = lower === 'not sure yet' ? 'Open' : titleCase(lower);
       plan.plannerStep = undefined;
     }
