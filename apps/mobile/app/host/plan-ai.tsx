@@ -32,7 +32,7 @@ function privacyLabel(prefs: AiPrivacyPreferences) {
 
 export default function AiEventPlannerScreen() {
   const [input, setInput] = useState('');
-  const [plan, setPlan] = useState<AiPlanState>({ state: 'FL', components: [] });
+  const [plan, setPlan] = useState<AiPlanState>({ components: [] });
   const [turn, setTurn] = useState<AiPlannerTurn | null>(null);
   const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', text: 'Tell me what you want to host. I’ll ask one useful question at a time and build the event as we go.' }]);
   const [privacy, setPrivacy] = useState<AiPrivacyPreferences>(OFF_PREFS);
@@ -46,7 +46,10 @@ export default function AiEventPlannerScreen() {
 
   const readiness = turn?.readiness ?? 0;
   const draftReady = Boolean(plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state);
-  const publishReady = readiness >= 95 && Boolean(plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state && plan.capacity && plan.venueName && plan.meetingInstructions);
+  const publishReady = readiness >= 95 && Boolean(
+    plan.title && plan.startsAt && plan.endsAt && plan.city && plan.state && plan.capacity && plan.venueName && plan.meetingInstructions &&
+    plan.paid !== undefined && (!plan.paid || Number(plan.priceCents || 0) > 0) && plan.backupPlan && plan.safetyNotes?.length,
+  );
   const location = useMemo(() => [plan.venueName, plan.city, plan.state].filter(Boolean).join(', '), [plan]);
 
   async function send(text = input) {
@@ -97,7 +100,7 @@ export default function AiEventPlannerScreen() {
         startsAt: plan.startsAt || '',
         endsAt: plan.endsAt || '',
         city: plan.city || '',
-        state: plan.state || 'FL',
+        state: plan.state || '',
         venueName: plan.venueName || '',
         capacity: plan.capacity || null,
         meetingInstructions: plan.meetingInstructions || '',
@@ -134,6 +137,8 @@ export default function AiEventPlannerScreen() {
         <View style={styles.track}><View style={[styles.fill, { width: `${readiness}%` }]} /></View>
         {plan.title ? <Text style={styles.planTitle}>{plan.title}</Text> : null}
         {location ? <Text style={styles.planMeta}>{location}</Text> : null}
+        {plan.attendanceRange && !plan.capacity ? <Text style={styles.planMeta}>Expected attendance: {plan.attendanceRange}</Text> : null}
+        {plan.datePreference && !plan.startsAt ? <Text style={styles.planMeta}>Timing: {plan.datePreference}, exact date open</Text> : null}
         {turn?.gaps?.length ? <Text style={styles.gaps}>Still needed: {turn.gaps.slice(0, 4).join(' · ')}</Text> : readiness >= 95 ? <Text style={styles.ready}>Core event plan is ready.</Text> : null}
       </View>
 
@@ -150,7 +155,7 @@ export default function AiEventPlannerScreen() {
 
       <View style={styles.footerCard}>
         <Text style={styles.footerTitle}>{publishReady ? 'Your event is ready to publish after review.' : draftReady ? 'Your event is ready to save as a draft.' : 'Keep planning, or save once the core draft details are set.'}</Text>
-        <Text style={styles.footerBody}>{draftReady ? 'You can create the draft now and keep working from the event workspace. Recommended work packs stay under your control.' : 'A draft needs a title, city, start date and end date. The AI will keep helping with attendance, venue, tickets, safety, communications and other planning details.'}</Text>
+        <Text style={styles.footerBody}>{draftReady ? 'You can create the draft now and keep working from the event workspace. Recommended work packs stay under your control.' : 'A draft needs a title, city, state, start date and end date. The AI will keep helping with attendance, venue, tickets, safety, backup planning, communications and other details.'}</Text>
         <Pressable disabled={!draftReady || creating} onPress={() => void createEvent()} style={[styles.create, (!draftReady || creating) && styles.disabled]}>{creating ? <ActivityIndicator color="#172017" /> : <Text style={styles.createText}>{publishReady ? 'Create Event' : 'Create Draft'}</Text>}</Pressable>
       </View>
     </ScrollView>
