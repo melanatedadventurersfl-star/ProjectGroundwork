@@ -42,7 +42,7 @@ function schema() {
       address: { type: "string" },
       city: { type: "string" },
       state: { type: "string" },
-      capacity: { anyOf: [{ type: "integer", minimum: 0 }, { type: "null" }] },
+      capacity: { type: ["integer", "null"] },
       meetingInstructions: { type: "string" },
       heroImageUrl: { type: "string" },
       tickets: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["label","priceText"], properties: { label: { type: "string" }, priceText: { type: "string" } } } },
@@ -66,6 +66,10 @@ function hasUsefulData(preview: any) {
   );
 }
 
+function readerError(message: string, code: string, detail = "") {
+  return json({ error: message, errorCode: code, detail: clean(detail, 500) });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -76,7 +80,7 @@ Deno.serve(async (req: Request) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const openAiKey = Deno.env.get("OPENAI_API_KEY");
   if (!supabaseUrl || !anonKey) return json({ error: "Function environment is incomplete." }, 503);
-  if (!openAiKey) return json({ error: "Flyer reading is not configured yet." }, 503);
+  if (!openAiKey) return readerError("Flyer reading is not configured on the server yet.", "reader_not_configured");
 
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false, autoRefreshToken: false } });
 
@@ -113,14 +117,15 @@ Deno.serve(async (req: Request) => {
 
     const payload = await upstream.json();
     if (!upstream.ok) {
+      const upstreamMessage = clean(payload?.error?.message, 500);
       console.error("host-flyer-preview upstream", JSON.stringify(payload));
-      return json({ error: "The flyer image reached the reader, but extraction failed. Try the scan again." }, 502);
+      return readerError(upstreamMessage ? `Flyer reader error: ${upstreamMessage}` : "The flyer image reached the reader, but extraction failed.", "upstream_error", upstreamMessage);
     }
 
     const output = readOutputText(payload);
     if (!output) {
       console.error("host-flyer-preview empty output", JSON.stringify(payload));
-      return json({ error: "The flyer image was received, but no event details were returned. Try a clearer image." }, 422);
+      return readerError("The flyer image was received, but no event details were returned. Try a clearer image.", "empty_output");
     }
 
     let preview: any;
@@ -128,11 +133,11 @@ Deno.serve(async (req: Request) => {
       preview = JSON.parse(output);
     } catch {
       console.error("host-flyer-preview invalid json", output.slice(0, 1000));
-      return json({ error: "The flyer was read, but the extracted details could not be parsed. Try the scan again." }, 502);
+      return readerError("The flyer was read, but the extracted details could not be parsed. Try the scan again.", "invalid_output");
     }
 
     if (!hasUsefulData(preview)) {
-      return json({ error: "No readable event details were found on this image. Try a clearer, tighter crop of the flyer." }, 422);
+      return readerError("No readable event details were found on this image. Try a clearer, tighter crop of the flyer.", "no_event_data");
     }
 
     const { data: importRow, error: importError } = await userClient.from("host_event_imports").insert({
@@ -149,6 +154,6 @@ Deno.serve(async (req: Request) => {
     return json({ importId: importRow.id, preview, sourceLabel: fileName, sourceUrl: null, extractionSource: "ai", duplicate: null });
   } catch (error) {
     console.error("host-flyer-preview", error);
-    return json({ error: error instanceof Error ? error.message : "Unable to read this flyer." }, 500);
+    return readerError(error instanceof Error ? error.message : "Unable to read this flyer.", "unexpected_error");
   }
 });
