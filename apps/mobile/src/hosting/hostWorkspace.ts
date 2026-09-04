@@ -21,7 +21,7 @@ export const HOST_WORKSPACE_ITEMS: HostWorkspaceItem[] = [
   { key: 'team', title: 'Team', subtitle: 'Staff, hosts, contractors, volunteers and roles', route: '/host/teams', icon: 'team', accent: '#77B9A6', group: 'WORK' },
   { key: 'opportunities', title: 'Opportunities', subtitle: 'Vending, partnerships and sponsorships', route: '/host/opportunities', icon: 'briefcase', accent: '#E7A05C', group: 'WORK' },
 
-  { key: 'vendors', title: 'Vendors', subtitle: 'Organization-wide vendor directory and relationships', route: '/host/vendors', icon: 'storefront', accent: '#75AEE8', group: 'BUSINESS' },
+  { key: 'vendors', title: 'Vendors', subtitle: 'Discover Go Melanated vendors and manage your working list', route: '/host/vendors/marketplace', icon: 'storefront', accent: '#75AEE8', group: 'BUSINESS' },
   { key: 'communications', title: 'Communications', subtitle: 'Host inquiries, team, vendor and member messages', route: '/host/communications', icon: 'message', accent: '#A990ED', group: 'BUSINESS' },
   { key: 'marketing', title: 'Marketing', subtitle: 'Campaigns, content, promotion and performance', route: '/host/campaigns', icon: 'megaphone', accent: '#E7A05C', group: 'BUSINESS' },
   { key: 'finances', title: 'Finances', subtitle: 'Money across events and organization operations', route: '/host/finances', icon: 'reports', accent: '#84C992', group: 'BUSINESS' },
