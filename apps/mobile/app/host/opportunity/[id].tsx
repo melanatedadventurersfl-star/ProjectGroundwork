@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -100,7 +100,7 @@ export default function OpportunityDetailScreen() {
   </ScrollView></SafeAreaView>;
 }
 
-function Section({title,children}:{title:string;children:React.ReactNode}) { return <View style={s.section}><Text style={s.eyebrow}>{title.toUpperCase()}</Text>{children}</View>; }
+function Section({title,children}:{title:string;children:ReactNode}) { return <View style={s.section}><Text style={s.eyebrow}>{title.toUpperCase()}</Text>{children}</View>; }
 function Fact({label,value}:{label:string;value:string}) { return <View style={s.fact}><Text style={s.factLabel}>{label}</Text><Text style={s.factValue}>{value}</Text></View>; }
 function Badge({text}:{text:string}) { return <View style={s.badge}><Text style={s.badgeText}>{text}</Text></View>; }
 function Action({label,onPress}:{label:string;onPress:()=>void}) { return <Pressable style={s.outline} onPress={onPress}><Text style={s.outlineText}>{label}</Text></Pressable>; }
