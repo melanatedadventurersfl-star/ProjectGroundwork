@@ -2,7 +2,6 @@ import { supabase } from '../lib/supabase';
 
 export type GoMelanatedEventName =
   | 'event_discovered'
-  | 'event_page_view'
   | 'event_shared'
   | 'invite_sent'
   | 'invite_opened'
@@ -54,7 +53,7 @@ export function getEventTrackingContext(adventureId: string): EventTrackingConte
   };
 }
 
-function buildWindowDedupeKey(adventureId: string, eventName: GoMelanatedEventName, minutes: number) {
+function buildWindowDedupeKey(adventureId: string, eventName: string, minutes: number) {
   const windowMs = Math.max(1, minutes) * 60_000;
   const bucket = Math.floor(Date.now() / windowMs);
   return `${eventName}:${adventureId}:${analyticsSessionKey}:${bucket}`;
@@ -92,12 +91,24 @@ export async function recordGoMelanatedEvent(
   }
 }
 
-export function recordEventPageView(adventureId: string, surface = 'event_detail') {
+export async function recordEventPageView(adventureId: string, surface = 'event_detail') {
+  if (!adventureId) return;
+
   setEventTrackingContext(adventureId, { surface });
-  return recordGoMelanatedEvent(adventureId, 'event_page_view', {
-    surface,
-    dedupeWindowMinutes: 15,
+  const context = getEventTrackingContext(adventureId);
+  const dedupeKey = buildWindowDedupeKey(adventureId, 'event_page_view', 15);
+
+  const { error } = await supabase.rpc('record_go_melanated_page_view', {
+    p_adventure_id: adventureId,
+    p_session_key: analyticsSessionKey,
+    p_surface: surface,
+    p_attribution_code: context.attributionCode ?? null,
+    p_dedupe_key: dedupeKey,
   });
+
+  if (error && !/record_go_melanated_page_view/i.test(error.message)) {
+    console.warn('Event page analytics write failed', error.message);
+  }
 }
 
 export function recordCheckoutStart(adventureId: string) {
