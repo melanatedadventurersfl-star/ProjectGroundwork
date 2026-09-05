@@ -5,9 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getAiPrivacyPreferences, type AiPrivacyPreferences } from '../../src/hosting/aiPlanner';
 import { AI_PRIVACY_DEFAULTS, clearAiMemories, saveAiPrivacyPreferences } from '../../src/hosting/aiPrivacy';
+import { markHostSetupReviewed } from '../../src/hosting/hostEntry';
 
 type Key = keyof AiPrivacyPreferences;
-const rows: Array<{ key: Key; title: string; body: string }> = [
+const rows: { key: Key; title: string; body: string }[] = [
   { key: 'personal_memory_enabled', title: 'Personal Memory', body: 'Remember planning preferences you explicitly allow, such as common event types, locations, attendance ranges and preferred setup patterns.' },
   { key: 'event_history_learning_enabled', title: 'Learn From Event History', body: 'Use your past event decisions to suggest future defaults. This stays off unless you enable it.' },
   { key: 'organization_memory_enabled', title: 'Shared Organization Memory', body: 'Use approved Go Melanated operational knowledge that your account is already allowed to access.' },
@@ -28,7 +29,11 @@ export default function AiPrivacyScreen() {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
     setSaving(true); setMessage('');
-    try { await saveAiPrivacyPreferences(next); setMessage('Saved'); }
+    try {
+      await saveAiPrivacyPreferences(next);
+      await markHostSetupReviewed('ai_privacy');
+      setMessage('Saved');
+    }
     catch (error) { setPrefs(prefs); setMessage(error instanceof Error ? error.message : 'Unable to save.'); }
     finally { setSaving(false); }
   }
