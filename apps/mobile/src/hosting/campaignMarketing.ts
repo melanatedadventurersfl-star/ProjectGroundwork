@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase';
 
 export type CampaignMarketingStatus = 'idea' | 'draft' | 'ready' | 'scheduled' | 'published' | 'skipped';
-export type CampaignMarketingPlatform = 'facebook' | 'instagram' | 'meetup' | 'eventbrite' | 'email' | 'other';
+export type CampaignMarketingPlatform = 'go_melanated' | 'facebook' | 'instagram' | 'meetup' | 'eventbrite' | 'email' | 'sms' | 'other';
 export type CampaignMarketingContentType = 'post' | 'static_post' | 'carousel' | 'reel' | 'story' | 'email' | 'other';
 
 export type CampaignMarketingItem = {
@@ -79,6 +79,7 @@ export async function createCampaignMarketingItem(input: {
   plannedFor: string;
   platforms?: CampaignMarketingPlatform[];
   contentType?: CampaignMarketingContentType;
+  copyText?: string | null;
 }) {
   const title = input.title.trim();
   if (!title) throw new Error('Add a title for the marketing item.');
@@ -94,8 +95,9 @@ export async function createCampaignMarketingItem(input: {
     item_key: itemKey,
     title,
     planned_for: input.plannedFor,
-    platforms: input.platforms ?? ['facebook', 'instagram'],
+    platforms: input.platforms?.length ? input.platforms : ['go_melanated'],
     content_type: input.contentType ?? 'post',
+    copy_text: input.copyText?.trim() || null,
     status: 'idea',
     owner_profile_id: profileId,
     created_by: profileId,
@@ -118,13 +120,20 @@ export async function updateCampaignMarketingStatus(itemId: string, status: Camp
   if (error) throw error;
 }
 
-export async function updateCampaignMarketingDraft(itemId: string, values: { copyText?: string | null; notes?: string | null }) {
+export async function updateCampaignMarketingDraft(itemId: string, values: {
+  copyText?: string | null;
+  notes?: string | null;
+  platforms?: CampaignMarketingPlatform[];
+}) {
   const { data: authData } = await supabase.auth.getUser();
-  const { error } = await supabase.from('host_campaign_marketing_items').update({
-    copy_text: values.copyText,
-    notes: values.notes,
+  const patch: Record<string, unknown> = {
     updated_by: authData.user?.id ?? null,
     updated_at: new Date().toISOString(),
-  }).eq('id', itemId);
+  };
+  if (values.copyText !== undefined) patch.copy_text = values.copyText;
+  if (values.notes !== undefined) patch.notes = values.notes;
+  if (values.platforms !== undefined) patch.platforms = values.platforms;
+
+  const { error } = await supabase.from('host_campaign_marketing_items').update(patch).eq('id', itemId);
   if (error) throw error;
 }
