@@ -183,8 +183,8 @@ export function TrailheadOptimizedCover({
           {displayName}
         </Text>
         <Pressable accessibilityRole="button" accessibilityLabel={`View ${rank} rank progress`} onPress={openRankJourney} style={styles.rankInline}>
-          <Text style={[styles.rankGlyph, { color: theme.accent }]}>✥</Text>
-          <Text style={[styles.rankText, { color: theme.accent }]}>{rank.toUpperCase()}</Text>
+          <Text style={styles.rankGlyph}>✥</Text>
+          <Text style={styles.rankText}>{rank.toUpperCase()}</Text>
         </Pressable>
       </View>
 
@@ -250,11 +250,30 @@ const styles = StyleSheet.create({
   },
   nameCompact: { fontSize: 31, lineHeight: 35 },
   nameVeryCompact: { fontSize: 27, lineHeight: 31 },
-  rankInline: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7, paddingVertical: 2 },
-  rankGlyph: { fontSize: 14, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
+  rankInline: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(7, 25, 20, 0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 248, 232, 0.22)',
+  },
+  rankGlyph: {
+    color: '#F4D27A',
+    fontSize: 15,
+    fontWeight: '900',
+  },
   rankText: {
-    fontSize: 13, fontWeight: '900', letterSpacing: 0.65,
-    textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 },
+    color: '#FFF4CE',
+    fontSize: 14,
+    lineHeight: 17,
+    fontWeight: '900',
+    letterSpacing: 0.7,
   },
 
   weatherBlock: { position: 'absolute', left: 18, width: '52%', bottom: 20 },
