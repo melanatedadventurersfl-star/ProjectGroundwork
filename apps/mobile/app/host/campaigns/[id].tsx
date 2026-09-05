@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -140,6 +140,10 @@ export default function HostCampaignDetailScreen() {
     setWorkFilter(filter);
   }
 
+  function openEdit() {
+    router.push(`/host/campaigns/${campaignSlug}/edit` as never);
+  }
+
   const pulseActions: PulseAction[] = [];
   if (overdue.length > 0) pulseActions.push({ key: 'overdue', title: `${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}`, detail: 'Past due and still open', tone: 'danger', onPress: () => openWork('overdue') });
   if (unassigned.length > 0) pulseActions.push({ key: 'unassigned', title: `${unassigned.length} task${unassigned.length === 1 ? '' : 's'} need an owner`, detail: 'Assign responsibility before work gets lost', tone: 'warning', onPress: () => openWork('unassigned') });
@@ -158,11 +162,20 @@ export default function HostCampaignDetailScreen() {
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <Pressable onPress={() => router.replace('/host' as never)}><Text style={styles.back}>‹ Host Center</Text></Pressable>
-          <Text style={styles.phasePill}>{capitalize(campaign.status || 'planning')}</Text>
+          <View style={styles.headerActions}>
+            <Text style={styles.phasePill}>{capitalize(campaign.status || 'planning')}</Text>
+            {campaign.canManage ? <Pressable accessibilityLabel="Edit event" style={styles.menuButton} onPress={openEdit}><Text style={styles.menuButtonText}>•••</Text></Pressable> : null}
+          </View>
         </View>
-        <Text style={styles.title} numberOfLines={2}>{campaign.shortTitle}</Text>
-        <Text style={styles.meta}>{formatEventDate(campaign.startsAt)} · {campaign.location}</Text>
-        <Text style={styles.countdown}>{formatCountdown(days)}</Text>
+        <Pressable style={styles.eventIdentity} onPress={campaign.canManage ? openEdit : undefined}>
+          {campaign.heroImageUrl ? <Image source={{ uri: campaign.heroImageUrl }} style={styles.coverImage} resizeMode="cover" /> : <View style={styles.coverFallback}><Text style={styles.coverFallbackText}>GM</Text></View>}
+          <View style={styles.eventIdentityText}>
+            <Text style={styles.title} numberOfLines={3}>{campaign.shortTitle}</Text>
+            <Text style={styles.meta}>{formatEventDate(campaign.startsAt)} · {campaign.location}</Text>
+            <Text style={styles.countdown}>{formatCountdown(days)}</Text>
+            {campaign.canManage ? <Text style={styles.editHint}>Tap event details to edit</Text> : null}
+          </View>
+        </Pressable>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.workspaceTabs}>
@@ -318,12 +331,21 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   header: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#222C26' },
-  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   back: { color: '#CBD4CE', fontSize: 12, fontWeight: '800' },
   phasePill: { color: '#B8E868', fontSize: 9, fontWeight: '900', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: '#638B2D', backgroundColor: '#173019', overflow: 'hidden' },
-  title: { color: '#FFF8E8', fontSize: 25, lineHeight: 30, fontWeight: '900' },
-  meta: { color: '#909B94', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  menuButton: { width: 34, height: 30, borderRadius: 10, borderWidth: 1, borderColor: '#35433A', backgroundColor: '#121A16', alignItems: 'center', justifyContent: 'center' },
+  menuButtonText: { color: '#F4F1E8', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
+  eventIdentity: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  coverImage: { width: 92, height: 112, borderRadius: 14, backgroundColor: '#172019' },
+  coverFallback: { width: 92, height: 112, borderRadius: 14, backgroundColor: '#1B241E', borderWidth: 1, borderColor: '#344139', alignItems: 'center', justifyContent: 'center' },
+  coverFallbackText: { color: '#D7B45A', fontSize: 22, fontWeight: '900' },
+  eventIdentityText: { flex: 1, minWidth: 0 },
+  title: { color: '#FFF8E8', fontSize: 22, lineHeight: 27, fontWeight: '900' },
+  meta: { color: '#909B94', fontSize: 11, lineHeight: 16, marginTop: 5 },
   countdown: { color: '#F4F1E8', fontSize: 11, fontWeight: '900', marginTop: 5 },
+  editHint: { color: '#D7B45A', fontSize: 9, fontWeight: '800', marginTop: 6 },
   workspaceTabs: { paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: '#222C26' },
   workspaceTab: { paddingHorizontal: 13, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   workspaceTabActive: { borderBottomColor: '#A8CF55' },
