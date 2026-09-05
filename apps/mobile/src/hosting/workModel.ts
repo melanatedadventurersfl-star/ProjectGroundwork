@@ -27,7 +27,7 @@ export function dedupeCampaignTasks(campaign: HostCampaign) {
   return dedupeIntegrityTasks(campaign.tasks);
 }
 
-export function canonicalCampaigns(campaigns: HostCampaign[]) {
+export function canonicalCampaigns(campaigns: HostCampaign[]): HostCampaign[] {
   const groups = new Map<string, HostCampaign[]>();
   for (const campaign of campaigns) {
     const key = eventIdentityKey(campaign);
@@ -35,11 +35,16 @@ export function canonicalCampaigns(campaigns: HostCampaign[]) {
     group.push(campaign);
     groups.set(key, group);
   }
-  return Array.from(groups.values()).map((group) => [...group].sort((a, b) => {
-    const manage = Number(b.canManage) - Number(a.canManage);
-    if (manage) return manage;
-    return b.tasks.length - a.tasks.length;
-  })[0]);
+
+  return Array.from(groups.values()).flatMap((group) => {
+    const sorted = [...group].sort((a, b) => {
+      const manage = Number(b.canManage) - Number(a.canManage);
+      if (manage) return manage;
+      return b.tasks.length - a.tasks.length;
+    });
+    const selected = sorted[0];
+    return selected ? [selected] : [];
+  });
 }
 
 export function duplicateCampaignCount(campaign: HostCampaign, campaigns: HostCampaign[]) {
