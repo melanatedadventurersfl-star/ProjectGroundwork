@@ -47,7 +47,6 @@ export function daysFromToday(iso: string) {
 }
 
 export function hasDependencyTiming(task: Pick<CampaignTask, 'dueAt' | 'dueLabel'>) {
-  if (task.dueAt) return false;
   const label = normalizeTaskText(task.dueLabel || '');
   if (!label || label === 'no due date' || label === 'date not set') return false;
   return /\b(after|before|when|once|upon|awaiting|pending)\b/.test(label);
@@ -63,8 +62,8 @@ export function isTrustworthyDueDate(task: WorkTask) {
 }
 
 export function dueState(task: WorkTask): WorkDueState {
-  if (task.dueAt) return isTrustworthyDueDate(task) ? 'scheduled' : 'review';
   if (hasDependencyTiming(task)) return 'dependency';
+  if (task.dueAt) return isTrustworthyDueDate(task) ? 'scheduled' : 'review';
   return 'unscheduled';
 }
 
