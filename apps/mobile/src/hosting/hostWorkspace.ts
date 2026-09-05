@@ -24,6 +24,7 @@ export const HOST_WORKSPACE_ITEMS: HostWorkspaceItem[] = [
   { key: 'vendors', title: 'Marketplace', subtitle: 'Find services and event vendors, then manage your working list', route: '/host/vendors/marketplace', icon: 'storefront', accent: '#75AEE8', group: 'BUSINESS' },
   { key: 'communications', title: 'Communications', subtitle: 'Host inquiries, team, vendor and member messages', route: '/host/communications', icon: 'message', accent: '#A990ED', group: 'BUSINESS' },
   { key: 'marketing', title: 'Marketing', subtitle: 'Campaigns, content, promotion and performance', route: '/host/campaigns', icon: 'megaphone', accent: '#E7A05C', group: 'BUSINESS' },
+  { key: 'connections', title: 'Connections & Apps', subtitle: 'Go Melanated, social, ticketing, email and future distribution apps', route: '/host/connections', icon: 'connections', accent: '#77B9A6', group: 'BUSINESS' },
   { key: 'finances', title: 'Finances', subtitle: 'Money across events and organization operations', route: '/host/finances', icon: 'reports', accent: '#84C992', group: 'BUSINESS' },
   { key: 'inventory', title: 'Inventory', subtitle: 'Equipment, supplies, rentals and assignments', route: '/host/inventory-hub', icon: 'settings', accent: '#8DA19A', group: 'BUSINESS' },
   { key: 'directories', title: 'Directories', subtitle: 'Venues, vendors and reusable business resources', route: '/host/directories', icon: 'directory', accent: '#D7B45A', group: 'BUSINESS' },
@@ -32,7 +33,7 @@ export const HOST_WORKSPACE_ITEMS: HostWorkspaceItem[] = [
   { key: 'templates', title: 'Templates & Library', subtitle: 'Reusable event and operations building blocks', route: '/host/library', icon: 'library', accent: '#D7B45A', group: 'RESOURCES' },
   { key: 'reports', title: 'Reports', subtitle: 'Cross-event performance and operational history', route: '/host/finances', icon: 'reports', accent: '#84C992', group: 'RESOURCES' },
   { key: 'profile', title: 'Host Profile', subtitle: 'Edit what members see about you', route: '/host/profile', icon: 'profile', accent: '#D7B45A', group: 'RESOURCES' },
-  { key: 'settings', title: 'Settings', subtitle: 'Host preferences, defaults and integrations', route: '/host/profile', icon: 'settings', accent: '#8DA19A', group: 'RESOURCES' },
+  { key: 'settings', title: 'Settings', subtitle: 'Host preferences and defaults', route: '/host/profile', icon: 'settings', accent: '#8DA19A', group: 'RESOURCES' },
 ];
 
 export const HOST_WORKSPACE_GROUPS: HostWorkspaceGroup[] = ['EVENTS', 'WORK', 'BUSINESS', 'RESOURCES'];
