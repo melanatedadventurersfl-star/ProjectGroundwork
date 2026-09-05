@@ -162,7 +162,7 @@ export default function EditHostCampaignScreen() {
         <Text style={styles.actionsHelp}>These actions affect the full event, not one Host Center tab.</Text>
 
         <Pressable disabled={Boolean(actionBusy)} style={styles.actionRow} onPress={() => void duplicateEvent()}>
-          <View style={{ flex: 1 }}><Text style={styles.actionTitle}>Duplicate event</Text><Text style={styles.actionText}>Create a new draft with this event's details, cover, planning tasks, milestones, decisions, dependencies, and marketing plan. Completion and assignments reset.</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.actionTitle}>Duplicate event</Text><Text style={styles.actionText}>Create a new draft with the event details, cover, planning tasks, milestones, decisions, dependencies, and marketing plan. Completion and assignments reset.</Text></View>
           {actionBusy === 'duplicate' ? <ActivityIndicator size="small" color="#D7B45A" /> : <Text style={styles.actionChevron}>›</Text>}
         </Pressable>
 
