@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { integrityOperationsSummary } from './workIntegrity';
 
 export type EventComponentKey =
   | 'tickets'
@@ -202,31 +203,52 @@ export async function addDefaultCommunicationSchedule(campaignId: string) {
 }
 
 export async function getEventOperationsSummary(campaignId: string) {
-  const [tasksResult, financeResult, vendorsResult, commsResult] = await Promise.all([
-    supabase.from('host_campaign_tasks').select('id,status,due_at,priority').eq('campaign_id', campaignId),
+  const [campaignResult, tasksResult, financeResult, vendorsResult, commsResult] = await Promise.all([
+    supabase.from('host_campaigns').select('id,title,short_title,location,starts_at,ends_at').eq('id', campaignId).maybeSingle(),
+    supabase.from('host_campaign_tasks').select('id,task_key,title,category,status,due_label,due_at,priority').eq('campaign_id', campaignId),
     supabase.from('host_event_finance_entries').select('entry_type,estimated_cents,actual_cents,paid_cents').eq('campaign_id', campaignId),
     supabase.from('host_event_vendors').select('id,status,document_status').eq('campaign_id', campaignId),
     supabase.from('host_event_communications').select('id,status').eq('campaign_id', campaignId),
   ]);
+  if (campaignResult.error) throw campaignResult.error;
   if (tasksResult.error) throw tasksResult.error;
   if (financeResult.error) throw financeResult.error;
   if (vendorsResult.error) throw vendorsResult.error;
   if (commsResult.error) throw commsResult.error;
 
-  const tasks = tasksResult.data ?? [];
-  const now = Date.now();
-  const complete = tasks.filter((task) => task.status === 'complete').length;
-  const overdue = tasks.filter((task) => task.status !== 'complete' && task.due_at && new Date(task.due_at).getTime() < now).length;
-  const progress = tasks.length ? Math.round((complete / tasks.length) * 100) : 0;
+  const campaignRow = campaignResult.data;
+  const taskSummary = campaignRow ? integrityOperationsSummary({
+    id: campaignRow.id,
+    title: campaignRow.title,
+    shortTitle: campaignRow.short_title,
+    location: campaignRow.location,
+    startsAt: campaignRow.starts_at,
+    endsAt: campaignRow.ends_at,
+  }, (tasksResult.data ?? []).map((task) => ({
+    id: task.id,
+    taskKey: task.task_key,
+    title: task.title,
+    category: task.category,
+    status: task.status,
+    dueLabel: task.due_label,
+    dueAt: task.due_at,
+    priority: task.priority,
+  }))) : {
+    progress: 0,
+    taskCount: 0,
+    completeTaskCount: 0,
+    openTaskCount: 0,
+    overdueTaskCount: 0,
+    needsSchedulingCount: 0,
+    dateAssessment: { state: 'review' as const, spanDays: null, effectiveStart: Number.NaN, effectiveEnd: Number.NaN, reason: 'Event dates are unavailable.' },
+  };
+
   const finance = financeResult.data ?? [];
   const revenueCents = finance.filter((row) => row.entry_type === 'revenue').reduce((sum, row) => sum + (row.actual_cents || row.estimated_cents || 0), 0);
   const expenseCents = finance.filter((row) => row.entry_type === 'expense').reduce((sum, row) => sum + (row.actual_cents || row.estimated_cents || 0), 0);
 
   return {
-    progress,
-    taskCount: tasks.length,
-    completeTaskCount: complete,
-    overdueTaskCount: overdue,
+    ...taskSummary,
     revenueCents,
     expenseCents,
     profitCents: revenueCents - expenseCents,
