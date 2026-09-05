@@ -178,7 +178,7 @@ export default function HostCampaignDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.workspaceTabs}>
+      <ScrollView style={styles.workspaceTabScroller} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.workspaceTabs}>
         {(['overview', 'work', 'marketing', 'guests', 'operations'] as WorkspaceTab[]).map((tab) => (
           <Pressable key={tab} style={[styles.workspaceTab, workspaceTab === tab && styles.workspaceTabActive]} onPress={() => setTab(tab)}>
             <Text style={[styles.workspaceTabText, workspaceTab === tab && styles.workspaceTabTextActive]}>{capitalize(tab)}</Text>
@@ -346,12 +346,13 @@ const styles = StyleSheet.create({
   meta: { color: '#909B94', fontSize: 11, lineHeight: 16, marginTop: 5 },
   countdown: { color: '#F4F1E8', fontSize: 11, fontWeight: '900', marginTop: 5 },
   editHint: { color: '#D7B45A', fontSize: 9, fontWeight: '800', marginTop: 6 },
-  workspaceTabs: { paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: '#222C26' },
-  workspaceTab: { paddingHorizontal: 13, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  workspaceTabScroller: { flexGrow: 0, flexShrink: 0, height: 47, backgroundColor: '#0B100D', borderBottomWidth: 1, borderBottomColor: '#222C26' },
+  workspaceTabs: { paddingHorizontal: 14, alignItems: 'stretch' },
+  workspaceTab: { height: 47, justifyContent: 'center', paddingHorizontal: 13, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   workspaceTabActive: { borderBottomColor: '#A8CF55' },
   workspaceTabText: { color: '#8F9993', fontSize: 12, fontWeight: '800' },
   workspaceTabTextActive: { color: '#C9E678' },
-  content: { padding: 16, paddingBottom: 80 },
+  content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 80 },
   muted: { color: '#8E9891', fontSize: 12 },
   error: { color: '#FF8A80', fontSize: 12, marginBottom: 12 },
   quickActions: { flexDirection: 'row', gap: 8, marginBottom: 12 },
