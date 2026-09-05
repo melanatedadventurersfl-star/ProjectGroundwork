@@ -47,7 +47,8 @@ function isGuestPublicPath(pathname: string) {
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
-    pathname.startsWith('/sign-up')
+    pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/host-login')
   );
 }
 
@@ -68,19 +69,21 @@ function AppShell() {
   const activeUpdateKey = activeUpdateIdentity.updateId || activeUpdateIdentity.commit || 'embedded';
   const releaseSeenKey = `${currentReleaseNotes.id}:${activeUpdateKey}`;
 
+  const isHostCenter = pathname === '/host' || pathname.startsWith('/host/');
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
-    pathname.startsWith('/sign-up');
+    pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/host-login');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
-  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isHostCenter && !tutorialGateReady;
+  const hideBottomNav = isLoading || isAuthScreen || isHostCenter || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isHostCenter || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -102,8 +105,12 @@ function AppShell() {
 
   useEffect(() => {
     if (isLoading || session || isGuestPublicPath(pathname)) return;
+    if (isHostCenter) {
+      router.replace(`/host-login?next=${encodeURIComponent(pathname)}` as never);
+      return;
+    }
     router.replace('/(auth)/sign-in' as never);
-  }, [isLoading, pathname, session]);
+  }, [isHostCenter, isLoading, pathname, session]);
 
   useEffect(() => {
     if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
@@ -133,7 +140,7 @@ function AppShell() {
   }, [session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session || isAuthScreen || tutorialCheckedRef.current) return;
+    if (isLoading || !session || isAuthScreen || isHostCenter || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
       const finished = hasFinishedGuidedTutorial();
@@ -155,10 +162,10 @@ function AppShell() {
       setTutorialGateReady(true);
       setTutorialVisible(false);
     }
-  }, [isAuthScreen, isLoading, releaseSeenKey, session]);
+  }, [isAuthScreen, isHostCenter, isLoading, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || isHostCenter || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -166,7 +173,7 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
+  }, [isAuthScreen, isHostCenter, isLoading, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
     setWhatsNewVisible(false);
@@ -204,14 +211,14 @@ function AppShell() {
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && !isManagement && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && !isHostCenter && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" /><Stack.Screen name="onboarding" /><Stack.Screen name="onboarding-v2" />
             <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
-            <Stack.Screen name="reset-password" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
+            <Stack.Screen name="reset-password" /><Stack.Screen name="host-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
             <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
             <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
             <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
@@ -219,7 +226,7 @@ function AppShell() {
         </KeyboardAvoidingView>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {session && !tutorialVisible && !isAuthScreen ? <TrailheadTooltip /> : null}
+      {session && !tutorialVisible && !isAuthScreen && !isHostCenter ? <TrailheadTooltip /> : null}
       {tutorialVisible ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
       {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
