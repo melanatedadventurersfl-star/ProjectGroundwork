@@ -28,6 +28,23 @@ export type EventComponentDefinition = {
   taskSeeds: Array<{ title: string; category: string; daysBefore?: number; priority?: 'critical' | 'high' | 'normal' }>;
 };
 
+export type EventOperationsSummary = {
+  progress: number;
+  taskCount: number;
+  completeTaskCount: number;
+  openTaskCount?: number;
+  overdueTaskCount: number;
+  needsSchedulingCount?: number;
+  dateAssessment?: ReturnType<typeof integrityOperationsSummary>['dateAssessment'];
+  revenueCents: number;
+  expenseCents: number;
+  profitCents: number;
+  confirmedVendors: number;
+  pendingVendors: number;
+  scheduledCommunications: number;
+  draftCommunications: number;
+};
+
 export const EVENT_COMPONENTS: EventComponentDefinition[] = [
   { key: 'tickets', title: 'Tickets & Registration', description: 'Sell tickets, track registrations and revenue.', icon: '🎟️', taskSeeds: [
     { title: 'Finalize ticket types and pricing', category: 'Ticketing', daysBefore: 60, priority: 'high' },
@@ -202,7 +219,7 @@ export async function addDefaultCommunicationSchedule(campaignId: string) {
   if (error) throw error;
 }
 
-export async function getEventOperationsSummary(campaignId: string) {
+export async function getEventOperationsSummary(campaignId: string): Promise<EventOperationsSummary> {
   const [campaignResult, tasksResult, financeResult, vendorsResult, commsResult] = await Promise.all([
     supabase.from('host_campaigns').select('id,title,short_title,location,starts_at,ends_at').eq('id', campaignId).maybeSingle(),
     supabase.from('host_campaign_tasks').select('id,task_key,title,category,status,due_label,due_at,priority').eq('campaign_id', campaignId),
