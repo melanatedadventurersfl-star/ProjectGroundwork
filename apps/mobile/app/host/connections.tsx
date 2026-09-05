@@ -87,7 +87,7 @@ function ProviderCard({ provider }: { provider: HostDistributionProviderSummary 
       <Text style={styles.providerMeta}>{provider.eventCount ? `${provider.eventCount} event${provider.eventCount === 1 ? '' : 's'}` : 'No linked events'}</Text>
     </View>
     <View style={styles.capabilityRow}>{provider.capabilities.slice(0, 4).map((capability) => <Text key={capability} style={styles.capability}>{formatCapability(capability)}</Text>)}</View>
-    {!provider.native && provider.status === 'not_connected' ? <Text style={styles.futureNote}>Connection setup will appear here when this provider's authorization flow is enabled.</Text> : null}
+    {!provider.native && provider.status === 'not_connected' ? <Text style={styles.futureNote}>Connection setup will appear here when authorization for this provider is enabled.</Text> : null}
   </View>;
 }
 
