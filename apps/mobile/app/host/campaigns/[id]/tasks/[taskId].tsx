@@ -45,7 +45,7 @@ export default function CampaignTaskDetailScreen() {
 
   const statusLabel = statusOptions.find((option) => option.value === task.status)?.label ?? task.status;
   const timingState = dueState({ ...task, campaign });
-  const dueValue = timingState === 'scheduled' ? task.dueLabel : timingState === 'review' ? 'Review date' : 'Not scheduled';
+  const dueValue = timingState === 'calendar' || timingState === 'relative' ? task.dueLabel : timingState === 'review' ? 'Review date' : 'Not scheduled';
 
   return <SafeAreaView style={styles.safe}><View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹ {campaign.shortTitle}</Text></Pressable><Text style={styles.headerLabel}>TASK</Text></View><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <Text style={[styles.status, task.status === 'blocked' && styles.blocked]}>{statusLabel.toUpperCase()}</Text><Text style={styles.title}>{task.title}</Text><Text style={styles.event}>{campaign.shortTitle}</Text>

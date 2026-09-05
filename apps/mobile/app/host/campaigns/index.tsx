@@ -3,7 +3,8 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCampaignDaysUntil, getCampaignReadiness, listHostCampaigns, type HostCampaign } from '../../../src/hosting/campaigns';
+import { getCampaignDaysUntil, listHostCampaigns, type HostCampaign } from '../../../src/hosting/campaigns';
+import { campaignProgress, canonicalCampaigns, isOverdue, needsScheduling, openTasksForCampaign } from '../../../src/hosting/workModel';
 
 export default function HostCampaignsScreen() {
   const [campaigns, setCampaigns] = useState<HostCampaign[]>([]);
@@ -14,7 +15,7 @@ export default function HostCampaignsScreen() {
     setLoading(true);
     setError('');
     try {
-      setCampaigns(await listHostCampaigns());
+      setCampaigns(canonicalCampaigns(await listHostCampaigns()));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load campaigns.');
     } finally {
@@ -37,13 +38,15 @@ export default function HostCampaignsScreen() {
         {!loading && !error && campaigns.length === 0 ? <View style={styles.stateCard}><Text style={styles.emptyTitle}>No campaigns yet.</Text><Text style={styles.stateText}>Campaigns you own or support will appear here.</Text></View> : null}
 
         {!loading && !error ? campaigns.map((campaign) => {
-          const readiness = getCampaignReadiness(campaign);
+          const readiness = campaignProgress(campaign);
           const days = getCampaignDaysUntil(campaign);
-          const openTasks = campaign.tasks.filter((task) => task.status !== 'complete').length;
-          const blocked = campaign.tasks.filter((task) => task.status === 'blocked' || task.status === 'waiting').length;
+          const tasks = openTasksForCampaign(campaign).map((task) => ({ ...task, campaign }));
+          const blocked = tasks.filter((task) => task.status === 'blocked' || task.status === 'waiting').length;
+          const overdue = tasks.filter(isOverdue).length;
+          const scheduling = tasks.filter(needsScheduling).length;
           return (
             <View key={campaign.id} style={styles.cardWrap}>
-              <Pressable style={styles.card} onPress={() => router.push(`/host/campaigns/${campaign.slug}` as never)}>
+              <Pressable style={styles.card} onPress={() => router.push(`/host/event-work/${campaign.slug}` as never)}>
                 <View style={styles.cardTop}>
                   <View style={[styles.accentDot, { backgroundColor: campaign.accent }]} />
                   <Text style={styles.status}>{campaign.status.toUpperCase()}</Text>
@@ -55,11 +58,12 @@ export default function HostCampaignsScreen() {
 
                 <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${readiness}%`, backgroundColor: campaign.accent }]} /></View>
                 <View style={styles.metrics}>
-                  <Metric value={`${readiness}%`} label="Ready" />
-                  <Metric value={String(openTasks)} label="Open" />
-                  <Metric value={String(blocked)} label="Waiting" />
+                  <Metric value={`${readiness}%`} label="Task complete" />
+                  <Metric value={String(tasks.length)} label="Open" />
+                  <Metric value={String(overdue)} label="Overdue" />
                 </View>
-                <Text style={[styles.openAction, { color: campaign.accent }]}>Open campaign →</Text>
+                <Text style={styles.integrityMeta}>{blocked} blocked or waiting · {scheduling} need scheduling</Text>
+                <Text style={[styles.openAction, { color: campaign.accent }]}>Open event work →</Text>
               </Pressable>
               <Pressable style={styles.marketingAction} onPress={() => router.push(`/host/campaigns/${campaign.slug}/marketing` as never)}>
                 <View style={{ flex: 1 }}>
@@ -109,8 +113,9 @@ const styles = StyleSheet.create({
   metrics: { flexDirection: 'row', gap: 10, marginTop: 14 },
   metric: { flex: 1, backgroundColor: '#101512', borderRadius: 13, padding: 12 },
   metricValue: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' },
-  metricLabel: { color: '#7F8A83', fontSize: 10, fontWeight: '800', marginTop: 2 },
-  openAction: { fontWeight: '900', marginTop: 18 },
+  metricLabel: { color: '#7F8A83', fontSize: 9, fontWeight: '800', marginTop: 2 },
+  integrityMeta: { color: '#7F8A83', fontSize: 9, marginTop: 10 },
+  openAction: { fontWeight: '900', marginTop: 14 },
   marketingAction: { flexDirection: 'row', alignItems: 'center', marginTop: 7, borderRadius: 14, borderWidth: 1, borderColor: '#4C3D22', backgroundColor: '#1C1810', paddingHorizontal: 14, paddingVertical: 11 },
   marketingKicker: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: .8 },
   marketingTitle: { color: '#D8D1BF', fontSize: 12, fontWeight: '900', marginTop: 2 },

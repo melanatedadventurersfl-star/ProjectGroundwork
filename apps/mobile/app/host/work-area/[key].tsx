@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listHostCampaigns, type HostCampaign } from '../../../src/hosting/campaigns';
 import { categoryMatchesPack, taskPackByKey } from '../../../src/hosting/taskPacks';
-import { flattenOpenTasks, taskTiming, type WorkTask } from '../../../src/hosting/workModel';
+import { canonicalCampaigns, flattenOpenTasks, taskTiming, type WorkTask } from '../../../src/hosting/workModel';
 
 function eventDate(campaign: HostCampaign) {
   return new Date(campaign.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -21,7 +21,7 @@ export default function HostWorkAreaScreen() {
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { setCampaigns((await listHostCampaigns()).filter((campaign) => campaign.status !== 'complete')); }
+    try { setCampaigns(canonicalCampaigns((await listHostCampaigns()).filter((campaign) => campaign.status !== 'complete'))); }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load this work area.'); }
     finally { setLoading(false); }
   }, []);
@@ -31,12 +31,14 @@ export default function HostWorkAreaScreen() {
   const allTasks = useMemo(() => pack ? flattenOpenTasks(campaigns).filter((task) => categoryMatchesPack(task.category, pack)) : [], [campaigns, pack]);
   const visible = eventFilter === 'all' ? allTasks : allTasks.filter((task) => task.campaign.slug === eventFilter || task.campaign.id === eventFilter);
   const groups = campaigns.map((campaign) => ({ campaign, tasks: visible.filter((task) => task.campaign.id === campaign.id) })).filter((group) => group.tasks.length > 0);
+  const visibleEventCount = new Set(visible.map((task) => task.campaign.id)).size;
+  const selectedEvent = eventFilter === 'all' ? null : campaigns.find((campaign) => campaign.slug === eventFilter || campaign.id === eventFilter) ?? null;
 
   if (!pack) return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.title}>Work area unavailable</Text><Pressable onPress={() => router.replace('/host/work' as never)}><Text style={styles.back}>Back to My Work</Text></Pressable></View></SafeAreaView>;
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ My Work</Text></Pressable>
-    <View style={[styles.header, { borderTopColor: pack.accent }]}><Text style={styles.icon}>{pack.icon}</Text><View style={{ flex: 1 }}><Text style={[styles.kicker, { color: pack.accent }]}>{pack.shortTitle.toUpperCase()}</Text><Text style={styles.title}>{pack.shortTitle}</Text><Text style={styles.meta}>{allTasks.length} open task{allTasks.length === 1 ? '' : 's'} across {new Set(allTasks.map((task) => task.campaign.id)).size} event{new Set(allTasks.map((task) => task.campaign.id)).size === 1 ? '' : 's'}</Text></View></View>
+    <View style={[styles.header, { borderTopColor: pack.accent }]}><Text style={styles.icon}>{pack.icon}</Text><View style={{ flex: 1 }}><Text style={[styles.kicker, { color: pack.accent }]}>{pack.shortTitle.toUpperCase()}</Text><Text style={styles.title}>{pack.shortTitle}</Text><Text style={styles.meta}>{selectedEvent ? `${visible.length} open task${visible.length === 1 ? '' : 's'} for ${selectedEvent.shortTitle}` : `${visible.length} open task${visible.length === 1 ? '' : 's'} across ${visibleEventCount} event${visibleEventCount === 1 ? '' : 's'}`}</Text></View></View>
 
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}><Pressable style={[styles.chip, eventFilter === 'all' && styles.chipActive]} onPress={() => setEventFilter('all')}><Text style={[styles.chipText, eventFilter === 'all' && styles.chipTextActive]}>All Events</Text></Pressable>{campaigns.map((campaign) => <Pressable key={campaign.id} style={[styles.chip, (eventFilter === campaign.slug || eventFilter === campaign.id) && styles.chipActive]} onPress={() => setEventFilter(campaign.slug)}><Text style={[styles.chipText, (eventFilter === campaign.slug || eventFilter === campaign.id) && styles.chipTextActive]} numberOfLines={2}>{campaign.shortTitle}</Text><Text style={[styles.chipDate, (eventFilter === campaign.slug || eventFilter === campaign.id) && styles.chipTextActive]}>{eventDate(campaign)}</Text></Pressable>)}</ScrollView>
 
@@ -52,7 +54,7 @@ function TaskRow({ task, first }: { task: WorkTask; first: boolean }) { return <
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0A0F0C' }, content: { padding: 18, paddingBottom: 70 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }, back: { color: '#D7B45A', fontSize: 10, fontWeight: '900', marginBottom: 14 },
-  header: { flexDirection: 'row', gap: 11, borderRadius: 17, borderWidth: 1, borderColor: '#2D3932', borderTopWidth: 3, backgroundColor: '#141B16', padding: 14 }, icon: { fontSize: 25 }, kicker: { fontSize: 7, fontWeight: '900', letterSpacing: 1 }, title: { color: '#FFF8E8', fontSize: 22, fontWeight: '900', marginTop: 2 }, meta: { color: '#849087', fontSize: 8, marginTop: 4 },
+  header: { flexDirection: 'row', gap: 11, borderRadius: 17, borderWidth: 1, borderColor: '#2D3932', borderTopWidth: 3, backgroundColor: '#141B16', padding: 14 }, icon: { fontSize: 25 }, kicker: { fontSize: 7, fontWeight: '900', letterSpacing: 1 }, title: { color: '#FFF8E8', fontSize: 22, fontWeight: '900', marginTop: 2 }, meta: { color: '#849087', fontSize: 8, lineHeight: 12, marginTop: 4 },
   chips: { gap: 7, paddingVertical: 12, paddingRight: 18 }, chip: { width: 180, minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#39463E', paddingHorizontal: 11, paddingVertical: 7, justifyContent: 'center' }, chipActive: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' }, chipText: { color: '#9AA69E', fontSize: 8, fontWeight: '800' }, chipTextActive: { color: '#172017' }, chipDate: { color: '#737F77', fontSize: 6.5, marginTop: 2 },
   addButton: { borderRadius: 14, borderWidth: 1, backgroundColor: '#121914', padding: 13 }, addText: { fontSize: 10, fontWeight: '900' }, addMeta: { color: '#7D8981', fontSize: 7.5, marginTop: 3 }, loading: { padding: 30 }, error: { color: '#F3A59A', fontSize: 10, marginTop: 12 }, group: { marginTop: 18 }, groupHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 7 }, groupTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' }, groupDate: { color: '#7E8A82', fontSize: 7, marginTop: 2 }, groupCount: { color: '#D7B45A', fontSize: 9, fontWeight: '900' }, list: { borderRadius: 14, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#141B16', overflow: 'hidden' }, row: { minHeight: 59, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2D3932' }, dot: { width: 8, height: 8, borderRadius: 4 }, rowTitle: { color: '#FFF8E8', fontSize: 10, fontWeight: '900' }, rowMeta: { color: '#7E8A82', fontSize: 7.5, marginTop: 3 }, blocked: { color: '#E7A05C', fontSize: 7, marginTop: 2 }, chevron: { color: '#68736C', fontSize: 18 }, empty: { marginTop: 18, borderRadius: 14, borderWidth: 1, borderColor: '#2D3932', padding: 18 }, emptyTitle: { color: '#FFF8E8', fontSize: 11, fontWeight: '900' }, emptyText: { color: '#7E8A82', fontSize: 8, marginTop: 4 },
 });

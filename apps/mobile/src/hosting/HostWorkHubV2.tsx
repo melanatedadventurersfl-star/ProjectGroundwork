@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listHostCampaigns, type HostCampaign } from './campaigns';
 import { TASK_PACKS, categoryMatchesPack } from './taskPacks';
-import { attentionScore, campaignProgress, filterTasks, flattenAllTasks, flattenOpenTasks, isOverdue, needsAttention, needsScheduling, openTasksForCampaign, taskTiming, type WorkFilter, type WorkTask } from './workModel';
+import { attentionScore, campaignProgress, canonicalCampaigns, filterTasks, flattenAllTasks, flattenOpenTasks, isOverdue, needsAttention, needsScheduling, openTasksForCampaign, taskTiming, type WorkFilter, type WorkTask } from './workModel';
 import { supabase } from '../lib/supabase';
 import { AppIcon } from '../ui/AppIcon';
 
@@ -32,7 +32,8 @@ export function HostWorkHubV2() {
     setLoading(true);
     setError('');
     try {
-      const next = (await listHostCampaigns()).filter((campaign) => campaign.status !== 'complete');
+      const raw = (await listHostCampaigns()).filter((campaign) => campaign.status !== 'complete');
+      const next = canonicalCampaigns(raw);
       setCampaigns(next);
       setSelectedCampaignId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id ?? '');
     } catch (caught) {
