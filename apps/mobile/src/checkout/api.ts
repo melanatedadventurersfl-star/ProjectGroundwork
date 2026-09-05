@@ -1,3 +1,4 @@
+import { getEventTrackingContext, recordCheckoutStart } from '../analytics/eventTracking';
 import { supabase } from '../lib/supabase';
 import type { AdventureAddon, CheckoutSelection, CreatedOrder, TicketType, Waiver } from './types';
 
@@ -12,6 +13,8 @@ export async function getCheckoutOptions(adventureId: string) {
   if (addonsResult.error) throw addonsResult.error;
   if (waiversResult.error) throw waiversResult.error;
 
+  void recordCheckoutStart(adventureId);
+
   return {
     tickets: (ticketsResult.data ?? []) as TicketType[],
     addons: (addonsResult.data ?? []) as AdventureAddon[],
@@ -24,9 +27,17 @@ export async function createHeldOrder(adventureId: string, selection: CheckoutSe
   const user = authData.user;
   if (!user) throw new Error('You must be signed in to register.');
 
+  const tracking = getEventTrackingContext(adventureId);
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .insert({ adventure_id: adventureId, purchaser_id: user.id, status: 'draft' })
+    .insert({
+      adventure_id: adventureId,
+      purchaser_id: user.id,
+      status: 'draft',
+      source: 'go_melanated',
+      attribution_code: tracking.attributionCode ?? null,
+      analytics_session_key: tracking.sessionKey,
+    })
     .select('id,total_cents,status,hold_expires_at')
     .single();
   if (orderError) throw orderError;
