@@ -36,12 +36,12 @@ export function TrailheadProgressObserver() {
     if (returnedHome || leftProfile || pathname.startsWith('/member/profile')) {
       void supabase
         .from('profiles')
-        .select('display_name,avatar_url,home_city,home_state')
+        .select('display_name,avatar_url,bio,home_city,home_state')
         .eq('id', session.user.id)
         .single()
         .then(({ data, error }) => {
           if (error || !data) return;
-          if (data.display_name?.trim() && data.avatar_url && data.home_city?.trim() && data.home_state?.trim()) {
+          if (data.display_name?.trim() && data.avatar_url && data.bio?.trim() && data.home_city?.trim() && data.home_state?.trim()) {
             markTrailheadAction('profile');
           }
         });

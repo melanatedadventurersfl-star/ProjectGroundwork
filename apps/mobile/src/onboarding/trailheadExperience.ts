@@ -15,9 +15,9 @@ export const TRAILHEAD_DESTINATIONS: TrailheadDestination[] = [
   {
     action: 'profile',
     title: 'Complete your profile',
-    route: '/member/profile?edit=1',
-    tooltip: 'Add your profile photo, display name and home location, then save your profile.',
-    matches: (pathname) => pathname.startsWith('/member/profile'),
+    route: '/member/profile-setup',
+    tooltip: 'Trailhead will walk you through the first missing part of your profile.',
+    matches: (pathname) => pathname.startsWith('/member/profile-setup'),
   },
   {
     action: 'trail-guide',
@@ -86,6 +86,7 @@ export function getPendingTrailheadTooltip() {
 export function openTrailheadAction(action: TrailheadAction) {
   const destination = getTrailheadDestination(action);
   if (!destination) return;
-  setPendingTrailheadTooltip(action);
+  // Profile has its own contextual coach flow, so avoid stacking the generic tooltip on top of it.
+  setPendingTrailheadTooltip(action === 'profile' ? null : action);
   router.push(destination.route as never);
 }
