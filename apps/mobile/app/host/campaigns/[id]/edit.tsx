@@ -4,8 +4,10 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getHostCampaign, updateCampaignDetails, type HostCampaign } from '../../../../src/hosting/campaigns';
+import { archiveCampaignWorkspace, cancelCampaignEvent, duplicateCampaignEvent } from '../../../../src/hosting/campaignLifecycle';
 
 type EventStatus = HostCampaign['status'];
+type ConfirmAction = 'archive' | 'cancel' | null;
 
 export default function EditHostCampaignScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -19,6 +21,8 @@ export default function EditHostCampaignScreen() {
   const [status, setStatus] = useState<EventStatus>('planning');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [actionBusy, setActionBusy] = useState<'duplicate' | 'archive' | 'cancel' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -69,8 +73,55 @@ export default function EditHostCampaignScreen() {
     }
   }
 
+  async function duplicateEvent() {
+    if (!campaign || actionBusy) return;
+    setActionBusy('duplicate');
+    setError('');
+    setMessage('');
+    try {
+      const copy = await duplicateCampaignEvent(campaign);
+      router.replace(`/host/campaigns/${copy.slug}` as never);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to duplicate this event.');
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function archiveEvent() {
+    if (!campaign || actionBusy) return;
+    setActionBusy('archive');
+    setError('');
+    try {
+      await archiveCampaignWorkspace(campaign);
+      setConfirmAction(null);
+      router.replace('/host/events' as never);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to archive this event.');
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function cancelEvent() {
+    if (!campaign || actionBusy) return;
+    setActionBusy('cancel');
+    setError('');
+    try {
+      await cancelCampaignEvent(campaign);
+      setConfirmAction(null);
+      router.replace('/host/events' as never);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to cancel this event.');
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
   if (loading && !campaign) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" /><Text style={styles.muted}>Opening event details…</Text></View></SafeAreaView>;
   if (!campaign) return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.title}>Event unavailable</Text>{error ? <Text style={styles.error}>{error}</Text> : null}</View></SafeAreaView>;
+
+  const locked = saving || Boolean(actionBusy) || !campaign.canManage;
 
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -102,12 +153,37 @@ export default function EditHostCampaignScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {message ? <Text style={styles.success}>{message}</Text> : null}
 
-      <Pressable disabled={saving || !campaign.canManage} style={[styles.saveButton, (saving || !campaign.canManage) && styles.disabled]} onPress={() => void save()}>
+      <Pressable disabled={locked} style={[styles.saveButton, locked && styles.disabled]} onPress={() => void save()}>
         {saving ? <ActivityIndicator color="#172017" /> : <Text style={styles.saveButtonText}>Save changes</Text>}
       </Pressable>
-      {!campaign.canManage ? <Text style={styles.permission}>You can view this event, but your account does not have permission to edit it.</Text> : null}
+
+      {campaign.canManage ? <View style={styles.actionsCard}>
+        <Text style={styles.actionsTitle}>Event actions</Text>
+        <Text style={styles.actionsHelp}>These actions affect the full event, not one Host Center tab.</Text>
+
+        <Pressable disabled={Boolean(actionBusy)} style={styles.actionRow} onPress={() => void duplicateEvent()}>
+          <View style={{ flex: 1 }}><Text style={styles.actionTitle}>Duplicate event</Text><Text style={styles.actionText}>Create a new draft with the event details, cover, planning tasks, milestones, decisions, dependencies, and marketing plan. Completion and assignments reset.</Text></View>
+          {actionBusy === 'duplicate' ? <ActivityIndicator size="small" color="#D7B45A" /> : <Text style={styles.actionChevron}>›</Text>}
+        </Pressable>
+
+        <View style={styles.actionDivider} />
+        <Pressable disabled={Boolean(actionBusy)} style={styles.actionRow} onPress={() => setConfirmAction(confirmAction === 'archive' ? null : 'archive')}>
+          <View style={{ flex: 1 }}><Text style={styles.actionTitle}>Archive workspace</Text><Text style={styles.actionText}>Remove this event from active Host Center planning views without cancelling its public event.</Text></View><Text style={styles.actionChevron}>›</Text>
+        </Pressable>
+        {confirmAction === 'archive' ? <ConfirmBlock title="Archive this workspace?" body="The Host Center campaign will move to Complete. The linked public event will not be cancelled." busy={actionBusy === 'archive'} confirmLabel="Archive workspace" onCancel={() => setConfirmAction(null)} onConfirm={() => void archiveEvent()} /> : null}
+
+        <View style={styles.actionDivider} />
+        <Pressable disabled={Boolean(actionBusy)} style={styles.actionRow} onPress={() => setConfirmAction(confirmAction === 'cancel' ? null : 'cancel')}>
+          <View style={{ flex: 1 }}><Text style={styles.dangerTitle}>Cancel event</Text><Text style={styles.actionText}>Cancel the linked public event and close its Host Center workspace.</Text></View><Text style={styles.dangerChevron}>›</Text>
+        </Pressable>
+        {confirmAction === 'cancel' ? <ConfirmBlock title="Cancel this event?" body="This changes the public adventure to Cancelled and closes the Host Center campaign. Use this only when the event will not take place." busy={actionBusy === 'cancel'} confirmLabel="Cancel event" danger onCancel={() => setConfirmAction(null)} onConfirm={() => void cancelEvent()} /> : null}
+      </View> : <Text style={styles.permission}>You can view this event, but your account does not have permission to edit it.</Text>}
     </ScrollView>
   </SafeAreaView>;
+}
+
+function ConfirmBlock({ title, body, busy, confirmLabel, danger, onCancel, onConfirm }: { title: string; body: string; busy: boolean; confirmLabel: string; danger?: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return <View style={[styles.confirmBlock, danger && styles.confirmDanger]}><Text style={styles.confirmTitle}>{title}</Text><Text style={styles.confirmText}>{body}</Text><View style={styles.confirmButtons}><Pressable disabled={busy} style={styles.cancelButton} onPress={onCancel}><Text style={styles.cancelButtonText}>Keep event</Text></Pressable><Pressable disabled={busy} style={[styles.confirmButton, danger && styles.confirmButtonDanger]} onPress={onConfirm}>{busy ? <ActivityIndicator size="small" color="#FFF8E8" /> : <Text style={styles.confirmButtonText}>{confirmLabel}</Text>}</Pressable></View></View>;
 }
 
 function Field({ label, value, onChangeText, placeholder, help }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; help?: string }) {
@@ -157,6 +233,26 @@ const styles = StyleSheet.create({
   saveButton: { minHeight: 52, borderRadius: 14, backgroundColor: '#E1BC4D', alignItems: 'center', justifyContent: 'center', marginTop: 5 },
   saveButtonText: { color: '#172017', fontSize: 13, fontWeight: '900' },
   disabled: { opacity: .45 },
+  actionsCard: { marginTop: 22, borderRadius: 16, borderWidth: 1, borderColor: '#314039', backgroundColor: '#101713', overflow: 'hidden' },
+  actionsTitle: { color: '#FFF8E8', fontSize: 16, fontWeight: '900', paddingHorizontal: 14, paddingTop: 14 },
+  actionsHelp: { color: '#7E8982', fontSize: 9.5, lineHeight: 14, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 8 },
+  actionRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11 },
+  actionDivider: { height: 1, backgroundColor: '#27312B', marginHorizontal: 14 },
+  actionTitle: { color: '#F4F1E8', fontSize: 12.5, fontWeight: '900' },
+  dangerTitle: { color: '#FF8178', fontSize: 12.5, fontWeight: '900' },
+  actionText: { color: '#7E8982', fontSize: 9.5, lineHeight: 14, marginTop: 3 },
+  actionChevron: { color: '#D7B45A', fontSize: 22, fontWeight: '900' },
+  dangerChevron: { color: '#FF8178', fontSize: 22, fontWeight: '900' },
+  confirmBlock: { marginHorizontal: 12, marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: '#554922', backgroundColor: '#1B180F', padding: 12 },
+  confirmDanger: { borderColor: '#64302C', backgroundColor: '#1B1110' },
+  confirmTitle: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' },
+  confirmText: { color: '#9B9688', fontSize: 9.5, lineHeight: 14, marginTop: 4 },
+  confirmButtons: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  cancelButton: { flex: 1, minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: '#39443D', alignItems: 'center', justifyContent: 'center' },
+  cancelButtonText: { color: '#C7D0CA', fontSize: 10, fontWeight: '900' },
+  confirmButton: { flex: 1, minHeight: 38, borderRadius: 10, backgroundColor: '#967D2D', alignItems: 'center', justifyContent: 'center' },
+  confirmButtonDanger: { backgroundColor: '#A54039' },
+  confirmButtonText: { color: '#FFF8E8', fontSize: 10, fontWeight: '900' },
   error: { color: '#FF8178', fontSize: 10, lineHeight: 15, marginBottom: 10 },
   success: { color: '#A8CF55', fontSize: 10, fontWeight: '800', marginBottom: 10 },
   muted: { color: '#8D9891', fontSize: 11 },
