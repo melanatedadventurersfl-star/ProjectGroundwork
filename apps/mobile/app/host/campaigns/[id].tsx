@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -15,6 +15,7 @@ import {
   type CampaignTeamMember,
   type HostCampaign,
 } from '../../../src/hosting/campaigns';
+import { listCampaignMarketingItems } from '../../../src/hosting/campaignMarketing';
 
 type WorkspaceTab = 'overview' | 'work' | 'marketing' | 'guests' | 'operations';
 type WorkTab = 'tasks' | 'milestones' | 'decisions' | 'team';
@@ -33,6 +34,7 @@ export default function HostCampaignDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const [campaign, setCampaign] = useState<HostCampaign | null>(null);
   const [team, setTeam] = useState<CampaignTeamMember[]>([]);
+  const [marketingItemCount, setMarketingItemCount] = useState(0);
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('overview');
   const [workTab, setWorkTab] = useState<WorkTab>('tasks');
@@ -43,6 +45,7 @@ export default function HostCampaignDetailScreen() {
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [decisionDrafts, setDecisionDrafts] = useState<Record<string, string>>({});
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,14 +55,17 @@ export default function HostCampaignDetailScreen() {
       setCampaign(nextCampaign);
       if (!nextCampaign) {
         setTeam([]);
+        setMarketingItemCount(0);
         setCurrentProfileId(null);
         return;
       }
-      const [nextTeam, profileId] = await Promise.all([
+      const [nextTeam, profileId, marketingItems] = await Promise.all([
         listCampaignTeam(nextCampaign),
         getCurrentCampaignProfileId(),
+        listCampaignMarketingItems(nextCampaign.id).catch(() => []),
       ]);
       setTeam(nextTeam);
+      setMarketingItemCount(marketingItems.length);
       setCurrentProfileId(profileId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load event workspace.');
@@ -111,11 +117,21 @@ export default function HostCampaignDetailScreen() {
   const unassigned = activeTasks.filter((task) => !task.assigneeProfileId);
   const overdue = activeTasks.filter((task) => Boolean(task.dueAt) && new Date(task.dueAt as string).getTime() < referenceNow);
   const blocked = activeTasks.filter((task) => task.status === 'blocked');
-  const critical = activeTasks.filter((task) => task.priority === 'critical' && task.status !== 'complete');
+  const critical = activeTasks.filter((task) => task.priority === 'critical');
   const filteredTasks = workFilter === 'mine' ? mine : workFilter === 'unassigned' ? unassigned : workFilter === 'overdue' ? overdue : workFilter === 'blocked' ? blocked : activeTasks;
   const campaignSlug = campaign.slug;
-  const completedMilestones = campaign.milestones.filter((milestone) => milestone.complete).length;
+  const incompleteMilestones = campaign.milestones.filter((milestone) => !milestone.complete);
+  const completedMilestones = campaign.milestones.length - incompleteMilestones.length;
   const totalMilestones = campaign.milestones.length;
+  const foodTasks = activeTasks.filter((task) => /food|meal|hospitality/i.test(`${task.category} ${task.title}`));
+  const gearTasks = activeTasks.filter((task) => /gear|equipment|packing|power|decor|production/i.test(`${task.category} ${task.title}`));
+  const vendorTasks = activeTasks.filter((task) => /vendor|hayride|partner/i.test(`${task.category} ${task.title}`));
+  const runOfShowTasks = campaign.tasks.filter((task) => /run of show|timeline|event schedule|show flow/i.test(`${task.category} ${task.title}`));
+  const guestSyncPending = /pending/i.test(campaign.metrics.capacityLabel);
+  const marketingNotConfigured = marketingItemCount === 0;
+  const runOfShowMissing = runOfShowTasks.length === 0;
+  const operationsTasks = [...foodTasks, ...gearTasks, ...vendorTasks];
+  const operationsBlocked = operationsTasks.filter((task) => task.status === 'blocked').length;
 
   function openTask(task: CampaignTask) {
     router.push(`/host/campaigns/${campaignSlug}/tasks/${task.id}` as never);
@@ -141,21 +157,36 @@ export default function HostCampaignDetailScreen() {
   }
 
   function openEdit() {
+    setMenuOpen(false);
     router.push(`/host/campaigns/${campaignSlug}/edit` as never);
+  }
+
+  function openPublicPage() {
+    setMenuOpen(false);
+    router.push({ pathname: '/adventures/[id]', params: { id: campaign.adventureId } } as never);
+  }
+
+  async function shareEvent() {
+    setMenuOpen(false);
+    await Share.share({ message: `${campaign.shortTitle}\n${formatEventRange(campaign.startsAt, campaign.endsAt)}\n${campaign.location}` });
   }
 
   const pulseActions: PulseAction[] = [];
   if (overdue.length > 0) pulseActions.push({ key: 'overdue', title: `${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}`, detail: 'Past due and still open', tone: 'danger', onPress: () => openWork('overdue') });
+  if (blocked.length > 0) pulseActions.push({ key: 'blocked', title: `${blocked.length} blocked task${blocked.length === 1 ? '' : 's'}`, detail: 'Resolve dependencies before other work stalls', tone: 'danger', onPress: () => openWork('blocked') });
   if (unassigned.length > 0) pulseActions.push({ key: 'unassigned', title: `${unassigned.length} task${unassigned.length === 1 ? '' : 's'} need an owner`, detail: 'Assign responsibility before work gets lost', tone: 'warning', onPress: () => openWork('unassigned') });
-  if (blocked.length > 0) pulseActions.push({ key: 'blocked', title: `${blocked.length} blocked task${blocked.length === 1 ? '' : 's'}`, detail: 'Resolve dependencies to keep work moving', tone: 'danger', onPress: () => openWork('blocked') });
-  if (critical.length > 0) pulseActions.push({ key: 'critical', title: `${critical.length} critical task${critical.length === 1 ? '' : 's'} open`, detail: 'High-impact work still needs completion', tone: 'warning', onPress: () => openWork('all') });
+  if (guestSyncPending) pulseActions.push({ key: 'guest-sync', title: 'Guest ticket sync is not configured', detail: 'Connect ticket data before relying on guest counts', tone: 'warning', onPress: () => setWorkspaceTab('guests') });
+  if (marketingNotConfigured) pulseActions.push({ key: 'marketing-setup', title: 'Marketing is not configured', detail: 'Add campaign items before this area can report campaign health', tone: 'warning', onPress: () => setTab('marketing') });
+  if (runOfShowMissing) pulseActions.push({ key: 'run-of-show', title: 'Run of Show is not started', detail: 'Create the event-day timeline before final prep', tone: 'warning', onPress: () => setWorkspaceTab('operations') });
+  if (incompleteMilestones.length > 0) pulseActions.push({ key: 'milestones', title: `${incompleteMilestones.length} readiness milestone${incompleteMilestones.length === 1 ? '' : 's'} incomplete`, detail: 'These gates directly affect Event Readiness', tone: 'warning', onPress: openReadiness });
   if (openDecisions.length > 0) pulseActions.push({ key: 'decisions', title: `${openDecisions.length} decision${openDecisions.length === 1 ? '' : 's'} waiting`, detail: 'Open decisions can hold up dependent work', tone: 'warning', onPress: () => { setWorkspaceTab('work'); setWorkTab('decisions'); } });
 
-  const prioritizedTasks = [...overdue, ...critical, ...blocked, ...activeTasks].filter((task, index, list) => list.findIndex((candidate) => candidate.id === task.id) === index).slice(0, 3);
+  const prioritizedTasks = [...activeTasks].sort((a, b) => priorityScore(b, referenceNow) - priorityScore(a, referenceNow)).slice(0, 3);
   const pulseStatus = pulseActions.length === 0 ? 'On track. No urgent issues detected.' : `${pulseActions.length} item${pulseActions.length === 1 ? '' : 's'} need attention.`;
-  const foodTasks = activeTasks.filter((task) => /food|meal|hospitality/i.test(`${task.category} ${task.title}`));
-  const gearTasks = activeTasks.filter((task) => /gear|equipment|packing|power|decor|production/i.test(`${task.category} ${task.title}`));
-  const vendorTasks = activeTasks.filter((task) => /vendor|hayride|partner/i.test(`${task.category} ${task.title}`));
+  const workStatus = overdue.length > 0 || blocked.length > 0 ? 'Needs attention' : activeTasks.length > 0 ? 'In progress' : 'On track';
+  const marketingStatus = marketingNotConfigured ? 'Not configured' : campaign.metrics.marketingNeedsAttention > 0 ? 'Needs attention' : 'In progress';
+  const guestStatus = guestSyncPending ? 'Not configured' : 'Guest data active';
+  const operationsStatus = runOfShowMissing ? 'Needs setup' : operationsBlocked > 0 ? 'Needs attention' : operationsTasks.length > 0 ? 'In progress' : 'Needs setup';
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -164,14 +195,14 @@ export default function HostCampaignDetailScreen() {
           <Pressable onPress={() => router.replace('/host' as never)}><Text style={styles.back}>‹ Host Center</Text></Pressable>
           <View style={styles.headerActions}>
             <Text style={styles.phasePill}>{capitalize(campaign.status || 'planning')}</Text>
-            {campaign.canManage ? <Pressable accessibilityLabel="Edit event" style={styles.menuButton} onPress={openEdit}><Text style={styles.menuButtonText}>•••</Text></Pressable> : null}
+            {campaign.canManage ? <Pressable accessibilityLabel="Event actions" style={styles.menuButton} onPress={() => setMenuOpen(true)}><Text style={styles.menuButtonText}>•••</Text></Pressable> : null}
           </View>
         </View>
         <Pressable style={styles.eventIdentity} onPress={campaign.canManage ? openEdit : undefined}>
           {campaign.heroImageUrl ? <Image source={{ uri: campaign.heroImageUrl }} style={styles.coverImage} resizeMode="cover" /> : <View style={styles.coverFallback}><Text style={styles.coverFallbackText}>GM</Text></View>}
           <View style={styles.eventIdentityText}>
             <Text style={styles.title} numberOfLines={3}>{campaign.shortTitle}</Text>
-            <Text style={styles.meta}>{formatEventDate(campaign.startsAt)} · {campaign.location}</Text>
+            <Text style={styles.meta}>{formatEventRange(campaign.startsAt, campaign.endsAt)} · {campaign.location}</Text>
             <Text style={styles.countdown}>{formatCountdown(days)}</Text>
             {campaign.canManage ? <Text style={styles.editHint}>Tap event details to edit</Text> : null}
           </View>
@@ -191,141 +222,129 @@ export default function HostCampaignDetailScreen() {
 
         {workspaceTab === 'overview' ? <>
           <View style={styles.quickActions}>
-            <Pressable style={styles.aiButton} onPress={() => router.push(`/host/assistant/${campaignSlug}` as never)}><Text style={styles.aiButtonText}>✦ Ask AI</Text><Text style={styles.quickChevron}>›</Text></Pressable>
+            <Pressable style={styles.aiButton} onPress={() => router.push(`/host/assistant/${campaign.adventureId}` as never)}><Text style={styles.aiButtonText}>✦ Ask AI</Text><Text style={styles.quickChevron}>›</Text></Pressable>
             <Pressable style={styles.addButton} onPress={() => router.push('/host/work' as never)}><Text style={styles.addButtonText}>＋ Add task</Text><Text style={styles.addButtonText}>›</Text></Pressable>
           </View>
 
           <View style={styles.pulseCard}>
-            <View style={styles.pulseHeader}>
-              <View><Text style={styles.pulseTitle}>Event Pulse</Text><Text style={[styles.pulseStatus, pulseActions.length > 0 && styles.pulseStatusWarning]}>{pulseStatus}</Text></View>
-              <Text style={styles.pulseUpdated}>Live event data</Text>
-            </View>
-
+            <View style={styles.pulseHeader}><View><Text style={styles.pulseTitle}>Event Pulse</Text><Text style={[styles.pulseStatus, pulseActions.length > 0 && styles.pulseStatusWarning]}>{pulseStatus}</Text></View><Text style={styles.pulseUpdated}>Live event data</Text></View>
             <View style={styles.pulseMetrics}>
-              <Pressable style={styles.readinessMetric} onPress={openReadiness}>
-                <View style={styles.readinessRing}><Text style={styles.readinessValue}>{readiness}%</Text></View>
-                <Text style={styles.metricLabel}>Event readiness</Text>
-                <Text style={styles.metricMeta}>{completedMilestones} of {totalMilestones} milestones</Text>
-              </Pressable>
+              <Pressable style={styles.readinessMetric} onPress={openReadiness}><View style={styles.readinessRing}><Text style={styles.readinessValue}>{readiness}%</Text></View><Text style={styles.metricLabel}>Event readiness</Text><Text style={styles.metricMeta}>{completedMilestones} of {totalMilestones} milestones</Text></Pressable>
               <View style={styles.metricStack}>
-                <PulseMetric value={formatCountdown(days)} label={formatEventDate(campaign.startsAt)} />
-                <PulseMetric value={campaign.metrics.attendees > 0 ? String(campaign.metrics.attendees) : '—'} label={campaign.metrics.attendees > 0 ? 'Registered guests' : 'Guest sync pending'} />
+                <PulseMetric value={formatCountdown(days)} label={formatEventRange(campaign.startsAt, campaign.endsAt)} />
+                <PulseMetric value={guestSyncPending ? '—' : String(campaign.metrics.attendees)} label={guestSyncPending ? 'Guest sync pending' : 'Registered guests'} />
                 <PulseMetric value={String(activeTasks.length)} label={`${overdue.length} overdue · ${unassigned.length} unassigned`} danger={overdue.length > 0} />
               </View>
             </View>
-
             <View style={styles.nextBlock}>
               <View style={styles.nextHeader}><Text style={styles.nextTitle}>Do these next</Text><Pressable onPress={() => openWork('all')}><Text style={styles.sectionTrailing}>View all</Text></Pressable></View>
-              {prioritizedTasks.length === 0 ? <Text style={styles.emptyInline}>No urgent work is queued.</Text> : prioritizedTasks.map((task, index) => <Pressable key={task.id} style={[styles.nextRow, index > 0 && styles.nextDivider]} onPress={() => openTask(task)}><View style={styles.nextNumber}><Text style={styles.nextNumberText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={styles.nextRowTitle}>{task.title}</Text><Text style={styles.nextRowMeta}>{task.dueLabel}</Text></View><Text style={styles.quickChevron}>›</Text></Pressable>)}
+              {prioritizedTasks.length === 0 ? <Text style={styles.emptyInline}>No urgent work is queued.</Text> : prioritizedTasks.map((task, index) => <Pressable key={task.id} style={[styles.nextRow, index > 0 && styles.nextDivider]} onPress={() => openTask(task)}><View style={styles.nextNumber}><Text style={styles.nextNumberText}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={styles.nextRowTitle}>{task.title}</Text><Text style={styles.nextRowMeta}>{priorityLabel(task, referenceNow)}</Text></View><Text style={styles.quickChevron}>›</Text></Pressable>)}
             </View>
           </View>
 
           <SectionHeader title="Needs attention" trailing={`${pulseActions.length} item${pulseActions.length === 1 ? '' : 's'}`} />
           <View style={[styles.listCard, pulseActions.length > 0 && styles.attentionCard]}>
-            {pulseActions.length === 0 ? <Text style={styles.empty}>Nothing needs immediate attention.</Text> : pulseActions.slice(0, 5).map((item, index) => <Pressable key={item.key} style={[styles.attentionRow, index > 0 && styles.attentionDivider]} onPress={item.onPress}><View style={[styles.alertBadge, item.tone === 'danger' && styles.alertBadgeDanger]}><Text style={styles.alertBadgeText}>!</Text></View><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowMeta}>{item.detail}</Text></View><Text style={styles.alertChevron}>›</Text></Pressable>)}
+            {pulseActions.length === 0 ? <Text style={styles.empty}>Nothing needs immediate attention.</Text> : pulseActions.slice(0, 6).map((item, index) => <Pressable key={item.key} style={[styles.attentionRow, index > 0 && styles.attentionDivider]} onPress={item.onPress}><View style={[styles.alertBadge, item.tone === 'danger' && styles.alertBadgeDanger]}><Text style={styles.alertBadgeText}>!</Text></View><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowMeta}>{item.detail}</Text></View><Text style={styles.alertChevron}>›</Text></Pressable>)}
           </View>
 
           <View style={styles.briefCard}>
-            <View style={{ flex: 1 }}><Text style={styles.briefKicker}>✦ AI DAILY BRIEF</Text><Text style={styles.briefTitle}>{pulseActions.length === 0 ? 'Your event is clear of urgent blockers.' : `Focus on ${Math.min(3, pulseActions.length)} priority area${Math.min(3, pulseActions.length) === 1 ? '' : 's'} today.`}</Text><Text style={styles.briefBody}>{buildBrief(overdue.length, unassigned.length, blocked.length, openDecisions.length)}</Text></View>
-            <Pressable style={styles.briefButton} onPress={() => router.push(`/host/assistant/${campaignSlug}` as never)}><Text style={styles.briefButtonText}>View full brief ›</Text></Pressable>
+            <Text style={styles.briefKicker}>✦ AI DAILY BRIEF</Text>
+            <Text style={styles.briefTitle}>{briefTitle(overdue.length, blocked.length, guestSyncPending, marketingNotConfigured, runOfShowMissing)}</Text>
+            <Text style={styles.briefBody}>{buildBrief(overdue.length, unassigned.length, blocked.length, incompleteMilestones.length, guestSyncPending, marketingNotConfigured, runOfShowMissing)}</Text>
+            <Pressable style={styles.briefButton} onPress={() => router.push(`/host/assistant/${campaign.adventureId}` as never)}><Text style={styles.briefButtonText}>View full brief ›</Text></Pressable>
           </View>
 
           <View style={styles.moduleGrid}>
-            <ModuleCard title="Work" value={`${activeTasks.length} open · ${overdue.length} overdue`} status={overdue.length > 0 ? 'Needs attention' : 'On track'} tone={overdue.length > 0 ? 'danger' : 'good'} onPress={() => openWork('all')} />
-            <ModuleCard title="Marketing" value={`${campaign.metrics.marketingNeedsAttention} need attention`} status={campaign.metrics.marketingNeedsAttention > 0 ? 'Needs work' : 'No alerts'} tone={campaign.metrics.marketingNeedsAttention > 0 ? 'warning' : 'muted'} onPress={() => setTab('marketing')} />
-            <ModuleCard title="Guests" value={campaign.metrics.attendees > 0 ? `${campaign.metrics.attendees} registered` : 'Ticket sync pending'} status={campaign.metrics.attendees > 0 ? 'Guest data active' : 'Needs setup'} tone={campaign.metrics.attendees > 0 ? 'good' : 'warning'} onPress={() => setWorkspaceTab('guests')} />
-            <ModuleCard title="Operations" value={`${vendorTasks.length} vendor · ${gearTasks.length} gear items`} status={vendorTasks.length + gearTasks.length > 0 ? 'In progress' : 'Needs setup'} tone={vendorTasks.length + gearTasks.length > 0 ? 'warning' : 'muted'} onPress={() => setWorkspaceTab('operations')} />
+            <ModuleCard title="Work" value={`${activeTasks.length} open · ${overdue.length} overdue`} status={workStatus} tone={workStatus === 'Needs attention' ? 'danger' : workStatus === 'On track' ? 'good' : 'warning'} onPress={() => openWork('all')} />
+            <ModuleCard title="Marketing" value={marketingNotConfigured ? 'No campaign items yet' : `${marketingItemCount} campaign item${marketingItemCount === 1 ? '' : 's'}`} status={marketingStatus} tone={marketingStatus === 'Not configured' ? 'muted' : campaign.metrics.marketingNeedsAttention > 0 ? 'warning' : 'good'} onPress={() => setTab('marketing')} />
+            <ModuleCard title="Guests" value={guestSyncPending ? 'Ticket sync pending' : `${campaign.metrics.attendees} registered`} status={guestStatus} tone={guestSyncPending ? 'muted' : 'good'} onPress={() => setWorkspaceTab('guests')} />
+            <ModuleCard title="Operations" value={`${vendorTasks.length} vendor item${vendorTasks.length === 1 ? '' : 's'} open · ${gearTasks.length ? `${gearTasks.length} gear item${gearTasks.length === 1 ? '' : 's'}` : 'gear not started'}`} status={operationsStatus} tone={operationsStatus === 'Needs attention' ? 'danger' : operationsStatus === 'In progress' ? 'warning' : 'muted'} onPress={() => setWorkspaceTab('operations')} />
           </View>
         </> : null}
 
         {workspaceTab === 'work' ? <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subTabs}>
-            {(['tasks', 'milestones', 'decisions', 'team'] as WorkTab[]).map((tab) => <Pressable key={tab} style={[styles.subTab, workTab === tab && styles.subTabActive]} onPress={() => setWorkTab(tab)}><Text style={[styles.subTabText, workTab === tab && styles.subTabTextActive]}>{capitalize(tab)}</Text></Pressable>)}
-          </ScrollView>
-
-          {workTab === 'tasks' ? <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-              <FilterChip label="All" count={activeTasks.length} active={workFilter === 'all'} onPress={() => setWorkFilter('all')} />
-              <FilterChip label="Mine" count={mine.length} active={workFilter === 'mine'} onPress={() => setWorkFilter('mine')} />
-              <FilterChip label="Unassigned" count={unassigned.length} active={workFilter === 'unassigned'} onPress={() => setWorkFilter('unassigned')} />
-              <FilterChip label="Overdue" count={overdue.length} active={workFilter === 'overdue'} onPress={() => setWorkFilter('overdue')} />
-              <FilterChip label="Blocked" count={blocked.length} active={workFilter === 'blocked'} onPress={() => setWorkFilter('blocked')} />
-            </ScrollView>
-            {filteredTasks.length === 0 ? <Text style={styles.empty}>No work matches this view.</Text> : filteredTasks.map((task) => <TaskCard key={task.id} task={task} team={team} onPress={() => openTask(task)} />)}
-          </> : null}
-
-          {workTab === 'milestones' ? <>
-            <Text style={styles.explainer}>Readiness is weighted by these event gates. Completing low-impact tasks cannot hide an unfinished critical milestone.</Text>
-            {campaign.milestones.map((milestone) => <Pressable key={milestone.id} disabled={!campaign.canManage || savingId === milestone.id} style={styles.milestoneCard} onPress={() => void toggleMilestone(milestone.id, !milestone.complete)}><View style={[styles.check, milestone.complete && styles.checkDone]}>{savingId === milestone.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.checkText}>{milestone.complete ? '✓' : ''}</Text>}</View><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{milestone.title}</Text><Text style={styles.rowMeta}>{milestone.complete ? 'Complete' : 'Not complete'}{campaign.canManage ? ' · Tap to update' : ''}</Text></View></Pressable>)}
-          </> : null}
-
-          {workTab === 'decisions' ? <>
-            <SectionHeader title="Open decisions" />
-            {openDecisions.length === 0 ? <Text style={styles.empty}>No open decisions.</Text> : openDecisions.map((decision) => <View key={decision.id} style={styles.decisionCard}><Text style={styles.decisionKicker}>DECISION NEEDED · {decision.dueLabel.toUpperCase()}</Text><Text style={styles.cardTitle}>{decision.title}</Text><Text style={styles.rowMeta}>Owner: {decision.owner}</Text>{campaign.canManage ? <><TextInput style={styles.decisionInput} value={decisionDrafts[decision.id] ?? ''} onChangeText={(value) => setDecisionDrafts((current) => ({ ...current, [decision.id]: value }))} placeholder="Record the final decision…" placeholderTextColor="#6F7972" multiline /><Pressable disabled={savingId === decision.id} style={styles.decisionButton} onPress={() => void saveDecision(decision.id)}>{savingId === decision.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.decisionButtonText}>Mark decided</Text>}</Pressable></> : null}</View>)}
-          </> : null}
-
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subTabs}>{(['tasks', 'milestones', 'decisions', 'team'] as WorkTab[]).map((tab) => <Pressable key={tab} style={[styles.subTab, workTab === tab && styles.subTabActive]} onPress={() => setWorkTab(tab)}><Text style={[styles.subTabText, workTab === tab && styles.subTabTextActive]}>{capitalize(tab)}</Text></Pressable>)}</ScrollView>
+          {workTab === 'tasks' ? <><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}><FilterChip label="All" count={activeTasks.length} active={workFilter === 'all'} onPress={() => setWorkFilter('all')} /><FilterChip label="Mine" count={mine.length} active={workFilter === 'mine'} onPress={() => setWorkFilter('mine')} /><FilterChip label="Unassigned" count={unassigned.length} active={workFilter === 'unassigned'} onPress={() => setWorkFilter('unassigned')} /><FilterChip label="Overdue" count={overdue.length} active={workFilter === 'overdue'} onPress={() => setWorkFilter('overdue')} /><FilterChip label="Blocked" count={blocked.length} active={workFilter === 'blocked'} onPress={() => setWorkFilter('blocked')} /></ScrollView>{filteredTasks.length === 0 ? <Text style={styles.empty}>No work matches this view.</Text> : filteredTasks.map((task) => <TaskCard key={task.id} task={task} team={team} onPress={() => openTask(task)} />)}</> : null}
+          {workTab === 'milestones' ? <><Text style={styles.explainer}>Readiness is weighted by these event gates. Completing low-impact tasks cannot hide an unfinished critical milestone.</Text>{campaign.milestones.map((milestone) => <Pressable key={milestone.id} disabled={!campaign.canManage || savingId === milestone.id} style={styles.milestoneCard} onPress={() => void toggleMilestone(milestone.id, !milestone.complete)}><View style={[styles.check, milestone.complete && styles.checkDone]}>{savingId === milestone.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.checkText}>{milestone.complete ? '✓' : ''}</Text>}</View><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{milestone.title}</Text><Text style={styles.rowMeta}>{milestone.complete ? 'Complete' : 'Not complete'}{campaign.canManage ? ' · Tap to update' : ''}</Text></View></Pressable>)}</> : null}
+          {workTab === 'decisions' ? <><SectionHeader title="Open decisions" />{openDecisions.length === 0 ? <Text style={styles.empty}>No open decisions.</Text> : openDecisions.map((decision) => <View key={decision.id} style={styles.decisionCard}><Text style={styles.decisionKicker}>DECISION NEEDED · {decision.dueLabel.toUpperCase()}</Text><Text style={styles.cardTitle}>{decision.title}</Text><Text style={styles.rowMeta}>Owner: {decision.owner}</Text>{campaign.canManage ? <><TextInput style={styles.decisionInput} value={decisionDrafts[decision.id] ?? ''} onChangeText={(value) => setDecisionDrafts((current) => ({ ...current, [decision.id]: value }))} placeholder="Record the final decision…" placeholderTextColor="#6F7972" multiline /><Pressable disabled={savingId === decision.id} style={styles.decisionButton} onPress={() => void saveDecision(decision.id)}>{savingId === decision.id ? <ActivityIndicator size="small" color="#172017" /> : <Text style={styles.decisionButtonText}>Mark decided</Text>}</Pressable></> : null}</View>)}</> : null}
           {workTab === 'team' ? team.length === 0 ? <Text style={styles.empty}>No event team members are attached yet.</Text> : team.map((member) => { const openCount = activeTasks.filter((task) => task.assigneeProfileId === member.profileId).length; const memberBlocked = blocked.filter((task) => task.assigneeProfileId === member.profileId).length; return <View key={member.profileId} style={styles.teamCard}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{member.displayName}</Text><Text style={styles.rowMeta}>{member.isOwner ? 'Event owner' : member.role}</Text></View><View><Text style={styles.teamMetric}>{openCount} open</Text><Text style={styles.teamMeta}>{memberBlocked} blocked</Text></View></View>; }) : null}
         </> : null}
 
-        {workspaceTab === 'guests' ? <>
-          <View style={styles.guestMetrics}>
-            <GuestMetric label="Registered" value={campaign.metrics.attendees > 0 ? String(campaign.metrics.attendees) : '—'} />
-            <GuestMetric label="Campers" value="—" />
-            <GuestMetric label="Saturday Only" value="—" />
-            <GuestMetric label="Checked In" value="—" />
-          </View>
-          <View style={styles.syncBanner}><Text style={styles.syncTitle}>Ticket sync pending</Text><Text style={styles.syncText}>Guest breakdowns will populate here once the ticket source is connected. No counts are being invented.</Text></View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subTabs}>
-            {(['attendees', 'communications', 'checkin'] as GuestTab[]).map((tab) => <Pressable key={tab} style={[styles.subTab, guestTab === tab && styles.subTabActive]} onPress={() => setGuestTab(tab)}><Text style={[styles.subTabText, guestTab === tab && styles.subTabTextActive]}>{tab === 'checkin' ? 'Check-In' : capitalize(tab)}</Text></Pressable>)}
-          </ScrollView>
-          {guestTab === 'attendees' ? <GuestEmpty title="Attendee list" body="Weekend campers, Saturday-only guests, age groups, meal add-ons, waivers and notes will be filterable here after ticket sync." /> : null}
-          {guestTab === 'communications' ? <GuestEmpty title="Guest communications" body="Messages to all attendees or selected guest segments will live here and be recorded in event history." /> : null}
-          {guestTab === 'checkin' ? <GuestEmpty title="Check-In" body="Arrival status, credentials and onsite check-in controls will appear here once attendee data is connected." /> : null}
-        </> : null}
+        {workspaceTab === 'guests' ? <><View style={styles.guestMetrics}><GuestMetric label="Registered" value={guestSyncPending ? '—' : String(campaign.metrics.attendees)} /><GuestMetric label="Campers" value="—" /><GuestMetric label="Saturday Only" value="—" /><GuestMetric label="Checked In" value="—" /></View>{guestSyncPending ? <View style={styles.syncBanner}><Text style={styles.syncTitle}>Ticket sync not configured</Text><Text style={styles.syncText}>Guest breakdowns will populate once the ticket source is connected.</Text></View> : null}<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subTabs}>{(['attendees', 'communications', 'checkin'] as GuestTab[]).map((tab) => <Pressable key={tab} style={[styles.subTab, guestTab === tab && styles.subTabActive]} onPress={() => setGuestTab(tab)}><Text style={[styles.subTabText, guestTab === tab && styles.subTabTextActive]}>{tab === 'checkin' ? 'Check-In' : capitalize(tab)}</Text></Pressable>)}</ScrollView>{guestTab === 'attendees' ? <GuestEmpty title="Attendee list" body="Attendee segments, meal add-ons, waivers and notes will be filterable here after ticket sync." /> : null}{guestTab === 'communications' ? <GuestEmpty title="Guest communications" body="Messages to all attendees or selected guest segments will live here and be recorded in event history." /> : null}{guestTab === 'checkin' ? <GuestEmpty title="Check-In" body="Arrival status, credentials and onsite check-in controls will appear here once attendee data is connected." /> : null}</> : null}
 
-        {workspaceTab === 'operations' ? <>
-          <View style={styles.operationsIntro}><Text style={styles.sectionTitle}>Operations</Text><Text style={styles.placeholderTitle}>Event-day command center</Text><Text style={styles.placeholderBody}>Planning stays compact here. During event dates, this area can promote Now, Next, responsible staff, issues and guest announcements.</Text></View>
-          <OperationRow title="Run of Show" status="Setup needed" />
-          <OperationRow title="Food" status={foodTasks.length ? `${foodTasks.length} open item${foodTasks.length === 1 ? '' : 's'}` : 'No tracked items yet'} />
-          <OperationRow title="Gear & Packing" status={gearTasks.length ? `${gearTasks.length} open item${gearTasks.length === 1 ? '' : 's'}` : 'Checklist not started'} />
-          <OperationRow title="Vendors" status={vendorTasks.length ? `${vendorTasks.length} open item${vendorTasks.length === 1 ? '' : 's'}` : 'No tracked items yet'} />
-          <OperationRow title="Budget" status="Setup needed" />
-          <OperationRow title="Incidents" status="0 open" />
-        </> : null}
+        {workspaceTab === 'operations' ? <><View style={styles.operationsIntro}><Text style={styles.sectionTitle}>Operations</Text><Text style={styles.placeholderTitle}>Event-day command center</Text><Text style={styles.placeholderBody}>Planning stays compact here. During event dates, this area can promote Now, Next, responsible staff, issues and guest announcements.</Text></View><OperationRow title="Run of Show" status={runOfShowMissing ? 'Not started' : `${runOfShowTasks.filter((task) => task.status !== 'complete').length} open item${runOfShowTasks.filter((task) => task.status !== 'complete').length === 1 ? '' : 's'}`} /><OperationRow title="Food" status={foodTasks.length ? `${foodTasks.length} open item${foodTasks.length === 1 ? '' : 's'}` : 'Not started'} /><OperationRow title="Gear & Packing" status={gearTasks.length ? `${gearTasks.length} open item${gearTasks.length === 1 ? '' : 's'}` : 'Not started'} /><OperationRow title="Vendors" status={vendorTasks.length ? `${vendorTasks.length} open item${vendorTasks.length === 1 ? '' : 's'}` : 'No open vendor items'} /><OperationRow title="Budget" status="Setup needed" /><OperationRow title="Incidents" status="0 open" /></> : null}
       </ScrollView>
+
+      <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setMenuOpen(false)}>
+          <View style={styles.actionSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.actionSheetTitle}>Event actions</Text>
+            <ActionRow title="Edit event" detail="Change event details and cover" onPress={openEdit} />
+            <ActionRow title="View public page" detail="Open the attendee-facing event page" onPress={openPublicPage} />
+            <ActionRow title="Share event" detail="Share the event name, dates and location" onPress={() => void shareEvent()} />
+            <Pressable style={styles.cancelAction} onPress={() => setMenuOpen(false)}><Text style={styles.cancelActionText}>Close</Text></Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function PulseMetric({ value, label, danger }: { value: string; label: string; danger?: boolean }) {
-  return <View style={styles.pulseMetric}><Text style={[styles.pulseMetricValue, danger && styles.pulseMetricDanger]}>{value}</Text><Text style={styles.metricMeta}>{label}</Text></View>;
+function priorityScore(task: CampaignTask, now: number) {
+  let score = 0;
+  if (task.status === 'blocked') score += 100;
+  if (task.priority === 'critical') score += 80;
+  if (task.blockedBy) score += 45;
+  if (!task.assigneeProfileId) score += 20;
+  if (task.dueAt) {
+    const diffDays = (new Date(task.dueAt).getTime() - now) / 86_400_000;
+    if (diffDays < 0) score += 120 + Math.min(30, Math.abs(diffDays));
+    else if (diffDays <= 3) score += 50;
+    else if (diffDays <= 7) score += 30;
+  }
+  return score;
 }
 
-function TaskCard({ task, team, onPress }: { task: CampaignTask; team: CampaignTeamMember[]; onPress: () => void }) {
-  const assignee = team.find((member) => member.profileId === task.assigneeProfileId);
-  return <Pressable style={styles.taskCard} onPress={onPress}><View style={styles.taskTop}><Text style={[styles.taskStatus, task.status === 'blocked' && styles.blockedText]}>{task.status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.rowMeta}>{task.dueLabel}</Text></View><Text style={styles.cardTitle}>{task.title}</Text><Text style={styles.rowMeta}>{task.category} · Plan owner: {task.owner}</Text><View style={styles.taskMetaRow}><Text style={styles.rowMeta}>Assigned: {assignee?.displayName ?? 'Unassigned'}</Text><Text style={styles.chevron}>›</Text></View></Pressable>;
+function priorityLabel(task: CampaignTask, now: number) {
+  if (task.dueAt && new Date(task.dueAt).getTime() < now) return `Overdue · ${task.dueLabel}`;
+  if (task.status === 'blocked') return task.blockedBy ? `Blocked by ${task.blockedBy}` : 'Blocked';
+  if (task.priority === 'critical') return `Critical · ${task.dueLabel}`;
+  if (!task.assigneeProfileId) return `Unassigned · ${task.dueLabel}`;
+  return task.dueLabel;
 }
 
-function ModuleCard({ title, value, status, tone, onPress }: { title: string; value: string; status: string; tone: 'good' | 'warning' | 'danger' | 'muted'; onPress: () => void }) {
-  return <Pressable style={styles.moduleCard} onPress={onPress}><View style={styles.moduleTop}><Text style={styles.moduleTitle}>{title}</Text><Text style={styles.chevronSmall}>›</Text></View><Text style={styles.moduleValue}>{value}</Text><View style={styles.moduleStatusRow}><View style={[styles.moduleStatusDot, tone === 'good' && styles.statusGood, tone === 'warning' && styles.statusWarning, tone === 'danger' && styles.statusDanger]} /><Text style={[styles.moduleStatusText, tone === 'good' && styles.statusGoodText, tone === 'warning' && styles.statusWarningText, tone === 'danger' && styles.statusDangerText]}>{status}</Text></View></Pressable>;
+function briefTitle(overdue: number, blocked: number, guestSyncPending: boolean, marketingMissing: boolean, runOfShowMissing: boolean) {
+  if (overdue > 0) return `${overdue} overdue task${overdue === 1 ? '' : 's'} are the clearest readiness risk.`;
+  if (blocked > 0) return `${blocked} blocked task${blocked === 1 ? '' : 's'} need a dependency resolved.`;
+  if (guestSyncPending || marketingMissing || runOfShowMissing) return 'Finish the missing event setup before adding more work.';
+  return 'No urgent blockers are showing in the current event record.';
 }
 
+function buildBrief(overdue: number, unassigned: number, blocked: number, milestones: number, guestSyncPending: boolean, marketingMissing: boolean, runOfShowMissing: boolean) {
+  const parts: string[] = [];
+  if (overdue) parts.push(`${overdue} overdue`);
+  if (blocked) parts.push(`${blocked} blocked`);
+  if (unassigned) parts.push(`${unassigned} unassigned`);
+  if (milestones) parts.push(`${milestones} readiness milestone${milestones === 1 ? '' : 's'} incomplete`);
+  if (guestSyncPending) parts.push('ticket sync not configured');
+  if (marketingMissing) parts.push('marketing not configured');
+  if (runOfShowMissing) parts.push('run of show not started');
+  return parts.length ? `${parts.slice(0, 4).join(' · ')}. Start with the item that unlocks other work.` : 'Current event data does not show an urgent exception.';
+}
+
+function PulseMetric({ value, label, danger }: { value: string; label: string; danger?: boolean }) { return <View style={styles.pulseMetric}><Text style={[styles.pulseMetricValue, danger && styles.pulseMetricDanger]}>{value}</Text><Text style={styles.metricMeta}>{label}</Text></View>; }
+function TaskCard({ task, team, onPress }: { task: CampaignTask; team: CampaignTeamMember[]; onPress: () => void }) { const assignee = team.find((member) => member.profileId === task.assigneeProfileId); return <Pressable style={styles.taskCard} onPress={onPress}><View style={styles.taskTop}><Text style={[styles.taskStatus, task.status === 'blocked' && styles.blockedText]}>{task.status.replace('_', ' ').toUpperCase()}</Text><Text style={styles.rowMeta}>{task.dueLabel}</Text></View><Text style={styles.cardTitle}>{task.title}</Text><Text style={styles.rowMeta}>{task.category} · Plan owner: {task.owner}</Text><View style={styles.taskMetaRow}><Text style={styles.rowMeta}>Assigned: {assignee?.displayName ?? 'Unassigned'}</Text><Text style={styles.chevron}>›</Text></View></Pressable>; }
+function ModuleCard({ title, value, status, tone, onPress }: { title: string; value: string; status: string; tone: 'good' | 'warning' | 'danger' | 'muted'; onPress: () => void }) { return <Pressable style={styles.moduleCard} onPress={onPress}><View style={styles.moduleTop}><Text style={styles.moduleTitle}>{title}</Text><Text style={styles.chevronSmall}>›</Text></View><Text style={styles.moduleValue}>{value}</Text><View style={styles.moduleStatusRow}><View style={[styles.moduleStatusDot, tone === 'good' && styles.statusGood, tone === 'warning' && styles.statusWarning, tone === 'danger' && styles.statusDanger]} /><Text style={[styles.moduleStatusText, tone === 'good' && styles.statusGoodText, tone === 'warning' && styles.statusWarningText, tone === 'danger' && styles.statusDangerText]}>{status}</Text></View></Pressable>; }
 function FilterChip({ label, count, active, onPress }: { label: string; count: number; active: boolean; onPress: () => void }) { return <Pressable onPress={onPress} style={[styles.filterChip, active && styles.filterChipActive]}><Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label} {count}</Text></Pressable>; }
-function SectionHeader({ title, trailing, onPress }: { title: string; trailing?: string; onPress?: () => void }) { return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{trailing ? <Pressable onPress={onPress}><Text style={styles.sectionTrailing}>{trailing}</Text></Pressable> : null}</View>; }
+function SectionHeader({ title, trailing }: { title: string; trailing?: string }) { return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{trailing ? <Text style={styles.sectionTrailing}>{trailing}</Text> : null}</View>; }
 function GuestMetric({ label, value }: { label: string; value: string }) { return <View style={styles.guestMetric}><Text style={styles.guestValue}>{value}</Text><Text style={styles.guestLabel}>{label}</Text></View>; }
 function GuestEmpty({ title, body }: { title: string; body: string }) { return <View style={styles.guestEmpty}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.placeholderBody}>{body}</Text></View>; }
 function OperationRow({ title, status }: { title: string; status: string }) { return <View style={styles.operationRow}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.rowMeta}>{status}</Text></View><Text style={styles.chevronMuted}>›</Text></View>; }
-function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1).replaceAll('_', ' '); }
-function formatEventDate(start: string) { return new Date(start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+function ActionRow({ title, detail, onPress }: { title: string; detail: string; onPress: () => void }) { return <Pressable style={styles.actionRow} onPress={onPress}><View style={{ flex: 1 }}><Text style={styles.actionTitle}>{title}</Text><Text style={styles.actionDetail}>{detail}</Text></View><Text style={styles.chevron}>›</Text></Pressable>; }
+function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' '); }
+function formatEventDate(value: string) { return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+function formatEventRange(start: string, end: string) { const startDate = formatEventDate(start); const endDate = formatEventDate(end); return startDate === endDate ? startDate : `${startDate} – ${endDate}`; }
 function formatCountdown(days: number) { if (days === 0) return 'Event day'; if (days < 0) return 'Event complete'; return `${days} day${days === 1 ? '' : 's'} to go`; }
-function buildBrief(overdue: number, unassigned: number, blocked: number, decisions: number) {
-  const parts: string[] = [];
-  if (overdue) parts.push(`${overdue} overdue`);
-  if (unassigned) parts.push(`${unassigned} unassigned`);
-  if (blocked) parts.push(`${blocked} blocked`);
-  if (decisions) parts.push(`${decisions} decision${decisions === 1 ? '' : 's'} waiting`);
-  return parts.length ? `${parts.slice(0, 3).join(' · ')}. Start with the items that unblock other work.` : 'No urgent exceptions are showing in the current event record.';
-}
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
@@ -388,7 +407,7 @@ const styles = StyleSheet.create({
   nextRowMeta: { color: '#93A08F', fontSize: 9.5, marginTop: 2 },
   emptyInline: { color: '#87928B', fontSize: 10, padding: 12 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 8 },
-  sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: .9, textTransform: 'uppercase' },
+  sectionTitle: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 0.9, textTransform: 'uppercase' },
   sectionTrailing: { color: '#AAB4AD', fontSize: 10, fontWeight: '800' },
   listCard: { borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#121814', overflow: 'hidden' },
   attentionCard: { borderColor: '#6C302B', backgroundColor: '#1A1110' },
@@ -399,7 +418,7 @@ const styles = StyleSheet.create({
   alertBadgeText: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' },
   alertChevron: { color: '#FF746B', fontSize: 23, fontWeight: '900' },
   briefCard: { marginTop: 12, borderRadius: 16, borderWidth: 1, borderColor: '#314039', backgroundColor: '#111A16', padding: 14 },
-  briefKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .7 },
+  briefKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
   briefTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 5 },
   briefBody: { color: '#8D9891', fontSize: 10.5, lineHeight: 16, marginTop: 5 },
   briefButton: { marginTop: 12, minHeight: 40, borderRadius: 10, backgroundColor: '#E1BC4D', alignItems: 'center', justifyContent: 'center' },
@@ -410,14 +429,14 @@ const styles = StyleSheet.create({
   chevron: { color: '#D7B45A', fontSize: 24, fontWeight: '800' },
   chevronMuted: { color: '#657169', fontSize: 24 },
   chevronSmall: { color: '#D7B45A', fontSize: 18, fontWeight: '900' },
-  moduleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 },
-  moduleCard: { width: '48%', minHeight: 106, borderRadius: 14, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 12 },
+  moduleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  moduleCard: { width: '48%', minHeight: 88, borderRadius: 13, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 10 },
   moduleTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  moduleTitle: { color: '#F4F1E8', fontSize: 12, fontWeight: '900' },
-  moduleValue: { color: '#A2ADA5', fontSize: 10.5, lineHeight: 15, marginTop: 8 },
-  moduleStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 'auto' },
-  moduleStatusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6C7770' },
-  moduleStatusText: { color: '#7F8A83', fontSize: 9, fontWeight: '800' },
+  moduleTitle: { color: '#F4F1E8', fontSize: 11.5, fontWeight: '900' },
+  moduleValue: { color: '#A2ADA5', fontSize: 9.5, lineHeight: 14, marginTop: 6 },
+  moduleStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 'auto' },
+  moduleStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#6C7770' },
+  moduleStatusText: { color: '#7F8A83', fontSize: 8.5, fontWeight: '800' },
   statusGood: { backgroundColor: '#A8CF55' },
   statusWarning: { backgroundColor: '#E1BC4D' },
   statusDanger: { backgroundColor: '#FF6B63' },
@@ -436,7 +455,7 @@ const styles = StyleSheet.create({
   filterChipTextActive: { color: '#E7C464' },
   taskCard: { borderRadius: 16, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 14, marginBottom: 9 },
   taskTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  taskStatus: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .6 },
+  taskStatus: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
   blockedText: { color: '#FF6974' },
   taskMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 7 },
   explainer: { color: '#8D9891', fontSize: 11, lineHeight: 17, marginBottom: 12 },
@@ -445,7 +464,7 @@ const styles = StyleSheet.create({
   checkDone: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
   checkText: { color: '#172017', fontWeight: '900' },
   decisionCard: { borderRadius: 16, borderWidth: 1, borderColor: '#655525', backgroundColor: '#1B1810', padding: 14, marginBottom: 10 },
-  decisionKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .6, marginBottom: 5 },
+  decisionKicker: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.6, marginBottom: 5 },
   decisionInput: { borderRadius: 12, borderWidth: 1, borderColor: '#4E452E', backgroundColor: '#11130F', color: '#FFF8E8', minHeight: 70, padding: 11, marginTop: 11, textAlignVertical: 'top' },
   decisionButton: { alignSelf: 'flex-start', backgroundColor: '#E6C943', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 9 },
   decisionButtonText: { color: '#172017', fontSize: 10, fontWeight: '900' },
@@ -467,4 +486,12 @@ const styles = StyleSheet.create({
   empty: { color: '#7F8A83', fontSize: 11, padding: 14 },
   primaryButton: { backgroundColor: '#D7B45A', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
   primaryButtonText: { color: '#172017', fontWeight: '900' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'flex-end' },
+  actionSheet: { backgroundColor: '#111915', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: '#304038', padding: 16, paddingBottom: 28 },
+  actionSheetTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginBottom: 8 },
+  actionRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#26332C', paddingVertical: 10 },
+  actionTitle: { color: '#F4F1E8', fontSize: 13, fontWeight: '900' },
+  actionDetail: { color: '#87928B', fontSize: 10, marginTop: 3 },
+  cancelAction: { marginTop: 12, minHeight: 44, borderRadius: 12, backgroundColor: '#1C2720', alignItems: 'center', justifyContent: 'center' },
+  cancelActionText: { color: '#CBD4CE', fontSize: 12, fontWeight: '900' },
 });
