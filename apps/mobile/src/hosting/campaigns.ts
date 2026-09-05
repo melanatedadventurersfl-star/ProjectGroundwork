@@ -56,6 +56,7 @@ export type HostCampaign = {
   endsAt: string;
   status: 'planning' | 'live' | 'complete';
   accent: string;
+  heroImageUrl: string | null;
   canManage: boolean;
   tasks: CampaignTask[];
   milestones: CampaignMilestone[];
@@ -68,6 +69,16 @@ export type HostCampaign = {
     budgetCommitted: number;
     budgetRemaining: number;
   };
+};
+
+export type CampaignDetailsUpdate = {
+  title: string;
+  shortTitle: string;
+  location: string;
+  startsAt: string;
+  endsAt: string;
+  status: HostCampaign['status'];
+  heroImageUrl: string | null;
 };
 
 type CampaignRow = {
@@ -164,7 +175,7 @@ async function hydrateCampaign(row: CampaignRow): Promise<HostCampaign> {
     supabase.from('host_campaign_milestones').select('id,milestone_key,title,weight,complete,sort_order').eq('campaign_id', row.id).order('sort_order'),
     supabase.from('host_campaign_decisions').select('id,decision_key,title,owner_label,owner_profile_id,due_label,due_at,status,decision_text,sort_order').eq('campaign_id', row.id).order('sort_order'),
     supabase.from('host_campaign_task_dependencies').select('task_id,depends_on_task_id').eq('campaign_id', row.id),
-    supabase.from('adventures').select('capacity,spots_remaining').eq('id', row.adventure_id).maybeSingle(),
+    supabase.from('adventures').select('capacity,spots_remaining,hero_image_url').eq('id', row.adventure_id).maybeSingle(),
     resolveCanManage(row),
   ]);
 
@@ -172,6 +183,7 @@ async function hydrateCampaign(row: CampaignRow): Promise<HostCampaign> {
   if (milestonesResult.error) throw milestonesResult.error;
   if (decisionsResult.error) throw decisionsResult.error;
   if (dependenciesResult.error) throw dependenciesResult.error;
+  if (adventureResult.error) throw adventureResult.error;
 
   const rawTasks = (tasksResult.data ?? []) as TaskRow[];
   const taskTitleById = new Map(rawTasks.map((task) => [task.id, task.title]));
@@ -200,6 +212,7 @@ async function hydrateCampaign(row: CampaignRow): Promise<HostCampaign> {
     endsAt: row.ends_at,
     status: row.status,
     accent: row.accent,
+    heroImageUrl: adventureResult.data?.hero_image_url ?? null,
     canManage: manageResult,
     tasks: rawTasks.map((task) => ({
       id: task.id,
@@ -254,6 +267,37 @@ async function resolveCanManage(row: CampaignRow) {
     supabase.from('adventure_staff_assignments').select('id').eq('adventure_id', row.adventure_id).eq('profile_id', userId).eq('role', 'lead').limit(1),
   ]);
   return adminResult.data === true || (!leadResult.error && (leadResult.data?.length ?? 0) > 0);
+}
+
+export async function updateCampaignDetails(campaign: HostCampaign, input: CampaignDetailsUpdate) {
+  if (!campaign.canManage) throw new Error('You do not have permission to edit this event.');
+  const title = input.title.trim();
+  const shortTitle = input.shortTitle.trim();
+  const location = input.location.trim();
+  if (!title || !shortTitle || !location) throw new Error('Title, short title, and location are required.');
+  const startsAt = new Date(input.startsAt);
+  const endsAt = new Date(input.endsAt);
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) throw new Error('Enter valid start and end dates.');
+  if (endsAt.getTime() < startsAt.getTime()) throw new Error('End date must be after the start date.');
+
+  const { error: campaignError } = await supabase.from('host_campaigns').update({
+    title,
+    short_title: shortTitle,
+    location,
+    starts_at: startsAt.toISOString(),
+    ends_at: endsAt.toISOString(),
+    status: input.status,
+    updated_at: new Date().toISOString(),
+  }).eq('id', campaign.id);
+  if (campaignError) throw campaignError;
+
+  const { error: adventureError } = await supabase.from('adventures').update({
+    title,
+    starts_at: startsAt.toISOString(),
+    ends_at: endsAt.toISOString(),
+    hero_image_url: input.heroImageUrl?.trim() || null,
+  }).eq('id', campaign.adventureId);
+  if (adventureError) throw adventureError;
 }
 
 export async function getCurrentCampaignProfileId() {
