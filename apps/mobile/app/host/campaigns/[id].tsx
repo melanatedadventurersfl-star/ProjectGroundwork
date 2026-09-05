@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -140,15 +140,12 @@ export default function HostCampaignDetailScreen() {
     setWorkFilter(filter);
   }
 
-  const pulseActions = useMemo<PulseAction[]>(() => {
-    const actions: PulseAction[] = [];
-    if (overdue.length > 0) actions.push({ key: 'overdue', title: `${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}`, detail: 'Past due and still open', tone: 'danger', onPress: () => openWork('overdue') });
-    if (unassigned.length > 0) actions.push({ key: 'unassigned', title: `${unassigned.length} task${unassigned.length === 1 ? '' : 's'} need an owner`, detail: 'Assign responsibility before work gets lost', tone: 'warning', onPress: () => openWork('unassigned') });
-    if (blocked.length > 0) actions.push({ key: 'blocked', title: `${blocked.length} blocked task${blocked.length === 1 ? '' : 's'}`, detail: 'Resolve dependencies to keep work moving', tone: 'danger', onPress: () => openWork('blocked') });
-    if (critical.length > 0) actions.push({ key: 'critical', title: `${critical.length} critical task${critical.length === 1 ? '' : 's'} open`, detail: 'High-impact work still needs completion', tone: 'warning', onPress: () => openWork('all') });
-    if (openDecisions.length > 0) actions.push({ key: 'decisions', title: `${openDecisions.length} decision${openDecisions.length === 1 ? '' : 's'} waiting`, detail: 'Open decisions can hold up dependent work', tone: 'warning', onPress: () => { setWorkspaceTab('work'); setWorkTab('decisions'); } });
-    return actions;
-  }, [blocked.length, critical.length, openDecisions.length, overdue.length, unassigned.length]);
+  const pulseActions: PulseAction[] = [];
+  if (overdue.length > 0) pulseActions.push({ key: 'overdue', title: `${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}`, detail: 'Past due and still open', tone: 'danger', onPress: () => openWork('overdue') });
+  if (unassigned.length > 0) pulseActions.push({ key: 'unassigned', title: `${unassigned.length} task${unassigned.length === 1 ? '' : 's'} need an owner`, detail: 'Assign responsibility before work gets lost', tone: 'warning', onPress: () => openWork('unassigned') });
+  if (blocked.length > 0) pulseActions.push({ key: 'blocked', title: `${blocked.length} blocked task${blocked.length === 1 ? '' : 's'}`, detail: 'Resolve dependencies to keep work moving', tone: 'danger', onPress: () => openWork('blocked') });
+  if (critical.length > 0) pulseActions.push({ key: 'critical', title: `${critical.length} critical task${critical.length === 1 ? '' : 's'} open`, detail: 'High-impact work still needs completion', tone: 'warning', onPress: () => openWork('all') });
+  if (openDecisions.length > 0) pulseActions.push({ key: 'decisions', title: `${openDecisions.length} decision${openDecisions.length === 1 ? '' : 's'} waiting`, detail: 'Open decisions can hold up dependent work', tone: 'warning', onPress: () => { setWorkspaceTab('work'); setWorkTab('decisions'); } });
 
   const prioritizedTasks = [...overdue, ...critical, ...blocked, ...activeTasks].filter((task, index, list) => list.findIndex((candidate) => candidate.id === task.id) === index).slice(0, 3);
   const pulseStatus = pulseActions.length === 0 ? 'On track. No urgent issues detected.' : `${pulseActions.length} item${pulseActions.length === 1 ? '' : 's'} need attention.`;
