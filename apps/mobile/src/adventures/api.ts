@@ -1,5 +1,6 @@
 import { Asset } from 'expo-asset';
 
+import { recordEventPageView } from '../analytics/eventTracking';
 import { supabase } from '../lib/supabase';
 import type { AdventureDetail, AdventureSummary } from './types';
 
@@ -111,6 +112,8 @@ export async function getAdventure(id: string): Promise<AdventureDetail> {
   if (error) throw error;
 
   const adventure = withAdventureImage(data as AdventureDetail);
+  void recordEventPageView(id, 'event_detail');
+
   const profileId = sessionData.session?.user.id;
   if (!profileId) return adventure;
 
