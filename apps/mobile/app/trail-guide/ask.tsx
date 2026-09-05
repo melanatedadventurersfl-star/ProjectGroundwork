@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
   actionText: { color: '#DDE5DF', fontSize: 10.5, fontWeight: '700' },
   morePanel: { marginTop: 7, borderRadius: 12, backgroundColor: '#132019', padding: 8, gap: 3 },
   moreAction: { paddingVertical: 7, paddingHorizontal: 4 },
-  moreActionText: { color: '#C9D3CD', fontSize: 11, fontWeight: '650' },
+  moreActionText: { color: '#C9D3CD', fontSize: 11, fontWeight: '600' },
   confirmButton: { marginTop: 9, minHeight: 34, borderRadius: 11, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' },
   confirmText: { color: '#172017', fontSize: 11.5, fontWeight: '900' },
   inlineCard: { marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#293A30', backgroundColor: '#15221A', padding: 12 },
