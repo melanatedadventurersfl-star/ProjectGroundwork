@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
+import { getWorkspaceAccess, type WorkspaceAccess } from '../../src/navigation/workspaceAccess';
 import { setPendingTrailheadTooltip } from '../../src/onboarding/trailheadExperience';
 import { resetTrailheadProgress } from '../../src/onboarding/trailheadProgress';
 import { startGuidedTutorial } from '../../src/onboarding/tutorialController';
@@ -34,6 +35,7 @@ export default function MenuScreen() {
   const [inviteCount, setInviteCount] = useState<number | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [isFounder, setIsFounder] = useState(false);
+  const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccess>({ hostApproved: false, vendorApproved: false });
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [updateMessage, setUpdateMessage] = useState('');
@@ -60,7 +62,13 @@ export default function MenuScreen() {
 
   useFocusEffect(useCallback(() => {
     refreshWhatsNew();
-  }, [refreshWhatsNew]));
+    if (!session?.user.id) return;
+    let active = true;
+    void getWorkspaceAccess().then((access) => {
+      if (active) setWorkspaceAccess(access);
+    });
+    return () => { active = false; };
+  }, [refreshWhatsNew, session?.user.id]));
 
   useEffect(() => {
     if (!session?.user.id) return;
@@ -70,11 +78,13 @@ export default function MenuScreen() {
       supabase.from('member_invites').select('id', { count: 'exact', head: true }).eq('sender_profile_id', session.user.id).eq('status', 'available'),
       supabase.rpc('is_platform_admin'),
       supabase.from('profiles').select('platform_role').eq('id', session.user.id).single(),
-    ]).then(([inviteResult, adminResult, profileResult]) => {
+      getWorkspaceAccess(),
+    ]).then(([inviteResult, adminResult, profileResult, access]) => {
       if (!active) return;
       if (inviteResult.error) console.warn('Unable to load invite count', inviteResult.error.message);
       else setInviteCount(inviteResult.count ?? 0);
 
+      setWorkspaceAccess(access);
       if (adminResult.error) console.warn('Unable to resolve admin status', adminResult.error.message);
       else {
         const admin = adminResult.data === true;
@@ -176,8 +186,12 @@ export default function MenuScreen() {
   const yourGoRows: MenuRow[] = [
     { label: 'Go+ Membership', route: '/member/go-plus', icon: 'badge' },
     { label: 'Trips & Payments', route: '/member/trips', icon: 'trips', meta: 'Bookings, tickets & receipts' },
-    { label: 'Host Center', route: '/host', icon: 'guide', meta: 'Build and run individual events' },
-    { label: 'Vendor Center', route: '/vendor', icon: 'storefront', meta: 'Find work, manage bookings and run your vendor business' },
+    workspaceAccess.hostApproved
+      ? { label: 'Host Center', route: '/host', icon: 'guide', meta: 'Switch to your approved host workspace' }
+      : { label: 'Become a Host', route: '/host/apply', icon: 'guide', meta: 'Apply for Host Center access' },
+    workspaceAccess.vendorApproved
+      ? { label: 'Vendor Center', route: '/vendor', icon: 'storefront', meta: 'Switch to your approved vendor workspace' }
+      : { label: 'Become a Vendor', route: '/vendor/apply', icon: 'storefront', meta: 'Apply for Vendor Center access' },
     { label: 'Management', route: '/management', icon: 'dashboard', meta: 'Organization-wide work, team, vendors, finances & operations' },
     { label: 'Trail Family', route: '/member/trail-family', icon: 'community' },
     { label: 'Trailmates & Crew', route: '/circles', icon: 'connections' },
