@@ -1,23 +1,32 @@
 import { router, Slot, usePathname } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { getOutingHostAccess } from '../../src/hosting/api';
 import { ensureHostCenterProfile, getHostCenterProfile } from '../../src/hosting/hostEntry';
+import { AppIcon, type AppIconName } from '../../src/ui/AppIcon';
 
-const NAV = [
-  { label: 'Home', route: '/host', match: (path: string) => path === '/host' || path === '/host/' },
-  { label: 'Work', route: '/host/work', match: (path: string) => path.startsWith('/host/work') },
-  { label: 'Events', route: '/host/events', match: (path: string) => path.startsWith('/host/events') || path.startsWith('/host/manage') || path.startsWith('/host/build') || path.startsWith('/host/assistant') || path.startsWith('/host/analytics') },
-  { label: 'Calendar', route: '/host/calendar', match: (path: string) => path.startsWith('/host/calendar') },
-  { label: 'More', route: '/host/more', match: (path: string) => path.startsWith('/host/more') || path.startsWith('/host/vendors') || path.startsWith('/host/teams') || path.startsWith('/host/opportunities') || path.startsWith('/host/directories') || path.startsWith('/host/finances') || path.startsWith('/host/communications') || path.startsWith('/host/inventory') || path.startsWith('/host/library') || path.startsWith('/host/ai-privacy') || path.startsWith('/host/setup') },
+type HostNavItem = {
+  label: string;
+  icon: AppIconName;
+  route: string;
+  match: (path: string) => boolean;
+};
+
+const NAV: HostNavItem[] = [
+  { label: 'Home', icon: 'dashboard', route: '/host', match: (path: string) => path === '/host' || path === '/host/' },
+  { label: 'Work', icon: 'tasks', route: '/host/work', match: (path: string) => path.startsWith('/host/work') },
+  { label: 'Events', icon: 'trips', route: '/host/events', match: (path: string) => path.startsWith('/host/events') || path.startsWith('/host/manage') || path.startsWith('/host/build') || path.startsWith('/host/assistant') || path.startsWith('/host/analytics') },
+  { label: 'Calendar', icon: 'calendar', route: '/host/calendar', match: (path: string) => path.startsWith('/host/calendar') },
+  { label: 'More', icon: 'more', route: '/host/more', match: (path: string) => path.startsWith('/host/more') || path.startsWith('/host/vendors') || path.startsWith('/host/teams') || path.startsWith('/host/opportunities') || path.startsWith('/host/directories') || path.startsWith('/host/finances') || path.startsWith('/host/communications') || path.startsWith('/host/inventory') || path.startsWith('/host/library') || path.startsWith('/host/ai-privacy') || path.startsWith('/host/setup') },
 ];
 
 export default function HostLayout() {
   const { session, isLoading } = useAuth();
   const pathname = usePathname();
+  const { width } = useWindowDimensions();
   const [checking, setChecking] = useState(true);
   const [allowed, setAllowed] = useState(false);
   const [validationError, setValidationError] = useState('');
@@ -26,7 +35,8 @@ export default function HostLayout() {
 
   const isAccessRoute = pathname.startsWith('/host/apply');
   const isIntroRoute = pathname.startsWith('/host/intro');
-  const hideHostNav = isAccessRoute || isIntroRoute || pathname.startsWith('/host/plan-ai') || pathname.startsWith('/host/create');
+  const desktopWeb = Platform.OS === 'web' && width >= 1024;
+  const hideHostNav = desktopWeb || isAccessRoute || isIntroRoute || pathname.startsWith('/host/plan-ai') || pathname.startsWith('/host/create');
 
   useEffect(() => {
     let active = true;
@@ -126,8 +136,15 @@ function HostBottomNav({ pathname }: { pathname: string }) {
     <View style={styles.nav}>
       {NAV.map((item) => {
         const active = item.label === activeLabel;
-        return <Pressable key={item.label} accessibilityRole="button" onPress={() => router.replace(item.route as never)} style={styles.navItem}>
-          <View style={[styles.navDot, active && styles.navDotActive]} />
+        return <Pressable
+          key={item.label}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.label} tab`}
+          accessibilityState={{ selected: active }}
+          onPress={() => router.replace(item.route as never)}
+          style={({ pressed }) => [styles.navItem, active && styles.navItemActive, pressed && styles.navItemPressed]}
+        >
+          <AppIcon name={item.icon} color={active ? '#D7B45A' : '#77847C'} size={20} />
           <Text style={[styles.navText, active && styles.navTextActive]}>{item.label}</Text>
         </Pressable>;
       })}
@@ -151,10 +168,10 @@ const styles = StyleSheet.create({
   signInButton: { minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#3B4840', alignItems: 'center', justifyContent: 'center', marginTop: 9 },
   signInButtonText: { color: '#D8E0DA', fontSize: 10, fontWeight: '900' },
   navSafe: { backgroundColor: '#0D1410', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2C3931' },
-  nav: { minHeight: 58, flexDirection: 'row', alignItems: 'stretch' },
-  navItem: { flex: 1, minHeight: 58, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  navDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'transparent' },
-  navDotActive: { backgroundColor: '#D7B45A' },
-  navText: { color: '#77847C', fontSize: 9, fontWeight: '800' },
-  navTextActive: { color: '#FFF1C8' },
+  nav: { width: '100%', maxWidth: 620, minHeight: 66, alignSelf: 'center', flexDirection: 'row', alignItems: 'stretch', paddingHorizontal: 6, paddingTop: 5 },
+  navItem: { flex: 1, minHeight: 56, borderRadius: 11, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  navItemActive: { backgroundColor: '#172219' },
+  navItemPressed: { opacity: 0.78 },
+  navText: { color: '#77847C', fontSize: 10, lineHeight: 13, fontWeight: '700' },
+  navTextActive: { color: '#FFF1C8', fontWeight: '900' },
 });
