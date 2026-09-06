@@ -86,7 +86,7 @@ function AppShell() {
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
   const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isOperationsCenter && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || isOperationsCenter || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideBottomNav = isLoading || isAuthScreen || (isOperationsCenter && !desktopWeb) || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
   const hideTopNav = isLoading || isAuthScreen || isOperationsCenter || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
@@ -219,7 +219,7 @@ function AppShell() {
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && !isManagement && !isOperationsCenter && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
