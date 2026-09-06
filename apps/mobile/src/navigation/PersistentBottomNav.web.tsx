@@ -6,6 +6,7 @@ import { HOST_WORKSPACE_GROUPS, HOST_WORKSPACE_ITEMS } from '../hosting/hostWork
 import { supabase } from '../lib/supabase';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 import { VENDOR_WORKSPACE_GROUPS, VENDOR_WORKSPACE_ITEMS } from '../vendor/vendorWorkspace';
+import { getWorkspaceAccess } from './workspaceAccess';
 
 type NavItem = { label: string; icon: AppIconName; href: string; isActive: (pathname: string) => boolean };
 
@@ -25,7 +26,7 @@ function NavButton({ item, pathname, compact = false }: { item: NavItem; pathnam
   </Pressable>;
 }
 
-function HostSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatformAdmin: boolean }) {
+function HostSidebar({ pathname, isPlatformAdmin, vendorApproved }: { pathname: string; isPlatformAdmin: boolean; vendorApproved: boolean }) {
   return <View style={styles.sidebar}>
     <View style={styles.hostBrandBlock}>
       <Text style={styles.hostEyebrow}>GO MELANATED</Text>
@@ -43,7 +44,7 @@ function HostSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatfo
       <View style={styles.divider} />
       <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.navGroup}>
-        <NavButton pathname={pathname} item={{ label: 'Vendor Center', icon: 'storefront', href: '/vendor', isActive: () => false }} />
+        {vendorApproved ? <NavButton pathname={pathname} item={{ label: 'Vendor Center', icon: 'storefront', href: '/vendor', isActive: () => false }} /> : null}
         <NavButton pathname={pathname} item={{ label: 'Back to Member App', icon: 'chevron-back', href: '/(tabs)', isActive: () => false }} />
         {isPlatformAdmin ? <NavButton pathname={pathname} item={{ label: 'Admin', icon: 'profile', href: '/admin', isActive: (path) => path.startsWith('/admin') }} /> : null}
       </View>
@@ -51,7 +52,7 @@ function HostSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatfo
   </View>;
 }
 
-function VendorSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlatformAdmin: boolean }) {
+function VendorSidebar({ pathname, isPlatformAdmin, hostApproved }: { pathname: string; isPlatformAdmin: boolean; hostApproved: boolean }) {
   return <View style={styles.sidebar}>
     <View style={styles.hostBrandBlock}>
       <Text style={styles.hostEyebrow}>GO MELANATED</Text>
@@ -69,7 +70,7 @@ function VendorSidebar({ pathname, isPlatformAdmin }: { pathname: string; isPlat
       <View style={styles.divider} />
       <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.navGroup}>
-        <NavButton pathname={pathname} item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: () => false }} />
+        {hostApproved ? <NavButton pathname={pathname} item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: () => false }} /> : null}
         <NavButton pathname={pathname} item={{ label: 'Back to Member App', icon: 'chevron-back', href: '/(tabs)', isActive: () => false }} />
         {isPlatformAdmin ? <NavButton pathname={pathname} item={{ label: 'Admin', icon: 'profile', href: '/admin', isActive: (path) => path.startsWith('/admin') }} /> : null}
       </View>
@@ -85,31 +86,38 @@ export function PersistentBottomNav() {
   const inVendorCenter = pathname.startsWith('/vendor');
   const inOperationsCenter = inHostCenter || inVendorCenter;
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [hostApproved, setHostApproved] = useState(false);
+  const [vendorApproved, setVendorApproved] = useState(false);
 
   useEffect(() => {
-    if (!inOperationsCenter) return;
+    if (!desktop && !inOperationsCenter) return;
     let active = true;
-    void supabase.rpc('is_platform_admin').then(({ data, error }) => {
-      if (active) setIsPlatformAdmin(!error && data === true);
+    void Promise.all([
+      supabase.rpc('is_platform_admin'),
+      getWorkspaceAccess(),
+    ]).then(([adminResult, access]) => {
+      if (!active) return;
+      setIsPlatformAdmin(!adminResult.error && adminResult.data === true);
+      setHostApproved(access.hostApproved);
+      setVendorApproved(access.vendorApproved);
     });
     return () => { active = false; };
-  }, [inOperationsCenter]);
+  }, [desktop, inOperationsCenter]);
 
   if (pathname === '/account-status') return null;
-  if (desktop && inHostCenter) return <HostSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} />;
-  if (desktop && inVendorCenter) return <VendorSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} />;
+  if (desktop && inHostCenter) return <HostSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} vendorApproved={vendorApproved} />;
+  if (desktop && inVendorCenter) return <VendorSidebar pathname={pathname} isPlatformAdmin={isPlatformAdmin} hostApproved={hostApproved} />;
   if (!desktop && inOperationsCenter) return null;
   if (!desktop) return <View style={styles.bottomBar}>{primaryItems.map((item) => <NavButton key={item.label} item={item} pathname={pathname} compact />)}</View>;
 
+  const hasOperations = hostApproved || vendorApproved;
   return <View style={styles.sidebar}>
     <View style={styles.brandBlock}><Text style={styles.brandGo}>GO</Text><Text style={styles.brandMelanated}>MELANATED</Text><Text style={styles.brandTag}>Your outdoor life, in one place.</Text></View>
     <View style={styles.navGroup}>{primaryItems.map((item) => <NavButton key={item.label} item={item} pathname={pathname} />)}</View>
-    <View style={styles.divider} />
-    <Text style={styles.sectionLabel}>OPERATIONS</Text>
-    <View style={styles.navGroup}>
-      <NavButton item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: (path) => path.startsWith('/host') }} pathname={pathname} />
-      <NavButton item={{ label: 'Vendor Center', icon: 'storefront', href: '/vendor', isActive: (path) => path.startsWith('/vendor') }} pathname={pathname} />
-    </View>
+    {hasOperations ? <><View style={styles.divider} /><Text style={styles.sectionLabel}>OPERATIONS</Text><View style={styles.navGroup}>
+      {hostApproved ? <NavButton item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: (path) => path.startsWith('/host') }} pathname={pathname} /> : null}
+      {vendorApproved ? <NavButton item={{ label: 'Vendor Center', icon: 'storefront', href: '/vendor', isActive: (path) => path.startsWith('/vendor') }} pathname={pathname} /> : null}
+    </View></> : null}
     <View style={styles.desktopFooter}><Text style={styles.desktopFooterText}>Go Melanated Web</Text></View>
   </View>;
 }
