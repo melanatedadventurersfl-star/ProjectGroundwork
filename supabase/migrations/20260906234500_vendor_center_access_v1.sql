@@ -25,7 +25,7 @@ create policy "Users can submit vendor applications"
 
 create policy "Users can update open vendor applications"
   on public.vendor_center_access for update to authenticated
-  using (profile_id = (select auth.uid()) and status in ('pending','needs_info'))
+  using (profile_id = (select auth.uid()) and status in ('pending','needs_info','declined'))
   with check (profile_id = (select auth.uid()) and status in ('pending','needs_info'));
 
 create policy "Platform admins can manage vendor access"
@@ -49,6 +49,63 @@ as $$
 $$;
 
 grant execute on function public.is_approved_vendor(uuid) to authenticated;
+
+create or replace function public.review_vendor_access(p_profile_id uuid, p_status text)
+returns public.vendor_center_access
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.vendor_center_access;
+begin
+  if not public.is_platform_admin() then
+    raise exception 'Platform admin access required';
+  end if;
+
+  if p_status not in ('pending','needs_info','approved','paused','declined','revoked') then
+    raise exception 'Invalid vendor access status';
+  end if;
+
+  update public.vendor_center_access
+  set status = p_status,
+      approved_at = case when p_status = 'approved' then coalesce(approved_at, now()) else approved_at end,
+      reviewed_by = auth.uid(),
+      updated_at = now()
+  where profile_id = p_profile_id
+  returning * into v_row;
+
+  if v_row.profile_id is null then
+    raise exception 'Vendor application not found';
+  end if;
+
+  if p_status = 'approved' and not exists (
+    select 1 from public.host_vendor_profiles where owner_profile_id = p_profile_id
+  ) then
+    insert into public.host_vendor_profiles (
+      owner_profile_id,
+      business_name,
+      category,
+      service_area,
+      marketplace_visible,
+      verification_status,
+      created_by
+    ) values (
+      p_profile_id,
+      nullif(trim(v_row.business_name), ''),
+      coalesce(nullif(trim(v_row.category), ''), 'Other'),
+      nullif(trim(v_row.service_area), ''),
+      false,
+      'new',
+      auth.uid()
+    );
+  end if;
+
+  return v_row;
+end;
+$$;
+
+grant execute on function public.review_vendor_access(uuid, text) to authenticated;
 
 insert into public.vendor_center_access (
   profile_id,
