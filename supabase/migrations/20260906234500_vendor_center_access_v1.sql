@@ -92,7 +92,7 @@ begin
       created_by
     ) values (
       p_profile_id,
-      nullif(trim(v_row.business_name), ''),
+      coalesce(nullif(trim(v_row.business_name), ''), 'Vendor Business'),
       coalesce(nullif(trim(v_row.category), ''), 'Other'),
       nullif(trim(v_row.service_area), ''),
       false,
