@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ensureHostCenterProfile, getHostSetupProgress, type HostCenterProfile } from '../../src/hosting/hostEntry';
+import { getVendorAccess } from '../../src/vendor/vendorAccess';
 
 const sections = [
   { title: 'Vendors', text: 'Directory, documents and event vendors.', route: '/host/vendors' },
@@ -19,11 +20,19 @@ const sections = [
 
 export default function HostMoreScreen() {
   const [profile, setProfile] = useState<HostCenterProfile | null>(null);
+  const [vendorApproved, setVendorApproved] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    void ensureHostCenterProfile().then((value) => { if (active) setProfile(value); }).catch((error) => console.warn('[host-more] setup load failed', error)).finally(() => { if (active) setLoading(false); });
+    void Promise.all([
+      ensureHostCenterProfile(),
+      getVendorAccess().catch(() => ({ approved: false, record: null })),
+    ]).then(([value, vendorAccess]) => {
+      if (!active) return;
+      setProfile(value);
+      setVendorApproved(vendorAccess.approved);
+    }).catch((error) => console.warn('[host-more] setup load failed', error)).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -43,9 +52,10 @@ export default function HostMoreScreen() {
     <Pressable style={styles.action} onPress={() => router.push('/host/ai-privacy' as never)}><View style={styles.flex}><Text style={styles.rowTitle}>AI & Privacy</Text><Text style={styles.rowText}>Memory, personalization and optional analytics.</Text></View><Text style={styles.arrow}>›</Text></Pressable>
     <Pressable style={styles.action} onPress={() => router.push('/host/setup' as never)}><View style={styles.flex}><Text style={styles.rowTitle}>Host Setup & Introduction</Text><Text style={styles.rowText}>Continue setup or replay the Host Center introduction.</Text></View><Text style={styles.arrow}>›</Text></Pressable>
 
-    <Text style={styles.sectionTitle}>SWITCH EXPERIENCE</Text>
-    <Pressable style={styles.exit} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exitTitle}>Exit Host Center</Text><Text style={styles.exitText}>Return to the normal Go Melanated member experience without signing out.</Text></Pressable>
+    <Text style={styles.sectionTitle}>SWITCH WORKSPACE</Text>
+    {vendorApproved ? <Pressable style={styles.switchRow} onPress={() => router.replace('/vendor' as never)}><View style={styles.flex}><Text style={styles.switchTitle}>Vendor Center</Text><Text style={styles.switchText}>Switch to your approved vendor workspace without signing in again.</Text></View><Text style={styles.arrow}>›</Text></Pressable> : null}
+    <Pressable style={styles.exit} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exitTitle}>Member App</Text><Text style={styles.exitText}>Return to the normal Go Melanated member experience without signing out.</Text></Pressable>
   </ScrollView></SafeAreaView>;
 }
 
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0A0F0C' }, content: { padding: 18, paddingBottom: 90, maxWidth: 820, width: '100%', alignSelf: 'center' }, eyebrow: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 31, fontWeight: '900', marginTop: 3 }, subtitle: { color: '#8E9A92', fontSize: 10.5, lineHeight: 16, marginTop: 5 }, setupCard: { minHeight: 102, borderRadius: 17, borderWidth: 1, borderColor: '#6B5722', backgroundColor: '#211C0F', padding: 14, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }, flex: { flex: 1 }, setupLabel: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, setupTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 3 }, setupText: { color: '#918A70', fontSize: 8.5, lineHeight: 13, marginTop: 4 }, percent: { color: '#E7C464', fontSize: 20, fontWeight: '900' }, list: { borderRadius: 16, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', overflow: 'hidden', marginTop: 14 }, row: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A352F' }, rowTitle: { color: '#EAF0EC', fontSize: 11, fontWeight: '900' }, rowText: { color: '#78857D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, arrow: { color: '#D7B45A', fontSize: 20 }, sectionTitle: { color: '#77857C', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 22, marginBottom: 7 }, action: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 7 }, exit: { borderRadius: 14, borderWidth: 1, borderColor: '#514833', backgroundColor: '#171711', padding: 13 }, exitTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, exitText: { color: '#7F7A69', fontSize: 8.5, lineHeight: 13, marginTop: 3 } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0A0F0C' }, content: { padding: 18, paddingBottom: 90, maxWidth: 820, width: '100%', alignSelf: 'center' }, eyebrow: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 31, fontWeight: '900', marginTop: 3 }, subtitle: { color: '#8E9A92', fontSize: 10.5, lineHeight: 16, marginTop: 5 }, setupCard: { minHeight: 102, borderRadius: 17, borderWidth: 1, borderColor: '#6B5722', backgroundColor: '#211C0F', padding: 14, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }, flex: { flex: 1 }, setupLabel: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, setupTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 3 }, setupText: { color: '#918A70', fontSize: 8.5, lineHeight: 13, marginTop: 4 }, percent: { color: '#E7C464', fontSize: 20, fontWeight: '900' }, list: { borderRadius: 16, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', overflow: 'hidden', marginTop: 14 }, row: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A352F' }, rowTitle: { color: '#EAF0EC', fontSize: 11, fontWeight: '900' }, rowText: { color: '#78857D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, arrow: { color: '#D7B45A', fontSize: 20 }, sectionTitle: { color: '#77857C', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 22, marginBottom: 7 }, action: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 7 }, switchRow: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#66572D', backgroundColor: '#1D1B11', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }, switchTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, switchText: { color: '#85806D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, exit: { borderRadius: 14, borderWidth: 1, borderColor: '#514833', backgroundColor: '#171711', padding: 13 }, exitTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, exitText: { color: '#7F7A69', fontSize: 8.5, lineHeight: 13, marginTop: 3 } });
