@@ -48,7 +48,8 @@ function isGuestPublicPath(pathname: string) {
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up') ||
-    pathname.startsWith('/host-login')
+    pathname.startsWith('/host-login') ||
+    pathname.startsWith('/vendor-login')
   );
 }
 
@@ -70,6 +71,8 @@ function AppShell() {
   const releaseSeenKey = `${currentReleaseNotes.id}:${activeUpdateKey}`;
 
   const isHostCenter = pathname === '/host' || pathname.startsWith('/host/');
+  const isVendorCenter = pathname === '/vendor' || pathname.startsWith('/vendor/');
+  const isOperationsCenter = isHostCenter || isVendorCenter;
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/auth/callback') ||
@@ -77,13 +80,14 @@ function AppShell() {
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up') ||
-    pathname.startsWith('/host-login');
+    pathname.startsWith('/host-login') ||
+    pathname.startsWith('/vendor-login');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
-  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isHostCenter && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || isHostCenter || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isHostCenter || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isOperationsCenter && !tutorialGateReady;
+  const hideBottomNav = isLoading || isAuthScreen || isOperationsCenter || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isOperationsCenter || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -109,8 +113,12 @@ function AppShell() {
       router.replace(`/host-login?next=${encodeURIComponent(pathname)}` as never);
       return;
     }
+    if (isVendorCenter) {
+      router.replace(`/vendor-login?next=${encodeURIComponent(pathname)}` as never);
+      return;
+    }
     router.replace('/(auth)/sign-in' as never);
-  }, [isHostCenter, isLoading, pathname, session]);
+  }, [isHostCenter, isLoading, isVendorCenter, pathname, session]);
 
   useEffect(() => {
     if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
@@ -140,7 +148,7 @@ function AppShell() {
   }, [session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session || isAuthScreen || isHostCenter || tutorialCheckedRef.current) return;
+    if (isLoading || !session || isAuthScreen || isOperationsCenter || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
       const finished = hasFinishedGuidedTutorial();
@@ -162,10 +170,10 @@ function AppShell() {
       setTutorialGateReady(true);
       setTutorialVisible(false);
     }
-  }, [isAuthScreen, isHostCenter, isLoading, releaseSeenKey, session]);
+  }, [isAuthScreen, isLoading, isOperationsCenter, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || isHostCenter || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || isOperationsCenter || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -173,7 +181,7 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isHostCenter, isLoading, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
+  }, [isAuthScreen, isLoading, isOperationsCenter, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
     setWhatsNewVisible(false);
@@ -211,22 +219,22 @@ function AppShell() {
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && !isManagement && !isHostCenter && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && !isOperationsCenter && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" /><Stack.Screen name="onboarding" /><Stack.Screen name="onboarding-v2" />
             <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
-            <Stack.Screen name="reset-password" /><Stack.Screen name="host-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
+            <Stack.Screen name="reset-password" /><Stack.Screen name="host-login" /><Stack.Screen name="vendor-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
             <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
-            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
+            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="vendor" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
             <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
           </Stack>
         </KeyboardAvoidingView>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {session && !tutorialVisible && !isAuthScreen && !isHostCenter ? <TrailheadTooltip /> : null}
+      {session && !tutorialVisible && !isAuthScreen && !isOperationsCenter ? <TrailheadTooltip /> : null}
       {tutorialVisible ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
       {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
