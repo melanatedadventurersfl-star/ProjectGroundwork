@@ -6,17 +6,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { HOST_WORKSPACE_GROUPS, HOST_WORKSPACE_ITEMS } from '../../src/hosting/hostWorkspace';
 import { supabase } from '../../src/lib/supabase';
 import { AppIcon } from '../../src/ui/AppIcon';
+import { getVendorAccess } from '../../src/vendor/vendorAccess';
 
 const COLORS = { bg: '#0B100D', panel: '#151B17', raised: '#1B231E', line: '#2E3832', cream: '#FFF8E8', muted: '#95A29A', dim: '#6F7D75', gold: '#D7B45A' };
 
 export default function HostMenuScreen() {
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [vendorApproved, setVendorApproved] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void supabase.rpc('is_platform_admin').then(({ data, error }) => {
+    void Promise.all([
+      supabase.rpc('is_platform_admin'),
+      getVendorAccess().catch(() => ({ approved: false, record: null })),
+    ]).then(([adminResult, vendorAccess]) => {
       if (!active) return;
-      setIsPlatformAdmin(!error && data === true);
+      setIsPlatformAdmin(!adminResult.error && adminResult.data === true);
+      setVendorApproved(vendorAccess.approved);
     });
     return () => { active = false; };
   }, []);
@@ -49,9 +55,10 @@ export default function HostMenuScreen() {
         </View>
       </View>)}
 
-      <Text style={styles.sectionLabel}>LEAVE HOST CENTER</Text>
+      <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.workspaceCard}>
-        <Pressable style={styles.workspaceRow} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.workspaceTitle}>Back to Member App</Text><Text style={styles.chevron}>›</Text></Pressable>
+        {vendorApproved ? <Pressable style={styles.workspaceRow} onPress={() => router.replace('/vendor' as never)}><Text style={styles.workspaceTitle}>Vendor Center</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
+        <Pressable style={[styles.workspaceRow, vendorApproved && styles.divider]} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.workspaceTitle}>Member App</Text><Text style={styles.chevron}>›</Text></Pressable>
         {isPlatformAdmin ? <Pressable style={[styles.workspaceRow, styles.divider]} onPress={() => router.replace('/admin' as never)}><Text style={styles.workspaceTitle}>Admin</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
       </View>
     </ScrollView>
