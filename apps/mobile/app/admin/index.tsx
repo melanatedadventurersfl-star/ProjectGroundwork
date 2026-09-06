@@ -47,6 +47,7 @@ export default function AdminProfileScreen() {
 
   const toolRows = [
     { title: 'Host Center', subtitle: 'Open the unified workspace for events, work, calendar, opportunities, vendors, finances and internal resources.', route: '/host' },
+    { title: 'Vendor Access', subtitle: 'Review vendor applications and approve, pause, decline, or revoke Vendor Center access.', route: '/admin/vendor-access' },
     { title: 'New Members', subtitle: 'Review new app signups, onboarding status, membership, and referral source.', route: '/admin/new-members' },
     { title: 'Community Safety', subtitle: 'Open reports, escalations, appeals, restrictions, suspensions, and bans in one control room.', route: '/admin/community-safety' },
     { title: 'Moderation Queue', subtitle: 'Review newly reported posts and replies and take enforcement action.', route: '/admin/moderation' },
