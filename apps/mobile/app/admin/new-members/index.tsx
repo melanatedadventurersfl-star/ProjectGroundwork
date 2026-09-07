@@ -105,18 +105,22 @@ export default function AdminNewMembersScreen() {
       <Text style={styles.subtitle}>App signups and onboarding review. Host activity stays in Host Center.</Text>
 
       <View style={styles.summaryCard}>
-        <View><Text style={styles.summaryNumber}>{counts.week}</Text><Text style={styles.summaryLabel}>JOINED THIS WEEK</Text></View>
+        <View><Text style={styles.summaryNumber}>{error ? '—' : counts.week}</Text><Text style={styles.summaryLabel}>JOINED THIS WEEK</Text></View>
         <View style={styles.summaryDivider} />
-        <View><Text style={[styles.summaryNumber, counts.unreviewed > 0 && styles.gold]}>{counts.unreviewed}</Text><Text style={styles.summaryLabel}>NEED REVIEW</Text></View>
+        <View><Text style={[styles.summaryNumber, !error && counts.unreviewed > 0 && styles.gold]}>{error ? '—' : counts.unreviewed}</Text><Text style={styles.summaryLabel}>NEED REVIEW</Text></View>
       </View>
 
-      <TextInput value={query} onChangeText={setQuery} placeholder="Search name, city or membership…" placeholderTextColor="#66746B" style={styles.search} />
+      <TextInput value={query} onChangeText={setQuery} placeholder="Search name, city or membership…" placeholderTextColor="#66746B" style={styles.search} editable={!error} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {filters.map((item) => <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.filter, filter === item.key && styles.filterActive]}><Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>{item.label}</Text></Pressable>)}
+        {filters.map((item) => <Pressable key={item.key} disabled={Boolean(error)} onPress={() => setFilter(item.key)} style={[styles.filter, filter === item.key && styles.filterActive, error && styles.filterDisabled]}><Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>{item.label}</Text></Pressable>)}
       </ScrollView>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.list}>
+      {error ? <View style={styles.errorCard}>
+        <AppIcon name="alert-circle" color="#FFB4A9" size={30} />
+        <Text style={styles.errorTitle}>We couldn’t load members</Text>
+        <Text style={styles.errorBody}>Member data is temporarily unavailable. Try loading this page again.</Text>
+        <Pressable onPress={() => void load()} style={styles.retryButton}><Text style={styles.retryText}>Try Again</Text></Pressable>
+      </View> : <View style={styles.list}>
         {visibleRows.length ? visibleRows.map((member, index) => {
           const name = member.display_name?.trim() || member.username?.trim() || 'New member';
           const location = [member.home_city, member.home_state].filter(Boolean).join(', ') || 'Location not added';
@@ -131,7 +135,7 @@ export default function AdminNewMembersScreen() {
             <AppIcon name="chevron-forward" color="#D7B45A" size={18} />
           </Pressable>;
         }) : <View style={styles.empty}><AppIcon name="checkmark" color="#78A982" size={28} /><Text style={styles.emptyTitle}>No members in this view</Text><Text style={styles.emptyBody}>Try another date range or search.</Text></View>}
-      </View>
+      </View>}
     </ScrollView>
   </SafeAreaView>;
 }
@@ -139,6 +143,7 @@ export default function AdminNewMembersScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0F1713' }, content: { padding: 20, paddingBottom: 64 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }, denied: { flex: 1, padding: 20 }, backButton: { alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 18 }, back: { color: '#D7B45A', fontSize: 16, fontWeight: '900' }, eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.1, marginTop: 8 }, title: { color: '#FFF8E8', fontSize: 34, lineHeight: 40, fontWeight: '900', marginTop: 3 }, subtitle: { color: '#96A39B', fontSize: 13, lineHeight: 19, marginTop: 5, maxWidth: 370 }, muted: { color: '#96A39B', fontSize: 13 },
   summaryCard: { minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#3B4E43', backgroundColor: '#17211C', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginTop: 20, paddingHorizontal: 18 }, summaryNumber: { color: '#FFF8E8', fontSize: 27, fontWeight: '900', textAlign: 'center' }, gold: { color: '#F5C341' }, summaryLabel: { color: '#839188', fontSize: 9, fontWeight: '900', letterSpacing: 0.7, marginTop: 3 }, summaryDivider: { width: 1, height: 46, backgroundColor: '#34443B' },
-  search: { marginTop: 16, borderRadius: 14, borderWidth: 1, borderColor: '#34443B', backgroundColor: '#17211C', color: '#FFF8E8', fontSize: 14, paddingHorizontal: 14, paddingVertical: 13 }, filters: { gap: 8, paddingVertical: 12 }, filter: { borderRadius: 999, borderWidth: 1, borderColor: '#34443B', backgroundColor: '#152019', paddingHorizontal: 13, paddingVertical: 8 }, filterActive: { borderColor: '#D7B45A', backgroundColor: '#392F19' }, filterText: { color: '#9BA79F', fontSize: 11, fontWeight: '800' }, filterTextActive: { color: '#F2D17E' }, error: { color: '#FFB4A9', fontSize: 12, marginBottom: 10 },
+  search: { marginTop: 16, borderRadius: 14, borderWidth: 1, borderColor: '#34443B', backgroundColor: '#17211C', color: '#FFF8E8', fontSize: 14, paddingHorizontal: 14, paddingVertical: 13 }, filters: { gap: 8, paddingVertical: 12 }, filter: { borderRadius: 999, borderWidth: 1, borderColor: '#34443B', backgroundColor: '#152019', paddingHorizontal: 13, paddingVertical: 8 }, filterActive: { borderColor: '#D7B45A', backgroundColor: '#392F19' }, filterDisabled: { opacity: 0.45 }, filterText: { color: '#9BA79F', fontSize: 11, fontWeight: '800' }, filterTextActive: { color: '#F2D17E' },
+  errorCard: { alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: '#5B3A37', backgroundColor: '#211916', paddingHorizontal: 24, paddingVertical: 30, gap: 7 }, errorTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900', marginTop: 4 }, errorBody: { color: '#A99B95', fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 290 }, retryButton: { marginTop: 10, borderRadius: 999, backgroundColor: '#D7B45A', paddingHorizontal: 20, paddingVertical: 10 }, retryText: { color: '#17211C', fontSize: 12, fontWeight: '900' },
   list: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#28372F', overflow: 'hidden' }, member: { minHeight: 100, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, divider: { borderTopWidth: 1, borderTopColor: '#28372F' }, avatar: { width: 54, height: 54, borderRadius: 27, borderWidth: 1.5, borderColor: '#8C7132', backgroundColor: '#26342C', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, avatarImage: { width: '100%', height: '100%' }, avatarText: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' }, memberCopy: { flex: 1, minWidth: 0 }, nameLine: { flexDirection: 'row', alignItems: 'center', gap: 7 }, memberName: { color: '#FFF8E8', fontSize: 16, fontWeight: '900', flexShrink: 1 }, newPill: { borderRadius: 999, backgroundColor: '#3A311B', paddingHorizontal: 7, paddingVertical: 3 }, newPillText: { color: '#F5C341', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, memberMeta: { color: '#A8B3AC', fontSize: 12, fontWeight: '700', marginTop: 3 }, memberDetail: { color: '#839188', fontSize: 10.5, marginTop: 3 }, joined: { color: '#66756C', fontSize: 9.5, marginTop: 3 }, empty: { alignItems: 'center', padding: 34, gap: 5 }, emptyTitle: { color: '#E8F0EA', fontSize: 15, fontWeight: '900' }, emptyBody: { color: '#7F8D85', fontSize: 12 },
 });
