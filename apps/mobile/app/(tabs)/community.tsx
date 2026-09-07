@@ -1,6 +1,7 @@
 import React from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DynamicCreateButton } from '../../src/community/DynamicCreateButton';
 import OutpostAliveScreen from '../../src/community/OutpostAliveScreen';
 import { PersistentTopNav } from '../../src/navigation/PersistentTopNav';
 
@@ -52,6 +53,7 @@ export default function CommunityTab() {
           <OutpostAliveScreen />
         </OutpostErrorBoundary>
       </KeyboardAvoidingView>
+      <DynamicCreateButton />
     </View>
   );
 }
