@@ -90,9 +90,13 @@ export function TrailheadStarterCard() {
       try {
         const finished = hasFinishedGuidedTutorial();
         const progress = getTrailheadProgress();
+        const nextCompletedActions = progress.completed
+          .filter((item) => item.complete)
+          .map((item) => item.action);
+        const trailheadComplete = steps.every((step) => nextCompletedActions.includes(step.action));
         if (!active) return;
-        setVisible(!finished);
-        setCompletedActions(progress.completed.filter((item) => item.complete).map((item) => item.action));
+        setVisible(!finished && !trailheadComplete);
+        setCompletedActions(nextCompletedActions);
 
         if (session?.user.id) {
           const nextProfile = await loadOnboardingProfile(session.user.id);
@@ -120,6 +124,9 @@ export function TrailheadStarterCard() {
   if (!visible) return null;
 
   const completed = completedActions.length;
+  const trailheadComplete = steps.every((step) => completedActions.includes(step.action));
+  if (trailheadComplete) return null;
+
   const next = steps.find((item) => !completedActions.includes(item.action)) ?? null;
   const firstName = profile?.first_name?.trim() || profile?.display_name?.trim() || null;
   const hasOnboardingPayoff = Boolean(profile?.onboarding_completed_at && (interests.length || profile?.home_city || profile?.discovery_radius_miles));
