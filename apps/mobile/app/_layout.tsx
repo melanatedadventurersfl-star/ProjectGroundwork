@@ -73,6 +73,8 @@ function AppShell() {
   const isHostCenter = pathname === '/host' || pathname.startsWith('/host/');
   const isVendorCenter = pathname === '/vendor' || pathname.startsWith('/vendor/');
   const isOperationsCenter = isHostCenter || isVendorCenter;
+  const isOverwatch = pathname === '/overwatch' || pathname.startsWith('/overwatch/');
+  const isProtectedWorkspace = isOperationsCenter || isOverwatch;
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/auth/callback') ||
@@ -85,9 +87,9 @@ function AppShell() {
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
-  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isOperationsCenter && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || (isOperationsCenter && !desktopWeb) || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isOperationsCenter || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !tutorialGateReady;
+  const hideBottomNav = isLoading || isAuthScreen || isOverwatch || (isOperationsCenter && !desktopWeb) || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -148,7 +150,7 @@ function AppShell() {
   }, [session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session || isAuthScreen || isOperationsCenter || tutorialCheckedRef.current) return;
+    if (isLoading || !session || isAuthScreen || isProtectedWorkspace || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
       const finished = hasFinishedGuidedTutorial();
@@ -170,10 +172,10 @@ function AppShell() {
       setTutorialGateReady(true);
       setTutorialVisible(false);
     }
-  }, [isAuthScreen, isLoading, isOperationsCenter, releaseSeenKey, session]);
+  }, [isAuthScreen, isLoading, isProtectedWorkspace, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || isOperationsCenter || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || isProtectedWorkspace || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -181,7 +183,7 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, isOperationsCenter, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
+  }, [isAuthScreen, isLoading, isProtectedWorkspace, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
     setWhatsNewVisible(false);
@@ -219,7 +221,7 @@ function AppShell() {
       <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && !isManagement && !isAuthScreen && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && !isAuthScreen && !isOverwatch && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
@@ -228,13 +230,13 @@ function AppShell() {
             <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
             <Stack.Screen name="reset-password" /><Stack.Screen name="host-login" /><Stack.Screen name="vendor-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
             <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
-            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="vendor" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
+            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="vendor" /><Stack.Screen name="overwatch" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
             <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
           </Stack>
         </KeyboardAvoidingView>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {session && !tutorialVisible && !isAuthScreen && !isOperationsCenter ? <TrailheadTooltip /> : null}
+      {session && !tutorialVisible && !isAuthScreen && !isProtectedWorkspace ? <TrailheadTooltip /> : null}
       {tutorialVisible ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
       {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
