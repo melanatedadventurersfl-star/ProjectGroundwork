@@ -65,7 +65,7 @@ export default function CreateInCommunityScreen() {
           : null;
 
         if (requested) setSelectedGroupId(requested.id);
-        else if (joined.length === 1) setSelectedGroupId(joined[0].id);
+        else if (joined.length === 1 && joined[0]) setSelectedGroupId(joined[0].id);
       })
       .catch((caught) => {
         if (!active) return;
