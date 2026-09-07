@@ -89,8 +89,9 @@ export function DynamicCreateButton() {
   }
 
   function pressFab() {
-    if (actions.length === 1) {
-      navigate(actions[0]);
+    const firstAction = actions[0];
+    if (actions.length === 1 && firstAction) {
+      navigate(firstAction);
       return;
     }
     if (actions.length > 1) setOpen(true);

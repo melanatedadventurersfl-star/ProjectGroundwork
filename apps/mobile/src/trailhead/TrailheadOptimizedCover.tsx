@@ -3,6 +3,8 @@ import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { distanceMiles, pointForCity } from '../explore/location';
+import { getMemberBasecamp } from '../member/api';
 import type { MemberBadge } from '../passport/api';
 import { RankEmblem, type RankName } from '../passport/RankEmblem';
 import { getBrowserPosition } from '../permissions/browserPermissions';
@@ -24,6 +26,7 @@ import {
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const CLOCK_REFRESH_MS = 60 * 1000;
 const HEADER_INSET = 78;
+const HOME_CITY_MATCH_MILES = 50;
 
 function atmosphereColor(weather: WeatherTheme, phase: DayPhase) {
   if (phase === 'night') return 'rgba(4, 13, 28, 0.06)';
@@ -59,6 +62,41 @@ async function getCurrentCoordinates() {
   return { latitude: position.coords.latitude, longitude: position.coords.longitude };
 }
 
+async function resolveCityLocationLabel(
+  coordinates: { latitude: number; longitude: number },
+  weather: WeatherForecast,
+) {
+  let city = '';
+  let region = weather.location.region?.trim() ?? '';
+
+  if (Platform.OS !== 'web') {
+    try {
+      const place = (await Location.reverseGeocodeAsync(coordinates))[0];
+      city = place?.city?.trim() ?? '';
+      region = place?.region?.trim() || region;
+    } catch {
+      // Weather-provider location remains the fallback if native reverse geocoding fails.
+    }
+  } else {
+    try {
+      const basecamp = await getMemberBasecamp();
+      const homeCity = typeof basecamp.profile?.home_city === 'string' ? basecamp.profile.home_city.trim() : '';
+      const homeState = typeof basecamp.profile?.home_state === 'string' ? basecamp.profile.home_state.trim() : '';
+      const homePoint = homeCity && homeState ? pointForCity(homeCity, homeState) : null;
+
+      if (homeCity && homePoint && distanceMiles(coordinates, homePoint) <= HOME_CITY_MATCH_MILES) {
+        city = homeCity;
+        region = homeState || region;
+      }
+    } catch {
+      // Browser weather can still render if profile location is unavailable.
+    }
+  }
+
+  if (!city) city = weather.location.name?.trim() ?? '';
+  return [city, region].filter(Boolean).join(', ');
+}
+
 export function TrailheadOptimizedCover({
   displayName,
   rank,
@@ -86,8 +124,9 @@ export function TrailheadOptimizedCover({
       setLocationMessage('');
       const coordinates = await getCurrentCoordinates();
       const next = await getWeatherByCoordinates(coordinates.latitude, coordinates.longitude);
+      const cityLocationLabel = await resolveCityLocationLabel(coordinates, next);
       setWeatherData(next);
-      setLocationLabel([next.location.name, next.location.region].filter(Boolean).join(', '));
+      setLocationLabel(cityLocationLabel);
       setClockNow(new Date());
     } catch (caught) {
       if (Platform.OS === 'web') {
