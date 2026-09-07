@@ -60,6 +60,7 @@ export type AppIconName =
   | 'food'
   | 'map-pin'
   | 'upload'
+  | 'warning'
   | 'sparkles';
 
 const icons: Record<AppIconName, IoniconName> = {
@@ -118,6 +119,7 @@ const icons: Record<AppIconName, IoniconName> = {
   food: 'restaurant-outline',
   'map-pin': 'location-outline',
   upload: 'cloud-upload-outline',
+  warning: 'alert-circle-outline',
   sparkles: 'sparkles-outline',
 };
 
