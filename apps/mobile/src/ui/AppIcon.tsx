@@ -61,6 +61,7 @@ export type AppIconName =
   | 'map-pin'
   | 'upload'
   | 'warning'
+  | 'alert-circle'
   | 'sparkles';
 
 const icons: Record<AppIconName, IoniconName> = {
@@ -120,6 +121,7 @@ const icons: Record<AppIconName, IoniconName> = {
   'map-pin': 'location-outline',
   upload: 'cloud-upload-outline',
   warning: 'alert-circle-outline',
+  'alert-circle': 'alert-circle-outline',
   sparkles: 'sparkles-outline',
 };
 
