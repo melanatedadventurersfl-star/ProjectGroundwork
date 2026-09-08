@@ -23,13 +23,28 @@ export async function loadOnboardingProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')
     .select(
-      'first_name,last_name,display_name,avatar_url,home_city,home_state,discovery_radius_miles,experience_level,interests,communication_preferences,phone_number,sms_consent_at,accessibility_needs,dietary_needs,support_notes,onboarding_step,onboarding_completed_at',
+      'first_name,last_name,username,display_name,avatar_url,home_city,home_state,discovery_radius_miles,experience_level,interests,communication_preferences,phone_number,sms_consent_at,accessibility_needs,dietary_needs,support_notes,onboarding_step,onboarding_completed_at',
     )
     .eq('id', userId)
     .single();
 
   if (error) throw error;
-  return data;
+
+  const storedDisplayName = data.display_name?.trim() ?? '';
+  const internalUsername = data.username?.trim() ?? '';
+  const isSystemDisplayName =
+    !data.onboarding_completed_at &&
+    Boolean(storedDisplayName) &&
+    (storedDisplayName === internalUsername || storedDisplayName === 'Adventurer');
+  const memberName = [data.first_name, data.last_name]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(' ');
+
+  return {
+    ...data,
+    display_name: isSystemDisplayName ? memberName || null : data.display_name,
+  };
 }
 
 export async function saveOnboardingProgress(
