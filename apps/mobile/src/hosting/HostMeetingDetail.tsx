@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
   check: { width: 19, height: 19, borderRadius: 6, borderWidth: 1, borderColor: '#445149', alignItems: 'center', justifyContent: 'center' },
   checkComplete: { backgroundColor: '#77B9A6', borderColor: '#77B9A6' },
   checkText: { color: '#0A0F0C', fontSize: 10, fontWeight: '900' },
-  rowTitle: { color: '#FFF8E8', fontSize: 10, fontWeight: '850', flex: 1 },
+  rowTitle: { color: '#FFF8E8', fontSize: 10, fontWeight: '800', flex: 1 },
   rowDone: { color: '#78837C', textDecorationLine: 'line-through' },
   addRow: { flexDirection: 'row', gap: 7, marginTop: 10 },
   input: { minHeight: 43, flex: 1, borderRadius: 10, borderWidth: 1, borderColor: '#334139', backgroundColor: '#0D140F', color: '#FFF8E8', paddingHorizontal: 10, fontSize: 10 },
