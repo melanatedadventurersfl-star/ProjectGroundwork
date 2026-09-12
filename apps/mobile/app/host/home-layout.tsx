@@ -116,7 +116,11 @@ export default function HostHomeLayoutScreen() {
       const target = index + direction;
       if (index < 0 || target < 0 || target >= current.length) return current;
       const copy = [...current];
-      [copy[index], copy[target]] = [copy[target], copy[index]];
+      const sourceValue = copy[index];
+      const targetValue = copy[target];
+      if (!sourceValue || !targetValue) return current;
+      copy[index] = targetValue;
+      copy[target] = sourceValue;
       return copy;
     });
   }
