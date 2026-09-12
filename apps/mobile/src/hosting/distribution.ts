@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { publishHostOuting, type HostOutingStatus } from './api';
+import type { HostOutingStatus } from './api';
 
 export type DistributionProviderId = 'go_melanated' | 'facebook' | 'instagram' | 'eventbrite' | 'email' | 'sms' | 'other';
 
@@ -81,6 +81,13 @@ export type EventDistributionState = {
   connections: EventDistributionConnection[];
 };
 
+export type CampaignPublicationResult = {
+  campaignStatus: 'planning' | 'live' | 'complete';
+  adventureStatus: HostOutingStatus;
+  publishedAt: string | null;
+  connectionId: string;
+};
+
 export type HostDistributionProviderSummary = DistributionProviderDefinition & {
   connectionCount: number;
   eventCount: number;
@@ -97,6 +104,13 @@ type ConnectionRow = {
   status: 'connected' | 'attention' | 'disconnected';
   last_synced_at: string | null;
   capabilities: Record<string, unknown> | null;
+};
+
+type PublicationRow = {
+  campaign_status: CampaignPublicationResult['campaignStatus'];
+  adventure_status: HostOutingStatus;
+  published_at: string | null;
+  connection_id: string;
 };
 
 export async function getEventDistributionState(campaignId: string, adventureId: string): Promise<EventDistributionState> {
@@ -154,8 +168,40 @@ export function isProviderConnected(state: EventDistributionState, provider: Dis
   return Boolean(connection && connection.status === 'connected');
 }
 
-export async function publishEventToGoMelanated(adventureId: string) {
-  return publishHostOuting(adventureId);
+export function isGoMelanatedPublished(state: EventDistributionState | null | undefined) {
+  return Boolean(state && ['published', 'sold_out'].includes(state.adventureStatus));
+}
+
+export function hasPublicationDrift(campaignStatus: 'planning' | 'live' | 'complete', state: EventDistributionState | null | undefined) {
+  if (!state || campaignStatus === 'complete') return false;
+  return campaignStatus === 'live' !== isGoMelanatedPublished(state);
+}
+
+export async function publishHostCampaign(campaignId: string): Promise<CampaignPublicationResult> {
+  const { data, error } = await supabase.rpc('publish_host_campaign', { p_campaign_id: campaignId });
+  if (error) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) as PublicationRow | null;
+  if (!row?.connection_id) throw new Error('Go Melanated did not return a completed publication.');
+  return {
+    campaignStatus: row.campaign_status,
+    adventureStatus: row.adventure_status,
+    publishedAt: row.published_at,
+    connectionId: row.connection_id,
+  };
+}
+
+// Compatibility entry point for existing Host Center surfaces that start from an adventure ID.
+// The coordinated publisher still resolves and publishes the Host Center campaign as one operation.
+export async function publishEventToGoMelanated(adventureId: string): Promise<CampaignPublicationResult> {
+  const { data, error } = await supabase
+    .from('host_campaigns')
+    .select('id')
+    .eq('adventure_id', adventureId)
+    .neq('status', 'complete')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error('Open this event in Host Center before publishing it to Go Melanated.');
+  return publishHostCampaign(String(data.id));
 }
 
 export async function publishMarketingItemToGoMelanated(itemId: string): Promise<{ postId: string; promotionId: string }> {
