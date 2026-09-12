@@ -129,7 +129,7 @@ export function HostMeetingDetail({ meetingId }: { meetingId: string }) {
 
         {currentAttendee && meeting.status === 'scheduled' ? <View style={styles.panel}>
           <Text style={styles.sectionKicker}>YOUR RSVP</Text>
-          <View style={styles.rsvpRow}>{(['going','maybe','declined'] as MeetingResponse[]).map((response) => <Pressable key={response} style={[styles.rsvpButton, currentAttendee.response === response && styles.rsvpActive]} onPress={() => void run(() => updateMeetingRsvp(meeting.id, response))}><Text style={[styles.rsvpText, currentAttendee.response === response && styles.rsvpTextActive]}>{response === 'declined' ? 'Can’t attend' : response[0].toUpperCase() + response.slice(1)}</Text></Pressable>)}</View>
+          <View style={styles.rsvpRow}>{(['going','maybe','declined'] as MeetingResponse[]).map((response) => <Pressable key={response} style={[styles.rsvpButton, currentAttendee.response === response && styles.rsvpActive]} onPress={() => void run(() => updateMeetingRsvp(meeting.id, response))}><Text style={[styles.rsvpText, currentAttendee.response === response && styles.rsvpTextActive]}>{response === 'declined' ? 'Can’t attend' : response.charAt(0).toUpperCase() + response.slice(1)}</Text></Pressable>)}</View>
         </View> : null}
 
         {brief ? <View style={styles.panel}>
