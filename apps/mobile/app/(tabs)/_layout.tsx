@@ -68,6 +68,8 @@ export default function TabLayout() {
       <Tabs.Screen name="menu" options={{ title: 'Menu' }} />
       <Tabs.Screen name="community-home" options={{ href: null }} />
       <Tabs.Screen name="outdoor-home" options={{ href: null }} />
+      <Tabs.Screen name="community-explore" options={{ href: null }} />
+      <Tabs.Screen name="outdoor-explore" options={{ href: null }} />
     </Tabs>
   );
 }
