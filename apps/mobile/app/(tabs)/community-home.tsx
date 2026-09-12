@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -57,7 +57,11 @@ function homeLayout(value: unknown[]): HomeSectionCode[] {
   const configured = value
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim() as HomeSectionCode)
-    .filter((item) => SUPPORTED_SECTIONS.has(item) && !seen.has(item) && Boolean(seen.add(item)));
+    .filter((item) => {
+      if (!SUPPORTED_SECTIONS.has(item) || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
 
   return configured.length ? configured : DEFAULT_LAYOUT;
 }
@@ -130,10 +134,9 @@ export default function CommunityHome({ context }: CommunityHomeProps) {
     }
   }, [eventsName, experience.id]);
 
-  useState(() => {
+  useEffect(() => {
     void load();
-    return true;
-  });
+  }, [load]);
 
   function renderHero() {
     const body = (
