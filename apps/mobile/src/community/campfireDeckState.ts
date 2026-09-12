@@ -17,6 +17,7 @@ export type CampfireDeckState = {
   positionUpdatedAt: number;
   caughtUp: boolean;
   seen: Record<string, CampfireSeenSnapshot>;
+  dismissed: Record<string, number>;
 };
 
 let sessionSeenPostIds = new Set<string>();
@@ -35,6 +36,7 @@ function freshState(): CampfireDeckState {
     positionUpdatedAt: 0,
     caughtUp: false,
     seen: {},
+    dismissed: {},
   };
 }
 
@@ -52,6 +54,7 @@ function normalizeState(value: unknown): CampfireDeckState {
     positionUpdatedAt: typeof candidate.positionUpdatedAt === 'number' ? candidate.positionUpdatedAt : 0,
     caughtUp: candidate.caughtUp === true,
     seen: candidate.seen && typeof candidate.seen === 'object' ? candidate.seen : {},
+    dismissed: candidate.dismissed && typeof candidate.dismissed === 'object' ? candidate.dismissed : {},
   };
 }
 
@@ -96,6 +99,26 @@ export function markCampfirePostSeen(state: CampfireDeckState, post: CommunityPo
       },
     },
   };
+}
+
+export function dismissCampfireItem(state: CampfireDeckState, itemKey: string, now = Date.now()): CampfireDeckState {
+  return {
+    ...state,
+    dismissed: {
+      ...state.dismissed,
+      [itemKey]: now,
+    },
+  };
+}
+
+export function restoreCampfireItem(state: CampfireDeckState, itemKey: string): CampfireDeckState {
+  const dismissed = { ...state.dismissed };
+  delete dismissed[itemKey];
+  return { ...state, dismissed };
+}
+
+export function isCampfireItemDismissed(state: CampfireDeckState | null, itemKey: string) {
+  return Boolean(state?.dismissed[itemKey]);
 }
 
 export function updateCampfirePosition(state: CampfireDeckState, currentPostId: string | null, caughtUp: boolean, now = Date.now()): CampfireDeckState {
