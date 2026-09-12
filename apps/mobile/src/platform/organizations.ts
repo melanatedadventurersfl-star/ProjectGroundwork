@@ -148,6 +148,14 @@ export async function setActiveOrganization(organizationId: string): Promise<Org
   return { ...active, isActive: true };
 }
 
+export async function activatePlatformDefaultOrganization(): Promise<OrganizationWorkspace | null> {
+  const organizations = await listMyOrganizations();
+  const platformDefault = organizations.find((organization) => organization.isPlatformDefault) ?? null;
+  if (!platformDefault) return null;
+  if (platformDefault.isActive) return platformDefault;
+  return setActiveOrganization(platformDefault.id);
+}
+
 export async function hasOrganizationPermission(
   organizationId: string,
   permission: OrganizationPermission,
