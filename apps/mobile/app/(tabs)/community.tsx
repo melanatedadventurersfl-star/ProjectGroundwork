@@ -2,7 +2,7 @@ import React from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DynamicCreateButton } from '../../src/community/DynamicCreateButton';
-import OutpostAliveScreen from '../../src/community/OutpostAliveScreen';
+import OutpostFeaturedScreen from '../../src/community/OutpostFeaturedScreen';
 import { PersistentTopNav } from '../../src/navigation/PersistentTopNav';
 
 type BoundaryProps = { children: React.ReactNode };
@@ -50,7 +50,7 @@ export default function CommunityTab() {
         keyboardVerticalOffset={0}
       >
         <OutpostErrorBoundary>
-          <OutpostAliveScreen />
+          <OutpostFeaturedScreen />
         </OutpostErrorBoundary>
       </KeyboardAvoidingView>
       <DynamicCreateButton />
