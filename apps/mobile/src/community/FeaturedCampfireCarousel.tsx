@@ -6,11 +6,13 @@ import {
   Image,
   ImageBackground,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
   type ImageSourcePropType,
+  type ViewStyle,
 } from 'react-native';
 
 import type { LocalEvent } from '../local-events/api';
@@ -32,6 +34,9 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#16201B';
 const CARD_HEIGHT = 258;
+const WEB_SWIPE_STYLE: ViewStyle | undefined = Platform.OS === 'web'
+  ? ({ touchAction: 'pan-y' } as unknown as ViewStyle)
+  : undefined;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 type VisibleCard = { post: CommunityPost; index: number; offset: number };
@@ -228,7 +233,7 @@ export function FeaturedCampfireCarousel({
   const [caughtUp, setCaughtUp] = useState(false);
   const [deckReady, setDeckReady] = useState(false);
   const [viewerId, setViewerId] = useState<string | null>(null);
-  const [deckState, setDeckState] = useState<CampfireDeckState | null>(null);
+  const [, setDeckState] = useState<CampfireDeckState | null>(null);
   const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
   const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
@@ -492,7 +497,7 @@ export function FeaturedCampfireCarousel({
             return (
               <Animated.View
                 key={post.id}
-                style={[styles.cardLayer, styles.swipeSurface, { width: cardWidth, zIndex: 30, transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }] }]}
+                style={[styles.cardLayer, WEB_SWIPE_STYLE, { width: cardWidth, zIndex: 30, transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }] }]}
                 {...panResponder.panHandlers}
               >
                 <FeaturedPostCard
@@ -537,7 +542,6 @@ export function FeaturedCampfireCarousel({
 const styles = StyleSheet.create({
   deck: { position: 'relative', alignItems: 'center', justifyContent: 'flex-start', overflow: 'visible' },
   cardLayer: { position: 'absolute', top: 0, alignSelf: 'center' },
-  swipeSurface: { touchAction: 'pan-y' },
   card: { height: CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: PANEL, borderWidth: 1, borderColor: '#34433A', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 6 },
   background: { flex: 1, justifyContent: 'space-between' },
   backgroundImage: { resizeMode: 'cover' },
