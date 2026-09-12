@@ -127,9 +127,18 @@ export async function removeUploadedMemoryImage(path: string) {
 
 export async function getJourney(): Promise<JourneyItem[]> {
   const userId = await requireUserId();
-  const { data, error } = await supabase.from('member_journey').select('*').order('experienced_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('member_journey')
+    .select('*')
+    .eq('profile_id', userId)
+    .order('experienced_at', { ascending: false });
   if (error) throw error;
-  const journey = (data ?? []) as Omit<JourneyItem, 'photo_count'>[];
+  const rows = (data ?? []) as Omit<JourneyItem, 'photo_count'>[];
+  const uniqueJourney = new Map<string, Omit<JourneyItem, 'photo_count'>>();
+  for (const item of rows) {
+    if (!uniqueJourney.has(item.adventure_id)) uniqueJourney.set(item.adventure_id, item);
+  }
+  const journey = [...uniqueJourney.values()];
   if (!journey.length) return [];
   const { data: photos, error: photoError } = await supabase
     .from('adventure_memory_photos')
@@ -146,9 +155,11 @@ export async function getJourney(): Promise<JourneyItem[]> {
 }
 
 export async function getPassportStamps(): Promise<PassportStamp[]> {
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('member_passport_stamps')
     .select('stamp_id, earned_at, adventure_id, passport_stamps(code, title, description, icon_name)')
+    .eq('profile_id', userId)
     .order('earned_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row: any) => ({
@@ -163,9 +174,11 @@ export async function getPassportStamps(): Promise<PassportStamp[]> {
 }
 
 export async function getMemberBadges(): Promise<MemberBadge[]> {
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from('member_badges')
     .select('badge_id, earned_at, badges(title, description, icon_name, category)')
+    .eq('profile_id', userId)
     .order('earned_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row: any) => ({
