@@ -47,13 +47,15 @@ export default function TenantProfileScreen() {
     let active = true;
     setLoading(true);
     setError('');
-    void supabase
-      .from('organization_member_profiles')
-      .select('organization_id,profile_id,display_name,username,avatar_url,cover_url,bio,home_city,home_state,visibility')
-      .eq('organization_id', context.organization.id)
-      .eq('profile_id', session.user.id)
-      .maybeSingle()
-      .then(({ data, error: queryError }) => {
+
+    void (async () => {
+      try {
+        const { data, error: queryError } = await supabase
+          .from('organization_member_profiles')
+          .select('organization_id,profile_id,display_name,username,avatar_url,cover_url,bio,home_city,home_state,visibility')
+          .eq('organization_id', context.organization.id)
+          .eq('profile_id', session.user.id)
+          .maybeSingle();
         if (!active) return;
         if (queryError) throw queryError;
         const row = (data as TenantProfile | null) ?? {
@@ -74,13 +76,12 @@ export default function TenantProfileScreen() {
         setBio(row.bio ?? '');
         setCity(row.home_city ?? '');
         setState(row.home_state ?? '');
-      })
-      .catch((caught) => {
+      } catch (caught: unknown) {
         if (active) setError(caught instanceof Error ? caught.message : 'Unable to load your profile.');
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    })();
 
     return () => { active = false; };
   }, [context, moduleEnabled, session?.user.id]);
