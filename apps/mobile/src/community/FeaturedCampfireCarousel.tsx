@@ -420,7 +420,7 @@ export function FeaturedCampfireCarousel({
   const signature = useMemo(() => items.map((item) => item.key).join('|'), [items]);
   const safeIndex = items.length ? Math.min(currentIndex, items.length - 1) : 0;
   const safeDisplayIndex = items.length ? Math.min(displayIndex, items.length - 1) : 0;
-  const latestDismissed = useMemo(() => {
+  const latestDismissed = useMemo<{ item: CarouselItem; allIndex: number; dismissedAt: number } | null>(() => {
     if (!deckState) return null;
     let latest: { item: CarouselItem; allIndex: number; dismissedAt: number } | null = null;
     allItems.forEach((item, allIndex) => {
