@@ -9,6 +9,7 @@ import { getTrailGuidePlace, trailGuidePlaces, type TrailGuideCityKey, type Trai
 import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePlaceDetails } from '../../src/trailGuide/googlePlacePhotos';
 import { useTrailGuidePlacePhoto, type TrailGuidePhoto } from '../../src/trailGuide/placePhotos';
 import { isTrailGuidePlaceSaved, setTrailGuidePlaceSaved } from '../../src/trailGuide/savedPlaces';
+import { TrailGuidePlacePracticalDetails } from '../../src/trailGuide/TrailGuidePlacePracticalDetails';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 function outingCategory(category: string) {
@@ -54,14 +55,12 @@ export default function TrailGuidePlaceDetailScreen() {
   const fallbackPhoto = useTrailGuidePlacePhoto(place);
   const [googleDetails, setGoogleDetails] = useState<GoogleTrailGuidePlaceDetails | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
     setGoogleDetails(null);
     setActivePhotoIndex(0);
-    setShowMoreInfo(false);
     if (!place) return () => { active = false; };
     void resolveGoogleTrailGuidePlaceDetails(place).then((details) => { if (active) setGoogleDetails(details); });
     return () => { active = false; };
@@ -99,7 +98,6 @@ export default function TrailGuidePlaceDetailScreen() {
   const mapsUrl = googleDetails?.mapsUrl ?? currentPhoto?.sourceUrl ?? null;
   const openState = googleDetails?.openNow == null ? null : googleDetails.openNow ? 'Open now' : 'Closed now';
   const ratingLabel = googleDetails?.rating != null ? `${googleDetails.rating.toFixed(1)}★${googleDetails.userRatingCount ? ` (${googleDetails.userRatingCount.toLocaleString()})` : ''}` : null;
-  const practicalDetails = currentPlace.details.slice(0, 3);
 
   const planOuting = () => router.push({ pathname: '/local-events/create', params: { source: 'trail-guide', trailGuidePlaceId: currentPlace.id, title: currentPlace.name, description: `Planning an outing to ${currentPlace.name}. ${currentPlace.summary}`, category: outingCategory(currentPlace.category), venueName: currentPlace.name, state: 'FL', city: trailGuideCity(currentPlace.city) } });
   const openDirections = async () => { const fallback = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${currentPlace.name}, ${currentPlace.area}, Florida`)}`; await Linking.openURL(mapsUrl || fallback); };
@@ -164,19 +162,13 @@ export default function TrailGuidePlaceDetailScreen() {
             <View style={styles.tags}>{currentPlace.tags.slice(0, 5).map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
           </View>
 
-          <View style={styles.knowSection}>
-            <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>Know before you go</Text><Text style={styles.sectionHint}>Only what matters</Text></View>
-            <View style={styles.knowGrid}>{practicalDetails.map((detail, index) => <View key={detail} style={styles.knowRow}><View style={styles.knowIcon}><Text style={styles.knowIconText}>{index === 0 ? '🥾' : index === 1 ? '🌦️' : '🎒'}</Text></View><Text style={styles.knowText}>{detail}</Text></View>)}</View>
-
-            {googleDetails?.formattedAddress || googleDetails?.weekdayDescriptions?.length ? (
-              <Pressable onPress={() => setShowMoreInfo((current) => !current)} style={({ pressed }) => [styles.moreInfoButton, pressed && styles.pressed]}>
-                <Text style={styles.moreInfoText}>{showMoreInfo ? 'Hide place details' : 'More place details'}</Text>
-                <AppIcon name={showMoreInfo ? 'chevron-up' : 'chevron-forward'} color="#D7B45A" size={17} />
-              </Pressable>
-            ) : null}
-
-            {showMoreInfo ? <View style={styles.infoPanel}>{googleDetails?.formattedAddress ? <View style={styles.infoLine}><AppIcon name="location" color="#79D26A" size={16} /><Text style={styles.infoLineText}>{googleDetails.formattedAddress}</Text></View> : null}{googleDetails?.weekdayDescriptions?.[0] ? <View style={styles.infoLine}><AppIcon name="time" color="#79D26A" size={16} /><Text style={styles.infoLineText}>{googleDetails.weekdayDescriptions[0]}</Text></View> : null}<Text style={styles.infoSource}>Live place info from Google Places</Text></View> : null}
-          </View>
+          <TrailGuidePlacePracticalDetails
+            placeId={currentPlace.id}
+            category={currentPlace.category}
+            fallbackDetails={currentPlace.details}
+            formattedAddress={googleDetails?.formattedAddress}
+            weekdayDescription={googleDetails?.weekdayDescriptions?.[0]}
+          />
 
           <Pressable onPress={planOuting} style={({ pressed }) => [styles.planButton, pressed && styles.pressed]}><AppIcon name="calendar" color="#17211C" size={20} /><Text style={styles.planButtonText}>Plan an outing here</Text><AppIcon name="chevron-forward" color="#17211C" size={18} /></Pressable>
 
@@ -223,24 +215,12 @@ const styles = StyleSheet.create({
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 11 },
   tag: { borderRadius: 999, borderWidth: 1, borderColor: '#354139', backgroundColor: '#151B17', paddingHorizontal: 9, paddingVertical: 5 },
   tagText: { color: '#C3CCC6', fontSize: 9, fontWeight: '800' },
-  knowSection: { marginTop: 22 },
-  sectionHeaderRow: { marginBottom: 9 },
-  sectionTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
-  sectionHint: { color: '#78847D', fontSize: 9, marginTop: 2 },
-  knowGrid: { gap: 7 },
-  knowRow: { minHeight: 50, borderBottomWidth: 1, borderBottomColor: '#26312B', flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  knowIcon: { width: 31, height: 31, borderRadius: 10, backgroundColor: '#18221D', alignItems: 'center', justifyContent: 'center' },
-  knowIconText: { fontSize: 14 },
-  knowText: { flex: 1, color: '#C7D0CA', fontSize: 11, lineHeight: 16, fontWeight: '700' },
-  moreInfoButton: { minHeight: 44, marginTop: 8, borderRadius: 12, borderWidth: 1, borderColor: '#2E3932', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
-  moreInfoText: { color: '#D7B45A', fontSize: 10, fontWeight: '900' },
-  infoPanel: { marginTop: 7, borderRadius: 12, backgroundColor: '#101713', padding: 12, gap: 8 },
-  infoLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  infoLineText: { flex: 1, color: '#C6D0C9', fontSize: 10, lineHeight: 15 },
-  infoSource: { color: '#68746D', fontSize: 8, marginTop: 2 },
   planButton: { minHeight: 50, borderRadius: 14, backgroundColor: '#E0BE62', marginTop: 22, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   planButtonText: { flex: 1, color: '#17211C', fontSize: 13, fontWeight: '900' },
   nearbySection: { marginTop: 24 },
+  sectionHeaderRow: { marginBottom: 9 },
+  sectionTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
+  sectionHint: { color: '#78847D', fontSize: 9, marginTop: 2 },
   nearbyRow: { gap: 9, paddingRight: 8 },
   nearbyCard: { width: 168, height: 126, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#111914' },
   nearbyImage: { ...StyleSheet.absoluteFillObject },
