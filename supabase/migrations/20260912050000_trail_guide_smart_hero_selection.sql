@@ -27,8 +27,7 @@ create table if not exists public.trail_guide_hero_candidates (
 );
 
 create unique index if not exists trail_guide_hero_candidates_external_unique
-  on public.trail_guide_hero_candidates (place_id, image_url)
-  where image_url is not null;
+  on public.trail_guide_hero_candidates (place_id, image_url);
 
 create index if not exists trail_guide_hero_candidates_rank_idx
   on public.trail_guide_hero_candidates (place_id, status, is_preferred desc, is_generic asc, hero_score desc, updated_at desc);
@@ -178,7 +177,7 @@ $$;
 
 revoke all on function public.sync_trail_guide_photo_hero_candidate() from public, anon, authenticated;
 
-DROP TRIGGER IF EXISTS trail_guide_photo_hero_candidate_sync ON public.trail_guide_photos;
+drop trigger if exists trail_guide_photo_hero_candidate_sync on public.trail_guide_photos;
 create trigger trail_guide_photo_hero_candidate_sync
 after insert or update of moderation_status, feature_eligible, category, visit_date
 on public.trail_guide_photos
@@ -258,7 +257,7 @@ select
 where exists (
   select 1 from public.trail_guide_place_profiles where place_id = 'huguenot-memorial-park'
 )
-on conflict (place_id, image_url) where image_url is not null do update set
+on conflict (place_id, image_url) do update set
   status = 'approved',
   is_generic = false,
   destination_match_score = 1.00,
