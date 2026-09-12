@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { loadTrailGuideCommunity, type TrailGuideCommunityData, type TrailGuideReview } from './community';
+import { loadMyTrailGuidePhotos, loadMyTrailGuideReview, type EditableTrailGuideReview, type MyTrailGuidePhoto } from './memberContributions';
 
 function reviewMeta(review: TrailGuideReview) {
   const parts: string[] = [];
@@ -27,16 +28,31 @@ function RatingBar({ label, value }: { label: string; value: number }) {
 
 export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
   const [data, setData] = useState<TrailGuideCommunityData | null>(null);
+  const [myReview, setMyReview] = useState<EditableTrailGuideReview | null>(null);
+  const [myPhotos, setMyPhotos] = useState<MyTrailGuidePhoto[]>([]);
 
   useEffect(() => {
     let active = true;
-    void loadTrailGuideCommunity(placeId)
-      .then((result) => { if (active) setData(result); })
-      .catch(() => { if (active) setData({ reviews: [], photos: [], averageRating: null, reviewCount: 0, categoryAverages: {} }); });
+    void Promise.all([
+      loadTrailGuideCommunity(placeId),
+      loadMyTrailGuideReview(placeId),
+      loadMyTrailGuidePhotos(placeId),
+    ]).then(([community, review, photos]) => {
+      if (!active) return;
+      setData(community);
+      setMyReview(review);
+      setMyPhotos(photos);
+    }).catch(() => {
+      if (!active) return;
+      setData({ reviews: [], photos: [], averageRating: null, reviewCount: 0, categoryAverages: {} });
+      setMyReview(null);
+      setMyPhotos([]);
+    });
     return () => { active = false; };
   }, [placeId]);
 
-  const topReview = data?.reviews[0] ?? null;
+  const topReview = data?.reviews.find((review) => review.id !== myReview?.id) ?? null;
+  const pendingPhotos = myPhotos.filter((photo) => photo.moderationStatus === 'pending');
   const ratingRows = useMemo(() => {
     if (!data) return [];
     const labels: Record<string, string> = {
@@ -52,7 +68,10 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
       .slice(0, 4);
   }, [data]);
 
-  const openReview = () => router.push({ pathname: '/trail-guide/contribute', params: { placeId, mode: 'review' } });
+  const openReview = () => router.push({
+    pathname: '/trail-guide/contribute',
+    params: { placeId, mode: 'review', ...(myReview ? { reviewId: myReview.id } : {}) },
+  });
   const openPhotos = () => router.push({ pathname: '/trail-guide/contribute', params: { placeId, mode: 'photos' } });
 
   return (
@@ -64,10 +83,20 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
             <Text style={styles.hint}>Go Melanated reviews and real member photos</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable onPress={openReview} hitSlop={8}><Text style={styles.link}>Review</Text></Pressable>
+            <Pressable onPress={openReview} hitSlop={8}><Text style={styles.link}>{myReview ? 'Edit review' : 'Review'}</Text></Pressable>
             <Pressable onPress={openPhotos} hitSlop={8}><Text style={styles.link}>Add photos</Text></Pressable>
           </View>
         </View>
+
+        {myReview ? (
+          <Pressable onPress={openReview} style={styles.myReviewRow}>
+            <View style={styles.myReviewCopy}>
+              <Text style={styles.myReviewLabel}>YOUR REVIEW</Text>
+              <Text style={styles.myReviewStars}>{'★'.repeat(myReview.rating)}<Text style={styles.myReviewEmpty}>{'★'.repeat(Math.max(0, 5 - myReview.rating))}</Text></Text>
+            </View>
+            <Text style={styles.editReview}>Edit ›</Text>
+          </Pressable>
+        ) : null}
 
         {data?.reviewCount ? (
           <View style={styles.reviewArea}>
@@ -103,6 +132,26 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
           </Pressable>
         )}
 
+        {pendingPhotos.length ? (
+          <>
+            <View style={styles.divider} />
+            <View style={styles.photoHeader}>
+              <Text style={styles.photoHeading}>Your photos</Text>
+              <Text style={styles.pendingCount}>{pendingPhotos.length} pending review</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
+              {pendingPhotos.map((photo) => (
+                <View key={photo.id} style={styles.photoCard}>
+                  <Image source={{ uri: photo.signedUrl }} style={styles.photo} />
+                  <View style={styles.photoShade} />
+                  <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>Pending</Text></View>
+                  <View style={styles.photoMetaWrap}><Text numberOfLines={1} style={styles.photoMeta}>{photo.campsiteLabel || photo.category.replace('_', ' ')}</Text></View>
+                </View>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
+
         <View style={styles.divider} />
 
         <View style={styles.photoHeader}>
@@ -127,8 +176,8 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
           <Pressable onPress={openPhotos} style={styles.photoEmpty}>
             <View style={styles.cameraCircle}><Text style={styles.camera}>＋</Text></View>
             <View style={styles.emptyCopy}>
-              <Text style={styles.emptyTitle}>No camper photos yet</Text>
-              <Text style={styles.emptyBody}>Show the campsites and facilities as they look in real life.</Text>
+              <Text style={styles.emptyTitle}>No approved camper photos yet</Text>
+              <Text style={styles.emptyBody}>Your pending uploads stay visible to you while they are reviewed.</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </Pressable>
@@ -147,6 +196,12 @@ const styles = StyleSheet.create({
   title: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' },
   hint: { color: '#748178', fontSize: 9, marginTop: 2, lineHeight: 12 },
   link: { color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
+  myReviewRow: { minHeight: 45, marginTop: 9, borderTopWidth: 1, borderTopColor: '#223028', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },
+  myReviewCopy: { gap: 2 },
+  myReviewLabel: { color: '#7F8C84', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.7 },
+  myReviewStars: { color: '#E1B94F', fontSize: 13, letterSpacing: 1 },
+  myReviewEmpty: { color: '#39443D' },
+  editReview: { color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
   reviewArea: { marginTop: 10 },
   ratingSummary: { flexDirection: 'row', gap: 11, alignItems: 'center' },
   bigRatingWrap: { width: 68, alignItems: 'center' },
@@ -178,10 +233,13 @@ const styles = StyleSheet.create({
   photoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   photoHeading: { color: '#E8EEE9', fontSize: 11, fontWeight: '900' },
   photoCount: { color: '#748178', fontSize: 8 },
+  pendingCount: { color: '#D7B45A', fontSize: 8, fontWeight: '800' },
   photoRow: { gap: 7, paddingTop: 8, paddingRight: 4 },
   photoCard: { width: 92, height: 78, borderRadius: 10, overflow: 'hidden', backgroundColor: '#1A241E' },
   photo: { ...StyleSheet.absoluteFillObject },
   photoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,10,7,0.12)' },
+  pendingBadge: { position: 'absolute', top: 5, left: 5, borderRadius: 999, backgroundColor: 'rgba(11,16,13,0.84)', borderWidth: 1, borderColor: '#8A7133', paddingHorizontal: 6, paddingVertical: 3 },
+  pendingBadgeText: { color: '#F0CC65', fontSize: 6.5, fontWeight: '900' },
   photoMetaWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,10,7,0.68)', paddingHorizontal: 6, paddingVertical: 4 },
   photoMeta: { color: '#F5F2E8', fontSize: 7.5, fontWeight: '800', textTransform: 'capitalize' },
   addPhotoCard: { width: 76, height: 78, borderRadius: 10, borderWidth: 1, borderColor: '#39493F', backgroundColor: '#151E18', alignItems: 'center', justifyContent: 'center' },
