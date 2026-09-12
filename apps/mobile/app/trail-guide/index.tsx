@@ -13,16 +13,12 @@ import {
 } from '../../src/trailGuide/catalog';
 import { getTrailGuideConditionSignal } from '../../src/trailGuide/conditions';
 import { trailGuideArticles, type TrailGuideArticle } from '../../src/trailGuide/guides';
+import { resolveTrailGuidePrimaryPhoto, type TrailGuideHeroPhoto, useTrailGuidePrimaryPhoto } from '../../src/trailGuide/heroSelection';
 import {
   distanceMiles,
   TRAIL_GUIDE_SELECTABLE_CITIES,
   useTrailGuideLocationBackground,
 } from '../../src/trailGuide/locationBackgrounds';
-import {
-  resolveTrailGuidePlacePhoto,
-  type TrailGuidePhoto,
-  useTrailGuidePlacePhoto,
-} from '../../src/trailGuide/placePhotos';
 import { AppIcon } from '../../src/ui/AppIcon';
 import { getWeatherByQuery, type WeatherForecast } from '../../src/weather/api';
 
@@ -79,7 +75,7 @@ function getActivityIndicators(place: TrailGuidePlace): ActivityIndicator[] {
 }
 
 function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object }) {
-  const photo = useTrailGuidePlacePhoto(place);
+  const photo = useTrailGuidePrimaryPhoto(place);
   if (!photo) {
     return (
       <View style={[style, styles.photoPlaceholder]}>
@@ -90,7 +86,7 @@ function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object })
   return <Image source={{ uri: photo.url }} style={style} resizeMode="cover" />;
 }
 
-function RecommendedCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo: TrailGuidePhoto; weather: WeatherForecast | null; distance: string | null }) {
+function RecommendedCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo: TrailGuideHeroPhoto; weather: WeatherForecast | null; distance: string | null }) {
   const signal = getTrailGuideConditionSignal(place, weather);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Open ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.recommendedCard, pressed && styles.cardPressed]}>
@@ -126,7 +122,7 @@ export default function TrailGuideScreen() {
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [distanceById, setDistanceById] = useState<Record<string, number>>({});
-  const [photoById, setPhotoById] = useState<Record<string, TrailGuidePhoto>>({});
+  const [photoById, setPhotoById] = useState<Record<string, TrailGuideHeroPhoto>>({});
   const [photoPoolBusy, setPhotoPoolBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
@@ -195,11 +191,11 @@ export default function TrailGuideScreen() {
     if (candidates.length === 0) { setPhotoPoolBusy(false); return; }
     setPhotoPoolBusy(true);
     void Promise.all(candidates.map(async (place) => {
-      const photo = await resolveTrailGuidePlacePhoto(place);
+      const photo = await resolveTrailGuidePrimaryPhoto(place);
       return photo ? [place.id, photo] as const : null;
     })).then((rows) => {
       if (!active) return;
-      const resolved = rows.filter((row): row is readonly [string, TrailGuidePhoto] => row !== null);
+      const resolved = rows.filter((row): row is readonly [string, TrailGuideHeroPhoto] => row !== null);
       if (resolved.length > 0) setPhotoById((current) => ({ ...current, ...Object.fromEntries(resolved) }));
     }).finally(() => { if (active) setPhotoPoolBusy(false); });
     return () => { active = false; };
