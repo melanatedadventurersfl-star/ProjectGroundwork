@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth/AuthProvider';
 import { markTrailheadAction } from '../../src/onboarding/trailheadProgress';
 import { getTrailGuidePlace, trailGuidePlaces, type TrailGuideCityKey, type TrailGuidePlace } from '../../src/trailGuide/catalog';
+import { TrailGuideCommunitySection } from '../../src/trailGuide/TrailGuideCommunitySection';
 import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePlaceDetails } from '../../src/trailGuide/googlePlacePhotos';
 import { useTrailGuidePlacePhoto, type TrailGuidePhoto } from '../../src/trailGuide/placePhotos';
 import { isTrailGuidePlaceSaved, setTrailGuidePlaceSaved } from '../../src/trailGuide/savedPlaces';
@@ -24,6 +25,13 @@ function trailGuideCity(city: TrailGuideCityKey) {
     'west-palm-beach': 'West Palm Beach', naples: 'Naples', 'fort-myers': 'Fort Myers', sarasota: 'Sarasota',
   };
   return cityLabels[city];
+}
+
+function emotionalSummary(place: TrailGuidePlace) {
+  if (place.id === 'huguenot-memorial-park') {
+    return 'Beach camping with electric sites, water access, fishing, boating, and Atlantic beach access.';
+  }
+  return place.summary;
 }
 
 function photoSourceLabel(photo?: TrailGuidePhoto | null) {
@@ -52,7 +60,7 @@ export default function TrailGuidePlaceDetailScreen() {
   const { session } = useAuth();
   const { width } = useWindowDimensions();
   const place = getTrailGuidePlace(id);
-  const fallbackPhoto = useTrailGuidePlacePhoto(place);
+  const destinationPhoto = useTrailGuidePlacePhoto(place);
   const [googleDetails, setGoogleDetails] = useState<GoogleTrailGuidePlaceDetails | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [saved, setSaved] = useState(false);
@@ -76,17 +84,20 @@ export default function TrailGuidePlaceDetailScreen() {
   }, [place, session?.user.id]);
 
   const gallery = useMemo(() => {
-    const googlePhotos = googleDetails?.photos ?? [];
-    if (googlePhotos.length > 0) return googlePhotos;
-    return fallbackPhoto ? [fallbackPhoto] : [];
-  }, [fallbackPhoto, googleDetails]);
+    const photos: TrailGuidePhoto[] = [];
+    if (destinationPhoto) photos.push(destinationPhoto);
+    for (const photo of googleDetails?.photos ?? []) {
+      if (!photos.some((candidate) => candidate.url === photo.url)) photos.push(photo);
+    }
+    return photos;
+  }, [destinationPhoto, googleDetails]);
 
   const nearby = useMemo(() => {
     if (!place) return [];
     return trailGuidePlaces
       .filter((candidate) => candidate.city === place.city && candidate.id !== place.id)
       .sort((a, b) => Number(b.category === place.category) - Number(a.category === place.category))
-      .slice(0, 3);
+      .slice(0, 4);
   }, [place]);
 
   if (!place) {
@@ -97,11 +108,10 @@ export default function TrailGuidePlaceDetailScreen() {
   const currentPhoto = gallery[activePhotoIndex] ?? gallery[0] ?? null;
   const mapsUrl = googleDetails?.mapsUrl ?? currentPhoto?.sourceUrl ?? null;
   const openState = googleDetails?.openNow == null ? null : googleDetails.openNow ? 'Open now' : 'Closed now';
-  const ratingLabel = googleDetails?.rating != null ? `${googleDetails.rating.toFixed(1)}★${googleDetails.userRatingCount ? ` (${googleDetails.userRatingCount.toLocaleString()})` : ''}` : null;
+  const ratingLabel = googleDetails?.rating != null ? `${googleDetails.rating.toFixed(1)} ★${googleDetails.userRatingCount ? ` · ${googleDetails.userRatingCount.toLocaleString()} reviews` : ''}` : null;
 
   const planOuting = () => router.push({ pathname: '/local-events/create', params: { source: 'trail-guide', trailGuidePlaceId: currentPlace.id, title: currentPlace.name, description: `Planning an outing to ${currentPlace.name}. ${currentPlace.summary}`, category: outingCategory(currentPlace.category), venueName: currentPlace.name, state: 'FL', city: trailGuideCity(currentPlace.city) } });
   const openDirections = async () => { const fallback = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${currentPlace.name}, ${currentPlace.area}, Florida`)}`; await Linking.openURL(mapsUrl || fallback); };
-  const openWebsite = async () => { if (googleDetails?.websiteUrl) await Linking.openURL(googleDetails.websiteUrl); };
   const sharePlace = async () => { await Share.share({ message: `${currentPlace.name} · ${currentPlace.area}\n${mapsUrl || ''}`.trim(), title: currentPlace.name }); };
   const toggleSaved = () => {
     const userId = session?.user.id;
@@ -121,46 +131,35 @@ export default function TrailGuidePlaceDetailScreen() {
         <View style={styles.hero}>
           {gallery.length > 0 ? (
             <ScrollView horizontal pagingEnabled bounces={false} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(event) => setActivePhotoIndex(Math.round(event.nativeEvent.contentOffset.x / width))}>
-              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 320 }} resizeMode="cover" />)}
+              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 220 }} resizeMode="cover" />)}
             </ScrollView>
           ) : (
-            <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Loading destination photos…</Text></View>
+            <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Loading destination photo…</Text></View>
           )}
-
-          <Pressable hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.back, pressed && styles.pressed]}><AppIcon name="chevron-forward" color="#FFFDF6" size={22} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.backLabel}>Trail Guide</Text></Pressable>
-          {gallery.length > 1 ? <View style={styles.photoCounter}><Text style={styles.photoCounterText}>{activePhotoIndex + 1} / {gallery.length}</Text></View> : null}
-
-          <View pointerEvents="none" style={styles.heroCopy}>
-            <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
-            <Text numberOfLines={2} style={styles.title}>{currentPlace.name}</Text>
-            <View style={styles.heroMetaRow}>
-              <Text style={styles.area}>{currentPlace.area}</Text>
-              {openState ? <View style={[styles.openPill, openState === 'Open now' && styles.openPillActive]}><Text style={[styles.openPillText, openState === 'Open now' && styles.openPillTextActive]}>{openState}</Text></View> : null}
-            </View>
-            <View style={styles.heroDecisionRow}>
-              {ratingLabel ? <Text style={styles.heroDecisionText}>{ratingLabel}</Text> : null}
-              <Text style={styles.heroDecisionText}>{currentPlace.category}</Text>
-              <Text style={styles.heroDecisionText}>Trail Guide pick</Text>
-            </View>
-            {gallery.length > 1 ? <View style={styles.photoDots}>{gallery.slice(0, 8).map((_, index) => <View key={index} style={[styles.photoDot, index === activePhotoIndex && styles.photoDotActive]} />)}</View> : null}
-          </View>
+          <View pointerEvents="none" style={styles.heroShade} />
+          <Pressable hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.roundHeroButton, styles.backHeroButton, pressed && styles.pressed]}><AppIcon name="chevron-forward" color="#FFFDF6" size={22} style={{ transform: [{ rotate: '180deg' }] }} /></Pressable>
+          <Pressable hitSlop={10} onPress={() => void sharePlace()} style={({ pressed }) => [styles.roundHeroButton, styles.shareHeroButton, pressed && styles.pressed]}><AppIcon name="share" color="#FFFDF6" size={18} /></Pressable>
+          {gallery.length > 1 ? <View style={styles.photoCounter}><Text style={styles.photoCounterText}>{activePhotoIndex + 1}/{gallery.length}</Text></View> : null}
         </View>
 
         <View style={styles.body}>
           {currentPhoto ? <Text style={styles.photoCredit} numberOfLines={1}>{photoSourceLabel(currentPhoto) ? `${photoSourceLabel(currentPhoto)} · ` : ''}{currentPhoto.credit ?? 'Destination photo'}</Text> : null}
 
-          <View style={styles.actionBar}>
-            <Pressable onPress={() => void openDirections()} style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}><AppIcon name="location" color="#181D18" size={18} /><Text style={styles.primaryActionText}>Directions</Text></Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={saved ? `Remove ${currentPlace.name} from saved places` : `Save ${currentPlace.name}`} accessibilityState={{ selected: saved }} onPress={toggleSaved} style={({ pressed }) => [styles.iconAction, saved && styles.iconActionSaved, pressed && styles.pressed]}><AppIcon name="bookmark" color={saved ? '#17211C' : '#E6C463'} size={18} /><Text style={[styles.iconActionText, saved && styles.iconActionTextSaved]}>{saved ? 'Saved' : 'Save'}</Text></Pressable>
-            {googleDetails?.websiteUrl ? <Pressable onPress={() => void openWebsite()} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}><AppIcon name="connections" color="#E6C463" size={18} /><Text style={styles.iconActionText}>Website</Text></Pressable> : null}
-            <Pressable onPress={() => void sharePlace()} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}><AppIcon name="share" color="#E6C463" size={18} /><Text style={styles.iconActionText}>Share</Text></Pressable>
+          <View style={styles.identityRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
+              <Text style={styles.title}>{currentPlace.name}</Text>
+              <View style={styles.metaLine}>
+                <Text style={styles.area}>{currentPlace.area}</Text>
+                {ratingLabel ? <Text style={styles.rating}>{ratingLabel}</Text> : null}
+              </View>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel={saved ? `Remove ${currentPlace.name} from saved places` : `Save ${currentPlace.name}`} accessibilityState={{ selected: saved }} onPress={toggleSaved} style={({ pressed }) => [styles.saveCircle, saved && styles.saveCircleActive, pressed && styles.pressed]}><AppIcon name="bookmark" color={saved ? '#17211C' : '#E6C463'} size={19} /></Pressable>
           </View>
 
-          <View style={styles.whyBlock}>
-            <Text style={styles.sectionEyebrow}>WHY GO</Text>
-            <Text numberOfLines={3} style={styles.summary}>{currentPlace.summary}</Text>
-            <View style={styles.tags}>{currentPlace.tags.slice(0, 5).map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
-          </View>
+          {openState ? <Text style={[styles.openState, openState === 'Open now' && styles.openStateActive]}>{openState}</Text> : null}
+          <Text numberOfLines={2} style={styles.summary}>{emotionalSummary(currentPlace)}</Text>
+          <View style={styles.tags}>{currentPlace.tags.slice(0, 4).map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
 
           <TrailGuidePlacePracticalDetails
             placeId={currentPlace.id}
@@ -170,9 +169,20 @@ export default function TrailGuidePlaceDetailScreen() {
             weekdayDescription={googleDetails?.weekdayDescriptions?.[0]}
           />
 
-          <Pressable onPress={planOuting} style={({ pressed }) => [styles.planButton, pressed && styles.pressed]}><AppIcon name="calendar" color="#17211C" size={20} /><Text style={styles.planButtonText}>Plan an outing here</Text><AppIcon name="chevron-forward" color="#17211C" size={18} /></Pressable>
+          <View style={styles.actionsRow}>
+            <Pressable onPress={planOuting} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}><AppIcon name="calendar" color="#D7B45A" size={17} /><Text style={styles.actionText}>Plan outing</Text></Pressable>
+            <Pressable onPress={() => void openDirections()} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}><AppIcon name="location" color="#D7B45A" size={17} /><Text style={styles.actionText}>Directions</Text></Pressable>
+            <Pressable onPress={toggleSaved} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}><AppIcon name="bookmark" color="#D7B45A" size={17} /><Text style={styles.actionText}>{saved ? 'Saved' : 'Save'}</Text></Pressable>
+          </View>
 
-          {nearby.length > 0 ? <View style={styles.nearbySection}><View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>Keep exploring nearby</Text><Text style={styles.sectionHint}>More in {trailGuideCity(currentPlace.city)}</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nearbyRow}>{nearby.map((candidate) => <NearbyCard key={candidate.id} place={candidate} />)}</ScrollView></View> : null}
+          <TrailGuideCommunitySection placeId={currentPlace.id} />
+
+          {nearby.length > 0 ? (
+            <View style={styles.nearbySection}>
+              <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Nearby destinations</Text><Text style={styles.sectionHint}>Make a weekend of it</Text></View><Text style={styles.cityHint}>{trailGuideCity(currentPlace.city)}</Text></View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nearbyRow}>{nearby.map((candidate) => <NearbyCard key={candidate.id} place={candidate} />)}</ScrollView>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -181,54 +191,45 @@ export default function TrailGuidePlaceDetailScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' },
-  hero: { height: 320, justifyContent: 'flex-end', backgroundColor: '#111914', overflow: 'hidden' },
-  back: { position: 'absolute', top: 14, left: 15, minHeight: 40, paddingHorizontal: 11, borderRadius: 22, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(8,14,10,0.66)', zIndex: 4 },
-  backLabel: { color: '#FFFDF6', fontWeight: '800', fontSize: 12 },
-  photoCounter: { position: 'absolute', top: 16, right: 16, borderRadius: 999, backgroundColor: 'rgba(8,14,10,0.66)', paddingHorizontal: 9, paddingVertical: 5, zIndex: 4 },
-  photoCounterText: { color: '#FFFDF6', fontSize: 10, fontWeight: '900' },
-  heroCopy: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingBottom: 14, paddingTop: 54, backgroundColor: 'rgba(5,10,7,0.18)' },
-  type: { color: '#E0BE62', fontSize: 9, fontWeight: '900', letterSpacing: 1.05, textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
-  title: { color: '#FFF9E9', fontSize: 28, lineHeight: 32, fontWeight: '900', marginTop: 4, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 7, textShadowOffset: { width: 0, height: 2 } },
-  heroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  area: { color: '#F0F4F1', fontSize: 12, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 5 },
-  openPill: { borderRadius: 999, borderWidth: 1, borderColor: '#6A4A3D', backgroundColor: 'rgba(37,20,16,0.72)', paddingHorizontal: 8, paddingVertical: 3 },
-  openPillActive: { borderColor: '#2E7A38', backgroundColor: 'rgba(12,53,20,0.75)' },
-  openPillText: { color: '#D9B6AB', fontSize: 9, fontWeight: '900' },
-  openPillTextActive: { color: '#91E282' },
-  heroDecisionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
-  heroDecisionText: { color: '#F5F7F5', fontSize: 9, fontWeight: '800', backgroundColor: 'rgba(8,14,10,0.64)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-  photoDots: { flexDirection: 'row', gap: 5, marginTop: 8 },
-  photoDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.46)' },
-  photoDotActive: { width: 16, backgroundColor: '#E4C363' },
-  body: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 54 },
-  photoCredit: { color: '#707C75', fontSize: 8, lineHeight: 12, marginBottom: 9 },
-  actionBar: { flexDirection: 'row', gap: 8 },
-  primaryAction: { flex: 1.35, minHeight: 46, borderRadius: 13, backgroundColor: '#E1BE61', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  primaryActionText: { color: '#181D18', fontSize: 11, fontWeight: '900' },
-  iconAction: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#364039', backgroundColor: '#141B17', alignItems: 'center', justifyContent: 'center', gap: 3 },
-  iconActionSaved: { borderColor: '#D7B45A', backgroundColor: '#D7B45A' },
-  iconActionText: { color: '#E7EDE9', fontSize: 8, fontWeight: '900' },
-  iconActionTextSaved: { color: '#17211C' },
-  whyBlock: { marginTop: 20 },
-  sectionEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, marginBottom: 6 },
-  summary: { color: '#D5DDD7', fontSize: 15, lineHeight: 22 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 11 },
-  tag: { borderRadius: 999, borderWidth: 1, borderColor: '#354139', backgroundColor: '#151B17', paddingHorizontal: 9, paddingVertical: 5 },
-  tagText: { color: '#C3CCC6', fontSize: 9, fontWeight: '800' },
-  planButton: { minHeight: 50, borderRadius: 14, backgroundColor: '#E0BE62', marginTop: 22, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  planButtonText: { flex: 1, color: '#17211C', fontSize: 13, fontWeight: '900' },
-  nearbySection: { marginTop: 24 },
-  sectionHeaderRow: { marginBottom: 9 },
-  sectionTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
+  hero: { height: 220, backgroundColor: '#111914', overflow: 'hidden' },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,8,5,0.09)' },
+  roundHeroButton: { position: 'absolute', top: 14, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(7,12,9,0.72)', alignItems: 'center', justifyContent: 'center', zIndex: 4 },
+  backHeroButton: { left: 14 },
+  shareHeroButton: { right: 14 },
+  photoCounter: { position: 'absolute', right: 14, bottom: 12, borderRadius: 999, backgroundColor: 'rgba(7,12,9,0.72)', paddingHorizontal: 9, paddingVertical: 5 },
+  photoCounterText: { color: '#FFFDF6', fontSize: 9, fontWeight: '900' },
+  body: { paddingHorizontal: 15, paddingBottom: 36 },
+  photoCredit: { color: '#617068', fontSize: 8, marginTop: 5, marginBottom: 6 },
+  identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  type: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
+  title: { color: '#FFF8E8', fontSize: 26, lineHeight: 30, fontWeight: '900', marginTop: 4 },
+  metaLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 5 },
+  area: { color: '#B7C1BB', fontSize: 11, fontWeight: '800' },
+  rating: { color: '#DCC163', fontSize: 10, fontWeight: '900' },
+  saveCircle: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#5F5129', backgroundColor: '#121A15', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  saveCircleActive: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
+  openState: { alignSelf: 'flex-start', color: '#D2A49A', backgroundColor: '#241915', borderWidth: 1, borderColor: '#5D3C33', borderRadius: 999, fontSize: 8.5, fontWeight: '900', paddingHorizontal: 8, paddingVertical: 4, marginTop: 8 },
+  openStateActive: { color: '#8ED380', backgroundColor: '#132516', borderColor: '#31583A' },
+  summary: { color: '#C5CEC8', fontSize: 12.5, lineHeight: 18, marginTop: 9 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 9 },
+  tag: { borderRadius: 999, borderWidth: 1, borderColor: '#35463C', backgroundColor: '#121B16', paddingHorizontal: 9, paddingVertical: 6 },
+  tagText: { color: '#B8C4BD', fontSize: 9, fontWeight: '800' },
+  actionsRow: { flexDirection: 'row', gap: 7, marginTop: 10 },
+  actionButton: { flex: 1, minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#2D3B33', backgroundColor: '#111A15', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  actionText: { color: '#E2E7E4', fontSize: 9.5, fontWeight: '900' },
+  nearbySection: { marginTop: 15 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 9 },
+  sectionTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900' },
   sectionHint: { color: '#78847D', fontSize: 9, marginTop: 2 },
+  cityHint: { color: '#D7B45A', fontSize: 9, fontWeight: '800' },
   nearbyRow: { gap: 9, paddingRight: 8 },
-  nearbyCard: { width: 168, height: 126, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#111914' },
+  nearbyCard: { width: 160, height: 118, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#111914' },
   nearbyImage: { ...StyleSheet.absoluteFillObject },
   nearbyImageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#151D18' },
-  nearbyShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,6,0.28)' },
-  nearbyCopy: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 10, backgroundColor: 'rgba(5,10,7,0.58)' },
-  nearbyName: { color: '#FFF8E8', fontSize: 13, lineHeight: 16, fontWeight: '900' },
-  nearbyMeta: { color: '#AFC7B6', fontSize: 8, marginTop: 4, fontWeight: '800' },
+  nearbyShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,6,0.25)' },
+  nearbyCopy: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 9, backgroundColor: 'rgba(5,10,7,0.64)' },
+  nearbyName: { color: '#FFF8E8', fontSize: 12, lineHeight: 15, fontWeight: '900' },
+  nearbyMeta: { color: '#AFC7B6', fontSize: 8, marginTop: 3, fontWeight: '800' },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 8 },
   photoLoading: { color: '#7E8982', fontSize: 11, fontWeight: '700' },
   missing: { flex: 1, padding: 24, justifyContent: 'center', alignItems: 'center' },
