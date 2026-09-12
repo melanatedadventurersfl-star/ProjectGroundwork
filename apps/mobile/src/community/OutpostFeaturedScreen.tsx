@@ -261,6 +261,18 @@ export default function OutpostFeaturedScreen() {
     .slice(0, 8), [groups, homeCity, homeState]);
   const pendingTrailmates = useMemo(() => connections.filter((row) => row.status === 'pending' && row.direction === 'incoming'), [connections]);
   const trailmatePreview = trailmates.slice(0, 5);
+  const activeTrailmateCount = useMemo(() => {
+    const cutoff = loadedAt - 24 * 60 * 60 * 1000;
+    return new Set(feed.filter((post) => trailmateIds.has(post.author_id) && new Date(post.created_at).getTime() >= cutoff).map((post) => post.author_id)).size;
+  }, [feed, trailmateIds, loadedAt]);
+  const crewStatus = useMemo(() => {
+    const parts: string[] = [];
+    if (activeTrailmateCount) parts.push(`${activeTrailmateCount} active today`);
+    if (pendingTrailmates.length) parts.push(`${pendingTrailmates.length} request${pendingTrailmates.length === 1 ? '' : 's'} waiting`);
+    if (parts.length) return parts.join(' · ');
+    if (trailmates.length) return `${trailmates.length} in your crew`;
+    return 'Meet people through your Outpost';
+  }, [activeTrailmateCount, pendingTrailmates.length, trailmates.length]);
   const locationLabel = [homeCity, homeState].filter(Boolean).join(', ') || 'Your area';
   const outpostBackground = useMemo(() => locationBackground(homeCity, homeState), [homeCity, homeState]);
   const localConversationCount = feed.length;
@@ -293,7 +305,7 @@ export default function OutpostFeaturedScreen() {
 
       <View style={styles.sectionIntro}>
         <Text style={styles.sectionEyebrow}>{campfireLabel}</Text>
-        <Text style={styles.sectionLead}>Swipe through what people are sharing around your Outpost.</Text>
+        <Text style={styles.sectionLead}>What your Outpost is sharing right now.</Text>
       </View>
 
       <FeaturedCampfireCarousel
@@ -307,16 +319,15 @@ export default function OutpostFeaturedScreen() {
         onExploreCommunities={() => setActiveTab('communities')}
       />
 
-      <Pressable style={({ pressed }) => [styles.trailCrewCard, pressed && styles.pressed]} onPress={() => router.push('/connections' as never)}>
-        <View style={styles.trailCrewAccent} />
+      <Pressable style={({ pressed }) => [styles.trailCrewStrip, pressed && styles.pressed]} onPress={() => router.push('/connections' as never)}>
         <View style={styles.trailCrewTopRow}>
-          <View>
-            <Text style={styles.trailCrewEyebrow}>YOUR TRAIL CREW</Text>
+          <View style={styles.trailCrewIdentity}>
+            <Text style={styles.trailCrewEyebrow}>YOUR CREW</Text>
             <Text style={styles.trailCrewTitle}>{trailmates.length} Trailmate{trailmates.length === 1 ? '' : 's'}</Text>
           </View>
-          <View style={styles.trailCrewOpen}><Text style={styles.trailCrewOpenText}>View crew</Text><Ionicons name="chevron-forward" size={16} color={GOLD} /></View>
+          <View style={styles.trailCrewOpen}><Text style={styles.trailCrewOpenText}>View all</Text><Ionicons name="chevron-forward" size={14} color={GOLD} /></View>
         </View>
-        <View style={styles.trailCrewBottomRow}>
+        <View style={styles.trailCrewPeopleRow}>
           <View style={styles.trailCrewAvatars}>
             {trailmatePreview.map((row, index) => (
               <View key={row.connection_id} style={[styles.trailCrewAvatar, index > 0 && styles.trailCrewAvatarOverlap]}>
@@ -324,9 +335,9 @@ export default function OutpostFeaturedScreen() {
               </View>
             ))}
             {trailmates.length > trailmatePreview.length ? <View style={[styles.trailCrewAvatar, styles.trailCrewAvatarOverlap, styles.trailCrewMore]}><Text style={styles.trailCrewMoreText}>+{trailmates.length - trailmatePreview.length}</Text></View> : null}
-            {!trailmates.length ? <View style={styles.trailCrewEmptyIcon}><Ionicons name="people-outline" size={18} color={GOLD} /></View> : null}
+            {!trailmates.length ? <View style={styles.trailCrewEmptyIcon}><Ionicons name="people-outline" size={15} color={GOLD} /></View> : null}
           </View>
-          <Text style={styles.trailCrewMeta}>{pendingTrailmates.length ? `${pendingTrailmates.length} request${pendingTrailmates.length === 1 ? '' : 's'} waiting` : trailmates.length ? 'Your people across Go Melanated' : 'Start connecting with people you meet'}</Text>
+          <Text style={styles.trailCrewMeta} numberOfLines={1}>{crewStatus}</Text>
         </View>
       </Pressable>
 
@@ -441,28 +452,28 @@ const styles = StyleSheet.create({
   filterChipSelected: { backgroundColor: '#253229' },
   filterText: { color: MUTED, fontSize: 11.5, fontWeight: '800' },
   filterTextSelected: { color: TEXT },
-  sectionIntro: { marginTop: 12, marginBottom: 12 },
-  sectionEyebrow: { color: GOLD, fontSize: 10.5, fontWeight: '900', letterSpacing: 1.15 },
-  sectionLead: { color: TEXT, fontSize: 21, lineHeight: 28, fontWeight: '900', marginTop: 5, maxWidth: 540, letterSpacing: -0.2 },
-  trailCrewCard: { minHeight: 98, marginTop: 18, marginBottom: 2, borderRadius: 19, backgroundColor: '#151F1A', paddingHorizontal: 15, paddingVertical: 13, gap: 10, overflow: 'hidden' },
-  trailCrewAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: GOLD },
-  trailCrewTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  trailCrewEyebrow: { color: GREEN, fontSize: 9.5, fontWeight: '900', letterSpacing: 0.9 },
-  trailCrewTitle: { color: TEXT, fontSize: 17, lineHeight: 21, fontWeight: '900', marginTop: 2 },
-  trailCrewOpen: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  trailCrewOpenText: { color: GOLD, fontSize: 11, fontWeight: '900' },
-  trailCrewBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  sectionIntro: { marginTop: 10, marginBottom: 10 },
+  sectionEyebrow: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.05 },
+  sectionLead: { color: TEXT, fontSize: 19, lineHeight: 24, fontWeight: '900', marginTop: 4, maxWidth: 520, letterSpacing: -0.2 },
+  trailCrewStrip: { minHeight: 80, marginTop: 13, marginBottom: 0, borderRadius: 16, backgroundColor: '#141E19', paddingHorizontal: 12, paddingVertical: 10, gap: 7 },
+  trailCrewTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  trailCrewIdentity: { flexShrink: 1 },
+  trailCrewEyebrow: { color: GREEN, fontSize: 8.5, fontWeight: '900', letterSpacing: 0.8 },
+  trailCrewTitle: { color: TEXT, fontSize: 15.5, lineHeight: 19, fontWeight: '900', marginTop: 1 },
+  trailCrewOpen: { flexDirection: 'row', alignItems: 'center', gap: 1 },
+  trailCrewOpenText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
+  trailCrewPeopleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   trailCrewAvatars: { flexDirection: 'row', alignItems: 'center', paddingLeft: 1 },
-  trailCrewAvatar: { width: 39, height: 39, borderRadius: 20, borderWidth: 2, borderColor: '#151F1A', backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  trailCrewAvatarOverlap: { marginLeft: -9 },
+  trailCrewAvatar: { width: 32, height: 32, borderRadius: 16, borderWidth: 1.5, borderColor: '#141E19', backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  trailCrewAvatarOverlap: { marginLeft: -7 },
   trailCrewAvatarImage: { width: '100%', height: '100%' },
-  trailCrewAvatarText: { color: GOLD, fontSize: 10, fontWeight: '900' },
+  trailCrewAvatarText: { color: GOLD, fontSize: 8.5, fontWeight: '900' },
   trailCrewMore: { backgroundColor: '#223128' },
-  trailCrewMoreText: { color: TEXT, fontSize: 9, fontWeight: '900' },
-  trailCrewEmptyIcon: { width: 39, height: 39, borderRadius: 20, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center' },
-  trailCrewMeta: { flex: 1, color: MUTED, fontSize: 11.5, lineHeight: 16 },
-  sectionHeader: { marginTop: 28, marginBottom: 11 },
-  sectionHeaderRow: { marginTop: 30, marginBottom: 11, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  trailCrewMoreText: { color: TEXT, fontSize: 8, fontWeight: '900' },
+  trailCrewEmptyIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center' },
+  trailCrewMeta: { flex: 1, color: MUTED, fontSize: 10.5, lineHeight: 14, fontWeight: '700' },
+  sectionHeader: { marginTop: 25, marginBottom: 11 },
+  sectionHeaderRow: { marginTop: 28, marginBottom: 11, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   sectionTitle: { color: TEXT, fontSize: 25, lineHeight: 30, fontWeight: '900', letterSpacing: -0.55 },
   sectionSubtitle: { color: MUTED, fontSize: 13, lineHeight: 18, marginTop: 2 },
   seeAll: { color: GOLD, fontSize: 12, fontWeight: '900', paddingBottom: 2 },
