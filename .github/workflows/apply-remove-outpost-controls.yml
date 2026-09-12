@@ -1,0 +1,63 @@
+name: Apply Outpost cleanup
+
+on:
+  push:
+    branches:
+      - fix/remove-outpost-pulse-filters
+    paths:
+      - .github/workflows/apply-remove-outpost-controls.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/remove-outpost-pulse-filters
+      - name: Remove pulse row and feed filters
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/mobile/src/community/OutpostFeaturedScreen.tsx')
+          text = path.read_text()
+
+          replacements = [
+              ("import { selectFeaturedPosts, selectSecondaryFeed, type OutpostFeedFilter } from './featuredPosts';", "import { selectFeaturedPosts, selectSecondaryFeed } from './featuredPosts';"),
+              ("\nconst filters: { value: OutpostFeedFilter; label: string }[] = [\n  { value: 'for-you', label: 'For You' },\n  { value: 'latest', label: 'Latest' },\n  { value: 'nearby', label: 'Nearby' },\n];\n", "\n"),
+              ("  const [filter, setFilter] = useState<OutpostFeedFilter>('for-you');\n", ""),
+              ("  useEffect(() => { setFeaturedIndex(0); }, [filter]);\n", ""),
+              ("  const featuredPosts = useMemo(() => selectFeaturedPosts(feed, filter, rankingContext, 8), [feed, filter, rankingContext]);", "  const featuredPosts = useMemo(() => selectFeaturedPosts(feed, 'for-you', rankingContext, 8), [feed, rankingContext]);"),
+              ("  const displayedPosts = useMemo(() => selectSecondaryFeed(feed, featuredPosts, filter, rankingContext, 6), [feed, featuredPosts, filter, rankingContext]);", "  const displayedPosts = useMemo(() => selectSecondaryFeed(feed, featuredPosts, 'for-you', rankingContext, 6), [feed, featuredPosts, rankingContext]);"),
+              ("  const localConversationCount = feed.length;\n  const localCommunityCount = homeCity ? nearbyGroups.length : groups.length;\n  const localOutingCount = homeCity ? localComingUp.length : comingUp.length;\n", ""),
+              ("      <View style={styles.filterRow}>{filters.map((item) => <Pressable key={item.value} style={[styles.filterChip, filter === item.value && styles.filterChipSelected]} onPress={() => setFilter(item.value)}><Text style={[styles.filterText, filter === item.value && styles.filterTextSelected]}>{item.label}</Text></Pressable>)}</View>\n\n", ""),
+              ("      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>{filter === 'nearby' ? `More conversation around ${homeCity || 'your Outpost'}.` : 'More conversation from across your Outpost.'}</Text></View>", "      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>More conversation from across your Outpost.</Text></View>"),
+              ("      {displayedPosts.length ? displayedPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} now={loadedAt} />) : <View style={styles.emptyState}><Ionicons name=\"bonfire-outline\" size={25} color={GREEN} /><Text style={styles.emptyTitle}>{filter === 'nearby' ? 'Nothing nearby yet.' : 'The fire’s quiet for a minute.'}</Text><Text style={styles.emptyCopy}>{filter === 'nearby' ? 'Try For You or Latest while your local Outpost gets moving.' : 'New conversations from your communities will land here.'}</Text></View>}", "      {displayedPosts.length ? displayedPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} now={loadedAt} />) : <View style={styles.emptyState}><Ionicons name=\"bonfire-outline\" size={25} color={GREEN} /><Text style={styles.emptyTitle}>The fire’s quiet for a minute.</Text><Text style={styles.emptyCopy}>New conversations from your communities will land here.</Text></View>}"),
+              ("\n        <View style={styles.localPulse}>\n          <View style={styles.localPulseDot} />\n          <Text style={styles.localPulseText} numberOfLines={2}>{`${localConversationCount} conversation${localConversationCount === 1 ? '' : 's'} · ${localCommunityCount} communit${localCommunityCount === 1 ? 'y' : 'ies'} · ${localOutingCount} outing${localOutingCount === 1 ? '' : 's'} ahead`}</Text>\n        </View>\n", "\n"),
+              ("  localPulse: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, marginBottom: 4 },\n  localPulseDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: GREEN },\n  localPulseText: { flex: 1, color: MUTED, fontSize: 11.5, lineHeight: 16, fontWeight: '700' },\n  filterRow: { flexDirection: 'row', gap: 7, paddingVertical: 8 },\n  filterChip: { borderRadius: 999, backgroundColor: '#121C17', paddingHorizontal: 13, paddingVertical: 7 },\n  filterChipSelected: { backgroundColor: '#253229' },\n  filterText: { color: MUTED, fontSize: 11.5, fontWeight: '800' },\n  filterTextSelected: { color: TEXT },\n", ""),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile/src/community/OutpostFeaturedScreen.tsx
+          git commit -m "Remove Outpost pulse and feed filters"
+          git push origin HEAD:fix/remove-outpost-pulse-filters
