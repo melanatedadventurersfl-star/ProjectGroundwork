@@ -25,6 +25,7 @@ const PANEL = '#16201B';
 const CARD_HEIGHT = 258;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
+type VisibleCard = { post: CommunityPost; index: number; offset: number };
 
 type CardProps = {
   post: CommunityPost;
@@ -232,13 +233,16 @@ export function FeaturedCampfireCarousel({
     return map;
   }, [events, posts]);
 
-  const visible = useMemo(() => {
+  const visible = useMemo<VisibleCard[]>(() => {
     if (!posts.length) return [];
     const count = Math.min(3, posts.length);
-    return Array.from({ length: count }, (_, offset) => {
+    const cards: VisibleCard[] = [];
+    for (let offset = 0; offset < count; offset += 1) {
       const index = (currentIndex + offset) % posts.length;
-      return { post: posts[index], index, offset };
-    });
+      const post = posts[index];
+      if (post) cards.push({ post, index, offset });
+    }
+    return cards;
   }, [currentIndex, posts]);
 
   useEffect(() => {
@@ -317,6 +321,7 @@ export function FeaturedCampfireCarousel({
     setHistory((current) => {
       if (!current.length) return current;
       const previous = current[current.length - 1];
+      if (previous === undefined) return current;
       onIndexChange(previous);
       position.setValue({ x: 0, y: 0 });
       return current.slice(0, -1);
