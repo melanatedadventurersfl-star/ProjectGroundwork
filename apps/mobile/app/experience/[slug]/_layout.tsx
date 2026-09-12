@@ -52,36 +52,37 @@ function TenantShell({ slug }: { slug: string }) {
   const text = textValue(experience.branding.text, '#FFF8E8');
   const logoUrl = textValue(experience.branding.logo_url, '');
 
-  const navItems: TenantNavItem[] = [
+  const allNavItems: TenantNavItem[] = [
     {
       code: 'home',
       label: experienceLabel(experience, 'home', 'Home'),
       icon: 'trailhead',
       route: `/experience/${slug}`,
-      matches: (path) => path === `/experience/${slug}` || path === `/experience/${slug}/`,
+      matches: (path: string) => path === `/experience/${slug}` || path === `/experience/${slug}/`,
     },
     {
       code: 'events',
       label: experienceLabel(experience, 'events', 'Events'),
       icon: 'calendar',
       route: `/experience/${slug}/events`,
-      matches: (path) => path.startsWith(`/experience/${slug}/events`),
+      matches: (path: string) => path.startsWith(`/experience/${slug}/events`),
     },
     {
       code: 'profiles',
       label: experienceLabel(experience, 'member', 'Profile'),
       icon: 'profile',
       route: `/experience/${slug}/profile`,
-      matches: (path) => path.startsWith(`/experience/${slug}/profile`),
+      matches: (path: string) => path.startsWith(`/experience/${slug}/profile`),
     },
     {
       code: 'menu',
       label: 'Menu',
       icon: 'menu',
       route: `/experience/${slug}/menu`,
-      matches: (path) => path.startsWith(`/experience/${slug}/menu`),
+      matches: (path: string) => path.startsWith(`/experience/${slug}/menu`),
     },
-  ].filter((item) => experienceModuleEnabled(modules, item.code, false));
+  ];
+  const navItems = allNavItems.filter((item) => experienceModuleEnabled(modules, item.code, false));
 
   return <View style={[styles.shell, { backgroundColor: primary }]}>
     <View style={[styles.header, { borderBottomColor: `${accent}35`, backgroundColor: primary, paddingTop: Math.max(insets.top, 10) }]}>
