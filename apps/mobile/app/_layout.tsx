@@ -18,6 +18,7 @@ import {
   markGuidedTutorialFinished,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
+import { listMyOrganizations } from '../src/platform/organizations';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
 import { BackgroundUpdateManager } from '../src/updates/BackgroundUpdateManager';
 import { getActiveUpdateIdentity } from '../src/updates/otaActivation';
@@ -55,6 +56,8 @@ function isGuestPublicPath(pathname: string) {
   );
 }
 
+type MemberSurfaceGate = 'idle' | 'checking' | 'allowed' | 'redirecting';
+
 function AppShell() {
   const { session, isLoading } = useAuth();
   const pathname = usePathname();
@@ -64,6 +67,7 @@ function AppShell() {
   const [tutorialGateReady, setTutorialGateReady] = useState(false);
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [memberSurfaceGate, setMemberSurfaceGate] = useState<MemberSurfaceGate>('idle');
   const tutorialCheckedRef = useRef(false);
   const tutorialUserRef = useRef<string | null>(null);
   const whatsNewCheckedRef = useRef(false);
@@ -79,6 +83,8 @@ function AppShell() {
   const isVendorCenter = pathname === '/vendor' || pathname.startsWith('/vendor/');
   const isOperationsCenter = isHostCenter || isVendorCenter;
   const isOverwatch = pathname === '/overwatch' || pathname.startsWith('/overwatch/');
+  const isAdminSurface = pathname.startsWith('/admin') || pathname.startsWith('/founder-tools');
+  const isLegacyOrganizationPreview = pathname.startsWith('/organization-member-profile') || pathname.startsWith('/organization-business-preview') || pathname.startsWith('/organization-profile');
   const isProtectedWorkspace = isOperationsCenter || isOverwatch || isTenantExperience;
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
@@ -94,9 +100,11 @@ function AppShell() {
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
-  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const isGoMemberSurface = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !isManagement && !isAdminSurface && !isLegacyOrganizationPreview;
+  const memberGateLocked = isGoMemberSurface && memberSurfaceGate !== 'allowed';
+  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && (!tutorialGateReady || memberGateLocked);
+  const hideBottomNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -134,6 +142,45 @@ function AppShell() {
   }, [isHostCenter, isLoading, isVendorCenter, pathname, session, tenantExperienceSlug]);
 
   useEffect(() => {
+    if (isLoading || !session?.user.id || !isGoMemberSurface) {
+      setMemberSurfaceGate('idle');
+      return;
+    }
+
+    let active = true;
+    setMemberSurfaceGate('checking');
+    void listMyOrganizations()
+      .then((organizations) => {
+        if (!active) return;
+        const hasGoMembership = organizations.some((organization) => organization.isPlatformDefault && organization.status === 'active');
+        if (hasGoMembership) {
+          setMemberSurfaceGate('allowed');
+          return;
+        }
+
+        const tenantOrganization = organizations.find((organization) => !organization.isPlatformDefault && organization.status === 'active') ?? null;
+        if (tenantOrganization) {
+          setMemberSurfaceGate('redirecting');
+          router.replace(`/experience/${tenantOrganization.slug}` as never);
+          return;
+        }
+
+        setMemberSurfaceGate('redirecting');
+        router.replace('/account-status' as never);
+      })
+      .catch((error) => {
+        console.warn('[tenant-separation] Unable to verify Go Melanated membership', error);
+        if (!active) return;
+        setMemberSurfaceGate('redirecting');
+        router.replace('/account-status' as never);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isGoMemberSurface, isLoading, pathname, session?.user.id]);
+
+  useEffect(() => {
     if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
 
     let active = true;
@@ -161,7 +208,7 @@ function AppShell() {
   }, [session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session || isAuthScreen || isProtectedWorkspace || tutorialCheckedRef.current) return;
+    if (isLoading || !session || isAuthScreen || isProtectedWorkspace || memberGateLocked || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
       const finished = hasFinishedGuidedTutorial();
@@ -183,10 +230,10 @@ function AppShell() {
       setTutorialGateReady(true);
       setTutorialVisible(false);
     }
-  }, [isAuthScreen, isLoading, isProtectedWorkspace, releaseSeenKey, session]);
+  }, [isAuthScreen, isLoading, isProtectedWorkspace, memberGateLocked, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || isProtectedWorkspace || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || isProtectedWorkspace || memberGateLocked || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -194,7 +241,7 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, isProtectedWorkspace, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
+  }, [isAuthScreen, isLoading, isProtectedWorkspace, memberGateLocked, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
     if (pathname.startsWith('/experience/')) return;
@@ -225,7 +272,7 @@ function AppShell() {
     setWhatsNewVisible(false);
   }
 
-  if (isLoading) return <StartupLoadingView message="Restoring your session…" />;
+  if (isLoading || memberGateLocked) return <StartupLoadingView message={memberGateLocked ? 'Opening your organization app…' : 'Restoring your session…'} />;
 
   return (
     <View style={styles.appShell} testID="app-shell">
@@ -248,7 +295,7 @@ function AppShell() {
         </KeyboardAvoidingView>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {session && !tutorialVisible && !isAuthScreen && !isProtectedWorkspace ? <TrailheadTooltip /> : null}
+      {session && !tutorialVisible && !isAuthScreen && !isProtectedWorkspace && !memberGateLocked ? <TrailheadTooltip /> : null}
       {tutorialVisible && !isTenantExperience ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
       {whatsNewVisible && !isTenantExperience ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
