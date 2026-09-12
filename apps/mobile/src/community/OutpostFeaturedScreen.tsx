@@ -23,7 +23,7 @@ import { getCommunityFeed, getGroups, joinGroup, type CommunityGroup, type Commu
 import { getConnections, type Connection } from './circles';
 import { FeaturedCampfireCarousel } from './FeaturedCampfireCarousel';
 import { PostEngagementBar } from './PostEngagementBar';
-import { selectFeaturedPosts, selectSecondaryFeed, type OutpostFeedFilter } from './featuredPosts';
+import { selectFeaturedPosts, selectSecondaryFeed } from './featuredPosts';
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -42,11 +42,6 @@ const tabs: { value: Tab; label: string }[] = [
   { value: 'outings', label: 'Outings' },
 ];
 
-const filters: { value: OutpostFeedFilter; label: string }[] = [
-  { value: 'for-you', label: 'For You' },
-  { value: 'latest', label: 'Latest' },
-  { value: 'nearby', label: 'Nearby' },
-];
 
 function initials(name?: string | null) {
   return (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
@@ -195,7 +190,6 @@ function DiscoverCommunityCard({ group, joining, onJoin }: { group: CommunityGro
 export default function OutpostFeaturedScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<Tab>('campfires');
-  const [filter, setFilter] = useState<OutpostFeedFilter>('for-you');
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [feed, setFeed] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
@@ -226,7 +220,6 @@ export default function OutpostFeaturedScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { void load(false); }, [load]));
-  useEffect(() => { setFeaturedIndex(0); }, [filter]);
   useEffect(() => { setPageScrollEnabled(true); }, [activeTab]);
 
   const joinedGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
@@ -253,8 +246,8 @@ export default function OutpostFeaturedScreen() {
     eventIds,
     now: loadedAt,
   }), [joinedGroups, nearbyGroupIds, trailmateIds, nearbyTrailmateIds, eventIds, loadedAt]);
-  const featuredPosts = useMemo(() => selectFeaturedPosts(feed, filter, rankingContext, 8), [feed, filter, rankingContext]);
-  const displayedPosts = useMemo(() => selectSecondaryFeed(feed, featuredPosts, filter, rankingContext, 6), [feed, featuredPosts, filter, rankingContext]);
+  const featuredPosts = useMemo(() => selectFeaturedPosts(feed, 'for-you', rankingContext, 8), [feed, rankingContext]);
+  const displayedPosts = useMemo(() => selectSecondaryFeed(feed, featuredPosts, 'for-you', rankingContext, 6), [feed, featuredPosts, rankingContext]);
   const localComingUp = useMemo(() => homeCity ? comingUp.filter((event) => sameLocation(event.city, event.state, homeCity, homeState)) : [], [comingUp, homeCity, homeState]);
   const campfireComingUp = localComingUp.length ? localComingUp : comingUp;
   const discoverGroups = useMemo(() => groups
@@ -277,9 +270,6 @@ export default function OutpostFeaturedScreen() {
   }, [activeTrailmateCount, pendingTrailmates.length, trailmates.length]);
   const locationLabel = [homeCity, homeState].filter(Boolean).join(', ') || 'Your area';
   const outpostBackground = useMemo(() => locationBackground(homeCity, homeState), [homeCity, homeState]);
-  const localConversationCount = feed.length;
-  const localCommunityCount = homeCity ? nearbyGroups.length : groups.length;
-  const localOutingCount = homeCity ? localComingUp.length : comingUp.length;
   const campfireLabel = useMemo(() => campfireEyebrow(new Date(loadedAt).getHours()), [loadedAt]);
   const featuredOuting = localComingUp[0] || comingUp[0];
 
@@ -307,8 +297,6 @@ export default function OutpostFeaturedScreen() {
 
   const renderCampfires = () => (
     <>
-      <View style={styles.filterRow}>{filters.map((item) => <Pressable key={item.value} style={[styles.filterChip, filter === item.value && styles.filterChipSelected]} onPress={() => setFilter(item.value)}><Text style={[styles.filterText, filter === item.value && styles.filterTextSelected]}>{item.label}</Text></Pressable>)}</View>
-
       <View style={styles.sectionIntro}>
         <Text style={styles.sectionEyebrow}>{campfireLabel}</Text>
         <Text style={styles.sectionLead}>What your Outpost is sharing right now.</Text>
@@ -348,8 +336,8 @@ export default function OutpostFeaturedScreen() {
         </View>
       </Pressable>
 
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>{filter === 'nearby' ? `More conversation around ${homeCity || 'your Outpost'}.` : 'More conversation from across your Outpost.'}</Text></View>
-      {displayedPosts.length ? displayedPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} now={loadedAt} />) : <View style={styles.emptyState}><Ionicons name="bonfire-outline" size={25} color={GREEN} /><Text style={styles.emptyTitle}>{filter === 'nearby' ? 'Nothing nearby yet.' : 'The fire’s quiet for a minute.'}</Text><Text style={styles.emptyCopy}>{filter === 'nearby' ? 'Try For You or Latest while your local Outpost gets moving.' : 'New conversations from your communities will land here.'}</Text></View>}
+      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Happening now</Text><Text style={styles.sectionSubtitle}>More conversation from across your Outpost.</Text></View>
+      {displayedPosts.length ? displayedPosts.map((post) => <ConversationCard key={post.id} post={post} group={post.group_id ? groupMap.get(post.group_id) : undefined} now={loadedAt} />) : <View style={styles.emptyState}><Ionicons name="bonfire-outline" size={25} color={GREEN} /><Text style={styles.emptyTitle}>The fire’s quiet for a minute.</Text><Text style={styles.emptyCopy}>New conversations from your communities will land here.</Text></View>}
 
       <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Coming up</Text><Text style={styles.sectionSubtitle}>Turn the conversation into a real day outside.</Text></View><Pressable onPress={() => setActiveTab('outings')}><Text style={styles.seeAll}>See all →</Text></Pressable></View>
       {campfireComingUp.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={292} decelerationRate="fast" contentContainerStyle={styles.eventRail}>{campfireComingUp.slice(0, 5).map((event) => <EventCard key={event.id} event={event} onInterested={handleInterested} />)}</ScrollView> : <View style={styles.emptyState}><Ionicons name="calendar-outline" size={24} color={GREEN} /><Text style={styles.emptyTitle}>Nothing scheduled nearby yet.</Text><Text style={styles.emptyCopy}>New outings will appear here as hosts publish them.</Text></View>}
@@ -419,10 +407,6 @@ export default function OutpostFeaturedScreen() {
 
         <View style={styles.tabs}>{tabs.map((tab) => <Pressable key={tab.value} style={[styles.tab, activeTab === tab.value && styles.tabSelected]} onPress={() => setActiveTab(tab.value)}><Text style={[styles.tabText, activeTab === tab.value && styles.tabTextSelected]}>{tab.label}</Text></Pressable>)}</View>
 
-        <View style={styles.localPulse}>
-          <View style={styles.localPulseDot} />
-          <Text style={styles.localPulseText} numberOfLines={2}>{`${localConversationCount} conversation${localConversationCount === 1 ? '' : 's'} · ${localCommunityCount} communit${localCommunityCount === 1 ? 'y' : 'ies'} · ${localOutingCount} outing${localOutingCount === 1 ? '' : 's'} ahead`}</Text>
-        </View>
 
         {activeTab === 'campfires' ? renderCampfires() : activeTab === 'communities' ? renderCommunities() : renderOutings()}
       </ScrollView>
@@ -451,14 +435,6 @@ const styles = StyleSheet.create({
   tabSelected: { backgroundColor: '#213026' },
   tabText: { color: MUTED, fontSize: 13.5, fontWeight: '800' },
   tabTextSelected: { color: GOLD },
-  localPulse: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, marginBottom: 4 },
-  localPulseDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: GREEN },
-  localPulseText: { flex: 1, color: MUTED, fontSize: 11.5, lineHeight: 16, fontWeight: '700' },
-  filterRow: { flexDirection: 'row', gap: 7, paddingVertical: 8 },
-  filterChip: { borderRadius: 999, backgroundColor: '#121C17', paddingHorizontal: 13, paddingVertical: 7 },
-  filterChipSelected: { backgroundColor: '#253229' },
-  filterText: { color: MUTED, fontSize: 11.5, fontWeight: '800' },
-  filterTextSelected: { color: TEXT },
   sectionIntro: { marginTop: 10, marginBottom: 10 },
   sectionEyebrow: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.05 },
   sectionLead: { color: TEXT, fontSize: 19, lineHeight: 24, fontWeight: '900', marginTop: 4, maxWidth: 520, letterSpacing: -0.2 },
