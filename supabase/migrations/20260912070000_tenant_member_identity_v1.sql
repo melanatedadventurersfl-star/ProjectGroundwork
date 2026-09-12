@@ -70,8 +70,11 @@ create policy "Members create own tenant profile"
 on public.organization_member_profiles for insert
 to authenticated
 with check (
-  profile_id = (select auth.uid())
-  and (select private.is_organization_member(organization_id))
+  (
+    profile_id = (select auth.uid())
+    and (select private.is_organization_member(organization_id))
+  )
+  or (select private.has_organization_permission(organization_id, 'members.manage'))
 );
 
 drop policy if exists "Members update own tenant profile" on public.organization_member_profiles;
