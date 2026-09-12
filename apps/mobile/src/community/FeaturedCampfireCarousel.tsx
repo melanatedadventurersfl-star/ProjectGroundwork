@@ -284,6 +284,7 @@ export function FeaturedCampfireCarousel({
   posts: CommunityPost[];
   groups: Map<string, CommunityGroup>;
   events: Map<string, LocalEvent>;
+  fallbackSource?: unknown;
   viewportWidth: number;
   activeIndex: number;
   onIndexChange: (index: number) => void;
@@ -292,7 +293,7 @@ export function FeaturedCampfireCarousel({
   const [currentIndex, setCurrentIndex] = useState(() => Math.max(0, activeIndex));
   const [deckReady, setDeckReady] = useState(false);
   const [viewerId, setViewerId] = useState<string | null>(null);
-  const [deckState, setDeckState] = useState<CampfireDeckState | null>(null);
+  const [, setDeckState] = useState<CampfireDeckState | null>(null);
   const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
   const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
@@ -331,7 +332,7 @@ export function FeaturedCampfireCarousel({
       setViewerId(userId);
       setDeckState(stored);
 
-      let nextIndex = Math.max(0, Math.min(activeIndex, Math.max(0, items.length - 1)));
+      let nextIndex = 0;
       if (items.length && shouldResumeCampfirePosition(stored) && stored.currentPostId) {
         const resumeIndex = items.findIndex((item) => item.kind === 'post' ? item.post.id === stored.currentPostId : item.key === stored.currentPostId);
         if (resumeIndex >= 0) nextIndex = resumeIndex;
@@ -347,7 +348,7 @@ export function FeaturedCampfireCarousel({
 
     void hydrate();
     return () => { active = false; };
-  }, [activeIndex, items, onIndexChange, signature]);
+  }, [items, onIndexChange, signature]);
 
   useEffect(() => {
     setReactionCounts(new Map(posts.map((post) => [post.id, post.reaction_count || 0])));
