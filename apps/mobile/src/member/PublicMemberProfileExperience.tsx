@@ -84,7 +84,6 @@ export default function PublicMemberProfileExperience(){
  if(connectionStatus==='self'){router.replace('/member/profile');return <SafeAreaView style={styles.center}><ActivityIndicator color="#F5C341"/></SafeAreaView>}
 
  const location=[profile.home_city,profile.home_state].filter(Boolean).join(', ');
- const isConnected=connectionStatus==='accepted';
  const sharedInterests=(profile.interests??[]).filter(item=>viewerInterestSet.has(item.trim().toLowerCase()));
  const statItems=[
   {label:'Adventures',value:profile.adventure_count},
@@ -122,7 +121,7 @@ export default function PublicMemberProfileExperience(){
 
   {profile.can_see_full_profile&&statItems.length?<View style={styles.statsCard}>{statItems.map((item,index)=><View key={item.label} style={styles.statCell}><Text style={styles.statValue}>{item.value}</Text><Text style={styles.statLabel}>{item.label}</Text>{index<statItems.length-1?<View style={styles.statDivider}/>:null}</View>)}</View>:null}
 
-  {!profile.can_see_full_profile?<View style={styles.privateCard}><AppIcon name="privacy" color="#F5C341" size={24}/><View style={{flex:1}}><Text style={styles.privateTitle}>Private profile</Text><Text style={styles.privateBody}>More of this member's story becomes visible after they approve your connection.</Text></View></View>:<>
+  {!profile.can_see_full_profile?<View style={styles.privateCard}><AppIcon name="privacy" color="#F5C341" size={24}/><View style={{flex:1}}><Text style={styles.privateTitle}>Private profile</Text><Text style={styles.privateBody}>More profile details become visible after this member approves your connection.</Text></View></View>:<>
    <View style={styles.tabs}>{(['journey','posts','photos','about'] as ProfileTab[]).map(value=><Pressable key={value} onPress={()=>setTab(value)} style={styles.tab}><Text style={[styles.tabText,tab===value&&styles.tabTextActive]}>{value.charAt(0).toUpperCase()+value.slice(1)}</Text>{tab===value?<View style={styles.tabUnderline}/>:null}</Pressable>)}</View>
 
    {tab==='journey'?<View style={styles.tabContent}>
