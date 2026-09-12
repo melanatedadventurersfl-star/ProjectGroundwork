@@ -1,6 +1,6 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   ImageBackground,
@@ -11,6 +11,7 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type NativeTouchEvent,
 } from 'react-native';
 
 import type { LocalEvent } from '../local-events/api';
@@ -36,10 +37,12 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#16201B';
 const PANEL_2 = '#1A261F';
-const IMAGE_CARD_HEIGHT = 258;
+const IMAGE_CARD_HEIGHT = 340;
+const PHOTO_STAGE_HEIGHT = 214;
 const TEXT_CARD_HEIGHT = 226;
 const CARD_GAP = 12;
 const UNDO_WINDOW_MS = 5000;
+const FLICK_MAX_MS = 340;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 type CarouselItem =
@@ -52,10 +55,13 @@ type UndoItem = {
   label: string;
 };
 
-type DragStart = {
-  offset: number;
+type TouchGesture = {
+  startX: number;
+  startY: number;
+  startOffset: number;
   index: number;
   startedAt: number;
+  dismissed: boolean;
 };
 
 type PostCardProps = {
@@ -151,6 +157,12 @@ function typePresentation(kind: FeaturedPostKind) {
   if (kind === 'media') return { label: 'PHOTO', icon: 'image-outline' as const, outing: false };
   if (kind === 'community') return { label: 'COMMUNITY', icon: 'people-outline' as const, outing: false };
   return { label: 'POST', icon: 'chatbubble-ellipses-outline' as const, outing: false };
+}
+
+function touchPoint(event: NativeSyntheticEvent<NativeTouchEvent>, changed = false) {
+  const touches = changed ? event.nativeEvent.changedTouches : event.nativeEvent.touches;
+  const touch = touches?.[0] ?? event.nativeEvent;
+  return { x: touch.pageX, y: touch.pageY };
 }
 
 function PostTypeHeader({
@@ -270,30 +282,32 @@ function FeaturedPostCard({
 
   return (
     <Pressable style={[styles.imageCard, kind === 'outing' && styles.outingPostCard, { width }]} onPress={openPost}>
-      <ImageBackground source={{ uri: visual }} style={styles.background} imageStyle={styles.backgroundImage}>
-        <View style={styles.shade} />
-        <PostTypeHeader kind={kind} groupName={group?.name} onDismiss={onDismiss} />
-        {kind === 'video' ? (
-          <View style={styles.videoCenterBadge} pointerEvents="none">
-            <Ionicons name="play" size={24} color={TEXT} />
-          </View>
-        ) : null}
-        <View style={styles.copyArea}>
-          <PostAuthor post={post} onPress={openProfile} />
-          <Text style={styles.imageBody} numberOfLines={event ? 1 : 2}>{post.body || 'Shared a moment from outside.'}</Text>
-          {event ? (
-            <Pressable style={styles.eventStripStrong} onPress={(tap) => stopAndRun(tap, openEvent)}>
-              <Ionicons name="calendar" size={15} color={GOLD_DARK} />
-              <View style={styles.eventStripCopy}>
-                <Text style={styles.eventStripEyebrow}>LINKED OUTING</Text>
-                <Text style={styles.eventStripTitle} numberOfLines={1}>{event.title} · {eventDate(event)}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={15} color={GOLD_DARK} />
-            </Pressable>
+      <View style={styles.photoStage}>
+        <ImageBackground source={{ uri: visual }} style={styles.photoBackground} imageStyle={styles.photoImage}>
+          <View style={styles.photoShade} />
+          <PostTypeHeader kind={kind} groupName={group?.name} onDismiss={onDismiss} />
+          {kind === 'video' ? (
+            <View style={styles.videoCenterBadge} pointerEvents="none">
+              <Ionicons name="play" size={24} color={TEXT} />
+            </View>
           ) : null}
-          <EngagementRow post={post} myReaction={myReaction} reactionCount={reactionCount} reacting={reacting} onToggleReaction={onToggleReaction} />
-        </View>
-      </ImageBackground>
+        </ImageBackground>
+      </View>
+      <View style={styles.photoCopyArea}>
+        <PostAuthor post={post} onPress={openProfile} />
+        <Text style={styles.imageBody} numberOfLines={event ? 1 : 2}>{post.body || 'Shared a moment from outside.'}</Text>
+        {event ? (
+          <Pressable style={styles.eventStripStrong} onPress={(tap) => stopAndRun(tap, openEvent)}>
+            <Ionicons name="calendar" size={15} color={GOLD_DARK} />
+            <View style={styles.eventStripCopy}>
+              <Text style={styles.eventStripEyebrow}>LINKED OUTING</Text>
+              <Text style={styles.eventStripTitle} numberOfLines={1}>{event.title} · {eventDate(event)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={15} color={GOLD_DARK} />
+          </Pressable>
+        ) : null}
+        <EngagementRow post={post} myReaction={myReaction} reactionCount={reactionCount} reacting={reacting} onToggleReaction={onToggleReaction} />
+      </View>
     </Pressable>
   );
 }
@@ -385,9 +399,11 @@ export function FeaturedCampfireCarousel({
   const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
   const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
-  const [dragStart, setDragStart] = useState<DragStart | null>(null);
   const [undoItem, setUndoItem] = useState<UndoItem | null>(null);
   const [nowMs] = useState(() => Date.now());
+  const touchGestureRef = useRef<TouchGesture | null>(null);
+  const latestScrollOffsetRef = useRef(0);
+  const ignoreScrollEndUntilRef = useRef(0);
 
   const cardWidth = Math.min(350, Math.max(248, viewportWidth * 0.84));
   const snapInterval = cardWidth + CARD_GAP;
@@ -441,13 +457,14 @@ export function FeaturedCampfireCarousel({
 
       setCurrentIndex(nextIndex);
       setDisplayIndex(nextIndex);
+      latestScrollOffsetRef.current = nextIndex * snapInterval;
       onIndexChange(nextIndex);
       setDeckReady(true);
     }
 
     void hydrate();
     return () => { active = false; };
-  }, [allItems, allSignature, onIndexChange]);
+  }, [allItems, allSignature, onIndexChange, snapInterval]);
 
   useEffect(() => {
     if (!undoItem) return;
@@ -546,8 +563,9 @@ export function FeaturedCampfireCarousel({
     setUndoItem({ key: item.key, index, label: itemLabel(item) });
     setCurrentIndex(nextIndex);
     setDisplayIndex(nextIndex);
+    latestScrollOffsetRef.current = nextIndex * snapInterval;
     onIndexChange(nextIndex);
-  }, [items, onIndexChange, viewerId]);
+  }, [items, onIndexChange, snapInterval, viewerId]);
 
   const undoDismiss = useCallback(() => {
     if (!undoItem) return;
@@ -563,50 +581,77 @@ export function FeaturedCampfireCarousel({
     });
     setCurrentIndex(targetIndex);
     setDisplayIndex(targetIndex);
+    latestScrollOffsetRef.current = targetIndex * snapInterval;
     onIndexChange(targetIndex);
     setUndoItem(null);
-  }, [allItems, onIndexChange, undoItem, viewerId]);
+  }, [allItems, onIndexChange, snapInterval, undoItem, viewerId]);
+
+  const dismissFromGesture = useCallback((index: number) => {
+    const target = items[index];
+    if (!target) return false;
+    ignoreScrollEndUntilRef.current = Date.now() + 500;
+    const gesture = touchGestureRef.current;
+    if (gesture) gesture.dismissed = true;
+    dismissItem(target, index);
+    return true;
+  }, [dismissItem, items]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (!items.length) return;
     const offset = event.nativeEvent.contentOffset.x;
+    latestScrollOffsetRef.current = offset;
     const next = Math.max(0, Math.min(Math.round(offset / snapInterval), items.length - 1));
     setDisplayIndex(next);
-  }, [items.length, snapInterval]);
 
-  const handleScrollBegin = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offset = event.nativeEvent.contentOffset.x;
-    setDragStart({
-      offset,
-      index: Math.max(0, Math.min(Math.round(offset / snapInterval), Math.max(0, items.length - 1))),
+    const gesture = touchGestureRef.current;
+    if (!gesture || gesture.dismissed) return;
+    const elapsed = Math.max(1, Date.now() - gesture.startedAt);
+    const forwardDistance = offset - gesture.startOffset;
+    const speed = forwardDistance / elapsed;
+    const fastForwardScroll = forwardDistance > cardWidth * 0.55 && elapsed <= 300 && speed > 0.72;
+    if (fastForwardScroll) dismissFromGesture(gesture.index);
+  }, [cardWidth, dismissFromGesture, items.length, snapInterval]);
+
+  const handleTouchStart = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
+    const point = touchPoint(event);
+    touchGestureRef.current = {
+      startX: point.x,
+      startY: point.y,
+      startOffset: latestScrollOffsetRef.current,
+      index: safeDisplayIndex,
       startedAt: Date.now(),
-    });
-  }, [items.length, snapInterval]);
+      dismissed: false,
+    };
+  }, [safeDisplayIndex]);
+
+  const handleTouchEnd = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
+    const gesture = touchGestureRef.current;
+    if (!gesture) return;
+    const point = touchPoint(event, true);
+    const dx = point.x - gesture.startX;
+    const dy = point.y - gesture.startY;
+    const elapsed = Math.max(1, Date.now() - gesture.startedAt);
+    const speed = Math.abs(dx) / elapsed;
+    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
+    const longFastLeft = dx < -(cardWidth * 0.46) && elapsed <= FLICK_MAX_MS && speed > 0.62;
+    const shortSharpLeft = dx < -(cardWidth * 0.28) && elapsed <= 260 && speed > 1.0;
+
+    if (!gesture.dismissed && horizontal && (longFastLeft || shortSharpLeft)) {
+      dismissFromGesture(gesture.index);
+    }
+    touchGestureRef.current = null;
+  }, [cardWidth, dismissFromGesture]);
+
+  const handleTouchCancel = useCallback(() => {
+    touchGestureRef.current = null;
+  }, []);
 
   const handleScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (Date.now() < ignoreScrollEndUntilRef.current) return;
     const offset = event.nativeEvent.contentOffset.x;
+    latestScrollOffsetRef.current = offset;
     settleIndex(Math.round(offset / snapInterval));
   }, [settleIndex, snapInterval]);
-
-  const handleScrollEndDrag = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offset = event.nativeEvent.contentOffset.x;
-    const start = dragStart;
-    setDragStart(null);
-
-    if (start) {
-      const forwardDistance = offset - start.offset;
-      const elapsed = Math.max(1, Date.now() - start.startedAt);
-      const velocityX = Math.abs(event.nativeEvent.velocity?.x ?? 0);
-      const strongForwardFlick = forwardDistance > cardWidth * 0.72 && (velocityX > 1.8 || elapsed < 220);
-      const dismissTarget = items[start.index];
-      if (strongForwardFlick && dismissTarget) {
-        dismissItem(dismissTarget, start.index);
-        return;
-      }
-    }
-
-    handleScrollEnd(event);
-  }, [cardWidth, dismissItem, dragStart, handleScrollEnd, items]);
 
   if (!items.length) {
     const cleared = deckReady && allItems.length > 0;
@@ -635,9 +680,11 @@ export function FeaturedCampfireCarousel({
         contentOffset={{ x: safeIndex * snapInterval, y: 0 }}
         contentContainerStyle={{ paddingHorizontal: sideInset }}
         onScroll={handleScroll}
-        onScrollBeginDrag={handleScrollBegin}
         onMomentumScrollEnd={handleScrollEnd}
-        onScrollEndDrag={handleScrollEndDrag}
+        onScrollEndDrag={handleScrollEnd}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         scrollEventThrottle={16}
         style={{ width: viewportWidth }}
       >
@@ -667,7 +714,7 @@ export function FeaturedCampfireCarousel({
         <Text style={styles.counterText}>{safeDisplayIndex + 1} / {items.length}</Text>
         <Ionicons name="chevron-forward" size={13} color={safeDisplayIndex < items.length - 1 ? GOLD_DARK : 'rgba(45,39,22,0.34)'} />
       </View>
-      <Text style={styles.swipeHint}>Swipe to browse · Fast swipe left to hide</Text>
+      <Text style={styles.swipeHint}>Swipe to browse · Quick left flick to hide</Text>
 
       {undoItem ? (
         <View style={styles.undoToast}>
@@ -691,49 +738,52 @@ const styles = StyleSheet.create({
   textCard: { height: TEXT_CARD_HEIGHT, alignSelf: 'center', borderRadius: 21, overflow: 'hidden', backgroundColor: PANEL_2, borderWidth: 1, borderColor: '#35473C', padding: 12, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
   topoRingOne: { position: 'absolute', width: 180, height: 180, borderRadius: 90, borderWidth: 1, borderColor: 'rgba(215,180,90,0.08)', right: -55, top: -60 },
   topoRingTwo: { position: 'absolute', width: 110, height: 110, borderRadius: 55, borderWidth: 1, borderColor: 'rgba(215,180,90,0.07)', right: -18, top: -26 },
+  photoStage: { height: PHOTO_STAGE_HEIGHT, backgroundColor: '#0B120E', overflow: 'hidden' },
+  photoBackground: { flex: 1 },
+  photoImage: { resizeMode: 'cover' },
+  photoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,6,0.10)' },
+  photoCopyArea: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: 13, paddingTop: 5, paddingBottom: 8, backgroundColor: '#0D1711' },
   background: { flex: 1, justifyContent: 'space-between' },
   backgroundImage: { resizeMode: 'cover' },
-  shade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,6,0.36)' },
-  outingShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.42)' },
+  outingShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.20)' },
   postTypeHeader: { minHeight: 47, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, padding: 10 },
   typeStack: { flex: 1, alignItems: 'flex-start', gap: 4 },
-  typeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: 'rgba(10,18,13,0.90)', borderWidth: 1, borderColor: 'rgba(215,180,90,0.34)', paddingHorizontal: 9, paddingVertical: 5 },
+  typeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: 'rgba(10,18,13,0.88)', borderWidth: 1, borderColor: 'rgba(215,180,90,0.40)', paddingHorizontal: 9, paddingVertical: 5 },
   typeBadgeOuting: { backgroundColor: GOLD, borderColor: GOLD },
   typeBadgeText: { color: '#F3EBD7', fontSize: 9, lineHeight: 11, fontWeight: '900', letterSpacing: 0.8 },
   typeBadgeTextOuting: { color: GOLD_DARK },
-  groupContext: { maxWidth: '80%', color: '#F0E6CA', fontSize: 9, fontWeight: '800', letterSpacing: 0.25, backgroundColor: 'rgba(8,14,10,0.72)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7 },
-  hideButton: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(9,15,11,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
-  videoCenterBadge: { position: 'absolute', left: '50%', top: '42%', width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,14,10,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.38)' },
-  copyArea: { marginTop: 'auto', paddingHorizontal: 13, paddingBottom: 9, backgroundColor: 'rgba(7,13,9,0.80)' },
+  groupContext: { maxWidth: '80%', color: '#F0E6CA', fontSize: 9, fontWeight: '800', letterSpacing: 0.25, backgroundColor: 'rgba(8,14,10,0.70)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7 },
+  hideButton: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(9,15,11,0.80)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)' },
+  videoCenterBadge: { position: 'absolute', left: '50%', top: '54%', width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,14,10,0.70)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.42)' },
   textCardBody: { flex: 1, justifyContent: 'flex-end' },
-  authorRow: { minHeight: 41, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  avatar: { width: 33, height: 33, borderRadius: 17, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1.2, borderColor: '#536258' },
+  authorRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatar: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1.2, borderColor: '#536258' },
   avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: GOLD, fontSize: 9.5, fontWeight: '900' },
   authorName: { color: TEXT, fontSize: 14.5, fontWeight: '900', flexShrink: 1 },
   time: { color: '#CDD5D0', fontSize: 10.5, fontWeight: '700', marginLeft: 'auto' },
-  imageBody: { color: TEXT, fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: -0.15, marginTop: 2, marginBottom: 7 },
+  imageBody: { color: TEXT, fontSize: 15.5, lineHeight: 19, fontWeight: '900', letterSpacing: -0.1, marginTop: 2, marginBottom: 5 },
   textOnlyBody: { color: TEXT, fontSize: 18, lineHeight: 24, fontWeight: '800', letterSpacing: -0.15, marginTop: 7, marginBottom: 9, maxWidth: '94%' },
   eventStrip: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, backgroundColor: 'rgba(22,32,27,0.94)', paddingHorizontal: 8, paddingVertical: 5, marginBottom: 5 },
   eventText: { color: '#E8ECE9', fontSize: 10.5, fontWeight: '800', flex: 1 },
-  eventStripStrong: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 11, backgroundColor: GOLD, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 6 },
+  eventStripStrong: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, backgroundColor: GOLD, paddingHorizontal: 9, paddingVertical: 5, marginBottom: 5 },
   eventStripCopy: { flex: 1 },
   eventStripEyebrow: { color: 'rgba(45,39,22,0.72)', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.7 },
   eventStripTitle: { color: GOLD_DARK, fontSize: 10.5, fontWeight: '900', marginTop: 1 },
-  engagementRow: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(213,226,217,0.24)', paddingTop: 5 },
-  engagementAction: { minWidth: 42, minHeight: 27, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  engagementRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(213,226,217,0.24)', paddingTop: 4 },
+  engagementAction: { minWidth: 42, minHeight: 25, flexDirection: 'row', alignItems: 'center', gap: 5 },
   engagementCount: { color: '#E2E7E3', fontSize: 11.5, fontWeight: '800' },
   engagementCountActive: { color: GOLD },
   outingCard: { height: IMAGE_CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: '#17241C', borderWidth: 2, borderColor: GOLD, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 11, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
   outingFallback: { justifyContent: 'space-between' },
-  outingFallbackIcon: { position: 'absolute', right: 22, top: 70 },
+  outingFallbackIcon: { position: 'absolute', right: 22, top: 82 },
   outingBanner: { minHeight: 42, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: GOLD },
   outingBannerLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   outingBannerText: { color: GOLD_DARK, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   outingStatusDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(45,39,22,0.48)', marginLeft: 2 },
   outingStatusText: { color: GOLD_DARK, fontSize: 8.5, fontWeight: '900', letterSpacing: 0.55 },
   outingHideButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(45,39,22,0.10)' },
-  outingCopy: { marginTop: 'auto', padding: 13, backgroundColor: 'rgba(7,13,9,0.86)' },
+  outingCopy: { marginTop: 'auto', padding: 13, backgroundColor: 'rgba(7,13,9,0.90)' },
   outingHeadlineRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   outingDateBlock: { width: 50, minHeight: 57, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: GOLD },
   outingMonth: { color: GOLD_DARK, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
