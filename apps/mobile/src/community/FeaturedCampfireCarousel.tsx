@@ -312,7 +312,6 @@ export function FeaturedCampfireCarousel({
   }, [events, posts]);
 
   const outings = useMemo(() => Array.from(events.values())
-    .filter((event) => event.status === 'published' && new Date(event.starts_at).getTime() >= Date.now())
     .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()), [events]);
 
   const items = useMemo(() => buildCarouselItems(posts, outings), [outings, posts]);
