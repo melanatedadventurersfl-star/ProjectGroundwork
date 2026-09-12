@@ -50,6 +50,7 @@ export default function AdminProfileScreen() {
     ...(isFounder ? [{ title: 'Founder Overwatch', subtitle: 'See and govern members, memberships, hosts, vendors, groups, events, approvals, reports and administrative history from one founder-only registry.', route: '/overwatch' }] : []),
     { title: 'Host Center', subtitle: 'Open the unified workspace for events, work, calendar, opportunities, vendors, finances and internal resources.', route: '/host' },
     { title: 'Trail Guide Data', subtitle: 'Ingest official park pages, campground rules, reservation sources, and review Trail Guide data completeness.', route: '/admin/trail-guide-data' },
+    { title: 'Trail Guide Images', subtitle: 'Review destination cover candidates, add verified images, and override automatic hero selection when needed.', route: '/admin/trail-guide-images' },
     { title: 'Vendor Access', subtitle: 'Review vendor applications and approve, pause, decline, or revoke Vendor Center access.', route: '/admin/vendor-access' },
     { title: 'New Members', subtitle: 'Review new app signups, onboarding status, membership, and referral source.', route: '/admin/new-members' },
     { title: 'Community Safety', subtitle: 'Open reports, escalations, appeals, restrictions, suspensions, and bans in one control room.', route: '/admin/community-safety' },
