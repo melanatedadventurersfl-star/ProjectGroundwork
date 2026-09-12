@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } fro
 import { DynamicCreateButton } from '../../src/community/DynamicCreateButton';
 import OutpostFeaturedScreen from '../../src/community/OutpostFeaturedScreen';
 import { PersistentTopNav } from '../../src/navigation/PersistentTopNav';
+import { ExperienceModuleGate } from '../../src/platform/ExperienceModuleGate';
 
 type BoundaryProps = { children: React.ReactNode };
 type BoundaryState = { error: Error | null };
@@ -42,19 +43,21 @@ class OutpostErrorBoundary extends React.Component<BoundaryProps, BoundaryState>
 
 export default function CommunityTab() {
   return (
-    <View style={styles.flex}>
-      <PersistentTopNav />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        <OutpostErrorBoundary>
-          <OutpostFeaturedScreen />
-        </OutpostErrorBoundary>
-      </KeyboardAvoidingView>
-      <DynamicCreateButton />
-    </View>
+    <ExperienceModuleGate moduleCode="community">
+      <View style={styles.flex}>
+        <PersistentTopNav />
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
+          <OutpostErrorBoundary>
+            <OutpostFeaturedScreen />
+          </OutpostErrorBoundary>
+        </KeyboardAvoidingView>
+        <DynamicCreateButton />
+      </View>
+    </ExperienceModuleGate>
   );
 }
 
