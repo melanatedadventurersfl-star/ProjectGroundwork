@@ -41,9 +41,9 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#16201B';
 const PANEL_2 = '#1A261F';
-const IMAGE_CARD_HEIGHT = 316;
-const PHOTO_STAGE_HEIGHT = 198;
-const TEXT_CARD_HEIGHT = 216;
+const IMAGE_CARD_HEIGHT = 280;
+const PHOTO_STAGE_HEIGHT = 170;
+const TEXT_CARD_HEIGHT = 194;
 const CARD_GAP = 12;
 const UNDO_WINDOW_MS = 5000;
 const VERTICAL_CAPTURE_DISTANCE = 14;
@@ -406,7 +406,7 @@ export function FeaturedCampfireCarousel({
   const latestScrollOffsetRef = useRef(0);
   const carouselRef = useRef<ScrollView>(null);
 
-  const cardWidth = Math.min(332, Math.max(244, viewportWidth * 0.82));
+  const cardWidth = Math.min(304, Math.max(224, viewportWidth * 0.76));
   const snapInterval = cardWidth + CARD_GAP;
   const sideInset = Math.max(14, (viewportWidth - cardWidth) / 2);
 
