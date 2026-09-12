@@ -248,6 +248,7 @@ export async function uploadTrailGuidePhoto(input: {
   caption?: string;
   visitDate?: string | null;
   reviewId?: string | null;
+  submissionId?: string;
 }) {
   const profileId = await currentUserId();
   const prepared = await prepareLocalImage({ uri: input.localUri, base64: input.base64, maxBytes: 10 * 1024 * 1024 });
@@ -270,6 +271,7 @@ export async function uploadTrailGuidePhoto(input: {
       campsite_label: input.campsiteLabel?.trim() || null,
       caption: input.caption?.trim() || null,
       visit_date: input.visitDate || null,
+      submission_id: input.submissionId || undefined,
       moderation_status: 'pending',
     }).select('id').single();
     if (error) throw error;
