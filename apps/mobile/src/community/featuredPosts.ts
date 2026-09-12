@@ -1,5 +1,6 @@
 import type { LocalEvent } from '../local-events/api';
 import type { CommunityGroup, CommunityPost } from './api';
+import { getSessionSeenCampfirePostIds } from './campfireDeckState';
 
 export type OutpostFeedFilter = 'for-you' | 'latest' | 'nearby';
 
@@ -78,6 +79,9 @@ export function selectFeaturedPosts(posts: CommunityPost[], filter: OutpostFeedF
 export function selectSecondaryFeed(posts: CommunityPost[], featured: CommunityPost[], filter: OutpostFeedFilter, context: FeaturedPostContext, limit = 6) {
   const ordered = postsForFilter(posts, filter, context);
   const featuredIds = new Set(featured.map((post) => post.id));
+  const seenIds = getSessionSeenCampfirePostIds();
+  const seenFeatured = ordered.filter((post) => featuredIds.has(post.id) && seenIds.has(post.id));
   const remaining = ordered.filter((post) => !featuredIds.has(post.id));
-  return (remaining.length ? remaining : ordered).slice(0, Math.max(1, limit));
+  const combined = [...seenFeatured, ...remaining];
+  return (combined.length ? combined : ordered).slice(0, Math.max(1, limit));
 }
