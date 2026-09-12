@@ -94,6 +94,17 @@ export type OrganizationJoinLink = {
   signupPath: string;
 };
 
+export type OrganizationJoinLinkSummary = {
+  id: string;
+  label: string;
+  status: 'active' | 'revoked';
+  maxUses: number | null;
+  useCount: number;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
 function normalizeOrganization(row: any): OrganizationWorkspace {
   return {
     id: row.id,
@@ -214,6 +225,31 @@ export async function createOrganizationJoinLink(input: {
     maxUses: typeof row.max_uses === 'number' ? row.max_uses : null,
     signupPath: typeof row.signup_path === 'string' ? row.signup_path : `/(auth)/sign-up?org_invite=${row.token}`,
   };
+}
+
+export async function listOrganizationJoinLinks(organizationId: string): Promise<OrganizationJoinLinkSummary[]> {
+  const { data, error } = await supabase.rpc('list_organization_join_links', {
+    p_organization_id: organizationId,
+  });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    label: row.label,
+    status: row.status === 'revoked' ? 'revoked' : 'active',
+    maxUses: typeof row.max_uses === 'number' ? row.max_uses : null,
+    useCount: typeof row.use_count === 'number' ? row.use_count : 0,
+    expiresAt: row.expires_at ?? null,
+    lastUsedAt: row.last_used_at ?? null,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function revokeOrganizationJoinLink(linkId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('revoke_organization_join_link', {
+    p_link_id: linkId,
+  });
+  if (error) throw error;
+  return data === true;
 }
 
 export function organizationRoleLabel(role: OrganizationRole): string {
