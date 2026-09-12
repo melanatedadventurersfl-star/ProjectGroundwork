@@ -1,11 +1,12 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getTrailGuidePlace } from '../../src/trailGuide/catalog';
 import { submitTrailGuideReview, uploadTrailGuidePhoto } from '../../src/trailGuide/community';
+import { loadTrailGuideReviewForEdit, updateTrailGuideReview } from '../../src/trailGuide/memberContributions';
 
 type Photo = { uri: string; base64?: string | null };
 type Mode = 'review' | 'photos';
@@ -23,7 +24,7 @@ const PHOTO_CATEGORIES = [
   ['other', 'Other'],
 ] as const;
 
-const CAMPING_TYPES: Array<[CampingType, string]> = [
+const CAMPING_TYPES: [CampingType, string][] = [
   ['tent', 'Tent'],
   ['rv', 'RV'],
   ['cabin', 'Cabin'],
@@ -66,6 +67,12 @@ function parseUsDate(value: string) {
   return `${match[3]}-${match[1]}-${match[2]}`;
 }
 
+function usDateFromIso(value: string | null) {
+  if (!value) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : '';
+}
+
 function Stars({ value, onChange, size = 28 }: { value: number; onChange: (value: number) => void; size?: number }) {
   return (
     <View style={styles.starRow}>
@@ -79,9 +86,10 @@ function Stars({ value, onChange, size = 28 }: { value: number; onChange: (value
 }
 
 export default function TrailGuideContributeScreen() {
-  const params = useLocalSearchParams<{ placeId?: string; mode?: string }>();
+  const params = useLocalSearchParams<{ placeId?: string; mode?: string; reviewId?: string }>();
   const mode: Mode = params.mode === 'photos' ? 'photos' : 'review';
   const place = getTrailGuidePlace(params.placeId);
+  const reviewId = mode === 'review' ? params.reviewId : undefined;
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [campingType, setCampingType] = useState<CampingType>('tent');
@@ -92,10 +100,34 @@ export default function TrailGuideContributeScreen() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [categoryRatings, setCategoryRatings] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const title = mode === 'review' ? 'Review this place' : 'Add camper photos';
-  const canSubmit = useMemo(() => Boolean(place) && !saving && (mode === 'review' ? rating > 0 : photos.length > 0), [mode, photos.length, place, rating, saving]);
+  useEffect(() => {
+    let active = true;
+    if (!reviewId || mode !== 'review') return () => { active = false; };
+    setLoadingExisting(true);
+    setSubmitError(null);
+    void loadTrailGuideReviewForEdit(reviewId)
+      .then((review) => {
+        if (!active) return;
+        if (!review) throw new Error('Your review could not be found.');
+        if (place && review.placeId !== place.id) throw new Error('This review belongs to another destination.');
+        setRating(review.rating);
+        setReviewText(review.reviewText);
+        setCampingType(review.campingType);
+        setCampsiteLabel(review.campsiteLabel);
+        setVisitDate(usDateFromIso(review.visitDate));
+        setCategoryRatings(review.categoryRatings);
+      })
+      .catch((error) => { if (active) setSubmitError(errorMessage(error)); })
+      .finally(() => { if (active) setLoadingExisting(false); });
+    return () => { active = false; };
+  }, [mode, place, reviewId]);
+
+  const editingReview = Boolean(reviewId && mode === 'review');
+  const title = mode === 'review' ? editingReview ? 'Edit your review' : 'Review this place' : 'Add camper photos';
+  const canSubmit = useMemo(() => Boolean(place) && !saving && !loadingExisting && (mode === 'review' ? rating > 0 : photos.length > 0), [loadingExisting, mode, photos.length, place, rating, saving]);
 
   async function pickPhotos() {
     setSubmitError(null);
@@ -125,17 +157,29 @@ export default function TrailGuideContributeScreen() {
     setSubmitError(null);
     try {
       const dateValue = parseUsDate(visitDate);
-      let reviewId: string | null = null;
+      let savedReviewId: string | null = reviewId ?? null;
       if (mode === 'review') {
-        reviewId = await submitTrailGuideReview({
-          placeId: place.id,
-          rating,
-          reviewText,
-          campingType,
-          campsiteLabel,
-          visitDate: dateValue,
-          categoryRatings,
-        });
+        if (reviewId) {
+          savedReviewId = await updateTrailGuideReview({
+            reviewId,
+            rating,
+            reviewText,
+            campingType,
+            campsiteLabel,
+            visitDate: dateValue,
+            categoryRatings,
+          });
+        } else {
+          savedReviewId = await submitTrailGuideReview({
+            placeId: place.id,
+            rating,
+            reviewText,
+            campingType,
+            campsiteLabel,
+            visitDate: dateValue,
+            categoryRatings,
+          });
+        }
       }
 
       if (photos.length) {
@@ -148,14 +192,14 @@ export default function TrailGuideContributeScreen() {
             campsiteLabel,
             caption,
             visitDate: dateValue,
-            reviewId,
+            reviewId: savedReviewId,
           });
         }
       }
 
       router.replace({
         pathname: '/trail-guide/[id]',
-        params: { id: place.id, notice: mode === 'review' ? 'review-posted' : 'photos-submitted' },
+        params: { id: place.id, notice: editingReview ? 'review-updated' : mode === 'review' ? 'review-posted' : 'photos-submitted' },
       } as never);
     } catch (error) {
       setSubmitError(errorMessage(error));
@@ -180,7 +224,7 @@ export default function TrailGuideContributeScreen() {
         <View>
           <Text style={styles.eyebrow}>{place.name}</Text>
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.body}>{mode === 'review' ? 'Help the next camper know what the place feels like in real life.' : 'Show future campers the sites, facilities, trails, water, and conditions they will find.'}</Text>
+          <Text style={styles.body}>{mode === 'review' ? editingReview ? 'Update your rating and visit details. Your existing review will be replaced with these changes.' : 'Help the next camper know what the place feels like in real life.' : 'Show future campers the sites, facilities, trails, water, and conditions they will find.'}</Text>
         </View>
 
         {mode === 'review' ? (
@@ -246,8 +290,8 @@ export default function TrailGuideContributeScreen() {
         ) : null}
 
         {submitError ? <View style={styles.errorBox}><Text style={styles.errorText}>{submitError}</Text></View> : null}
-        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.submit, !canSubmit && styles.disabled]}><Text style={styles.submitText}>{saving ? 'Saving…' : mode === 'review' ? 'Post review' : 'Submit photos'}</Text></Pressable>
-        {photos.length ? <Text style={styles.moderationNote}>Camper photos appear publicly after moderation. Location metadata is not requested by the app picker.</Text> : null}
+        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.submit, !canSubmit && styles.disabled]}><Text style={styles.submitText}>{saving ? 'Saving…' : editingReview ? 'Save review' : mode === 'review' ? 'Post review' : 'Submit photos'}</Text></Pressable>
+        {photos.length ? <Text style={styles.moderationNote}>Camper photos appear publicly after moderation. Your pending uploads stay visible to you while they are reviewed. Location metadata is not requested by the app picker.</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
