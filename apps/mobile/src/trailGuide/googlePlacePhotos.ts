@@ -4,12 +4,41 @@ import { supabase } from '../lib/supabase';
 import type { TrailGuidePlace } from './catalog';
 import type { TrailGuidePhoto } from './placePhotos';
 
+export type GooglePhotoCategory =
+  | 'campsite'
+  | 'rv_site'
+  | 'tent_site'
+  | 'beach'
+  | 'water'
+  | 'landscape'
+  | 'trail'
+  | 'recreation'
+  | 'building'
+  | 'sign'
+  | 'bathroom'
+  | 'wildlife'
+  | 'food'
+  | 'person_heavy'
+  | 'other';
+
+type GooglePlacePhotoAnalysis = {
+  category?: GooglePhotoCategory;
+  heroSuitability?: number;
+  representativeness?: number;
+  destinationMatch?: number;
+  peopleHeavy?: boolean;
+};
+
 type GooglePlacePhotoItem = {
   url?: string;
   sourceUrl?: string | null;
   title?: string;
   credit?: string;
   attributionUri?: string | null;
+  widthPx?: number | null;
+  heightPx?: number | null;
+  order?: number;
+  analysis?: GooglePlacePhotoAnalysis | null;
 };
 
 type GooglePlacePhotoResponse = {
@@ -33,6 +62,18 @@ type GooglePlacePhotoResponse = {
   error?: string;
 };
 
+export type GoogleTrailGuidePhoto = TrailGuidePhoto & {
+  attributionUri: string | null;
+  widthPx: number | null;
+  heightPx: number | null;
+  order: number;
+  category: GooglePhotoCategory | null;
+  heroSuitability: number | null;
+  representativeness: number | null;
+  destinationMatch: number | null;
+  peopleHeavy: boolean;
+};
+
 export type GoogleTrailGuidePlaceDetails = {
   placeId: string | null;
   displayName: string;
@@ -44,10 +85,15 @@ export type GoogleTrailGuidePlaceDetails = {
   openNow: boolean | null;
   weekdayDescriptions: string[];
   businessStatus: string | null;
-  photos: TrailGuidePhoto[];
+  photos: GoogleTrailGuidePhoto[];
 };
 
 const detailsSessionCache = new Map<string, Promise<GoogleTrailGuidePlaceDetails | null>>();
+
+function numeric01(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : null;
+}
 
 async function preload(url: string) {
   try {
@@ -57,13 +103,22 @@ async function preload(url: string) {
   }
 }
 
-function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, mapsUrl?: string | null): TrailGuidePhoto | null {
+function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, mapsUrl?: string | null): GoogleTrailGuidePhoto | null {
   if (!item.url) return null;
   return {
     url: item.url,
     sourceUrl: item.sourceUrl || mapsUrl || 'https://maps.google.com',
     title: item.title || place.name,
     credit: item.credit || 'Google Maps',
+    attributionUri: item.attributionUri ?? null,
+    widthPx: Number.isFinite(Number(item.widthPx)) ? Number(item.widthPx) : null,
+    heightPx: Number.isFinite(Number(item.heightPx)) ? Number(item.heightPx) : null,
+    order: Number.isInteger(item.order) ? Number(item.order) : 0,
+    category: item.analysis?.category ?? null,
+    heroSuitability: numeric01(item.analysis?.heroSuitability),
+    representativeness: numeric01(item.analysis?.representativeness),
+    destinationMatch: numeric01(item.analysis?.destinationMatch),
+    peopleHeavy: item.analysis?.peopleHeavy === true,
   };
 }
 
@@ -74,7 +129,17 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
   const pending = (async () => {
     try {
       const { data, error } = await supabase.functions.invoke<GooglePlacePhotoResponse>('place-photo', {
-        body: { name: place.name, area: place.area, state: 'FL', includeGallery: true },
+        body: {
+          name: place.name,
+          area: place.area,
+          state: 'FL',
+          includeGallery: true,
+          includeHeroAnalysis: true,
+          trailGuideCategory: place.category,
+          trailGuideType: place.type,
+          trailGuideTags: place.tags,
+          trailGuideSummary: place.summary,
+        },
       });
       if (error || data?.error) return null;
 
@@ -83,10 +148,10 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
       const items = Array.isArray(data?.photos) ? data.photos : data?.photo ? [data.photo] : [];
       const candidates = items
         .map((item) => toTrailGuidePhoto(item, place, mapsUrl))
-        .filter((photo): photo is TrailGuidePhoto => Boolean(photo));
+        .filter((photo): photo is GoogleTrailGuidePhoto => Boolean(photo));
       const loaded = await Promise.all(candidates.map(async (photo) => await preload(photo.url) ? photo : null));
       const photos = loaded
-        .filter((photo): photo is TrailGuidePhoto => Boolean(photo))
+        .filter((photo): photo is GoogleTrailGuidePhoto => Boolean(photo))
         .filter((photo, index, all) => all.findIndex((candidate) => candidate.url === photo.url) === index);
 
       return {
@@ -113,13 +178,12 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
   return result;
 }
 
-export async function resolveGoogleTrailGuidePlaceGallery(place: TrailGuidePlace): Promise<TrailGuidePhoto[]> {
+export async function resolveGoogleTrailGuidePlaceGallery(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto[]> {
   const details = await resolveGoogleTrailGuidePlaceDetails(place);
   return details?.photos ?? [];
 }
 
-export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<TrailGuidePhoto | null> {
-  if (place.id === 'huguenot-memorial-park') return null;
+export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto | null> {
   const details = await resolveGoogleTrailGuidePlaceDetails(place);
   return details?.photos[0] ?? null;
 }
