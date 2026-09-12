@@ -20,6 +20,7 @@ export type MyTrailGuidePhoto = {
   campsiteLabel: string | null;
   caption: string | null;
   moderationStatus: 'pending' | 'approved' | 'rejected';
+  moderationReason: string | null;
   createdAt: string;
 };
 
@@ -112,12 +113,11 @@ export async function loadMyTrailGuidePhotos(placeId: string): Promise<MyTrailGu
   if (!profileId) return [];
   const { data, error } = await supabase
     .from('trail_guide_photos')
-    .select('id,storage_path,category,campsite_label,caption,moderation_status,created_at')
+    .select('id,storage_path,category,campsite_label,caption,moderation_status,moderation_reason,created_at')
     .eq('place_id', placeId)
     .eq('profile_id', profileId)
-    .neq('moderation_status', 'rejected')
     .order('created_at', { ascending: false })
-    .limit(16);
+    .limit(20);
   if (error) return [];
 
   const photos: MyTrailGuidePhoto[] = [];
@@ -131,6 +131,7 @@ export async function loadMyTrailGuidePhotos(placeId: string): Promise<MyTrailGu
       campsiteLabel: row.campsite_label ? String(row.campsite_label) : null,
       caption: row.caption ? String(row.caption) : null,
       moderationStatus: row.moderation_status as MyTrailGuidePhoto['moderationStatus'],
+      moderationReason: row.moderation_reason ? String(row.moderation_reason) : null,
       createdAt: String(row.created_at),
     });
   }
