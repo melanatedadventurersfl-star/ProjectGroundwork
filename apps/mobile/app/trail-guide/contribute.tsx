@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getTrailGuidePlace } from '../../src/trailGuide/catalog';
 import { submitTrailGuideReview, uploadTrailGuidePhoto } from '../../src/trailGuide/community';
 
-type Photo = { uri: string };
+type Photo = { uri: string; base64?: string | null };
 type Mode = 'review' | 'photos';
 type CampingType = 'tent' | 'rv' | 'cabin' | 'day_visit' | 'other';
 
@@ -44,6 +44,28 @@ function errorMessage(error: unknown) {
   return 'Please try again.';
 }
 
+function formatUsDateInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function parseUsDate(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (!match) throw new Error('Enter the visit date as MM/DD/YYYY.');
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
+    throw new Error('Enter a valid visit date as MM/DD/YYYY.');
+  }
+  return `${match[3]}-${match[1]}-${match[2]}`;
+}
+
 function Stars({ value, onChange, size = 28 }: { value: number; onChange: (value: number) => void; size?: number }) {
   return (
     <View style={styles.starRow}>
@@ -70,11 +92,13 @@ export default function TrailGuideContributeScreen() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [categoryRatings, setCategoryRatings] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const title = mode === 'review' ? 'Review this place' : 'Add camper photos';
   const canSubmit = useMemo(() => Boolean(place) && !saving && (mode === 'review' ? rating > 0 : photos.length > 0), [mode, photos.length, place, rating, saving]);
 
   async function pickPhotos() {
+    setSubmitError(null);
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Photo access needed', 'Allow photo access to add Trail Guide photos.');
@@ -86,17 +110,21 @@ export default function TrailGuideContributeScreen() {
       selectionLimit: Math.max(1, 8 - photos.length),
       quality: 0.88,
       exif: false,
+      base64: true,
     });
     if (result.canceled) return;
-    const selected = result.assets.filter((asset) => asset.uri).map((asset) => ({ uri: asset.uri }));
+    const selected = result.assets
+      .filter((asset) => asset.uri)
+      .map((asset) => ({ uri: asset.uri, base64: asset.base64 }));
     setPhotos((current) => [...current, ...selected].slice(0, 8));
   }
 
   async function submit() {
     if (!place || !canSubmit) return;
     setSaving(true);
+    setSubmitError(null);
     try {
-      const dateValue = /^\d{4}-\d{2}-\d{2}$/.test(visitDate.trim()) ? visitDate.trim() : null;
+      const dateValue = parseUsDate(visitDate);
       let reviewId: string | null = null;
       if (mode === 'review') {
         reviewId = await submitTrailGuideReview({
@@ -115,6 +143,7 @@ export default function TrailGuideContributeScreen() {
           await uploadTrailGuidePhoto({
             placeId: place.id,
             localUri: photo.uri,
+            base64: photo.base64,
             category: photoCategory,
             campsiteLabel,
             caption,
@@ -124,15 +153,12 @@ export default function TrailGuideContributeScreen() {
         }
       }
 
-      Alert.alert(
-        mode === 'review' ? 'Review added' : 'Photos submitted',
-        photos.length
-          ? 'Your photos are being checked before they appear publicly in Trail Guide.'
-          : 'Your review is now part of this Trail Guide page.',
-        [{ text: 'Done', onPress: () => router.back() }],
-      );
+      router.replace({
+        pathname: '/trail-guide/[id]',
+        params: { id: place.id, notice: mode === 'review' ? 'review-posted' : 'photos-submitted' },
+      } as never);
     } catch (error) {
-      Alert.alert('Unable to save', errorMessage(error));
+      setSubmitError(errorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -193,7 +219,7 @@ export default function TrailGuideContributeScreen() {
           </View>
           <View style={styles.fieldGroupHalf}>
             <Text style={styles.label}>Visit date</Text>
-            <TextInput value={visitDate} onChangeText={setVisitDate} placeholder="YYYY-MM-DD" placeholderTextColor="#718078" style={styles.input} autoCapitalize="none" />
+            <TextInput value={visitDate} onChangeText={(value) => setVisitDate(formatUsDateInput(value))} placeholder="MM/DD/YYYY" placeholderTextColor="#718078" style={styles.input} keyboardType="numbers-and-punctuation" maxLength={10} />
           </View>
         </View>
 
@@ -203,7 +229,7 @@ export default function TrailGuideContributeScreen() {
             <Text style={styles.optional}>{photos.length}/8</Text>
           </View>
           {photos.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>{photos.map((photo, index) => <View key={`${photo.uri}-${index}`} style={styles.photoWrap}><Image source={{ uri: photo.uri }} style={styles.preview} /><Pressable onPress={() => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))} style={styles.removePhoto}><Text style={styles.removePhotoText}>×</Text></Pressable></View>)}</ScrollView> : null}
-          <Pressable onPress={() => void pickPhotos()} style={styles.photoButton}><Text style={styles.photoButtonIcon}>＋</Text><View style={{ flex: 1 }}><Text style={styles.photoButtonTitle}>Choose photos</Text><Text style={styles.photoButtonBody}>Select up to 8 from your library</Text></View><Text style={styles.chevron}>›</Text></Pressable>
+          <Pressable onPress={() => void pickPhotos()} style={styles.photoButton}><Text style={styles.photoButtonIcon}>＋</Text><View style={styles.photoButtonCopy}><Text style={styles.photoButtonTitle}>Choose photos</Text><Text style={styles.photoButtonBody}>Select up to 8 from your library</Text></View><Text style={styles.chevron}>›</Text></Pressable>
         </View>
 
         {photos.length ? (
@@ -219,6 +245,7 @@ export default function TrailGuideContributeScreen() {
           </>
         ) : null}
 
+        {submitError ? <View style={styles.errorBox}><Text style={styles.errorText}>{submitError}</Text></View> : null}
         <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.submit, !canSubmit && styles.disabled]}><Text style={styles.submitText}>{saving ? 'Saving…' : mode === 'review' ? 'Post review' : 'Submit photos'}</Text></Pressable>
         {photos.length ? <Text style={styles.moderationNote}>Camper photos appear publicly after moderation. Location metadata is not requested by the app picker.</Text> : null}
       </ScrollView>
@@ -262,9 +289,12 @@ const styles = StyleSheet.create({
   removePhotoText: { color: '#FFF', fontSize: 20, lineHeight: 22 },
   photoButton: { minHeight: 72, borderRadius: 15, borderWidth: 1, borderColor: '#33443A', backgroundColor: '#111A15', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
   photoButtonIcon: { width: 38, height: 38, borderRadius: 12, textAlign: 'center', textAlignVertical: 'center', paddingTop: 5, backgroundColor: '#D7B45A', color: '#142019', fontSize: 24, fontWeight: '700' },
+  photoButtonCopy: { flex: 1 },
   photoButtonTitle: { color: '#FFF8E8', fontSize: 14, fontWeight: '900' },
   photoButtonBody: { color: '#829087', fontSize: 11, marginTop: 2 },
   chevron: { color: '#D7B45A', fontSize: 28 },
+  errorBox: { borderRadius: 12, borderWidth: 1, borderColor: '#75483F', backgroundColor: '#281B17', paddingHorizontal: 12, paddingVertical: 10 },
+  errorText: { color: '#E6B5AA', fontSize: 11, lineHeight: 15, fontWeight: '700' },
   submit: { backgroundColor: '#D7B45A', borderRadius: 15, paddingVertical: 16, alignItems: 'center' },
   submitText: { color: '#17211C', fontSize: 16, fontWeight: '900' },
   disabled: { opacity: 0.45 },
