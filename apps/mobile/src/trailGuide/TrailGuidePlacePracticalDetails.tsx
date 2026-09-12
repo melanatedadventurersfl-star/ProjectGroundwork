@@ -182,9 +182,8 @@ export function TrailGuidePlacePracticalDetails({
   const fireRings = trailGuideBoolean(data, 'fires.rings_only');
   const source = trailGuidePrimarySource(data);
   const sourceDate = formatSourceDate(source?.sourceDate);
-  const hasStructuredData = Boolean(data && Object.keys(data.facts).length);
 
-  if (!hasStructuredData) {
+  if (!data || !Object.keys(data.facts).length) {
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
