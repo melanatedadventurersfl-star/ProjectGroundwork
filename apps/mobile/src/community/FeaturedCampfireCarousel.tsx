@@ -2,8 +2,10 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Image,
   ImageBackground,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +13,6 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type NativeTouchEvent,
 } from 'react-native';
 
 import type { LocalEvent } from '../local-events/api';
@@ -42,7 +43,9 @@ const PHOTO_STAGE_HEIGHT = 214;
 const TEXT_CARD_HEIGHT = 226;
 const CARD_GAP = 12;
 const UNDO_WINDOW_MS = 5000;
-const FLICK_MAX_MS = 340;
+const VERTICAL_CAPTURE_DISTANCE = 54;
+const VERTICAL_ACTION_DISTANCE = 82;
+const VERTICAL_DOMINANCE_RATIO = 1.7;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 type CarouselItem =
@@ -53,15 +56,6 @@ type UndoItem = {
   key: string;
   index: number;
   label: string;
-};
-
-type TouchGesture = {
-  startX: number;
-  startY: number;
-  startOffset: number;
-  index: number;
-  startedAt: number;
-  dismissed: boolean;
 };
 
 type PostCardProps = {
@@ -157,12 +151,6 @@ function typePresentation(kind: FeaturedPostKind) {
   if (kind === 'media') return { label: 'PHOTO', icon: 'image-outline' as const, outing: false };
   if (kind === 'community') return { label: 'COMMUNITY', icon: 'people-outline' as const, outing: false };
   return { label: 'POST', icon: 'chatbubble-ellipses-outline' as const, outing: false };
-}
-
-function touchPoint(event: NativeSyntheticEvent<NativeTouchEvent>, changed = false) {
-  const touches = changed ? event.nativeEvent.changedTouches : event.nativeEvent.touches;
-  const touch = touches?.[0] ?? event.nativeEvent;
-  return { x: touch.pageX, y: touch.pageY };
 }
 
 function PostTypeHeader({
@@ -401,9 +389,8 @@ export function FeaturedCampfireCarousel({
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
   const [undoItem, setUndoItem] = useState<UndoItem | null>(null);
   const [nowMs] = useState(() => Date.now());
-  const touchGestureRef = useRef<TouchGesture | null>(null);
   const latestScrollOffsetRef = useRef(0);
-  const ignoreScrollEndUntilRef = useRef(0);
+  const verticalSwipeY = useRef(new Animated.Value(0)).current;
 
   const cardWidth = Math.min(350, Math.max(248, viewportWidth * 0.84));
   const snapInterval = cardWidth + CARD_GAP;
@@ -431,6 +418,16 @@ export function FeaturedCampfireCarousel({
   const signature = useMemo(() => items.map((item) => item.key).join('|'), [items]);
   const safeIndex = items.length ? Math.min(currentIndex, items.length - 1) : 0;
   const safeDisplayIndex = items.length ? Math.min(displayIndex, items.length - 1) : 0;
+  const latestDismissed = useMemo(() => {
+    if (!deckState) return null;
+    let latest: { item: CarouselItem; allIndex: number; dismissedAt: number } | null = null;
+    allItems.forEach((item, allIndex) => {
+      const dismissedAt = deckState.dismissed[item.key] ?? 0;
+      if (!dismissedAt) return;
+      if (!latest || dismissedAt > latest.dismissedAt) latest = { item, allIndex, dismissedAt };
+    });
+    return latest;
+  }, [allItems, deckState]);
 
   useEffect(() => {
     let active = true;
@@ -567,14 +564,15 @@ export function FeaturedCampfireCarousel({
     onIndexChange(nextIndex);
   }, [items, onIndexChange, snapInterval, viewerId]);
 
-  const undoDismiss = useCallback(() => {
-    if (!undoItem) return;
-    const targetIndex = Math.max(0, Math.min(undoItem.index, allItems.length - 1));
-    const restored = allItems.find((item) => item.key === undoItem.key);
+  const restoreDismissedItem = useCallback((itemKey: string) => {
+    const restored = allItems.find((item) => item.key === itemKey);
+    if (!restored) return false;
+    const allIndex = allItems.findIndex((item) => item.key === itemKey);
+    const targetIndex = allItems.slice(0, allIndex).filter((item) => !isCampfireItemDismissed(deckState, item.key)).length;
 
     setDeckState((current) => {
       if (!current) return current;
-      let updated = restoreCampfireItem(current, undoItem.key);
+      let updated = restoreCampfireItem(current, itemKey);
       updated = updateCampfirePosition(updated, itemResumeKey(restored), false);
       void saveCampfireDeckState(viewerId, updated);
       return updated;
@@ -583,18 +581,117 @@ export function FeaturedCampfireCarousel({
     setDisplayIndex(targetIndex);
     latestScrollOffsetRef.current = targetIndex * snapInterval;
     onIndexChange(targetIndex);
-    setUndoItem(null);
-  }, [allItems, onIndexChange, snapInterval, undoItem, viewerId]);
-
-  const dismissFromGesture = useCallback((index: number) => {
-    const target = items[index];
-    if (!target) return false;
-    ignoreScrollEndUntilRef.current = Date.now() + 500;
-    const gesture = touchGestureRef.current;
-    if (gesture) gesture.dismissed = true;
-    dismissItem(target, index);
+    if (undoItem?.key === itemKey) setUndoItem(null);
     return true;
-  }, [dismissItem, items]);
+  }, [allItems, deckState, onIndexChange, snapInterval, undoItem, viewerId]);
+
+  const undoDismiss = useCallback(() => {
+    if (!undoItem) return;
+    restoreDismissedItem(undoItem.key);
+  }, [restoreDismissedItem, undoItem]);
+
+  const resetVerticalSwipe = useCallback(() => {
+    Animated.spring(verticalSwipeY, {
+      toValue: 0,
+      tension: 150,
+      friction: 16,
+      useNativeDriver: true,
+    }).start();
+  }, [verticalSwipeY]);
+
+  const hideCurrentWithAnimation = useCallback(() => {
+    const target = items[safeDisplayIndex];
+    if (!target) {
+      resetVerticalSwipe();
+      return;
+    }
+
+    Animated.timing(verticalSwipeY, {
+      toValue: -170,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      dismissItem(target, safeDisplayIndex);
+      verticalSwipeY.setValue(34);
+      Animated.spring(verticalSwipeY, {
+        toValue: 0,
+        tension: 150,
+        friction: 16,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [dismissItem, items, resetVerticalSwipe, safeDisplayIndex, verticalSwipeY]);
+
+  const restoreLatestWithAnimation = useCallback(() => {
+    if (!latestDismissed) {
+      resetVerticalSwipe();
+      return;
+    }
+
+    Animated.timing(verticalSwipeY, {
+      toValue: 86,
+      duration: 110,
+      useNativeDriver: true,
+    }).start(() => {
+      const restored = restoreDismissedItem(latestDismissed.item.key);
+      if (!restored) {
+        verticalSwipeY.setValue(0);
+        return;
+      }
+      verticalSwipeY.setValue(-82);
+      Animated.spring(verticalSwipeY, {
+        toValue: 0,
+        tension: 145,
+        friction: 15,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [latestDismissed, resetVerticalSwipe, restoreDismissedItem, verticalSwipeY]);
+
+  const verticalPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponder: (_, gestureState) => {
+      const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * VERTICAL_DOMINANCE_RATIO;
+      if (!vertical || Math.abs(gestureState.vy) < 0.55) return false;
+      if (gestureState.dy < -VERTICAL_CAPTURE_DISTANCE) return items.length > 0;
+      if (gestureState.dy > VERTICAL_CAPTURE_DISTANCE) return Boolean(latestDismissed);
+      return false;
+    },
+    onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+      const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * VERTICAL_DOMINANCE_RATIO;
+      if (!vertical || Math.abs(gestureState.vy) < 0.55) return false;
+      if (gestureState.dy < -VERTICAL_CAPTURE_DISTANCE) return items.length > 0;
+      if (gestureState.dy > VERTICAL_CAPTURE_DISTANCE) return Boolean(latestDismissed);
+      return false;
+    },
+    onPanResponderGrant: () => {
+      verticalSwipeY.stopAnimation();
+    },
+    onPanResponderMove: (_, gestureState) => {
+      if (gestureState.dy < 0 && items.length > 0) {
+        verticalSwipeY.setValue(Math.max(-155, gestureState.dy * 0.88));
+        return;
+      }
+      if (gestureState.dy > 0 && latestDismissed) {
+        verticalSwipeY.setValue(Math.min(135, gestureState.dy * 0.88));
+      }
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * VERTICAL_DOMINANCE_RATIO;
+      if (vertical && gestureState.dy <= -VERTICAL_ACTION_DISTANCE && items.length > 0) {
+        hideCurrentWithAnimation();
+        return;
+      }
+      if (vertical && gestureState.dy >= VERTICAL_ACTION_DISTANCE && latestDismissed) {
+        restoreLatestWithAnimation();
+        return;
+      }
+      resetVerticalSwipe();
+    },
+    onPanResponderTerminate: resetVerticalSwipe,
+    onPanResponderTerminationRequest: () => false,
+  }), [hideCurrentWithAnimation, items.length, latestDismissed, resetVerticalSwipe, restoreLatestWithAnimation, verticalSwipeY]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (!items.length) return;
@@ -602,66 +699,35 @@ export function FeaturedCampfireCarousel({
     latestScrollOffsetRef.current = offset;
     const next = Math.max(0, Math.min(Math.round(offset / snapInterval), items.length - 1));
     setDisplayIndex(next);
-
-    const gesture = touchGestureRef.current;
-    if (!gesture || gesture.dismissed) return;
-    const elapsed = Math.max(1, Date.now() - gesture.startedAt);
-    const forwardDistance = offset - gesture.startOffset;
-    const speed = forwardDistance / elapsed;
-    const fastForwardScroll = forwardDistance > cardWidth * 0.55 && elapsed <= 300 && speed > 0.72;
-    if (fastForwardScroll) dismissFromGesture(gesture.index);
-  }, [cardWidth, dismissFromGesture, items.length, snapInterval]);
-
-  const handleTouchStart = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
-    const point = touchPoint(event);
-    touchGestureRef.current = {
-      startX: point.x,
-      startY: point.y,
-      startOffset: latestScrollOffsetRef.current,
-      index: safeDisplayIndex,
-      startedAt: Date.now(),
-      dismissed: false,
-    };
-  }, [safeDisplayIndex]);
-
-  const handleTouchEnd = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
-    const gesture = touchGestureRef.current;
-    if (!gesture) return;
-    const point = touchPoint(event, true);
-    const dx = point.x - gesture.startX;
-    const dy = point.y - gesture.startY;
-    const elapsed = Math.max(1, Date.now() - gesture.startedAt);
-    const speed = Math.abs(dx) / elapsed;
-    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.25;
-    const longFastLeft = dx < -(cardWidth * 0.46) && elapsed <= FLICK_MAX_MS && speed > 0.62;
-    const shortSharpLeft = dx < -(cardWidth * 0.28) && elapsed <= 260 && speed > 1.0;
-
-    if (!gesture.dismissed && horizontal && (longFastLeft || shortSharpLeft)) {
-      dismissFromGesture(gesture.index);
-    }
-    touchGestureRef.current = null;
-  }, [cardWidth, dismissFromGesture]);
-
-  const handleTouchCancel = useCallback(() => {
-    touchGestureRef.current = null;
-  }, []);
+  }, [items.length, snapInterval]);
 
   const handleScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (Date.now() < ignoreScrollEndUntilRef.current) return;
     const offset = event.nativeEvent.contentOffset.x;
     latestScrollOffsetRef.current = offset;
     settleIndex(Math.round(offset / snapInterval));
   }, [settleIndex, snapInterval]);
 
+  const animatedRailOpacity = verticalSwipeY.interpolate({
+    inputRange: [-180, 0, 140],
+    outputRange: [0.36, 1, 0.72],
+    extrapolate: 'clamp',
+  });
+
   if (!items.length) {
     const cleared = deckReady && allItems.length > 0;
     return (
-      <View style={styles.emptyCard}>
-        <View style={styles.emptyIcon}><Ionicons name={cleared ? 'checkmark' : 'bonfire-outline'} size={23} color={GOLD} /></View>
-        <Text style={styles.emptyTitle}>{cleared ? 'You cleared the featured carousel.' : 'The Outpost is quiet right now.'}</Text>
-        <Text style={styles.emptyCopy}>{cleared ? 'Hidden cards stay out of this carousel for today. Their posts and outings are still available elsewhere in the app.' : 'Posts and upcoming outings will show up here as your community gets moving.'}</Text>
-        <Pressable style={styles.emptyButton} onPress={onExploreCommunities}><Text style={styles.emptyButtonText}>Explore communities</Text></Pressable>
-      </View>
+      <Animated.View
+        {...verticalPanResponder.panHandlers}
+        style={[styles.emptyGestureWrap, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
+      >
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIcon}><Ionicons name={cleared ? 'checkmark' : 'bonfire-outline'} size={23} color={GOLD} /></View>
+          <Text style={styles.emptyTitle}>{cleared ? 'You cleared the featured carousel.' : 'The Outpost is quiet right now.'}</Text>
+          <Text style={styles.emptyCopy}>{cleared ? 'Hidden cards stay out of this carousel for today. Their posts and outings are still available elsewhere in the app.' : 'Posts and upcoming outings will show up here as your community gets moving.'}</Text>
+          {latestDismissed ? <Text style={styles.emptyRestoreHint}>Swipe down to bring the last hidden card back.</Text> : null}
+          <Pressable style={styles.emptyButton} onPress={onExploreCommunities}><Text style={styles.emptyButtonText}>Explore communities</Text></Pressable>
+        </View>
+      </Animated.View>
     );
   }
 
@@ -669,52 +735,57 @@ export function FeaturedCampfireCarousel({
 
   return (
     <View style={styles.carouselWrap}>
-      <ScrollView
-        key={signature}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={snapInterval}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        disableIntervalMomentum
-        contentOffset={{ x: safeIndex * snapInterval, y: 0 }}
-        contentContainerStyle={{ paddingHorizontal: sideInset }}
-        onScroll={handleScroll}
-        onMomentumScrollEnd={handleScrollEnd}
-        onScrollEndDrag={handleScrollEnd}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchCancel}
-        scrollEventThrottle={16}
-        style={{ width: viewportWidth }}
+      <Animated.View
+        {...verticalPanResponder.panHandlers}
+        style={[styles.animatedRail, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
       >
-        {items.map((item, index) => (
-          <View key={item.key} style={[styles.railItem, { width: cardWidth, marginRight: index === items.length - 1 ? 0 : CARD_GAP }]}>
-            {item.kind === 'outing' ? (
-              <OutingCard event={item.event} width={cardWidth} onDismiss={() => dismissItem(item, index)} />
-            ) : (
-              <FeaturedPostCard
-                post={item.post}
-                group={item.post.group_id ? groups.get(item.post.group_id) : undefined}
-                event={eventByPost.get(item.post.id)}
-                width={cardWidth}
-                myReaction={myReactions.get(item.post.id) ?? null}
-                reactionCount={reactionCounts.get(item.post.id) ?? item.post.reaction_count ?? 0}
-                reacting={reactingPostId === item.post.id}
-                onToggleReaction={toggleReaction}
-                onDismiss={() => dismissItem(item, index)}
-              />
-            )}
-          </View>
-        ))}
-      </ScrollView>
+        <ScrollView
+          key={signature}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={snapInterval}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          disableIntervalMomentum
+          contentOffset={{ x: safeIndex * snapInterval, y: 0 }}
+          contentContainerStyle={{ paddingHorizontal: sideInset }}
+          onScroll={handleScroll}
+          onMomentumScrollEnd={handleScrollEnd}
+          onScrollEndDrag={handleScrollEnd}
+          scrollEventThrottle={16}
+          style={{ width: viewportWidth }}
+        >
+          {items.map((item, index) => (
+            <View key={item.key} style={[styles.railItem, { width: cardWidth, marginRight: index === items.length - 1 ? 0 : CARD_GAP }]}>
+              {item.kind === 'outing' ? (
+                <OutingCard event={item.event} width={cardWidth} onDismiss={() => dismissItem(item, index)} />
+              ) : (
+                <FeaturedPostCard
+                  post={item.post}
+                  group={item.post.group_id ? groups.get(item.post.group_id) : undefined}
+                  event={eventByPost.get(item.post.id)}
+                  width={cardWidth}
+                  myReaction={myReactions.get(item.post.id) ?? null}
+                  reactionCount={reactionCounts.get(item.post.id) ?? item.post.reaction_count ?? 0}
+                  reacting={reactingPostId === item.post.id}
+                  onToggleReaction={toggleReaction}
+                  onDismiss={() => dismissItem(item, index)}
+                />
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      </Animated.View>
 
       <View style={styles.counterPill} pointerEvents="none">
         <Ionicons name="chevron-back" size={13} color={safeDisplayIndex > 0 ? GOLD_DARK : 'rgba(45,39,22,0.34)'} />
         <Text style={styles.counterText}>{safeDisplayIndex + 1} / {items.length}</Text>
         <Ionicons name="chevron-forward" size={13} color={safeDisplayIndex < items.length - 1 ? GOLD_DARK : 'rgba(45,39,22,0.34)'} />
       </View>
-      <Text style={styles.swipeHint}>Swipe to browse · Quick left flick to hide</Text>
+      <View style={styles.gestureHintRow}>
+        <Ionicons name="swap-horizontal" size={12} color="#8F9D95" />
+        <Text style={styles.swipeHint}>Sideways to browse · Up to hide{latestDismissed ? ' · Down to restore' : ''}</Text>
+      </View>
 
       {undoItem ? (
         <View style={styles.undoToast}>
@@ -731,6 +802,8 @@ export function FeaturedCampfireCarousel({
 
 const styles = StyleSheet.create({
   carouselWrap: { alignItems: 'center', position: 'relative' },
+  animatedRail: { width: '100%', alignItems: 'center' },
+  emptyGestureWrap: { width: '100%' },
   loadingRail: { height: IMAGE_CARD_HEIGHT + 48, borderRadius: 22, backgroundColor: '#121C17' },
   railItem: { height: IMAGE_CARD_HEIGHT + 8, justifyContent: 'center' },
   imageCard: { height: IMAGE_CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: PANEL, borderWidth: 1, borderColor: '#34433A', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
@@ -797,7 +870,8 @@ const styles = StyleSheet.create({
   viewOutingText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
   counterPill: { minWidth: 104, height: 34, marginTop: -15, zIndex: 8, borderRadius: 17, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: GOLD, borderWidth: 2, borderColor: '#101912', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 7 },
   counterText: { color: GOLD_DARK, fontSize: 12.5, fontWeight: '900', minWidth: 42, textAlign: 'center' },
-  swipeHint: { color: '#8F9D95', fontSize: 9.5, fontWeight: '700', marginTop: 5 },
+  gestureHintRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 5 },
+  swipeHint: { color: '#8F9D95', fontSize: 9.5, fontWeight: '700' },
   undoToast: { position: 'absolute', left: 14, right: 14, bottom: -62, minHeight: 52, borderRadius: 14, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#45564B', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 9, zIndex: 20 },
   undoCopy: { flex: 1 },
   undoTitle: { color: TEXT, fontSize: 11, fontWeight: '900' },
@@ -808,6 +882,7 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#26342A' },
   emptyTitle: { color: TEXT, fontSize: 18, fontWeight: '900', marginTop: 11 },
   emptyCopy: { color: MUTED, fontSize: 12.5, lineHeight: 18, marginTop: 4, maxWidth: 420 },
+  emptyRestoreHint: { color: GOLD, fontSize: 10.5, fontWeight: '800', marginTop: 8 },
   emptyButton: { borderRadius: 999, backgroundColor: '#253229', paddingHorizontal: 12, paddingVertical: 7, marginTop: 12 },
   emptyButtonText: { color: GOLD, fontSize: 11, fontWeight: '900' },
 });
