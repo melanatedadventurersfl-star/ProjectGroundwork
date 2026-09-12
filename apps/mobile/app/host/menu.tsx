@@ -6,9 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { HOST_WORKSPACE_GROUPS, HOST_WORKSPACE_ITEMS } from '../../src/hosting/hostWorkspace';
 import { supabase } from '../../src/lib/supabase';
 import {
+  activatePlatformDefaultOrganization,
+  getOrganizationPublicBusiness,
   listMyOrganizations,
   organizationRoleLabel,
   setActiveOrganization,
+  type OrganizationPublicBusiness,
   type OrganizationWorkspace,
 } from '../../src/platform/organizations';
 import { AppIcon } from '../../src/ui/AppIcon';
@@ -23,6 +26,9 @@ export default function HostMenuScreen() {
   const [organizationsLoading, setOrganizationsLoading] = useState(true);
   const [organizationError, setOrganizationError] = useState<string | null>(null);
   const [switchingOrganizationId, setSwitchingOrganizationId] = useState<string | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+  const [publicBusiness, setPublicBusiness] = useState<OrganizationPublicBusiness | null>(null);
+  const [publicBusinessLoading, setPublicBusinessLoading] = useState(false);
 
   const activeOrganization = organizations.find((organization) => organization.isActive)
     ?? organizations.find((organization) => organization.isPlatformDefault)
@@ -35,11 +41,13 @@ export default function HostMenuScreen() {
       supabase.rpc('is_platform_admin'),
       getVendorAccess().catch(() => ({ approved: false, record: null })),
       listMyOrganizations(),
-    ]).then(([adminResult, vendorAccess, organizationRows]) => {
+      supabase.auth.getUser(),
+    ]).then(([adminResult, vendorAccess, organizationRows, authResult]) => {
       if (!active) return;
       setIsPlatformAdmin(!adminResult.error && adminResult.data === true);
       setVendorApproved(vendorAccess.approved);
       setOrganizations(organizationRows);
+      setCurrentProfileId(authResult.data.user?.id ?? null);
       setOrganizationError(null);
     }).catch((caught) => {
       if (!active) return;
@@ -49,6 +57,23 @@ export default function HostMenuScreen() {
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!activeOrganization) {
+      setPublicBusiness(null);
+      return () => { active = false; };
+    }
+    setPublicBusinessLoading(true);
+    void getOrganizationPublicBusiness(activeOrganization.id).then((business) => {
+      if (active) setPublicBusiness(business);
+    }).catch(() => {
+      if (active) setPublicBusiness(null);
+    }).finally(() => {
+      if (active) setPublicBusinessLoading(false);
+    });
+    return () => { active = false; };
+  }, [activeOrganization?.id]);
 
   async function switchOrganization(organization: OrganizationWorkspace) {
     if (organization.isActive || switchingOrganizationId) return;
@@ -65,6 +90,36 @@ export default function HostMenuScreen() {
     } finally {
       setSwitchingOrganizationId(null);
     }
+  }
+
+  async function openAsProfile() {
+    if (!activeOrganization || !currentProfileId || switchingOrganizationId) return;
+    setSwitchingOrganizationId('profile-preview');
+    setOrganizationError(null);
+    try {
+      if (activeOrganization.isPlatformDefault) {
+        await activatePlatformDefaultOrganization();
+        router.push('/member/profile' as never);
+      } else {
+        router.push({
+          pathname: '/organization-member-profile/[id]',
+          params: { id: currentProfileId, organizationId: activeOrganization.id },
+        });
+      }
+    } catch (caught) {
+      setOrganizationError(caught instanceof Error ? caught.message : 'Unable to open your public profile.');
+    } finally {
+      setSwitchingOrganizationId(null);
+    }
+  }
+
+  function openAsBusiness() {
+    if (!activeOrganization || publicBusinessLoading || switchingOrganizationId) return;
+    if (publicBusiness) {
+      router.push({ pathname: '/organization-profile/[slug]', params: { slug: publicBusiness.slug } });
+      return;
+    }
+    router.push({ pathname: '/organization-business-preview/[id]', params: { id: activeOrganization.id } });
   }
 
   return <SafeAreaView style={styles.safe}>
@@ -113,6 +168,20 @@ export default function HostMenuScreen() {
       </View>
       {organizationError ? <Text style={styles.organizationError}>{organizationError}</Text> : null}
 
+      <Text style={styles.sectionLabel}>VIEW PUBLIC EXPERIENCE</Text>
+      <View style={styles.publicViewCard}>
+        <Pressable disabled={!activeOrganization || !currentProfileId || switchingOrganizationId !== null} style={styles.publicViewRow} onPress={() => void openAsProfile()}>
+          <View style={styles.publicViewIcon}><AppIcon name="profile" color={COLORS.gold} size={20} /></View>
+          <View style={styles.flex}><Text style={styles.workspaceTitle}>Open as Profile</Text><Text style={styles.publicViewText}>View your personal profile in {activeOrganization?.name ?? 'this organization'}.</Text></View>
+          {switchingOrganizationId === 'profile-preview' ? <ActivityIndicator color={COLORS.gold} size="small" /> : <Text style={styles.chevron}>›</Text>}
+        </Pressable>
+        <Pressable disabled={!activeOrganization || publicBusinessLoading || switchingOrganizationId !== null} style={[styles.publicViewRow, styles.divider]} onPress={openAsBusiness}>
+          <View style={styles.publicViewIcon}><AppIcon name="storefront" color={COLORS.gold} size={20} /></View>
+          <View style={styles.flex}><Text style={styles.workspaceTitle}>Open as Business</Text><Text style={styles.publicViewText}>{publicBusiness ? `View ${publicBusiness.name}'s public organization page.` : publicBusinessLoading ? 'Finding this organization’s public business page…' : `Preview ${activeOrganization?.name ?? 'this organization'} as a business.`}</Text></View>
+          {publicBusinessLoading ? <ActivityIndicator color={COLORS.gold} size="small" /> : <Text style={styles.chevron}>›</Text>}
+        </Pressable>
+      </View>
+
       {HOST_WORKSPACE_GROUPS.map((group) => <View key={group}>
         <Text style={styles.sectionLabel}>{group}</Text>
         <View style={styles.list}>
@@ -127,8 +196,7 @@ export default function HostMenuScreen() {
       <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.workspaceCard}>
         {vendorApproved ? <Pressable style={styles.workspaceRow} onPress={() => router.replace('/vendor' as never)}><Text style={styles.workspaceTitle}>Vendor Center</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
-        <Pressable style={[styles.workspaceRow, vendorApproved && styles.divider]} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.workspaceTitle}>Member App</Text><Text style={styles.chevron}>›</Text></Pressable>
-        {isPlatformAdmin ? <Pressable style={[styles.workspaceRow, styles.divider]} onPress={() => router.replace('/admin' as never)}><Text style={styles.workspaceTitle}>Admin</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
+        {isPlatformAdmin ? <Pressable style={[styles.workspaceRow, vendorApproved && styles.divider]} onPress={() => router.replace('/admin' as never)}><Text style={styles.workspaceTitle}>Admin</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
       </View>
     </ScrollView>
   </SafeAreaView>;
@@ -159,6 +227,10 @@ const styles = StyleSheet.create({
   activePill: { color: COLORS.gold, fontSize: 7.5, fontWeight: '900', letterSpacing: 0.8, borderWidth: 1, borderColor: '#6C5A2F', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
   activeCheck: { color: COLORS.green, fontSize: 18, fontWeight: '900' },
   organizationError: { color: '#E8A09A', fontSize: 10, lineHeight: 15, marginTop: 7 },
+  publicViewCard: { borderRadius: 15, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: '#5B5030', overflow: 'hidden' },
+  publicViewRow: { minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  publicViewIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#2A2518', alignItems: 'center', justifyContent: 'center' },
+  publicViewText: { color: COLORS.dim, fontSize: 9.5, lineHeight: 13, marginTop: 3 },
   workspaceCard: { borderRadius: 15, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, overflow: 'hidden' },
   workspaceRow: { minHeight: 52, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, divider: { borderTopWidth: 1, borderTopColor: COLORS.line },
   workspaceTitle: { color: COLORS.cream, fontSize: 13, fontWeight: '800' },

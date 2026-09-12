@@ -61,6 +61,12 @@ export type OrganizationWorkspace = {
   isPlatformDefault: boolean;
 };
 
+export type OrganizationPublicBusiness = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 export type ProvisionOrganizationInput = {
   name: string;
   slug: string;
@@ -135,6 +141,19 @@ export async function getActiveOrganization(): Promise<OrganizationWorkspace | n
     ?? null;
 }
 
+export async function getOrganizationPublicBusiness(organizationId: string): Promise<OrganizationPublicBusiness | null> {
+  const { data, error } = await supabase
+    .from('host_organizations')
+    .select('id,name,slug')
+    .eq('platform_organization_id', organizationId)
+    .eq('is_public', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { id: data.id, name: data.name, slug: data.slug } : null;
+}
+
 export async function setActiveOrganization(organizationId: string): Promise<OrganizationWorkspace> {
   const { data, error } = await supabase.rpc('set_active_organization', {
     p_organization_id: organizationId,
@@ -146,6 +165,14 @@ export async function setActiveOrganization(organizationId: string): Promise<Org
   const active = organizations.find((organization) => organization.id === organizationId);
   if (!active) throw new Error('The selected organization is no longer available.');
   return { ...active, isActive: true };
+}
+
+export async function activatePlatformDefaultOrganization(): Promise<OrganizationWorkspace | null> {
+  const organizations = await listMyOrganizations();
+  const platformDefault = organizations.find((organization) => organization.isPlatformDefault) ?? null;
+  if (!platformDefault) return null;
+  if (platformDefault.isActive) return platformDefault;
+  return setActiveOrganization(platformDefault.id);
 }
 
 export async function hasOrganizationPermission(
