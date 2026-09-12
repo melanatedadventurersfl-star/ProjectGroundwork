@@ -48,6 +48,7 @@ export default function AdminProfileScreen() {
 
   const toolRows = [
     ...(isFounder ? [{ title: 'Founder Overwatch', subtitle: 'See and govern members, memberships, hosts, vendors, groups, events, approvals, reports and administrative history from one founder-only registry.', route: '/overwatch' }] : []),
+    { title: 'Organizations', subtitle: 'Create a complete tenant with its owner membership, Public Experience, branding defaults, and safe starter modules.', route: '/admin/organizations' },
     { title: 'Host Center', subtitle: 'Open the unified workspace for events, work, calendar, opportunities, vendors, finances and internal resources.', route: '/host' },
     { title: 'Trail Guide Data', subtitle: 'Ingest official park pages, campground rules, reservation sources, and review Trail Guide data completeness.', route: '/admin/trail-guide-data' },
     { title: 'Trail Guide Images', subtitle: 'Review destination cover candidates, add verified images, and override automatic hero selection when needed.', route: '/admin/trail-guide-images' },
