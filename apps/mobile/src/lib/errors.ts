@@ -6,6 +6,7 @@ export function getFriendlyAuthError(error: unknown, fallback: string) {
     normalized.includes('network request failed')
     || normalized.includes('failed to fetch')
     || normalized.includes('fetch failed')
+    || normalized.includes('load failed')
     || normalized.includes('unknownhost')
     || normalized.includes('521')
   ) {
