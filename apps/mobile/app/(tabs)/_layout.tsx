@@ -1,13 +1,58 @@
 import { Redirect, Tabs } from 'expo-router';
+import { useEffect, useState } from 'react';
 
 import { useAuth } from '../../src/auth/AuthProvider';
+import {
+  experienceLabel,
+  experienceModuleEnabled,
+  getActiveExperienceContext,
+  type ActiveExperienceContext,
+} from '../../src/platform/experience';
 
 export default function TabLayout() {
   const { session, isLoading } = useAuth();
+  const [experienceContext, setExperienceContext] = useState<ActiveExperienceContext | null>(null);
+
+  useEffect(() => {
+    if (!session?.user.id) {
+      setExperienceContext(null);
+      return;
+    }
+
+    let active = true;
+    void getActiveExperienceContext()
+      .then((context) => {
+        if (active) setExperienceContext(context);
+      })
+      .catch((caught) => {
+        console.warn('[experience] Unable to load member navigation configuration', caught);
+      });
+
+    return () => { active = false; };
+  }, [session?.user.id]);
 
   if (!isLoading && !session) {
     return <Redirect href="/(auth)/sign-in" />;
   }
+
+  const homeTitle = experienceContext
+    ? experienceLabel(experienceContext.experience, 'home', 'Trailhead')
+    : 'Trailhead';
+  const eventsTitle = experienceContext
+    ? experienceLabel(experienceContext.experience, 'events', 'Explore')
+    : 'Explore';
+  const communityTitle = experienceContext
+    ? experienceLabel(experienceContext.experience, 'community', 'Outpost')
+    : 'Outpost';
+  const journeyTitle = experienceContext
+    ? experienceLabel(experienceContext.experience, 'journey', 'Passport')
+    : 'Passport';
+  const eventsEnabled = experienceContext
+    ? experienceModuleEnabled(experienceContext.modules, 'events')
+    : true;
+  const communityEnabled = experienceContext
+    ? experienceModuleEnabled(experienceContext.modules, 'community')
+    : true;
 
   return (
     <Tabs
@@ -16,10 +61,10 @@ export default function TabLayout() {
         tabBarStyle: { display: 'none' },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Trailhead' }} />
-      <Tabs.Screen name="explore" options={{ title: 'Explore' }} />
-      <Tabs.Screen name="community" options={{ title: 'Outpost' }} />
-      <Tabs.Screen name="passport" options={{ href: null }} />
+      <Tabs.Screen name="index" options={{ title: homeTitle }} />
+      <Tabs.Screen name="explore" options={{ title: eventsTitle, href: eventsEnabled ? undefined : null }} />
+      <Tabs.Screen name="community" options={{ title: communityTitle, href: communityEnabled ? undefined : null }} />
+      <Tabs.Screen name="passport" options={{ title: journeyTitle, href: null }} />
       <Tabs.Screen name="menu" options={{ title: 'Menu' }} />
     </Tabs>
   );
