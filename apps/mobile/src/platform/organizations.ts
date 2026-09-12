@@ -45,6 +45,8 @@ export type OrganizationPermission =
   | 'ai.manage'
   | 'audit.view';
 
+export type OrganizationKind = 'community' | 'company' | 'nonprofit' | 'brand' | 'team' | 'other';
+
 export type OrganizationWorkspace = {
   id: string;
   name: string;
@@ -57,6 +59,27 @@ export type OrganizationWorkspace = {
   roles: OrganizationRole[];
   isActive: boolean;
   isPlatformDefault: boolean;
+};
+
+export type ProvisionOrganizationInput = {
+  name: string;
+  slug: string;
+  kind?: OrganizationKind;
+  visibility?: 'public' | 'private';
+  blueprintCode?: 'community';
+  primaryColor?: string | null;
+  accentColor?: string | null;
+  makeActive?: boolean;
+};
+
+export type ProvisionOrganizationResult = {
+  organizationId: string;
+  experienceId: string;
+  name: string;
+  slug: string;
+  blueprintCode: string;
+  experienceStatus: string;
+  madeActive: boolean;
 };
 
 function normalizeOrganization(row: any): OrganizationWorkspace {
@@ -112,6 +135,38 @@ export async function hasOrganizationPermission(
   });
   if (error) throw error;
   return data === true;
+}
+
+export async function provisionOrganization(input: ProvisionOrganizationInput): Promise<ProvisionOrganizationResult> {
+  const { data, error } = await supabase.rpc('provision_organization', {
+    p_name: input.name.trim(),
+    p_slug: input.slug.trim().toLowerCase(),
+    p_kind: input.kind ?? 'community',
+    p_visibility: input.visibility ?? 'private',
+    p_blueprint_code: input.blueprintCode ?? 'community',
+    p_primary_color: input.primaryColor?.trim() || null,
+    p_accent_color: input.accentColor?.trim() || null,
+    p_make_active: input.makeActive === true,
+  });
+  if (error) throw error;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Organization provisioning returned an invalid response.');
+  }
+
+  const row = data as Record<string, unknown>;
+  if (typeof row.organization_id !== 'string' || typeof row.experience_id !== 'string') {
+    throw new Error('Organization provisioning did not return tenant identifiers.');
+  }
+
+  return {
+    organizationId: row.organization_id,
+    experienceId: row.experience_id,
+    name: typeof row.name === 'string' ? row.name : input.name.trim(),
+    slug: typeof row.slug === 'string' ? row.slug : input.slug.trim().toLowerCase(),
+    blueprintCode: typeof row.blueprint_code === 'string' ? row.blueprint_code : 'community',
+    experienceStatus: typeof row.experience_status === 'string' ? row.experience_status : 'draft',
+    madeActive: row.made_active === true,
+  };
 }
 
 export function organizationRoleLabel(role: OrganizationRole): string {
