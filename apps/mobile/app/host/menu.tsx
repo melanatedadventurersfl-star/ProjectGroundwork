@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { HOST_WORKSPACE_GROUPS, HOST_WORKSPACE_ITEMS } from '../../src/hosting/hostWorkspace';
 import { supabase } from '../../src/lib/supabase';
 import {
+  activatePlatformDefaultOrganization,
   listMyOrganizations,
   organizationRoleLabel,
   setActiveOrganization,
@@ -28,6 +29,7 @@ export default function HostMenuScreen() {
     ?? organizations.find((organization) => organization.isPlatformDefault)
     ?? organizations[0]
     ?? null;
+  const platformDefaultOrganization = organizations.find((organization) => organization.isPlatformDefault) ?? null;
 
   useEffect(() => {
     let active = true;
@@ -63,6 +65,19 @@ export default function HostMenuScreen() {
     } catch (caught) {
       setOrganizationError(caught instanceof Error ? caught.message : 'Unable to switch organization.');
     } finally {
+      setSwitchingOrganizationId(null);
+    }
+  }
+
+  async function openMemberApp() {
+    if (!platformDefaultOrganization || switchingOrganizationId) return;
+    setSwitchingOrganizationId('member-app');
+    setOrganizationError(null);
+    try {
+      await activatePlatformDefaultOrganization();
+      router.replace('/(tabs)' as never);
+    } catch (caught) {
+      setOrganizationError(caught instanceof Error ? caught.message : 'Unable to open the Go Melanated member workspace.');
       setSwitchingOrganizationId(null);
     }
   }
@@ -127,8 +142,8 @@ export default function HostMenuScreen() {
       <Text style={styles.sectionLabel}>SWITCH WORKSPACE</Text>
       <View style={styles.workspaceCard}>
         {vendorApproved ? <Pressable style={styles.workspaceRow} onPress={() => router.replace('/vendor' as never)}><Text style={styles.workspaceTitle}>Vendor Center</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
-        <Pressable style={[styles.workspaceRow, vendorApproved && styles.divider]} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.workspaceTitle}>Member App</Text><Text style={styles.chevron}>›</Text></Pressable>
-        {isPlatformAdmin ? <Pressable style={[styles.workspaceRow, styles.divider]} onPress={() => router.replace('/admin' as never)}><Text style={styles.workspaceTitle}>Admin</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
+        {platformDefaultOrganization ? <Pressable disabled={switchingOrganizationId !== null} style={[styles.workspaceRow, vendorApproved && styles.divider]} onPress={() => void openMemberApp()}><Text style={styles.workspaceTitle}>Go Melanated Member App</Text>{switchingOrganizationId === 'member-app' ? <ActivityIndicator color={COLORS.gold} size="small" /> : <Text style={styles.chevron}>›</Text>}</Pressable> : null}
+        {isPlatformAdmin ? <Pressable style={[styles.workspaceRow, (vendorApproved || platformDefaultOrganization) && styles.divider]} onPress={() => router.replace('/admin' as never)}><Text style={styles.workspaceTitle}>Admin</Text><Text style={styles.chevron}>›</Text></Pressable> : null}
       </View>
     </ScrollView>
   </SafeAreaView>;
