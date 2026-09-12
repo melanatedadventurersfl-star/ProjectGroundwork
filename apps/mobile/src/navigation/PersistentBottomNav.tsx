@@ -5,10 +5,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthProvider';
 import { getProfileAvatarUrl, subscribeProfileAvatar } from '../member/api';
+import {
+  experienceLabel,
+  experienceModuleEnabled,
+  experienceModuleLabel,
+  getActiveExperienceContext,
+  type ActiveExperienceContext,
+} from '../platform/experience';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 
 type NavItem = {
   label: string;
+  moduleCode: string;
   icon: AppIconName;
   href: string;
   requiresAuth?: boolean;
@@ -18,18 +26,21 @@ type NavItem = {
 const items: NavItem[] = [
   {
     label: 'Trailhead',
+    moduleCode: 'home',
     icon: 'trailhead',
     href: '/(tabs)',
     isActive: (pathname) => pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/',
   },
   {
     label: 'Explore',
+    moduleCode: 'events',
     icon: 'explore',
     href: '/(tabs)/explore',
     isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness'),
   },
   {
     label: 'Outpost',
+    moduleCode: 'community',
     icon: 'community',
     href: '/(tabs)/community',
     requiresAuth: true,
@@ -37,12 +48,14 @@ const items: NavItem[] = [
   },
   {
     label: 'Trail Guide',
+    moduleCode: 'directory',
     icon: 'guide',
     href: '/trail-guide',
     isActive: (pathname) => pathname.startsWith('/trail-guide'),
   },
   {
     label: 'Profile',
+    moduleCode: 'profiles',
     icon: 'profile',
     href: '/member/profile',
     requiresAuth: true,
@@ -62,13 +75,42 @@ function promptForAccount(destination: string) {
   );
 }
 
+function configuredLabel(item: NavItem, context: ActiveExperienceContext): string {
+  if (item.moduleCode === 'home') return experienceLabel(context.experience, 'home', item.label);
+  if (item.moduleCode === 'events') return experienceLabel(context.experience, 'events', item.label);
+  if (item.moduleCode === 'community') return experienceLabel(context.experience, 'community', item.label);
+  if (item.moduleCode === 'directory') return experienceLabel(context.experience, 'directory', item.label);
+  return experienceModuleLabel(context.modules, item.moduleCode, item.label);
+}
+
 export function PersistentBottomNav() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = session?.user.id;
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const showAskGo = pathname.startsWith('/trail-guide') && pathname !== '/trail-guide/ask';
+  const [experienceContext, setExperienceContext] = useState<ActiveExperienceContext | null>(null);
+
+  useEffect(() => {
+    if (!userId) {
+      setExperienceContext(null);
+      return;
+    }
+
+    let active = true;
+    void getActiveExperienceContext()
+      .then((context) => {
+        if (active) setExperienceContext(context);
+      })
+      .catch((error) => {
+        console.warn('[experience] Unable to load native member navigation', error);
+        if (active) setExperienceContext(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [pathname, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +138,18 @@ export function PersistentBottomNav() {
 
   if (pathname === '/account-status') return null;
 
+  const visibleItems = session
+    ? experienceContext
+      ? items
+          .filter((item) => experienceModuleEnabled(experienceContext.modules, item.moduleCode, false))
+          .map((item) => ({ ...item, label: configuredLabel(item, experienceContext) }))
+      : []
+    : items;
+  const directoryEnabled = !session || Boolean(
+    experienceContext && experienceModuleEnabled(experienceContext.modules, 'directory', false),
+  );
+  const showAskGo = directoryEnabled && pathname.startsWith('/trail-guide') && pathname !== '/trail-guide/ask';
+
   return (
     <View style={[styles.shell, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {showAskGo ? (
@@ -116,13 +170,13 @@ export function PersistentBottomNav() {
         </Pressable>
       ) : null}
       <View style={styles.bar}>
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const active = item.isActive(pathname);
           const color = active ? '#D7B45A' : '#E7DFCF';
-          const showAvatar = item.label === 'Profile' && Boolean(session && avatarUrl);
+          const showAvatar = item.moduleCode === 'profiles' && Boolean(session && avatarUrl);
           return (
             <Pressable
-              key={item.label}
+              key={item.moduleCode}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               accessibilityLabel={item.label}
