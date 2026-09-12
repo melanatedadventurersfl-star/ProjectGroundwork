@@ -1,5 +1,9 @@
 import { supabase } from '../lib/supabase';
-import { getActiveOrganization, type OrganizationWorkspace } from './organizations';
+import {
+  getActiveOrganization,
+  listMyOrganizations,
+  type OrganizationWorkspace,
+} from './organizations';
 
 export type ExperienceStatus = 'draft' | 'active' | 'archived';
 
@@ -133,6 +137,20 @@ export async function getOrganizationExperience(
   return row ? normalizeExperience(row) : null;
 }
 
+export async function getOrganizationExperienceBySlug(
+  publicSlug: string,
+): Promise<OrganizationExperience | null> {
+  const { data, error } = await supabase
+    .from('organization_experiences')
+    .select('id,organization_id,experience_key,name,public_slug,blueprint_code,status,branding,navigation,terminology,home_layout,membership_settings,public_settings')
+    .eq('public_slug', publicSlug.trim().toLowerCase())
+    .limit(1);
+
+  if (error) throw error;
+  const row = data?.[0];
+  return row ? normalizeExperience(row) : null;
+}
+
 export async function listExperienceModules(experienceId: string): Promise<OrganizationExperienceModule[]> {
   const { data, error } = await supabase
     .from('organization_experience_modules')
@@ -151,6 +169,22 @@ export async function getActiveExperienceContext(): Promise<ActiveExperienceCont
 
   const experience = await getOrganizationExperience(organization.id);
   if (!experience) return null;
+
+  const modules = await listExperienceModules(experience.id);
+  return { organization, experience, modules };
+}
+
+export async function getExperienceContextBySlug(
+  publicSlug: string,
+): Promise<ActiveExperienceContext | null> {
+  const [experience, organizations] = await Promise.all([
+    getOrganizationExperienceBySlug(publicSlug),
+    listMyOrganizations(),
+  ]);
+  if (!experience) return null;
+
+  const organization = organizations.find((item) => item.id === experience.organizationId) ?? null;
+  if (!organization) return null;
 
   const modules = await listExperienceModules(experience.id);
   return { organization, experience, modules };
