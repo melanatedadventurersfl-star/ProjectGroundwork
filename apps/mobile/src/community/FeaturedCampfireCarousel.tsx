@@ -1,6 +1,6 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Animated,
   Image,
@@ -213,13 +213,14 @@ export function FeaturedCampfireCarousel({
   onIndexChange: (index: number) => void;
   onExploreCommunities: () => void;
 }) {
-  const position = useRef(new Animated.ValueXY()).current;
+  const [position] = useState(() => new Animated.ValueXY());
   const [history, setHistory] = useState<number[]>([]);
   const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
   const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
   const cardWidth = Math.min(360, Math.max(270, viewportWidth * 0.9));
   const currentIndex = posts.length ? Math.min(activeIndex, posts.length - 1) : 0;
+  const firstPostId = posts[0]?.id ?? null;
 
   const eventByPost = useMemo(() => {
     const map = new Map<string, LocalEvent | null>();
@@ -266,7 +267,7 @@ export function FeaturedCampfireCarousel({
   useEffect(() => {
     position.setValue({ x: 0, y: 0 });
     setHistory([]);
-  }, [posts[0]?.id, position]);
+  }, [firstPostId, position]);
 
   const toggleReaction = useCallback(async (post: CommunityPost) => {
     if (reactingPostId) return;
