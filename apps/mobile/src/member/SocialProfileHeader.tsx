@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { RankEmblem } from '../passport/RankEmblem'
+import { RankEmblem, type RankName } from '../passport/RankEmblem'
 import { AppIcon } from '../ui/AppIcon'
 
 export type SocialProfileStat = {
@@ -22,7 +22,7 @@ type Props = {
   displayName?: string | null
   username?: string | null
   location?: string | null
-  rank: string
+  rank: RankName
   rankDetail?: string | null
   bio?: string | null
   interests?: string[]
@@ -88,7 +88,7 @@ export function SocialProfileHeader({
           <Text style={styles.name} numberOfLines={2}>{displayName ?? 'Adventurer'}</Text>
           {username ? <Text style={styles.handle}>@{username}</Text> : null}
           {location ? <View style={styles.locationLine}><AppIcon name="location" color="#AEB9B4" size={14} /><Text style={styles.location}>{location}</Text></View> : null}
-          <View style={styles.rankLine}><RankEmblem rank={rank as never} size={24} /><Text style={styles.rankText}>{rank}</Text>{rankDetail ? <Text style={styles.rankDetail}>· {rankDetail}</Text> : null}</View>
+          <View style={styles.rankLine}><RankEmblem rank={rank} size={24} /><Text style={styles.rankText}>{rank}</Text>{rankDetail ? <Text style={styles.rankDetail}>· {rankDetail}</Text> : null}</View>
         </View>
       </View>
 
