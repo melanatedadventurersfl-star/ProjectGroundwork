@@ -24,6 +24,10 @@ export function subscribeProfileAvatar(listener: ProfileAvatarListener) {
 }
 
 async function profileId() {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (sessionData.session?.user?.id) return sessionData.session.user.id;
+
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) throw error ?? new Error('Sign in required.');
   return data.user.id;
