@@ -61,6 +61,12 @@ export type OrganizationWorkspace = {
   isPlatformDefault: boolean;
 };
 
+export type OrganizationPublicBusiness = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 export type ProvisionOrganizationInput = {
   name: string;
   slug: string;
@@ -133,6 +139,19 @@ export async function getActiveOrganization(): Promise<OrganizationWorkspace | n
     ?? organizations.find((organization) => organization.isPlatformDefault)
     ?? organizations[0]
     ?? null;
+}
+
+export async function getOrganizationPublicBusiness(organizationId: string): Promise<OrganizationPublicBusiness | null> {
+  const { data, error } = await supabase
+    .from('host_organizations')
+    .select('id,name,slug')
+    .eq('platform_organization_id', organizationId)
+    .eq('is_public', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { id: data.id, name: data.name, slug: data.slug } : null;
 }
 
 export async function setActiveOrganization(organizationId: string): Promise<OrganizationWorkspace> {
