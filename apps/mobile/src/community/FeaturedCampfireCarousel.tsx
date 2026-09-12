@@ -41,9 +41,9 @@ const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#16201B';
 const PANEL_2 = '#1A261F';
-const IMAGE_CARD_HEIGHT = 340;
-const PHOTO_STAGE_HEIGHT = 214;
-const TEXT_CARD_HEIGHT = 226;
+const IMAGE_CARD_HEIGHT = 316;
+const PHOTO_STAGE_HEIGHT = 198;
+const TEXT_CARD_HEIGHT = 216;
 const CARD_GAP = 12;
 const UNDO_WINDOW_MS = 5000;
 const VERTICAL_CAPTURE_DISTANCE = 14;
@@ -404,8 +404,9 @@ export function FeaturedCampfireCarousel({
   const [nowMs] = useState(() => Date.now());
   const [verticalSwipeY] = useState(() => new Animated.Value(0));
   const latestScrollOffsetRef = useRef(0);
+  const carouselRef = useRef<ScrollView>(null);
 
-  const cardWidth = Math.min(350, Math.max(248, viewportWidth * 0.84));
+  const cardWidth = Math.min(332, Math.max(244, viewportWidth * 0.82));
   const snapInterval = cardWidth + CARD_GAP;
   const sideInset = Math.max(14, (viewportWidth - cardWidth) / 2);
 
@@ -607,6 +608,15 @@ export function FeaturedCampfireCarousel({
     restoreDismissedItem(undoItem.key);
   }, [restoreDismissedItem, undoItem]);
 
+  useEffect(() => {
+    if (!deckReady || !items.length) return;
+    const targetX = safeIndex * snapInterval;
+    requestAnimationFrame(() => {
+      carouselRef.current?.scrollTo({ x: targetX, y: 0, animated: false });
+      latestScrollOffsetRef.current = targetX;
+    });
+  }, [deckReady, items.length, safeIndex, signature, snapInterval]);
+
   const resetVerticalSwipe = useCallback(() => {
     Animated.spring(verticalSwipeY, {
       toValue: 0,
@@ -645,23 +655,20 @@ export function FeaturedCampfireCarousel({
       return;
     }
 
-    Animated.timing(verticalSwipeY, {
-      toValue: 86,
-      duration: 110,
-      useNativeDriver: true,
-    }).start(() => {
-      const restored = restoreDismissedItem(latestDismissed.item.key);
-      if (!restored) {
-        verticalSwipeY.setValue(0);
-        return;
-      }
-      verticalSwipeY.setValue(-82);
-      Animated.spring(verticalSwipeY, {
-        toValue: 0,
-        tension: 145,
-        friction: 15,
-        useNativeDriver: true,
-      }).start();
+    verticalSwipeY.setValue(0);
+    const restored = restoreDismissedItem(latestDismissed.item.key);
+    if (!restored) return;
+
+    requestAnimationFrame(() => {
+      verticalSwipeY.setValue(-72);
+      requestAnimationFrame(() => {
+        Animated.spring(verticalSwipeY, {
+          toValue: 0,
+          tension: 145,
+          friction: 15,
+          useNativeDriver: true,
+        }).start();
+      });
     });
   }, [latestDismissed, resetVerticalSwipe, restoreDismissedItem, verticalSwipeY]);
 
@@ -774,9 +781,10 @@ export function FeaturedCampfireCarousel({
     <View style={styles.carouselWrap}>
       <Animated.View
         {...verticalPanResponder.panHandlers}
-        style={[styles.animatedRail, WEB_VERTICAL_GESTURE_STYLE, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
+        style={[styles.animatedRail, WEB_VERTICAL_GESTURE_STYLE]}
       >
         <ScrollView
+          ref={carouselRef}
           key={signature}
           horizontal
           directionalLockEnabled
@@ -794,7 +802,14 @@ export function FeaturedCampfireCarousel({
           style={{ width: viewportWidth }}
         >
           {items.map((item, index) => (
-            <View key={item.key} style={[styles.railItem, { width: cardWidth, marginRight: index === items.length - 1 ? 0 : CARD_GAP }]}>
+            <Animated.View
+              key={item.key}
+              style={[
+                styles.railItem,
+                { width: cardWidth, marginRight: index === items.length - 1 ? 0 : CARD_GAP },
+                index === safeDisplayIndex ? { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity } : null,
+              ]}
+            >
               {item.kind === 'outing' ? (
                 <OutingCard event={item.event} width={cardWidth} onDismiss={() => dismissItem(item, index)} />
               ) : (
@@ -810,7 +825,7 @@ export function FeaturedCampfireCarousel({
                   onDismiss={() => dismissItem(item, index)}
                 />
               )}
-            </View>
+            </Animated.View>
           ))}
         </ScrollView>
       </Animated.View>
