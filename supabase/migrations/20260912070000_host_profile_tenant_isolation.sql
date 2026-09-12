@@ -6,11 +6,13 @@ alter table public.host_center_profiles
   add column if not exists organization_id uuid references public.organizations(id) on delete cascade;
 
 -- Existing Host Center setup belongs to the original Go Melanated tenant.
--- New organizations receive their own row from the application after this migration.
+-- Restore the canonical organization name while assigning that ownership so a
+-- test-tenant label cannot remain attached to the Go Melanated setup row.
 update public.host_center_profiles hcp
-set organization_id = default_org.id
+set organization_id = default_org.id,
+    organization_name = default_org.name
 from lateral (
-  select o.id
+  select o.id, o.name
   from public.organizations o
   where o.is_platform_default = true
   order by o.created_at
