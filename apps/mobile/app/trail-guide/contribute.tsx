@@ -14,13 +14,15 @@ type CampingType = 'tent' | 'rv' | 'cabin' | 'day_visit' | 'other';
 
 const PHOTO_CATEGORIES = [
   ['campsite', 'Campsite'],
-  ['bathroom', 'Bathroom'],
   ['beach', 'Beach'],
+  ['landscape', 'Landscape'],
   ['trail', 'Trail'],
-  ['rv_site', 'RV site'],
-  ['tent_site', 'Tent site'],
+  ['rv_site', 'RV Site'],
+  ['tent_site', 'Tent Site'],
   ['facilities', 'Facilities'],
   ['activities', 'Activities'],
+  ['wildlife', 'Wildlife'],
+  ['bathroom', 'Bathroom'],
   ['other', 'Other'],
 ] as const;
 
@@ -28,7 +30,7 @@ const CAMPING_TYPES: [CampingType, string][] = [
   ['tent', 'Tent'],
   ['rv', 'RV'],
   ['cabin', 'Cabin'],
-  ['day_visit', 'Day visit'],
+  ['day_visit', 'Day Visit'],
   ['other', 'Other'],
 ];
 
@@ -37,7 +39,7 @@ const REVIEW_CATEGORIES = [
   ['campsites', 'Campsites'],
   ['bathrooms', 'Bathrooms'],
   ['location', 'Location'],
-  ['family_friendly', 'Family friendly'],
+  ['family_friendly', 'Family Friendly'],
 ] as const;
 
 function errorMessage(error: unknown) {
@@ -126,7 +128,7 @@ export default function TrailGuideContributeScreen() {
   }, [mode, place, reviewId]);
 
   const editingReview = Boolean(reviewId && mode === 'review');
-  const title = mode === 'review' ? editingReview ? 'Edit your review' : 'Review this place' : 'Add camper photos';
+  const title = mode === 'review' ? editingReview ? 'Edit Your Review' : 'Review This Place' : 'Add Camper Photos';
   const canSubmit = useMemo(() => Boolean(place) && !saving && !loadingExisting && (mode === 'review' ? rating > 0 : photos.length > 0), [loadingExisting, mode, photos.length, place, rating, saving]);
 
   async function pickPhotos() {
@@ -183,6 +185,7 @@ export default function TrailGuideContributeScreen() {
       }
 
       if (photos.length) {
+        const submissionId = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
         for (const photo of photos) {
           await uploadTrailGuidePhoto({
             placeId: place.id,
@@ -193,6 +196,7 @@ export default function TrailGuideContributeScreen() {
             caption,
             visitDate: dateValue,
             reviewId: savedReviewId,
+            submissionId,
           });
         }
       }
@@ -230,22 +234,22 @@ export default function TrailGuideContributeScreen() {
         {mode === 'review' ? (
           <>
             <View style={styles.card}>
-              <Text style={styles.label}>Your overall rating</Text>
+              <Text style={styles.label}>Your Overall Rating</Text>
               <Stars value={rating} onChange={setRating} />
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>How did you visit?</Text>
+              <Text style={styles.label}>How Did You Visit?</Text>
               <View style={styles.pills}>{CAMPING_TYPES.map(([value, label]) => <Pressable key={value} onPress={() => setCampingType(value)} style={[styles.pill, campingType === value && styles.pillSelected]}><Text style={[styles.pillText, campingType === value && styles.pillTextSelected]}>{label}</Text></Pressable>)}</View>
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Your review</Text>
+              <Text style={styles.label}>Your Review</Text>
               <TextInput value={reviewText} onChangeText={setReviewText} maxLength={2000} multiline placeholder="What should another camper know?" placeholderTextColor="#718078" style={[styles.input, styles.textArea]} />
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.label}>Optional quick ratings</Text>
+              <Text style={styles.label}>Optional Quick Ratings</Text>
               {REVIEW_CATEGORIES.map(([key, label]) => (
                 <View key={key} style={styles.ratingLine}>
                   <Text style={styles.ratingLabel}>{label}</Text>
@@ -262,35 +266,35 @@ export default function TrailGuideContributeScreen() {
             <TextInput value={campsiteLabel} onChangeText={setCampsiteLabel} maxLength={80} placeholder="Site 18" placeholderTextColor="#718078" style={styles.input} />
           </View>
           <View style={styles.fieldGroupHalf}>
-            <Text style={styles.label}>Visit date</Text>
+            <Text style={styles.label}>Visit Date</Text>
             <TextInput value={visitDate} onChangeText={(value) => setVisitDate(formatUsDateInput(value))} placeholder="MM/DD/YYYY" placeholderTextColor="#718078" style={styles.input} keyboardType="numbers-and-punctuation" maxLength={10} />
           </View>
         </View>
 
         <View style={styles.fieldGroup}>
           <View style={styles.inlineHeader}>
-            <Text style={styles.label}>{mode === 'review' ? 'Add photos' : 'Photos'}</Text>
+            <Text style={styles.label}>{mode === 'review' ? 'Add Photos' : 'Photos'}</Text>
             <Text style={styles.optional}>{photos.length}/8</Text>
           </View>
           {photos.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>{photos.map((photo, index) => <View key={`${photo.uri}-${index}`} style={styles.photoWrap}><Image source={{ uri: photo.uri }} style={styles.preview} /><Pressable onPress={() => setPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))} style={styles.removePhoto}><Text style={styles.removePhotoText}>×</Text></Pressable></View>)}</ScrollView> : null}
-          <Pressable onPress={() => void pickPhotos()} style={styles.photoButton}><Text style={styles.photoButtonIcon}>＋</Text><View style={styles.photoButtonCopy}><Text style={styles.photoButtonTitle}>Choose photos</Text><Text style={styles.photoButtonBody}>Select up to 8 from your library</Text></View><Text style={styles.chevron}>›</Text></Pressable>
+          <Pressable onPress={() => void pickPhotos()} style={styles.photoButton}><Text style={styles.photoButtonIcon}>＋</Text><View style={styles.photoButtonCopy}><Text style={styles.photoButtonTitle}>Choose Photos</Text><Text style={styles.photoButtonBody}>Select up to 8 from your library</Text></View><Text style={styles.chevron}>›</Text></Pressable>
         </View>
 
         {photos.length ? (
           <>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>What do these show?</Text>
+              <Text style={styles.label}>What Do These Show?</Text>
               <View style={styles.pills}>{PHOTO_CATEGORIES.map(([value, label]) => <Pressable key={value} onPress={() => setPhotoCategory(value)} style={[styles.pill, photoCategory === value && styles.pillSelected]}><Text style={[styles.pillText, photoCategory === value && styles.pillTextSelected]}>{label}</Text></Pressable>)}</View>
             </View>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Photo caption <Text style={styles.optional}>(optional)</Text></Text>
+              <Text style={styles.label}>Photo Caption <Text style={styles.optional}>(optional)</Text></Text>
               <TextInput value={caption} onChangeText={setCaption} maxLength={500} placeholder="What are we looking at?" placeholderTextColor="#718078" style={styles.input} />
             </View>
           </>
         ) : null}
 
         {submitError ? <View style={styles.errorBox}><Text style={styles.errorText}>{submitError}</Text></View> : null}
-        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.submit, !canSubmit && styles.disabled]}><Text style={styles.submitText}>{saving ? 'Saving…' : editingReview ? 'Save review' : mode === 'review' ? 'Post review' : 'Submit photos'}</Text></Pressable>
+        <Pressable disabled={!canSubmit} onPress={() => void submit()} style={[styles.submit, !canSubmit && styles.disabled]}><Text style={styles.submitText}>{saving ? 'Saving…' : editingReview ? 'Save Review' : mode === 'review' ? 'Post Review' : 'Submit Photos'}</Text></Pressable>
         {photos.length ? <Text style={styles.moderationNote}>Camper photos appear publicly after moderation. Your pending uploads stay visible to you while they are reviewed. Location metadata is not requested by the app picker.</Text> : null}
       </ScrollView>
     </SafeAreaView>
