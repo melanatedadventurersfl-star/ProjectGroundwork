@@ -68,6 +68,7 @@ export default function TrailGuidePlaceDetailScreen() {
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [transientNotice, setTransientNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -97,6 +98,23 @@ export default function TrailGuidePlaceDetailScreen() {
     }
     setSaved(isTrailGuidePlaceSaved(userId, place.id));
   }, [place, session?.user.id]);
+
+  useEffect(() => {
+    const next = notice === 'review-updated'
+      ? 'Your review was updated.'
+      : notice === 'review-posted'
+        ? 'Your review is live.'
+        : notice === 'photos-submitted'
+          ? 'Photos submitted for review.'
+          : null;
+    if (!next) return;
+    setTransientNotice(next);
+    const timer = setTimeout(() => {
+      setTransientNotice(null);
+      router.setParams({ notice: '' } as never);
+    }, 3600);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const gallery = useMemo(
     () => heroCandidates.filter((photo) => !failedPhotoUrls.includes(photo.url)),
@@ -130,19 +148,21 @@ export default function TrailGuidePlaceDetailScreen() {
   const gmRatingLabel = gmSummary?.reviewCount
     ? `${gmSummary.averageRating?.toFixed(1) ?? '—'} ★ · ${gmSummary.reviewCount} Go Melanated ${gmSummary.reviewCount === 1 ? 'Review' : 'Reviews'}`
     : 'No Go Melanated Reviews Yet';
-  const noticeText = notice === 'review-updated'
-    ? 'Your review was updated.'
-    : notice === 'review-posted'
-      ? 'Your review is live.'
-      : notice === 'photos-submitted'
-        ? 'Photos submitted for review.'
-        : null;
 
   const planOuting = () => router.push({ pathname: '/local-events/create', params: { source: 'trail-guide', trailGuidePlaceId: currentPlace.id, title: currentPlace.name, description: `Planning an outing to ${currentPlace.name}. ${currentPlace.summary}`, category: outingCategory(currentPlace.category), venueName: currentPlace.name, state: 'FL', city: trailGuideCity(currentPlace.city) } });
-  const openDirections = async () => { const fallback = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${currentPlace.name}, ${currentPlace.area}, Florida`)}`; await Linking.openURL(mapsUrl || fallback); };
+  const openDirections = async () => {
+    const fallback = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${currentPlace.name}, ${currentPlace.area}, Florida`)}`;
+    await Linking.openURL(mapsUrl || fallback);
+  };
   const openGoogleReviews = async () => { if (googleReviewsUrl) await Linking.openURL(googleReviewsUrl); };
   const openGmReviews = () => router.push(`/trail-guide/${currentPlace.id}/reviews` as never);
   const sharePlace = async () => { await Share.share({ message: `${currentPlace.name} · ${currentPlace.area}\n${mapsUrl || ''}`.trim(), title: currentPlace.name }); };
+
+  const showLocalNotice = (message: string, duration = 2600) => {
+    setTransientNotice(message);
+    setTimeout(() => setTransientNotice((current) => current === message ? null : current), duration);
+  };
+
   const toggleSaved = () => {
     const userId = session?.user.id;
     if (!userId) {
@@ -152,16 +172,20 @@ export default function TrailGuidePlaceDetailScreen() {
     const next = !saved;
     setTrailGuidePlaceSaved(userId, currentPlace.id, next);
     setSaved(next);
+    showLocalNotice(next ? 'Saved to Trail Guide.' : 'Removed from saved places.');
     if (next) markTrailheadAction('save-place');
   };
+
   const openReview = () => {
     setActionsOpen(false);
     router.push({ pathname: '/trail-guide/contribute', params: { placeId: currentPlace.id, mode: 'review' } } as never);
   };
+
   const openPhotos = () => {
     setActionsOpen(false);
     router.push({ pathname: '/trail-guide/contribute', params: { placeId: currentPlace.id, mode: 'photos' } } as never);
   };
+
   const openPlanOuting = () => {
     setActionsOpen(false);
     planOuting();
@@ -191,7 +215,6 @@ export default function TrailGuidePlaceDetailScreen() {
 
         <View style={styles.body}>
           {currentPhoto ? <Text style={[styles.photoCredit, currentPhoto.representative && styles.representativeCredit]} numberOfLines={1}>{heroCreditLabel(currentPhoto)}</Text> : null}
-          {noticeText ? <View style={styles.notice}><AppIcon name="check" color="#8ED380" size={14} /><Text style={styles.noticeText}>{noticeText}</Text></View> : null}
 
           <View style={styles.identityCopy}>
             <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
@@ -236,6 +259,14 @@ export default function TrailGuidePlaceDetailScreen() {
         </View>
       </ScrollView>
 
+      {transientNotice ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`${transientNotice} Dismiss`} onPress={() => setTransientNotice(null)} style={({ pressed }) => [styles.toast, pressed && styles.pressed]}>
+          <AppIcon name="check" color="#8ED380" size={16} />
+          <Text style={styles.toastText}>{transientNotice}</Text>
+          <AppIcon name="close" color="#8CA096" size={15} />
+        </Pressable>
+      ) : null}
+
       <View pointerEvents="box-none" style={styles.fabWrap}>
         {actionsOpen ? (
           <View style={styles.fabMenu}>
@@ -266,22 +297,22 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: 15, paddingBottom: 92 },
   photoCredit: { color: '#617068', fontSize: 8, marginTop: 5, marginBottom: 5 },
   representativeCredit: { color: '#A88948', fontWeight: '800' },
-  notice: { minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: '#31583A', backgroundColor: '#132516', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, marginBottom: 7 },
-  noticeText: { color: '#BDE1B7', fontSize: 9.5, fontWeight: '800' },
+  toast: { position: 'absolute', top: 216, left: 15, right: 15, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#31583A', backgroundColor: '#132516', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, zIndex: 40, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 12 },
+  toastText: { flex: 1, color: '#BDE1B7', fontSize: 10.5, fontWeight: '900' },
   identityCopy: { flex: 1 },
   type: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
   title: { color: '#FFF8E8', fontSize: 25, lineHeight: 29, fontWeight: '900', marginTop: 4 },
   area: { color: '#B7C1BB', fontSize: 11, fontWeight: '800', marginTop: 5 },
-  externalRatingRow: { alignSelf: 'flex-start', minHeight: 24, marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  externalRatingRow: { alignSelf: 'flex-start', minHeight: 28, marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 4 },
   googleRating: { color: '#C5AA59', fontSize: 10, fontWeight: '800' },
-  gmRatingRow: { alignSelf: 'stretch', minHeight: 34, marginTop: 3, borderRadius: 10, borderWidth: 1, borderColor: '#514722', backgroundColor: '#171D12', paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  gmRatingRow: { alignSelf: 'stretch', minHeight: 38, marginTop: 3, borderRadius: 10, borderWidth: 1, borderColor: '#514722', backgroundColor: '#171D12', paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   gmRatingCopy: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   gmRating: { color: '#F0D16F', fontSize: 10.5, fontWeight: '900' },
   ratingChevron: { color: '#D7B45A', fontSize: 17, lineHeight: 18 },
   placeStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  directionsInline: { minHeight: 28, borderRadius: 999, borderWidth: 1, borderColor: '#34433A', backgroundColor: '#111A15', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9 },
+  directionsInline: { minHeight: 32, borderRadius: 999, borderWidth: 1, borderColor: '#34433A', backgroundColor: '#111A15', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10 },
   directionsInlineText: { color: '#E2E7E4', fontSize: 8.5, fontWeight: '900' },
-  openState: { alignSelf: 'center', color: '#D2A49A', backgroundColor: '#241915', borderWidth: 1, borderColor: '#5D3C33', borderRadius: 999, fontSize: 8.5, fontWeight: '900', paddingHorizontal: 8, paddingVertical: 4 },
+  openState: { alignSelf: 'center', color: '#D2A49A', backgroundColor: '#241915', borderWidth: 1, borderColor: '#5D3C33', borderRadius: 999, fontSize: 8.5, fontWeight: '900', paddingHorizontal: 8, paddingVertical: 5 },
   openStateActive: { color: '#8ED380', backgroundColor: '#132516', borderColor: '#31583A' },
   summary: { color: '#C5CEC8', fontSize: 12, lineHeight: 17, marginTop: 8 },
   fabWrap: { position: 'absolute', right: 16, bottom: 24, alignItems: 'flex-end', zIndex: 30 },
