@@ -82,6 +82,18 @@ export type ProvisionOrganizationResult = {
   madeActive: boolean;
 };
 
+export type OrganizationJoinLink = {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  label: string;
+  token: string;
+  expiresAt: string | null;
+  maxUses: number | null;
+  signupPath: string;
+};
+
 function normalizeOrganization(row: any): OrganizationWorkspace {
   return {
     id: row.id,
@@ -166,6 +178,41 @@ export async function provisionOrganization(input: ProvisionOrganizationInput): 
     blueprintCode: typeof row.blueprint_code === 'string' ? row.blueprint_code : 'community',
     experienceStatus: typeof row.experience_status === 'string' ? row.experience_status : 'draft',
     madeActive: row.made_active === true,
+  };
+}
+
+export async function createOrganizationJoinLink(input: {
+  organizationId: string;
+  label?: string;
+  maxUses?: number | null;
+  expiresInDays?: number;
+}): Promise<OrganizationJoinLink> {
+  const { data, error } = await supabase.rpc('create_organization_join_link', {
+    p_organization_id: input.organizationId,
+    p_label: input.label?.trim() || 'Member signup link',
+    p_max_uses: input.maxUses ?? null,
+    p_expires_in_days: input.expiresInDays ?? 30,
+  });
+  if (error) throw error;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Join link creation returned an invalid response.');
+  }
+
+  const row = data as Record<string, unknown>;
+  if (typeof row.id !== 'string' || typeof row.token !== 'string' || typeof row.organization_id !== 'string') {
+    throw new Error('Join link creation did not return a token.');
+  }
+
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: typeof row.organization_name === 'string' ? row.organization_name : 'Organization',
+    organizationSlug: typeof row.organization_slug === 'string' ? row.organization_slug : '',
+    label: typeof row.label === 'string' ? row.label : 'Member signup link',
+    token: row.token,
+    expiresAt: typeof row.expires_at === 'string' ? row.expires_at : null,
+    maxUses: typeof row.max_uses === 'number' ? row.max_uses : null,
+    signupPath: typeof row.signup_path === 'string' ? row.signup_path : `/(auth)/sign-up?org_invite=${row.token}`,
   };
 }
 
