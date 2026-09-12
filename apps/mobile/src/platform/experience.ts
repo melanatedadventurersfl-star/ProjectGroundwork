@@ -58,6 +58,28 @@ export type ActiveExperienceContext = {
   modules: OrganizationExperienceModule[];
 };
 
+export type ExperienceConfigurationUpdate = {
+  name?: string;
+  publicSlug?: string;
+  status?: ExperienceStatus;
+  branding?: ExperienceBranding;
+  navigation?: Record<string, unknown>;
+  terminology?: ExperienceTerminology;
+  homeLayout?: unknown[];
+  membershipSettings?: Record<string, unknown>;
+  publicSettings?: Record<string, unknown>;
+};
+
+export type ExperienceModuleUpdate = {
+  code: string;
+  label?: string;
+  enabled?: boolean;
+  navPosition?: number | null;
+  routeKey?: string | null;
+  iconKey?: string | null;
+  settings?: Record<string, unknown>;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -134,6 +156,68 @@ export async function getActiveExperienceContext(): Promise<ActiveExperienceCont
   return { organization, experience, modules };
 }
 
+export async function updateOrganizationExperience(
+  experienceId: string,
+  update: ExperienceConfigurationUpdate,
+): Promise<OrganizationExperience> {
+  const payload: Record<string, unknown> = {};
+  if (update.name !== undefined) payload.name = update.name.trim();
+  if (update.publicSlug !== undefined) payload.public_slug = update.publicSlug.trim();
+  if (update.status !== undefined) payload.status = update.status;
+  if (update.branding !== undefined) payload.branding = update.branding;
+  if (update.navigation !== undefined) payload.navigation = update.navigation;
+  if (update.terminology !== undefined) payload.terminology = update.terminology;
+  if (update.homeLayout !== undefined) payload.home_layout = update.homeLayout;
+  if (update.membershipSettings !== undefined) payload.membership_settings = update.membershipSettings;
+  if (update.publicSettings !== undefined) payload.public_settings = update.publicSettings;
+
+  const { data, error } = await supabase
+    .from('organization_experiences')
+    .update(payload)
+    .eq('id', experienceId)
+    .select('id,organization_id,experience_key,name,public_slug,blueprint_code,status,branding,navigation,terminology,home_layout,membership_settings,public_settings')
+    .single();
+
+  if (error) throw error;
+  return normalizeExperience(data);
+}
+
+export async function updateExperienceModule(
+  experienceId: string,
+  update: ExperienceModuleUpdate,
+): Promise<OrganizationExperienceModule> {
+  const payload: Record<string, unknown> = {};
+  if (update.label !== undefined) payload.label = update.label.trim();
+  if (update.enabled !== undefined) payload.enabled = update.enabled;
+  if (update.navPosition !== undefined) payload.nav_position = update.navPosition;
+  if (update.routeKey !== undefined) payload.route_key = update.routeKey;
+  if (update.iconKey !== undefined) payload.icon_key = update.iconKey;
+  if (update.settings !== undefined) payload.settings = update.settings;
+
+  const { data, error } = await supabase
+    .from('organization_experience_modules')
+    .update(payload)
+    .eq('experience_id', experienceId)
+    .eq('module_code', update.code)
+    .select('experience_id,module_code,label,enabled,nav_position,route_key,icon_key,settings')
+    .single();
+
+  if (error) throw error;
+  return normalizeModule(data);
+}
+
+export async function saveExperienceConfiguration(
+  experienceId: string,
+  experienceUpdate: ExperienceConfigurationUpdate,
+  moduleUpdates: ExperienceModuleUpdate[],
+): Promise<{ experience: OrganizationExperience; modules: OrganizationExperienceModule[] }> {
+  const experience = await updateOrganizationExperience(experienceId, experienceUpdate);
+  const modules = await Promise.all(
+    moduleUpdates.map((update) => updateExperienceModule(experienceId, update)),
+  );
+  return { experience, modules };
+}
+
 export function experienceLabel(
   experience: OrganizationExperience,
   key: keyof ExperienceTerminology,
@@ -141,4 +225,22 @@ export function experienceLabel(
 ): string {
   const value = experience.terminology[key];
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+export function experienceModuleEnabled(
+  modules: OrganizationExperienceModule[],
+  code: string,
+  fallback = true,
+): boolean {
+  const module = modules.find((item) => item.code === code);
+  return module ? module.enabled : fallback;
+}
+
+export function experienceModuleLabel(
+  modules: OrganizationExperienceModule[],
+  code: string,
+  fallback: string,
+): string {
+  const module = modules.find((item) => item.code === code);
+  return module?.label?.trim() || fallback;
 }
