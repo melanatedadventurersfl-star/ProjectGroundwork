@@ -8,7 +8,8 @@ import { markTrailheadAction } from '../../src/onboarding/trailheadProgress';
 import { getTrailGuidePlace, trailGuidePlaces, type TrailGuideCityKey, type TrailGuidePlace } from '../../src/trailGuide/catalog';
 import { TrailGuideCommunitySection } from '../../src/trailGuide/TrailGuideCommunitySection';
 import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePlaceDetails } from '../../src/trailGuide/googlePlacePhotos';
-import { useTrailGuidePlacePhoto, type TrailGuidePhoto } from '../../src/trailGuide/placePhotos';
+import { useTrailGuideHeroCandidates, type TrailGuideHeroPhoto } from '../../src/trailGuide/heroSelection';
+import { useTrailGuidePlacePhoto } from '../../src/trailGuide/placePhotos';
 import { isTrailGuidePlaceSaved, setTrailGuidePlaceSaved } from '../../src/trailGuide/savedPlaces';
 import { TrailGuidePlaceMoreDetails, TrailGuidePlacePracticalDetails } from '../../src/trailGuide/TrailGuidePlacePracticalDetails';
 import { AppIcon } from '../../src/ui/AppIcon';
@@ -34,11 +35,11 @@ function emotionalSummary(place: TrailGuidePlace) {
   return place.summary;
 }
 
-function photoSourceLabel(photo?: TrailGuidePhoto | null) {
-  if (!photo) return null;
-  if (/google/i.test(photo.credit ?? '') || /google\.com|maps\.google/i.test(photo.sourceUrl)) return 'Google Maps';
-  if (/wikimedia|wikipedia/i.test(`${photo.credit ?? ''} ${photo.sourceUrl}`)) return 'Wikimedia';
-  return 'Source';
+function heroCreditLabel(photo: TrailGuideHeroPhoto) {
+  if (photo.representative) return 'Representative image';
+  const credit = photo.credit?.trim();
+  if (!credit || credit === photo.sourceLabel) return photo.sourceLabel;
+  return `${photo.sourceLabel} · ${credit}`;
 }
 
 function NearbyCard({ place }: { place: TrailGuidePlace }) {
@@ -60,15 +61,17 @@ export default function TrailGuidePlaceDetailScreen() {
   const { session } = useAuth();
   const { width } = useWindowDimensions();
   const place = getTrailGuidePlace(id);
-  const destinationPhoto = useTrailGuidePlacePhoto(place);
+  const heroCandidates = useTrailGuideHeroCandidates(place);
   const [googleDetails, setGoogleDetails] = useState<GoogleTrailGuidePlaceDetails | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [failedPhotoUrls, setFailedPhotoUrls] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
     setGoogleDetails(null);
     setActivePhotoIndex(0);
+    setFailedPhotoUrls([]);
     if (!place) return () => { active = false; };
     void resolveGoogleTrailGuidePlaceDetails(place).then((details) => { if (active) setGoogleDetails(details); });
     return () => { active = false; };
@@ -83,14 +86,14 @@ export default function TrailGuidePlaceDetailScreen() {
     setSaved(isTrailGuidePlaceSaved(userId, place.id));
   }, [place, session?.user.id]);
 
-  const gallery = useMemo(() => {
-    const photos: TrailGuidePhoto[] = [];
-    if (destinationPhoto) photos.push(destinationPhoto);
-    for (const photo of googleDetails?.photos ?? []) {
-      if (!photos.some((candidate) => candidate.url === photo.url)) photos.push(photo);
-    }
-    return photos;
-  }, [destinationPhoto, googleDetails]);
+  const gallery = useMemo(
+    () => heroCandidates.filter((photo) => !failedPhotoUrls.includes(photo.url)),
+    [failedPhotoUrls, heroCandidates],
+  );
+
+  useEffect(() => {
+    if (activePhotoIndex >= gallery.length) setActivePhotoIndex(0);
+  }, [activePhotoIndex, gallery.length]);
 
   const nearby = useMemo(() => {
     if (!place) return [];
@@ -109,7 +112,13 @@ export default function TrailGuidePlaceDetailScreen() {
   const mapsUrl = googleDetails?.mapsUrl ?? currentPhoto?.sourceUrl ?? null;
   const openState = googleDetails?.openNow == null ? null : googleDetails.openNow ? 'Open now' : 'Closed now';
   const ratingLabel = googleDetails?.rating != null ? `${googleDetails.rating.toFixed(1)} ★${googleDetails.userRatingCount ? ` · ${googleDetails.userRatingCount.toLocaleString()} reviews` : ''}` : null;
-  const noticeText = notice === 'review-posted' ? 'Your review is live.' : notice === 'photos-submitted' ? 'Photos submitted for review.' : null;
+  const noticeText = notice === 'review-updated'
+    ? 'Your review was updated.'
+    : notice === 'review-posted'
+      ? 'Your review is live.'
+      : notice === 'photos-submitted'
+        ? 'Photos submitted for review.'
+        : null;
 
   const planOuting = () => router.push({ pathname: '/local-events/create', params: { source: 'trail-guide', trailGuidePlaceId: currentPlace.id, title: currentPlace.name, description: `Planning an outing to ${currentPlace.name}. ${currentPlace.summary}`, category: outingCategory(currentPlace.category), venueName: currentPlace.name, state: 'FL', city: trailGuideCity(currentPlace.city) } });
   const openDirections = async () => { const fallback = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${currentPlace.name}, ${currentPlace.area}, Florida`)}`; await Linking.openURL(mapsUrl || fallback); };
@@ -126,16 +135,20 @@ export default function TrailGuidePlaceDetailScreen() {
     if (next) markTrailheadAction('save-place');
   };
 
+  const markPhotoFailed = (photoUrl: string) => {
+    setFailedPhotoUrls((current) => current.includes(photoUrl) ? current : [...current, photoUrl]);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           {gallery.length > 0 ? (
             <ScrollView horizontal pagingEnabled bounces={false} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(event) => setActivePhotoIndex(Math.round(event.nativeEvent.contentOffset.x / width))}>
-              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 205 }} resizeMode="cover" />)}
+              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
             </ScrollView>
           ) : (
-            <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Loading destination photo…</Text></View>
+            <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Destination image unavailable</Text></View>
           )}
           <View pointerEvents="none" style={styles.heroShade} />
           <Pressable hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.roundHeroButton, styles.backHeroButton, pressed && styles.pressed]}><AppIcon name="chevron-forward" color="#FFFDF6" size={22} style={{ transform: [{ rotate: '180deg' }] }} /></Pressable>
@@ -144,7 +157,7 @@ export default function TrailGuidePlaceDetailScreen() {
         </View>
 
         <View style={styles.body}>
-          {currentPhoto ? <Text style={styles.photoCredit} numberOfLines={1}>{photoSourceLabel(currentPhoto) ? `${photoSourceLabel(currentPhoto)} · ` : ''}{currentPhoto.credit ?? 'Destination photo'}</Text> : null}
+          {currentPhoto ? <Text style={[styles.photoCredit, currentPhoto.representative && styles.representativeCredit]} numberOfLines={1}>{heroCreditLabel(currentPhoto)}</Text> : null}
           {noticeText ? <View style={styles.notice}><AppIcon name="check" color="#8ED380" size={14} /><Text style={styles.noticeText}>{noticeText}</Text></View> : null}
 
           <View style={styles.identityRow}>
@@ -212,6 +225,7 @@ const styles = StyleSheet.create({
   photoCounterText: { color: '#FFFDF6', fontSize: 9, fontWeight: '900' },
   body: { paddingHorizontal: 15, paddingBottom: 36 },
   photoCredit: { color: '#617068', fontSize: 8, marginTop: 5, marginBottom: 5 },
+  representativeCredit: { color: '#A88948', fontWeight: '800' },
   notice: { minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: '#31583A', backgroundColor: '#132516', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, marginBottom: 7 },
   noticeText: { color: '#BDE1B7', fontSize: 9.5, fontWeight: '800' },
   identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
