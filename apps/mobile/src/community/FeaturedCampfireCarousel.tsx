@@ -1,3 +1,5 @@
+/* React Native Animated.Value is intentional mutable animation state consumed by Animated views and PanResponder handlers. */
+/* eslint-disable react-hooks/refs */
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
