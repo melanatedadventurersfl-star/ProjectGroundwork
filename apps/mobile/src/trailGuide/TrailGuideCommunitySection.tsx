@@ -1,5 +1,6 @@
+import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { loadTrailGuideCommunity, type TrailGuideCommunityData, type TrailGuideReview } from './community';
 import { loadMyTrailGuidePhotos, loadMyTrailGuideReview, type EditableTrailGuideReview, type MyTrailGuidePhoto } from './memberContributions';
@@ -10,7 +11,7 @@ function reviewMeta(review: TrailGuideReview) {
   if (review.campsiteLabel) parts.push(review.campsiteLabel);
   if (review.visitDate) {
     const parsed = new Date(`${review.visitDate}T12:00:00`);
-    if (!Number.isNaN(parsed.getTime())) parts.push(parsed.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }));
+    if (!Number.isNaN(parsed.getTime())) parts.push(parsed.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
   }
   return parts.join(' · ');
 }
@@ -59,7 +60,7 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
       campsites: 'Campsites',
       bathrooms: 'Bathrooms',
       location: 'Location',
-      family_friendly: 'Family friendly',
+      family_friendly: 'Family Friendly',
     };
     return Object.entries(data.categoryAverages)
       .filter(([key]) => Boolean(labels[key]))
@@ -67,30 +68,39 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
       .slice(0, 4);
   }, [data]);
 
+  const openReviews = () => router.push(`/trail-guide/${placeId}/reviews` as never);
+  const editMyReview = () => {
+    if (!myReview) return;
+    router.push({ pathname: '/trail-guide/contribute', params: { placeId, mode: 'review', reviewId: myReview.id } } as never);
+  };
+
   return (
     <View style={styles.section}>
       <View style={styles.card}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>From campers</Text>
-          <Text style={styles.hint}>Go Melanated reviews and real member photos</Text>
-        </View>
+        <Pressable onPress={openReviews} style={({ pressed }) => [styles.headerRow, pressed && styles.pressed]}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>From Campers</Text>
+            <Text style={styles.hint}>Go Melanated reviews and real member photos</Text>
+          </View>
+          <View style={styles.viewAll}><Text style={styles.viewAllText}>View All Reviews</Text><Text style={styles.chevron}>›</Text></View>
+        </Pressable>
 
         {myReview ? (
-          <View style={styles.myReviewRow}>
+          <Pressable onPress={editMyReview} style={({ pressed }) => [styles.myReviewRow, pressed && styles.pressed]}>
             <View style={styles.myReviewCopy}>
               <Text style={styles.myReviewLabel}>YOUR REVIEW</Text>
               <Text style={styles.myReviewStars}>{'★'.repeat(myReview.rating)}<Text style={styles.myReviewEmpty}>{'★'.repeat(Math.max(0, 5 - myReview.rating))}</Text></Text>
             </View>
-            <Text style={styles.myReviewStatus}>Published</Text>
-          </View>
+            <View style={styles.editWrap}><Text style={styles.editReview}>Edit Review</Text><Text style={styles.chevron}>›</Text></View>
+          </Pressable>
         ) : null}
 
         {data?.reviewCount ? (
-          <View style={styles.reviewArea}>
+          <Pressable onPress={openReviews} style={({ pressed }) => [styles.reviewArea, pressed && styles.pressed]}>
             <View style={styles.ratingSummary}>
               <View style={styles.bigRatingWrap}>
                 <View style={styles.ratingTopLine}><Text style={styles.star}>★</Text><Text style={styles.bigRating}>{data.averageRating?.toFixed(1)}</Text></View>
-                <Text style={styles.count}>{data.reviewCount} {data.reviewCount === 1 ? 'review' : 'reviews'}</Text>
+                <Text style={styles.count}>{data.reviewCount} GM {data.reviewCount === 1 ? 'review' : 'reviews'}</Text>
               </View>
               {ratingRows.length ? <View style={styles.ratingBars}>{ratingRows.map((row) => <RatingBar key={row.key} label={row.label} value={row.value} />)}</View> : null}
             </View>
@@ -108,22 +118,23 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
                 {topReview.reviewText ? <Text numberOfLines={3} style={styles.reviewText}>{topReview.reviewText}</Text> : null}
               </View>
             ) : null}
-          </View>
+          </Pressable>
         ) : (
-          <View style={styles.compactEmpty}>
+          <Pressable onPress={openReviews} style={({ pressed }) => [styles.compactEmpty, pressed && styles.pressed]}>
             <View style={styles.emptyCopy}>
-              <Text style={styles.emptyTitle}>No camper reviews yet</Text>
-              <Text style={styles.emptyBody}>Community reviews will appear here.</Text>
+              <Text style={styles.emptyTitle}>No Camper Reviews Yet</Text>
+              <Text style={styles.emptyBody}>Open reviews to add the first Go Melanated rating.</Text>
             </View>
-          </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
         )}
 
         {pendingPhotos.length ? (
           <>
             <View style={styles.divider} />
             <View style={styles.photoHeader}>
-              <Text style={styles.photoHeading}>Your photos</Text>
-              <Text style={styles.pendingCount}>{pendingPhotos.length} pending review</Text>
+              <Text style={styles.photoHeading}>Your Photos</Text>
+              <Text style={styles.pendingCount}>{pendingPhotos.length} Pending Review</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
               {pendingPhotos.map((photo) => (
@@ -141,8 +152,8 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
         <View style={styles.divider} />
 
         <View style={styles.photoHeader}>
-          <Text style={styles.photoHeading}>Camper photos</Text>
-          {data?.photos.length ? <Text style={styles.photoCount}>{data.photos.length} shown</Text> : null}
+          <Text style={styles.photoHeading}>Camper Photos</Text>
+          {data?.photos.length ? <Text style={styles.photoCount}>{data.photos.length} Shown</Text> : null}
         </View>
 
         {data?.photos.length ? (
@@ -160,7 +171,7 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
         ) : (
           <View style={styles.photoEmpty}>
             <View style={styles.emptyCopy}>
-              <Text style={styles.emptyTitle}>No approved camper photos yet</Text>
+              <Text style={styles.emptyTitle}>No Approved Camper Photos Yet</Text>
               <Text style={styles.emptyBody}>Pending uploads stay visible to their uploader while they are reviewed.</Text>
             </View>
           </View>
@@ -173,22 +184,24 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
 const styles = StyleSheet.create({
   section: { marginTop: 10 },
   card: { backgroundColor: '#101914', borderWidth: 1, borderColor: '#243128', borderRadius: 16, padding: 11 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   headerCopy: { flex: 1 },
   title: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' },
   hint: { color: '#748178', fontSize: 9, marginTop: 2, lineHeight: 12 },
-  myReviewRow: { minHeight: 45, marginTop: 9, borderTopWidth: 1, borderTopColor: '#223028', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },
+  viewAll: { flexDirection: 'row', alignItems: 'center' }, viewAllText: { color: '#D7B45A', fontSize: 8.5, fontWeight: '900' }, chevron: { color: '#D7B45A', fontSize: 20, lineHeight: 20 },
+  myReviewRow: { minHeight: 48, marginTop: 9, borderTopWidth: 1, borderTopColor: '#223028', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },
   myReviewCopy: { gap: 2 },
   myReviewLabel: { color: '#7F8C84', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.7 },
   myReviewStars: { color: '#E1B94F', fontSize: 13, letterSpacing: 1 },
   myReviewEmpty: { color: '#39443D' },
-  myReviewStatus: { color: '#8FA098', fontSize: 8.5, fontWeight: '800' },
+  editWrap: { flexDirection: 'row', alignItems: 'center' }, editReview: { color: '#D7B45A', fontSize: 9, fontWeight: '900' },
   reviewArea: { marginTop: 10 },
   ratingSummary: { flexDirection: 'row', gap: 11, alignItems: 'center' },
-  bigRatingWrap: { width: 68, alignItems: 'center' },
+  bigRatingWrap: { width: 72, alignItems: 'center' },
   ratingTopLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   star: { color: '#E1B94F', fontSize: 17, lineHeight: 20 },
   bigRating: { color: '#FFF8E8', fontSize: 22, lineHeight: 25, fontWeight: '900' },
-  count: { color: '#7D8981', fontSize: 8, marginTop: 1 },
+  count: { color: '#D7B45A', fontSize: 8, marginTop: 1, fontWeight: '800' },
   ratingBars: { flex: 1, gap: 4 },
   ratingLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   ratingLabel: { width: 64, color: '#AAB4AE', fontSize: 7.5 },
@@ -205,7 +218,7 @@ const styles = StyleSheet.create({
   reviewMeta: { color: '#7B8880', fontSize: 8, textTransform: 'capitalize', marginTop: 1 },
   reviewStars: { color: '#E1B94F', fontSize: 9, letterSpacing: 0.5 },
   reviewText: { color: '#C0C8C3', fontSize: 10, lineHeight: 14, marginTop: 7 },
-  compactEmpty: { minHeight: 48, justifyContent: 'center', marginTop: 9, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#223028' },
+  compactEmpty: { minHeight: 48, flexDirection: 'row', alignItems: 'center', marginTop: 9, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#223028' },
   emptyCopy: { flex: 1 },
   emptyTitle: { color: '#E8EEE9', fontSize: 10.5, fontWeight: '900' },
   emptyBody: { color: '#829087', fontSize: 8.5, lineHeight: 12, marginTop: 2 },
@@ -223,4 +236,5 @@ const styles = StyleSheet.create({
   photoMetaWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,10,7,0.68)', paddingHorizontal: 6, paddingVertical: 4 },
   photoMeta: { color: '#F5F2E8', fontSize: 7.5, fontWeight: '800', textTransform: 'capitalize' },
   photoEmpty: { minHeight: 48, justifyContent: 'center', paddingTop: 7 },
+  pressed: { opacity: 0.78 },
 });
