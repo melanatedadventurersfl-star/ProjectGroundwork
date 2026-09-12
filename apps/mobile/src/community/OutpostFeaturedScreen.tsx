@@ -207,6 +207,7 @@ export default function OutpostFeaturedScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [pageScrollEnabled, setPageScrollEnabled] = useState(true);
 
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
@@ -226,6 +227,7 @@ export default function OutpostFeaturedScreen() {
 
   useFocusEffect(useCallback(() => { void load(false); }, [load]));
   useEffect(() => { setFeaturedIndex(0); }, [filter]);
+  useEffect(() => { setPageScrollEnabled(true); }, [activeTab]);
 
   const joinedGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
   const officialGroups = useMemo(() => groups.filter(isOfficialCommunity), [groups]);
@@ -299,6 +301,10 @@ export default function OutpostFeaturedScreen() {
     }
   }, [joiningId]);
 
+  const handleFeaturedVerticalGesture = useCallback((active: boolean) => {
+    setPageScrollEnabled(!active);
+  }, []);
+
   const renderCampfires = () => (
     <>
       <View style={styles.filterRow}>{filters.map((item) => <Pressable key={item.value} style={[styles.filterChip, filter === item.value && styles.filterChipSelected]} onPress={() => setFilter(item.value)}><Text style={[styles.filterText, filter === item.value && styles.filterTextSelected]}>{item.label}</Text></Pressable>)}</View>
@@ -317,6 +323,7 @@ export default function OutpostFeaturedScreen() {
         activeIndex={featuredIndex}
         onIndexChange={setFeaturedIndex}
         onExploreCommunities={() => setActiveTab('communities')}
+        onVerticalGestureActive={handleFeaturedVerticalGesture}
       />
 
       <Pressable style={({ pressed }) => [styles.trailCrewStrip, pressed && styles.pressed]} onPress={() => router.push('/connections' as never)}>
@@ -400,7 +407,7 @@ export default function OutpostFeaturedScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={GOLD} />}>
+      <ScrollView scrollEnabled={pageScrollEnabled} style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={GOLD} />}>
         <ImageBackground source={outpostBackground} style={styles.hero} imageStyle={styles.heroImage}>
           <View style={styles.heroShade} />
           <View style={styles.heroContent}>
