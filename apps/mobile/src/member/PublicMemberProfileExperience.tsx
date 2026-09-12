@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 import { ProfilePosts } from './ProfilePosts';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
 import { RankEmblem, rankFor, rankLadder } from '../passport/RankEmblem';
-import { STAMP_CATALOG } from '../passport/StampCatalog';
+import { resolveStampCatalogItem, type StampCatalogItem } from '../passport/StampCatalog';
 import { AppIcon } from '../ui/AppIcon';
 import {
   getCommunityProfile,
@@ -22,6 +22,7 @@ import {
 } from '../social/api';
 
 type ProfileTab='journey'|'posts'|'photos'|'about';
+type PublicStampCard={stamp:CommunityFeaturedStamp;art:StampCatalogItem};
 
 function Avatar({url,name}:{url?:string|null;name?:string|null}){
  if(url)return <Image source={{uri:url}} style={styles.avatar}/>;
@@ -29,12 +30,11 @@ function Avatar({url,name}:{url?:string|null;name?:string|null}){
 }
 
 function FeaturedBadge({badge}:{badge:CommunityFeaturedBadge}){
- return <View style={styles.recognitionCard}>{hasBadgeArt(badge.title)?<BadgeArt title={badge.title} size={62}/>:<View style={styles.genericRecognition}><AppIcon name="badge" color="#F5C341" size={27}/></View>}<Text style={styles.recognitionTitle} numberOfLines={2}>{badge.title}</Text></View>;
+ return <View style={styles.recognitionItem}><BadgeArt title={badge.title} size={96}/><Text style={styles.recognitionTitle} numberOfLines={2}>{badge.title}</Text></View>;
 }
 
-function FeaturedStamp({stamp}:{stamp:CommunityFeaturedStamp}){
- const art=STAMP_CATALOG.find(item=>(stamp.code&&item.code===stamp.code)||item.title.toLowerCase()===stamp.title.toLowerCase());
- return <View style={styles.recognitionCard}>{art?<Image source={art.source} style={styles.stampImage} resizeMode="contain"/>:<View style={styles.genericRecognition}><AppIcon name="adventure" color="#F5C341" size={27}/></View>}<Text style={styles.recognitionTitle} numberOfLines={2}>{stamp.title}</Text></View>;
+function FeaturedStamp({item}:{item:PublicStampCard}){
+ return <View style={styles.recognitionItem}><Image source={item.art.source} style={styles.stampImage} resizeMode="contain"/><Text style={styles.recognitionTitle} numberOfLines={2}>{item.stamp.title}</Text></View>;
 }
 
 export default function PublicMemberProfileExperience(){
@@ -93,6 +93,11 @@ export default function PublicMemberProfileExperience(){
  ].filter(item=>item.value>0);
  const latestAlbum=profile.photo_albums[0];
  const joined=new Date(profile.created_at).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+ const featuredBadges=profile.featured_badges.filter(badge=>hasBadgeArt(badge.title)).slice(0,3);
+ const featuredStamps=profile.featured_stamps
+  .map(stamp=>({stamp,art:resolveStampCatalogItem(stamp)}))
+  .filter((item):item is PublicStampCard=>Boolean(item.art))
+  .slice(0,3);
 
  async function shareProfile(){
   if(!profile)return;
@@ -130,8 +135,8 @@ export default function PublicMemberProfileExperience(){
 
     {profile.photo_albums.length?<><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Shared Adventures</Text><Text style={styles.sectionSub}>Adventures where this member shared photos.</Text></View></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.albumRail}>{profile.photo_albums.slice(0,5).map(album=><View key={album.adventure_id} style={styles.sharedAdventureCard}>{album.cover_url&&/^(https?:|data:)/i.test(album.cover_url)?<Image source={{uri:album.cover_url}} style={styles.sharedAdventureImage}/>:<View style={styles.sharedAdventureFallback}><AppIcon name="photos" color="#D7B45A" size={25}/></View>}<View style={styles.sharedAdventureBody}><Text style={styles.sharedAdventureTitle} numberOfLines={2}>{album.title}</Text><Text style={styles.sharedAdventureMeta}>{album.photo_count} photo{album.photo_count===1?'':'s'}</Text></View></View>)}</ScrollView></>:null}
 
-    {profile.featured_badges.length?<><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Badge Showcase</Text><Text style={styles.sectionSub}>Recognition earned through participation.</Text></View></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{profile.featured_badges.slice(0,3).map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView></>:null}
-    {profile.featured_stamps.length?<><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Featured Stamps</Text><Text style={styles.sectionSub}>Adventure stamps from their Trail.</Text></View></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{profile.featured_stamps.slice(0,3).map(stamp=><FeaturedStamp key={stamp.stamp_id} stamp={stamp}/>)}</ScrollView></>:null}
+    {featuredBadges.length?<><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Badge Showcase</Text><Text style={styles.sectionSub}>Recognition earned through participation.</Text></View></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredBadges.map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView></>:null}
+    {featuredStamps.length?<><View style={[styles.sectionHeader,styles.recognitionSectionSpacing]}><View><Text style={styles.sectionTitle}>Featured Stamps</Text><Text style={styles.sectionSub}>Adventure stamps from their Trail.</Text></View></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredStamps.map(item=><FeaturedStamp key={item.stamp.stamp_id} item={item}/>)}</ScrollView></>:null}
    </View>:null}
 
    {tab==='posts'?<View style={styles.tabContent}><ProfilePosts profileId={profile.id}/></View>:null}
@@ -153,7 +158,7 @@ const styles=StyleSheet.create({
  privateCard:{borderRadius:18,borderWidth:1,borderColor:'#37463D',backgroundColor:'#111A17',padding:16,flexDirection:'row',alignItems:'center',gap:12},privateTitle:{color:'#FFF8E8',fontSize:15,fontWeight:'900'},privateBody:{color:'#94A198',fontSize:11.5,lineHeight:16,marginTop:2},
  tabs:{flexDirection:'row',borderBottomWidth:1,borderBottomColor:'#28322E'},tab:{flex:1,alignItems:'center',paddingVertical:9,position:'relative'},tabText:{color:'#A8B2AD',fontSize:12,fontWeight:'800'},tabTextActive:{color:'#F5C341'},tabUnderline:{height:2,backgroundColor:'#F5C341',position:'absolute',bottom:-1,left:12,right:12,borderRadius:4},
  trailFeature:{minHeight:200,borderRadius:22,overflow:'hidden',backgroundColor:'#1B2B22',borderWidth:1,borderColor:'#4D6654',position:'relative'},trailFeatureImage:{...StyleSheet.absoluteFillObject,width:'100%',height:'100%',resizeMode:'cover'},trailFeatureShade:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(8,17,13,.69)'},trailFeatureBody:{flex:1,padding:18,justifyContent:'flex-end'},eyebrow:{color:'#D7B45A',fontSize:8.5,fontWeight:'900',letterSpacing:1},trailFeatureTitle:{color:'#FFF8E8',fontSize:28,fontWeight:'900',letterSpacing:-.5,marginTop:3},trailFeatureText:{color:'#D3DED7',fontSize:13,lineHeight:18,marginTop:3,maxWidth:290},sectionHeader:{flexDirection:'row',alignItems:'flex-end',justifyContent:'space-between'},sectionTitle:{color:'#FFF8E8',fontSize:20,fontWeight:'900'},sectionSub:{color:'#8F9C95',fontSize:11.5,lineHeight:16,marginTop:2},
- albumRail:{gap:10,paddingRight:16},sharedAdventureCard:{width:210,borderRadius:18,overflow:'hidden',backgroundColor:'#111A17',borderWidth:1,borderColor:'#29362F'},sharedAdventureImage:{width:'100%',height:116,resizeMode:'cover'},sharedAdventureFallback:{height:116,alignItems:'center',justifyContent:'center',backgroundColor:'#192720'},sharedAdventureBody:{padding:11},sharedAdventureTitle:{color:'#FFF8E8',fontSize:14,fontWeight:'900'},sharedAdventureMeta:{color:'#8F9C95',fontSize:10.5,marginTop:3},recognitionRail:{gap:9,paddingRight:16},recognitionCard:{width:112,minHeight:124,borderRadius:17,borderWidth:1,borderColor:'#29342F',backgroundColor:'#111A17',padding:9,alignItems:'center',justifyContent:'center'},stampImage:{width:'100%',height:86},genericRecognition:{width:62,height:62,borderRadius:31,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},recognitionTitle:{color:'#F7F8F3',fontWeight:'800',fontSize:10,lineHeight:13,textAlign:'center',marginTop:5},
+ albumRail:{gap:10,paddingRight:16},sharedAdventureCard:{width:210,borderRadius:18,overflow:'hidden',backgroundColor:'#111A17',borderWidth:1,borderColor:'#29362F'},sharedAdventureImage:{width:'100%',height:116,resizeMode:'cover'},sharedAdventureFallback:{height:116,alignItems:'center',justifyContent:'center',backgroundColor:'#192720'},sharedAdventureBody:{padding:11},sharedAdventureTitle:{color:'#FFF8E8',fontSize:14,fontWeight:'900'},sharedAdventureMeta:{color:'#8F9C95',fontSize:10.5,marginTop:3},recognitionSectionSpacing:{marginTop:8},recognitionRail:{gap:14,paddingRight:16,paddingVertical:2},recognitionItem:{width:112,minHeight:132,alignItems:'center',justifyContent:'flex-start'},stampImage:{width:108,height:120},recognitionTitle:{width:112,color:'#F7F8F3',fontWeight:'800',fontSize:11.5,lineHeight:14,textAlign:'center',marginTop:3},
  photoGrid:{gap:10},photoTile:{height:190,borderRadius:19,overflow:'hidden',backgroundColor:'#17241E',position:'relative'},photoTileImage:{width:'100%',height:'100%',resizeMode:'cover'},photoTileFallback:{width:'100%',height:'100%',alignItems:'center',justifyContent:'center'},photoTileShade:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(4,10,8,.18)'},photoTileCopy:{position:'absolute',left:12,right:12,bottom:11},photoTileTitle:{color:'#FFF8E8',fontSize:15,fontWeight:'900'},photoTileMeta:{color:'#E4EAE6',fontSize:10.5,marginTop:2},empty:{borderRadius:18,borderWidth:1,borderColor:'#28362E',backgroundColor:'#111A17',padding:18,alignItems:'center',gap:6},emptyTitle:{color:'#FFF8E8',fontWeight:'900'},
  aboutCard:{borderRadius:18,borderWidth:1,borderColor:'#28362E',backgroundColor:'#111A17',padding:15,gap:12},rankHeader:{flexDirection:'row',alignItems:'center',gap:10},progressTrack:{height:6,borderRadius:999,backgroundColor:'#2B3730',overflow:'hidden'},progressFill:{height:'100%',borderRadius:999,backgroundColor:'#D7B45A'},aboutRow:{flexDirection:'row',alignItems:'center',gap:10},aboutLabel:{color:'#8E9A94',fontSize:10,fontWeight:'800'},aboutValue:{color:'#FFF8E8',fontSize:13,fontWeight:'800',marginTop:1},
 });

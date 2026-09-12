@@ -64,9 +64,10 @@ export function hasBadgeArt(title: string): title is BadgeArtName {
   return supported.has(title as BadgeArtName);
 }
 
-type Props = { title: BadgeArtName; size?: number };
+type Props = { title: string; size?: number };
 
 export function BadgeArt({ title, size = 142 }: Props) {
+  if (!hasBadgeArt(title)) return null;
   return (
     <View style={[styles.shell, { width: size, height: size }]}>
       <Image source={badgeAssets[title]} style={styles.image} resizeMode="contain" />

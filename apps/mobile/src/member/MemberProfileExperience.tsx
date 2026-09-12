@@ -9,7 +9,7 @@ import { getMemberBasecamp, removeProfileCover, removeProfilePhoto, saveProfileD
 import { ProfilePosts } from './ProfilePosts';
 import { getJourney, getMemberBadges, getMemoryAlbums, getPassportStamps, type JourneyItem, type MemberBadge, type MemoryAlbum, type MemoryPhoto, type PassportStamp } from '../passport/api';
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt';
-import { STAMP_CATALOG, type StampCatalogItem } from '../passport/StampCatalog';
+import { resolveStampCatalogItem, type StampCatalogItem } from '../passport/StampCatalog';
 import { RankEmblem, rankFor, rankLadder } from '../passport/RankEmblem';
 import { AppIcon } from '../ui/AppIcon';
 import { searchWeatherLocations, type WeatherLocationSuggestion } from '../weather/api';
@@ -30,7 +30,7 @@ const states=[
 const INTERESTS=['Camping','Hiking','Water Adventures','Paddling','Fishing','Family Adventures','Road Trips','Wellness Outdoors','Photography','Volunteering'];
 const COVER_ASPECT:[number,number]=[16,9];
 type ProfileTab='journey'|'posts'|'photos'|'about';
-type EarnedStampCard={stamp:PassportStamp;art:StampCatalogItem|null};
+type EarnedStampCard={stamp:PassportStamp;art:StampCatalogItem};
 
 type Highlight={title:string;body:string};
 
@@ -54,15 +54,15 @@ function formatDate(value?:string|null){
 function placeLabel(item:JourneyItem){return [item.city,item.state].filter(Boolean).join(', ')}
 
 function FeaturedStamp({item}:{item:EarnedStampCard}){
- return <Pressable style={({pressed})=>[styles.recognitionCard,pressed&&styles.pressed]} onPress={()=>router.push('/member/stamps')}>
-  {item.art?<Image source={item.art.source} style={styles.stampImage} resizeMode="contain"/>:<View style={styles.genericRecognition}><AppIcon name="adventure" color="#F5C341" size={28}/></View>}
+ return <Pressable style={({pressed})=>[styles.recognitionItem,pressed&&styles.pressed]} onPress={()=>router.push('/member/stamps')}>
+  <Image source={item.art.source} style={styles.stampImage} resizeMode="contain"/>
   <Text style={styles.recognitionTitle} numberOfLines={2}>{item.stamp.title}</Text>
  </Pressable>;
 }
 
 function FeaturedBadge({badge}:{badge:MemberBadge}){
- return <Pressable style={({pressed})=>[styles.recognitionCard,pressed&&styles.pressed]} onPress={()=>router.push('/member/badges')}>
-  {hasBadgeArt(badge.title)?<BadgeArt title={badge.title} size={62}/>:<View style={styles.genericRecognition}><AppIcon name="badge" color="#F5C341" size={27}/></View>}
+ return <Pressable style={({pressed})=>[styles.recognitionItem,pressed&&styles.pressed]} onPress={()=>router.push('/member/badges')}>
+  <BadgeArt title={badge.title} size={96}/>
   <Text style={styles.recognitionTitle} numberOfLines={2}>{badge.title}</Text>
  </Pressable>;
 }
@@ -181,8 +181,11 @@ export default function MemberProfileExperience(){
  const remaining=nextRank?Math.max(0,nextRank[1]-journey.length):0;
  const rankProgress=useMemo(()=>{if(!nextRank)return 1;const floor=currentRank?.[1]??0;return Math.min(1,Math.max(0,(journey.length-floor)/Math.max(1,nextRank[1]-floor)))},[journey.length,currentRank,nextRank]);
  const location=[profile.home_city,profile.home_state].filter(Boolean).join(', ');
- const featuredBadges=badges.slice(0,3);
- const earnedStampCards=useMemo<EarnedStampCard[]>(()=>stamps.slice(0,3).map(stamp=>({stamp,art:STAMP_CATALOG.find(item=>(stamp.code&&item.code===stamp.code)||item.title.toLowerCase()===stamp.title.toLowerCase())??null})),[stamps]);
+ const featuredBadges=useMemo(()=>badges.filter(badge=>hasBadgeArt(badge.title)).slice(0,3),[badges]);
+ const earnedStampCards=useMemo<EarnedStampCard[]>(()=>stamps
+  .map(stamp=>({stamp,art:resolveStampCatalogItem(stamp)}))
+  .filter((item):item is EarnedStampCard=>Boolean(item.art))
+  .slice(0,3),[stamps]);
  const albumByAdventure=useMemo(()=>new Map(albums.map(album=>[album.adventure_id,album])),[albums]);
  const latestAlbum=albums[0];
  const coverUrl=profile.cover_url??latestAlbum?.cover_url??null;
@@ -276,7 +279,7 @@ export default function MemberProfileExperience(){
    {highlights.length?<><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Profile Highlights</Text><Text style={styles.sectionSub}>Moments that say something about your outdoor story.</Text></View></View><View style={styles.highlightGrid}>{highlights.map(item=><View key={item.title} style={styles.highlightCard}><View style={styles.highlightIcon}><AppIcon name="trail" color="#17211C" size={17}/></View><Text style={styles.highlightTitle}>{item.title}</Text><Text style={styles.highlightBody}>{item.body}</Text></View>)}</View></>:null}
 
    {featuredBadges.length?<><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Badge Showcase</Text><Pressable onPress={()=>router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredBadges.map(badge=><FeaturedBadge key={badge.badge_id} badge={badge}/>)}</ScrollView></>:null}
-   {earnedStampCards.length?<><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={()=>router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{earnedStampCards.map(item=><FeaturedStamp key={item.stamp.stamp_id} item={item}/>)}</ScrollView></>:null}
+   {earnedStampCards.length?<><View style={[styles.sectionHeader,styles.recognitionSectionSpacing]}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={()=>router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{earnedStampCards.map(item=><FeaturedStamp key={item.stamp.stamp_id} item={item}/>)}</ScrollView></>:null}
   </View>:null}
 
   {tab==='posts'?<View style={styles.tabContent}><ProfilePosts/></View>:null}
@@ -305,7 +308,7 @@ const styles=StyleSheet.create({
  peopleCard:{minHeight:76,borderRadius:18,borderWidth:1,borderColor:'#2C3A32',backgroundColor:'#111A17',padding:12,flexDirection:'row',alignItems:'center',gap:10},peopleAvatars:{flexDirection:'row',alignItems:'center',paddingLeft:4},personAvatar:{width:38,height:38,borderRadius:19,borderWidth:2,borderColor:'#111A17',backgroundColor:'#26342A',alignItems:'center',justifyContent:'center',overflow:'hidden'},personAvatarOverlap:{marginLeft:-10},personAvatarImage:{width:'100%',height:'100%'},personAvatarText:{color:'#D7B45A',fontSize:10,fontWeight:'900'},emptyPerson:{width:38,height:38,borderRadius:19,backgroundColor:'#223128',alignItems:'center',justifyContent:'center'},peopleCopy:{flex:1,minWidth:0},peopleTitle:{color:'#FFF8E8',fontSize:14,fontWeight:'900'},peopleMeta:{color:'#8F9C95',fontSize:10.5,lineHeight:15,marginTop:2},
  memoryRail:{gap:8,paddingRight:16},memoryCard:{width:132,height:132,borderRadius:17,overflow:'hidden',backgroundColor:'#18251F',position:'relative'},memoryImage:{width:'100%',height:'100%',resizeMode:'cover'},favoritePill:{position:'absolute',left:7,bottom:7,backgroundColor:'rgba(9,17,15,.84)',paddingHorizontal:8,paddingVertical:4,borderRadius:999},favoriteText:{color:'#F5C341',fontSize:8.5,fontWeight:'900'},
  highlightGrid:{gap:8},highlightCard:{borderRadius:17,borderWidth:1,borderColor:'#2C3A32',backgroundColor:'#111A17',padding:13},highlightIcon:{width:31,height:31,borderRadius:16,backgroundColor:'#D7B45A',alignItems:'center',justifyContent:'center',marginBottom:8},highlightTitle:{color:'#FFF8E8',fontSize:14,fontWeight:'900'},highlightBody:{color:'#91A097',fontSize:11.5,lineHeight:16,marginTop:2},
- recognitionRail:{gap:9,paddingRight:16},recognitionCard:{width:112,minHeight:124,borderRadius:17,borderWidth:1,borderColor:'#29342F',backgroundColor:'#111A17',padding:9,alignItems:'center',justifyContent:'center'},stampImage:{width:'100%',height:86},genericRecognition:{width:62,height:62,borderRadius:31,borderWidth:1,borderColor:'#D7B45A',backgroundColor:'#21302A',alignItems:'center',justifyContent:'center'},recognitionTitle:{color:'#F7F8F3',fontWeight:'800',fontSize:10,lineHeight:13,textAlign:'center',marginTop:5},
+ recognitionSectionSpacing:{marginTop:8},recognitionRail:{gap:14,paddingRight:16,paddingVertical:2},recognitionItem:{width:112,minHeight:132,alignItems:'center',justifyContent:'flex-start'},stampImage:{width:108,height:120},recognitionTitle:{width:112,color:'#F7F8F3',fontWeight:'800',fontSize:11.5,lineHeight:14,textAlign:'center',marginTop:3},
  photoAlbumCard:{borderRadius:20,overflow:'hidden',backgroundColor:'#111A17',borderWidth:1,borderColor:'#28362E'},albumCoverWrap:{width:'100%',aspectRatio:16/8.5,position:'relative',backgroundColor:'#17211C'},albumCover:{width:'100%',height:'100%',resizeMode:'cover'},albumCoverPlaceholder:{width:'100%',height:'100%',alignItems:'center',justifyContent:'center',backgroundColor:'#17241E'},albumCountPill:{position:'absolute',right:10,top:10,minHeight:28,borderRadius:14,paddingHorizontal:9,backgroundColor:'rgba(9,17,15,.82)',flexDirection:'row',alignItems:'center',gap:5},albumCountText:{color:'#FFF8E8',fontSize:11,fontWeight:'900'},albumFooter:{minHeight:58,paddingHorizontal:14,paddingVertical:10,flexDirection:'row',alignItems:'center',gap:10},albumTitle:{color:'#F7F8F3',fontSize:15,fontWeight:'900'},albumMeta:{color:'#8F9B94',fontSize:11,marginTop:2},
  empty:{borderRadius:18,borderWidth:1,borderColor:'#28362E',backgroundColor:'#111A17',padding:18,alignItems:'center',gap:5},emptyTitle:{color:'#F7F8F3',fontWeight:'900',textAlign:'center'},muted:{color:'#96A39B',lineHeight:19},
  aboutCard:{borderRadius:18,borderWidth:1,borderColor:'#28362E',backgroundColor:'#111A17',padding:15,gap:12},rankHeader:{flexDirection:'row',alignItems:'center',gap:10},aboutRow:{flexDirection:'row',alignItems:'center',gap:10},aboutLabel:{color:'#8E9A94',fontSize:10,fontWeight:'800'},aboutValue:{color:'#FFF8E8',fontSize:13,fontWeight:'800',marginTop:1},settingsRow:{minHeight:58,flexDirection:'row',alignItems:'center',gap:10,borderTopWidth:1,borderTopColor:'#25312B',paddingTop:10},settingsCopy:{flex:1},settingsTitle:{color:'#FFF8E8',fontSize:13,fontWeight:'900'},settingsBody:{color:'#8F9C95',fontSize:10.5,lineHeight:15,marginTop:2},
