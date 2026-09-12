@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react'
+import { Children, type ReactNode, useEffect, useState } from 'react'
+import { router } from 'expo-router'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
+import { supabase } from '../lib/supabase'
 import { RankEmblem, type RankName } from '../passport/RankEmblem'
 import { AppIcon } from '../ui/AppIcon'
 
@@ -36,6 +38,14 @@ type Props = {
   actions?: ReactNode
 }
 
+type OwnerPassportState = {
+  effectiveRank: RankName
+  hasOverride: boolean
+  badgeCount: number
+}
+
+const rankNames: RankName[] = ['Explorer', 'Pathfinder', 'Trailblazer', 'Adventurer', 'Summit Seeker', 'Ascendant']
+
 function initials(name?: string | null) {
   return (name ?? '')
     .split(/\s+/)
@@ -70,12 +80,57 @@ export function SocialProfileHeader({
   coverActions,
   actions,
 }: Props) {
+  const isOwner = Boolean(onAvatarPress)
+  const [ownerPassport, setOwnerPassport] = useState<OwnerPassportState | null>(null)
+
+  useEffect(() => {
+    let active = true
+    if (!isOwner) {
+      setOwnerPassport(null)
+      return () => { active = false }
+    }
+
+    void (async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser()
+        const profileId = authData.user?.id
+        if (!profileId) return
+
+        const [rankResult, badgeResult] = await Promise.all([
+          supabase.rpc('get_my_passport_rank'),
+          supabase.from('member_badges').select('id', { count: 'exact', head: true }).eq('profile_id', profileId),
+        ])
+
+        if (!active) return
+        const payload = rankResult.data as { effective_rank?: string | null, rank_override?: string | null } | null
+        const candidate = payload?.effective_rank
+        const effectiveRank = candidate && rankNames.includes(candidate as RankName) ? candidate as RankName : rank
+        setOwnerPassport({
+          effectiveRank,
+          hasOverride: Boolean(payload?.rank_override),
+          badgeCount: badgeResult.error ? 0 : badgeResult.count ?? 0,
+        })
+      } catch {
+        if (active) setOwnerPassport({ effectiveRank: rank, hasOverride: false, badgeCount: 0 })
+      }
+    })()
+
+    return () => { active = false }
+  }, [isOwner, rank])
+
+  const displayRank = ownerPassport?.effectiveRank ?? rank
+  const displayRankDetail = ownerPassport?.hasOverride ? null : rankDetail
+  const displayStats = isOwner
+    ? [...stats.filter((stat) => stat.label.toLowerCase() !== 'badges'), { label: 'Badges', value: ownerPassport?.badgeCount ?? 0, onPress: () => router.push('/member/badges') }]
+    : stats
+  const ownerActions = isOwner && actions ? Children.toArray(actions).slice(0, 2) : []
+
   return <View style={styles.shell}>
     <View style={styles.cover}>
       {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.coverImage} /> : <View style={styles.coverFallback}><AppIcon name="adventure" color="#D7B45A" size={42} /></View>}
       <View style={styles.coverShade} />
       <View style={styles.coverBottomFade} />
-      {coverActions ? <View style={styles.coverActions}>{coverActions}</View> : null}
+      {ownerActions.length ? <View style={styles.ownerCoverActions}>{ownerActions.map((action, index) => <View key={index} style={styles.ownerCoverActionSlot}>{action}</View>)}</View> : coverActions ? <View style={styles.coverActions}>{coverActions}</View> : null}
     </View>
 
     <View style={styles.body}>
@@ -88,11 +143,11 @@ export function SocialProfileHeader({
           <Text style={styles.name} numberOfLines={2}>{displayName ?? 'Adventurer'}</Text>
           {username ? <Text style={styles.handle}>@{username}</Text> : null}
           {location ? <View style={styles.locationLine}><AppIcon name="location" color="#AEB9B4" size={14} /><Text style={styles.location}>{location}</Text></View> : null}
-          <View style={styles.rankLine}><RankEmblem rank={rank} size={24} /><Text style={styles.rankText}>{rank}</Text>{rankDetail ? <Text style={styles.rankDetail}>· {rankDetail}</Text> : null}</View>
+          <View style={styles.rankLine}><RankEmblem rank={displayRank} size={24} /><Text style={styles.rankText}>{displayRank}</Text>{displayRankDetail ? <Text style={styles.rankDetail}>· {displayRankDetail}</Text> : null}</View>
         </View>
       </View>
 
-      {stats.length ? <View style={styles.statsLine}>{stats.map((stat, index) => <View key={stat.label} style={styles.statWrap}>{index ? <Text style={styles.dot}>·</Text> : null}<Pressable disabled={!stat.onPress} onPress={stat.onPress} style={styles.statPress}><Text style={styles.statValue}>{stat.value}</Text><Text style={styles.statLabel}>{stat.label}</Text></Pressable></View>)}</View> : null}
+      {displayStats.length ? <View style={styles.statsLine}>{displayStats.map((stat, index) => <View key={stat.label} style={styles.statWrap}>{index ? <Text style={styles.dot}>·</Text> : null}<Pressable disabled={!stat.onPress} onPress={stat.onPress} style={styles.statPress}><Text style={styles.statValue}>{stat.value}</Text><Text style={styles.statLabel}>{stat.label}</Text></Pressable></View>)}</View> : null}
 
       {bio ? <Text style={styles.bio}>{bio}</Text> : null}
 
@@ -104,7 +159,7 @@ export function SocialProfileHeader({
         {onPeoplePress ? <AppIcon name="chevron-forward" color="#D7B45A" size={18} /> : null}
       </Pressable> : null}
 
-      {actions ? <View style={styles.actionRow}>{actions}</View> : null}
+      {actions && !isOwner ? <View style={styles.actionRow}>{actions}</View> : null}
     </View>
   </View>
 }
@@ -126,6 +181,8 @@ const styles = StyleSheet.create({
   coverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,9,7,.18)' },
   coverBottomFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 72, backgroundColor: 'rgba(9,17,15,.42)' },
   coverActions: { position: 'absolute', right: 14, bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ownerCoverActions: { position: 'absolute', right: 14, bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ownerCoverActionSlot: { width: 118, height: 42 },
   body: { paddingHorizontal: 18, paddingBottom: 14 },
   identityTop: { flexDirection: 'row', gap: 14, alignItems: 'flex-end', marginTop: -54 },
   avatarWrap: { width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: '#09110F', backgroundColor: '#09110F', position: 'relative' },
