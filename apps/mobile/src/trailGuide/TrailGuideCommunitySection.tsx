@@ -52,7 +52,9 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
   }, [placeId]);
 
   const topReview = data?.reviews.find((review) => review.id !== myReview?.id) ?? null;
-  const pendingPhotos = myPhotos.filter((photo) => photo.moderationStatus === 'pending');
+  const privatePhotos = myPhotos.filter((photo) => photo.moderationStatus !== 'approved');
+  const pendingCount = privatePhotos.filter((photo) => photo.moderationStatus === 'pending').length;
+  const rejectedCount = privatePhotos.filter((photo) => photo.moderationStatus === 'rejected').length;
   const ratingRows = useMemo(() => {
     if (!data) return [];
     const labels: Record<string, string> = {
@@ -100,7 +102,7 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
             <View style={styles.ratingSummary}>
               <View style={styles.bigRatingWrap}>
                 <View style={styles.ratingTopLine}><Text style={styles.star}>★</Text><Text style={styles.bigRating}>{data.averageRating?.toFixed(1)}</Text></View>
-                <Text style={styles.count}>{data.reviewCount} GM {data.reviewCount === 1 ? 'review' : 'reviews'}</Text>
+                <Text style={styles.count}>{data.reviewCount} GM {data.reviewCount === 1 ? 'Review' : 'Reviews'}</Text>
               </View>
               {ratingRows.length ? <View style={styles.ratingBars}>{ratingRows.map((row) => <RatingBar key={row.key} label={row.label} value={row.value} />)}</View> : null}
             </View>
@@ -129,20 +131,23 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
           </Pressable>
         )}
 
-        {pendingPhotos.length ? (
+        {privatePhotos.length ? (
           <>
             <View style={styles.divider} />
             <View style={styles.photoHeader}>
               <Text style={styles.photoHeading}>Your Photos</Text>
-              <Text style={styles.pendingCount}>{pendingPhotos.length} Pending Review</Text>
+              <Text style={styles.privateCount}>{pendingCount ? `${pendingCount} Pending` : ''}{pendingCount && rejectedCount ? ' · ' : ''}{rejectedCount ? `${rejectedCount} Rejected` : ''}</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
-              {pendingPhotos.map((photo) => (
-                <View key={photo.id} style={styles.photoCard}>
-                  <Image source={{ uri: photo.signedUrl }} style={styles.photo} />
-                  <View style={styles.photoShade} />
-                  <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>Pending</Text></View>
-                  <View style={styles.photoMetaWrap}><Text numberOfLines={1} style={styles.photoMeta}>{photo.campsiteLabel || photo.category.replace('_', ' ')}</Text></View>
+              {privatePhotos.map((photo) => (
+                <View key={photo.id} style={[styles.privatePhotoWrap, photo.moderationStatus === 'rejected' && styles.rejectedPhotoWrap]}>
+                  <View style={styles.photoCard}>
+                    <Image source={{ uri: photo.signedUrl }} style={styles.photo} />
+                    <View style={styles.photoShade} />
+                    <View style={[styles.statusBadge, photo.moderationStatus === 'rejected' && styles.rejectedBadge]}><Text style={[styles.statusBadgeText, photo.moderationStatus === 'rejected' && styles.rejectedBadgeText]}>{photo.moderationStatus === 'pending' ? 'Pending' : 'Rejected'}</Text></View>
+                    <View style={styles.photoMetaWrap}><Text numberOfLines={1} style={styles.photoMeta}>{photo.campsiteLabel || photo.category.replace('_', ' ')}</Text></View>
+                  </View>
+                  {photo.moderationStatus === 'rejected' ? <Text numberOfLines={2} style={styles.rejectionReason}>{photo.moderationReason || 'This photo was not approved.'}</Text> : null}
                 </View>
               ))}
             </ScrollView>
@@ -226,13 +231,18 @@ const styles = StyleSheet.create({
   photoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   photoHeading: { color: '#E8EEE9', fontSize: 11, fontWeight: '900' },
   photoCount: { color: '#748178', fontSize: 8 },
-  pendingCount: { color: '#D7B45A', fontSize: 8, fontWeight: '800' },
+  privateCount: { color: '#D7B45A', fontSize: 8, fontWeight: '800' },
   photoRow: { gap: 7, paddingTop: 8, paddingRight: 4 },
+  privatePhotoWrap: { width: 104 },
+  rejectedPhotoWrap: { width: 118 },
   photoCard: { width: 92, height: 78, borderRadius: 10, overflow: 'hidden', backgroundColor: '#1A241E' },
   photo: { ...StyleSheet.absoluteFillObject },
   photoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(6,10,7,0.12)' },
-  pendingBadge: { position: 'absolute', top: 5, left: 5, borderRadius: 999, backgroundColor: 'rgba(11,16,13,0.84)', borderWidth: 1, borderColor: '#8A7133', paddingHorizontal: 6, paddingVertical: 3 },
-  pendingBadgeText: { color: '#F0CC65', fontSize: 6.5, fontWeight: '900' },
+  statusBadge: { position: 'absolute', top: 5, left: 5, borderRadius: 999, backgroundColor: 'rgba(11,16,13,0.84)', borderWidth: 1, borderColor: '#8A7133', paddingHorizontal: 6, paddingVertical: 3 },
+  statusBadgeText: { color: '#F0CC65', fontSize: 6.5, fontWeight: '900' },
+  rejectedBadge: { borderColor: '#7A4940', backgroundColor: 'rgba(38,20,17,0.9)' },
+  rejectedBadgeText: { color: '#EDB5AA' },
+  rejectionReason: { color: '#C99991', fontSize: 7.5, lineHeight: 10, marginTop: 4 },
   photoMetaWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,10,7,0.68)', paddingHorizontal: 6, paddingVertical: 4 },
   photoMeta: { color: '#F5F2E8', fontSize: 7.5, fontWeight: '800', textTransform: 'capitalize' },
   photoEmpty: { minHeight: 48, justifyContent: 'center', paddingTop: 7 },
