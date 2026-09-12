@@ -24,6 +24,11 @@ export default function HostMenuScreen() {
   const [organizationError, setOrganizationError] = useState<string | null>(null);
   const [switchingOrganizationId, setSwitchingOrganizationId] = useState<string | null>(null);
 
+  const activeOrganization = organizations.find((organization) => organization.isActive)
+    ?? organizations.find((organization) => organization.isPlatformDefault)
+    ?? organizations[0]
+    ?? null;
+
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -66,7 +71,7 @@ export default function HostMenuScreen() {
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topbar}>
         <View>
-          <Text style={styles.eyebrow}>GO MELANATED</Text>
+          <Text style={styles.eyebrow}>{activeOrganization?.name.toUpperCase() ?? 'ORGANIZATION WORKSPACE'}</Text>
           <Text style={styles.title}>Host Center</Text>
           <Text style={styles.subtitle}>Events and organization operations in one workspace.</Text>
         </View>
