@@ -18,16 +18,20 @@ import { supabase } from '../lib/supabase';
 import { setReaction, type CommunityGroup, type CommunityPost } from './api';
 import {
   campfirePostHasFreshActivity,
+  dismissCampfireItem,
+  isCampfireItemDismissed,
   loadCampfireDeckState,
   markCampfirePostSeen,
+  restoreCampfireItem,
   saveCampfireDeckState,
   shouldResumeCampfirePosition,
   updateCampfirePosition,
   type CampfireDeckState,
 } from './campfireDeckState';
-import { featuredPostKind } from './featuredPosts';
+import { featuredPostKind, type FeaturedPostKind } from './featuredPosts';
 
 const GOLD = '#D7B45A';
+const GOLD_DARK = '#2D2716';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
 const PANEL = '#16201B';
@@ -35,11 +39,24 @@ const PANEL_2 = '#1A261F';
 const IMAGE_CARD_HEIGHT = 258;
 const TEXT_CARD_HEIGHT = 226;
 const CARD_GAP = 12;
+const UNDO_WINDOW_MS = 5000;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 type CarouselItem =
   | { key: string; kind: 'post'; post: CommunityPost }
   | { key: string; kind: 'outing'; event: LocalEvent };
+
+type UndoItem = {
+  key: string;
+  index: number;
+  label: string;
+};
+
+type DragStart = {
+  offset: number;
+  index: number;
+  startedAt: number;
+};
 
 type PostCardProps = {
   post: CommunityPost;
@@ -50,6 +67,7 @@ type PostCardProps = {
   reactionCount?: number;
   reacting?: boolean;
   onToggleReaction?: (post: CommunityPost) => void;
+  onDismiss: () => void;
 };
 
 function initials(name?: string | null) {
@@ -69,6 +87,14 @@ function relativeTime(value: string) {
 
 function eventDate(event: LocalEvent) {
   return new Date(event.starts_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function eventDay(event: LocalEvent) {
+  return new Date(event.starts_at).toLocaleDateString(undefined, { day: '2-digit' });
+}
+
+function eventMonth(event: LocalEvent) {
+  return new Date(event.starts_at).toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
 }
 
 function eventTime(event: LocalEvent) {
@@ -108,6 +134,54 @@ function buildCarouselItems(posts: CommunityPost[], outings: LocalEvent[]) {
   }
 
   return items;
+}
+
+function itemResumeKey(item?: CarouselItem) {
+  if (!item) return null;
+  return item.kind === 'post' ? item.post.id : item.key;
+}
+
+function itemLabel(item: CarouselItem) {
+  return item.kind === 'outing' ? item.event.title : item.post.body || 'Post';
+}
+
+function typePresentation(kind: FeaturedPostKind) {
+  if (kind === 'outing') return { label: 'OUTING POST', icon: 'calendar-outline' as const, outing: true };
+  if (kind === 'video') return { label: 'VIDEO', icon: 'videocam-outline' as const, outing: false };
+  if (kind === 'media') return { label: 'PHOTO', icon: 'image-outline' as const, outing: false };
+  if (kind === 'community') return { label: 'COMMUNITY', icon: 'people-outline' as const, outing: false };
+  return { label: 'POST', icon: 'chatbubble-ellipses-outline' as const, outing: false };
+}
+
+function PostTypeHeader({
+  kind,
+  groupName,
+  onDismiss,
+}: {
+  kind: FeaturedPostKind;
+  groupName?: string | null;
+  onDismiss: () => void;
+}) {
+  const presentation = typePresentation(kind);
+  return (
+    <View style={styles.postTypeHeader}>
+      <View style={styles.typeStack}>
+        <View style={[styles.typeBadge, presentation.outing && styles.typeBadgeOuting]}>
+          <Ionicons name={presentation.icon} size={12} color={presentation.outing ? GOLD_DARK : GOLD} />
+          <Text style={[styles.typeBadgeText, presentation.outing && styles.typeBadgeTextOuting]}>{presentation.label}</Text>
+        </View>
+        {groupName ? <Text style={styles.groupContext} numberOfLines={1}>{groupName}</Text> : null}
+      </View>
+      <Pressable
+        accessibilityLabel="Hide from featured carousel"
+        hitSlop={8}
+        style={styles.hideButton}
+        onPress={(event) => stopAndRun(event, onDismiss)}
+      >
+        <Ionicons name="close" size={17} color="#F3EBD7" />
+      </Pressable>
+    </View>
+  );
 }
 
 function PostAuthor({ post, onPress }: { post: CommunityPost; onPress: () => void }) {
@@ -163,14 +237,13 @@ function FeaturedPostCard({
   reactionCount = post.reaction_count || 0,
   reacting = false,
   onToggleReaction,
+  onDismiss,
 }: PostCardProps) {
   const kind = featuredPostKind(post, group, event);
   const directImage = post.image_url || (post.media_type === 'image' ? post.media_url : null);
   const visual = directImage || event?.image_url || null;
-  const label = group?.name || (kind === 'outing' ? 'OUTING CONVERSATION' : 'AROUND THE OUTPOST');
   const openPost = () => router.push(`/community/${post.id}`);
   const openProfile = () => router.push({ pathname: '/community-profile/[id]', params: { id: post.author_id } });
-  const openGroup = () => group && router.push({ pathname: '/groups/[id]', params: { id: group.id } });
   const openEvent = () => event && router.push({ pathname: '/local-events/[id]', params: { id: event.id } });
 
   if (!visual) {
@@ -178,14 +251,7 @@ function FeaturedPostCard({
       <Pressable style={[styles.textCard, { width }]} onPress={openPost}>
         <View style={styles.topoRingOne} />
         <View style={styles.topoRingTwo} />
-        <View style={styles.topRow}>
-          {group ? (
-            <Pressable style={styles.contextPill} onPress={(tap) => stopAndRun(tap, openGroup)}>
-              <Text style={styles.contextText} numberOfLines={1}>{label.toUpperCase()}</Text>
-            </Pressable>
-          ) : <View style={styles.contextPill}><Text style={styles.contextText}>{label}</Text></View>}
-          {kind === 'video' ? <View style={styles.playBadge}><Ionicons name="play" size={14} color={TEXT} /></View> : null}
-        </View>
+        <PostTypeHeader kind={kind} groupName={group?.name} onDismiss={onDismiss} />
         <View style={styles.textCardBody}>
           <PostAuthor post={post} onPress={openProfile} />
           <Text style={styles.textOnlyBody} numberOfLines={5}>{post.body || 'Shared a new update.'}</Text>
@@ -203,25 +269,26 @@ function FeaturedPostCard({
   }
 
   return (
-    <Pressable style={[styles.imageCard, { width }]} onPress={openPost}>
+    <Pressable style={[styles.imageCard, kind === 'outing' && styles.outingPostCard, { width }]} onPress={openPost}>
       <ImageBackground source={{ uri: visual }} style={styles.background} imageStyle={styles.backgroundImage}>
         <View style={styles.shade} />
-        <View style={styles.topRow}>
-          {group ? (
-            <Pressable style={styles.contextPill} onPress={(tap) => stopAndRun(tap, openGroup)}>
-              <Text style={styles.contextText} numberOfLines={1}>{label.toUpperCase()}</Text>
-            </Pressable>
-          ) : <View style={styles.contextPill}><Text style={styles.contextText}>{label}</Text></View>}
-          {kind === 'video' ? <View style={styles.playBadge}><Ionicons name="play" size={14} color={TEXT} /></View> : null}
-        </View>
+        <PostTypeHeader kind={kind} groupName={group?.name} onDismiss={onDismiss} />
+        {kind === 'video' ? (
+          <View style={styles.videoCenterBadge} pointerEvents="none">
+            <Ionicons name="play" size={24} color={TEXT} />
+          </View>
+        ) : null}
         <View style={styles.copyArea}>
           <PostAuthor post={post} onPress={openProfile} />
           <Text style={styles.imageBody} numberOfLines={event ? 1 : 2}>{post.body || 'Shared a moment from outside.'}</Text>
           {event ? (
-            <Pressable style={styles.eventStrip} onPress={(tap) => stopAndRun(tap, openEvent)}>
-              <Ionicons name="calendar-outline" size={14} color={GOLD} />
-              <Text style={styles.eventText} numberOfLines={1}>{event.title} · {eventDate(event)}</Text>
-              <Ionicons name="chevron-forward" size={14} color={GOLD} />
+            <Pressable style={styles.eventStripStrong} onPress={(tap) => stopAndRun(tap, openEvent)}>
+              <Ionicons name="calendar" size={15} color={GOLD_DARK} />
+              <View style={styles.eventStripCopy}>
+                <Text style={styles.eventStripEyebrow}>LINKED OUTING</Text>
+                <Text style={styles.eventStripTitle} numberOfLines={1}>{event.title} · {eventDate(event)}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={15} color={GOLD_DARK} />
             </Pressable>
           ) : null}
           <EngagementRow post={post} myReaction={myReaction} reactionCount={reactionCount} reacting={reacting} onToggleReaction={onToggleReaction} />
@@ -231,20 +298,40 @@ function FeaturedPostCard({
   );
 }
 
-function OutingCard({ event, width }: { event: LocalEvent; width: number }) {
+function OutingCard({ event, width, onDismiss }: { event: LocalEvent; width: number; onDismiss: () => void }) {
   const openEvent = () => router.push({ pathname: '/local-events/[id]', params: { id: event.id } });
   const location = [event.venue_name || event.city, event.state].filter(Boolean).join(', ');
-  const rsvpLabel = event.my_rsvp === 'going' ? 'YOU’RE GOING' : event.my_rsvp === 'interested' ? 'INTERESTED' : 'UPCOMING OUTING';
+  const rsvpLabel = event.my_rsvp === 'going' ? 'YOU’RE GOING' : event.my_rsvp === 'interested' ? 'INTERESTED' : 'UPCOMING';
 
   const content = (
     <>
-      <View style={styles.outingTopRow}>
-        <View style={styles.outingPill}><Ionicons name="calendar-outline" size={13} color={GOLD} /><Text style={styles.outingPillText}>{rsvpLabel}</Text></View>
-        <Text style={styles.outingDate}>{eventDate(event)}</Text>
+      <View style={styles.outingBanner}>
+        <View style={styles.outingBannerLabel}>
+          <Ionicons name="calendar" size={14} color={GOLD_DARK} />
+          <Text style={styles.outingBannerText}>OUTING</Text>
+          <View style={styles.outingStatusDot} />
+          <Text style={styles.outingStatusText}>{rsvpLabel}</Text>
+        </View>
+        <Pressable
+          accessibilityLabel="Hide outing from featured carousel"
+          hitSlop={8}
+          style={styles.outingHideButton}
+          onPress={(tap) => stopAndRun(tap, onDismiss)}
+        >
+          <Ionicons name="close" size={17} color={GOLD_DARK} />
+        </Pressable>
       </View>
       <View style={styles.outingCopy}>
-        <Text style={styles.outingTitle} numberOfLines={2}>{event.title}</Text>
-        <Text style={styles.outingMeta} numberOfLines={1}>{eventTime(event)} · {location}</Text>
+        <View style={styles.outingHeadlineRow}>
+          <View style={styles.outingDateBlock}>
+            <Text style={styles.outingMonth}>{eventMonth(event)}</Text>
+            <Text style={styles.outingDay}>{eventDay(event)}</Text>
+          </View>
+          <View style={styles.outingTitleWrap}>
+            <Text style={styles.outingTitle} numberOfLines={2}>{event.title}</Text>
+            <Text style={styles.outingMeta} numberOfLines={1}>{eventTime(event)} · {location}</Text>
+          </View>
+        </View>
         <View style={styles.outingFooter}>
           <Text style={styles.outingAttendance}>{event.rsvp_count > 0 ? `${event.rsvp_count} attending` : 'Be one of the first'}</Text>
           <View style={styles.viewOuting}><Text style={styles.viewOutingText}>View outing</Text><Ionicons name="chevron-forward" size={14} color={GOLD} /></View>
@@ -266,7 +353,7 @@ function OutingCard({ event, width }: { event: LocalEvent; width: number }) {
 
   return (
     <Pressable style={[styles.outingCard, styles.outingFallback, { width }]} onPress={openEvent}>
-      <View style={styles.outingFallbackIcon}><Ionicons name="compass-outline" size={48} color="rgba(215,180,90,0.18)" /></View>
+      <View style={styles.outingFallbackIcon}><Ionicons name="compass-outline" size={58} color="rgba(215,180,90,0.16)" /></View>
       {content}
     </Pressable>
   );
@@ -291,12 +378,16 @@ export function FeaturedCampfireCarousel({
   onExploreCommunities: () => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(() => Math.max(0, activeIndex));
+  const [displayIndex, setDisplayIndex] = useState(() => Math.max(0, activeIndex));
   const [deckReady, setDeckReady] = useState(false);
   const [viewerId, setViewerId] = useState<string | null>(null);
-  const [, setDeckState] = useState<CampfireDeckState | null>(null);
+  const [deckState, setDeckState] = useState<CampfireDeckState | null>(null);
   const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
   const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<DragStart | null>(null);
+  const [undoItem, setUndoItem] = useState<UndoItem | null>(null);
+  const [nowMs] = useState(() => Date.now());
 
   const cardWidth = Math.min(350, Math.max(248, viewportWidth * 0.84));
   const snapInterval = cardWidth + CARD_GAP;
@@ -312,11 +403,18 @@ export function FeaturedCampfireCarousel({
   }, [events, posts]);
 
   const outings = useMemo(() => Array.from(events.values())
-    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()), [events]);
+    .filter((event) => event.status === 'published' && new Date(event.starts_at).getTime() >= nowMs)
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()), [events, nowMs]);
 
-  const items = useMemo(() => buildCarouselItems(posts, outings), [outings, posts]);
+  const allItems = useMemo(() => buildCarouselItems(posts, outings), [outings, posts]);
+  const allSignature = useMemo(() => allItems.map((item) => item.key).join('|'), [allItems]);
+  const items = useMemo(
+    () => allItems.filter((item) => !isCampfireItemDismissed(deckState, item.key)),
+    [allItems, deckState],
+  );
   const signature = useMemo(() => items.map((item) => item.key).join('|'), [items]);
   const safeIndex = items.length ? Math.min(currentIndex, items.length - 1) : 0;
+  const safeDisplayIndex = items.length ? Math.min(displayIndex, items.length - 1) : 0;
 
   useEffect(() => {
     let active = true;
@@ -328,26 +426,34 @@ export function FeaturedCampfireCarousel({
       const stored = await loadCampfireDeckState(userId);
       if (!active) return;
 
+      const available = allItems.filter((item) => !isCampfireItemDismissed(stored, item.key));
       setViewerId(userId);
       setDeckState(stored);
 
       let nextIndex = 0;
-      if (items.length && shouldResumeCampfirePosition(stored) && stored.currentPostId) {
-        const resumeIndex = items.findIndex((item) => item.kind === 'post' ? item.post.id === stored.currentPostId : item.key === stored.currentPostId);
+      if (available.length && shouldResumeCampfirePosition(stored) && stored.currentPostId) {
+        const resumeIndex = available.findIndex((item) => itemResumeKey(item) === stored.currentPostId);
         if (resumeIndex >= 0) nextIndex = resumeIndex;
-      } else if (items.length) {
-        const freshIndex = items.findIndex((item) => item.kind === 'post' && campfirePostHasFreshActivity(stored, item.post));
+      } else if (available.length) {
+        const freshIndex = available.findIndex((item) => item.kind === 'post' && campfirePostHasFreshActivity(stored, item.post));
         if (freshIndex >= 0) nextIndex = freshIndex;
       }
 
       setCurrentIndex(nextIndex);
+      setDisplayIndex(nextIndex);
       onIndexChange(nextIndex);
       setDeckReady(true);
     }
 
     void hydrate();
     return () => { active = false; };
-  }, [items, onIndexChange, signature]);
+  }, [allItems, allSignature, onIndexChange]);
+
+  useEffect(() => {
+    if (!undoItem) return;
+    const timeout = setTimeout(() => setUndoItem(null), UNDO_WINDOW_MS);
+    return () => clearTimeout(timeout);
+  }, [undoItem]);
 
   useEffect(() => {
     setReactionCounts(new Map(posts.map((post) => [post.id, post.reaction_count || 0])));
@@ -406,34 +512,109 @@ export function FeaturedCampfireCarousel({
   const settleIndex = useCallback((nextIndex: number) => {
     if (!deckReady || !items.length) return;
     const next = Math.max(0, Math.min(nextIndex, items.length - 1));
-    if (next === currentIndex) return;
-
     const previousItem = items[currentIndex];
     const nextItem = items[next];
+
     setDeckState((current) => {
       if (!current) return current;
       let updated = current;
       if (next > currentIndex && previousItem?.kind === 'post') updated = markCampfirePostSeen(updated, previousItem.post);
-      const resumeKey = nextItem?.kind === 'post' ? nextItem.post.id : nextItem?.key ?? null;
-      updated = updateCampfirePosition(updated, resumeKey, false);
+      updated = updateCampfirePosition(updated, itemResumeKey(nextItem), false);
       void saveCampfireDeckState(viewerId, updated);
       return updated;
     });
     setCurrentIndex(next);
+    setDisplayIndex(next);
     onIndexChange(next);
   }, [currentIndex, deckReady, items, onIndexChange, viewerId]);
+
+  const dismissItem = useCallback((item: CarouselItem, index: number) => {
+    const remaining = items.filter((candidate) => candidate.key !== item.key);
+    const nextIndex = remaining.length ? Math.min(index, remaining.length - 1) : 0;
+    const nextItem = remaining[nextIndex];
+
+    setDeckState((current) => {
+      if (!current) return current;
+      let updated = current;
+      if (item.kind === 'post') updated = markCampfirePostSeen(updated, item.post);
+      updated = dismissCampfireItem(updated, item.key);
+      updated = updateCampfirePosition(updated, itemResumeKey(nextItem), false);
+      void saveCampfireDeckState(viewerId, updated);
+      return updated;
+    });
+
+    setUndoItem({ key: item.key, index, label: itemLabel(item) });
+    setCurrentIndex(nextIndex);
+    setDisplayIndex(nextIndex);
+    onIndexChange(nextIndex);
+  }, [items, onIndexChange, viewerId]);
+
+  const undoDismiss = useCallback(() => {
+    if (!undoItem) return;
+    const targetIndex = Math.max(0, Math.min(undoItem.index, allItems.length - 1));
+    const restored = allItems.find((item) => item.key === undoItem.key);
+
+    setDeckState((current) => {
+      if (!current) return current;
+      let updated = restoreCampfireItem(current, undoItem.key);
+      updated = updateCampfirePosition(updated, itemResumeKey(restored), false);
+      void saveCampfireDeckState(viewerId, updated);
+      return updated;
+    });
+    setCurrentIndex(targetIndex);
+    setDisplayIndex(targetIndex);
+    onIndexChange(targetIndex);
+    setUndoItem(null);
+  }, [allItems, onIndexChange, undoItem, viewerId]);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!items.length) return;
+    const offset = event.nativeEvent.contentOffset.x;
+    const next = Math.max(0, Math.min(Math.round(offset / snapInterval), items.length - 1));
+    setDisplayIndex(next);
+  }, [items.length, snapInterval]);
+
+  const handleScrollBegin = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offset = event.nativeEvent.contentOffset.x;
+    setDragStart({
+      offset,
+      index: Math.max(0, Math.min(Math.round(offset / snapInterval), Math.max(0, items.length - 1))),
+      startedAt: Date.now(),
+    });
+  }, [items.length, snapInterval]);
 
   const handleScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offset = event.nativeEvent.contentOffset.x;
     settleIndex(Math.round(offset / snapInterval));
   }, [settleIndex, snapInterval]);
 
+  const handleScrollEndDrag = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offset = event.nativeEvent.contentOffset.x;
+    const start = dragStart;
+    setDragStart(null);
+
+    if (start) {
+      const forwardDistance = offset - start.offset;
+      const elapsed = Math.max(1, Date.now() - start.startedAt);
+      const velocityX = Math.abs(event.nativeEvent.velocity?.x ?? 0);
+      const strongForwardFlick = forwardDistance > cardWidth * 0.72 && (velocityX > 1.8 || elapsed < 220);
+      const dismissTarget = items[start.index];
+      if (strongForwardFlick && dismissTarget) {
+        dismissItem(dismissTarget, start.index);
+        return;
+      }
+    }
+
+    handleScrollEnd(event);
+  }, [cardWidth, dismissItem, dragStart, handleScrollEnd, items]);
+
   if (!items.length) {
+    const cleared = deckReady && allItems.length > 0;
     return (
       <View style={styles.emptyCard}>
-        <View style={styles.emptyIcon}><Ionicons name="bonfire-outline" size={23} color={GOLD} /></View>
-        <Text style={styles.emptyTitle}>The Outpost is quiet right now.</Text>
-        <Text style={styles.emptyCopy}>Posts and upcoming outings will show up here as your community gets moving.</Text>
+        <View style={styles.emptyIcon}><Ionicons name={cleared ? 'checkmark' : 'bonfire-outline'} size={23} color={GOLD} /></View>
+        <Text style={styles.emptyTitle}>{cleared ? 'You cleared the featured carousel.' : 'The Outpost is quiet right now.'}</Text>
+        <Text style={styles.emptyCopy}>{cleared ? 'Hidden cards stay out of this carousel for today. Their posts and outings are still available elsewhere in the app.' : 'Posts and upcoming outings will show up here as your community gets moving.'}</Text>
         <Pressable style={styles.emptyButton} onPress={onExploreCommunities}><Text style={styles.emptyButtonText}>Explore communities</Text></Pressable>
       </View>
     );
@@ -453,14 +634,17 @@ export function FeaturedCampfireCarousel({
         disableIntervalMomentum
         contentOffset={{ x: safeIndex * snapInterval, y: 0 }}
         contentContainerStyle={{ paddingHorizontal: sideInset }}
+        onScroll={handleScroll}
+        onScrollBeginDrag={handleScrollBegin}
         onMomentumScrollEnd={handleScrollEnd}
-        onScrollEndDrag={handleScrollEnd}
+        onScrollEndDrag={handleScrollEndDrag}
+        scrollEventThrottle={16}
         style={{ width: viewportWidth }}
       >
         {items.map((item, index) => (
           <View key={item.key} style={[styles.railItem, { width: cardWidth, marginRight: index === items.length - 1 ? 0 : CARD_GAP }]}>
             {item.kind === 'outing' ? (
-              <OutingCard event={item.event} width={cardWidth} />
+              <OutingCard event={item.event} width={cardWidth} onDismiss={() => dismissItem(item, index)} />
             ) : (
               <FeaturedPostCard
                 post={item.post}
@@ -471,37 +655,56 @@ export function FeaturedCampfireCarousel({
                 reactionCount={reactionCounts.get(item.post.id) ?? item.post.reaction_count ?? 0}
                 reacting={reactingPostId === item.post.id}
                 onToggleReaction={toggleReaction}
+                onDismiss={() => dismissItem(item, index)}
               />
             )}
           </View>
         ))}
       </ScrollView>
-      <View style={styles.deckFooter}>
-        <View style={styles.peekHint}><Ionicons name="chevron-back" size={13} color={safeIndex > 0 ? GOLD : '#46524A'} /></View>
-        <Text style={styles.counter}>{safeIndex + 1} of {items.length}</Text>
-        <View style={styles.peekHint}><Ionicons name="chevron-forward" size={13} color={safeIndex < items.length - 1 ? GOLD : '#46524A'} /></View>
+
+      <View style={styles.counterPill} pointerEvents="none">
+        <Ionicons name="chevron-back" size={13} color={safeDisplayIndex > 0 ? GOLD_DARK : 'rgba(45,39,22,0.34)'} />
+        <Text style={styles.counterText}>{safeDisplayIndex + 1} / {items.length}</Text>
+        <Ionicons name="chevron-forward" size={13} color={safeDisplayIndex < items.length - 1 ? GOLD_DARK : 'rgba(45,39,22,0.34)'} />
       </View>
+      <Text style={styles.swipeHint}>Swipe to browse · Fast swipe left to hide</Text>
+
+      {undoItem ? (
+        <View style={styles.undoToast}>
+          <View style={styles.undoCopy}>
+            <Text style={styles.undoTitle}>Hidden for today</Text>
+            <Text style={styles.undoLabel} numberOfLines={1}>{undoItem.label}</Text>
+          </View>
+          <Pressable style={styles.undoButton} onPress={undoDismiss}><Text style={styles.undoButtonText}>Undo</Text></Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  carouselWrap: { alignItems: 'center' },
-  loadingRail: { height: IMAGE_CARD_HEIGHT + 38, borderRadius: 22, backgroundColor: '#121C17' },
+  carouselWrap: { alignItems: 'center', position: 'relative' },
+  loadingRail: { height: IMAGE_CARD_HEIGHT + 48, borderRadius: 22, backgroundColor: '#121C17' },
   railItem: { height: IMAGE_CARD_HEIGHT + 8, justifyContent: 'center' },
   imageCard: { height: IMAGE_CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: PANEL, borderWidth: 1, borderColor: '#34433A', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
+  outingPostCard: { borderWidth: 1.5, borderColor: 'rgba(215,180,90,0.82)' },
   textCard: { height: TEXT_CARD_HEIGHT, alignSelf: 'center', borderRadius: 21, overflow: 'hidden', backgroundColor: PANEL_2, borderWidth: 1, borderColor: '#35473C', padding: 12, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
   topoRingOne: { position: 'absolute', width: 180, height: 180, borderRadius: 90, borderWidth: 1, borderColor: 'rgba(215,180,90,0.08)', right: -55, top: -60 },
   topoRingTwo: { position: 'absolute', width: 110, height: 110, borderRadius: 55, borderWidth: 1, borderColor: 'rgba(215,180,90,0.07)', right: -18, top: -26 },
   background: { flex: 1, justifyContent: 'space-between' },
   backgroundImage: { resizeMode: 'cover' },
   shade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,9,6,0.36)' },
-  outingShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.54)' },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 11 },
-  contextPill: { maxWidth: '82%', borderRadius: 999, backgroundColor: 'rgba(10,18,13,0.84)', paddingHorizontal: 9, paddingVertical: 5 },
-  contextText: { color: '#E9EDE8', fontSize: 8.5, lineHeight: 11, fontWeight: '900', letterSpacing: 0.7 },
-  playBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,18,13,0.82)' },
-  copyArea: { marginTop: 'auto', paddingHorizontal: 13, paddingBottom: 9, backgroundColor: 'rgba(7,13,9,0.78)' },
+  outingShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,10,7,0.42)' },
+  postTypeHeader: { minHeight: 47, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, padding: 10 },
+  typeStack: { flex: 1, alignItems: 'flex-start', gap: 4 },
+  typeBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: 'rgba(10,18,13,0.90)', borderWidth: 1, borderColor: 'rgba(215,180,90,0.34)', paddingHorizontal: 9, paddingVertical: 5 },
+  typeBadgeOuting: { backgroundColor: GOLD, borderColor: GOLD },
+  typeBadgeText: { color: '#F3EBD7', fontSize: 9, lineHeight: 11, fontWeight: '900', letterSpacing: 0.8 },
+  typeBadgeTextOuting: { color: GOLD_DARK },
+  groupContext: { maxWidth: '80%', color: '#F0E6CA', fontSize: 9, fontWeight: '800', letterSpacing: 0.25, backgroundColor: 'rgba(8,14,10,0.72)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7 },
+  hideButton: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(9,15,11,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  videoCenterBadge: { position: 'absolute', left: '50%', top: '42%', width: 52, height: 52, marginLeft: -26, marginTop: -26, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(8,14,10,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.38)' },
+  copyArea: { marginTop: 'auto', paddingHorizontal: 13, paddingBottom: 9, backgroundColor: 'rgba(7,13,9,0.80)' },
   textCardBody: { flex: 1, justifyContent: 'flex-end' },
   authorRow: { minHeight: 41, flexDirection: 'row', alignItems: 'center', gap: 8 },
   avatar: { width: 33, height: 33, borderRadius: 17, backgroundColor: '#26342A', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1.2, borderColor: '#536258' },
@@ -513,27 +716,44 @@ const styles = StyleSheet.create({
   textOnlyBody: { color: TEXT, fontSize: 18, lineHeight: 24, fontWeight: '800', letterSpacing: -0.15, marginTop: 7, marginBottom: 9, maxWidth: '94%' },
   eventStrip: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, backgroundColor: 'rgba(22,32,27,0.94)', paddingHorizontal: 8, paddingVertical: 5, marginBottom: 5 },
   eventText: { color: '#E8ECE9', fontSize: 10.5, fontWeight: '800', flex: 1 },
+  eventStripStrong: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 11, backgroundColor: GOLD, paddingHorizontal: 9, paddingVertical: 6, marginBottom: 6 },
+  eventStripCopy: { flex: 1 },
+  eventStripEyebrow: { color: 'rgba(45,39,22,0.72)', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.7 },
+  eventStripTitle: { color: GOLD_DARK, fontSize: 10.5, fontWeight: '900', marginTop: 1 },
   engagementRow: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(213,226,217,0.24)', paddingTop: 5 },
   engagementAction: { minWidth: 42, minHeight: 27, flexDirection: 'row', alignItems: 'center', gap: 5 },
   engagementCount: { color: '#E2E7E3', fontSize: 11.5, fontWeight: '800' },
   engagementCountActive: { color: GOLD },
-  outingCard: { height: IMAGE_CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: '#17241C', borderWidth: 1, borderColor: '#3D4E43', shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
-  outingFallback: { padding: 13, justifyContent: 'space-between' },
-  outingFallbackIcon: { position: 'absolute', right: 22, top: 58 },
-  outingTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 12 },
-  outingPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: 'rgba(10,18,13,0.86)', paddingHorizontal: 9, paddingVertical: 6 },
-  outingPillText: { color: '#F2E4AE', fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
-  outingDate: { color: '#F3EBD7', fontSize: 11, fontWeight: '900' },
-  outingCopy: { marginTop: 'auto', padding: 13, backgroundColor: 'rgba(7,13,9,0.80)' },
-  outingTitle: { color: TEXT, fontSize: 21, lineHeight: 25, fontWeight: '900', letterSpacing: -0.3 },
-  outingMeta: { color: '#D7DFDA', fontSize: 11.5, lineHeight: 17, fontWeight: '700', marginTop: 5 },
+  outingCard: { height: IMAGE_CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: '#17241C', borderWidth: 2, borderColor: GOLD, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 11, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
+  outingFallback: { justifyContent: 'space-between' },
+  outingFallbackIcon: { position: 'absolute', right: 22, top: 70 },
+  outingBanner: { minHeight: 42, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: GOLD },
+  outingBannerLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  outingBannerText: { color: GOLD_DARK, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  outingStatusDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(45,39,22,0.48)', marginLeft: 2 },
+  outingStatusText: { color: GOLD_DARK, fontSize: 8.5, fontWeight: '900', letterSpacing: 0.55 },
+  outingHideButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(45,39,22,0.10)' },
+  outingCopy: { marginTop: 'auto', padding: 13, backgroundColor: 'rgba(7,13,9,0.86)' },
+  outingHeadlineRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  outingDateBlock: { width: 50, minHeight: 57, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: GOLD },
+  outingMonth: { color: GOLD_DARK, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  outingDay: { color: GOLD_DARK, fontSize: 24, lineHeight: 27, fontWeight: '900' },
+  outingTitleWrap: { flex: 1 },
+  outingTitle: { color: TEXT, fontSize: 20, lineHeight: 23, fontWeight: '900', letterSpacing: -0.3 },
+  outingMeta: { color: '#D7DFDA', fontSize: 11, lineHeight: 16, fontWeight: '700', marginTop: 4 },
   outingFooter: { minHeight: 34, marginTop: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(213,226,217,0.24)', paddingTop: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   outingAttendance: { color: MUTED, fontSize: 10.5, fontWeight: '800' },
   viewOuting: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   viewOutingText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
-  deckFooter: { width: '100%', minHeight: 28, marginTop: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18 },
-  peekHint: { width: 24, alignItems: 'center' },
-  counter: { color: TEXT, fontSize: 11.5, fontWeight: '900', minWidth: 44, textAlign: 'center' },
+  counterPill: { minWidth: 104, height: 34, marginTop: -15, zIndex: 8, borderRadius: 17, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: GOLD, borderWidth: 2, borderColor: '#101912', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 7 },
+  counterText: { color: GOLD_DARK, fontSize: 12.5, fontWeight: '900', minWidth: 42, textAlign: 'center' },
+  swipeHint: { color: '#8F9D95', fontSize: 9.5, fontWeight: '700', marginTop: 5 },
+  undoToast: { position: 'absolute', left: 14, right: 14, bottom: -62, minHeight: 52, borderRadius: 14, backgroundColor: '#202C25', borderWidth: 1, borderColor: '#45564B', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#000', shadowOpacity: 0.30, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 9, zIndex: 20 },
+  undoCopy: { flex: 1 },
+  undoTitle: { color: TEXT, fontSize: 11, fontWeight: '900' },
+  undoLabel: { color: MUTED, fontSize: 9.5, marginTop: 2 },
+  undoButton: { borderRadius: 999, backgroundColor: GOLD, paddingHorizontal: 12, paddingVertical: 7 },
+  undoButtonText: { color: GOLD_DARK, fontSize: 10.5, fontWeight: '900' },
   emptyCard: { minHeight: 165, borderRadius: 20, backgroundColor: '#151F1A', padding: 16, alignItems: 'flex-start' },
   emptyIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#26342A' },
   emptyTitle: { color: TEXT, fontSize: 18, fontWeight: '900', marginTop: 11 },
