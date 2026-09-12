@@ -63,6 +63,7 @@ export default function OrganizationInvitesScreen() {
   const [loadingLinks, setLoadingLinks] = useState(false);
   const [created, setCreated] = useState<OrganizationJoinLink | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
 
   const selectedOrganization = organizations.find((organization) => organization.id === organizationId) ?? null;
 
@@ -71,6 +72,7 @@ export default function OrganizationInvitesScreen() {
       setLinks([]);
       return;
     }
+
     setLoadingLinks(true);
     setError(null);
     try {
@@ -84,15 +86,25 @@ export default function OrganizationInvitesScreen() {
   }, []);
 
   useEffect(() => {
+    const updateClock = () => setCurrentTime(Date.now());
+    updateClock();
+    const timer = setInterval(updateClock, 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     let active = true;
+
     void (async () => {
       const access = await supabase.rpc('is_platform_admin');
       if (!active) return;
+
       if (access.error) {
         setError(access.error.message);
         setLoading(false);
         return;
       }
+
       if (access.data !== true) {
         setAuthorized(false);
         setLoading(false);
@@ -103,14 +115,16 @@ export default function OrganizationInvitesScreen() {
       try {
         const nextOrganizations = await listMyOrganizations();
         if (!active) return;
+
         const sorted = [...nextOrganizations].sort((a, b) => {
           if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
           if (a.isPlatformDefault !== b.isPlatformDefault) return a.isPlatformDefault ? -1 : 1;
           return a.name.localeCompare(b.name);
         });
+
         setOrganizations(sorted);
-        const initial = sorted.find((organization) => organization.slug === 'groundwork-test-company')
-          ?? sorted.find((organization) => organization.isActive)
+        const initial = sorted.find((organization) => organization.isActive)
+          ?? sorted.find((organization) => organization.isPlatformDefault)
           ?? sorted[0]
           ?? null;
         if (initial) setOrganizationId(initial.id);
@@ -120,7 +134,10 @@ export default function OrganizationInvitesScreen() {
         if (active) setLoading(false);
       }
     })();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -141,6 +158,7 @@ export default function OrganizationInvitesScreen() {
 
   async function createLink() {
     if (!canCreate) return;
+
     setCreating(true);
     setCreated(null);
     setError(null);
@@ -162,6 +180,7 @@ export default function OrganizationInvitesScreen() {
 
   async function shareCreated() {
     if (!created) return;
+
     const url = deepLink(created.token);
     await Share.share({
       title: `Join ${created.organizationName}`,
@@ -194,135 +213,238 @@ export default function OrganizationInvitesScreen() {
   }
 
   if (loading) {
-    return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color={COLORS.gold} size="large" /></View></SafeAreaView>;
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <ActivityIndicator color={COLORS.gold} size="large" />
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (!authorized) {
-    return <SafeAreaView style={styles.safe}><View style={styles.content}>
-      <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable>
-      <View style={styles.deniedCard}>
-        <Text style={styles.eyebrow}>PROTECTED AREA</Text>
-        <Text style={styles.title}>Platform admin required</Text>
-        <Text style={styles.help}>Organization invitation management is restricted to platform administrators.</Text>
-      </View>
-    </View></SafeAreaView>;
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.content}>
+          <Pressable onPress={() => router.back()}>
+            <Text style={styles.back}>‹ Back</Text>
+          </Pressable>
+          <View style={styles.deniedCard}>
+            <Text style={styles.eyebrow}>PROTECTED AREA</Text>
+            <Text style={styles.title}>Platform admin required</Text>
+            <Text style={styles.help}>Organization invitation management is restricted to platform administrators.</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
   }
 
-  return <SafeAreaView style={styles.safe}>
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable>
-
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>PLATFORM ADMIN</Text>
-        <Text style={styles.title}>Member Invitations</Text>
-        <Text style={styles.subtitle}>Create tenant-aware signup links. The invitation puts a new account into the selected organization without enrolling it in Go Melanated.</Text>
-      </View>
-
-      {error ? <View style={styles.errorCard}><Text style={styles.error}>{error}</Text></View> : null}
-
-      <Text style={styles.sectionLabel}>ORGANIZATION</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.orgRow}>
-        {organizations.map((organization) => {
-          const selected = organization.id === organizationId;
-          return <Pressable
-            key={organization.id}
-            style={[styles.orgChip, selected && styles.orgChipActive]}
-            onPress={() => {
-              setOrganizationId(organization.id);
-              setCreated(null);
-            }}
-          >
-            <Text style={[styles.orgName, selected && styles.orgNameActive]}>{organization.name}</Text>
-            <Text style={styles.orgMeta}>{organization.kind}{organization.isActive ? ' · active workspace' : ''}</Text>
-          </Pressable>;
-        })}
-      </ScrollView>
-
-      <Text style={styles.sectionLabel}>CREATE INVITATION</Text>
-      <View style={styles.panel}>
-        <Field label="Label" help="Internal name so you know where the link was shared.">
-          <TextInput value={label} onChangeText={setLabel} editable={!creating} placeholder="September tester invite" placeholderTextColor={COLORS.dim} style={styles.input} />
-        </Field>
-
-        <Field label="Expires after" help="1 to 365 days.">
-          <TextInput value={expiresDays} onChangeText={setExpiresDays} editable={!creating} keyboardType="number-pad" placeholder="30" placeholderTextColor={COLORS.dim} style={styles.input} />
-        </Field>
-
-        <View style={styles.toggleRow}>
-          <View style={styles.flex}>
-            <Text style={styles.fieldLabel}>Limit number of signups</Text>
-            <Text style={styles.fieldHelp}>Turn this on for small testing groups or controlled launches.</Text>
-          </View>
-          <Switch value={limitUses} disabled={creating} onValueChange={setLimitUses} trackColor={{ false: '#354139', true: '#6B5A2F' }} thumbColor={limitUses ? COLORS.gold : '#A0AAA4'} />
-        </View>
-
-        {limitUses ? <Field label="Maximum signups">
-          <TextInput value={maxUses} onChangeText={setMaxUses} editable={!creating} keyboardType="number-pad" placeholder="25" placeholderTextColor={COLORS.dim} style={styles.input} />
-        </Field> : null}
-
-        <Pressable disabled={!canCreate} style={[styles.primaryButton, !canCreate && styles.buttonDisabled]} onPress={() => void createLink()}>
-          {creating ? <ActivityIndicator color="#111813" size="small" /> : null}
-          <Text style={styles.primaryButtonText}>{creating ? 'Creating…' : `Create ${selectedOrganization?.name ?? 'Organization'} Invite`}</Text>
+  return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Pressable onPress={() => router.back()}>
+          <Text style={styles.back}>‹ Back</Text>
         </Pressable>
-      </View>
 
-      {created ? <View style={styles.createdCard}>
-        <Text style={styles.successEyebrow}>NEW INVITATION READY</Text>
-        <Text style={styles.createdTitle}>{created.label}</Text>
-        <Text style={styles.help}>The raw token is shown only for this newly created link. Existing links cannot reveal it again.</Text>
-        <View style={styles.linkBox}><Text selectable style={styles.linkText}>{deepLink(created.token)}</Text></View>
-        <View style={styles.createdActions}>
-          <Pressable style={styles.shareButton} onPress={() => void shareCreated()}><Text style={styles.shareButtonText}>Share Invite</Text></Pressable>
-          <Pressable style={styles.secondaryButton} onPress={() => setCreated(null)}><Text style={styles.secondaryButtonText}>Hide Token</Text></Pressable>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>PLATFORM ADMIN</Text>
+          <Text style={styles.title}>Member Invitations</Text>
+          <Text style={styles.subtitle}>
+            Create tenant-aware signup links. The invitation puts a new account into the selected organization without enrolling it in Go Melanated.
+          </Text>
         </View>
-      </View> : null}
 
-      <Text style={styles.sectionLabel}>EXISTING INVITATIONS</Text>
-      {loadingLinks ? <View style={styles.loadingBox}><ActivityIndicator color={COLORS.gold} /><Text style={styles.help}>Loading invitations…</Text></View> : null}
-      {!loadingLinks && links.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>No invitation links yet</Text><Text style={styles.help}>Create one above. The actual token is never recoverable from an existing record.</Text></View> : null}
-      <View style={styles.linkList}>
-        {links.map((link) => {
-          const expired = Boolean(link.expiresAt && new Date(link.expiresAt).valueOf() <= Date.now());
-          const exhausted = link.maxUses != null && link.useCount >= link.maxUses;
-          const usable = link.status === 'active' && !expired && !exhausted;
-          return <View key={link.id} style={styles.linkCard}>
-            <View style={styles.linkHeader}>
-              <View style={styles.flex}>
-                <Text style={styles.linkTitle}>{link.label}</Text>
-                <Text style={styles.linkMeta}>Created {dateLabel(link.createdAt)}</Text>
-              </View>
-              <View style={[styles.statusPill, usable ? styles.statusActive : styles.statusInactive]}>
-                <Text style={[styles.statusText, usable ? styles.statusActiveText : styles.statusInactiveText]}>{usable ? 'ACTIVE' : link.status === 'revoked' ? 'REVOKED' : expired ? 'EXPIRED' : 'USED'}</Text>
-              </View>
-            </View>
-            <View style={styles.metrics}>
-              <Metric label="Uses" value={`${link.useCount}${link.maxUses == null ? '' : ` / ${link.maxUses}`}`} />
-              <Metric label="Expires" value={dateLabel(link.expiresAt)} />
-              <Metric label="Last used" value={link.lastUsedAt ? dateLabel(link.lastUsedAt) : 'Never'} />
-            </View>
-            {usable ? <Pressable style={styles.revokeButton} onPress={() => confirmRevoke(link)}><Text style={styles.revokeText}>Revoke link</Text></Pressable> : null}
-          </View>;
-        })}
-      </View>
+        {error ? <View style={styles.errorCard}><Text style={styles.error}>{error}</Text></View> : null}
 
-      <View style={styles.guardrail}>
-        <Text style={styles.guardrailTitle}>Security behavior</Text>
-        <Text style={styles.help}>Invite tokens grant only the Member role. Revoking a link does not remove people who already joined. Create a new link if you need a new shareable token.</Text>
-      </View>
-    </ScrollView>
-  </SafeAreaView>;
+        <Text style={styles.sectionLabel}>ORGANIZATION</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.orgRow}>
+          {organizations.map((organization) => {
+            const selected = organization.id === organizationId;
+            return (
+              <Pressable
+                key={organization.id}
+                style={[styles.orgChip, selected && styles.orgChipActive]}
+                onPress={() => {
+                  setOrganizationId(organization.id);
+                  setCreated(null);
+                }}
+              >
+                <Text style={[styles.orgName, selected && styles.orgNameActive]}>{organization.name}</Text>
+                <Text style={styles.orgMeta}>{organization.kind}{organization.isActive ? ' · active workspace' : ''}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <Text style={styles.sectionLabel}>CREATE INVITATION</Text>
+        <View style={styles.panel}>
+          <Field label="Label" help="Internal name so you know where the link was shared.">
+            <TextInput
+              value={label}
+              onChangeText={setLabel}
+              editable={!creating}
+              placeholder="September tester invite"
+              placeholderTextColor={COLORS.dim}
+              style={styles.input}
+            />
+          </Field>
+
+          <Field label="Expires after" help="1 to 365 days.">
+            <TextInput
+              value={expiresDays}
+              onChangeText={setExpiresDays}
+              editable={!creating}
+              keyboardType="number-pad"
+              placeholder="30"
+              placeholderTextColor={COLORS.dim}
+              style={styles.input}
+            />
+          </Field>
+
+          <View style={styles.toggleRow}>
+            <View style={styles.flex}>
+              <Text style={styles.fieldLabel}>Limit number of signups</Text>
+              <Text style={styles.fieldHelp}>Turn this on for small testing groups or controlled launches.</Text>
+            </View>
+            <Switch
+              value={limitUses}
+              disabled={creating}
+              onValueChange={setLimitUses}
+              trackColor={{ false: '#354139', true: '#6B5A2F' }}
+              thumbColor={limitUses ? COLORS.gold : '#A0AAA4'}
+            />
+          </View>
+
+          {limitUses ? (
+            <Field label="Maximum signups">
+              <TextInput
+                value={maxUses}
+                onChangeText={setMaxUses}
+                editable={!creating}
+                keyboardType="number-pad"
+                placeholder="25"
+                placeholderTextColor={COLORS.dim}
+                style={styles.input}
+              />
+            </Field>
+          ) : null}
+
+          <Pressable
+            disabled={!canCreate}
+            style={[styles.primaryButton, !canCreate && styles.buttonDisabled]}
+            onPress={() => void createLink()}
+          >
+            {creating ? <ActivityIndicator color="#111813" size="small" /> : null}
+            <Text style={styles.primaryButtonText}>
+              {creating ? 'Creating…' : `Create ${selectedOrganization?.name ?? 'Organization'} Invite`}
+            </Text>
+          </Pressable>
+        </View>
+
+        {created ? (
+          <View style={styles.createdCard}>
+            <Text style={styles.successEyebrow}>NEW INVITATION READY</Text>
+            <Text style={styles.createdTitle}>{created.label}</Text>
+            <Text style={styles.help}>The raw token is shown only for this newly created link. Existing links cannot reveal it again.</Text>
+            <View style={styles.linkBox}>
+              <Text selectable style={styles.linkText}>{deepLink(created.token)}</Text>
+            </View>
+            <View style={styles.createdActions}>
+              <Pressable style={styles.shareButton} onPress={() => void shareCreated()}>
+                <Text style={styles.shareButtonText}>Share Invite</Text>
+              </Pressable>
+              <Pressable style={styles.secondaryButton} onPress={() => setCreated(null)}>
+                <Text style={styles.secondaryButtonText}>Hide Token</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>EXISTING INVITATIONS</Text>
+        {loadingLinks ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={COLORS.gold} />
+            <Text style={styles.help}>Loading invitations…</Text>
+          </View>
+        ) : null}
+
+        {!loadingLinks && links.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No invitation links yet</Text>
+            <Text style={styles.help}>Create one above. The actual token is never recoverable from an existing record.</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.linkList}>
+          {links.map((link) => {
+            const expiryTime = link.expiresAt ? new Date(link.expiresAt).valueOf() : null;
+            const expired = Boolean(currentTime != null && expiryTime != null && expiryTime <= currentTime);
+            const exhausted = link.maxUses != null && link.useCount >= link.maxUses;
+            const usable = link.status === 'active' && !expired && !exhausted;
+            const statusLabel = usable
+              ? 'ACTIVE'
+              : link.status === 'revoked'
+                ? 'REVOKED'
+                : expired
+                  ? 'EXPIRED'
+                  : 'USED';
+
+            return (
+              <View key={link.id} style={styles.linkCard}>
+                <View style={styles.linkHeader}>
+                  <View style={styles.flex}>
+                    <Text style={styles.linkTitle}>{link.label}</Text>
+                    <Text style={styles.linkMeta}>Created {dateLabel(link.createdAt)}</Text>
+                  </View>
+                  <View style={[styles.statusPill, usable ? styles.statusActive : styles.statusInactive]}>
+                    <Text style={[styles.statusText, usable ? styles.statusActiveText : styles.statusInactiveText]}>{statusLabel}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.metrics}>
+                  <Metric label="Uses" value={`${link.useCount}${link.maxUses == null ? '' : ` / ${link.maxUses}`}`} />
+                  <Metric label="Expires" value={dateLabel(link.expiresAt)} />
+                  <Metric label="Last used" value={link.lastUsedAt ? dateLabel(link.lastUsedAt) : 'Never'} />
+                </View>
+
+                {usable ? (
+                  <Pressable style={styles.revokeButton} onPress={() => confirmRevoke(link)}>
+                    <Text style={styles.revokeText}>Revoke link</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.guardrail}>
+          <Text style={styles.guardrailTitle}>Security behavior</Text>
+          <Text style={styles.help}>
+            Invite tokens grant only the Member role. Revoking a link does not remove people who already joined. Create a new link if you need a new shareable token.
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
-  return <View style={styles.field}>
-    <Text style={styles.fieldLabel}>{label}</Text>
-    {children}
-    {help ? <Text style={styles.fieldHelp}>{help}</Text> : null}
-  </View>;
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      {children}
+      {help ? <Text style={styles.fieldHelp}>{help}</Text> : null}
+    </View>
+  );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <View style={styles.metric}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>;
+  return (
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -346,41 +468,41 @@ const styles = StyleSheet.create({
   fieldLabel: { color: COLORS.cream, fontSize: 11, fontWeight: '900' },
   fieldHelp: { color: COLORS.dim, fontSize: 9.5, lineHeight: 14 },
   input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#3B4A41', backgroundColor: COLORS.raised, color: COLORS.cream, paddingHorizontal: 12, fontSize: 12 },
-  toggleRow: { flexDirection: 'row', gap: 14, alignItems: 'center' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flex: { flex: 1 },
-  primaryButton: { minHeight: 50, borderRadius: 13, backgroundColor: COLORS.gold, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  primaryButton: { minHeight: 50, borderRadius: 13, backgroundColor: COLORS.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },
   primaryButtonText: { color: '#111813', fontSize: 11.5, fontWeight: '900' },
   buttonDisabled: { opacity: 0.42 },
-  createdCard: { marginTop: 14, borderRadius: 16, padding: 14, backgroundColor: '#16241A', borderWidth: 1, borderColor: '#365F41', gap: 7 },
+  createdCard: { borderRadius: 16, padding: 14, backgroundColor: '#16241A', borderWidth: 1, borderColor: '#365F41', gap: 7, marginTop: 18 },
   successEyebrow: { color: COLORS.green, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
   createdTitle: { color: COLORS.cream, fontSize: 17, fontWeight: '900' },
-  linkBox: { borderRadius: 11, backgroundColor: '#0E1511', borderWidth: 1, borderColor: '#34433A', padding: 11 },
-  linkText: { color: '#D5E4DA', fontSize: 10, lineHeight: 15 },
+  linkBox: { borderRadius: 12, padding: 11, backgroundColor: '#0C130F', borderWidth: 1, borderColor: '#334239' },
+  linkText: { color: '#D9E3DC', fontSize: 10.5, lineHeight: 16 },
   createdActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  shareButton: { minHeight: 40, borderRadius: 10, backgroundColor: COLORS.gold, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
-  shareButtonText: { color: '#111813', fontSize: 10, fontWeight: '900' },
-  secondaryButton: { minHeight: 40, borderRadius: 10, borderWidth: 1, borderColor: '#4D5E54', paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
-  secondaryButtonText: { color: COLORS.cream, fontSize: 10, fontWeight: '900' },
-  loadingBox: { minHeight: 74, borderRadius: 14, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  shareButton: { minHeight: 40, paddingHorizontal: 14, borderRadius: 11, backgroundColor: COLORS.gold, alignItems: 'center', justifyContent: 'center' },
+  shareButtonText: { color: '#111813', fontSize: 10.5, fontWeight: '900' },
+  secondaryButton: { minHeight: 40, paddingHorizontal: 14, borderRadius: 11, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.raised, alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: COLORS.cream, fontSize: 10.5, fontWeight: '800' },
+  loadingBox: { minHeight: 64, borderRadius: 14, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, alignItems: 'center', justifyContent: 'center', gap: 7 },
   emptyCard: { borderRadius: 14, padding: 14, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, gap: 4 },
   emptyTitle: { color: COLORS.cream, fontSize: 12, fontWeight: '900' },
-  linkList: { gap: 9 },
-  linkCard: { borderRadius: 15, padding: 13, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, gap: 10 },
-  linkHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  linkTitle: { color: COLORS.cream, fontSize: 12, fontWeight: '900' },
-  linkMeta: { color: COLORS.dim, fontSize: 9, marginTop: 3 },
-  statusPill: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
-  statusActive: { backgroundColor: '#1B2B1E', borderColor: '#456F4D' },
-  statusInactive: { backgroundColor: '#2A1D1B', borderColor: '#6A3A37' },
-  statusText: { fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
+  linkList: { gap: 10 },
+  linkCard: { borderRadius: 16, padding: 14, backgroundColor: COLORS.panel, borderWidth: 1, borderColor: COLORS.line, gap: 12 },
+  linkHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  linkTitle: { color: COLORS.cream, fontSize: 13, fontWeight: '900' },
+  linkMeta: { color: COLORS.dim, fontSize: 9.5, marginTop: 3 },
+  statusPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  statusActive: { backgroundColor: '#26351D' },
+  statusInactive: { backgroundColor: '#302321' },
+  statusText: { fontSize: 8.5, fontWeight: '900', letterSpacing: 0.5 },
   statusActiveText: { color: COLORS.green },
-  statusInactiveText: { color: COLORS.red },
+  statusInactiveText: { color: '#E8A89E' },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metric: { minWidth: 105, flexGrow: 1, borderRadius: 10, backgroundColor: COLORS.raised, padding: 9 },
-  metricLabel: { color: COLORS.dim, fontSize: 8.5, fontWeight: '800' },
-  metricValue: { color: COLORS.cream, fontSize: 10.5, fontWeight: '900', marginTop: 3 },
-  revokeButton: { alignSelf: 'flex-start', minHeight: 34, borderRadius: 9, borderWidth: 1, borderColor: '#6A3A37', paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
-  revokeText: { color: COLORS.red, fontSize: 9.5, fontWeight: '900' },
+  metric: { minWidth: 120, flexGrow: 1, borderRadius: 11, padding: 10, backgroundColor: COLORS.raised },
+  metricLabel: { color: COLORS.dim, fontSize: 8.5, fontWeight: '800', letterSpacing: 0.4 },
+  metricValue: { color: COLORS.cream, fontSize: 10.5, fontWeight: '800', marginTop: 3 },
+  revokeButton: { alignSelf: 'flex-start', minHeight: 36, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#6A3A37', alignItems: 'center', justifyContent: 'center' },
+  revokeText: { color: COLORS.red, fontSize: 10, fontWeight: '900' },
   guardrail: { marginTop: 18, borderRadius: 14, padding: 13, backgroundColor: '#161C18', borderWidth: 1, borderColor: '#485349', gap: 4 },
   guardrailTitle: { color: COLORS.cream, fontSize: 11, fontWeight: '900' },
   help: { color: COLORS.muted, fontSize: 10.5, lineHeight: 15 },
