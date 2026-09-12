@@ -178,7 +178,7 @@ function AppShell() {
     return () => {
       active = false;
     };
-  }, [isGoMemberSurface, isLoading, pathname, session?.user.id]);
+  }, [isGoMemberSurface, isLoading, session?.user.id]);
 
   useEffect(() => {
     if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
