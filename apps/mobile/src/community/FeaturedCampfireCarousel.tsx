@@ -45,9 +45,11 @@ const PHOTO_STAGE_HEIGHT = 214;
 const TEXT_CARD_HEIGHT = 226;
 const CARD_GAP = 12;
 const UNDO_WINDOW_MS = 5000;
-const VERTICAL_CAPTURE_DISTANCE = 54;
-const VERTICAL_ACTION_DISTANCE = 82;
-const VERTICAL_DOMINANCE_RATIO = 1.7;
+const VERTICAL_CAPTURE_DISTANCE = 14;
+const VERTICAL_ACTION_DISTANCE = 54;
+const VERTICAL_FLICK_DISTANCE = 26;
+const VERTICAL_FLICK_VELOCITY = 0.72;
+const VERTICAL_DOMINANCE_RATIO = 1.15;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 type CarouselItem =
@@ -654,17 +656,21 @@ export function FeaturedCampfireCarousel({
     onStartShouldSetPanResponder: () => false,
     onStartShouldSetPanResponderCapture: () => false,
     onMoveShouldSetPanResponder: (_, gestureState) => {
-      const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * VERTICAL_DOMINANCE_RATIO;
-      if (!vertical || Math.abs(gestureState.vy) < 0.55) return false;
-      if (gestureState.dy < -VERTICAL_CAPTURE_DISTANCE) return items.length > 0;
-      if (gestureState.dy > VERTICAL_CAPTURE_DISTANCE) return Boolean(latestDismissed);
+      const absX = Math.abs(gestureState.dx);
+      const absY = Math.abs(gestureState.dy);
+      const vertical = absY >= VERTICAL_CAPTURE_DISTANCE && absY > absX * VERTICAL_DOMINANCE_RATIO;
+      if (!vertical) return false;
+      if (gestureState.dy < 0) return items.length > 0;
+      if (gestureState.dy > 0) return Boolean(latestDismissed);
       return false;
     },
     onMoveShouldSetPanResponderCapture: (_, gestureState) => {
-      const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * VERTICAL_DOMINANCE_RATIO;
-      if (!vertical || Math.abs(gestureState.vy) < 0.55) return false;
-      if (gestureState.dy < -VERTICAL_CAPTURE_DISTANCE) return items.length > 0;
-      if (gestureState.dy > VERTICAL_CAPTURE_DISTANCE) return Boolean(latestDismissed);
+      const absX = Math.abs(gestureState.dx);
+      const absY = Math.abs(gestureState.dy);
+      const vertical = absY >= VERTICAL_CAPTURE_DISTANCE && absY > absX * VERTICAL_DOMINANCE_RATIO;
+      if (!vertical) return false;
+      if (gestureState.dy < 0) return items.length > 0;
+      if (gestureState.dy > 0) return Boolean(latestDismissed);
       return false;
     },
     onPanResponderGrant: () => {
@@ -672,20 +678,27 @@ export function FeaturedCampfireCarousel({
     },
     onPanResponderMove: (_, gestureState) => {
       if (gestureState.dy < 0 && items.length > 0) {
-        verticalSwipeY.setValue(Math.max(-155, gestureState.dy * 0.88));
+        verticalSwipeY.setValue(Math.max(-170, gestureState.dy * 0.96));
         return;
       }
       if (gestureState.dy > 0 && latestDismissed) {
-        verticalSwipeY.setValue(Math.min(135, gestureState.dy * 0.88));
+        verticalSwipeY.setValue(Math.min(145, gestureState.dy * 0.96));
       }
     },
     onPanResponderRelease: (_, gestureState) => {
-      const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * VERTICAL_DOMINANCE_RATIO;
-      if (vertical && gestureState.dy <= -VERTICAL_ACTION_DISTANCE && items.length > 0) {
+      const absX = Math.abs(gestureState.dx);
+      const absY = Math.abs(gestureState.dy);
+      const vertical = absY > absX * VERTICAL_DOMINANCE_RATIO;
+      const hideByDistance = gestureState.dy <= -VERTICAL_ACTION_DISTANCE;
+      const hideByFlick = gestureState.dy <= -VERTICAL_FLICK_DISTANCE && gestureState.vy <= -VERTICAL_FLICK_VELOCITY;
+      const restoreByDistance = gestureState.dy >= VERTICAL_ACTION_DISTANCE;
+      const restoreByFlick = gestureState.dy >= VERTICAL_FLICK_DISTANCE && gestureState.vy >= VERTICAL_FLICK_VELOCITY;
+
+      if (vertical && items.length > 0 && (hideByDistance || hideByFlick)) {
         hideCurrentWithAnimation();
         return;
       }
-      if (vertical && gestureState.dy >= VERTICAL_ACTION_DISTANCE && latestDismissed) {
+      if (vertical && latestDismissed && (restoreByDistance || restoreByFlick)) {
         restoreLatestWithAnimation();
         return;
       }
@@ -744,6 +757,7 @@ export function FeaturedCampfireCarousel({
         <ScrollView
           key={signature}
           horizontal
+          directionalLockEnabled
           showsHorizontalScrollIndicator={false}
           snapToInterval={snapInterval}
           snapToAlignment="start"
