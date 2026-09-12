@@ -9,6 +9,7 @@ import { getTrailGuidePlace, trailGuidePlaces, type TrailGuideCityKey, type Trai
 import { TrailGuideCommunitySection } from '../../src/trailGuide/TrailGuideCommunitySection';
 import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePlaceDetails } from '../../src/trailGuide/googlePlacePhotos';
 import { useTrailGuideHeroCandidates, type TrailGuideHeroPhoto } from '../../src/trailGuide/heroSelection';
+import { loadMyTrailGuideReview } from '../../src/trailGuide/memberContributions';
 import { useTrailGuidePlacePhoto } from '../../src/trailGuide/placePhotos';
 import { isTrailGuidePlaceSaved, setTrailGuidePlaceSaved } from '../../src/trailGuide/savedPlaces';
 import { TrailGuidePlaceMoreDetails, TrailGuidePlacePracticalDetails } from '../../src/trailGuide/TrailGuidePlacePracticalDetails';
@@ -66,6 +67,8 @@ export default function TrailGuidePlaceDetailScreen() {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [myReviewId, setMyReviewId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -85,6 +88,16 @@ export default function TrailGuidePlaceDetailScreen() {
     }
     setSaved(isTrailGuidePlaceSaved(userId, place.id));
   }, [place, session?.user.id]);
+
+  useEffect(() => {
+    let active = true;
+    setMyReviewId(null);
+    if (!session?.user.id || !place) return () => { active = false; };
+    void loadMyTrailGuideReview(place.id)
+      .then((review) => { if (active) setMyReviewId(review?.id ?? null); })
+      .catch(() => { if (active) setMyReviewId(null); });
+    return () => { active = false; };
+  }, [notice, place, session?.user.id]);
 
   const gallery = useMemo(
     () => heroCandidates.filter((photo) => !failedPhotoUrls.includes(photo.url)),
@@ -134,6 +147,18 @@ export default function TrailGuidePlaceDetailScreen() {
     setSaved(next);
     if (next) markTrailheadAction('save-place');
   };
+  const openReview = () => {
+    setActionsOpen(false);
+    router.push({ pathname: '/trail-guide/contribute', params: { placeId: currentPlace.id, mode: 'review', ...(myReviewId ? { reviewId: myReviewId } : {}) } } as never);
+  };
+  const openPhotos = () => {
+    setActionsOpen(false);
+    router.push({ pathname: '/trail-guide/contribute', params: { placeId: currentPlace.id, mode: 'photos' } } as never);
+  };
+  const openPlanOuting = () => {
+    setActionsOpen(false);
+    planOuting();
+  };
 
   const markPhotoFailed = (photoUrl: string) => {
     setFailedPhotoUrls((current) => current.includes(photoUrl) ? current : [...current, photoUrl]);
@@ -152,6 +177,7 @@ export default function TrailGuidePlaceDetailScreen() {
           )}
           <View pointerEvents="none" style={styles.heroShade} />
           <Pressable hitSlop={10} onPress={() => router.back()} style={({ pressed }) => [styles.roundHeroButton, styles.backHeroButton, pressed && styles.pressed]}><AppIcon name="chevron-forward" color="#FFFDF6" size={22} style={{ transform: [{ rotate: '180deg' }] }} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={saved ? `Remove ${currentPlace.name} from saved places` : `Save ${currentPlace.name}`} accessibilityState={{ selected: saved }} hitSlop={10} onPress={toggleSaved} style={({ pressed }) => [styles.roundHeroButton, styles.saveHeroButton, saved && styles.saveHeroButtonActive, pressed && styles.pressed]}><AppIcon name="bookmark" color={saved ? '#17211C' : '#FFFDF6'} size={18} /></Pressable>
           <Pressable hitSlop={10} onPress={() => void sharePlace()} style={({ pressed }) => [styles.roundHeroButton, styles.shareHeroButton, pressed && styles.pressed]}><AppIcon name="share" color="#FFFDF6" size={18} /></Pressable>
           {gallery.length > 1 ? <View style={styles.photoCounter}><Text style={styles.photoCounterText}>{activePhotoIndex + 1}/{gallery.length}</Text></View> : null}
         </View>
@@ -160,25 +186,20 @@ export default function TrailGuidePlaceDetailScreen() {
           {currentPhoto ? <Text style={[styles.photoCredit, currentPhoto.representative && styles.representativeCredit]} numberOfLines={1}>{heroCreditLabel(currentPhoto)}</Text> : null}
           {noticeText ? <View style={styles.notice}><AppIcon name="check" color="#8ED380" size={14} /><Text style={styles.noticeText}>{noticeText}</Text></View> : null}
 
-          <View style={styles.identityRow}>
-            <View style={styles.identityCopy}>
-              <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
-              <Text style={styles.title}>{currentPlace.name}</Text>
-              <View style={styles.metaLine}>
-                <Text style={styles.area}>{currentPlace.area}</Text>
-                {ratingLabel ? <Text style={styles.rating}>{ratingLabel}</Text> : null}
-              </View>
+          <View style={styles.identityCopy}>
+            <Text style={styles.type}>{currentPlace.category.toUpperCase()} · {currentPlace.type.toUpperCase()}</Text>
+            <Text style={styles.title}>{currentPlace.name}</Text>
+            <View style={styles.metaLine}>
+              <Text style={styles.area}>{currentPlace.area}</Text>
+              {ratingLabel ? <Text style={styles.rating}>{ratingLabel}</Text> : null}
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={saved ? `Remove ${currentPlace.name} from saved places` : `Save ${currentPlace.name}`} accessibilityState={{ selected: saved }} onPress={toggleSaved} style={({ pressed }) => [styles.saveCircle, saved && styles.saveCircleActive, pressed && styles.pressed]}><AppIcon name="bookmark" color={saved ? '#17211C' : '#E6C463'} size={18} /></Pressable>
           </View>
 
-          {openState ? <Text style={[styles.openState, openState === 'Open now' && styles.openStateActive]}>{openState}</Text> : null}
+          <View style={styles.placeStatusRow}>
+            <Pressable onPress={() => void openDirections()} style={({ pressed }) => [styles.directionsInline, pressed && styles.pressed]}><AppIcon name="location" color="#D7B45A" size={14} /><Text style={styles.directionsInlineText}>Directions</Text></Pressable>
+            {openState ? <Text style={[styles.openState, openState === 'Open now' && styles.openStateActive]}>{openState}</Text> : null}
+          </View>
           <Text numberOfLines={2} style={styles.summary}>{emotionalSummary(currentPlace)}</Text>
-
-          <View style={styles.utilityRow}>
-            <Pressable onPress={() => void openDirections()} style={({ pressed }) => [styles.utilityButton, pressed && styles.pressed]}><AppIcon name="location" color="#D7B45A" size={15} /><Text style={styles.utilityText}>Directions</Text></Pressable>
-            <Pressable onPress={toggleSaved} style={({ pressed }) => [styles.utilityButton, pressed && styles.pressed]}><AppIcon name="bookmark" color="#D7B45A" size={15} /><Text style={styles.utilityText}>{saved ? 'Saved' : 'Save'}</Text></Pressable>
-          </View>
 
           <TrailGuidePlacePracticalDetails
             placeId={currentPlace.id}
@@ -196,12 +217,6 @@ export default function TrailGuidePlaceDetailScreen() {
             weekdayDescription={googleDetails?.weekdayDescriptions?.[0]}
           />
 
-          <Pressable onPress={planOuting} style={({ pressed }) => [styles.planCard, pressed && styles.pressed]}>
-            <View style={styles.planIcon}><AppIcon name="calendar" color="#D7B45A" size={18} /></View>
-            <View style={styles.planCopy}><Text style={styles.planTitle}>Going with a group?</Text><Text style={styles.planBody}>Turn this destination into a Go Melanated outing.</Text></View>
-            <Text style={styles.planAction}>Plan outing</Text>
-          </Pressable>
-
           {nearby.length > 0 ? (
             <View style={styles.nearbySection}>
               <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Nearby destinations</Text><Text style={styles.sectionHint}>Make a weekend of it</Text></View><Text style={styles.cityHint}>{trailGuideCity(currentPlace.city)}</Text></View>
@@ -210,6 +225,19 @@ export default function TrailGuidePlaceDetailScreen() {
           ) : null}
         </View>
       </ScrollView>
+
+      <View pointerEvents="box-none" style={styles.fabWrap}>
+        {actionsOpen ? (
+          <View style={styles.fabMenu}>
+            <Pressable onPress={openReview} style={({ pressed }) => [styles.fabAction, pressed && styles.pressed]}><Text style={styles.fabActionText}>{myReviewId ? 'Edit review' : 'Write review'}</Text><View style={styles.fabActionIcon}><AppIcon name="edit" color="#D7B45A" size={17} /></View></Pressable>
+            <Pressable onPress={openPhotos} style={({ pressed }) => [styles.fabAction, pressed && styles.pressed]}><Text style={styles.fabActionText}>Add photos</Text><View style={styles.fabActionIcon}><AppIcon name="camera" color="#D7B45A" size={17} /></View></Pressable>
+            <Pressable onPress={openPlanOuting} style={({ pressed }) => [styles.fabAction, pressed && styles.pressed]}><Text style={styles.fabActionText}>Plan outing</Text><View style={styles.fabActionIcon}><AppIcon name="calendar" color="#D7B45A" size={17} /></View></Pressable>
+          </View>
+        ) : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={actionsOpen ? 'Close destination actions' : 'Open destination actions'} accessibilityState={{ expanded: actionsOpen }} onPress={() => setActionsOpen((open) => !open)} style={({ pressed }) => [styles.fab, actionsOpen && styles.fabOpen, pressed && styles.pressed]}>
+          <AppIcon name={actionsOpen ? 'close' : 'add'} color="#17211C" size={24} />
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
@@ -220,35 +248,35 @@ const styles = StyleSheet.create({
   heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,8,5,0.09)' },
   roundHeroButton: { position: 'absolute', top: 14, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(7,12,9,0.72)', alignItems: 'center', justifyContent: 'center', zIndex: 4 },
   backHeroButton: { left: 14 },
+  saveHeroButton: { right: 62 },
+  saveHeroButtonActive: { backgroundColor: '#D7B45A' },
   shareHeroButton: { right: 14 },
   photoCounter: { position: 'absolute', right: 14, bottom: 12, borderRadius: 999, backgroundColor: 'rgba(7,12,9,0.72)', paddingHorizontal: 9, paddingVertical: 5 },
   photoCounterText: { color: '#FFFDF6', fontSize: 9, fontWeight: '900' },
-  body: { paddingHorizontal: 15, paddingBottom: 36 },
+  body: { paddingHorizontal: 15, paddingBottom: 128 },
   photoCredit: { color: '#617068', fontSize: 8, marginTop: 5, marginBottom: 5 },
   representativeCredit: { color: '#A88948', fontWeight: '800' },
   notice: { minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: '#31583A', backgroundColor: '#132516', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, marginBottom: 7 },
   noticeText: { color: '#BDE1B7', fontSize: 9.5, fontWeight: '800' },
-  identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   identityCopy: { flex: 1 },
   type: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
   title: { color: '#FFF8E8', fontSize: 25, lineHeight: 29, fontWeight: '900', marginTop: 4 },
   metaLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 5 },
   area: { color: '#B7C1BB', fontSize: 11, fontWeight: '800' },
   rating: { color: '#DCC163', fontSize: 10, fontWeight: '900' },
-  saveCircle: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: '#5F5129', backgroundColor: '#121A15', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  saveCircleActive: { backgroundColor: '#D7B45A', borderColor: '#D7B45A' },
-  openState: { alignSelf: 'flex-start', color: '#D2A49A', backgroundColor: '#241915', borderWidth: 1, borderColor: '#5D3C33', borderRadius: 999, fontSize: 8.5, fontWeight: '900', paddingHorizontal: 8, paddingVertical: 4, marginTop: 7 },
+  placeStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  directionsInline: { minHeight: 28, borderRadius: 999, borderWidth: 1, borderColor: '#34433A', backgroundColor: '#111A15', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9 },
+  directionsInlineText: { color: '#E2E7E4', fontSize: 8.5, fontWeight: '900' },
+  openState: { alignSelf: 'center', color: '#D2A49A', backgroundColor: '#241915', borderWidth: 1, borderColor: '#5D3C33', borderRadius: 999, fontSize: 8.5, fontWeight: '900', paddingHorizontal: 8, paddingVertical: 4 },
   openStateActive: { color: '#8ED380', backgroundColor: '#132516', borderColor: '#31583A' },
   summary: { color: '#C5CEC8', fontSize: 12, lineHeight: 17, marginTop: 8 },
-  utilityRow: { flexDirection: 'row', gap: 7, marginTop: 9 },
-  utilityButton: { minHeight: 36, borderRadius: 11, borderWidth: 1, borderColor: '#2D3B33', backgroundColor: '#111A15', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 12 },
-  utilityText: { color: '#E2E7E4', fontSize: 9.5, fontWeight: '900' },
-  planCard: { marginTop: 10, minHeight: 62, borderRadius: 14, borderWidth: 1, borderColor: '#33443A', backgroundColor: '#121C16', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11 },
-  planIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#1D2B22', alignItems: 'center', justifyContent: 'center' },
-  planCopy: { flex: 1 },
-  planTitle: { color: '#F3EEE3', fontSize: 11, fontWeight: '900' },
-  planBody: { color: '#7F8C84', fontSize: 8.5, lineHeight: 12, marginTop: 2 },
-  planAction: { color: '#D7B45A', fontSize: 9, fontWeight: '900' },
+  fabWrap: { position: 'absolute', right: 16, bottom: 88, alignItems: 'flex-end', zIndex: 30 },
+  fabMenu: { alignItems: 'flex-end', gap: 8, marginBottom: 10 },
+  fabAction: { minHeight: 42, borderRadius: 22, borderWidth: 1, borderColor: '#3A493F', backgroundColor: '#121B16', flexDirection: 'row', alignItems: 'center', gap: 9, paddingLeft: 14, paddingRight: 5 },
+  fabActionText: { color: '#F0EEE8', fontSize: 10.5, fontWeight: '900' },
+  fabActionIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1D2A22', alignItems: 'center', justifyContent: 'center' },
+  fab: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E8CC78', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  fabOpen: { backgroundColor: '#E4C66A' },
   nearbySection: { marginTop: 15 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 9 },
   sectionTitle: { color: '#FFF8E8', fontSize: 17, fontWeight: '900' },
