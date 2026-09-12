@@ -1,4 +1,4 @@
-import { Link, router } from 'expo-router';
+import { Link, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -24,6 +24,7 @@ function makeInternalUsername(email: string) {
 }
 
 export default function SignUpScreen() {
+  const params = useLocalSearchParams<{ org_invite?: string | string[] }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,6 +33,11 @@ export default function SignUpScreen() {
   const [inviteCode, setInviteCode] = useState('');
   const [showInviteCode, setShowInviteCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const organizationInviteToken = useMemo(() => {
+    const raw = Array.isArray(params.org_invite) ? params.org_invite[0] : params.org_invite;
+    const token = raw?.trim() ?? '';
+    return token.startsWith('org_') ? token : '';
+  }, [params.org_invite]);
   const normalizedInviteCode = normalizeInviteToken(inviteCode);
   const passwordsMatch = password === confirmPassword;
   const emailLooksValid = /^\S+@\S+\.\S+$/.test(email.trim());
@@ -63,6 +69,7 @@ export default function SignUpScreen() {
           data: {
             username: internalUsername,
             display_name: '',
+            ...(organizationInviteToken ? { organization_join_token: organizationInviteToken } : {}),
           },
         },
       });
@@ -102,14 +109,25 @@ export default function SignUpScreen() {
             <View style={styles.spacer} />
 
             <View style={styles.panel}>
-              <Text style={styles.eyebrow}>JOIN THE TRAIL</Text>
+              <Text style={styles.eyebrow}>{organizationInviteToken ? 'ORGANIZATION INVITATION' : 'JOIN THE TRAIL'}</Text>
               <Text style={styles.title}>Create your account</Text>
-              <Text style={styles.body}>Start with the basics. We’ll build your profile after the Trail Code.</Text>
+              <Text style={styles.body}>
+                {organizationInviteToken
+                  ? 'Create your account to join the organization that invited you. Your workspace will be assigned automatically.'
+                  : 'Start with the basics. We’ll build your profile after the Trail Code.'}
+              </Text>
+
+              {organizationInviteToken ? (
+                <View style={styles.organizationBanner}>
+                  <Text style={styles.organizationEyebrow}>TENANT LINK ATTACHED</Text>
+                  <Text style={styles.organizationBody}>This invitation controls your organization membership. The database validates it before assigning your workspace.</Text>
+                </View>
+              ) : null}
 
               {normalizedInviteCode ? (
                 <View style={styles.inviteBanner}>
                   <Text style={styles.inviteEyebrow}>MEMBER INVITE ATTACHED</Text>
-                  <Text style={styles.inviteBody}>Your invite is ready and will stay connected through signup.</Text>
+                  <Text style={styles.inviteBody}>Your member referral is ready and will stay connected through signup.</Text>
                 </View>
               ) : null}
 
@@ -176,7 +194,7 @@ export default function SignUpScreen() {
                 onPress={() => setShowInviteCode((value) => !value)}
                 style={styles.inviteToggle}
               >
-                <Text style={styles.inviteToggleText}>{showInviteCode ? 'Hide invite code' : 'Have an invite code?'}</Text>
+                <Text style={styles.inviteToggleText}>{showInviteCode ? 'Hide referral code' : 'Have a member referral code?'}</Text>
               </Pressable>
 
               {showInviteCode ? (
@@ -184,7 +202,7 @@ export default function SignUpScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   onChangeText={setInviteCode}
-                  placeholder="Invite code (optional)"
+                  placeholder="Member referral code (optional)"
                   placeholderTextColor="#AEB8B2"
                   style={styles.input}
                   value={inviteCode}
@@ -244,6 +262,9 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.4 },
   title: { color: '#FFF8E8', fontSize: 31, lineHeight: 36, fontWeight: '900' },
   body: { color: '#CDD5D0', fontSize: 15, lineHeight: 22 },
+  organizationBanner: { gap: 4, borderWidth: 1, borderColor: 'rgba(155,227,61,0.42)', borderRadius: 14, backgroundColor: 'rgba(155,227,61,0.09)', padding: 12 },
+  organizationEyebrow: { color: '#C8EA7E', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  organizationBody: { color: '#D8E2D9', fontSize: 13, lineHeight: 18 },
   inviteBanner: { gap: 4, borderWidth: 1, borderColor: 'rgba(215,180,90,0.45)', borderRadius: 14, backgroundColor: 'rgba(215,180,90,0.10)', padding: 12 },
   inviteEyebrow: { color: '#E0C675', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   inviteBody: { color: '#D8D3C5', fontSize: 13, lineHeight: 18 },
