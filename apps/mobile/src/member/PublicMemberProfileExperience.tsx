@@ -95,6 +95,7 @@ export default function PublicMemberProfileExperience(){
  const joined=new Date(profile.created_at).toLocaleDateString(undefined,{month:'long',year:'numeric'});
 
  async function shareProfile(){
+  if(!profile)return;
   const summary=[profile.adventure_count?`${profile.adventure_count} adventures`:null,profile.stamp_count?`${profile.stamp_count} stamps`:null].filter(Boolean).join(', ');
   await Share.share({message:`${profile.display_name??'A Go Melanated member'}${profile.username?` (@${profile.username})`:''} on Go Melanated${summary?`: ${summary}`:'.'}`});
  }
