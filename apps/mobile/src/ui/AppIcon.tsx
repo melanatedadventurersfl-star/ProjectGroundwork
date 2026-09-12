@@ -8,6 +8,7 @@ export type AppIconName =
   | 'trailhead'
   | 'explore'
   | 'community'
+  | 'group'
   | 'passport'
   | 'menu'
   | 'notifications'
@@ -69,6 +70,7 @@ const icons: Record<AppIconName, IoniconName> = {
   trailhead: 'home-outline',
   explore: 'compass-outline',
   community: 'people-outline',
+  group: 'people-outline',
   passport: 'book-outline',
   menu: 'menu-outline',
   notifications: 'notifications-outline',
