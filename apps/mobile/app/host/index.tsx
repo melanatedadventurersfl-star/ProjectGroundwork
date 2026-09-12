@@ -8,6 +8,7 @@ import { getCampaignDaysUntil, getCampaignReadiness, listHostCampaigns, type Hos
 import { getEventOperationsSummary } from '../../src/hosting/eventBuilder';
 import { supabase } from '../../src/lib/supabase';
 import { listHostOpportunities } from '../../src/management/opportunities';
+import { getActiveOrganization } from '../../src/platform/organizations';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 const COLORS = {
@@ -39,6 +40,7 @@ export default function HostCenterScreen() {
   const [campaigns, setCampaigns] = useState<EventSummary[]>([]);
   const [performance, setPerformance] = useState<Map<string, PerformanceSummary>>(new Map());
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState('Organization Workspace');
   const [opportunityCount, setOpportunityCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,9 +51,14 @@ export default function HostCenterScreen() {
     if (!background) setLoading(true);
     setError('');
     try {
-      const [access, authResult] = await Promise.all([getOutingHostAccess(), supabase.auth.getUser()]);
+      const [access, authResult, activeOrganization] = await Promise.all([
+        getOutingHostAccess(),
+        supabase.auth.getUser(),
+        getActiveOrganization(),
+      ]);
       setApproved(access.approved);
       setCurrentProfileId(authResult.data.user?.id ?? null);
+      setOrganizationName(activeOrganization?.name ?? 'Organization Workspace');
 
       if (!access.approved) {
         setCampaigns([]);
@@ -172,7 +179,7 @@ export default function HostCenterScreen() {
         <TopographicBackdrop />
         <View style={styles.topbar}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.eyebrow}>GO MELANATED</Text>
+            <Text style={styles.eyebrow}>{organizationName.toUpperCase()}</Text>
             <Text style={styles.title}>Host Center</Text>
             <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
           </View>
