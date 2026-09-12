@@ -422,7 +422,7 @@ export default function TrailGuideScreen() {
                       </View>
                     </View>
                     <View style={styles.weatherFootRow}>
-                      {rainChance >= 60 ? <View style={styles.weatherSignal}><AppIcon name="weather" color="#F5C400" size={14} /><Text style={styles.weatherSignalText}>High Rain Chance</Text></View> : <Text style={styles.weatherCalmText}>Conditions factored into today's picks</Text>}
+                      {rainChance >= 60 ? <View style={styles.weatherSignal}><AppIcon name="weather" color="#F5C400" size={14} /><Text style={styles.weatherSignalText}>High Rain Chance</Text></View> : <Text style={styles.weatherCalmText}>Conditions factored into current picks</Text>}
                       {updatedWeather ? <Text style={styles.weatherUpdated}>{updatedWeather}</Text> : null}
                     </View>
                   </>
