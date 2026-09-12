@@ -78,6 +78,28 @@ function normalizeLocation(value?: string | null) {
   return value?.trim().toLowerCase().replace(/florida/g, 'fl').replace(/[^a-z0-9]+/g, '-') ?? '';
 }
 
+type ImageResolver = {
+  resolveAssetSource?: (asset: unknown) => { uri?: string } | null;
+};
+
+function resolveAssetUri(source: unknown) {
+  if (!source) return null;
+  if (typeof source === 'string') return source;
+  if (typeof source === 'object' && 'uri' in source) {
+    const uri = (source as { uri?: unknown }).uri;
+    if (typeof uri === 'string') return uri;
+  }
+
+  const resolver = (Image as unknown as ImageResolver).resolveAssetSource;
+  if (typeof resolver !== 'function') return null;
+
+  try {
+    return resolver(source)?.uri ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function groupCityBackgroundUri(city?: string | null, state?: string | null) {
   if (!city || !state) return null;
   const normalizedState = normalizeLocation(state);
@@ -93,7 +115,7 @@ function groupCityBackgroundUri(city?: string | null, state?: string | null) {
     source = nearest?.city.source ?? null;
   }
 
-  return source ? Image.resolveAssetSource(source)?.uri ?? null : null;
+  return resolveAssetUri(source);
 }
 
 export async function getGroups(): Promise<CommunityGroup[]> {
@@ -116,12 +138,12 @@ export async function getGroups(): Promise<CommunityGroup[]> {
       : Promise.resolve({ data: [], error: null }),
     supabase.from('community_group_members').select('group_id').in('group_id', groupIds),
   ]);
-  if (membershipError) throw membershipError;
-  if (membersError) throw membersError;
+  const membershipRows = membershipError ? [] : memberships ?? [];
+  const memberRows = membersError ? [] : allMembers ?? [];
 
-  const myGroups = new Set((memberships ?? []).map((row: any) => row.group_id as string));
+  const myGroups = new Set(membershipRows.map((row: any) => row.group_id as string));
   const counts = new Map<string, number>();
-  for (const row of allMembers ?? []) {
+  for (const row of memberRows) {
     const id = (row as any).group_id as string;
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
