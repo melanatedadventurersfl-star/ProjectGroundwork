@@ -1,19 +1,20 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 
 import type { LocalEvent } from '../local-events/api';
-import type { CommunityGroup, CommunityPost } from './api';
-import { PostEngagementBar } from './PostEngagementBar';
+import { supabase } from '../lib/supabase';
+import { setReaction, type CommunityGroup, type CommunityPost } from './api';
 import { featuredPostKind } from './featuredPosts';
 
 const GOLD = '#D7B45A';
 const TEXT = '#FFF8E8';
 const MUTED = '#AEB8B2';
-const GREEN = '#7F9D68';
 const PANEL = '#16201B';
 const GAP = 12;
+
+type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 
 function initials(name?: string | null) {
   return (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
@@ -46,12 +47,20 @@ function FeaturedPostCard({
   event,
   width,
   fallbackSource,
+  myReaction,
+  reactionCount,
+  reacting,
+  onToggleReaction,
 }: {
   post: CommunityPost;
   group?: CommunityGroup;
   event?: LocalEvent | null;
   width: number;
   fallbackSource: ImageSourcePropType;
+  myReaction: ReactionValue | null;
+  reactionCount: number;
+  reacting: boolean;
+  onToggleReaction: (post: CommunityPost) => void;
 }) {
   const kind = featuredPostKind(post, group, event);
   const media = post.image_url || (post.media_type === 'image' ? post.media_url : null);
@@ -65,7 +74,7 @@ function FeaturedPostCard({
         : fallbackSource;
   const label = group?.name || (kind === 'outing' ? 'OUTING CONVERSATION' : 'AROUND THE OUTPOST');
   const bodyLines = kind === 'media' ? 3 : kind === 'outing' ? 3 : 5;
-  const accessibilityLabel = `${post.author_name}. ${group?.name ? `${group.name}. ` : ''}${post.body || 'Post'}. ${post.reaction_count || 0} reactions. ${post.comment_count || 0} comments.`;
+  const accessibilityLabel = `${post.author_name}. ${group?.name ? `${group.name}. ` : ''}${post.body || 'Post'}. ${reactionCount} reactions. ${post.comment_count || 0} comments.`;
 
   return (
     <Pressable
@@ -123,8 +132,27 @@ function FeaturedPostCard({
             </Pressable>
           ) : null}
 
-          <View style={styles.engagementWrap}>
-            <PostEngagementBar postId={post.id} initialReactionCount={post.reaction_count || 0} commentCount={post.comment_count || 0} />
+          <View style={styles.engagementRow}>
+            <Pressable
+              style={styles.engagementAction}
+              disabled={reacting}
+              onPress={(tap) => stopAndRun(tap, () => onToggleReaction(post))}
+              accessibilityRole="button"
+              accessibilityLabel={myReaction ? 'Remove reaction' : 'Like post'}
+            >
+              <Ionicons name={myReaction ? 'heart' : 'heart-outline'} size={19} color={myReaction ? GOLD : '#DDE4DF'} />
+              <Text style={[styles.engagementCount, myReaction && styles.engagementCountActive]}>{reactionCount}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.engagementAction}
+              onPress={(tap) => stopAndRun(tap, () => router.push(`/community/${post.id}`))}
+              accessibilityRole="button"
+              accessibilityLabel={`${post.comment_count || 0} comments`}
+            >
+              <Ionicons name="chatbubble-outline" size={18} color="#DDE4DF" />
+              <Text style={styles.engagementCount}>{post.comment_count || 0}</Text>
+            </Pressable>
+            <View style={styles.openPost}><Text style={styles.openPostText}>Open post</Text><Ionicons name="arrow-forward" size={14} color={GOLD} /></View>
           </View>
         </View>
       </ImageBackground>
@@ -152,6 +180,9 @@ export function FeaturedCampfireCarousel({
   onExploreCommunities: () => void;
 }) {
   const railRef = useRef<ScrollView | null>(null);
+  const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
+  const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
+  const [reactingPostId, setReactingPostId] = useState<string | null>(null);
   const cardWidth = Math.min(390, Math.max(270, viewportWidth * 0.9));
   const snap = cardWidth + GAP;
   const firstPostId = posts[0]?.id;
@@ -160,16 +191,67 @@ export function FeaturedCampfireCarousel({
     const map = new Map<string, LocalEvent | null>();
     for (const post of posts) {
       const metadata = post.metadata ?? {};
-      const possible = [metadata.local_event_id, metadata.event_id, metadata.outing_id].find((value) => typeof value === 'string') as string | undefined;
+      const possible = [metadata['local_event_id'], metadata['event_id'], metadata['outing_id']].find((value) => typeof value === 'string') as string | undefined;
       map.set(post.id, possible ? events.get(possible) ?? null : null);
     }
     return map;
   }, [events, posts]);
 
   useEffect(() => {
+    setReactionCounts(new Map(posts.map((post) => [post.id, post.reaction_count || 0])));
+    let active = true;
+    async function loadMyReactions() {
+      if (!posts.length) {
+        if (active) setMyReactions(new Map());
+        return;
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) return;
+      const { data, error } = await supabase
+        .from('community_reactions')
+        .select('post_id,reaction')
+        .eq('profile_id', userId)
+        .in('post_id', posts.map((post) => post.id));
+      if (!active || error) return;
+      setMyReactions(new Map((data ?? []).map((row: any) => [row.post_id as string, row.reaction as ReactionValue])));
+    }
+    void loadMyReactions();
+    return () => { active = false; };
+  }, [posts]);
+
+  useEffect(() => {
     onIndexChange(0);
     railRef.current?.scrollTo({ x: 0, animated: false });
-  }, [firstPostId]);
+  }, [firstPostId, onIndexChange]);
+
+  const toggleReaction = useCallback(async (post: CommunityPost) => {
+    if (reactingPostId) return;
+    const previous = myReactions.get(post.id) ?? null;
+    const next: ReactionValue | null = previous ? null : 'like';
+    const previousCount = reactionCounts.get(post.id) ?? post.reaction_count ?? 0;
+    setReactingPostId(post.id);
+    setMyReactions((current) => {
+      const copy = new Map(current);
+      if (next) copy.set(post.id, next);
+      else copy.delete(post.id);
+      return copy;
+    });
+    setReactionCounts((current) => new Map(current).set(post.id, Math.max(0, previousCount + (next ? 1 : -1))));
+    try {
+      await setReaction(post.id, next);
+    } catch {
+      setMyReactions((current) => {
+        const copy = new Map(current);
+        if (previous) copy.set(post.id, previous);
+        else copy.delete(post.id);
+        return copy;
+      });
+      setReactionCounts((current) => new Map(current).set(post.id, previousCount));
+    } finally {
+      setReactingPostId(null);
+    }
+  }, [myReactions, reactionCounts, reactingPostId]);
 
   if (!posts.length) {
     return (
@@ -205,12 +287,16 @@ export function FeaturedCampfireCarousel({
             event={eventByPost.get(post.id)}
             width={cardWidth}
             fallbackSource={fallbackSource}
+            myReaction={myReactions.get(post.id) ?? null}
+            reactionCount={reactionCounts.get(post.id) ?? post.reaction_count ?? 0}
+            reacting={reactingPostId === post.id}
+            onToggleReaction={toggleReaction}
           />
         ))}
       </ScrollView>
       {posts.length > 1 ? (
-        <View style={styles.dots} accessibilityLabel={`Featured post ${activeIndex + 1} of ${posts.length}`}>
-          {posts.map((post, index) => <View key={post.id} style={[styles.dot, activeIndex === index && styles.dotActive]} />)}
+        <View style={styles.dots} accessibilityLabel={`Featured post ${Math.min(activeIndex, posts.length - 1) + 1} of ${posts.length}`}>
+          {posts.map((post, index) => <View key={post.id} style={[styles.dot, Math.min(activeIndex, posts.length - 1) === index && styles.dotActive]} />)}
         </View>
       ) : null}
     </>
@@ -241,7 +327,12 @@ const styles = StyleSheet.create({
   eventIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#26342A' },
   eventTitle: { color: TEXT, fontSize: 12.5, fontWeight: '900' },
   eventMeta: { color: MUTED, fontSize: 10.5, marginTop: 2 },
-  engagementWrap: { minHeight: 38 },
+  engagementRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(221,228,223,0.22)', paddingTop: 6 },
+  engagementAction: { minWidth: 58, minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
+  engagementCount: { color: '#DDE4DF', fontSize: 12.5, fontWeight: '800' },
+  engagementCountActive: { color: GOLD },
+  openPost: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 },
+  openPostText: { color: GOLD, fontSize: 11.5, fontWeight: '900' },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingTop: 10 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#455249' },
   dotActive: { width: 19, backgroundColor: GOLD },
