@@ -6,6 +6,13 @@ const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const FACT_TYPES = {
+  "visit.hours": "string",
+  "visit.admission": "string",
+  "contact.phone": "string",
+  "parking.available": "boolean",
+  "trail.distance_miles": "number",
+  "trail.surface": "string",
+  "alerts.current": "string",
   "electric.available": "boolean",
   "electric.scope": "string",
   "electric.voltage": "number",
@@ -16,6 +23,9 @@ const FACT_TYPES = {
   "dump_station.available": "boolean",
   "camping.tent": "boolean",
   "camping.rv": "boolean",
+  "camping.primitive": "boolean",
+  "camping.cabins": "boolean",
+  "camping.site_count": "number",
   "camping.max_rv_length_ft": "number",
   "occupancy.max_people": "number",
   "parking.included_passes": "number",
@@ -25,17 +35,20 @@ const FACT_TYPES = {
   "generators.off_during_quiet_hours": "boolean",
   "fires.rings_only": "boolean",
   "pets.allowed": "boolean",
+  "pets.leash_required": "boolean",
   "pets.max_per_site": "number",
   "pets.fee": "number",
   "pets.shoreline_allowed": "boolean",
   "amenities.showers": "boolean",
   "amenities.restrooms": "boolean",
+  "amenities.drinking_water": "boolean",
   "amenities.picnic_tables": "boolean",
   "amenities.playground": "boolean",
   "amenities.concession": "boolean",
   "amenities.laundry": "boolean",
   "amenities.wifi": "boolean",
   "accessibility.ada_sites": "string_array",
+  "accessibility.wheelchair": "boolean",
   "stay_limit.tent_days": "number",
   "stay_limit.rv_days": "number",
   "stay_limit.window_days": "number",
@@ -44,6 +57,8 @@ const FACT_TYPES = {
   "pricing.tent_total": "number",
   "pricing.rv_base": "number",
   "pricing.rv_total": "number",
+  "pricing.cabin_base": "number",
+  "pricing.cabin_total": "number",
   "pricing.currency": "string",
   "alcohol.allowed": "boolean",
   "hammocks.on_trees_allowed": "boolean",
@@ -55,6 +70,12 @@ const FACT_TYPES = {
   "activities.surfing": "boolean",
   "activities.hiking": "boolean",
   "activities.birding": "boolean",
+  "activities.bicycling": "boolean",
+  "activities.equestrian": "boolean",
+  "activities.paddling": "boolean",
+  "activities.picnicking": "boolean",
+  "activities.wildlife_viewing": "boolean",
+  "activities.scenic": "boolean",
   "launch.nonmotorized": "boolean",
   "launch.boat": "boolean",
 } as const;
@@ -63,23 +84,77 @@ type FactKey = keyof typeof FACT_TYPES;
 
 const FACT_KEYS = Object.keys(FACT_TYPES) as FactKey[];
 
-const CAMPING_COMPLETENESS_FIELDS: FactKey[] = [
-  "electric.available",
-  "water.hookup",
-  "sewer.hookup",
-  "dump_station.available",
-  "camping.tent",
-  "camping.rv",
-  "occupancy.max_people",
-  "check_in.time",
-  "check_out.time",
-  "quiet_hours.range",
-  "pets.allowed",
-  "amenities.showers",
+const COMMON_COMPLETENESS_FIELDS: FactKey[] = [
+  "visit.hours",
+  "visit.admission",
+  "parking.available",
   "amenities.restrooms",
-  "reservations.available",
-  "pricing.currency",
+  "pets.allowed",
 ];
+
+const CATEGORY_COMPLETENESS_FIELDS: Record<string, FactKey[]> = {
+  Camping: [
+    ...COMMON_COMPLETENESS_FIELDS,
+    "reservations.available",
+    "camping.tent",
+    "camping.rv",
+    "camping.site_count",
+    "electric.available",
+    "water.hookup",
+    "water.potable_central",
+    "sewer.hookup",
+    "dump_station.available",
+    "amenities.showers",
+    "check_in.time",
+    "check_out.time",
+    "quiet_hours.range",
+    "pricing.currency",
+  ],
+  Hiking: [
+    ...COMMON_COMPLETENESS_FIELDS,
+    "trail.distance_miles",
+    "trail.surface",
+    "activities.hiking",
+    "activities.bicycling",
+    "activities.equestrian",
+    "accessibility.wheelchair",
+  ],
+  Water: [
+    ...COMMON_COMPLETENESS_FIELDS,
+    "activities.paddling",
+    "activities.fishing",
+    "activities.swimming",
+    "launch.nonmotorized",
+    "launch.boat",
+    "accessibility.wheelchair",
+  ],
+  Parks: [
+    ...COMMON_COMPLETENESS_FIELDS,
+    "amenities.picnic_tables",
+    "amenities.playground",
+    "amenities.drinking_water",
+    "activities.hiking",
+    "activities.picnicking",
+    "accessibility.wheelchair",
+  ],
+  Scenic: [
+    ...COMMON_COMPLETENESS_FIELDS,
+    "activities.scenic",
+    "activities.hiking",
+    "activities.wildlife_viewing",
+    "activities.picnicking",
+    "accessibility.wheelchair",
+  ],
+};
+
+function completenessFieldsForCategory(category: string) {
+  return CATEGORY_COMPLETENESS_FIELDS[category] ?? [
+    ...COMMON_COMPLETENESS_FIELDS,
+    "accessibility.wheelchair",
+    "activities.hiking",
+    "activities.picnicking",
+  ];
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -134,7 +209,7 @@ function extractionSchema() {
     properties: {
       facts: {
         type: "array",
-        maxItems: 80,
+        maxItems: 100,
         items: {
           type: "object",
           additionalProperties: false,
@@ -252,7 +327,7 @@ async function extractFromSource(openAiKey: string, source: any) {
     body: JSON.stringify({
       model: MODEL,
       instructions:
-        "You extract outdoor destination and campground facts for Go Melanated. Return only facts explicitly supported by the supplied source. Never infer a missing amenity, hookup, fee, rule, campsite dimension, cell signal, Wi-Fi status, or accessibility feature. If the source does not establish a field, omit it. Keep total/base prices separate when taxes or fees are stated. Evidence must be a short paraphrase of the supporting source text, not a long quotation. Boolean false means the source explicitly says the feature is unavailable or prohibited, never merely that it was not mentioned. For string_array values, return a JSON array encoded as a string. For numbers, return only the numeric value. For booleans, return true or false.",
+        "You extract outdoor destination and campground facts for Go Melanated. Return only facts explicitly supported by the supplied source. Never infer a missing amenity, activity, hookup, fee, rule, campsite dimension, cell signal, Wi-Fi status, accessibility feature, trail detail, admission price, or operating hour. If the source does not establish a field, omit it. Keep total/base prices separate when taxes or fees are stated. Evidence must be a short paraphrase of the supporting source text, not a long quotation. Boolean false means the source explicitly says the feature is unavailable or prohibited, never merely that it was not mentioned. For string_array values, return a JSON array encoded as a string. For numbers, return only the numeric value. For booleans, return true or false.",
       input: [{ role: "user", content }],
       text: {
         format: {
@@ -273,10 +348,18 @@ async function extractFromSource(openAiKey: string, source: any) {
 
   const outputText = readOutputText(payload);
   if (!outputText) throw new Error(`Extraction returned no structured output for ${source.source_name}.`);
-  return JSON.parse(outputText) as { facts: Array<{ field: FactKey; value: string; evidence: string; confidence: "explicit" | "partial" }>; warnings: string[] };
+  return JSON.parse(outputText) as {
+    facts: Array<{
+      field: FactKey;
+      value: string;
+      evidence: string;
+      confidence: "explicit" | "partial";
+    }>;
+    warnings: string[];
+  };
 }
 
-async function reconcilePlace(userClient: any, placeId: string) {
+async function reconcilePlace(userClient: any, placeId: string, category: string) {
   const [{ data: facts, error: factsError }, { data: sources, error: sourcesError }] = await Promise.all([
     userClient
       .from("trail_guide_facts")
@@ -362,8 +445,9 @@ async function reconcilePlace(userClient: any, placeId: string) {
     }
   }
 
-  const present = CAMPING_COMPLETENESS_FIELDS.filter((field) => grouped.has(field)).length;
-  const completeness = Math.round((present / CAMPING_COMPLETENESS_FIELDS.length) * 100);
+  const completenessFields = completenessFieldsForCategory(category);
+  const present = completenessFields.filter((field) => grouped.has(field)).length;
+  const completeness = Math.round((present / completenessFields.length) * 100);
   const { error: profileError } = await userClient
     .from("trail_guide_place_profiles")
     .update({
@@ -433,7 +517,9 @@ Deno.serve(async (req: Request) => {
             source_name: sourceName || new URL(sourceUrl).hostname,
             source_url: sourceUrl,
             source_date: source?.sourceDate || null,
-            priority: Number.isFinite(Number(source?.priority)) ? Math.max(0, Math.min(100, Number(source.priority))) : sourcePriority(sourceType),
+            priority: Number.isFinite(Number(source?.priority))
+              ? Math.max(0, Math.min(100, Number(source.priority)))
+              : sourcePriority(sourceType),
             status: "active",
             updated_at: new Date().toISOString(),
           },
@@ -456,7 +542,12 @@ Deno.serve(async (req: Request) => {
 
     for (const source of sources.slice(0, 6)) {
       if (!validHttpsUrl(source.source_url)) {
-        sourceResults.push({ sourceId: source.id, sourceName: source.source_name, status: "failed", error: "Source URL is not a public HTTPS URL." });
+        sourceResults.push({
+          sourceId: source.id,
+          sourceName: source.source_name,
+          status: "failed",
+          error: "Source URL is not a public HTTPS URL.",
+        });
         continue;
       }
 
@@ -525,11 +616,16 @@ Deno.serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           })
           .eq("id", source.id);
-        sourceResults.push({ sourceId: source.id, sourceName: source.source_name, status: "failed", error: message });
+        sourceResults.push({
+          sourceId: source.id,
+          sourceName: source.source_name,
+          status: "failed",
+          error: message,
+        });
       }
     }
 
-    const reconciliation = await reconcilePlace(userClient, placeId);
+    const reconciliation = await reconcilePlace(userClient, placeId, profile.category);
 
     return json({
       placeId,
