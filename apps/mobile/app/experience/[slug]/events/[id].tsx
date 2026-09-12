@@ -53,14 +53,16 @@ export default function TenantEventDetailScreen() {
     let active = true;
     setLoading(true);
     setError('');
-    void supabase
-      .from('adventures')
-      .select('id,title,summary,category,starts_at,ends_at,city,state,address,venue_name,hero_image_url,starting_price_cents,spots_remaining')
-      .eq('id', id)
-      .eq('public_experience_id', context.experience.id)
-      .in('status', ['published', 'sold_out'])
-      .maybeSingle()
-      .then(({ data, error: queryError }) => {
+
+    void (async () => {
+      try {
+        const { data, error: queryError } = await supabase
+          .from('adventures')
+          .select('id,title,summary,category,starts_at,ends_at,city,state,address,venue_name,hero_image_url,starting_price_cents,spots_remaining')
+          .eq('id', id)
+          .eq('public_experience_id', context.experience.id)
+          .in('status', ['published', 'sold_out'])
+          .maybeSingle();
         if (!active) return;
         if (queryError) throw queryError;
         if (!data) {
@@ -69,13 +71,12 @@ export default function TenantEventDetailScreen() {
           return;
         }
         setEvent(data as EventDetail);
-      })
-      .catch((caught) => {
+      } catch (caught: unknown) {
         if (active) setError(caught instanceof Error ? caught.message : 'Unable to open this event.');
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    })();
 
     return () => { active = false; };
   }, [context, id, moduleEnabled]);
