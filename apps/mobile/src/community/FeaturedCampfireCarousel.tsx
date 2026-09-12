@@ -16,6 +16,15 @@ import {
 import type { LocalEvent } from '../local-events/api';
 import { supabase } from '../lib/supabase';
 import { setReaction, type CommunityGroup, type CommunityPost } from './api';
+import {
+  campfirePostHasFreshActivity,
+  loadCampfireDeckState,
+  markCampfirePostSeen,
+  saveCampfireDeckState,
+  shouldResumeCampfirePosition,
+  updateCampfirePosition,
+  type CampfireDeckState,
+} from './campfireDeckState';
 import { featuredPostKind } from './featuredPosts';
 
 const GOLD = '#D7B45A';
@@ -215,13 +224,16 @@ export function FeaturedCampfireCarousel({
   onExploreCommunities: () => void;
 }) {
   const [position] = useState(() => new Animated.ValueXY());
-  const [history, setHistory] = useState<number[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(() => Math.max(0, activeIndex));
+  const [caughtUp, setCaughtUp] = useState(false);
+  const [deckReady, setDeckReady] = useState(false);
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [deckState, setDeckState] = useState<CampfireDeckState | null>(null);
   const [myReactions, setMyReactions] = useState<Map<string, ReactionValue>>(new Map());
   const [reactionCounts, setReactionCounts] = useState<Map<string, number>>(new Map());
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
   const cardWidth = Math.min(360, Math.max(270, viewportWidth * 0.9));
-  const currentIndex = posts.length ? Math.min(activeIndex, posts.length - 1) : 0;
-  const firstPostId = posts[0]?.id ?? null;
+  const safeIndex = posts.length ? Math.min(currentIndex, posts.length - 1) : 0;
 
   const eventByPost = useMemo(() => {
     const map = new Map<string, LocalEvent | null>();
@@ -234,16 +246,66 @@ export function FeaturedCampfireCarousel({
   }, [events, posts]);
 
   const visible = useMemo<VisibleCard[]>(() => {
-    if (!posts.length) return [];
-    const count = Math.min(3, posts.length);
+    if (!posts.length || caughtUp) return [];
     const cards: VisibleCard[] = [];
-    for (let offset = 0; offset < count; offset += 1) {
-      const index = (currentIndex + offset) % posts.length;
+    for (let offset = 0; offset < 3; offset += 1) {
+      const index = safeIndex + offset;
+      if (index >= posts.length) break;
       const post = posts[index];
       if (post) cards.push({ post, index, offset });
     }
     return cards;
-  }, [currentIndex, posts]);
+  }, [caughtUp, posts, safeIndex]);
+
+  useEffect(() => {
+    let active = true;
+    setDeckReady(false);
+    position.setValue({ x: 0, y: 0 });
+
+    async function hydrateDeck() {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id ?? null;
+      const stored = await loadCampfireDeckState(userId);
+      if (!active) return;
+
+      setViewerId(userId);
+      setDeckState(stored);
+
+      if (!posts.length) {
+        setCurrentIndex(0);
+        setCaughtUp(false);
+        setDeckReady(true);
+        return;
+      }
+
+      const freshIndex = posts.findIndex((post) => campfirePostHasFreshActivity(stored, post));
+      const resumeIndex = shouldResumeCampfirePosition(stored) && stored.currentPostId
+        ? posts.findIndex((post) => post.id === stored.currentPostId)
+        : -1;
+
+      if (stored.caughtUp && freshIndex < 0) {
+        setCurrentIndex(Math.max(0, posts.length - 1));
+        setCaughtUp(true);
+        onIndexChange(posts.length);
+      } else if (resumeIndex >= 0) {
+        setCurrentIndex(resumeIndex);
+        setCaughtUp(false);
+        onIndexChange(resumeIndex);
+      } else if (freshIndex >= 0) {
+        setCurrentIndex(freshIndex);
+        setCaughtUp(false);
+        onIndexChange(freshIndex);
+      } else {
+        setCurrentIndex(Math.max(0, posts.length - 1));
+        setCaughtUp(true);
+        onIndexChange(posts.length);
+      }
+      setDeckReady(true);
+    }
+
+    void hydrateDeck();
+    return () => { active = false; };
+  }, [onIndexChange, position, posts]);
 
   useEffect(() => {
     setReactionCounts(new Map(posts.map((post) => [post.id, post.reaction_count || 0])));
@@ -267,11 +329,6 @@ export function FeaturedCampfireCarousel({
     void loadMyReactions();
     return () => { active = false; };
   }, [posts]);
-
-  useEffect(() => {
-    position.setValue({ x: 0, y: 0 });
-    setHistory([]);
-  }, [firstPostId, position]);
 
   const toggleReaction = useCallback(async (post: CommunityPost) => {
     if (reactingPostId) return;
@@ -301,46 +358,100 @@ export function FeaturedCampfireCarousel({
     }
   }, [myReactions, reactionCounts, reactingPostId]);
 
-  const advance = useCallback((direction: -1 | 1) => {
-    if (posts.length < 2) {
-      Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: true, friction: 7 }).start();
+  const persistTransition = useCallback((post: CommunityPost, nextPostId: string | null, nextCaughtUp: boolean) => {
+    setDeckState((current) => {
+      if (!current) return current;
+      const seen = markCampfirePostSeen(current, post);
+      const next = updateCampfirePosition(seen, nextPostId, nextCaughtUp);
+      void saveCampfireDeckState(viewerId, next);
+      return next;
+    });
+  }, [viewerId]);
+
+  const springBack = useCallback(() => {
+    Animated.spring(position, {
+      toValue: { x: 0, y: 0 },
+      useNativeDriver: true,
+      friction: 7,
+      tension: 70,
+    }).start();
+  }, [position]);
+
+  const moveCard = useCallback((direction: -1 | 1) => {
+    if (!deckReady || !posts.length) {
+      springBack();
       return;
     }
+
+    const index = Math.min(currentIndex, posts.length - 1);
+    const currentPost = posts[index];
+    if (!currentPost) {
+      springBack();
+      return;
+    }
+
+    const movingForward = direction === -1;
+    const nextIndex = movingForward ? index + 1 : index - 1;
+
+    if (!movingForward && nextIndex < 0) {
+      springBack();
+      return;
+    }
+
     Animated.timing(position, {
       toValue: { x: direction * Math.max(cardWidth * 1.35, 430), y: 18 },
       duration: 180,
       useNativeDriver: true,
     }).start(() => {
-      setHistory((current) => [...current.slice(-7), currentIndex]);
-      onIndexChange((currentIndex + 1) % posts.length);
+      if (movingForward && nextIndex >= posts.length) {
+        persistTransition(currentPost, null, true);
+        setCaughtUp(true);
+        onIndexChange(posts.length);
+      } else {
+        const nextPost = posts[nextIndex];
+        if (nextPost) {
+          persistTransition(currentPost, nextPost.id, false);
+          setCurrentIndex(nextIndex);
+          setCaughtUp(false);
+          onIndexChange(nextIndex);
+        }
+      }
       position.setValue({ x: 0, y: 0 });
     });
-  }, [cardWidth, currentIndex, onIndexChange, position, posts.length]);
+  }, [cardWidth, currentIndex, deckReady, onIndexChange, persistTransition, position, posts, springBack]);
 
-  const undo = useCallback(() => {
-    setHistory((current) => {
-      if (!current.length) return current;
-      const previous = current[current.length - 1];
-      if (previous === undefined) return current;
-      onIndexChange(previous);
-      position.setValue({ x: 0, y: 0 });
-      return current.slice(0, -1);
+  const reviewLastPost = useCallback(() => {
+    if (!posts.length) return;
+    const index = posts.length - 1;
+    const post = posts[index];
+    if (!post) return;
+    setCurrentIndex(index);
+    setCaughtUp(false);
+    position.setValue({ x: 0, y: 0 });
+    setDeckState((current) => {
+      if (!current) return current;
+      const next = updateCampfirePosition(current, post.id, false);
+      void saveCampfireDeckState(viewerId, next);
+      return next;
     });
-  }, [onIndexChange, position]);
+    onIndexChange(index);
+  }, [onIndexChange, position, posts, viewerId]);
 
   const panResponder = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15,
-    onPanResponderMove: (_event, gesture) => position.setValue({ x: gesture.dx, y: gesture.dy * 0.12 }),
+    onMoveShouldSetPanResponder: (_event, gesture) => deckReady && Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+    onMoveShouldSetPanResponderCapture: (_event, gesture) => deckReady && Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+    onPanResponderMove: (_event, gesture) => position.setValue({ x: gesture.dx, y: gesture.dy * 0.1 }),
     onPanResponderRelease: (_event, gesture) => {
-      const threshold = cardWidth * 0.28;
-      if (Math.abs(gesture.dx) > threshold || Math.abs(gesture.vx) > 0.65) {
-        advance(gesture.dx >= 0 ? 1 : -1);
+      const threshold = cardWidth * 0.24;
+      if (Math.abs(gesture.dx) > threshold || Math.abs(gesture.vx) > 0.55) {
+        moveCard(gesture.dx < 0 ? -1 : 1);
       } else {
-        Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: true, friction: 7, tension: 70 }).start();
+        springBack();
       }
     },
-    onPanResponderTerminate: () => Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: true, friction: 7 }).start(),
-  }), [advance, cardWidth, position]);
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderTerminate: springBack,
+  }), [cardWidth, deckReady, moveCard, position, springBack]);
 
   if (!posts.length) {
     return (
@@ -349,6 +460,20 @@ export function FeaturedCampfireCarousel({
         <Text style={styles.emptyTitle}>The campfire is quiet right now.</Text>
         <Text style={styles.emptyCopy}>New conversations from your Outpost and communities will show up here.</Text>
         <Pressable style={styles.emptyButton} onPress={onExploreCommunities}><Text style={styles.emptyButtonText}>Explore communities</Text></Pressable>
+      </View>
+    );
+  }
+
+  if (caughtUp) {
+    return (
+      <View style={styles.caughtUpCard}>
+        <View style={styles.caughtUpIcon}><Ionicons name="checkmark" size={22} color="#101510" /></View>
+        <Text style={styles.caughtUpTitle}>You’re caught up</Text>
+        <Text style={styles.caughtUpCopy}>You’ve seen the featured posts around your Outpost. Keep scrolling for Happening now, or explore another community.</Text>
+        <View style={styles.caughtUpActions}>
+          <Pressable style={styles.reviewButton} onPress={reviewLastPost}><Ionicons name="arrow-back" size={14} color={TEXT} /><Text style={styles.reviewButtonText}>Review last post</Text></Pressable>
+          <Pressable style={styles.emptyButton} onPress={onExploreCommunities}><Text style={styles.emptyButtonText}>Explore communities</Text></Pressable>
+        </View>
       </View>
     );
   }
@@ -367,7 +492,7 @@ export function FeaturedCampfireCarousel({
             return (
               <Animated.View
                 key={post.id}
-                style={[styles.cardLayer, { width: cardWidth, zIndex: 30, transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }] }]}
+                style={[styles.cardLayer, styles.swipeSurface, { width: cardWidth, zIndex: 30, transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }] }]}
                 {...panResponder.panHandlers}
               >
                 <FeaturedPostCard
@@ -401,12 +526,9 @@ export function FeaturedCampfireCarousel({
       </View>
 
       <View style={styles.deckFooter}>
-        <Pressable style={[styles.undoButton, !history.length && styles.undoButtonDisabled]} disabled={!history.length} onPress={undo} accessibilityRole="button" accessibilityLabel="Undo last swipe">
-          <Ionicons name="arrow-undo" size={14} color={history.length ? GOLD : '#566159'} />
-          <Text style={[styles.undoText, !history.length && styles.undoTextDisabled]}>Undo</Text>
-        </Pressable>
-        <Text style={styles.counter}>{currentIndex + 1} of {posts.length}</Text>
-        <View style={styles.swipeHint}><Ionicons name="swap-horizontal" size={15} color={MUTED} /><Text style={styles.swipeHintText}>Swipe</Text></View>
+        <View style={styles.directionHint}><Ionicons name="arrow-back" size={14} color={GOLD} /><Text style={styles.directionText}>Next</Text></View>
+        <Text style={styles.counter}>{safeIndex + 1} of {posts.length}</Text>
+        <View style={[styles.directionHint, styles.directionHintRight]}><Text style={styles.directionText}>{safeIndex > 0 ? 'Back' : 'Start'}</Text><Ionicons name="arrow-forward" size={14} color={safeIndex > 0 ? GOLD : '#566159'} /></View>
       </View>
     </View>
   );
@@ -415,6 +537,7 @@ export function FeaturedCampfireCarousel({
 const styles = StyleSheet.create({
   deck: { position: 'relative', alignItems: 'center', justifyContent: 'flex-start', overflow: 'visible' },
   cardLayer: { position: 'absolute', top: 0, alignSelf: 'center' },
+  swipeSurface: { touchAction: 'pan-y' },
   card: { height: CARD_HEIGHT, borderRadius: 21, overflow: 'hidden', backgroundColor: PANEL, borderWidth: 1, borderColor: '#34433A', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 6 },
   background: { flex: 1, justifyContent: 'space-between' },
   backgroundImage: { resizeMode: 'cover' },
@@ -439,17 +562,21 @@ const styles = StyleSheet.create({
   engagementCount: { color: '#E2E7E3', fontSize: 11.5, fontWeight: '800' },
   engagementCountActive: { color: GOLD },
   deckFooter: { minHeight: 34, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 5 },
-  undoButton: { minWidth: 64, minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  undoButtonDisabled: { opacity: 0.55 },
-  undoText: { color: GOLD, fontSize: 10.5, fontWeight: '900' },
-  undoTextDisabled: { color: '#566159' },
+  directionHint: { minWidth: 64, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  directionHintRight: { justifyContent: 'flex-end' },
+  directionText: { color: MUTED, fontSize: 10.5, fontWeight: '800' },
   counter: { color: TEXT, fontSize: 11.5, fontWeight: '900' },
-  swipeHint: { minWidth: 64, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 },
-  swipeHintText: { color: MUTED, fontSize: 10.5, fontWeight: '700' },
   emptyCard: { minHeight: 165, borderRadius: 20, backgroundColor: '#151F1A', padding: 16, alignItems: 'flex-start' },
   emptyIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#26342A' },
   emptyTitle: { color: TEXT, fontSize: 18, fontWeight: '900', marginTop: 11 },
   emptyCopy: { color: MUTED, fontSize: 12.5, lineHeight: 18, marginTop: 4, maxWidth: 420 },
   emptyButton: { borderRadius: 999, backgroundColor: '#253229', paddingHorizontal: 12, paddingVertical: 7, marginTop: 12 },
   emptyButtonText: { color: GOLD, fontSize: 11, fontWeight: '900' },
+  caughtUpCard: { minHeight: 190, borderRadius: 20, backgroundColor: '#151F1A', padding: 18, alignItems: 'flex-start', justifyContent: 'center' },
+  caughtUpIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: GOLD },
+  caughtUpTitle: { color: TEXT, fontSize: 21, fontWeight: '900', marginTop: 12 },
+  caughtUpCopy: { color: MUTED, fontSize: 12.5, lineHeight: 18, marginTop: 4, maxWidth: 430 },
+  caughtUpActions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 9, marginTop: 2 },
+  reviewButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: '#253229', paddingHorizontal: 12, paddingVertical: 7, marginTop: 12 },
+  reviewButtonText: { color: TEXT, fontSize: 11, fontWeight: '900' },
 });
