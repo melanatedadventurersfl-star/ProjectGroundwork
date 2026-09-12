@@ -61,14 +61,14 @@ type IngestResult = {
   extractedFacts: number;
   completeness: number;
   conflicts: string[];
-  sources: Array<{
+  sources: {
     sourceId: string;
     sourceName: string;
     status: string;
     facts?: number;
     warnings?: string[];
     error?: string;
-  }>;
+  }[];
 };
 
 function cityLabel(city: TrailGuideCityKey) {
@@ -174,8 +174,9 @@ export default function TrailGuideDataAdminScreen() {
     else setConflicts((conflictResult.data ?? []) as ConflictRow[]);
 
     const availableProfiles = (profileResult.data ?? []) as PlaceProfile[];
-    if (availableProfiles.length && !availableProfiles.some((profile) => profile.place_id === selectedPlaceId)) {
-      setSelectedPlaceId(availableProfiles[0].place_id);
+    const firstProfile = availableProfiles[0];
+    if (firstProfile && !availableProfiles.some((profile) => profile.place_id === selectedPlaceId)) {
+      setSelectedPlaceId(firstProfile.place_id);
     }
     setLoading(false);
   }
