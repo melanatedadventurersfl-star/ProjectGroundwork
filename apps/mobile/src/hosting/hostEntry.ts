@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getActiveOrganization, type OrganizationWorkspace } from '../platform/organizations';
 import { getOutingHostAccess, type OutingHostRecord } from './api';
 
 export const HOST_SETUP_KEYS = [
@@ -15,6 +16,7 @@ export const HOST_SETUP_KEYS = [
 export type HostSetupKey = (typeof HOST_SETUP_KEYS)[number];
 
 export type HostCenterProfile = {
+  organizationId: string;
   profileId: string;
   organizationName: string;
   hostDisplayName: string;
@@ -46,6 +48,7 @@ export type HostCenterProfile = {
 };
 
 type HostCenterRow = {
+  organization_id: string;
   profile_id: string;
   organization_name: string | null;
   host_display_name: string | null;
@@ -76,13 +79,14 @@ type HostCenterRow = {
   last_host_destination: string | null;
 };
 
-const SELECT = 'profile_id,organization_name,host_display_name,city,state,contact_email,website_url,public_description,public_profile_enabled,working_areas,intro_started_at,intro_completed_at,intro_last_step,profile_reviewed_at,organization_reviewed_at,working_preferences_reviewed_at,ai_privacy_reviewed_at,notifications_reviewed_at,connections_reviewed_at,event_defaults_reviewed_at,team_reviewed_at,default_city,default_state,default_visibility,default_reminder_schedule,default_cancellation_note,default_waiver_preference,last_host_destination';
+const SELECT = 'organization_id,profile_id,organization_name,host_display_name,city,state,contact_email,website_url,public_description,public_profile_enabled,working_areas,intro_started_at,intro_completed_at,intro_last_step,profile_reviewed_at,organization_reviewed_at,working_preferences_reviewed_at,ai_privacy_reviewed_at,notifications_reviewed_at,connections_reviewed_at,event_defaults_reviewed_at,team_reviewed_at,default_city,default_state,default_visibility,default_reminder_schedule,default_cancellation_note,default_waiver_preference,last_host_destination';
 
 function mapRow(row: HostCenterRow): HostCenterProfile {
   const reminders = Array.isArray(row.default_reminder_schedule)
     ? row.default_reminder_schedule.map(Number).filter(Number.isFinite)
     : [7, 1, 0];
   return {
+    organizationId: row.organization_id,
     profileId: row.profile_id,
     organizationName: row.organization_name ?? '',
     hostDisplayName: row.host_display_name ?? '',
@@ -121,6 +125,12 @@ async function currentUser() {
   return data.user;
 }
 
+async function currentOrganization(): Promise<OrganizationWorkspace> {
+  const organization = await getActiveOrganization();
+  if (!organization) throw new Error('Choose an organization before opening Host Center.');
+  return organization;
+}
+
 export function sanitizeHostDestination(value?: string | string[] | null) {
   const candidate = Array.isArray(value) ? value[0] : value;
   if (!candidate || !candidate.startsWith('/host')) return '/host';
@@ -129,18 +139,33 @@ export function sanitizeHostDestination(value?: string | string[] | null) {
 }
 
 export async function getHostCenterProfile(): Promise<HostCenterProfile | null> {
-  const user = await currentUser();
-  const { data, error } = await supabase.from('host_center_profiles').select(SELECT).eq('profile_id', user.id).maybeSingle();
+  const [user, organization] = await Promise.all([currentUser(), currentOrganization()]);
+  const { data, error } = await supabase
+    .from('host_center_profiles')
+    .select(SELECT)
+    .eq('organization_id', organization.id)
+    .eq('profile_id', user.id)
+    .maybeSingle();
   if (error) throw error;
   return data ? mapRow(data as HostCenterRow) : null;
 }
 
 export async function ensureHostCenterProfile(): Promise<HostCenterProfile> {
-  const user = await currentUser();
-  const access = await getOutingHostAccess();
+  const [user, organization, access] = await Promise.all([
+    currentUser(),
+    currentOrganization(),
+    getOutingHostAccess(),
+  ]);
   if (!access.approved) throw new Error('Approved host access is required.');
-  const existing = await getHostCenterProfile();
-  if (existing) return existing;
+
+  const existingResult = await supabase
+    .from('host_center_profiles')
+    .select(SELECT)
+    .eq('organization_id', organization.id)
+    .eq('profile_id', user.id)
+    .maybeSingle();
+  if (existingResult.error) throw existingResult.error;
+  if (existingResult.data) return mapRow(existingResult.data as HostCenterRow);
 
   const { data: baseProfile } = await supabase
     .from('profiles')
@@ -148,14 +173,18 @@ export async function ensureHostCenterProfile(): Promise<HostCenterProfile> {
     .eq('id', user.id)
     .maybeSingle();
 
+  const defaultCity = organization.isPlatformDefault ? (baseProfile?.home_city ?? '') : '';
+  const defaultState = organization.isPlatformDefault ? (baseProfile?.home_state ?? '') : '';
   const { data, error } = await supabase.from('host_center_profiles').insert({
+    organization_id: organization.id,
     profile_id: user.id,
+    organization_name: organization.name,
     host_display_name: baseProfile?.display_name ?? '',
-    city: baseProfile?.home_city ?? '',
-    state: baseProfile?.home_state ?? '',
+    city: defaultCity,
+    state: defaultState,
     contact_email: user.email ?? '',
-    default_city: baseProfile?.home_city ?? '',
-    default_state: baseProfile?.home_state ?? '',
+    default_city: defaultCity,
+    default_state: defaultState,
     intro_started_at: new Date().toISOString(),
     intro_last_step: 1,
   }).select(SELECT).single();
@@ -164,8 +193,12 @@ export async function ensureHostCenterProfile(): Promise<HostCenterProfile> {
 }
 
 export async function saveHostCenterProfile(input: Partial<HostCenterProfile>) {
-  const user = await currentUser();
-  const payload: Record<string, unknown> = { profile_id: user.id, updated_at: new Date().toISOString() };
+  const [user, organization] = await Promise.all([currentUser(), currentOrganization()]);
+  const payload: Record<string, unknown> = {
+    organization_id: organization.id,
+    profile_id: user.id,
+    updated_at: new Date().toISOString(),
+  };
   if (input.organizationName !== undefined) payload.organization_name = input.organizationName.trim();
   if (input.hostDisplayName !== undefined) payload.host_display_name = input.hostDisplayName.trim();
   if (input.city !== undefined) payload.city = input.city.trim();
@@ -183,7 +216,11 @@ export async function saveHostCenterProfile(input: Partial<HostCenterProfile>) {
   if (input.defaultCancellationNote !== undefined) payload.default_cancellation_note = input.defaultCancellationNote.trim();
   if (input.defaultWaiverPreference !== undefined) payload.default_waiver_preference = input.defaultWaiverPreference;
   if (input.lastHostDestination !== undefined) payload.last_host_destination = sanitizeHostDestination(input.lastHostDestination);
-  const { data, error } = await supabase.from('host_center_profiles').upsert(payload, { onConflict: 'profile_id' }).select(SELECT).single();
+  const { data, error } = await supabase
+    .from('host_center_profiles')
+    .upsert(payload, { onConflict: 'organization_id,profile_id' })
+    .select(SELECT)
+    .single();
   if (error) throw error;
   return mapRow(data as HostCenterRow);
 }
@@ -200,35 +237,35 @@ const REVIEW_COLUMN: Record<HostSetupKey, string> = {
 };
 
 export async function markHostSetupReviewed(key: HostSetupKey) {
-  const user = await currentUser();
+  const [user, organization] = await Promise.all([currentUser(), currentOrganization()]);
   const { error } = await supabase.from('host_center_profiles').update({
     [REVIEW_COLUMN[key]]: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq('profile_id', user.id);
+  }).eq('organization_id', organization.id).eq('profile_id', user.id);
   if (error) throw error;
 }
 
 export async function completeHostIntroduction(destination = '/host') {
-  const user = await currentUser();
+  const [user, organization] = await Promise.all([currentUser(), currentOrganization()]);
   const safeDestination = sanitizeHostDestination(destination);
   const { error } = await supabase.from('host_center_profiles').update({
     intro_completed_at: new Date().toISOString(),
     intro_last_step: 6,
     last_host_destination: safeDestination,
     updated_at: new Date().toISOString(),
-  }).eq('profile_id', user.id);
+  }).eq('organization_id', organization.id).eq('profile_id', user.id);
   if (error) throw error;
   return safeDestination;
 }
 
 export async function restartHostIntroduction() {
-  const user = await currentUser();
+  const [user, organization] = await Promise.all([currentUser(), currentOrganization()]);
   const { error } = await supabase.from('host_center_profiles').update({
     intro_started_at: new Date().toISOString(),
     intro_completed_at: null,
     intro_last_step: 1,
     updated_at: new Date().toISOString(),
-  }).eq('profile_id', user.id);
+  }).eq('organization_id', organization.id).eq('profile_id', user.id);
   if (error) throw error;
 }
 
