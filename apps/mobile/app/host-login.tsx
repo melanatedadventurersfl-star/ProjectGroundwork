@@ -10,12 +10,12 @@ import { resolveHostEntry, sanitizeHostDestination } from '../src/hosting/hostEn
 const PASSWORD_RESET_REDIRECT = 'https://hqndxityqrdiiwqyjagu.supabase.co/functions/v1/password-reset';
 
 function accessMessage(status?: string | null) {
-  if (status === 'pending') return { title: 'Host access pending', body: 'Your host application is still under review. You can return to Go Melanated while it is being reviewed.' };
+  if (status === 'pending') return { title: 'Host access pending', body: 'Your host application is still under review. You can return to the member experience while it is being reviewed.' };
   if (status === 'needs_info') return { title: 'More information needed', body: 'Your Host Center application needs additional information before access can be approved.' };
   if (status === 'paused') return { title: 'Host access paused', body: 'This account cannot enter Host Center while host access is paused.' };
   if (status === 'declined') return { title: 'Host access unavailable', body: 'This account is not approved for Host Center access.' };
   if (status === 'revoked') return { title: 'Host access revoked', body: 'This account no longer has Host Center access.' };
-  return { title: 'Host access required', body: 'This Go Melanated account does not have approved Host Center access.' };
+  return { title: 'Host access required', body: 'This account does not have approved Host Center access.' };
 }
 
 export default function HostLoginScreen() {
@@ -78,8 +78,8 @@ export default function HostLoginScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.brandBlock}>
-          <View style={styles.mark}><Text style={styles.markText}>GM</Text></View>
-          <Text style={styles.brand}>GO MELANATED</Text>
+          <View style={styles.mark}><Text style={styles.markText}>HC</Text></View>
+          <Text style={styles.brand}>HOST WORKSPACE</Text>
           <Text style={styles.product}>Host Center</Text>
           <Text style={styles.tagline}>Plan, organize, promote and run your events from one workspace.</Text>
         </View>
@@ -90,11 +90,11 @@ export default function HostLoginScreen() {
             <Text style={styles.panelTitle}>{blocked.title}</Text>
             <Text style={styles.panelBody}>{blocked.body}</Text>
             {accessState?.status === null ? <Pressable style={styles.primary} onPress={() => router.replace('/host/apply' as never)}><Text style={styles.primaryText}>Request Host Access</Text></Pressable> : null}
-            <Pressable style={styles.secondary} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.secondaryText}>Return to Go Melanated</Text></Pressable>
+            <Pressable style={styles.secondary} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.secondaryText}>Return to member experience</Text></Pressable>
           </> : <>
             <Text style={styles.panelEyebrow}>HOST SIGN IN</Text>
             <Text style={styles.panelTitle}>Welcome back</Text>
-            <Text style={styles.panelBody}>Use your existing Go Melanated account. Approved hosts go directly into Host Center.</Text>
+            <Text style={styles.panelBody}>Use your existing account. Approved hosts go directly into Host Center for their active organization.</Text>
 
             <TextInput autoCapitalize="none" autoComplete="email" autoCorrect={false} keyboardType="email-address" placeholder="Email" placeholderTextColor="#738078" value={email} onChangeText={setEmail} style={styles.input} />
             <View style={styles.passwordRow}>
