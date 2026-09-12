@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
 import type { TrailGuidePlace } from './catalog';
-import { resolveGoogleTrailGuidePlaceDetails } from './googlePlacePhotos';
+import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePhoto } from './googlePlacePhotos';
 import { CURATED_TRAIL_GUIDE_PHOTOS, type TrailGuidePhoto } from './placePhotos';
 
 const PHOTO_BUCKET = 'trail-guide-photos';
@@ -86,7 +86,7 @@ function categoryTags(place: TrailGuidePlace) {
 
 function primaryCategory(place: TrailGuidePlace) {
   const tags = categoryTags(place);
-  if (place.category === 'Camping') return tags.includes('beach') ? 'campsite' : 'campsite';
+  if (place.category === 'Camping') return 'campsite';
   if (place.category === 'Water') return tags.includes('beach') ? 'beach' : 'water';
   if (place.category === 'Hiking') return 'trail';
   if (place.category === 'Scenic') return 'landscape';
@@ -183,26 +183,110 @@ async function databaseCandidates(place: TrailGuidePlace): Promise<TrailGuideHer
   return photos;
 }
 
+function googleAspectScore(photo: GoogleTrailGuidePhoto) {
+  if (!photo.widthPx || !photo.heightPx || photo.heightPx <= 0) return 0.72;
+  const ratio = photo.widthPx / photo.heightPx;
+  if (ratio >= 1.35 && ratio <= 2.2) return 1;
+  if (ratio >= 1.1 && ratio < 1.35) return 0.82;
+  if (ratio > 2.2 && ratio <= 2.8) return 0.76;
+  if (ratio >= 0.95) return 0.62;
+  return 0.30;
+}
+
+function googleCategoryFit(place: TrailGuidePlace, category: string | null) {
+  if (!category) return 0.68;
+  const tags = categoryTags(place);
+  if (place.category === 'Camping') {
+    if (['campsite', 'rv_site', 'tent_site'].includes(category)) return 1;
+    if (category === 'beach' && tags.includes('beach')) return 0.96;
+    if (['landscape', 'water', 'recreation'].includes(category)) return 0.84;
+    if (category === 'wildlife') return 0.38;
+  }
+  if (place.category === 'Water') {
+    if (['water', 'beach', 'recreation'].includes(category)) return 1;
+    if (['landscape', 'trail'].includes(category)) return 0.78;
+  }
+  if (place.category === 'Hiking') {
+    if (category === 'trail') return 1;
+    if (['landscape', 'recreation'].includes(category)) return 0.88;
+    if (category === 'wildlife') return 0.68;
+  }
+  if (place.category === 'Scenic') {
+    if (['landscape', 'beach', 'water', 'building'].includes(category)) return 0.94;
+    if (category === 'wildlife') return 0.74;
+  }
+  if (place.category === 'Parks') {
+    if (['landscape', 'trail', 'recreation', 'water', 'building'].includes(category)) return 0.88;
+  }
+  if (['sign', 'bathroom', 'food', 'person_heavy'].includes(category)) return 0.18;
+  return 0.66;
+}
+
+function googleContentPenalty(place: TrailGuidePlace, photo: GoogleTrailGuidePhoto) {
+  const category = photo.category;
+  let penalty = 0;
+  if (category === 'sign') penalty += 0.34;
+  if (category === 'bathroom') penalty += 0.42;
+  if (category === 'food') penalty += 0.38;
+  if (category === 'person_heavy') penalty += 0.30;
+  if (photo.peopleHeavy) penalty += 0.18;
+  if (place.category === 'Camping' && category === 'wildlife') penalty += 0.24;
+  if (photo.widthPx && photo.heightPx && photo.widthPx / photo.heightPx < 0.9) penalty += 0.18;
+  return penalty;
+}
+
+function googleCandidateScore(place: TrailGuidePlace, photo: GoogleTrailGuidePhoto, index: number) {
+  const aspect = googleAspectScore(photo);
+  const categoryFit = googleCategoryFit(place, photo.category);
+  const position = Math.max(0.45, 1 - (index * 0.08));
+  const analyzed = photo.heroSuitability != null || photo.representativeness != null || photo.destinationMatch != null;
+
+  if (!analyzed) {
+    return clamp((0.48 * categoryFit) + (0.30 * aspect) + (0.22 * position) - googleContentPenalty(place, photo));
+  }
+
+  return clamp(
+    (0.30 * (photo.heroSuitability ?? 0.6))
+      + (0.24 * (photo.representativeness ?? 0.6))
+      + (0.18 * (photo.destinationMatch ?? 0.6))
+      + (0.14 * categoryFit)
+      + (0.09 * aspect)
+      + (0.05 * position)
+      - googleContentPenalty(place, photo),
+  );
+}
+
+function googleHeroEligible(place: TrailGuidePlace, photo: GoogleTrailGuidePhoto, score: number) {
+  const blocked = ['sign', 'bathroom', 'food', 'person_heavy'].includes(photo.category ?? '');
+  const portrait = Boolean(photo.widthPx && photo.heightPx && photo.widthPx / photo.heightPx < 0.9);
+  const wildlifeCampground = place.category === 'Camping' && photo.category === 'wildlife';
+  const lowHeroScore = photo.heroSuitability != null && photo.heroSuitability < 0.45;
+  return !blocked && !portrait && !wildlifeCampground && !lowHeroScore && score >= 0.48;
+}
+
 async function googleCandidates(place: TrailGuidePlace): Promise<TrailGuideHeroPhoto[]> {
   const details = await resolveGoogleTrailGuidePlaceDetails(place);
   if (!details?.photos.length) return [];
-  const tags = categoryTags(place);
-  const category = primaryCategory(place);
+
   return details.photos.slice(0, 10).map((photo, index) => {
-    const score = Math.max(0.70, 0.86 - (index * 0.018));
+    const score = googleCandidateScore(place, photo, index);
+    const category = photo.category ?? primaryCategory(place);
     return {
-      ...photo,
+      url: photo.url,
+      sourceUrl: photo.sourceUrl,
+      title: photo.title,
+      credit: photo.credit,
       sourceType: 'google' as const,
       sourceLabel: 'Google Maps',
       score,
-      confidence: score,
+      confidence: photo.destinationMatch ?? Math.max(0.55, score),
       preferred: false,
       representative: false,
-      representativeness: Math.max(0.62, 0.86 - (index * 0.025)),
+      representativeness: photo.representativeness ?? Math.max(0.5, score),
       category,
-      heroEligible: true,
+      heroEligible: googleHeroEligible(place, photo, score),
       galleryEligible: true,
-      tags,
+      tags: [...new Set([...categoryTags(place), category])],
     };
   });
 }
@@ -236,7 +320,7 @@ function buildDiverseGallery(candidates: TrailGuideHeroPhoto[]) {
 
   const result: TrailGuideHeroPhoto[] = [];
   const categoryCounts = new Map<string, number>();
-  const quotaFor = (category: string) => ['campsite', 'beach', 'landscape', 'water', 'trail'].includes(category) ? 2 : 1;
+  const quotaFor = (category: string) => ['campsite', 'rv_site', 'tent_site', 'beach', 'landscape', 'water', 'trail'].includes(category) ? 2 : 1;
 
   const cover = ranked.find((candidate) => candidate.heroEligible) ?? ranked[0];
   if (cover) {
