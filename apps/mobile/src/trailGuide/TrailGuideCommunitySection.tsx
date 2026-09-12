@@ -47,8 +47,8 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
       family_friendly: 'Family friendly',
     };
     return Object.entries(data.categoryAverages)
-      .filter(([key]) => labels[key])
-      .map(([key, value]) => ({ key, label: labels[key], value }))
+      .filter(([key]) => Boolean(labels[key]))
+      .map(([key, value]) => ({ key, label: labels[key] ?? key, value }))
       .slice(0, 5);
   }, [data]);
 
