@@ -218,7 +218,7 @@ export async function submitTrailGuideReview(input: {
 }) {
   const profileId = await currentUserId();
   const rating = Math.max(1, Math.min(5, Math.round(input.rating)));
-  const { data, error } = await supabase.from('trail_guide_reviews').insert({
+  const payload = {
     place_id: input.placeId,
     profile_id: profileId,
     rating,
@@ -228,14 +228,21 @@ export async function submitTrailGuideReview(input: {
     visit_date: input.visitDate || null,
     category_ratings: input.categoryRatings ?? {},
     status: 'published',
-  }).select('id').single();
-  if (error) throw error;
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = input.visitDate
+    ? supabase.from('trail_guide_reviews').upsert(payload, { onConflict: 'place_id,profile_id,visit_date' })
+    : supabase.from('trail_guide_reviews').insert(payload);
+  const { data, error } = await query.select('id').single();
+  if (error) throw new Error(error.message || 'Unable to post review.');
   return data.id as string;
 }
 
 export async function uploadTrailGuidePhoto(input: {
   placeId: string;
   localUri: string;
+  base64?: string | null;
   category: string;
   campsiteLabel?: string;
   caption?: string;
@@ -243,7 +250,7 @@ export async function uploadTrailGuidePhoto(input: {
   reviewId?: string | null;
 }) {
   const profileId = await currentUserId();
-  const prepared = await prepareLocalImage({ uri: input.localUri, maxBytes: 10 * 1024 * 1024 });
+  const prepared = await prepareLocalImage({ uri: input.localUri, base64: input.base64, maxBytes: 10 * 1024 * 1024 });
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${prepared.extension}`;
   const storagePath = `${profileId}/${input.placeId}/${fileName}`;
   const { error: uploadError } = await supabase.storage.from(PHOTO_BUCKET).upload(storagePath, prepared.bytes, {
@@ -251,7 +258,7 @@ export async function uploadTrailGuidePhoto(input: {
     cacheControl: '3600',
     upsert: false,
   });
-  if (uploadError) throw uploadError;
+  if (uploadError) throw new Error(uploadError.message || 'Unable to upload photo.');
 
   try {
     const { data, error } = await supabase.from('trail_guide_photos').insert({
@@ -266,7 +273,8 @@ export async function uploadTrailGuidePhoto(input: {
       moderation_status: 'pending',
     }).select('id').single();
     if (error) throw error;
-    void supabase.functions.invoke('moderate-trail-guide-photo', { body: { photoId: data.id } });
+    const moderation = await supabase.functions.invoke('moderate-trail-guide-photo', { body: { photoId: data.id } });
+    if (moderation.error) console.warn('Trail Guide photo moderation queued with an error', moderation.error.message);
     return data.id as string;
   } catch (error) {
     await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);

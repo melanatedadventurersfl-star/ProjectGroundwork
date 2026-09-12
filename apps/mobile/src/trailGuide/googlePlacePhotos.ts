@@ -119,6 +119,7 @@ export async function resolveGoogleTrailGuidePlaceGallery(place: TrailGuidePlace
 }
 
 export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<TrailGuidePhoto | null> {
+  if (place.id === 'huguenot-memorial-park') return null;
   const details = await resolveGoogleTrailGuidePlaceDetails(place);
   return details?.photos[0] ?? null;
 }

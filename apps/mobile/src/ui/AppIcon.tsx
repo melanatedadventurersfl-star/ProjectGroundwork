@@ -35,6 +35,7 @@ export type AppIconName =
   | 'location'
   | 'edit'
   | 'camera'
+  | 'check'
   | 'checkmark'
   | 'search'
   | 'badge'
@@ -95,6 +96,7 @@ const icons: Record<AppIconName, IoniconName> = {
   location: 'location-outline',
   edit: 'pencil-outline',
   camera: 'camera-outline',
+  check: 'checkmark-circle',
   checkmark: 'checkmark-circle',
   search: 'search-outline',
   badge: 'medal-outline',
