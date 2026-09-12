@@ -320,8 +320,8 @@ export default function TrailGuideScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#08100C' },
-  page: { paddingBottom: 76 },
-  hero: { minHeight: 246, justifyContent: 'flex-end' },
+  page: { paddingBottom: 76, backgroundColor: '#08100C' },
+  hero: { height: 246, flexShrink: 0, justifyContent: 'flex-end', overflow: 'hidden', backgroundColor: '#08100C' },
   heroImage: { resizeMode: 'cover' },
   heroShade: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(4,10,7,0.48)' },
   heroContent: { paddingHorizontal: 18, paddingBottom: 16, paddingTop: 34 },
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   heroWeatherMeta: { color: '#D7DED9', fontSize: 10, lineHeight: 15, marginTop: 3 },
   weatherSignal: { maxWidth: 132, minHeight: 38, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(240,245,241,0.24)', backgroundColor: 'rgba(7,15,10,0.72)', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   weatherSignalText: { flexShrink: 1, color: '#FFFDF6', fontSize: 9, lineHeight: 12, fontWeight: '900' },
-  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8 },
+  body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, backgroundColor: '#08100C' },
   quickGuidesHeader: { marginTop: 3, marginBottom: 9 },
   quickGuidesRow: { gap: 9, paddingRight: 4 },
   quickGuideCard: { width: 126, height: 112, borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#29352E', backgroundColor: '#101814' },
