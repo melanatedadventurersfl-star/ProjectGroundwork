@@ -8,6 +8,7 @@ import {
   Image,
   ImageBackground,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -50,6 +51,7 @@ const VERTICAL_ACTION_DISTANCE = 54;
 const VERTICAL_FLICK_DISTANCE = 26;
 const VERTICAL_FLICK_VELOCITY = 0.72;
 const VERTICAL_DOMINANCE_RATIO = 1.15;
+const WEB_VERTICAL_GESTURE_STYLE = Platform.OS === 'web' ? ({ touchAction: 'pan-x' } as any) : null;
 
 type ReactionValue = 'like' | 'love' | 'celebrate' | 'support';
 type CarouselItem =
@@ -108,6 +110,11 @@ function eventTime(event: LocalEvent) {
 function stopAndRun(event: any, action: () => void) {
   event.stopPropagation?.();
   action();
+}
+
+function preventGestureScroll(event: any) {
+  event.preventDefault?.();
+  event.stopPropagation?.();
 }
 
 function linkedEventId(post: CommunityPost) {
@@ -373,6 +380,7 @@ export function FeaturedCampfireCarousel({
   activeIndex,
   onIndexChange,
   onExploreCommunities,
+  onVerticalGestureActive,
 }: {
   posts: CommunityPost[];
   groups: Map<string, CommunityGroup>;
@@ -382,6 +390,7 @@ export function FeaturedCampfireCarousel({
   activeIndex: number;
   onIndexChange: (index: number) => void;
   onExploreCommunities: () => void;
+  onVerticalGestureActive?: (active: boolean) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(() => Math.max(0, activeIndex));
   const [displayIndex, setDisplayIndex] = useState(() => Math.max(0, activeIndex));
@@ -466,6 +475,10 @@ export function FeaturedCampfireCarousel({
     void hydrate();
     return () => { active = false; };
   }, [allItems, allSignature, onIndexChange, snapInterval]);
+
+  useEffect(() => () => {
+    onVerticalGestureActive?.(false);
+  }, [onVerticalGestureActive]);
 
   useEffect(() => {
     if (!undoItem) return;
@@ -655,28 +668,31 @@ export function FeaturedCampfireCarousel({
   const verticalPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onStartShouldSetPanResponderCapture: () => false,
-    onMoveShouldSetPanResponder: (_, gestureState) => {
+    onMoveShouldSetPanResponder: (event, gestureState) => {
       const absX = Math.abs(gestureState.dx);
       const absY = Math.abs(gestureState.dy);
       const vertical = absY >= VERTICAL_CAPTURE_DISTANCE && absY > absX * VERTICAL_DOMINANCE_RATIO;
       if (!vertical) return false;
-      if (gestureState.dy < 0) return items.length > 0;
-      if (gestureState.dy > 0) return Boolean(latestDismissed);
-      return false;
+      const canHandle = gestureState.dy < 0 ? items.length > 0 : gestureState.dy > 0 ? Boolean(latestDismissed) : false;
+      if (canHandle) preventGestureScroll(event);
+      return canHandle;
     },
-    onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+    onMoveShouldSetPanResponderCapture: (event, gestureState) => {
       const absX = Math.abs(gestureState.dx);
       const absY = Math.abs(gestureState.dy);
       const vertical = absY >= VERTICAL_CAPTURE_DISTANCE && absY > absX * VERTICAL_DOMINANCE_RATIO;
       if (!vertical) return false;
-      if (gestureState.dy < 0) return items.length > 0;
-      if (gestureState.dy > 0) return Boolean(latestDismissed);
-      return false;
+      const canHandle = gestureState.dy < 0 ? items.length > 0 : gestureState.dy > 0 ? Boolean(latestDismissed) : false;
+      if (canHandle) preventGestureScroll(event);
+      return canHandle;
     },
-    onPanResponderGrant: () => {
+    onPanResponderGrant: (event) => {
+      preventGestureScroll(event);
+      onVerticalGestureActive?.(true);
       verticalSwipeY.stopAnimation();
     },
-    onPanResponderMove: (_, gestureState) => {
+    onPanResponderMove: (event, gestureState) => {
+      preventGestureScroll(event);
       if (gestureState.dy < 0 && items.length > 0) {
         verticalSwipeY.setValue(Math.max(-170, gestureState.dy * 0.96));
         return;
@@ -685,7 +701,9 @@ export function FeaturedCampfireCarousel({
         verticalSwipeY.setValue(Math.min(145, gestureState.dy * 0.96));
       }
     },
-    onPanResponderRelease: (_, gestureState) => {
+    onPanResponderRelease: (event, gestureState) => {
+      preventGestureScroll(event);
+      onVerticalGestureActive?.(false);
       const absX = Math.abs(gestureState.dx);
       const absY = Math.abs(gestureState.dy);
       const vertical = absY > absX * VERTICAL_DOMINANCE_RATIO;
@@ -704,9 +722,13 @@ export function FeaturedCampfireCarousel({
       }
       resetVerticalSwipe();
     },
-    onPanResponderTerminate: resetVerticalSwipe,
+    onPanResponderTerminate: (event) => {
+      preventGestureScroll(event);
+      onVerticalGestureActive?.(false);
+      resetVerticalSwipe();
+    },
     onPanResponderTerminationRequest: () => false,
-  }), [hideCurrentWithAnimation, items.length, latestDismissed, resetVerticalSwipe, restoreLatestWithAnimation, verticalSwipeY]);
+  }), [hideCurrentWithAnimation, items.length, latestDismissed, onVerticalGestureActive, resetVerticalSwipe, restoreLatestWithAnimation, verticalSwipeY]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (!items.length) return;
@@ -733,7 +755,7 @@ export function FeaturedCampfireCarousel({
     return (
       <Animated.View
         {...verticalPanResponder.panHandlers}
-        style={[styles.emptyGestureWrap, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
+        style={[styles.emptyGestureWrap, WEB_VERTICAL_GESTURE_STYLE, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
       >
         <View style={styles.emptyCard}>
           <View style={styles.emptyIcon}><Ionicons name={cleared ? 'checkmark' : 'bonfire-outline'} size={23} color={GOLD} /></View>
@@ -752,7 +774,7 @@ export function FeaturedCampfireCarousel({
     <View style={styles.carouselWrap}>
       <Animated.View
         {...verticalPanResponder.panHandlers}
-        style={[styles.animatedRail, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
+        style={[styles.animatedRail, WEB_VERTICAL_GESTURE_STYLE, { transform: [{ translateY: verticalSwipeY }], opacity: animatedRailOpacity }]}
       >
         <ScrollView
           key={signature}
