@@ -1,6 +1,5 @@
-import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { loadTrailGuideCommunity, type TrailGuideCommunityData, type TrailGuideReview } from './community';
 import { loadMyTrailGuidePhotos, loadMyTrailGuideReview, type EditableTrailGuideReview, type MyTrailGuidePhoto } from './memberContributions';
@@ -68,34 +67,22 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
       .slice(0, 4);
   }, [data]);
 
-  const openReview = () => router.push({
-    pathname: '/trail-guide/contribute',
-    params: { placeId, mode: 'review', ...(myReview ? { reviewId: myReview.id } : {}) },
-  });
-  const openPhotos = () => router.push({ pathname: '/trail-guide/contribute', params: { placeId, mode: 'photos' } });
-
   return (
     <View style={styles.section}>
       <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.title}>From campers</Text>
-            <Text style={styles.hint}>Go Melanated reviews and real member photos</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable onPress={openReview} hitSlop={8}><Text style={styles.link}>{myReview ? 'Edit review' : 'Review'}</Text></Pressable>
-            <Pressable onPress={openPhotos} hitSlop={8}><Text style={styles.link}>Add photos</Text></Pressable>
-          </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>From campers</Text>
+          <Text style={styles.hint}>Go Melanated reviews and real member photos</Text>
         </View>
 
         {myReview ? (
-          <Pressable onPress={openReview} style={styles.myReviewRow}>
+          <View style={styles.myReviewRow}>
             <View style={styles.myReviewCopy}>
               <Text style={styles.myReviewLabel}>YOUR REVIEW</Text>
               <Text style={styles.myReviewStars}>{'★'.repeat(myReview.rating)}<Text style={styles.myReviewEmpty}>{'★'.repeat(Math.max(0, 5 - myReview.rating))}</Text></Text>
             </View>
-            <Text style={styles.editReview}>Edit ›</Text>
-          </Pressable>
+            <Text style={styles.myReviewStatus}>Published</Text>
+          </View>
         ) : null}
 
         {data?.reviewCount ? (
@@ -123,13 +110,12 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
             ) : null}
           </View>
         ) : (
-          <Pressable onPress={openReview} style={styles.compactEmpty}>
+          <View style={styles.compactEmpty}>
             <View style={styles.emptyCopy}>
               <Text style={styles.emptyTitle}>No camper reviews yet</Text>
-              <Text style={styles.emptyBody}>Share what future campers should know.</Text>
+              <Text style={styles.emptyBody}>Community reviews will appear here.</Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
+          </View>
         )}
 
         {pendingPhotos.length ? (
@@ -170,17 +156,14 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
                 </View>
               </View>
             ))}
-            <Pressable onPress={openPhotos} style={styles.addPhotoCard}><Text style={styles.plus}>＋</Text><Text style={styles.addPhotoText}>Add photos</Text></Pressable>
           </ScrollView>
         ) : (
-          <Pressable onPress={openPhotos} style={styles.photoEmpty}>
-            <View style={styles.cameraCircle}><Text style={styles.camera}>＋</Text></View>
+          <View style={styles.photoEmpty}>
             <View style={styles.emptyCopy}>
               <Text style={styles.emptyTitle}>No approved camper photos yet</Text>
-              <Text style={styles.emptyBody}>Your pending uploads stay visible to you while they are reviewed.</Text>
+              <Text style={styles.emptyBody}>Pending uploads stay visible to their uploader while they are reviewed.</Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
+          </View>
         )}
       </View>
     </View>
@@ -190,18 +173,15 @@ export function TrailGuideCommunitySection({ placeId }: { placeId: string }) {
 const styles = StyleSheet.create({
   section: { marginTop: 10 },
   card: { backgroundColor: '#101914', borderWidth: 1, borderColor: '#243128', borderRadius: 16, padding: 11 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   headerCopy: { flex: 1 },
-  headerActions: { flexDirection: 'row', gap: 11, paddingTop: 2 },
   title: { color: '#FFF8E8', fontSize: 16, fontWeight: '900' },
   hint: { color: '#748178', fontSize: 9, marginTop: 2, lineHeight: 12 },
-  link: { color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
   myReviewRow: { minHeight: 45, marginTop: 9, borderTopWidth: 1, borderTopColor: '#223028', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },
   myReviewCopy: { gap: 2 },
   myReviewLabel: { color: '#7F8C84', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.7 },
   myReviewStars: { color: '#E1B94F', fontSize: 13, letterSpacing: 1 },
   myReviewEmpty: { color: '#39443D' },
-  editReview: { color: '#D7B45A', fontSize: 9.5, fontWeight: '900' },
+  myReviewStatus: { color: '#8FA098', fontSize: 8.5, fontWeight: '800' },
   reviewArea: { marginTop: 10 },
   ratingSummary: { flexDirection: 'row', gap: 11, alignItems: 'center' },
   bigRatingWrap: { width: 68, alignItems: 'center' },
@@ -225,7 +205,7 @@ const styles = StyleSheet.create({
   reviewMeta: { color: '#7B8880', fontSize: 8, textTransform: 'capitalize', marginTop: 1 },
   reviewStars: { color: '#E1B94F', fontSize: 9, letterSpacing: 0.5 },
   reviewText: { color: '#C0C8C3', fontSize: 10, lineHeight: 14, marginTop: 7 },
-  compactEmpty: { minHeight: 48, flexDirection: 'row', alignItems: 'center', marginTop: 9, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#223028' },
+  compactEmpty: { minHeight: 48, justifyContent: 'center', marginTop: 9, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#223028' },
   emptyCopy: { flex: 1 },
   emptyTitle: { color: '#E8EEE9', fontSize: 10.5, fontWeight: '900' },
   emptyBody: { color: '#829087', fontSize: 8.5, lineHeight: 12, marginTop: 2 },
@@ -242,11 +222,5 @@ const styles = StyleSheet.create({
   pendingBadgeText: { color: '#F0CC65', fontSize: 6.5, fontWeight: '900' },
   photoMetaWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,10,7,0.68)', paddingHorizontal: 6, paddingVertical: 4 },
   photoMeta: { color: '#F5F2E8', fontSize: 7.5, fontWeight: '800', textTransform: 'capitalize' },
-  addPhotoCard: { width: 76, height: 78, borderRadius: 10, borderWidth: 1, borderColor: '#39493F', backgroundColor: '#151E18', alignItems: 'center', justifyContent: 'center' },
-  plus: { color: '#D7B45A', fontSize: 23, lineHeight: 25 },
-  addPhotoText: { color: '#D0D8D3', fontSize: 8, fontWeight: '800', marginTop: 2 },
-  photoEmpty: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 7 },
-  cameraCircle: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#243129', alignItems: 'center', justifyContent: 'center' },
-  camera: { color: '#D7B45A', fontSize: 20, lineHeight: 22 },
-  chevron: { color: '#D7B45A', fontSize: 24 },
+  photoEmpty: { minHeight: 48, justifyContent: 'center', paddingTop: 7 },
 });
