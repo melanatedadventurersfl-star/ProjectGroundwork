@@ -26,92 +26,40 @@ jobs:
           path = Path('apps/mobile/src/community/api.ts')
           text = path.read_text()
 
-          old_helper = '''function groupCityBackgroundUri(city?: string | null, state?: string | null) {
-  if (!city || !state) return null;
-  const normalizedState = normalizeLocation(state);
-  if (normalizedState !== 'fl') return null;
+          marker = "function groupCityBackgroundUri(city?: string | null, state?: string | null) {"
+          helper = (
+              "type ImageResolver = {\n"
+              "  resolveAssetSource?: (asset: unknown) => { uri?: string } | null;\n"
+              "};\n\n"
+              "function resolveAssetUri(source: unknown) {\n"
+              "  if (!source) return null;\n"
+              "  if (typeof source === 'string') return source;\n"
+              "  if (typeof source === 'object' && 'uri' in source) {\n"
+              "    const uri = (source as { uri?: unknown }).uri;\n"
+              "    if (typeof uri === 'string') return uri;\n"
+              "  }\n\n"
+              "  const resolver = (Image as unknown as ImageResolver).resolveAssetSource;\n"
+              "  if (typeof resolver !== 'function') return null;\n\n"
+              "  try {\n"
+              "    return resolver(source)?.uri ?? null;\n"
+              "  } catch {\n"
+              "    return null;\n"
+              "  }\n"
+              "}\n"
+          )
+          if text.count(marker) != 1:
+              raise SystemExit(f'Expected one city background helper marker, found {text.count(marker)}')
+          text = text.replace(marker, helper + "\n" + marker, 1)
 
-  const cityKey = normalizeLocation(city);
-  const exact = TRAIL_GUIDE_CITIES.find((item) => item.key === cityKey);
-  let source = exact?.source ?? null;
+          old_resolve = "  return source ? Image.resolveAssetSource(source)?.uri ?? null : null;"
+          if text.count(old_resolve) != 1:
+              raise SystemExit(f'Expected one direct asset resolver, found {text.count(old_resolve)}')
+          text = text.replace(old_resolve, "  return resolveAssetUri(source);", 1)
 
-  if (!source) {
-    const point = pointForCity(city, state);
-    const nearest = point ? getNearestTrailGuideCity(point.latitude, point.longitude) : null;
-    source = nearest?.city.source ?? null;
-  }
-
-  return source ? Image.resolveAssetSource(source)?.uri ?? null : null;
-}
-'''
-
-          new_helper = '''type ImageResolver = {
-  resolveAssetSource?: (asset: unknown) => { uri?: string } | null;
-};
-
-function resolveAssetUri(source: unknown) {
-  if (!source) return null;
-  if (typeof source === 'string') return source;
-  if (typeof source === 'object' && 'uri' in source) {
-    const uri = (source as { uri?: unknown }).uri;
-    if (typeof uri === 'string') return uri;
-  }
-
-  const resolver = (Image as unknown as ImageResolver).resolveAssetSource;
-  if (typeof resolver !== 'function') return null;
-
-  try {
-    return resolver(source)?.uri ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function groupCityBackgroundUri(city?: string | null, state?: string | null) {
-  try {
-    if (!city || !state) return null;
-    const normalizedState = normalizeLocation(state);
-    if (normalizedState !== 'fl') return null;
-
-    const cityKey = normalizeLocation(city);
-    const exact = TRAIL_GUIDE_CITIES.find((item) => item.key === cityKey);
-    let source = exact?.source ?? null;
-
-    if (!source) {
-      const point = pointForCity(city, state);
-      const nearest = point ? getNearestTrailGuideCity(point.latitude, point.longitude) : null;
-      source = nearest?.city.source ?? null;
-    }
-
-    return resolveAssetUri(source);
-  } catch {
-    return null;
-  }
-}
-'''
-
-          if text.count(old_helper) != 1:
-              raise SystemExit(f'Expected one city background helper, found {text.count(old_helper)}')
-          text = text.replace(old_helper, new_helper, 1)
-
-          old_membership = '''  if (membershipError) throw membershipError;
-  if (membersError) throw membersError;
-
-  const myGroups = new Set((memberships ?? []).map((row: any) => row.group_id as string));
-  const counts = new Map<string, number>();
-  for (const row of allMembers ?? []) {
-'''
-
-          new_membership = '''  const membershipRows = membershipError ? [] : memberships ?? [];
-  const memberRows = membersError ? [] : allMembers ?? [];
-
-  const myGroups = new Set(membershipRows.map((row: any) => row.group_id as string));
-  const counts = new Map<string, number>();
-  for (const row of memberRows) {
-'''
-
+          old_membership = "  if (membershipError) throw membershipError;\n  if (membersError) throw membersError;\n\n  const myGroups = new Set((memberships ?? []).map((row: any) => row.group_id as string));\n  const counts = new Map<string, number>();\n  for (const row of allMembers ?? []) {"
+          new_membership = "  const membershipRows = membershipError ? [] : memberships ?? [];\n  const memberRows = membersError ? [] : allMembers ?? [];\n\n  const myGroups = new Set(membershipRows.map((row: any) => row.group_id as string));\n  const counts = new Map<string, number>();\n  for (const row of memberRows) {"
           if text.count(old_membership) != 1:
-              raise SystemExit(f'Expected one membership error block, found {text.count(old_membership)}')
+              raise SystemExit(f'Expected one membership block, found {text.count(old_membership)}')
           text = text.replace(old_membership, new_membership, 1)
 
           path.write_text(text)
