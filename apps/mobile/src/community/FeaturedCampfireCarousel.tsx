@@ -389,8 +389,8 @@ export function FeaturedCampfireCarousel({
   const [reactingPostId, setReactingPostId] = useState<string | null>(null);
   const [undoItem, setUndoItem] = useState<UndoItem | null>(null);
   const [nowMs] = useState(() => Date.now());
+  const [verticalSwipeY] = useState(() => new Animated.Value(0));
   const latestScrollOffsetRef = useRef(0);
-  const verticalSwipeY = useRef(new Animated.Value(0)).current;
 
   const cardWidth = Math.min(350, Math.max(248, viewportWidth * 0.84));
   const snapInterval = cardWidth + CARD_GAP;
