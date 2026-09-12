@@ -1,3 +1,3 @@
-import PublicMemberProfileExperience from '../../src/member/PublicMemberProfileExperience';
+import PublicMemberProfileExperienceV2 from '../../src/member/PublicMemberProfileExperienceV2'
 
-export default PublicMemberProfileExperience;
+export default PublicMemberProfileExperienceV2
