@@ -18,6 +18,7 @@ import {
   markGuidedTutorialFinished,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
+import { listMyOrganizations } from '../src/platform/organizations';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
 import { BackgroundUpdateManager } from '../src/updates/BackgroundUpdateManager';
 import { getActiveUpdateIdentity } from '../src/updates/otaActivation';
@@ -48,10 +49,14 @@ function isGuestPublicPath(pathname: string) {
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/tenant-sign-in') ||
+    pathname.startsWith('/tenant-sign-up') ||
     pathname.startsWith('/host-login') ||
     pathname.startsWith('/vendor-login')
   );
 }
+
+type MemberSurfaceGate = 'idle' | 'checking' | 'allowed' | 'redirecting';
 
 function AppShell() {
   const { session, isLoading } = useAuth();
@@ -62,6 +67,7 @@ function AppShell() {
   const [tutorialGateReady, setTutorialGateReady] = useState(false);
   const [whatsNewVisible, setWhatsNewVisible] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [memberSurfaceGate, setMemberSurfaceGate] = useState<MemberSurfaceGate>('idle');
   const tutorialCheckedRef = useRef(false);
   const tutorialUserRef = useRef<string | null>(null);
   const whatsNewCheckedRef = useRef(false);
@@ -70,11 +76,16 @@ function AppShell() {
   const activeUpdateKey = activeUpdateIdentity.updateId || activeUpdateIdentity.commit || 'embedded';
   const releaseSeenKey = `${currentReleaseNotes.id}:${activeUpdateKey}`;
 
+  const tenantExperienceMatch = pathname.match(/^\/experience\/([^/]+)/);
+  const tenantExperienceSlug = tenantExperienceMatch?.[1] ?? null;
+  const isTenantExperience = Boolean(tenantExperienceSlug);
   const isHostCenter = pathname === '/host' || pathname.startsWith('/host/');
   const isVendorCenter = pathname === '/vendor' || pathname.startsWith('/vendor/');
   const isOperationsCenter = isHostCenter || isVendorCenter;
   const isOverwatch = pathname === '/overwatch' || pathname.startsWith('/overwatch/');
-  const isProtectedWorkspace = isOperationsCenter || isOverwatch;
+  const isAdminSurface = pathname.startsWith('/admin') || pathname.startsWith('/founder-tools');
+  const isLegacyOrganizationPreview = pathname.startsWith('/organization-member-profile') || pathname.startsWith('/organization-business-preview') || pathname.startsWith('/organization-profile');
+  const isProtectedWorkspace = isOperationsCenter || isOverwatch || isTenantExperience;
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/auth/callback') ||
@@ -82,14 +93,18 @@ function AppShell() {
     pathname.startsWith('/(auth)') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/tenant-sign-in') ||
+    pathname.startsWith('/tenant-sign-up') ||
     pathname.startsWith('/host-login') ||
     pathname.startsWith('/vendor-login');
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
-  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !tutorialGateReady;
-  const hideBottomNav = isLoading || isAuthScreen || isOverwatch || (isOperationsCenter && !desktopWeb) || isManagement || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const isGoMemberSurface = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !isManagement && !isAdminSurface && !isLegacyOrganizationPreview;
+  const memberGateLocked = isGoMemberSurface && memberSurfaceGate !== 'allowed';
+  const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && (!tutorialGateReady || memberGateLocked);
+  const hideBottomNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -111,6 +126,10 @@ function AppShell() {
 
   useEffect(() => {
     if (isLoading || session || isGuestPublicPath(pathname)) return;
+    if (tenantExperienceSlug) {
+      router.replace(`/tenant-sign-in?slug=${encodeURIComponent(tenantExperienceSlug)}` as never);
+      return;
+    }
     if (isHostCenter) {
       router.replace(`/host-login?next=${encodeURIComponent(pathname)}` as never);
       return;
@@ -120,7 +139,46 @@ function AppShell() {
       return;
     }
     router.replace('/(auth)/sign-in' as never);
-  }, [isHostCenter, isLoading, isVendorCenter, pathname, session]);
+  }, [isHostCenter, isLoading, isVendorCenter, pathname, session, tenantExperienceSlug]);
+
+  useEffect(() => {
+    if (isLoading || !session?.user.id || !isGoMemberSurface) {
+      setMemberSurfaceGate('idle');
+      return;
+    }
+
+    let active = true;
+    setMemberSurfaceGate('checking');
+    void listMyOrganizations()
+      .then((organizations) => {
+        if (!active) return;
+        const hasGoMembership = organizations.some((organization) => organization.isPlatformDefault && organization.status === 'active');
+        if (hasGoMembership) {
+          setMemberSurfaceGate('allowed');
+          return;
+        }
+
+        const tenantOrganization = organizations.find((organization) => !organization.isPlatformDefault && organization.status === 'active') ?? null;
+        if (tenantOrganization) {
+          setMemberSurfaceGate('redirecting');
+          router.replace(`/experience/${tenantOrganization.slug}` as never);
+          return;
+        }
+
+        setMemberSurfaceGate('redirecting');
+        router.replace('/account-status' as never);
+      })
+      .catch((error) => {
+        console.warn('[tenant-separation] Unable to verify Go Melanated membership', error);
+        if (!active) return;
+        setMemberSurfaceGate('redirecting');
+        router.replace('/account-status' as never);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isGoMemberSurface, isLoading, pathname, session?.user.id]);
 
   useEffect(() => {
     if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
@@ -150,7 +208,7 @@ function AppShell() {
   }, [session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session || isAuthScreen || isProtectedWorkspace || tutorialCheckedRef.current) return;
+    if (isLoading || !session || isAuthScreen || isProtectedWorkspace || memberGateLocked || tutorialCheckedRef.current) return;
     tutorialCheckedRef.current = true;
     try {
       const finished = hasFinishedGuidedTutorial();
@@ -172,10 +230,10 @@ function AppShell() {
       setTutorialGateReady(true);
       setTutorialVisible(false);
     }
-  }, [isAuthScreen, isLoading, isProtectedWorkspace, releaseSeenKey, session]);
+  }, [isAuthScreen, isLoading, isProtectedWorkspace, memberGateLocked, releaseSeenKey, session]);
 
   useEffect(() => {
-    if (isLoading || isAuthScreen || isProtectedWorkspace || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
+    if (isLoading || isAuthScreen || isProtectedWorkspace || memberGateLocked || tutorialVisible || tutorialGateLocked || whatsNewCheckedRef.current) return;
     whatsNewCheckedRef.current = true;
     try {
       setWhatsNewVisible(!hasSeenRelease(releaseSeenKey));
@@ -183,13 +241,14 @@ function AppShell() {
       console.warn('[updates] Unable to read release-note preference', error);
       setWhatsNewVisible(true);
     }
-  }, [isAuthScreen, isLoading, isProtectedWorkspace, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
+  }, [isAuthScreen, isLoading, isProtectedWorkspace, memberGateLocked, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
+    if (pathname.startsWith('/experience/')) return;
     setWhatsNewVisible(false);
     setTutorialVisible(true);
     router.replace('/(tabs)' as never);
-  }), []);
+  }), [pathname]);
 
   function closeTutorial() {
     setTutorialVisible(false);
@@ -213,32 +272,32 @@ function AppShell() {
     setWhatsNewVisible(false);
   }
 
-  if (isLoading) return <StartupLoadingView message="Restoring your session…" />;
+  if (isLoading || memberGateLocked) return <StartupLoadingView message={memberGateLocked ? 'Opening your organization app…' : 'Restoring your session…'} />;
 
   return (
     <View style={styles.appShell} testID="app-shell">
-      <TrailheadProgressObserver />
-      <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !tutorialGateLocked && !tutorialVisible} />
+      {isTenantExperience ? null : <TrailheadProgressObserver />}
+      <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !isTenantExperience && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && !isManagement && !isAuthScreen && !isOverwatch && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && !isAuthScreen && !isOverwatch && !isTenantExperience && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" /><Stack.Screen name="onboarding" /><Stack.Screen name="onboarding-v2" />
             <Stack.Screen name="(tabs)" /><Stack.Screen name="(auth)" /><Stack.Screen name="auth" />
-            <Stack.Screen name="reset-password" /><Stack.Screen name="host-login" /><Stack.Screen name="vendor-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
+            <Stack.Screen name="reset-password" /><Stack.Screen name="tenant-sign-in" /><Stack.Screen name="tenant-sign-up" /><Stack.Screen name="host-login" /><Stack.Screen name="vendor-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
             <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
-            <Stack.Screen name="member" /><Stack.Screen name="host" /><Stack.Screen name="vendor" /><Stack.Screen name="overwatch" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
+            <Stack.Screen name="member" /><Stack.Screen name="experience" /><Stack.Screen name="host" /><Stack.Screen name="vendor" /><Stack.Screen name="overwatch" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
             <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
           </Stack>
         </KeyboardAvoidingView>
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
-      {session && !tutorialVisible && !isAuthScreen && !isProtectedWorkspace ? <TrailheadTooltip /> : null}
-      {tutorialVisible ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
-      {whatsNewVisible ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
+      {session && !tutorialVisible && !isAuthScreen && !isProtectedWorkspace && !memberGateLocked ? <TrailheadTooltip /> : null}
+      {tutorialVisible && !isTenantExperience ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
+      {whatsNewVisible && !isTenantExperience ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
   );
 }

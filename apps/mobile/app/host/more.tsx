@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ensureHostCenterProfile, getHostSetupProgress, type HostCenterProfile } from '../../src/hosting/hostEntry';
 import { supabase } from '../../src/lib/supabase';
+import { experienceModuleEnabled, getOrganizationExperience, listExperienceModules } from '../../src/platform/experience';
 import { getOrganizationPublicBusiness, listMyOrganizations, type OrganizationPublicBusiness, type OrganizationWorkspace } from '../../src/platform/organizations';
 import { getVendorAccess } from '../../src/vendor/vendorAccess';
 
@@ -26,6 +27,8 @@ export default function HostMoreScreen() {
   const [activeOrganization, setActiveOrganizationState] = useState<OrganizationWorkspace | null>(null);
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [publicBusiness, setPublicBusiness] = useState<OrganizationPublicBusiness | null>(null);
+  const [tenantAppSlug, setTenantAppSlug] = useState<string | null>(null);
+  const [tenantProfileEnabled, setTenantProfileEnabled] = useState(false);
   const [workspaceError, setWorkspaceError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -47,8 +50,21 @@ export default function HostMoreScreen() {
       setActiveOrganizationState(currentOrganization);
       setCurrentProfileId(authResult.data.user?.id ?? null);
       if (currentOrganization) {
-        const business = await getOrganizationPublicBusiness(currentOrganization.id).catch(() => null);
-        if (active) setPublicBusiness(business);
+        const [business, experience] = await Promise.all([
+          getOrganizationPublicBusiness(currentOrganization.id).catch(() => null),
+          getOrganizationExperience(currentOrganization.id).catch(() => null),
+        ]);
+        if (!active) return;
+        setPublicBusiness(business);
+        if (!currentOrganization.isPlatformDefault && experience) {
+          const modules = await listExperienceModules(experience.id).catch(() => []);
+          if (!active) return;
+          setTenantAppSlug(currentOrganization.slug);
+          setTenantProfileEnabled(experienceModuleEnabled(modules, 'profiles', false));
+        } else {
+          setTenantAppSlug(null);
+          setTenantProfileEnabled(false);
+        }
       }
     }).catch((error) => {
       console.warn('[host-more] setup load failed', error);
@@ -61,15 +77,29 @@ export default function HostMoreScreen() {
 
   function openAsProfile() {
     if (!activeOrganization || !currentProfileId) return;
+    setWorkspaceError('');
     if (activeOrganization.isPlatformDefault) {
       router.push('/member/profile' as never);
       return;
     }
-    router.push({ pathname: '/organization-member-profile/[id]', params: { id: currentProfileId, organizationId: activeOrganization.id } });
+    if (!tenantAppSlug || !tenantProfileEnabled) {
+      setWorkspaceError('Member profiles are not enabled for this organization app.');
+      return;
+    }
+    router.push(`/experience/${tenantAppSlug}/profile` as never);
   }
 
   function openAsBusiness() {
     if (!activeOrganization) return;
+    setWorkspaceError('');
+    if (!activeOrganization.isPlatformDefault) {
+      if (!tenantAppSlug) {
+        setWorkspaceError('This organization app is not configured yet.');
+        return;
+      }
+      router.push(`/experience/${tenantAppSlug}/business` as never);
+      return;
+    }
     if (publicBusiness) {
       router.push({ pathname: '/organization-profile/[slug]', params: { slug: publicBusiness.slug } });
       return;
@@ -87,8 +117,8 @@ export default function HostMoreScreen() {
 
     <Text style={styles.sectionTitle}>VIEW PUBLIC EXPERIENCE</Text>
     <View style={styles.publicCard}>
-      <Pressable disabled={!activeOrganization || !currentProfileId} style={styles.publicRow} onPress={openAsProfile}><View style={styles.flex}><Text style={styles.publicTitle}>Open as Profile</Text><Text style={styles.publicText}>View your personal profile in {activeOrganization?.name ?? 'this organization'}.</Text></View><Text style={styles.arrow}>›</Text></Pressable>
-      <Pressable disabled={!activeOrganization} style={[styles.publicRow, styles.divider]} onPress={openAsBusiness}><View style={styles.flex}><Text style={styles.publicTitle}>Open as Business</Text><Text style={styles.publicText}>{publicBusiness ? `View ${publicBusiness.name}'s public organization page.` : `Preview ${activeOrganization?.name ?? 'this organization'} as a business.`}</Text></View><Text style={styles.arrow}>›</Text></Pressable>
+      <Pressable disabled={!activeOrganization || !currentProfileId} style={styles.publicRow} onPress={openAsProfile}><View style={styles.flex}><Text style={styles.publicTitle}>Open as Profile</Text><Text style={styles.publicText}>{activeOrganization?.isPlatformDefault ? `View your personal profile in ${activeOrganization?.name ?? 'this organization'}.` : tenantProfileEnabled ? `View your separate profile inside ${activeOrganization?.name ?? 'this organization'}.` : 'Member profiles are not enabled for this organization app.'}</Text></View><Text style={styles.arrow}>›</Text></Pressable>
+      <Pressable disabled={!activeOrganization} style={[styles.publicRow, styles.divider]} onPress={openAsBusiness}><View style={styles.flex}><Text style={styles.publicTitle}>Open as Business</Text><Text style={styles.publicText}>{activeOrganization?.isPlatformDefault ? publicBusiness ? `View ${publicBusiness.name}'s public organization page.` : `Preview ${activeOrganization?.name ?? 'this organization'} as a business.` : `View ${activeOrganization?.name ?? 'this organization'} inside its separate app.`}</Text></View><Text style={styles.arrow}>›</Text></Pressable>
     </View>
 
     <View style={styles.list}>{sections.map((item, index) => <Pressable key={item.title} onPress={() => router.push(item.route as never)} style={[styles.row, index > 0 && styles.divider]}><View style={styles.flex}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowText}>{item.text}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}</View>
