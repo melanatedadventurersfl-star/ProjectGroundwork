@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ensureHostCenterProfile, getHostSetupProgress, type HostCenterProfile } from '../../src/hosting/hostEntry';
+import { activatePlatformDefaultOrganization, listMyOrganizations } from '../../src/platform/organizations';
 import { getVendorAccess } from '../../src/vendor/vendorAccess';
 
 const sections = [
@@ -21,6 +22,9 @@ const sections = [
 export default function HostMoreScreen() {
   const [profile, setProfile] = useState<HostCenterProfile | null>(null);
   const [vendorApproved, setVendorApproved] = useState(false);
+  const [canOpenMemberApp, setCanOpenMemberApp] = useState(false);
+  const [openingMemberApp, setOpeningMemberApp] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,18 +32,34 @@ export default function HostMoreScreen() {
     void Promise.all([
       ensureHostCenterProfile(),
       getVendorAccess().catch(() => ({ approved: false, record: null })),
-    ]).then(([value, vendorAccess]) => {
+      listMyOrganizations(),
+    ]).then(([value, vendorAccess, organizations]) => {
       if (!active) return;
       setProfile(value);
       setVendorApproved(vendorAccess.approved);
+      setCanOpenMemberApp(organizations.some((organization) => organization.isPlatformDefault));
     }).catch((error) => console.warn('[host-more] setup load failed', error)).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
   const progress = useMemo(() => getHostSetupProgress(profile), [profile]);
 
+  async function openMemberApp() {
+    if (!canOpenMemberApp || openingMemberApp) return;
+    setOpeningMemberApp(true);
+    setWorkspaceError('');
+    try {
+      const organization = await activatePlatformDefaultOrganization();
+      if (!organization) throw new Error('Go Melanated member access is not available for this account.');
+      router.replace('/(tabs)' as never);
+    } catch (caught) {
+      setWorkspaceError(caught instanceof Error ? caught.message : 'Unable to open the Go Melanated member workspace.');
+      setOpeningMemberApp(false);
+    }
+  }
+
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}>
-    <Text style={styles.eyebrow}>HOST CENTER</Text><Text style={styles.title}>More</Text><Text style={styles.subtitle}>Directories, money, marketing, settings and the rest of your operating tools.</Text>
+    <Text style={styles.eyebrow}>{profile?.organizationName.toUpperCase() ?? 'HOST CENTER'}</Text><Text style={styles.title}>More</Text><Text style={styles.subtitle}>Directories, money, marketing, settings and the rest of your operating tools.</Text>
 
     <Pressable style={styles.setupCard} onPress={() => router.push('/host/setup' as never)}>
       <View style={styles.flex}><Text style={styles.setupLabel}>HOST SETUP</Text><Text style={styles.setupTitle}>{loading ? 'Checking setup…' : `${progress.completed} of ${progress.total} complete`}</Text><Text style={styles.setupText}>Finish organization details, defaults, privacy, notifications, connections and team setup.</Text></View>
@@ -54,8 +74,9 @@ export default function HostMoreScreen() {
 
     <Text style={styles.sectionTitle}>SWITCH WORKSPACE</Text>
     {vendorApproved ? <Pressable style={styles.switchRow} onPress={() => router.replace('/vendor' as never)}><View style={styles.flex}><Text style={styles.switchTitle}>Vendor Center</Text><Text style={styles.switchText}>Switch to your approved vendor workspace without signing in again.</Text></View><Text style={styles.arrow}>›</Text></Pressable> : null}
-    <Pressable style={styles.exit} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.exitTitle}>Member App</Text><Text style={styles.exitText}>Return to the normal Go Melanated member experience without signing out.</Text></Pressable>
+    {canOpenMemberApp ? <Pressable disabled={openingMemberApp} style={styles.exit} onPress={() => void openMemberApp()}><View style={styles.workspaceActionRow}><View style={styles.flex}><Text style={styles.exitTitle}>Go Melanated Member App</Text><Text style={styles.exitText}>Return to the Go Melanated member experience and restore Go Melanated as the active organization.</Text></View>{openingMemberApp ? <ActivityIndicator color="#D7B45A" size="small" /> : null}</View></Pressable> : null}
+    {workspaceError ? <Text style={styles.workspaceError}>{workspaceError}</Text> : null}
   </ScrollView></SafeAreaView>;
 }
 
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0A0F0C' }, content: { padding: 18, paddingBottom: 90, maxWidth: 820, width: '100%', alignSelf: 'center' }, eyebrow: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 31, fontWeight: '900', marginTop: 3 }, subtitle: { color: '#8E9A92', fontSize: 10.5, lineHeight: 16, marginTop: 5 }, setupCard: { minHeight: 102, borderRadius: 17, borderWidth: 1, borderColor: '#6B5722', backgroundColor: '#211C0F', padding: 14, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }, flex: { flex: 1 }, setupLabel: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, setupTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 3 }, setupText: { color: '#918A70', fontSize: 8.5, lineHeight: 13, marginTop: 4 }, percent: { color: '#E7C464', fontSize: 20, fontWeight: '900' }, list: { borderRadius: 16, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', overflow: 'hidden', marginTop: 14 }, row: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A352F' }, rowTitle: { color: '#EAF0EC', fontSize: 11, fontWeight: '900' }, rowText: { color: '#78857D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, arrow: { color: '#D7B45A', fontSize: 20 }, sectionTitle: { color: '#77857C', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 22, marginBottom: 7 }, action: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 7 }, switchRow: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#66572D', backgroundColor: '#1D1B11', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }, switchTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, switchText: { color: '#85806D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, exit: { borderRadius: 14, borderWidth: 1, borderColor: '#514833', backgroundColor: '#171711', padding: 13 }, exitTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, exitText: { color: '#7F7A69', fontSize: 8.5, lineHeight: 13, marginTop: 3 } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0A0F0C' }, content: { padding: 18, paddingBottom: 90, maxWidth: 820, width: '100%', alignSelf: 'center' }, eyebrow: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 31, fontWeight: '900', marginTop: 3 }, subtitle: { color: '#8E9A92', fontSize: 10.5, lineHeight: 16, marginTop: 5 }, setupCard: { minHeight: 102, borderRadius: 17, borderWidth: 1, borderColor: '#6B5722', backgroundColor: '#211C0F', padding: 14, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }, flex: { flex: 1 }, setupLabel: { color: '#D7B45A', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, setupTitle: { color: '#FFF8E8', fontSize: 15, fontWeight: '900', marginTop: 3 }, setupText: { color: '#918A70', fontSize: 8.5, lineHeight: 13, marginTop: 4 }, percent: { color: '#E7C464', fontSize: 20, fontWeight: '900' }, list: { borderRadius: 16, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', overflow: 'hidden', marginTop: 14 }, row: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A352F' }, rowTitle: { color: '#EAF0EC', fontSize: 11, fontWeight: '900' }, rowText: { color: '#78857D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, arrow: { color: '#D7B45A', fontSize: 20 }, sectionTitle: { color: '#77857C', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 22, marginBottom: 7 }, action: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#2D3932', backgroundColor: '#131B16', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 7 }, switchRow: { minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: '#66572D', backgroundColor: '#1D1B11', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 8 }, switchTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, switchText: { color: '#85806D', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, exit: { borderRadius: 14, borderWidth: 1, borderColor: '#514833', backgroundColor: '#171711', padding: 13 }, workspaceActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 }, exitTitle: { color: '#E8D6A2', fontSize: 11, fontWeight: '900' }, exitText: { color: '#7F7A69', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, workspaceError: { color: '#E8A09A', fontSize: 9, lineHeight: 14, marginTop: 7 } });
