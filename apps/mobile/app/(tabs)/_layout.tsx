@@ -1,5 +1,5 @@
-import { Redirect, Tabs } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Redirect, Tabs, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import {
@@ -13,10 +13,10 @@ export default function TabLayout() {
   const { session, isLoading } = useAuth();
   const [experienceContext, setExperienceContext] = useState<ActiveExperienceContext | null>(null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!session?.user.id) {
       setExperienceContext(null);
-      return;
+      return undefined;
     }
 
     let active = true;
@@ -29,7 +29,7 @@ export default function TabLayout() {
       });
 
     return () => { active = false; };
-  }, [session?.user.id]);
+  }, [session?.user.id]));
 
   if (!isLoading && !session) {
     return <Redirect href="/(auth)/sign-in" />;
@@ -66,6 +66,8 @@ export default function TabLayout() {
       <Tabs.Screen name="community" options={{ title: communityTitle, href: communityEnabled ? undefined : null }} />
       <Tabs.Screen name="passport" options={{ title: journeyTitle, href: null }} />
       <Tabs.Screen name="menu" options={{ title: 'Menu' }} />
+      <Tabs.Screen name="community-home" options={{ href: null }} />
+      <Tabs.Screen name="outdoor-home" options={{ href: null }} />
     </Tabs>
   );
 }

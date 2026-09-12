@@ -31,6 +31,7 @@ export const HOST_WORKSPACE_ITEMS: HostWorkspaceItem[] = [
   { key: 'documents', title: 'Documents', subtitle: 'Waivers, contracts and organization files', route: '/host/library', icon: 'upload', accent: '#75AEE8', group: 'BUSINESS' },
 
   { key: 'experience', title: 'Public Experience', subtitle: 'Brand, modules, language and member-facing publishing target', route: '/host/experience', icon: 'sparkles', accent: '#D7B45A', group: 'RESOURCES' },
+  { key: 'home-layout', title: 'Home Layout', subtitle: 'Arrange the public Home and set its member-facing message', route: '/host/home-layout', icon: 'dashboard', accent: '#A990ED', group: 'RESOURCES' },
   { key: 'templates', title: 'Templates & Library', subtitle: 'Reusable event and operations building blocks', route: '/host/library', icon: 'library', accent: '#D7B45A', group: 'RESOURCES' },
   { key: 'reports', title: 'Reports', subtitle: 'Cross-event performance and operational history', route: '/host/finances', icon: 'reports', accent: '#84C992', group: 'RESOURCES' },
   { key: 'profile', title: 'Host Profile', subtitle: 'Edit what members see about you', route: '/host/profile', icon: 'profile', accent: '#D7B45A', group: 'RESOURCES' },
