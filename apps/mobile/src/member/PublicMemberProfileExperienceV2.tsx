@@ -7,7 +7,17 @@ import { supabase } from '../lib/supabase'
 import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt'
 import { rankFor, rankLadder } from '../passport/RankEmblem'
 import { resolveStampCatalogItem, type StampCatalogItem } from '../passport/StampCatalog'
-import { getCommunityProfile, getConnectionStatus, getViewerInterests, requestConnection, respondToConnection, type CommunityFeaturedBadge, type CommunityFeaturedStamp, type CommunityProfile, type ConnectionStatus } from '../social/api'
+import {
+  getCommunityProfile,
+  getConnectionStatus,
+  getViewerInterests,
+  requestConnection,
+  respondToConnection,
+  type CommunityFeaturedBadge,
+  type CommunityFeaturedStamp,
+  type CommunityProfile,
+  type ConnectionStatus,
+} from '../social/api'
 import { AppIcon } from '../ui/AppIcon'
 import { ProfilePosts } from './ProfilePosts'
 import { SocialProfileHeader, socialProfileHeaderStyles } from './SocialProfileHeader'
@@ -16,11 +26,17 @@ type ProfileTab = 'journey' | 'posts' | 'photos' | 'about'
 type PublicStampCard = { stamp: CommunityFeaturedStamp, art: StampCatalogItem }
 
 function FeaturedBadge({ badge }: { badge: CommunityFeaturedBadge }) {
-  return <View style={styles.recognitionItem}><BadgeArt title={badge.title} size={100} /><Text style={styles.recognitionTitle} numberOfLines={2}>{badge.title}</Text></View>
+  return <View style={styles.recognitionItem}>
+    <BadgeArt title={badge.title} size={100} />
+    <Text style={styles.recognitionTitle} numberOfLines={2}>{badge.title}</Text>
+  </View>
 }
 
 function FeaturedStamp({ item }: { item: PublicStampCard }) {
-  return <View style={styles.recognitionItem}><Image source={item.art.source} style={styles.stampImage} resizeMode="contain" /><Text style={styles.recognitionTitle} numberOfLines={2}>{item.stamp.title}</Text></View>
+  return <View style={styles.recognitionItem}>
+    <Image source={item.art.source} style={styles.stampImage} resizeMode="contain" />
+    <Text style={styles.recognitionTitle} numberOfLines={2}>{item.stamp.title}</Text>
+  </View>
 }
 
 export default function PublicMemberProfileExperienceV2() {
@@ -40,7 +56,10 @@ export default function PublicMemberProfileExperienceV2() {
     setLoading(true)
     try {
       const [nextProfile, connection, interests, viewAsGate] = await Promise.all([
-        getCommunityProfile(id), getConnectionStatus(id), getViewerInterests(), supabase.rpc('can_view_as_member'),
+        getCommunityProfile(id),
+        getConnectionStatus(id),
+        getViewerInterests(),
+        supabase.rpc('can_view_as_member'),
       ])
       setProfile(nextProfile)
       setConnectionStatus(connection.status)
@@ -91,20 +110,21 @@ export default function PublicMemberProfileExperienceV2() {
     return <SafeAreaView style={styles.center}><ActivityIndicator color="#F5C341" /></SafeAreaView>
   }
 
-  const location = [profile.home_city, profile.home_state].filter(Boolean).join(', ')
-  const sharedInterests = (profile.interests ?? []).filter((item) => viewerInterestSet.has(item.trim().toLowerCase()))
+  const member = profile
+  const location = [member.home_city, member.home_state].filter(Boolean).join(', ')
+  const sharedInterests = (member.interests ?? []).filter((item) => viewerInterestSet.has(item.trim().toLowerCase()))
   const headerStats = [
-    { label: 'Adventures', value: profile.adventure_count },
-    { label: 'Albums', value: profile.photo_albums.length },
-    { label: 'Posts', value: profile.post_count },
-    { label: 'Stamps', value: profile.stamp_count },
+    { label: 'Adventures', value: member.adventure_count },
+    { label: 'Albums', value: member.photo_albums.length },
+    { label: 'Posts', value: member.post_count },
+    { label: 'Stamps', value: member.stamp_count },
   ].filter((item) => item.value > 0)
-  const joined = new Date(profile.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-  const latestAlbum = profile.photo_albums[0] ?? null
+  const joined = new Date(member.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const latestAlbum = member.photo_albums[0] ?? null
 
   const featuredBadges = (() => {
     const seen = new Set<string>()
-    return profile.featured_badges.filter((badge) => {
+    return member.featured_badges.filter((badge) => {
       const key = badge.title.trim().toLowerCase()
       if (!hasBadgeArt(badge.title) || seen.has(key)) return false
       seen.add(key)
@@ -115,7 +135,7 @@ export default function PublicMemberProfileExperienceV2() {
   const featuredStamps = (() => {
     const seen = new Set<string>()
     const items: PublicStampCard[] = []
-    for (const stamp of profile.featured_stamps) {
+    for (const stamp of member.featured_stamps) {
       const art = resolveStampCatalogItem(stamp)
       if (!art || seen.has(art.id)) continue
       seen.add(art.id)
@@ -126,21 +146,27 @@ export default function PublicMemberProfileExperienceV2() {
   })()
 
   async function shareProfile() {
-    const summary = [profile.adventure_count ? `${profile.adventure_count} adventures` : null, profile.stamp_count ? `${profile.stamp_count} stamps` : null].filter(Boolean).join(', ')
-    await Share.share({ message: `${profile.display_name ?? 'A Go Melanated member'}${profile.username ? ` (@${profile.username})` : ''} on Go Melanated${summary ? `: ${summary}` : '.'}` })
+    const summary = [
+      member.adventure_count ? `${member.adventure_count} adventures` : null,
+      member.stamp_count ? `${member.stamp_count} stamps` : null,
+    ].filter(Boolean).join(', ')
+    await Share.share({ message: `${member.display_name ?? 'A Go Melanated member'}${member.username ? ` (@${member.username})` : ''} on Go Melanated${summary ? `: ${summary}` : '.'}` })
   }
 
   function openMore() {
     const actions: Parameters<typeof Alert.alert>[2] = []
-    if (canViewAsMember) actions.push({ text: 'View as member', onPress: () => router.push(`/member/view-as-profile/${profile.id}` as never) })
+    if (canViewAsMember) actions.push({ text: 'View as member', onPress: () => router.push(`/member/view-as-profile/${member.id}` as never) })
     actions.push({ text: 'Cancel', style: 'cancel' })
     Alert.alert('Profile', undefined, actions)
   }
 
-  const connectionAction = () => {
+  function connectionAction() {
     if (connectionStatus === 'accepted') return <View style={socialProfileHeaderStyles.secondaryAction}><AppIcon name="connections" color="#FFF8E8" size={16} /><Text style={socialProfileHeaderStyles.secondaryActionText}>TrailMate</Text></View>
     if (connectionStatus === 'pending_sent') return <View style={socialProfileHeaderStyles.secondaryAction}><AppIcon name="checkmark" color="#F5C341" size={15} /><Text style={socialProfileHeaderStyles.secondaryActionText}>Request sent</Text></View>
-    if (connectionStatus === 'pending_received') return <><Pressable disabled={working} onPress={() => void act('accept')} style={socialProfileHeaderStyles.primaryAction}><Text style={socialProfileHeaderStyles.primaryActionText}>Accept</Text></Pressable><Pressable disabled={working} onPress={() => void act('decline')} style={socialProfileHeaderStyles.secondaryAction}><Text style={socialProfileHeaderStyles.secondaryActionText}>Decline</Text></Pressable></>
+    if (connectionStatus === 'pending_received') return <>
+      <Pressable disabled={working} onPress={() => void act('accept')} style={socialProfileHeaderStyles.primaryAction}><Text style={socialProfileHeaderStyles.primaryActionText}>Accept</Text></Pressable>
+      <Pressable disabled={working} onPress={() => void act('decline')} style={socialProfileHeaderStyles.secondaryAction}><Text style={socialProfileHeaderStyles.secondaryActionText}>Decline</Text></Pressable>
+    </>
     if (connectionStatus === 'blocked') return null
     return <Pressable disabled={working} onPress={() => void act('request')} style={socialProfileHeaderStyles.primaryAction}><AppIcon name="connections" color="#111A17" size={16} /><Text style={socialProfileHeaderStyles.primaryActionText}>{working ? 'Sending…' : 'Add TrailMate'}</Text></Pressable>
   }
@@ -148,16 +174,16 @@ export default function PublicMemberProfileExperienceV2() {
   const header = <View>
     {error ? <View style={styles.errorBanner}><Text style={styles.errorText}>{error}</Text></View> : null}
     <SocialProfileHeader
-      coverUrl={profile.cover_url}
-      avatarUrl={profile.avatar_url}
-      displayName={profile.display_name}
-      username={profile.username}
+      coverUrl={member.cover_url}
+      avatarUrl={member.avatar_url}
+      displayName={member.display_name}
+      username={member.username}
       location={location}
       rank={rank}
       rankDetail={nextRank ? `${remaining} to ${nextRank[0]}` : 'Highest rank'}
-      bio={profile.bio}
-      interests={profile.interests_visible ? profile.interests ?? [] : []}
-      stats={profile.can_see_full_profile ? headerStats : []}
+      bio={member.bio}
+      interests={member.interests_visible ? member.interests ?? [] : []}
+      stats={member.can_see_full_profile ? headerStats : []}
       peopleLabel={sharedInterests.length ? `${sharedInterests.length} interest${sharedInterests.length === 1 ? '' : 's'} in common` : null}
       peopleMeta={sharedInterests.length ? sharedInterests.slice(0, 4).join(' · ') : null}
       coverActions={<Pressable onPress={() => router.back()} style={socialProfileHeaderStyles.coverIconAction}><AppIcon name="chevron-forward" color="#FFF8E8" size={21} style={{ transform: [{ rotate: '180deg' }] }} /></Pressable>}
@@ -166,29 +192,45 @@ export default function PublicMemberProfileExperienceV2() {
   </View>
 
   return <SafeAreaView style={styles.safe} edges={['top']}>
-    <ScrollView stickyHeaderIndices={profile.can_see_full_profile ? [1] : undefined} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView stickyHeaderIndices={member.can_see_full_profile ? [1] : undefined} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       {header}
 
-      {profile.can_see_full_profile ? <View style={styles.tabsShell}><View style={styles.tabs}>{(['journey', 'posts', 'photos', 'about'] as ProfileTab[]).map((value) => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab}><Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text>{tab === value ? <View style={styles.tabUnderline} /> : null}</Pressable>)}</View></View> : <View />}
+      {member.can_see_full_profile ? <View style={styles.tabsShell}><View style={styles.tabs}>{(['journey', 'posts', 'photos', 'about'] as ProfileTab[]).map((value) => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab}><Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text>{tab === value ? <View style={styles.tabUnderline} /> : null}</Pressable>)}</View></View> : <View />}
 
       <View style={styles.body}>
-        {!profile.can_see_full_profile ? <View style={styles.privateCard}><AppIcon name="privacy" color="#F5C341" size={24} /><View style={{ flex: 1 }}><Text style={styles.privateTitle}>Private profile</Text><Text style={styles.privateBody}>More profile details become visible after this member approves your connection.</Text></View></View> : null}
+        {!member.can_see_full_profile ? <View style={styles.privateCard}><AppIcon name="privacy" color="#F5C341" size={24} /><View style={{ flex: 1 }}><Text style={styles.privateTitle}>Private profile</Text><Text style={styles.privateBody}>More profile details become visible after this member approves your connection.</Text></View></View> : null}
 
-        {profile.can_see_full_profile && tab === 'journey' ? <View style={styles.tabContent}>
-          {latestAlbum ? <><View style={styles.sectionHeader}><View><Text style={styles.sectionEyebrow}>THEIR TRAIL</Text><Text style={styles.sectionTitle}>Latest Shared Chapter</Text></View></View><View style={styles.latestChapter}>{latestAlbum.cover_url && /^(https?:|data:)/i.test(latestAlbum.cover_url) ? <Image source={{ uri: latestAlbum.cover_url }} style={styles.latestImage} /> : <View style={styles.latestFallback}><AppIcon name="photos" color="#D7B45A" size={34} /></View>}<View style={styles.latestShade} /><View style={styles.latestBody}><Text style={styles.latestTitle}>{latestAlbum.title}</Text><Text style={styles.latestMeta}>{latestAlbum.photo_count} shared photo{latestAlbum.photo_count === 1 ? '' : 's'}</Text></View></View></> : <View style={styles.trailSummary}><Text style={styles.sectionEyebrow}>THEIR TRAIL</Text><Text style={styles.trailSummaryTitle}>{profile.adventure_count ? `${profile.adventure_count} completed adventure${profile.adventure_count === 1 ? '' : 's'}` : 'Their Trail is just getting started'}</Text><Text style={styles.sectionSub}>{profile.adventure_count ? 'Completed adventures are part of this member’s outdoor story.' : 'Their first completed adventure will become chapter one.'}</Text></View>}
+        {member.can_see_full_profile && tab === 'journey' ? <View style={styles.tabContent}>
+          {latestAlbum ? <>
+            <View style={styles.sectionHeader}><View><Text style={styles.sectionEyebrow}>THEIR TRAIL</Text><Text style={styles.sectionTitle}>Latest Shared Chapter</Text></View></View>
+            <View style={styles.latestChapter}>
+              {latestAlbum.cover_url && /^(https?:|data:)/i.test(latestAlbum.cover_url) ? <Image source={{ uri: latestAlbum.cover_url }} style={styles.latestImage} /> : <View style={styles.latestFallback}><AppIcon name="photos" color="#D7B45A" size={34} /></View>}
+              <View style={styles.latestShade} />
+              <View style={styles.latestBody}><Text style={styles.latestTitle}>{latestAlbum.title}</Text><Text style={styles.latestMeta}>{latestAlbum.photo_count} shared photo{latestAlbum.photo_count === 1 ? '' : 's'}</Text></View>
+            </View>
+          </> : <View style={styles.trailSummary}><Text style={styles.sectionEyebrow}>THEIR TRAIL</Text><Text style={styles.trailSummaryTitle}>{member.adventure_count ? `${member.adventure_count} completed adventure${member.adventure_count === 1 ? '' : 's'}` : 'Their Trail is just getting started'}</Text><Text style={styles.sectionSub}>{member.adventure_count ? 'Completed adventures are part of this member’s outdoor story.' : 'Their first completed adventure will become chapter one.'}</Text></View>}
 
-          {profile.photo_albums.length > 1 ? <><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Shared Adventures</Text><Text style={styles.sectionSub}>Adventure albums this member chose to share.</Text></View></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.albumRail}>{profile.photo_albums.slice(1, 6).map((album) => <View key={album.adventure_id} style={styles.sharedAdventureCard}>{album.cover_url && /^(https?:|data:)/i.test(album.cover_url) ? <Image source={{ uri: album.cover_url }} style={styles.sharedAdventureImage} /> : <View style={styles.sharedAdventureFallback}><AppIcon name="photos" color="#D7B45A" size={25} /></View>}<View style={styles.sharedAdventureBody}><Text style={styles.sharedAdventureTitle} numberOfLines={2}>{album.title}</Text><Text style={styles.sharedAdventureMeta}>{album.photo_count} photo{album.photo_count === 1 ? '' : 's'}</Text></View></View>)}</ScrollView></> : null}
+          {member.photo_albums.length > 1 ? <>
+            <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Shared Adventures</Text><Text style={styles.sectionSub}>Adventure albums this member chose to share.</Text></View></View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.albumRail}>{member.photo_albums.slice(1, 6).map((album) => <View key={album.adventure_id} style={styles.sharedAdventureCard}>{album.cover_url && /^(https?:|data:)/i.test(album.cover_url) ? <Image source={{ uri: album.cover_url }} style={styles.sharedAdventureImage} /> : <View style={styles.sharedAdventureFallback}><AppIcon name="photos" color="#D7B45A" size={25} /></View>}<View style={styles.sharedAdventureBody}><Text style={styles.sharedAdventureTitle} numberOfLines={2}>{album.title}</Text><Text style={styles.sharedAdventureMeta}>{album.photo_count} photo{album.photo_count === 1 ? '' : 's'}</Text></View></View>)}</ScrollView>
+          </> : null}
 
           {featuredBadges.length ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Badge Showcase</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredBadges.map((badge) => <FeaturedBadge key={badge.badge_id} badge={badge} />)}</ScrollView></> : null}
-
           {featuredStamps.length ? <><View style={[styles.sectionHeader, { marginTop: 8 }]}><Text style={styles.sectionTitle}>Featured Stamps</Text></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredStamps.map((item) => <FeaturedStamp key={item.stamp.stamp_id} item={item} />)}</ScrollView></> : null}
         </View> : null}
 
-        {profile.can_see_full_profile && tab === 'posts' ? <View style={styles.tabContent}><ProfilePosts profileId={profile.id} /></View> : null}
+        {member.can_see_full_profile && tab === 'posts' ? <View style={styles.tabContent}><ProfilePosts profileId={member.id} /></View> : null}
 
-        {profile.can_see_full_profile && tab === 'photos' ? <View style={styles.tabContent}><View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Photos</Text><Text style={styles.sectionSub}>Adventure moments this member chose to share.</Text></View></View><View style={styles.photoGrid}>{profile.photo_albums.map((album) => <View key={album.adventure_id} style={styles.photoTile}>{album.cover_url && /^(https?:|data:)/i.test(album.cover_url) ? <Image source={{ uri: album.cover_url }} style={styles.photoTileImage} /> : <View style={styles.photoTileFallback}><AppIcon name="photos" color="#D7B45A" size={28} /></View>}<View style={styles.photoTileShade} /><View style={styles.photoTileCopy}><Text style={styles.photoTileTitle} numberOfLines={2}>{album.title}</Text><Text style={styles.photoTileMeta}>{album.photo_count} photo{album.photo_count === 1 ? '' : 's'}</Text></View></View>)}</View>{!profile.photo_albums.length ? <View style={styles.empty}><AppIcon name="photos" color="#D7B45A" size={28} /><Text style={styles.emptyTitle}>No shared adventure photos yet</Text></View> : null}</View> : null}
+        {member.can_see_full_profile && tab === 'photos' ? <View style={styles.tabContent}>
+          <View style={styles.sectionHeader}><View><Text style={styles.sectionTitle}>Photos</Text><Text style={styles.sectionSub}>Adventure moments this member chose to share.</Text></View></View>
+          <View style={styles.photoGrid}>{member.photo_albums.map((album) => <View key={album.adventure_id} style={styles.photoTile}>{album.cover_url && /^(https?:|data:)/i.test(album.cover_url) ? <Image source={{ uri: album.cover_url }} style={styles.photoTileImage} /> : <View style={styles.photoTileFallback}><AppIcon name="photos" color="#D7B45A" size={28} /></View>}<View style={styles.photoTileShade} /><View style={styles.photoTileCopy}><Text style={styles.photoTileTitle} numberOfLines={2}>{album.title}</Text><Text style={styles.photoTileMeta}>{album.photo_count} photo{album.photo_count === 1 ? '' : 's'}</Text></View></View>)}</View>
+          {!member.photo_albums.length ? <View style={styles.empty}><AppIcon name="photos" color="#D7B45A" size={28} /><Text style={styles.emptyTitle}>No shared adventure photos yet</Text></View> : null}
+        </View> : null}
 
-        {profile.can_see_full_profile && tab === 'about' ? <View style={styles.tabContent}><View style={styles.aboutBlock}><Text style={styles.sectionTitle}>{rank}</Text><Text style={styles.sectionSub}>{nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}</Text><View style={styles.rankTrack}><View style={[styles.rankFill, { width: `${Math.max(8, rankProgress * 100)}%` }]} /></View></View><View style={styles.aboutBlock}><Text style={styles.sectionTitle}>About</Text>{location ? <View style={styles.aboutRow}><AppIcon name="location" color="#D7B45A" size={18} /><View><Text style={styles.aboutLabel}>Home base</Text><Text style={styles.aboutValue}>{location}</Text></View></View> : null}<View style={styles.aboutRow}><AppIcon name="calendar" color="#D7B45A" size={18} /><View><Text style={styles.aboutLabel}>Member since</Text><Text style={styles.aboutValue}>{joined}</Text></View></View>{profile.interests_visible && profile.interests?.length ? <View style={styles.aboutRow}><AppIcon name="adventure" color="#D7B45A" size={18} /><View style={{ flex: 1 }}><Text style={styles.aboutLabel}>Outdoor interests</Text><Text style={styles.aboutValue}>{profile.interests.join(' · ')}</Text></View></View> : null}</View></View> : null}
+        {member.can_see_full_profile && tab === 'about' ? <View style={styles.tabContent}>
+          <View style={styles.aboutBlock}><Text style={styles.sectionTitle}>{rank}</Text><Text style={styles.sectionSub}>{nextRank ? `${remaining} adventure${remaining === 1 ? '' : 's'} to ${nextRank[0]}` : 'Highest rank reached'}</Text><View style={styles.rankTrack}><View style={[styles.rankFill, { width: `${Math.max(8, rankProgress * 100)}%` }]} /></View></View>
+          <View style={styles.aboutBlock}><Text style={styles.sectionTitle}>About</Text>{location ? <View style={styles.aboutRow}><AppIcon name="location" color="#D7B45A" size={18} /><View><Text style={styles.aboutLabel}>Home base</Text><Text style={styles.aboutValue}>{location}</Text></View></View> : null}<View style={styles.aboutRow}><AppIcon name="calendar" color="#D7B45A" size={18} /><View><Text style={styles.aboutLabel}>Member since</Text><Text style={styles.aboutValue}>{joined}</Text></View></View>{member.interests_visible && member.interests?.length ? <View style={styles.aboutRow}><AppIcon name="adventure" color="#D7B45A" size={18} /><View style={{ flex: 1 }}><Text style={styles.aboutLabel}>Outdoor interests</Text><Text style={styles.aboutValue}>{member.interests.join(' · ')}</Text></View></View> : null}</View>
+        </View> : null}
       </View>
     </ScrollView>
   </SafeAreaView>
