@@ -1,11 +1,12 @@
 import { supabase } from '../lib/supabase';
+import { ensureSafetyOwner } from '../offline/safetyOwner';
 import {
   addBreadcrumb,
   completeOfflineAction,
-  countPendingOfflineActions,
+  countPendingOfflineActions as countLocalPendingOfflineActions,
   createOfflineUuid,
   failOfflineAction,
-  getActiveSafetySession,
+  getActiveSafetySession as getLocalActiveSafetySession,
   getBreadcrumbs,
   listPendingOfflineActions,
   queueOfflineAction,
@@ -25,10 +26,12 @@ export type SafetySyncResult = {
 };
 
 async function currentProfileId() {
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  if (!data.user) throw new Error('Sign in to use Adventure Safety Mode.');
-  return data.user.id;
+  if (!data.session?.user) throw new Error('Sign in to use Adventure Safety Mode.');
+  const profileId = data.session.user.id;
+  await ensureSafetyOwner(profileId);
+  return profileId;
 }
 
 export async function startSafetySession(input: {
@@ -64,7 +67,7 @@ export async function startSafetySession(input: {
     safe_point_longitude: session.safePointLongitude,
     last_check_in: session.lastCheckIn,
     last_check_in_at: session.lastCheckInAt,
-  }, 100);
+  }, 2000);
 
   await queueSafetyCheckIn(session, 'starting', input.safePoint ?? null);
   void flushSafetyQueue();
@@ -75,6 +78,7 @@ export async function markSafePoint(
   session: LocalSafetySession,
   point: Pick<GeoPoint, 'latitude' | 'longitude'>,
 ) {
+  await ensureSafetyOwner(session.profileId);
   const next = await updateLocalSafetySession(session, {
     safePointLatitude: point.latitude,
     safePointLongitude: point.longitude,
@@ -96,6 +100,7 @@ export async function queueSafetyCheckIn(
   status: SafetyCheckInStatus,
   point?: Pick<GeoPoint, 'latitude' | 'longitude'> | null,
 ) {
+  await ensureSafetyOwner(session.profileId);
   const now = new Date().toISOString();
   const next = await updateLocalSafetySession(session, {
     lastCheckIn: status,
@@ -169,6 +174,7 @@ let flushPromise: Promise<SafetySyncResult> | null = null;
 export async function flushSafetyQueue(): Promise<SafetySyncResult> {
   if (flushPromise) return flushPromise;
   flushPromise = (async () => {
+    await currentProfileId();
     let synced = 0;
     let lastError: string | null = null;
     const actions = await listPendingOfflineActions();
@@ -187,7 +193,7 @@ export async function flushSafetyQueue(): Promise<SafetySyncResult> {
 
     return {
       synced,
-      pending: await countPendingOfflineActions(),
+      pending: await countLocalPendingOfflineActions(),
       lastError,
     };
   })();
@@ -199,4 +205,14 @@ export async function flushSafetyQueue(): Promise<SafetySyncResult> {
   }
 }
 
-export { countPendingOfflineActions, getActiveSafetySession, getBreadcrumbs };
+export async function getActiveSafetySession(adventureId: string) {
+  await currentProfileId();
+  return getLocalActiveSafetySession(adventureId);
+}
+
+export async function countPendingOfflineActions() {
+  await currentProfileId();
+  return countLocalPendingOfflineActions();
+}
+
+export { getBreadcrumbs };
