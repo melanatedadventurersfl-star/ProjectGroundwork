@@ -260,6 +260,12 @@ export function TrailGuidePlacePracticalDetails({
   const tentPrice = trailGuideNumber(data, 'pricing.tent_total') ?? trailGuideNumber(data, 'pricing.tent_base');
   const rvPrice = trailGuideNumber(data, 'pricing.rv_total') ?? trailGuideNumber(data, 'pricing.rv_base');
   const cabinPrice = trailGuideNumber(data, 'pricing.cabin_total') ?? trailGuideNumber(data, 'pricing.cabin_base');
+  const pricingMode = trailGuideString(data, 'pricing.rate_mode');
+  const pricingStatus = trailGuideString(data, 'pricing.status');
+  const pricingText = trailGuideString(data, 'pricing.display_text');
+  const reservationFee = trailGuideNumber(data, 'pricing.reservation_fee');
+  const rvUtilityFee = trailGuideNumber(data, 'pricing.rv_utility_fee');
+  const startingAt = pricingMode === 'starting_at';
   const prices = [
     tentPrice != null ? { key: 'tent', value: tentPrice, label: 'Tent / night' } : null,
     rvPrice != null ? { key: 'rv', value: rvPrice, label: 'RV / night' } : null,
@@ -269,6 +275,13 @@ export function TrailGuidePlacePracticalDetails({
   const reservationSource = data.sources.find((source) => source.sourceType === 'reservation')
     ?? (reservationsAvailable ? trailGuidePrimarySource(data) : null);
   const alert = trailGuideString(data, 'alerts.current');
+  const pricingFallback = category === 'Camping' && prices.length === 0 && !pricingText
+    ? pricingStatus === 'check_current_rate'
+      ? 'Current campsite rates are shown in the live reservation system.'
+      : 'Current campsite pricing is not published in the Trail Guide yet. Check the official source before booking.'
+    : null;
+  const hasPricingInfo = prices.length > 0 || Boolean(pricingText || pricingFallback);
+  const showStayCard = category === 'Camping' || essentials.length > 0 || hasPricingInfo || Boolean(reservationSource);
 
   return (
     <View style={styles.section}>
@@ -282,7 +295,7 @@ export function TrailGuidePlacePracticalDetails({
         </View>
       ) : null}
 
-      {(essentials.length || prices.length || reservationSource) ? (
+      {showStayCard ? (
         <View style={styles.stayCard}>
           <Text style={styles.cardTitle}>Stay here</Text>
 
@@ -292,11 +305,20 @@ export function TrailGuidePlacePracticalDetails({
                 <View key={price.key} style={styles.priceRowItem}>
                   {index > 0 ? <View style={styles.priceDivider} /> : null}
                   <View style={styles.priceCell}>
-                    <Text style={styles.priceValue}>{money(price.value)}</Text>
+                    <Text style={styles.priceValue}>{startingAt ? 'From ' : ''}{money(price.value)}</Text>
                     <Text style={styles.priceLabel}>{price.label}</Text>
                   </View>
                 </View>
               ))}
+            </View>
+          ) : null}
+
+          {pricingText || pricingFallback ? <Text style={styles.pricingNote}>{pricingText || pricingFallback}</Text> : null}
+
+          {(reservationFee != null || rvUtilityFee != null) ? (
+            <View style={styles.feeRow}>
+              {reservationFee != null ? <Text style={styles.feeText}>Reservation fee {money(reservationFee)}</Text> : null}
+              {rvUtilityFee != null ? <Text style={styles.feeText}>RV utility fee {money(rvUtilityFee)} / night</Text> : null}
             </View>
           ) : null}
 
@@ -316,11 +338,11 @@ export function TrailGuidePlacePracticalDetails({
           {reservationSource ? (
             <Pressable onPress={() => void Linking.openURL(reservationSource.sourceUrl)} style={({ pressed }) => [styles.reserveButton, pressed && styles.pressed]}>
               <AppIcon name="calendar" color="#17211C" size={17} />
-              <Text style={styles.reserveText}>Check camping availability</Text>
+              <Text style={styles.reserveText}>{pricingStatus === 'check_current_rate' ? 'Check current camping rates' : 'Check camping availability'}</Text>
             </Pressable>
           ) : null}
 
-          <Text style={styles.disclaimer}>Rates, availability, and amenities can change. Confirm current details with the destination before leaving.</Text>
+          <Text style={styles.disclaimer}>Rates, availability, taxes, fees, and amenities can change. Confirm current details with the destination before booking.</Text>
         </View>
       ) : null}
 
@@ -404,6 +426,9 @@ const styles = StyleSheet.create({
   priceDivider: { width: 1, height: 30, backgroundColor: '#2A382F' },
   priceValue: { color: '#FFF8E8', fontSize: 18, lineHeight: 21, fontWeight: '900' },
   priceLabel: { color: '#88958D', fontSize: 7.5, marginTop: 1, fontWeight: '700', textAlign: 'center' },
+  pricingNote: { color: '#C6D0C9', fontSize: 9.5, lineHeight: 14, paddingHorizontal: 2 },
+  feeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  feeText: { color: '#9DA9A1', fontSize: 8.5, fontWeight: '800', borderRadius: 999, borderWidth: 1, borderColor: '#304038', backgroundColor: '#152019', paddingHorizontal: 8, paddingVertical: 5 },
   essentialGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   essentialCell: { width: '31.6%', minHeight: 82, borderRadius: 12, borderWidth: 1, borderColor: '#2A382F', backgroundColor: '#152019', paddingHorizontal: 6, paddingVertical: 7, alignItems: 'center', justifyContent: 'center' },
   essentialIcon: { fontSize: 20, lineHeight: 23, marginBottom: 3 },
