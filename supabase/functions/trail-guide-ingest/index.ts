@@ -53,12 +53,29 @@ const FACT_TYPES = {
   "stay_limit.rv_days": "number",
   "stay_limit.window_days": "number",
   "reservations.available": "boolean",
+  "reservations.url": "string",
+  "pricing.status": "string",
   "pricing.tent_base": "number",
   "pricing.tent_total": "number",
   "pricing.rv_base": "number",
   "pricing.rv_total": "number",
+  "pricing.primitive_base": "number",
+  "pricing.primitive_total": "number",
+  "pricing.electric_base": "number",
+  "pricing.electric_total": "number",
+  "pricing.full_hookup_base": "number",
+  "pricing.full_hookup_total": "number",
   "pricing.cabin_base": "number",
   "pricing.cabin_total": "number",
+  "pricing.reservation_fee": "number",
+  "pricing.vehicle_fee": "number",
+  "pricing.pet_fee": "number",
+  "pricing.utility_fee": "number",
+  "pricing.taxes": "string",
+  "pricing.seasonal": "string",
+  "pricing.weekend": "string",
+  "pricing.resident": "string",
+  "pricing.nonresident": "string",
   "pricing.currency": "string",
   "alcohol.allowed": "boolean",
   "hammocks.on_trees_allowed": "boolean",
@@ -108,7 +125,7 @@ const CATEGORY_COMPLETENESS_FIELDS: Record<string, FactKey[]> = {
     "check_in.time",
     "check_out.time",
     "quiet_hours.range",
-    "pricing.currency",
+    "pricing.status",
   ],
   Hiking: [
     ...COMMON_COMPLETENESS_FIELDS,
@@ -146,6 +163,21 @@ const CATEGORY_COMPLETENESS_FIELDS: Record<string, FactKey[]> = {
     "accessibility.wheelchair",
   ],
 };
+
+const CAMPGROUND_RATE_FIELDS: FactKey[] = [
+  "pricing.tent_base",
+  "pricing.tent_total",
+  "pricing.rv_base",
+  "pricing.rv_total",
+  "pricing.primitive_base",
+  "pricing.primitive_total",
+  "pricing.electric_base",
+  "pricing.electric_total",
+  "pricing.full_hookup_base",
+  "pricing.full_hookup_total",
+  "pricing.cabin_base",
+  "pricing.cabin_total",
+];
 
 function completenessFieldsForCategory(category: string) {
   return CATEGORY_COMPLETENESS_FIELDS[category] ?? [
@@ -327,7 +359,7 @@ async function extractFromSource(openAiKey: string, source: any) {
     body: JSON.stringify({
       model: MODEL,
       instructions:
-        "You extract outdoor destination and campground facts for Go Melanated. Return only facts explicitly supported by the supplied source. Never infer a missing amenity, activity, hookup, fee, rule, campsite dimension, cell signal, Wi-Fi status, accessibility feature, trail detail, admission price, or operating hour. If the source does not establish a field, omit it. Keep total/base prices separate when taxes or fees are stated. Evidence must be a short paraphrase of the supporting source text, not a long quotation. Boolean false means the source explicitly says the feature is unavailable or prohibited, never merely that it was not mentioned. For string_array values, return a JSON array encoded as a string. For numbers, return only the numeric value. For booleans, return true or false.",
+        "You extract outdoor destination and campground facts for Go Melanated. Return only facts explicitly supported by the supplied source. Never infer a missing amenity, activity, hookup, fee, rule, campsite dimension, cell signal, Wi-Fi status, accessibility feature, trail detail, admission price, operating hour, price, or reservation detail. If the source does not establish a field, omit it. Keep total/base prices separate when taxes or fees are stated. For pricing.status, use published only when the source publishes a current fixed rate, and dynamic only when the source explicitly makes price depend on date, selection, or live availability. Never emit not_published merely because a source omits a price. reservations.url must be an explicit HTTPS booking URL from the source. Evidence must be a short paraphrase of the supporting source text, not a long quotation. Boolean false means the source explicitly says the feature is unavailable or prohibited, never merely that it was not mentioned. For string_array values, return a JSON array encoded as a string. For numbers, return only the numeric value. For booleans, return true or false.",
       input: [{ role: "user", content }],
       text: {
         format: {
@@ -367,7 +399,7 @@ async function reconcilePlace(userClient: any, placeId: string, category: string
       .eq("place_id", placeId),
     userClient
       .from("trail_guide_sources")
-      .select("id,priority,source_date,last_checked_at,status")
+      .select("id,source_type,priority,source_date,last_checked_at,status")
       .eq("place_id", placeId)
       .eq("status", "active"),
   ]);
@@ -447,7 +479,27 @@ async function reconcilePlace(userClient: any, placeId: string, category: string
 
   const completenessFields = completenessFieldsForCategory(category);
   const present = completenessFields.filter((field) => grouped.has(field)).length;
-  const completeness = Math.round((present / completenessFields.length) * 100);
+  let completeness = Math.round((present / completenessFields.length) * 100);
+
+  if (category === "Camping") {
+    const currentValue = (field: FactKey) => grouped.get(field)?.[0]?.value;
+    const pricingStatus = String(currentValue("pricing.status") ?? "");
+    const hasPublishedRate = CAMPGROUND_RATE_FIELDS.some((field) => grouped.has(field));
+    const hasCurrency = grouped.has("pricing.currency");
+    const pricingReady = pricingStatus === "dynamic"
+      || pricingStatus === "not_published"
+      || (pricingStatus === "published" && hasPublishedRate && hasCurrency);
+
+    const reservationsAvailable = currentValue("reservations.available");
+    const reservationKnown = reservationsAvailable === true || reservationsAvailable === false;
+    const hasReservationPath = grouped.has("reservations.url")
+      || (sources ?? []).some((source: any) => source.source_type === "reservation");
+    const bookingReady = reservationsAvailable === false
+      || (reservationsAvailable === true && hasReservationPath);
+
+    if (!pricingReady || !reservationKnown || !bookingReady) completeness = Math.min(completeness, 99);
+  }
+
   const { error: profileError } = await userClient
     .from("trail_guide_place_profiles")
     .update({
