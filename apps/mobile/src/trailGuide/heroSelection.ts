@@ -51,6 +51,7 @@ type CandidateRow = {
 };
 
 const rankedSessionCache = new Map<string, Promise<TrailGuideHeroPhoto[]>>();
+const rankedResolvedCache = new Map<string, TrailGuideHeroPhoto[]>();
 const fastHeroSessionCache = new Map<string, Promise<TrailGuideHeroPhoto[]>>();
 const primarySessionCache = new Map<string, Promise<TrailGuideHeroPhoto>>();
 
@@ -377,6 +378,8 @@ async function resolveTrailGuideFastHeroCandidates(place: TrailGuidePlace) {
 }
 
 export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace) {
+  const resolved = rankedResolvedCache.get(place.id);
+  if (resolved) return resolved;
   const existing = rankedSessionCache.get(place.id);
   if (existing) return existing;
 
@@ -391,7 +394,9 @@ export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace) {
       ...(curated ? [curated] : []),
       ...google,
     ];
-    return buildDiverseGallery(destinationSpecific.length ? destinationSpecific : [genericCandidate(place)]);
+    const gallery = buildDiverseGallery(destinationSpecific.length ? destinationSpecific : [genericCandidate(place)]);
+    rankedResolvedCache.set(place.id, gallery);
+    return gallery;
   })();
 
   rankedSessionCache.set(place.id, pending);
@@ -426,16 +431,21 @@ export function useTrailGuideHeroCandidates(place?: TrailGuidePlace) {
       setPhotos([]);
       return () => { active = false; };
     }
+
+    const rankedReady = rankedResolvedCache.get(place.id);
+    if (rankedReady?.length) {
+      setPhotos(rankedReady);
+      return () => { active = false; };
+    }
+
     const curated = curatedCandidate(place);
     setPhotos(curated?.heroEligible ? buildDiverseGallery([curated]) : []);
     void resolveTrailGuideFastHeroCandidates(place)
       .then((fast) => {
         if (active) setPhotos(fast.length ? fast : [genericCandidate(place)]);
-        return resolveTrailGuideHeroCandidates(place);
-      })
-      .then((ranked) => {
-        if (active) setPhotos(ranked.length ? ranked : [genericCandidate(place)]);
+        void resolveTrailGuideHeroCandidates(place).catch(() => undefined);
       });
+
     return () => { active = false; };
   }, [place]);
 
@@ -471,10 +481,12 @@ export function useTrailGuidePrimaryPhoto(place?: TrailGuidePlace) {
 export function clearTrailGuideHeroSelectionCache(placeId?: string) {
   if (placeId) {
     rankedSessionCache.delete(placeId);
+    rankedResolvedCache.delete(placeId);
     fastHeroSessionCache.delete(placeId);
     primarySessionCache.delete(placeId);
   } else {
     rankedSessionCache.clear();
+    rankedResolvedCache.clear();
     fastHeroSessionCache.clear();
     primarySessionCache.clear();
   }
