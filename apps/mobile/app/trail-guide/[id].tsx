@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -66,14 +66,17 @@ export default function TrailGuidePlaceDetailScreen() {
   const [gmSummary, setGmSummary] = useState<{ averageRating: number | null; reviewCount: number } | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<string[]>([]);
+  const [heroWidth, setHeroWidth] = useState(width);
   const [saved, setSaved] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [transientNotice, setTransientNotice] = useState<string | null>(null);
+  const lastPhotoIndexRef = useRef(0);
 
   useEffect(() => {
     let active = true;
     setGoogleDetails(null);
     setActivePhotoIndex(0);
+    lastPhotoIndexRef.current = 0;
     setFailedPhotoUrls([]);
     if (!place) return () => { active = false; };
     void resolveGoogleTrailGuidePlaceDetails(place).then((details) => { if (active) setGoogleDetails(details); });
@@ -122,7 +125,9 @@ export default function TrailGuidePlaceDetailScreen() {
   );
 
   useEffect(() => {
-    if (activePhotoIndex >= gallery.length) setActivePhotoIndex(0);
+    const next = Math.min(activePhotoIndex, Math.max(0, gallery.length - 1));
+    if (next !== activePhotoIndex) setActivePhotoIndex(next);
+    lastPhotoIndexRef.current = next;
   }, [activePhotoIndex, gallery.length]);
 
   const nearby = useMemo(() => {
@@ -195,13 +200,39 @@ export default function TrailGuidePlaceDetailScreen() {
     setFailedPhotoUrls((current) => current.includes(photoUrl) ? current : [...current, photoUrl]);
   };
 
+  const syncPhotoIndex = (offsetX: number) => {
+    const pageWidth = heroWidth || width;
+    if (!pageWidth || gallery.length === 0) return;
+    const next = Math.max(0, Math.min(gallery.length - 1, Math.round(offsetX / pageWidth)));
+    if (next === lastPhotoIndexRef.current) return;
+    lastPhotoIndexRef.current = next;
+    setActivePhotoIndex(next);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
+        <View
+          style={styles.hero}
+          onLayout={(event) => {
+            const measured = event.nativeEvent.layout.width;
+            if (measured > 0 && Math.abs(measured - heroWidth) > 0.5) setHeroWidth(measured);
+          }}
+        >
           {gallery.length > 0 ? (
-            <ScrollView horizontal pagingEnabled bounces={false} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(event) => setActivePhotoIndex(Math.round(event.nativeEvent.contentOffset.x / width))}>
-              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              snapToInterval={heroWidth}
+              decelerationRate="fast"
+              bounces={false}
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              onScroll={(event) => syncPhotoIndex(event.nativeEvent.contentOffset.x)}
+              onScrollEndDrag={(event) => syncPhotoIndex(event.nativeEvent.contentOffset.x)}
+              onMomentumScrollEnd={(event) => syncPhotoIndex(event.nativeEvent.contentOffset.x)}
+            >
+              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width: heroWidth, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
             </ScrollView>
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Finding destination photos…</Text></View>
