@@ -41,12 +41,6 @@ type QuickDetail = {
   value: string;
 };
 
-type PriceItem = {
-  key: string;
-  label: string;
-  value: number;
-};
-
 function money(value: number | null) {
   return value == null ? null : `$${value.toFixed(2)}`;
 }
@@ -272,10 +266,10 @@ export function TrailGuidePlacePracticalDetails({
     ['full-hookup', 'Full hookup / night', 'pricing.full_hookup_total', 'pricing.full_hookup_base'],
     ['cabin', 'Cabin / night', 'pricing.cabin_total', 'pricing.cabin_base'],
   ] as const;
-  const prices = priceDefinitions.map(([key, label, totalField, baseField]) => {
+  const prices = priceDefinitions.flatMap(([key, label, totalField, baseField]) => {
     const value = trailGuideNumber(data, totalField) ?? trailGuideNumber(data, baseField);
-    return value == null ? null : { key, label, value };
-  }).filter((item): item is PriceItem => Boolean(item));
+    return value == null ? [] : [{ key, label, value }];
+  });
   const pricingStatus = trailGuideString(data, 'pricing.status');
   const reservationFee = trailGuideNumber(data, 'pricing.reservation_fee');
   const vehicleFee = trailGuideNumber(data, 'pricing.vehicle_fee');
