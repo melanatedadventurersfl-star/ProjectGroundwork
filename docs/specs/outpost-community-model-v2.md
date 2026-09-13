@@ -90,21 +90,31 @@ The member can attach multiple optional interests to a post.
 
 ## Host communities
 
-A host can have one primary community. Hosts can have additional subgroups only when they serve a distinct audience or operational purpose.
+The platform organization owns the host community. Individual host profiles can manage it, but they are not the ownership boundary.
+
+Each organization can designate one primary host community. Additional subgroups are appropriate only when they serve a distinct audience or operational purpose.
 
 Do not require separate host groups for Camping, Hiking, Water, Family, or other overlapping activities.
 
-The primary community is the social home for the host's posts, members, and outings.
+The primary community is the social home for the organization's posts, members, and outings.
+
+`community_groups.organization_id` is the tenant ownership field. `community_groups.host_profile_id` is retained only as a legacy host or steward reference.
+
+`organizations.primary_community_id` is the authoritative primary-community setting. `host_profiles.primary_community_id` is legacy compatibility state and must not drive event distribution.
 
 ## Host events and community outings
 
 Host Center remains the source of truth for host events.
 
-When an adventure is published, the system links it to the host's primary community through `community_outings`.
+When an adventure is published, the system resolves its organization from `adventures.platform_organization_id`, then links it to that organization's primary community through `community_outings`.
+
+The event creator does not determine the community destination. A teammate publishing an event for the same organization must produce the same community outing as the organization owner or another host.
 
 The community outing is a reference to the adventure, not a duplicated event record.
 
 Changes to the adventure therefore remain authoritative everywhere it appears.
+
+Changing an organization's primary community repoints the organization's published primary outing links. Intentional non-primary shares remain separate.
 
 The community page includes an Outings destination that reads those linked adventures.
 
@@ -122,6 +132,8 @@ Community-only visibility continues to define who can open the event.
 
 Core tables and joins:
 
+- `organizations.primary_community_id`
+- `community_groups.organization_id`
 - `community_groups`
 - `community_group_members`
 - `interests`
@@ -131,7 +143,7 @@ Core tables and joins:
 - `adventure_interests`
 - `host_interests`
 - `community_outings`
-- `host_profiles.primary_community_id`
+- `host_profiles.primary_community_id` as legacy compatibility only
 
 ## Acceptance criteria
 
@@ -144,7 +156,12 @@ Core tables and joins:
 - Community composer uses one selector instead of a full community card list.
 - Posts can carry multiple interests.
 - Host events can carry multiple interests.
-- A host can designate a primary community.
-- Published Host Center events automatically appear as linked outings in that primary community.
+- Every community has a platform organization owner.
+- An organization can designate one primary host community.
+- A host community cannot become primary for a different organization.
+- Host Center reads and writes the active organization's primary community, not an individual profile setting.
+- Published Host Center events automatically appear as linked outings in the primary community for `adventures.platform_organization_id`.
+- Events created by different teammates in the same organization route to the same primary community.
+- Changing the active organization's primary community repoints its published primary outing links.
 - Community Outings open the same underlying adventure record.
 - Communities expose ownership type and distinguish host, member-led, and Go Melanated spaces.
