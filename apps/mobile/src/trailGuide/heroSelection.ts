@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
 import type { TrailGuidePlace } from './catalog';
-import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePhoto } from './googlePlacePhotos';
+import {
+  resolveGoogleTrailGuideAnalyzedPlaceDetails,
+  resolveGoogleTrailGuidePlaceDetails,
+  type GooglePhotoPurpose,
+  type GoogleTrailGuidePhoto,
+} from './googlePlacePhotos';
 import { CURATED_TRAIL_GUIDE_PHOTOS, type TrailGuidePhoto } from './placePhotos';
 
 const PHOTO_BUCKET = 'trail-guide-photos';
 const MAX_GALLERY_PHOTOS = 12;
+const DEFERRED_CARD_LOAD_MS = 700;
 
 export type TrailGuideHeroSource = 'official' | 'admin' | 'camper' | 'google' | 'curated' | 'wikimedia' | 'generic';
 
@@ -44,7 +50,9 @@ type CandidateRow = {
   gallery_eligible: boolean;
 };
 
-const sessionCache = new Map<string, Promise<TrailGuideHeroPhoto[]>>();
+const rankedSessionCache = new Map<string, Promise<TrailGuideHeroPhoto[]>>();
+const fastHeroSessionCache = new Map<string, Promise<TrailGuideHeroPhoto[]>>();
+const primarySessionCache = new Map<string, Promise<TrailGuideHeroPhoto>>();
 
 function clamp(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -264,11 +272,16 @@ function googleHeroEligible(place: TrailGuidePlace, photo: GoogleTrailGuidePhoto
   return !blocked && !portrait && !wildlifeCampground && !lowHeroScore && score >= 0.48;
 }
 
-async function googleCandidates(place: TrailGuidePlace): Promise<TrailGuideHeroPhoto[]> {
-  const details = await resolveGoogleTrailGuidePlaceDetails(place);
+async function googleCandidates(
+  place: TrailGuidePlace,
+  options: { analyze: boolean; purpose: GooglePhotoPurpose },
+): Promise<TrailGuideHeroPhoto[]> {
+  const details = options.analyze
+    ? await resolveGoogleTrailGuideAnalyzedPlaceDetails(place, options.purpose)
+    : await resolveGoogleTrailGuidePlaceDetails(place, { purpose: options.purpose });
   if (!details?.photos.length) return [];
 
-  return details.photos.slice(0, 10).map((photo, index) => {
+  return details.photos.slice(0, options.purpose === 'card' ? 3 : 10).map((photo, index) => {
     const score = googleCandidateScore(place, photo, index);
     const category = photo.category ?? primaryCategory(place);
     return {
@@ -348,14 +361,29 @@ function buildDiverseGallery(candidates: TrailGuideHeroPhoto[]) {
   return result;
 }
 
+async function resolveTrailGuideFastHeroCandidates(place: TrailGuidePlace) {
+  const existing = fastHeroSessionCache.get(place.id);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    const google = await googleCandidates(place, { analyze: false, purpose: 'hero' });
+    const curated = curatedCandidate(place);
+    const destinationSpecific = [...google, ...(curated ? [curated] : [])];
+    return buildDiverseGallery(destinationSpecific.length ? destinationSpecific : [genericCandidate(place)]);
+  })();
+
+  fastHeroSessionCache.set(place.id, pending);
+  return pending;
+}
+
 export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace) {
-  const existing = sessionCache.get(place.id);
+  const existing = rankedSessionCache.get(place.id);
   if (existing) return existing;
 
   const pending = (async () => {
     const [stored, google] = await Promise.all([
       databaseCandidates(place),
-      googleCandidates(place),
+      googleCandidates(place, { analyze: true, purpose: 'hero' }),
     ]);
     const curated = curatedCandidate(place);
     const destinationSpecific = [
@@ -366,18 +394,31 @@ export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace) {
     return buildDiverseGallery(destinationSpecific.length ? destinationSpecific : [genericCandidate(place)]);
   })();
 
-  sessionCache.set(place.id, pending);
+  rankedSessionCache.set(place.id, pending);
   return pending;
 }
 
 export async function resolveTrailGuidePrimaryPhoto(place: TrailGuidePlace) {
-  const gallery = await resolveTrailGuideHeroCandidates(place);
-  return gallery.find((photo) => photo.heroEligible) ?? gallery[0] ?? genericCandidate(place);
+  const existing = primarySessionCache.get(place.id);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    const curated = curatedCandidate(place);
+    if (curated?.heroEligible && curated.sourceType === 'official') return curated;
+
+    const google = await googleCandidates(place, { analyze: false, purpose: 'card' });
+    const destinationSpecific = [...google, ...(curated ? [curated] : [])];
+    const gallery = buildDiverseGallery(destinationSpecific.length ? destinationSpecific : [genericCandidate(place)]);
+    return gallery.find((photo) => photo.heroEligible) ?? gallery[0] ?? genericCandidate(place);
+  })();
+
+  primarySessionCache.set(place.id, pending);
+  return pending;
 }
 
 export function useTrailGuideHeroCandidates(place?: TrailGuidePlace) {
   const initialCurated = place ? curatedCandidate(place) : null;
-  const [photos, setPhotos] = useState<TrailGuideHeroPhoto[]>(initialCurated ? buildDiverseGallery([initialCurated]) : []);
+  const [photos, setPhotos] = useState<TrailGuideHeroPhoto[]>(initialCurated?.heroEligible ? buildDiverseGallery([initialCurated]) : []);
 
   useEffect(() => {
     let active = true;
@@ -386,10 +427,15 @@ export function useTrailGuideHeroCandidates(place?: TrailGuidePlace) {
       return () => { active = false; };
     }
     const curated = curatedCandidate(place);
-    setPhotos(curated ? buildDiverseGallery([curated]) : []);
-    void resolveTrailGuideHeroCandidates(place).then((next) => {
-      if (active) setPhotos(next.length ? next : [genericCandidate(place)]);
-    });
+    setPhotos(curated?.heroEligible ? buildDiverseGallery([curated]) : []);
+    void resolveTrailGuideFastHeroCandidates(place)
+      .then((fast) => {
+        if (active) setPhotos(fast.length ? fast : [genericCandidate(place)]);
+        return resolveTrailGuideHeroCandidates(place);
+      })
+      .then((ranked) => {
+        if (active) setPhotos(ranked.length ? ranked : [genericCandidate(place)]);
+      });
     return () => { active = false; };
   }, [place]);
 
@@ -397,7 +443,8 @@ export function useTrailGuideHeroCandidates(place?: TrailGuidePlace) {
 }
 
 export function useTrailGuidePrimaryPhoto(place?: TrailGuidePlace) {
-  const [photo, setPhoto] = useState<TrailGuideHeroPhoto | null>(null);
+  const initialCurated = place ? curatedCandidate(place) : null;
+  const [photo, setPhoto] = useState<TrailGuideHeroPhoto | null>(initialCurated?.heroEligible ? initialCurated : null);
 
   useEffect(() => {
     let active = true;
@@ -405,17 +452,30 @@ export function useTrailGuidePrimaryPhoto(place?: TrailGuidePlace) {
       setPhoto(null);
       return () => { active = false; };
     }
-    setPhoto(null);
-    void resolveTrailGuidePrimaryPhoto(place).then((next) => {
-      if (active) setPhoto(next);
-    });
-    return () => { active = false; };
+    const curated = curatedCandidate(place);
+    setPhoto(curated?.heroEligible ? curated : null);
+    const timer = setTimeout(() => {
+      void resolveTrailGuidePrimaryPhoto(place).then((next) => {
+        if (active) setPhoto(next);
+      });
+    }, DEFERRED_CARD_LOAD_MS);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [place]);
 
   return photo;
 }
 
 export function clearTrailGuideHeroSelectionCache(placeId?: string) {
-  if (placeId) sessionCache.delete(placeId);
-  else sessionCache.clear();
+  if (placeId) {
+    rankedSessionCache.delete(placeId);
+    fastHeroSessionCache.delete(placeId);
+    primarySessionCache.delete(placeId);
+  } else {
+    rankedSessionCache.clear();
+    fastHeroSessionCache.clear();
+    primarySessionCache.clear();
+  }
 }
