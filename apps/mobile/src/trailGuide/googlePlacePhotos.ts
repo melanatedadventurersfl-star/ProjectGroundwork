@@ -93,7 +93,39 @@ type ResolveOptions = {
   analyze?: boolean;
 };
 
+type PhotoRequestLane = 'hero' | 'card' | 'background';
+
 const detailsSessionCache = new Map<string, Promise<GoogleTrailGuidePlaceDetails | null>>();
+const requestQueues: Record<PhotoRequestLane, Array<() => void>> = {
+  hero: [],
+  card: [],
+  background: [],
+};
+const MAX_CONCURRENT_PHOTO_REQUESTS = 2;
+let activePhotoRequests = 0;
+
+function drainPhotoRequestQueue() {
+  while (activePhotoRequests < MAX_CONCURRENT_PHOTO_REQUESTS) {
+    const start = requestQueues.hero.shift() ?? requestQueues.card.shift() ?? requestQueues.background.shift();
+    if (!start) break;
+    start();
+  }
+}
+
+function queuePhotoRequest<T>(lane: PhotoRequestLane, task: () => Promise<T>) {
+  return new Promise<T>((resolve, reject) => {
+    requestQueues[lane].push(() => {
+      activePhotoRequests += 1;
+      void task()
+        .then(resolve, reject)
+        .finally(() => {
+          activePhotoRequests = Math.max(0, activePhotoRequests - 1);
+          drainPhotoRequestQueue();
+        });
+    });
+    drainPhotoRequestQueue();
+  });
+}
 
 function numeric01(value: unknown) {
   const parsed = Number(value);
@@ -135,7 +167,8 @@ export async function resolveGoogleTrailGuidePlaceDetails(
 
   const pending = (async () => {
     try {
-      const { data, error } = await supabase.functions.invoke<GooglePlacePhotoResponse>('place-photo', {
+      const lane: PhotoRequestLane = analyze ? 'background' : purpose === 'hero' ? 'hero' : 'card';
+      const { data, error } = await queuePhotoRequest(lane, () => supabase.functions.invoke<GooglePlacePhotoResponse>('place-photo', {
         body: {
           name: place.name,
           area: place.area,
@@ -150,7 +183,7 @@ export async function resolveGoogleTrailGuidePlaceDetails(
           trailGuideTags: place.tags,
           trailGuideSummary: place.summary,
         },
-      });
+      }));
       if (error || data?.error) return null;
 
       const placeData = data?.place;
