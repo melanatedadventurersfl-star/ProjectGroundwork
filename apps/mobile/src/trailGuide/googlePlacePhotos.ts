@@ -143,7 +143,7 @@ export async function resolveGoogleTrailGuidePlaceDetails(
           includeGallery: true,
           includeHeroAnalysis: analyze,
           photoPurpose: purpose,
-          maxPhotos: purpose === 'card' ? 3 : 8,
+          maxPhotos: purpose === 'card' || !analyze ? 3 : 8,
           analysisLimit: 3,
           trailGuideCategory: place.category,
           trailGuideType: place.type,
