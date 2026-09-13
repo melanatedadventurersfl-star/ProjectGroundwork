@@ -92,7 +92,11 @@ const CATEGORIES: Category[] = [
   },
 ];
 
-const PERMISSIONS = Array.from(new Set(CATEGORIES.flatMap((category) => category.tools.map((tool) => tool.permission).filter(Boolean)))) as OrganizationPermission[];
+const QUICK_ACTION_PERMISSIONS: OrganizationPermission[] = ['events.manage', 'tasks.manage', 'members.manage', 'communications.send'];
+const PERMISSIONS = Array.from(new Set([
+  ...CATEGORIES.flatMap((category) => category.tools.map((tool) => tool.permission).filter(Boolean) as OrganizationPermission[]),
+  ...QUICK_ACTION_PERMISSIONS,
+]));
 const sessionPins = new Map<string, string[]>();
 const sessionRecent = new Map<string, string[]>();
 
@@ -429,7 +433,7 @@ const styles = StyleSheet.create({
   quickIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#2A2518', alignItems: 'center', justifyContent: 'center' },
   quickText: { color: COLORS.cream, fontSize: 9.5, fontWeight: '900' },
   searchShell: { minHeight: 48, marginTop: 21, borderRadius: 14, borderWidth: 1, borderColor: COLORS.line, backgroundColor: '#111914', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12 },
-  searchInput: { flex: 1, color: COLORS.cream, fontSize: 11, paddingVertical: 10, outlineStyle: 'none' } as never,
+  searchInput: { flex: 1, color: COLORS.cream, fontSize: 11, paddingVertical: 10 },
   clearSearch: { color: COLORS.muted, fontSize: 22, lineHeight: 24, paddingHorizontal: 4 },
   searchResults: { marginTop: 10, borderRadius: 16, borderWidth: 1, borderColor: COLORS.line, backgroundColor: COLORS.panel, overflow: 'hidden' },
   resultLabel: { color: COLORS.dim, fontSize: 8, fontWeight: '900', letterSpacing: 0.8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 3 },
