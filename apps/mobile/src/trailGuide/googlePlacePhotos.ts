@@ -1,5 +1,3 @@
-import { Image } from 'react-native';
-
 import { supabase } from '../lib/supabase';
 import type { TrailGuidePlace } from './catalog';
 import type { TrailGuidePhoto } from './placePhotos';
@@ -95,14 +93,6 @@ function numeric01(value: unknown) {
   return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : null;
 }
 
-async function preload(url: string) {
-  try {
-    return await Image.prefetch(url);
-  } catch {
-    return false;
-  }
-}
-
 function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, mapsUrl?: string | null): GoogleTrailGuidePhoto | null {
   if (!item.url) return null;
   return {
@@ -146,11 +136,8 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
       const placeData = data?.place;
       const mapsUrl = placeData?.mapsUrl ?? data?.mapsUrl ?? null;
       const items = Array.isArray(data?.photos) ? data.photos : data?.photo ? [data.photo] : [];
-      const candidates = items
+      const photos = items
         .map((item) => toTrailGuidePhoto(item, place, mapsUrl))
-        .filter((photo): photo is GoogleTrailGuidePhoto => Boolean(photo));
-      const loaded = await Promise.all(candidates.map(async (photo) => await preload(photo.url) ? photo : null));
-      const photos = loaded
         .filter((photo): photo is GoogleTrailGuidePhoto => Boolean(photo))
         .filter((photo, index, all) => all.findIndex((candidate) => candidate.url === photo.url) === index);
 
