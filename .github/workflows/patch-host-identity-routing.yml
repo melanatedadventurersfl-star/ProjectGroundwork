@@ -1,0 +1,126 @@
+name: Patch host identity routing
+
+on:
+  push:
+    branches:
+      - fix/host-identity-community-routing
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[host-identity-ui]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/host-identity-community-routing
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply Host Center identity patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('apps/mobile/app/host/create-scratch.tsx')
+          text = p.read_text()
+
+          def swap(old, new):
+              global text
+              if old not in text:
+                  raise SystemExit(f'Missing expected block: {old[:180]!r}')
+              text = text.replace(old, new)
+
+          swap(
+              "import { getPrimaryHostCommunityId, listManagedHostCommunityIds, setHostOutingInterests, setPrimaryHostCommunity } from '../../src/hosting/communityIntegration';",
+              "import { getActiveHostOrganizationContext, getPrimaryHostCommunityId, listManagedHostCommunityIds, setHostOutingInterests, setPrimaryHostCommunity } from '../../src/hosting/communityIntegration';",
+          )
+
+          swap(
+              "  const [managedGroups, setManagedGroups] = useState<CommunityGroup[]>([]);\n  const [primaryCommunityId, setPrimaryCommunityId] = useState<string | null>(null);",
+              "  const [managedGroups, setManagedGroups] = useState<CommunityGroup[]>([]);\n  const [hostOrganizationId, setHostOrganizationId] = useState<string | null>(null);\n  const [hostOrganizationName, setHostOrganizationName] = useState<string | null>(null);\n  const [primaryCommunityId, setPrimaryCommunityId] = useState<string | null>(null);",
+          )
+
+          old_effect = """  useEffect(() => {
+    void Promise.all([getGroups(), listManagedHostCommunityIds(), getPrimaryHostCommunityId()])
+      .then(([nextGroups, managedIds, primaryId]) => {
+        const peopleGroups = nextGroups.filter(isPeopleCommunity);
+        const managedSet = new Set(managedIds);
+        const nextManaged = peopleGroups.filter((group) => managedSet.has(group.id));
+        setGroups(peopleGroups);
+        setManagedGroups(nextManaged);
+        const resolvedPrimary = primaryId && managedSet.has(primaryId) ? primaryId : nextManaged.length === 1 ? nextManaged[0]?.id ?? null : null;
+        setPrimaryCommunityId(resolvedPrimary);
+      })
+      .catch(() => {
+        setGroups([]);
+        setManagedGroups([]);
+      });
+  }, []);"""
+          new_effect = """  useEffect(() => {
+    void (async () => {
+      try {
+        const [nextGroups, hostContext] = await Promise.all([getGroups(), getActiveHostOrganizationContext()]);
+        const peopleGroups = nextGroups.filter(isPeopleCommunity);
+        setGroups(peopleGroups);
+
+        if (!hostContext) {
+          setHostOrganizationId(null);
+          setHostOrganizationName(null);
+          setManagedGroups([]);
+          setPrimaryCommunityId(null);
+          return;
+        }
+
+        const [managedIds, primaryId] = await Promise.all([
+          listManagedHostCommunityIds(hostContext.id),
+          getPrimaryHostCommunityId(hostContext.id),
+        ]);
+        const managedSet = new Set(managedIds);
+        const nextManaged = peopleGroups.filter((group) => managedSet.has(group.id));
+        setHostOrganizationId(hostContext.id);
+        setHostOrganizationName(hostContext.name);
+        setManagedGroups(nextManaged);
+        const resolvedPrimary = primaryId && managedSet.has(primaryId) ? primaryId : nextManaged.length === 1 ? nextManaged[0]?.id ?? null : null;
+        setPrimaryCommunityId(resolvedPrimary);
+      } catch {
+        setGroups([]);
+        setManagedGroups([]);
+        setHostOrganizationId(null);
+        setHostOrganizationName(null);
+        setPrimaryCommunityId(null);
+      }
+    })();
+  }, []);"""
+          swap(old_effect, new_effect)
+
+          swap(
+              "      if (primaryCommunityId) await setPrimaryHostCommunity(primaryCommunityId);",
+              "      if (primaryCommunityId && hostOrganizationId) await setPrimaryHostCommunity(hostOrganizationId, primaryCommunityId);",
+          )
+
+          swap(
+              "      const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions });",
+              "      const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions, hostOrganizationId });",
+          )
+
+          swap(
+              "    <Text style={styles.sectionLabel}>Host community</Text>\n    <Text style={styles.sectionCopy}>When this event is published, it will appear as an outing in your primary community.</Text>\n    {managedGroups.length ? <View style={styles.chips}>{managedGroups.map((group) => <Chip key={group.id} label={group.name} active={primaryCommunityId === group.id} onPress={() => setPrimaryCommunityId(group.id)} />)}</View> : <Text style={styles.communityNote}>No managed community is connected yet. You can build the event now, but it will not appear in a host community until one is connected.</Text>}",
+              "    <Text style={styles.sectionLabel}>Host community</Text>\n    <Text style={styles.sectionCopy}>{hostOrganizationName ? `Events published as ${hostOrganizationName} appear as outings in this community.` : 'Connect a public host identity to automatically publish events into its community.'}</Text>\n    {managedGroups.length ? <View style={styles.chips}>{managedGroups.map((group) => <Chip key={group.id} label={group.name} active={primaryCommunityId === group.id} onPress={() => setPrimaryCommunityId(group.id)} />)}</View> : <Text style={styles.communityNote}>{hostOrganizationName ? 'No community is connected to this host identity yet.' : 'No public host identity is configured for the active organization.'}</Text>}",
+          )
+
+          p.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile/app/host/create-scratch.tsx
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "[host-identity-ui] route events through host identity"
+          git push origin HEAD:fix/host-identity-community-routing
