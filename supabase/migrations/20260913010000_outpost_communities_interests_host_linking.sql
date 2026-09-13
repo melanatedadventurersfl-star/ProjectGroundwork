@@ -16,12 +16,21 @@ set is_topic = true,
 where kind = 'interest'
   and lower(name) in ('camping', 'hiking', 'water adventures', 'family adventures', 'beginner outdoors');
 
+-- Existing groups only become host communities when their creator is a host and
+-- already manages that group. Creating a group alone does not make it host-owned.
 update public.community_groups g
 set owner_type = 'host',
     community_type = 'host',
     host_profile_id = g.created_by
 where g.created_by is not null
   and exists (select 1 from public.host_profiles hp where hp.profile_id = g.created_by)
+  and exists (
+    select 1
+    from public.community_group_members gm
+    where gm.group_id = g.id
+      and gm.profile_id = g.created_by
+      and gm.role in ('host', 'moderator')
+  )
   and not g.is_topic;
 
 update public.community_groups
@@ -66,6 +75,22 @@ create table if not exists public.profile_interests (
   primary key (profile_id, interest_id)
 );
 
+-- Preserve the preference signal that existed when members joined the old topic rooms.
+insert into public.profile_interests (profile_id, interest_id)
+select gm.profile_id, i.id
+from public.community_group_members gm
+join public.community_groups g on g.id = gm.group_id
+join public.interests i on i.slug = case lower(g.name)
+  when 'camping' then 'camping'
+  when 'hiking' then 'hiking'
+  when 'water adventures' then 'water'
+  when 'family adventures' then 'family'
+  when 'beginner outdoors' then 'beginner-friendly'
+  else null
+end
+where g.is_topic
+on conflict do nothing;
+
 create table if not exists public.community_interests (
   group_id uuid not null references public.community_groups(id) on delete cascade,
   interest_id uuid not null references public.interests(id) on delete cascade,
@@ -97,10 +122,11 @@ create table if not exists public.host_interests (
 alter table public.host_profiles
   add column if not exists primary_community_id uuid references public.community_groups(id) on delete set null;
 
--- If an existing host has exactly one community where they already hold the host role,
--- use it as the primary community. Ambiguous hosts are left unchanged for explicit choice.
+-- If an existing host has exactly one non-topic community where they already
+-- hold the host role, use it as the primary community. Ambiguous hosts are left
+-- unchanged so they can choose explicitly.
 with candidates as (
-  select gm.profile_id, min(gm.group_id) as group_id
+  select gm.profile_id, (array_agg(gm.group_id))[1] as group_id
   from public.community_group_members gm
   join public.community_groups g on g.id = gm.group_id
   where gm.role = 'host'
@@ -162,24 +188,50 @@ as $$
 begin
   if not exists (
     select 1
-    from public.community_group_members gm
-    where gm.group_id = p_group_id
-      and gm.profile_id = auth.uid()
-      and gm.role in ('host', 'moderator')
-  ) and not exists (
-    select 1 from public.community_groups g
-    where g.id = p_group_id and g.created_by = auth.uid()
+    from public.community_groups g
+    where g.id = p_group_id
+      and not coalesce(g.is_topic, false)
+      and (
+        g.created_by = auth.uid()
+        or exists (
+          select 1
+          from public.community_group_members gm
+          where gm.group_id = g.id
+            and gm.profile_id = auth.uid()
+            and gm.role in ('host', 'moderator')
+        )
+      )
   ) then
     raise exception 'You do not manage this community';
   end if;
 
   update public.community_groups
-  set owner_type = 'host', community_type = 'host', host_profile_id = auth.uid()
+  set owner_type = 'host',
+      community_type = 'host',
+      host_profile_id = auth.uid()
   where id = p_group_id;
 
   insert into public.host_profiles (profile_id, primary_community_id)
   values (auth.uid(), p_group_id)
-  on conflict (profile_id) do update set primary_community_id = excluded.primary_community_id;
+  on conflict (profile_id)
+  do update set primary_community_id = excluded.primary_community_id;
+
+  -- Repoint this host's primary outing links without touching deliberate
+  -- cross-community shares.
+  delete from public.community_outings co
+  using public.adventures a
+  where co.adventure_id = a.id
+    and a.created_by = auth.uid()
+    and co.is_primary
+    and co.group_id <> p_group_id;
+
+  insert into public.community_outings (group_id, adventure_id, shared_by, is_primary)
+  select p_group_id, a.id, auth.uid(), true
+  from public.adventures a
+  where a.created_by = auth.uid()
+    and a.status = 'published'
+  on conflict (group_id, adventure_id)
+  do update set is_primary = true, shared_by = excluded.shared_by;
 end;
 $$;
 
@@ -193,6 +245,8 @@ declare
   target_group uuid;
 begin
   if new.status <> 'published' then
+    delete from public.community_outings
+    where adventure_id = new.id;
     return new;
   end if;
 
@@ -218,14 +272,15 @@ create trigger adventures_sync_primary_community_outing
 after insert or update of status on public.adventures
 for each row execute function public.sync_host_outing_to_primary_community();
 
--- Backfill already-published host outings where the host has explicitly resolved a primary community.
+-- Backfill already-published host outings where the host has a resolved primary community.
 insert into public.community_outings (group_id, adventure_id, shared_by, is_primary)
 select hp.primary_community_id, a.id, a.created_by, true
 from public.adventures a
 join public.host_profiles hp on hp.profile_id = a.created_by
 where a.status = 'published'
   and hp.primary_community_id is not null
-on conflict (group_id, adventure_id) do nothing;
+on conflict (group_id, adventure_id)
+do update set is_primary = true, shared_by = excluded.shared_by;
 
 -- Preserve legacy topic content by translating the old starter rooms into interest tags.
 insert into public.community_post_interests (post_id, interest_id)
