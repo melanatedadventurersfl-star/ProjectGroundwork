@@ -201,7 +201,7 @@ Deno.serve(async (req: Request) => {
     const state = clean(body?.state || "FL", 40) || "FL";
     const includeGallery = body?.includeGallery !== false;
     const includeHeroAnalysis = body?.includeHeroAnalysis === true;
-    const photoMaxWidthPx = boundedInteger(body?.photoMaxWidthPx, 900, 400, 1600);
+    const maxWidthPx = boundedInteger(body?.maxWidthPx, 900, 400, 1600);
     const analysisLimit = boundedInteger(body?.analysisLimit, 3, 1, MAX_ANALYZED_PHOTOS);
     const trailGuideCategory = clean(body?.trailGuideCategory, 80);
     const trailGuideType = clean(body?.trailGuideType, 120);
@@ -247,7 +247,7 @@ Deno.serve(async (req: Request) => {
       if (!photo?.name) return null;
       try {
         const mediaUrl = new URL(`https://places.googleapis.com/v1/${photo.name}/media`);
-        mediaUrl.searchParams.set("maxWidthPx", String(photoMaxWidthPx));
+        mediaUrl.searchParams.set("maxWidthPx", String(maxWidthPx));
         mediaUrl.searchParams.set("skipHttpRedirect", "true");
         mediaUrl.searchParams.set("key", apiKey);
         const mediaResponse = await fetch(mediaUrl);
