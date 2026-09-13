@@ -61,7 +61,8 @@ function formatClock(value: string | null) {
 function OfflineRoute({ breadcrumbs, current }: { breadcrumbs: SafetyBreadcrumb[]; current: GeoPoint | null }) {
   const points = useMemo(() => {
     const source = current ? [...breadcrumbs, { ...current, id: -1, sessionId: 'current' }] : breadcrumbs;
-    if (!source.length) return null;
+    if (source.length === 0) return [];
+
     const lats = source.map((point) => point.latitude);
     const lons = source.map((point) => point.longitude);
     const minLat = Math.min(...lats);
@@ -70,23 +71,32 @@ function OfflineRoute({ breadcrumbs, current }: { breadcrumbs: SafetyBreadcrumb[
     const maxLon = Math.max(...lons);
     const latRange = Math.max(maxLat - minLat, 0.0001);
     const lonRange = Math.max(maxLon - minLon, 0.0001);
+
     return source.map((point) => ({
       x: 18 + ((point.longitude - minLon) / lonRange) * 264,
       y: 142 - ((point.latitude - minLat) / latRange) * 124,
     }));
   }, [breadcrumbs, current]);
 
-  if (!points?.length) {
-    return <View style={styles.routeEmpty}><Text style={styles.subtle}>Your offline route trace appears here after Safety Mode starts.</Text></View>;
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last) {
+    return (
+      <View style={styles.routeEmpty}>
+        <Text style={styles.subtle}>Your offline route trace appears here after Safety Mode starts.</Text>
+      </View>
+    );
   }
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(' ');
   return (
     <View style={styles.routeWrap}>
       <Svg width="100%" height={160} viewBox="0 0 300 160">
-        {points.length > 1 ? <Polyline points={polyline} fill="none" stroke="#F4C542" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /> : null}
-        <Circle cx={points[0].x} cy={points[0].y} r={7} fill="#76D1B7" />
-        <Circle cx={points[points.length - 1].x} cy={points[points.length - 1].y} r={8} fill="#F4C542" />
+        {points.length > 1 ? (
+          <Polyline points={polyline} fill="none" stroke="#F4C542" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
+        ) : null}
+        <Circle cx={first.x} cy={first.y} r={7} fill="#76D1B7" />
+        <Circle cx={last.x} cy={last.y} r={8} fill="#F4C542" />
       </Svg>
       <View style={styles.routeLegend}>
         <Text style={styles.routeLegendText}>● Start</Text>
@@ -111,20 +121,28 @@ export default function AdventureSafetyScreen() {
 
   const load = useCallback(async () => {
     if (!adventureId) return;
-    const [savedPack, activeSession, pendingCount, sweepRows] = await Promise.all([
-      getEventPack(adventureId),
-      getActiveSafetySession(adventureId),
-      countPendingOfflineActions(),
-      getRosterSweep(adventureId),
-    ]);
-    setPack(savedPack);
-    setSession(activeSession);
-    setPending(pendingCount);
-    setSweep(Object.fromEntries(sweepRows.map((row) => [row.attendeeId, row.status])));
-    if (activeSession) setBreadcrumbs(await getBreadcrumbs(activeSession.id));
+
+    try {
+      const savedPack = await getEventPack(adventureId);
+      const [activeSession, pendingCount, sweepRows] = await Promise.all([
+        getActiveSafetySession(adventureId),
+        countPendingOfflineActions(),
+        getRosterSweep(adventureId),
+      ]);
+
+      setPack(savedPack);
+      setSession(activeSession);
+      setPending(pendingCount);
+      setSweep(Object.fromEntries(sweepRows.map((row) => [row.attendeeId, row.status])));
+      setBreadcrumbs(activeSession ? await getBreadcrumbs(activeSession.id) : []);
+    } catch (caught) {
+      setSyncError(caught instanceof Error ? caught.message : 'Could not load offline safety data.');
+    }
   }, [adventureId]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    void load();
+  }, [load]));
 
   const getLocation = useCallback(async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -137,12 +155,14 @@ export default function AdventureSafetyScreen() {
 
   useEffect(() => {
     if (!session || session.status !== 'active') return;
+
     let disposed = false;
-    let subscription: Location.LocationSubscription | null = null;
+    let subscription: { remove: () => void } | null = null;
 
     void (async () => {
       const permission = await Location.getForegroundPermissionsAsync();
       if (!permission.granted || disposed) return;
+
       subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
@@ -153,6 +173,7 @@ export default function AdventureSafetyScreen() {
           const point = toPoint(location);
           setCurrentPoint(point);
           if (!shouldRecordBreadcrumb(lastRecorded.current, point, 30)) return;
+
           lastRecorded.current = point;
           void recordSafetyBreadcrumb(session.id, point).then(async () => {
             if (!disposed) setBreadcrumbs(await getBreadcrumbs(session.id));
@@ -184,6 +205,13 @@ export default function AdventureSafetyScreen() {
     return { distance, bearing };
   }, [currentPoint, navigationTarget]);
 
+  const refreshSyncState = useCallback(async () => {
+    const result = await flushSafetyQueue();
+    setPending(result.pending);
+    setSyncError(result.lastError);
+    return result;
+  }, []);
+
   async function downloadPack() {
     if (!adventureId) return;
     setBusy(true);
@@ -209,14 +237,14 @@ export default function AdventureSafetyScreen() {
       const expectedReturnAt = new Date(Date.now() + returnHours * 60 * 60 * 1000).toISOString();
       const next = await startSafetySession({ adventureId, expectedReturnAt, safePoint: point ?? venuePoint });
       setSession(next);
+
       if (point) {
         lastRecorded.current = point;
         await recordSafetyBreadcrumb(next.id, point);
         setBreadcrumbs(await getBreadcrumbs(next.id));
       }
-      const sync = await flushSafetyQueue();
-      setPending(sync.pending);
-      setSyncError(sync.lastError);
+
+      await refreshSyncState();
     } catch (caught) {
       setSyncError(caught instanceof Error ? caught.message : 'Could not start Safety Mode.');
     } finally {
@@ -231,13 +259,15 @@ export default function AdventureSafetyScreen() {
       const point = await getLocation().catch(() => currentPoint);
       const next = await queueSafetyCheckIn(session, status, point);
       setSession(status === 'back' ? null : next);
-      const sync = await flushSafetyQueue();
-      setPending(sync.pending);
-      setSyncError(sync.lastError);
+      const result = await refreshSyncState();
+
       if (status === 'need_help') {
-        Alert.alert('Help check-in recorded', sync.pending > 0
-          ? 'Your help check-in is saved on this device and will send when a connection is available. Call emergency services if you are in immediate danger.'
-          : 'Your help check-in was sent. Call emergency services if you are in immediate danger.');
+        Alert.alert(
+          'Help check-in recorded',
+          result.pending > 0
+            ? 'Your help check-in is saved on this device and will send when a connection is available. Call emergency services if you are in immediate danger.'
+            : 'Your help check-in was sent. Call emergency services if you are in immediate danger.',
+        );
       }
     } finally {
       setBusy(false);
@@ -251,26 +281,13 @@ export default function AdventureSafetyScreen() {
       Alert.alert('Location unavailable', 'Location permission is required to mark a safe point.');
       return;
     }
-    const next = await markSafePoint(session, point);
-    setSession(next);
-  }
-
-  async function syncNow() {
-    setBusy(true);
-    try {
-      const result = await flushSafetyQueue();
-      setPending(result.pending);
-      setSyncError(result.lastError);
-    } finally {
-      setBusy(false);
-    }
+    setSession(await markSafePoint(session, point));
   }
 
   async function shareLocation() {
     const point = currentPoint ?? await getLocation();
     if (!point) return;
-    const text = `My current location is ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}.`;
-    await Share.share({ message: text });
+    await Share.share({ message: `My current location is ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}.` });
   }
 
   async function textLocation() {
@@ -296,17 +313,25 @@ export default function AdventureSafetyScreen() {
           <Text style={styles.eyebrow}>ADVENTURE SAFETY</Text>
           <Text style={styles.headerTitle}>Offline + Safety</Text>
         </View>
-        <Pressable accessibilityLabel="Sync safety data" onPress={() => void syncNow()} style={styles.iconButton}>
+        <Pressable accessibilityLabel="Sync safety data" onPress={() => void refreshSyncState()} style={styles.iconButton}>
           <Ionicons name="sync" size={20} color="#F4C542" />
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.statusBanner, pending > 0 && styles.statusBannerOffline]}>
-          <Ionicons name={pending > 0 ? 'cloud-offline-outline' : 'shield-checkmark-outline'} size={20} color={pending > 0 ? '#F4C542' : '#76D1B7'} />
+          <Ionicons
+            name={pending > 0 ? 'cloud-offline-outline' : 'shield-checkmark-outline'}
+            size={20}
+            color={pending > 0 ? '#F4C542' : '#76D1B7'}
+          />
           <View style={styles.flex}>
-            <Text style={styles.statusTitle}>{pending > 0 ? `${pending} safety update${pending === 1 ? '' : 's'} waiting to send` : 'Safety data synced'}</Text>
-            <Text style={styles.statusText}>{pending > 0 ? 'Saved on this device. Safety updates sync before noncritical data.' : 'Offline tools remain available if signal drops.'}</Text>
+            <Text style={styles.statusTitle}>
+              {pending > 0 ? `${pending} safety update${pending === 1 ? '' : 's'} waiting to send` : 'Safety data synced'}
+            </Text>
+            <Text style={styles.statusText}>
+              {pending > 0 ? 'Saved on this device. Safety updates sync before noncritical data.' : 'Offline tools remain available if signal drops.'}
+            </Text>
           </View>
         </View>
 
@@ -317,12 +342,18 @@ export default function AdventureSafetyScreen() {
             <View style={styles.flex}>
               <Text style={styles.cardEyebrow}>OFFLINE EVENT PACK</Text>
               <Text style={styles.cardTitle}>{pack?.adventure.title ?? 'Event details not downloaded'}</Text>
-              <Text style={styles.subtle}>{pack ? `Saved ${new Date(pack.downloadedAt).toLocaleString()}${isEventPackStale(pack) ? ' · Update recommended' : ''}` : 'Download before leaving reliable service.'}</Text>
+              <Text style={styles.subtle}>
+                {pack
+                  ? `Saved ${new Date(pack.downloadedAt).toLocaleString()}${isEventPackStale(pack) ? ' · Update recommended' : ''}`
+                  : 'Download before leaving reliable service.'}
+              </Text>
             </View>
             <Ionicons name={pack ? 'download' : 'cloud-download-outline'} size={25} color={pack ? '#76D1B7' : '#F4C542'} />
           </View>
           <Pressable disabled={busy} style={styles.secondaryButton} onPress={() => void downloadPack()}>
-            {busy ? <ActivityIndicator color="#10231C" /> : <Text style={styles.secondaryButtonText}>{pack ? 'Update offline pack' : 'Download for offline use'}</Text>}
+            {busy ? <ActivityIndicator color="#10231C" /> : (
+              <Text style={styles.secondaryButtonText}>{pack ? 'Update offline pack' : 'Download for offline use'}</Text>
+            )}
           </Pressable>
         </View>
 
@@ -334,7 +365,11 @@ export default function AdventureSafetyScreen() {
             <Text style={styles.fieldLabel}>Expected return</Text>
             <View style={styles.optionRow}>
               {RETURN_OPTIONS.map((option) => (
-                <Pressable key={option.hours} onPress={() => setReturnHours(option.hours)} style={[styles.option, returnHours === option.hours && styles.optionActive]}>
+                <Pressable
+                  key={option.hours}
+                  onPress={() => setReturnHours(option.hours)}
+                  style={[styles.option, returnHours === option.hours && styles.optionActive]}
+                >
                   <Text style={[styles.optionText, returnHours === option.hours && styles.optionTextActive]}>{option.label}</Text>
                 </Pressable>
               ))}
@@ -348,18 +383,33 @@ export default function AdventureSafetyScreen() {
           <>
             <View style={styles.card}>
               <View style={styles.rowBetween}>
-                <View>
+                <View style={styles.flex}>
                   <Text style={styles.cardEyebrow}>SAFETY MODE ACTIVE</Text>
                   <Text style={styles.bigTitle}>Expected back {formatClock(session.expectedReturnAt)}</Text>
                 </View>
                 <View style={styles.liveDot} />
               </View>
-              <Text style={styles.subtle}>Last check-in: {session.lastCheckIn ? session.lastCheckIn.replace('_', ' ') : 'none'} {session.lastCheckInAt ? `· ${formatClock(session.lastCheckInAt)}` : ''}</Text>
+              <Text style={styles.subtle}>
+                Last check-in: {session.lastCheckIn ? session.lastCheckIn.replace('_', ' ') : 'none'}
+                {session.lastCheckInAt ? ` · ${formatClock(session.lastCheckInAt)}` : ''}
+              </Text>
               <View style={styles.checkGrid}>
-                <Pressable disabled={busy} style={styles.checkButton} onPress={() => void checkIn('okay')}><Ionicons name="checkmark-circle-outline" size={22} color="#76D1B7" /><Text style={styles.checkText}>I’m okay</Text></Pressable>
-                <Pressable disabled={busy} style={styles.checkButton} onPress={() => void checkIn('back')}><Ionicons name="home-outline" size={22} color="#76D1B7" /><Text style={styles.checkText}>I’m back</Text></Pressable>
-                <Pressable disabled={busy} style={[styles.checkButton, styles.helpButton]} onPress={() => void checkIn('need_help')}><Ionicons name="warning-outline" size={22} color="#F7B3A9" /><Text style={styles.helpText}>Need help</Text></Pressable>
-                <Pressable disabled={busy} style={styles.checkButton} onPress={() => void saveCurrentAsSafePoint()}><Ionicons name="flag-outline" size={22} color="#F4C542" /><Text style={styles.checkText}>Mark safe point</Text></Pressable>
+                <Pressable disabled={busy} style={styles.checkButton} onPress={() => void checkIn('okay')}>
+                  <Ionicons name="checkmark-circle-outline" size={22} color="#76D1B7" />
+                  <Text style={styles.checkText}>I’m okay</Text>
+                </Pressable>
+                <Pressable disabled={busy} style={styles.checkButton} onPress={() => void checkIn('back')}>
+                  <Ionicons name="home-outline" size={22} color="#76D1B7" />
+                  <Text style={styles.checkText}>I’m back</Text>
+                </Pressable>
+                <Pressable disabled={busy} style={[styles.checkButton, styles.helpButton]} onPress={() => void checkIn('need_help')}>
+                  <Ionicons name="warning-outline" size={22} color="#F7B3A9" />
+                  <Text style={styles.helpText}>Need help</Text>
+                </Pressable>
+                <Pressable disabled={busy} style={styles.checkButton} onPress={() => void saveCurrentAsSafePoint()}>
+                  <Ionicons name="flag-outline" size={22} color="#F4C542" />
+                  <Text style={styles.checkText}>Mark safe point</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -369,10 +419,12 @@ export default function AdventureSafetyScreen() {
               {navigationTarget && navigation ? (
                 <View style={styles.navigationCard}>
                   <Text style={styles.navigationDistance}>{formatDistance(navigation.distance)}</Text>
-                  <Text style={styles.navigationBearing}>{Math.round(navigation.bearing)}° {bearingLabel(navigation.bearing)} to {navigationTarget.label}</Text>
+                  <Text style={styles.navigationBearing}>
+                    {Math.round(navigation.bearing)}° {bearingLabel(navigation.bearing)} to {navigationTarget.label}
+                  </Text>
                 </View>
               ) : null}
-              <Text style={styles.microcopy}>This trace has no street or trail tiles. It is a local breadcrumb recovery view designed to remain available without data service.</Text>
+              <Text style={styles.microcopy}>This is a local breadcrumb recovery view. It does not require a data connection or downloaded street tiles.</Text>
             </View>
           </>
         )}
@@ -382,13 +434,16 @@ export default function AdventureSafetyScreen() {
           <Text style={styles.body}>A queued Go Melanated check-in is not the same as a delivered emergency message. Use cellular voice or SMS when available.</Text>
           <View style={styles.actionRow}>
             <Pressable style={[styles.actionButton, styles.emergencyButton]} onPress={() => void Linking.openURL('tel:911')}>
-              <Ionicons name="call" size={18} color="#F7F7F4" /><Text style={styles.emergencyText}>Call 911</Text>
+              <Ionicons name="call" size={18} color="#F7F7F4" />
+              <Text style={styles.emergencyText}>Call 911</Text>
             </Pressable>
             <Pressable style={styles.actionButton} onPress={() => void textLocation()}>
-              <Ionicons name="chatbubble-outline" size={18} color="#F4C542" /><Text style={styles.actionText}>Text location</Text>
+              <Ionicons name="chatbubble-outline" size={18} color="#F4C542" />
+              <Text style={styles.actionText}>Text location</Text>
             </Pressable>
             <Pressable style={styles.actionButton} onPress={() => void shareLocation()}>
-              <Ionicons name="share-outline" size={18} color="#F4C542" /><Text style={styles.actionText}>Share</Text>
+              <Ionicons name="share-outline" size={18} color="#F4C542" />
+              <Text style={styles.actionText}>Share</Text>
             </Pressable>
           </View>
           {currentPoint ? <Text style={styles.coordinates}>{currentPoint.latitude.toFixed(6)}, {currentPoint.longitude.toFixed(6)}</Text> : null}
@@ -430,8 +485,13 @@ export default function AdventureSafetyScreen() {
                     <Text style={styles.listTitle}>{person.first_name} {person.last_name}</Text>
                     <Text style={styles.subtle}>{status ? status.replace('_', ' ') : person.checked_in_at ? 'checked in' : 'not checked in'}</Text>
                   </View>
-                  <Pressable onPress={() => void markSweep(person.attendee_id, status === 'returned' ? 'still_out' : 'returned')} style={[styles.sweepButton, status === 'returned' && styles.sweepButtonActive]}>
-                    <Text style={[styles.sweepText, status === 'returned' && styles.sweepTextActive]}>{status === 'returned' ? 'Returned' : 'Mark returned'}</Text>
+                  <Pressable
+                    onPress={() => void markSweep(person.attendee_id, status === 'returned' ? 'still_out' : 'returned')}
+                    style={[styles.sweepButton, status === 'returned' && styles.sweepButtonActive]}
+                  >
+                    <Text style={[styles.sweepText, status === 'returned' && styles.sweepTextActive]}>
+                      {status === 'returned' ? 'Returned' : 'Mark returned'}
+                    </Text>
                   </Pressable>
                 </View>
               );
