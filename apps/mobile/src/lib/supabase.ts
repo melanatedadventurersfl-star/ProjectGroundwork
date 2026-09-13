@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { env } from '../config/env';
 import { clearOfflineHttpCache, offlineFirstFetch } from '../offline/offlineFetch';
+import { clearOfflineSafetyData } from '../offline/safetyOwner';
 
 export const supabase = createClient(env.supabaseUrl, env.supabasePublishableKey, {
   global: {
@@ -19,5 +20,8 @@ export const supabase = createClient(env.supabaseUrl, env.supabasePublishableKey
 });
 
 supabase.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') void clearOfflineHttpCache();
+  if (event === 'SIGNED_OUT') {
+    void clearOfflineHttpCache();
+    void clearOfflineSafetyData();
+  }
 });

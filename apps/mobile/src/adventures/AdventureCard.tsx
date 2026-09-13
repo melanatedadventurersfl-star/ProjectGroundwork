@@ -26,7 +26,21 @@ export function AdventureCard({ adventure, onToggleSaved }: Props) {
         <Text style={s.title} numberOfLines={2}>{adventure.title}</Text>
         <Text style={s.meta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state}</Text>
         <Text style={s.meta}>▣ {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-        <Text style={[s.price, adventure.starting_price_cents === 0 && s.free]}>{priceLabel(adventure)}</Text>
+        <View style={s.bottomRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open offline and safety tools for ${adventure.title}`}
+            hitSlop={6}
+            style={s.safetyButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              router.push({ pathname: '/safety/[adventureId]', params: { adventureId: adventure.id } });
+            }}
+          >
+            <Text style={s.safetyText}>◇ Offline + Safety</Text>
+          </Pressable>
+          <Text style={[s.price, adventure.starting_price_cents === 0 && s.free]}>{priceLabel(adventure)}</Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -42,6 +56,9 @@ const s = StyleSheet.create({
   star: { color: '#F7F7F4', fontSize: 20 },
   title: { color: '#F7F7F4', fontSize: 17, lineHeight: 21, fontWeight: '900', marginTop: 5 },
   meta: { color: '#ABB5B0', fontSize: 11, marginTop: 4 },
-  price: { color: '#F5C542', fontWeight: '900', fontSize: 15, marginTop: 'auto', paddingTop: 7, alignSelf: 'flex-end' },
+  bottomRow: { marginTop: 'auto', paddingTop: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  safetyButton: { backgroundColor: '#182B24', borderWidth: 1, borderColor: '#36564A', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
+  safetyText: { color: '#76D1B7', fontWeight: '900', fontSize: 9 },
+  price: { color: '#F5C542', fontWeight: '900', fontSize: 15 },
   free: { color: '#76D1B7' },
 });
