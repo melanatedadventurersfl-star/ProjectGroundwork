@@ -62,6 +62,7 @@ export default function HostEventsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<EventFilter>('all');
+  const [clockNow, setClockNow] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +75,7 @@ export default function HostEventsScreen() {
         operations: await getUnifiedEventOperationsSummary(campaign),
         duplicateCount: duplicateCampaignCount(campaign, rawCampaigns),
       })));
+      setClockNow(Date.now());
       setItems(rows);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load events.');
@@ -85,28 +87,27 @@ export default function HostEventsScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const summary = useMemo(() => {
-    const attention = items.filter((item) => needsAttention(item)).length;
+    const attention = items.filter((item) => needsAttention(item, clockNow)).length;
     const openTasks = items.reduce((sum, item) => sum + item.operations.openTaskCount, 0);
     const overdue = items.reduce((sum, item) => sum + item.operations.overdueTaskCount, 0);
     return { attention, openTasks, overdue };
-  }, [items]);
+  }, [clockNow, items]);
 
   const visibleItems = useMemo(() => {
-    const now = Date.now();
     const filtered = items.filter((item) => {
-      if (filter === 'attention') return needsAttention(item, now);
+      if (filter === 'attention') return needsAttention(item, clockNow);
       if (filter === 'planning') return item.campaign.status === 'planning';
       if (filter === 'live') return item.campaign.status === 'live';
       return true;
     });
 
     return [...filtered].sort((a, b) => {
-      const aPast = isPastCampaign(a.campaign, now);
-      const bPast = isPastCampaign(b.campaign, now);
+      const aPast = isPastCampaign(a.campaign, clockNow);
+      const bPast = isPastCampaign(b.campaign, clockNow);
       if (aPast !== bPast) return aPast ? 1 : -1;
       return new Date(a.campaign.startsAt).getTime() - new Date(b.campaign.startsAt).getTime();
     });
-  }, [filter, items]);
+  }, [clockNow, filter, items]);
 
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content}>
@@ -166,8 +167,8 @@ export default function HostEventsScreen() {
       {!loading && items.length > 0 && visibleItems.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>Nothing in this view</Text><Text style={styles.emptyBody}>Choose another filter to see your active events.</Text></View> : null}
 
       {visibleItems.map(({ campaign, operations, duplicateCount }) => {
-        const past = isPastCampaign(campaign);
-        const attention = needsAttention({ campaign, operations, duplicateCount });
+        const past = isPastCampaign(campaign, clockNow);
+        const attention = needsAttention({ campaign, operations, duplicateCount }, clockNow);
         const overdue = operations.overdueTaskCount;
         const scheduling = operations.needsSchedulingCount;
         const profit = operations.profitCents / 100;
@@ -182,7 +183,7 @@ export default function HostEventsScreen() {
               </View>
               <Text style={styles.cardTitle} numberOfLines={2}>{campaign.shortTitle}</Text>
               <Text style={styles.cardMeta} numberOfLines={2}>{campaign.location}</Text>
-              <Text style={styles.cardDate}>{dateLabel(campaign.startsAt)} · {timingLabel(campaign)}</Text>
+              <Text style={styles.cardDate}>{dateLabel(campaign.startsAt)} · {timingLabel(campaign, clockNow)}</Text>
             </View>
             <View style={styles.progressBlock}>
               <Text style={styles.ready}>{operations.progress}%</Text>
