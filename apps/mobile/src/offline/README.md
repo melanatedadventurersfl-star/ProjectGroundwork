@@ -2,7 +2,9 @@ Offline support keeps the last successful Supabase read responses on-device for 
 
 Offline + Safety V1 extends that foundation for active outdoor use. Members can download an event pack containing core adventure details, schedule items, relevant announcements, event coordinates, and an authorized host roster when the signed-in account has access. Adventure Safety Mode stores the active safety session and a lightweight breadcrumb trail in `ma-offline.db`. Breadcrumbs stay on the device by default.
 
-Safety check-ins are local-first writes. `Starting`, `I'm okay`, `I'm back`, and `Need help` are written to the local queue before a server sync is attempted. `Need help` receives the highest queue priority. The UI must distinguish a locally recorded check-in from a server-delivered check-in. Losing service must never be presented as successful delivery.
+Safety check-ins are local-first writes. `Starting`, `I'm okay`, `I'm back`, and `Need help` are written to the local queue before a server sync is attempted. Required session creation is processed before dependent check-ins, and `Need help` receives the highest user-action priority after that dependency. The UI distinguishes a locally recorded check-in from a server-delivered check-in. Losing service must never be presented as successful delivery.
+
+Offline safety storage is scoped to the currently signed-in profile. Safety sessions, breadcrumbs, queued actions, downloaded event packs, and locally saved roster sweep state are cleared when the account signs out or when a different profile becomes the active owner of the local safety store.
 
 Safety sync is deliberately narrow. V1 queues safety session state and explicit safety check-ins only. Normal RSVPs, saves, posts, uploads, payments, support requests, and other writes still require a connection unless their feature adds its own conflict-safe queue later.
 
@@ -10,4 +12,4 @@ Power behavior is conservative. Foreground route recording uses balanced locatio
 
 The offline route view is a breadcrumb recovery trace, not a downloaded street or trail basemap. It continues to provide coordinates plus distance and bearing to the saved safe point or event location without data service. Full offline map tiles remain a separate provider integration.
 
-Remote images and newly requested private signed media may still require a connection unless the device already has them in its image cache. Host roster data is downloaded only when existing server authorization allows it and should be removed with the event pack when no longer needed.
+Remote images and newly requested private signed media may still require a connection unless the device already has them in its image cache. Host roster data is downloaded only when existing server authorization allows it. Attendee email addresses are removed before local storage. The pack should be removed when it is no longer needed.
