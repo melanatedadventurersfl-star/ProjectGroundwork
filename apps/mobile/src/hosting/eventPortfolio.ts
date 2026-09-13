@@ -50,7 +50,7 @@ type OperationsLike = {
   progress: number;
   overdueTaskCount: number;
   profitCents: number;
-  dateAssessment?: { state?: string; reason?: string };
+  dateAssessment?: { state?: string; reason?: string | null };
   confirmedVendors?: number;
   pendingVendors?: number;
 };
