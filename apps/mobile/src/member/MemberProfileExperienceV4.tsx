@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useCallback, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { getConnections, type Connection } from '../community/circles'
@@ -8,6 +8,7 @@ import { BadgeArt, hasBadgeArt } from '../passport/BadgeArt'
 import { getJourney, getMemberBadges, getMemoryAlbums, getPassportStamps, type JourneyItem, type MemberBadge, type MemoryAlbum, type MemoryPhoto, type PassportStamp } from '../passport/api'
 import { rankFor, rankLadder } from '../passport/RankEmblem'
 import { resolveStampCatalogItem, type StampCatalogItem } from '../passport/StampCatalog'
+import { getTrailheadFavorites } from '../trailhead/favorites'
 import { AppIcon } from '../ui/AppIcon'
 import LegacyMemberProfileExperience from './MemberProfileExperience'
 import { getMemberBasecamp } from './api'
@@ -29,16 +30,16 @@ function placeLabel(item: JourneyItem | MemoryAlbum) {
 }
 
 function FeaturedBadge({ badge }: { badge: MemberBadge }) {
-  return <Pressable style={({ pressed }) => [styles.recognitionItem, pressed && styles.pressed]} onPress={() => router.push('/member/badges')}>
-    <BadgeArt title={badge.title} size={100} />
-    <Text style={styles.recognitionTitle} numberOfLines={2}>{badge.title}</Text>
+  return <Pressable style={({ pressed }) => [styles.badgeRecognitionItem, pressed && styles.pressed]} onPress={() => router.push('/member/badges')}>
+    {hasBadgeArt(badge.title) ? <BadgeArt title={badge.title} size={104} /> : <View style={styles.badgeFallback}><AppIcon name="badge" color="#D7B45A" size={42} /></View>}
+    <Text style={styles.badgeRecognitionTitle} numberOfLines={2}>{badge.title}</Text>
   </Pressable>
 }
 
 function FeaturedStamp({ item }: { item: EarnedStampCard }) {
-  return <Pressable style={({ pressed }) => [styles.recognitionItem, pressed && styles.pressed]} onPress={() => router.push('/member/stamps')}>
+  return <Pressable style={({ pressed }) => [styles.stampRecognitionItem, pressed && styles.pressed]} onPress={() => router.push('/member/stamps')}>
     <Image source={item.art.source} style={styles.stampImage} resizeMode="contain" />
-    <Text style={styles.recognitionTitle} numberOfLines={2}>{item.stamp.title}</Text>
+    <Text style={styles.stampRecognitionTitle} numberOfLines={2}>{item.stamp.title}</Text>
   </Pressable>
 }
 
@@ -56,6 +57,8 @@ function SocialOwnerProfile() {
   const [badges, setBadges] = useState<MemberBadge[]>([])
   const [albums, setAlbums] = useState<MemoryAlbum[]>([])
   const [connections, setConnections] = useState<Connection[]>([])
+  const [favoriteBadgeTitles, setFavoriteBadgeTitles] = useState<string[]>([])
+  const [favoriteStampCodes, setFavoriteStampCodes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
 
@@ -65,12 +68,15 @@ function SocialOwnerProfile() {
       const [base, nextJourney, nextStamps, nextBadges, nextAlbums, nextConnections] = await Promise.all([
         getMemberBasecamp(), getJourney(), getPassportStamps(), getMemberBadges(), getMemoryAlbums(), getConnections(),
       ])
+      const favorites = await getTrailheadFavorites(base?.profile?.id)
       setData(base)
       setJourney(nextJourney)
       setStamps(nextStamps)
       setBadges(nextBadges)
       setAlbums(nextAlbums)
       setConnections(nextConnections)
+      setFavoriteBadgeTitles(favorites.badges)
+      setFavoriteStampCodes(favorites.stamps)
       setMessage('')
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to load profile.')
@@ -98,13 +104,21 @@ function SocialOwnerProfile() {
 
   const featuredBadges = useMemo(() => {
     const seen = new Set<string>()
-    return badges.filter((badge) => {
+    const unique = badges.filter((badge) => {
       const key = badge.title.trim().toLowerCase()
-      if (!hasBadgeArt(badge.title) || seen.has(key)) return false
+      if (!key || seen.has(key)) return false
       seen.add(key)
       return true
-    }).slice(0, 3)
-  }, [badges])
+    })
+    return unique.sort((left, right) => {
+      const leftIndex = favoriteBadgeTitles.indexOf(left.title)
+      const rightIndex = favoriteBadgeTitles.indexOf(right.title)
+      if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex
+      if (leftIndex >= 0) return -1
+      if (rightIndex >= 0) return 1
+      return new Date(right.earned_at).getTime() - new Date(left.earned_at).getTime()
+    })
+  }, [badges, favoriteBadgeTitles])
 
   const featuredStamps = useMemo<EarnedStampCard[]>(() => {
     const seen = new Set<string>()
@@ -114,11 +128,20 @@ function SocialOwnerProfile() {
       if (!art || seen.has(art.id)) continue
       seen.add(art.id)
       resolved.push({ stamp, art })
-      if (resolved.length === 3) break
     }
-    return resolved
-  }, [stamps])
+    return resolved.sort((left, right) => {
+      const leftCode = left.art.code ?? left.stamp.code ?? ''
+      const rightCode = right.art.code ?? right.stamp.code ?? ''
+      const leftIndex = favoriteStampCodes.indexOf(leftCode)
+      const rightIndex = favoriteStampCodes.indexOf(rightCode)
+      if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex
+      if (leftIndex >= 0) return -1
+      if (rightIndex >= 0) return 1
+      return new Date(right.stamp.earned_at).getTime() - new Date(left.stamp.earned_at).getTime()
+    })
+  }, [stamps, favoriteStampCodes])
 
+  const collectibleStampCount = featuredStamps.length
   const albumByAdventure = useMemo(() => new Map(albums.map((album) => [album.adventure_id, album])), [albums])
   const stampArtByAdventure = useMemo(() => {
     const map = new Map<string, EarnedStampCard>()
@@ -166,23 +189,13 @@ function SocialOwnerProfile() {
     { label: 'Adventures', value: journey.length, onPress: () => router.push('/member/journey') },
     { label: 'Places', value: uniquePlaces, onPress: () => router.push('/member/journey') },
     { label: 'TrailMates', value: trailmates.length, onPress: () => router.push('/connections' as never) },
-    { label: 'Stamps', value: stamps.length, onPress: () => router.push('/member/stamps') },
+    { label: 'Stamps', value: collectibleStampCount, onPress: () => router.push('/member/stamps') },
   ].filter((item) => item.value > 0)
 
   async function shareProfile() {
     const display = profile.display_name ?? 'Go Melanated member'
     const summary = [journey.length ? `${journey.length} adventures` : null, uniquePlaces ? `${uniquePlaces} places` : null, trailmates.length ? `${trailmates.length} TrailMates` : null].filter(Boolean).join(', ')
     await Share.share({ message: `${display}${profile.username ? ` (@${profile.username})` : ''} on Go Melanated${summary ? `: ${summary}` : '.'}` })
-  }
-
-  function openMore() {
-    const options: Parameters<typeof Alert.alert>[2] = [
-      { text: 'Privacy', onPress: () => router.push('/member/privacy' as never) },
-      { text: 'Discovery', onPress: () => router.push('/member/discovery-settings' as never) },
-    ]
-    if (profile.id) options.push({ text: 'View as member', onPress: () => router.push(`/member/view-as-profile/${profile.id}` as never) })
-    options.push({ text: 'Cancel', style: 'cancel' })
-    Alert.alert('Profile', 'Manage how your profile appears.', options)
   }
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color="#F5C341" /></SafeAreaView>
@@ -205,11 +218,9 @@ function SocialOwnerProfile() {
       peopleMeta={pendingConnections.length ? `${pendingConnections.length} pending request${pendingConnections.length === 1 ? '' : 's'}` : trailmates.length ? 'Your outdoor connections' : 'Connections you make can live here'}
       onPeoplePress={() => router.push('/connections' as never)}
       onAvatarPress={() => router.push('/member/profile?edit=1' as never)}
-      coverActions={<Pressable onPress={() => router.push('/member/profile?edit=1' as never)} style={socialProfileHeaderStyles.coverIconAction}><AppIcon name="camera" color="#FFF8E8" size={18} /></Pressable>}
       actions={<>
-        <Pressable onPress={() => router.push('/member/profile?edit=1' as never)} style={socialProfileHeaderStyles.primaryAction}><AppIcon name="edit" color="#111A17" size={16} /><Text style={socialProfileHeaderStyles.primaryActionText}>Edit profile</Text></Pressable>
-        <Pressable onPress={() => void shareProfile()} style={socialProfileHeaderStyles.secondaryAction}><AppIcon name="share" color="#FFF8E8" size={16} /><Text style={socialProfileHeaderStyles.secondaryActionText}>Share</Text></Pressable>
-        <Pressable onPress={openMore} style={socialProfileHeaderStyles.iconAction}><AppIcon name="more" color="#FFF8E8" size={18} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Edit profile" onPress={() => router.push('/member/profile?edit=1' as never)} style={socialProfileHeaderStyles.coverIconAction}><AppIcon name="edit" color="#FFF8E8" size={18} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Share profile" onPress={() => void shareProfile()} style={socialProfileHeaderStyles.coverIconAction}><AppIcon name="share" color="#FFF8E8" size={18} /></Pressable>
       </>}
     />
   </View>
@@ -217,7 +228,6 @@ function SocialOwnerProfile() {
   return <SafeAreaView style={styles.safe} edges={['top']}>
     <ScrollView stickyHeaderIndices={[1]} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
       {header}
-
       <View style={styles.tabsShell}><View style={styles.tabs}>{(['journey', 'posts', 'photos', 'about'] as ProfileTab[]).map((value) => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab}><Text style={[styles.tabText, tab === value && styles.tabTextActive]}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text>{tab === value ? <View style={styles.tabUnderline} /> : null}</Pressable>)}</View></View>
 
       <View style={styles.body}>
@@ -250,9 +260,9 @@ function SocialOwnerProfile() {
             <View style={styles.memoryGrid}>{favoriteMemories.slice(0, 3).map((memory, index) => <Pressable key={memory.id} onPress={() => router.push(`/passport/memories/photo/${memory.id}` as never)} style={[styles.memoryTile, favoriteMemories.length === 2 && styles.memoryTileHalf, index === 0 && favoriteMemories.length >= 3 && styles.memoryTileLead]}><Image source={{ uri: memory.image_url }} style={styles.memoryImage} />{memory.featured ? <View style={styles.favoritePill}><Text style={styles.favoriteText}>Favorite</Text></View> : null}</Pressable>)}</View>
           </> : null}
 
-          {featuredBadges.length ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Badge Showcase</Text><Pressable onPress={() => router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredBadges.map((badge) => <FeaturedBadge key={badge.badge_id} badge={badge} />)}</ScrollView></> : null}
+          {featuredBadges.length ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Badge Showcase</Text><Pressable onPress={() => router.push('/member/badges')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal decelerationRate="fast" snapToInterval={138} snapToAlignment="start" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeRail}>{featuredBadges.map((badge) => <FeaturedBadge key={badge.badge_id} badge={badge} />)}</ScrollView></> : null}
 
-          {featuredStamps.length ? <><View style={[styles.sectionHeader, { marginTop: 8 }]}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={() => router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recognitionRail}>{featuredStamps.map((item) => <FeaturedStamp key={item.stamp.stamp_id} item={item} />)}</ScrollView></> : null}
+          {featuredStamps.length ? <><View style={[styles.sectionHeader, { marginTop: 8 }]}><Text style={styles.sectionTitle}>Featured Stamps</Text><Pressable onPress={() => router.push('/member/stamps')}><Text style={styles.sectionLink}>View all</Text></Pressable></View><ScrollView horizontal decelerationRate="fast" snapToInterval={160} snapToAlignment="start" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stampRail}>{featuredStamps.map((item) => <FeaturedStamp key={item.stamp.stamp_id} item={item} />)}</ScrollView></> : null}
         </View> : null}
 
         {tab === 'posts' ? <View style={styles.tabContent}><ProfilePosts /></View> : null}
@@ -324,10 +334,14 @@ const styles = StyleSheet.create({
   memoryImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   favoritePill: { position: 'absolute', left: 7, bottom: 7, borderRadius: 99, backgroundColor: 'rgba(9,17,15,.84)', paddingHorizontal: 8, paddingVertical: 4 },
   favoriteText: { color: '#F5C341', fontSize: 8.5, fontWeight: '900' },
-  recognitionRail: { gap: 18, paddingRight: 16, paddingVertical: 3 },
-  recognitionItem: { width: 118, minHeight: 136, alignItems: 'center' },
-  stampImage: { width: 114, height: 124 },
-  recognitionTitle: { width: 118, color: '#F7F8F3', fontSize: 11.5, lineHeight: 14, fontWeight: '800', textAlign: 'center', marginTop: 3 },
+  badgeRail: { gap: 14, paddingRight: 30, paddingVertical: 3 },
+  badgeRecognitionItem: { width: 124, minHeight: 142, alignItems: 'center' },
+  badgeFallback: { width: 104, height: 104, borderRadius: 52, backgroundColor: '#17251F', alignItems: 'center', justifyContent: 'center' },
+  badgeRecognitionTitle: { width: 124, color: '#F7F8F3', fontSize: 11.5, lineHeight: 14, fontWeight: '800', textAlign: 'center', marginTop: 3 },
+  stampRail: { gap: 14, paddingRight: 32, paddingVertical: 3 },
+  stampRecognitionItem: { width: 146, minHeight: 170, alignItems: 'center' },
+  stampImage: { width: 142, height: 142 },
+  stampRecognitionTitle: { width: 146, color: '#F7F8F3', fontSize: 11.5, lineHeight: 14, fontWeight: '800', textAlign: 'center', marginTop: 4 },
   albumCard: { borderRadius: 18, overflow: 'hidden', backgroundColor: '#111A17' },
   albumImage: { width: '100%', height: 170, resizeMode: 'cover' },
   albumFallback: { height: 150, backgroundColor: '#17251F', alignItems: 'center', justifyContent: 'center' },

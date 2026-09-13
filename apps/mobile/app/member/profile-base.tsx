@@ -1,3 +1,3 @@
-import MemberProfileExperienceV3 from '../../src/member/MemberProfileExperienceV3';
+import MemberProfileExperienceV4 from '../../src/member/MemberProfileExperienceV4'
 
-export default MemberProfileExperienceV3;
+export default MemberProfileExperienceV4
