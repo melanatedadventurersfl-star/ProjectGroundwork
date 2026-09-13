@@ -1,0 +1,140 @@
+name: Harden Outpost community migration
+
+on:
+  push:
+    branches:
+      - feature/outpost-community-model
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[outpost-sql]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/outpost-community-model
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Harden migration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('supabase/migrations/20260913010000_outpost_communities_interests_host_linking.sql')
+          text = path.read_text()
+
+          def swap(old, new):
+              global text
+              if old not in text:
+                  raise SystemExit(f'Missing expected migration block: {old[:120]!r}')
+              text = text.replace(old, new)
+
+          swap(
+          """where g.created_by is not null
+  and exists (select 1 from public.host_profiles hp where hp.profile_id = g.created_by)
+  and not g.is_topic;""",
+          """where g.created_by is not null
+  and exists (select 1 from public.host_profiles hp where hp.profile_id = g.created_by)
+  and exists (
+    select 1 from public.community_group_members gm
+    where gm.group_id = g.id
+      and gm.profile_id = g.created_by
+      and gm.role in ('host', 'moderator')
+  )
+  and not g.is_topic;"""
+          )
+
+          swap(
+          """create table if not exists public.community_interests (""",
+          """-- Carry legacy topic memberships into personal interests before those topic rooms are hidden.
+insert into public.profile_interests (profile_id, interest_id)
+select gm.profile_id, i.id
+from public.community_group_members gm
+join public.community_groups g on g.id = gm.group_id
+join public.interests i on i.slug = case lower(g.name)
+  when 'camping' then 'camping'
+  when 'hiking' then 'hiking'
+  when 'water adventures' then 'water'
+  when 'family adventures' then 'family'
+  when 'beginner outdoors' then 'beginner-friendly'
+  else null
+end
+where g.is_topic
+on conflict do nothing;
+
+create table if not exists public.community_interests ("""
+          )
+
+          swap(
+          """with candidates as (
+  select gm.profile_id, min(gm.group_id) as group_id
+  from public.community_group_members gm""",
+          """with candidates as (
+  select gm.profile_id, (array_agg(gm.group_id))[1] as group_id
+  from public.community_group_members gm"""
+          )
+
+          swap(
+          """  insert into public.host_profiles (profile_id, primary_community_id)
+  values (auth.uid(), p_group_id)
+  on conflict (profile_id) do update set primary_community_id = excluded.primary_community_id;
+end;
+$$;""",
+          """  insert into public.host_profiles (profile_id, primary_community_id)
+  values (auth.uid(), p_group_id)
+  on conflict (profile_id) do update set primary_community_id = excluded.primary_community_id;
+
+  -- Keep already-published outings connected when a host chooses or changes its primary community.
+  delete from public.community_outings co
+  using public.adventures a
+  where co.adventure_id = a.id
+    and a.created_by = auth.uid()
+    and co.is_primary
+    and co.group_id <> p_group_id;
+
+  insert into public.community_outings (group_id, adventure_id, shared_by, is_primary)
+  select p_group_id, a.id, auth.uid(), true
+  from public.adventures a
+  where a.created_by = auth.uid()
+    and a.status = 'published'
+  on conflict (group_id, adventure_id)
+  do update set is_primary = true, shared_by = excluded.shared_by;
+end;
+$$;"""
+          )
+
+          swap(
+          """begin
+  if new.status <> 'published' then
+    return new;
+  end if;
+
+  select hp.primary_community_id into target_group""",
+          """begin
+  if new.status <> 'published' then
+    delete from public.community_outings
+    where adventure_id = new.id
+      and is_primary;
+    return new;
+  end if;
+
+  select hp.primary_community_id into target_group"""
+          )
+
+          path.write_text(text)
+          PY
+      - name: Commit migration fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations/20260913010000_outpost_communities_interests_host_linking.sql
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "[outpost-sql] harden community migration"
+          git push origin HEAD:feature/outpost-community-model
