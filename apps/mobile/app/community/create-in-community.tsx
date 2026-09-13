@@ -2,7 +2,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -13,6 +13,8 @@ import {
   type CommunityGroup,
   type CommunityPostType,
 } from '../../src/community/api';
+import { setCommunityPostInterests } from '../../src/community/communityInterests';
+import { DEFAULT_OUTDOOR_INTERESTS, isPeopleCommunity } from '../../src/community/communityModel';
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -31,25 +33,33 @@ type PickedPhoto = {
 type PostMode = Extract<CommunityPostType, 'update' | 'ask'>;
 
 function initials(value: string) {
-  return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MA';
+  return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'GM';
 }
 
 export default function CreateInCommunityScreen() {
   const params = useLocalSearchParams<{ groupId?: string }>();
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
   const [mode, setMode] = useState<PostMode>('update');
+  const [interestTags, setInterestTags] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const joinedGroups = useMemo(() => groups.filter((group) => group.is_member), [groups]);
+  const joinedGroups = useMemo(() => groups.filter((group) => group.is_member && isPeopleCommunity(group)), [groups]);
   const selectedGroup = useMemo(
     () => joinedGroups.find((group) => group.id === selectedGroupId) ?? null,
     [joinedGroups, selectedGroupId],
   );
+  const filteredGroups = useMemo(() => {
+    const needle = groupSearch.trim().toLowerCase();
+    if (!needle) return joinedGroups;
+    return joinedGroups.filter((group) => `${group.name} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(needle));
+  }, [joinedGroups, groupSearch]);
 
   useEffect(() => {
     let active = true;
@@ -57,13 +67,10 @@ export default function CreateInCommunityScreen() {
     void getGroups()
       .then((nextGroups) => {
         if (!active) return;
-        const joined = nextGroups.filter((group) => group.is_member);
+        const joined = nextGroups.filter((group) => group.is_member && isPeopleCommunity(group));
         setGroups(nextGroups);
 
-        const requested = params.groupId
-          ? joined.find((group) => group.id === params.groupId)
-          : null;
-
+        const requested = params.groupId ? joined.find((group) => group.id === params.groupId) : null;
         if (requested) setSelectedGroupId(requested.id);
         else if (joined.length === 1 && joined[0]) setSelectedGroupId(joined[0].id);
       })
@@ -104,6 +111,10 @@ export default function CreateInCommunityScreen() {
 
   const cannotSubmit = submitting || !selectedGroup || (!body.trim() && !photo);
 
+  function toggleInterest(label: string) {
+    setInterestTags((current) => current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
+  }
+
   async function submit() {
     if (cannotSubmit || !selectedGroup) return;
 
@@ -120,7 +131,7 @@ export default function CreateInCommunityScreen() {
     try {
       if (photo) uploadedPath = await uploadCommunityPostImage(photo);
 
-      await createPost({
+      const postId = await createPost({
         body,
         postType: mode,
         audience: 'group',
@@ -128,8 +139,9 @@ export default function CreateInCommunityScreen() {
         groupId: selectedGroup.id,
         adventureId: selectedGroup.adventure_id ?? null,
         imagePath: uploadedPath,
-        metadata: photo ? { media_type: 'image' } : {},
+        metadata: { ...(photo ? { media_type: 'image' } : {}), interest_labels: interestTags },
       });
+      if (interestTags.length) await setCommunityPostInterests(postId, interestTags);
 
       router.back();
     } catch (caught) {
@@ -138,6 +150,13 @@ export default function CreateInCommunityScreen() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function chooseGroup(group: CommunityGroup) {
+    setSelectedGroupId(group.id);
+    setSelectorOpen(false);
+    setGroupSearch('');
+    setError(null);
   }
 
   return (
@@ -161,44 +180,29 @@ export default function CreateInCommunityScreen() {
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}><Ionicons name="people-outline" size={31} color={GOLD} /></View>
           <Text style={styles.emptyTitle}>Join a Community first</Text>
-          <Text style={styles.emptyBody}>Member posts from this button stay inside Communities you already belong to.</Text>
-          <Pressable style={styles.primaryButton} onPress={() => router.back()}>
-            <Text style={styles.primaryButtonText}>Browse Communities</Text>
+          <Text style={styles.emptyBody}>Community posts go to groups with members and an ongoing purpose. Activity topics such as camping and hiking are interests instead.</Text>
+          <Pressable style={styles.primaryButton} onPress={() => router.replace('/communities' as never)}>
+            <Text style={styles.primaryButtonText}>Find Communities</Text>
           </Pressable>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View>
-            <Text style={styles.sectionLabel}>POST TO</Text>
-            <Text style={styles.sectionHelper}>Choose one of your joined Communities.</Text>
+            <Text style={styles.sectionLabel}>COMMUNITY</Text>
+            <Text style={styles.sectionHelper}>Who do you want to share this with?</Text>
           </View>
 
-          <View style={styles.groupList}>
-            {joinedGroups.map((group) => {
-              const selected = group.id === selectedGroupId;
-              const image = group.image_url || group.cover_image_url;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  key={group.id}
-                  onPress={() => { setSelectedGroupId(group.id); setError(null); }}
-                  style={[styles.groupRow, selected && styles.groupRowSelected]}
-                >
-                  <View style={styles.groupAvatar}>
-                    {image ? <Image source={{ uri: image }} style={styles.groupAvatarImage} /> : <Text style={styles.groupInitials}>{initials(group.name)}</Text>}
-                  </View>
-                  <View style={styles.flex}>
-                    <Text style={styles.groupName} numberOfLines={1}>{group.name}</Text>
-                    <Text style={styles.groupMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text>
-                  </View>
-                  <View style={[styles.radio, selected && styles.radioSelected]}>
-                    {selected ? <Ionicons name="checkmark" size={14} color={GREEN} /> : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Pressable style={styles.selector} onPress={() => setSelectorOpen(true)}>
+            {selectedGroup ? (
+              <>
+                <View style={styles.groupAvatar}>
+                  {selectedGroup.image_url || selectedGroup.cover_image_url ? <Image source={{ uri: selectedGroup.image_url || selectedGroup.cover_image_url || '' }} style={styles.groupAvatarImage} /> : <Text style={styles.groupInitials}>{initials(selectedGroup.name)}</Text>}
+                </View>
+                <View style={styles.flex}><Text style={styles.selectorName} numberOfLines={1}>{selectedGroup.name}</Text><Text style={styles.selectorMeta}>{selectedGroup.member_count} member{selectedGroup.member_count === 1 ? '' : 's'}</Text></View>
+              </>
+            ) : <Text style={styles.selectorPlaceholder}>Choose a community</Text>}
+            <Ionicons name="chevron-down" size={18} color={GOLD} />
+          </Pressable>
 
           <View style={styles.modeRow}>
             <Pressable onPress={() => setMode('update')} style={[styles.modeChip, mode === 'update' && styles.modeChipSelected]}>
@@ -211,8 +215,18 @@ export default function CreateInCommunityScreen() {
             </Pressable>
           </View>
 
+          <View>
+            <Text style={styles.sectionLabel}>TOPICS</Text>
+            <Text style={styles.sectionHelper}>Optional. Choose everything this post is about.</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 9, paddingRight: 12 }}>
+              {DEFAULT_OUTDOOR_INTERESTS.map((label) => {
+                const selected = interestTags.includes(label);
+                return <Pressable key={label} onPress={() => toggleInterest(label)} style={[styles.modeChip, selected && styles.modeChipSelected]}><Text style={[styles.modeText, selected && styles.modeTextSelected]}>{label}</Text></Pressable>;
+              })}
+            </ScrollView>
+          </View>
+
           <View style={styles.composerCard}>
-            {selectedGroup ? <Text style={styles.composerDestination}>Posting to {selectedGroup.name}</Text> : <Text style={styles.composerDestinationMuted}>Choose a Community above</Text>}
             {photo ? (
               <View style={styles.photoWrap}>
                 <Image source={{ uri: photo.uri }} style={styles.photoPreview} />
@@ -242,6 +256,28 @@ export default function CreateInCommunityScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </ScrollView>
       )}
+
+      <Modal visible={selectorOpen} transparent animationType="slide" onRequestClose={() => setSelectorOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setSelectorOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}><View><Text style={styles.sheetEyebrow}>POST TO</Text><Text style={styles.sheetTitle}>Choose a community</Text></View><Pressable onPress={() => setSelectorOpen(false)} style={styles.sheetClose}><Ionicons name="close" size={20} color={TEXT} /></Pressable></View>
+            {joinedGroups.length > 6 ? <View style={styles.searchWrap}><Ionicons name="search" size={17} color={MUTED} /><TextInput value={groupSearch} onChangeText={setGroupSearch} placeholder="Search your communities" placeholderTextColor="#728078" style={styles.searchInput} /></View> : null}
+            <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+              {filteredGroups.map((group) => {
+                const image = group.image_url || group.cover_image_url;
+                const selected = group.id === selectedGroupId;
+                return <Pressable key={group.id} style={[styles.sheetRow, selected && styles.sheetRowSelected]} onPress={() => chooseGroup(group)}>
+                  <View style={styles.groupAvatar}>{image ? <Image source={{ uri: image }} style={styles.groupAvatarImage} /> : <Text style={styles.groupInitials}>{initials(group.name)}</Text>}</View>
+                  <View style={styles.flex}><Text style={styles.groupName}>{group.name}</Text><Text style={styles.groupMeta}>{group.member_count} member{group.member_count === 1 ? '' : 's'}</Text></View>
+                  {selected ? <Ionicons name="checkmark-circle" size={22} color={GOLD} /> : null}
+                </Pressable>;
+              })}
+              {!filteredGroups.length ? <Text style={styles.noResults}>No communities match that search.</Text> : null}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -260,25 +296,20 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 44, gap: 16 },
   sectionLabel: { color: GOLD, fontSize: 10, fontWeight: '900', letterSpacing: 1.4 },
   sectionHelper: { color: MUTED, fontSize: 13, lineHeight: 18, marginTop: 4 },
-  groupList: { gap: 8 },
-  groupRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 15, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
-  groupRowSelected: { borderColor: GOLD, backgroundColor: '#20291F' },
+  selector: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
+  selectorPlaceholder: { flex: 1, color: MUTED, fontSize: 14, fontWeight: '800' },
+  selectorName: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  selectorMeta: { color: MUTED, fontSize: 10.5, marginTop: 2 },
   groupAvatar: { width: 42, height: 42, borderRadius: 21, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2B372F' },
   groupAvatarImage: { width: '100%', height: '100%' },
   groupInitials: { color: GOLD, fontSize: 12, fontWeight: '900' },
-  groupName: { color: TEXT, fontSize: 14, fontWeight: '900' },
-  groupMeta: { color: MUTED, fontSize: 11, marginTop: 3 },
-  radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#65736A', alignItems: 'center', justifyContent: 'center' },
-  radioSelected: { borderColor: GOLD, backgroundColor: GOLD },
   modeRow: { flexDirection: 'row', gap: 8 },
   modeChip: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
   modeChipSelected: { backgroundColor: GOLD, borderColor: GOLD },
   modeText: { color: TEXT, fontSize: 13, fontWeight: '800' },
   modeTextSelected: { color: GREEN },
   composerCard: { borderRadius: 18, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, padding: 14 },
-  composerDestination: { color: GOLD, fontSize: 12, fontWeight: '900', marginBottom: 10 },
-  composerDestinationMuted: { color: MUTED, fontSize: 12, fontWeight: '800', marginBottom: 10 },
-  input: { minHeight: 138, color: TEXT, fontSize: 16, lineHeight: 23, textAlignVertical: 'top', padding: 0 },
+  input: { minHeight: 160, color: TEXT, fontSize: 16, lineHeight: 23, textAlignVertical: 'top', padding: 0 },
   composerFooter: { marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   photoButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, borderRadius: 20, backgroundColor: '#253128' },
   photoButtonText: { color: TEXT, fontSize: 12, fontWeight: '800' },
@@ -293,4 +324,19 @@ const styles = StyleSheet.create({
   emptyBody: { color: MUTED, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 8, maxWidth: 340 },
   primaryButton: { marginTop: 20, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: GOLD, paddingHorizontal: 18 },
   primaryButtonText: { color: GREEN, fontSize: 14, fontWeight: '900' },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.58)' },
+  sheet: { maxHeight: '72%', borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: '#111A15', borderWidth: 1, borderColor: BORDER, paddingHorizontal: 16, paddingTop: 9, paddingBottom: 26 },
+  sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#4A574F', marginBottom: 13 },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 13 },
+  sheetEyebrow: { color: GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
+  sheetTitle: { color: TEXT, fontSize: 21, fontWeight: '900', marginTop: 2 },
+  sheetClose: { width: 38, height: 38, borderRadius: 19, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center' },
+  searchWrap: { minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 10 },
+  searchInput: { flex: 1, color: TEXT, fontSize: 13.5, paddingVertical: 0 },
+  sheetList: { maxHeight: 430 },
+  sheetRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 14, marginBottom: 7, backgroundColor: SURFACE },
+  sheetRowSelected: { borderWidth: 1, borderColor: GOLD, backgroundColor: '#20291F' },
+  groupName: { color: TEXT, fontSize: 14, fontWeight: '900' },
+  groupMeta: { color: MUTED, fontSize: 10.5, marginTop: 3 },
+  noResults: { color: MUTED, fontSize: 13, paddingVertical: 20, textAlign: 'center' },
 });

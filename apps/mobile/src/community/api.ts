@@ -38,6 +38,12 @@ export type CommunityGroup = {
   name: string;
   description: string | null;
   kind: 'adventure' | 'interest' | 'local';
+  management_type?: 'official' | 'member_led';
+  community_type?: 'host' | 'member_led' | 'official' | 'private';
+  owner_type?: 'platform' | 'host' | 'member';
+  host_profile_id?: string | null;
+  created_by?: string | null;
+  is_topic?: boolean;
   adventure_id: string | null;
   city: string | null;
   state: string | null;
@@ -124,7 +130,7 @@ export async function getGroups(): Promise<CommunityGroup[]> {
 
   const { data: groups, error } = await supabase
     .from('community_groups')
-    .select('id, name, description, kind, adventure_id, city, state, image_url, cover_image_url, visibility')
+    .select('id, name, description, kind, management_type, community_type, owner_type, host_profile_id, created_by, is_topic, adventure_id, city, state, image_url, cover_image_url, visibility')
     .order('kind', { ascending: true })
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -282,8 +288,8 @@ export async function removeCommunityPostMedia(path: string) {
 
 export const removeCommunityPostImage = removeCommunityPostMedia;
 
-export async function createPost(input: CreateCommunityPostInput): Promise<void>;
-export async function createPost(body: string, adventureId?: string, groupId?: string): Promise<void>;
+export async function createPost(input: CreateCommunityPostInput): Promise<string>;
+export async function createPost(body: string, adventureId?: string, groupId?: string): Promise<string>;
 export async function createPost(inputOrBody: CreateCommunityPostInput | string, adventureId?: string, groupId?: string) {
   const userId = await currentUserId();
   const input: CreateCommunityPostInput = typeof inputOrBody === 'string'
@@ -304,7 +310,7 @@ export async function createPost(inputOrBody: CreateCommunityPostInput | string,
   if (audience === 'circle' && !input.circleId) throw new Error('Choose a Circle.');
   if (audience === 'group' && !input.groupId) throw new Error('Choose a Group.');
 
-  const { error } = await supabase.from('community_posts').insert({
+  const { data, error } = await supabase.from('community_posts').insert({
     author_id: userId,
     body,
     post_type: input.postType ?? 'update',
@@ -314,8 +320,9 @@ export async function createPost(inputOrBody: CreateCommunityPostInput | string,
     circle_id: audience === 'circle' ? input.circleId ?? null : null,
     image_url: input.imagePath ?? null,
     metadata: input.metadata ?? {},
-  });
+  }).select('id').single();
   if (error) throw error;
+  return data.id as string;
 }
 
 export async function updatePost(postId: string, body: string) {
