@@ -90,31 +90,41 @@ The member can attach multiple optional interests to a post.
 
 ## Host communities
 
-The platform organization owns the host community. Individual host profiles can manage it, but they are not the ownership boundary.
+Two ownership layers must stay separate.
 
-Each organization can designate one primary host community. Additional subgroups are appropriate only when they serve a distinct audience or operational purpose.
+`community_groups.organization_id` is the platform tenant boundary. It keeps the community inside the correct company or organization workspace.
+
+`community_groups.host_organization_id` is the public host identity that owns a host community. This answers the member-facing question: who runs this community?
+
+Each public host identity can designate one primary community through `host_organizations.primary_community_id`. Team members who publish as that same host identity share the same community destination.
+
+`organizations.primary_host_organization_id` selects the default public host identity for Host Center inside a tenant. It does not make every event in the tenant belong to that host.
 
 Do not require separate host groups for Camping, Hiking, Water, Family, or other overlapping activities.
 
-The primary community is the social home for the organization's posts, members, and outings.
+The primary community is the social home for that host identity's posts, members, and outings.
 
-`community_groups.organization_id` is the tenant ownership field. `community_groups.host_profile_id` is retained only as a legacy host or steward reference.
-
-`organizations.primary_community_id` is the authoritative primary-community setting. `host_profiles.primary_community_id` is legacy compatibility state and must not drive event distribution.
+`community_groups.host_profile_id`, `host_profiles.primary_community_id`, and `organizations.primary_community_id` remain compatibility fields only. They must not decide event distribution.
 
 ## Host events and community outings
 
 Host Center remains the source of truth for host events.
 
-When an adventure is published, the system resolves its organization from `adventures.platform_organization_id`, then links it to that organization's primary community through `community_outings`.
+`adventures.platform_organization_id` identifies the tenant that owns the event.
 
-The event creator does not determine the community destination. A teammate publishing an event for the same organization must produce the same community outing as the organization owner or another host.
+`adventures.organization_id` identifies the public host identity presenting the event. It points to `host_organizations`.
+
+When an adventure is published, the system resolves its public host identity from `adventures.organization_id`, then links it to that host identity's primary community through `community_outings`.
+
+The event creator does not determine the community destination. Two teammates publishing as the same public host identity must produce the same community outing.
+
+An event with no public host identity does not automatically inherit another host's community just because both records live in the same tenant.
 
 The community outing is a reference to the adventure, not a duplicated event record.
 
 Changes to the adventure therefore remain authoritative everywhere it appears.
 
-Changing an organization's primary community repoints the organization's published primary outing links. Intentional non-primary shares remain separate.
+Changing a public host identity's primary community repoints that host's published primary outing links. Intentional non-primary shares remain separate.
 
 The community page includes an Outings destination that reads those linked adventures.
 
@@ -132,8 +142,10 @@ Community-only visibility continues to define who can open the event.
 
 Core tables and joins:
 
-- `organizations.primary_community_id`
+- `organizations.primary_host_organization_id`
+- `host_organizations.primary_community_id`
 - `community_groups.organization_id`
+- `community_groups.host_organization_id`
 - `community_groups`
 - `community_group_members`
 - `interests`
@@ -144,6 +156,7 @@ Core tables and joins:
 - `host_interests`
 - `community_outings`
 - `host_profiles.primary_community_id` as legacy compatibility only
+- `organizations.primary_community_id` as legacy compatibility only
 
 ## Acceptance criteria
 
@@ -157,11 +170,14 @@ Core tables and joins:
 - Posts can carry multiple interests.
 - Host events can carry multiple interests.
 - Every community has a platform organization owner.
-- An organization can designate one primary host community.
-- A host community cannot become primary for a different organization.
-- Host Center reads and writes the active organization's primary community, not an individual profile setting.
-- Published Host Center events automatically appear as linked outings in the primary community for `adventures.platform_organization_id`.
-- Events created by different teammates in the same organization route to the same primary community.
-- Changing the active organization's primary community repoints its published primary outing links.
+- A host community can identify the public host identity that runs it.
+- A public host identity can designate one primary host community.
+- A host community cannot become primary for a host identity in another tenant.
+- Host Center resolves the active tenant's default public host identity.
+- New Host Center events persist that public host identity on `adventures.organization_id`.
+- Published Host Center events automatically appear as linked outings in the primary community for their public host identity.
+- Events created by different teammates under the same public host identity route to the same primary community.
+- Events without a public host identity do not get routed into an unrelated host community.
+- Changing a public host identity's primary community repoints only that host identity's published primary outing links.
 - Community Outings open the same underlying adventure record.
 - Communities expose ownership type and distinguish host, member-led, and Go Melanated spaces.

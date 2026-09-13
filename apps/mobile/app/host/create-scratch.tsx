@@ -7,7 +7,7 @@ import { getGroups, type CommunityGroup } from '../../src/community/api';
 import { DEFAULT_OUTDOOR_INTERESTS, isPeopleCommunity } from '../../src/community/communityModel';
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
 import { createCampaignWorkspace } from '../../src/hosting/creation';
-import { getPrimaryHostCommunityId, listManagedHostCommunityIds, setHostOutingInterests, setPrimaryHostCommunity } from '../../src/hosting/communityIntegration';
+import { getActiveHostOrganizationContext, getPrimaryHostCommunityId, listManagedHostCommunityIds, setHostOutingInterests, setPrimaryHostCommunity } from '../../src/hosting/communityIntegration';
 import { addEventComponent } from '../../src/hosting/eventBuilder';
 import { setOutingVisibility, type EventVisibility } from '../../src/hosting/hostProfiles';
 import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
@@ -32,6 +32,8 @@ export default function CreateHostOutingScreen() {
   const [visibility, setVisibility] = useState<EventVisibility>('public');
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [managedGroups, setManagedGroups] = useState<CommunityGroup[]>([]);
+  const [hostOrganizationId, setHostOrganizationId] = useState<string | null>(null);
+  const [hostOrganizationName, setHostOrganizationName] = useState<string | null>(null);
   const [primaryCommunityId, setPrimaryCommunityId] = useState<string | null>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
@@ -48,20 +50,39 @@ export default function CreateHostOutingScreen() {
   const capacityNumber = useMemo(() => { const value = Number.parseInt(capacity, 10); return Number.isFinite(value) && value > 0 ? value : null; }, [capacity]);
 
   useEffect(() => {
-    void Promise.all([getGroups(), listManagedHostCommunityIds(), getPrimaryHostCommunityId()])
-      .then(([nextGroups, managedIds, primaryId]) => {
+    void (async () => {
+      try {
+        const [nextGroups, hostContext] = await Promise.all([getGroups(), getActiveHostOrganizationContext()]);
         const peopleGroups = nextGroups.filter(isPeopleCommunity);
+        setGroups(peopleGroups);
+
+        if (!hostContext) {
+          setHostOrganizationId(null);
+          setHostOrganizationName(null);
+          setManagedGroups([]);
+          setPrimaryCommunityId(null);
+          return;
+        }
+
+        const [managedIds, primaryId] = await Promise.all([
+          listManagedHostCommunityIds(hostContext.id),
+          getPrimaryHostCommunityId(hostContext.id),
+        ]);
         const managedSet = new Set(managedIds);
         const nextManaged = peopleGroups.filter((group) => managedSet.has(group.id));
-        setGroups(peopleGroups);
+        setHostOrganizationId(hostContext.id);
+        setHostOrganizationName(hostContext.name);
         setManagedGroups(nextManaged);
         const resolvedPrimary = primaryId && managedSet.has(primaryId) ? primaryId : nextManaged.length === 1 ? nextManaged[0]?.id ?? null : null;
         setPrimaryCommunityId(resolvedPrimary);
-      })
-      .catch(() => {
+      } catch {
         setGroups([]);
         setManagedGroups([]);
-      });
+        setHostOrganizationId(null);
+        setHostOrganizationName(null);
+        setPrimaryCommunityId(null);
+      }
+    })();
   }, []);
 
   function toggleGroup(groupId: string) {
@@ -94,9 +115,9 @@ export default function CreateHostOutingScreen() {
       const priceCents = paid ? Math.round(dollars * 100) : 0;
       if (paid && (!Number.isFinite(dollars) || dollars <= 0)) throw new Error('Enter a valid ticket price.');
 
-      if (primaryCommunityId) await setPrimaryHostCommunity(primaryCommunityId);
+      if (primaryCommunityId && hostOrganizationId) await setPrimaryHostCommunity(hostOrganizationId, primaryCommunityId);
 
-      const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions });
+      const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions, hostOrganizationId });
       await Promise.all([
         setOutingVisibility(outing.id, visibility, selectedGroupIds),
         setHostOutingInterests(outing.id, interests),
@@ -130,8 +151,8 @@ export default function CreateHostOutingScreen() {
     <Field label="Meeting instructions" value={meetingInstructions} onChangeText={setMeetingInstructions} placeholder="Parking, arrival window, and meeting details." multiline />
 
     <Text style={styles.sectionLabel}>Host community</Text>
-    <Text style={styles.sectionCopy}>When this event is published, it will appear as an outing in your primary community.</Text>
-    {managedGroups.length ? <View style={styles.chips}>{managedGroups.map((group) => <Chip key={group.id} label={group.name} active={primaryCommunityId === group.id} onPress={() => setPrimaryCommunityId(group.id)} />)}</View> : <Text style={styles.communityNote}>No managed community is connected yet. You can build the event now, but it will not appear in a host community until one is connected.</Text>}
+    <Text style={styles.sectionCopy}>{hostOrganizationName ? `Events published as ${hostOrganizationName} appear as outings in this community.` : 'Connect a public host identity to automatically publish events into its community.'}</Text>
+    {managedGroups.length ? <View style={styles.chips}>{managedGroups.map((group) => <Chip key={group.id} label={group.name} active={primaryCommunityId === group.id} onPress={() => setPrimaryCommunityId(group.id)} />)}</View> : <Text style={styles.communityNote}>{hostOrganizationName ? 'No community is connected to this host identity yet.' : 'No public host identity is configured for the active organization.'}</Text>}
 
     <Text style={styles.sectionLabel}>Who can see this event?</Text>
     <View style={styles.visibilityList}>{visibilityOptions.map((option) => <Pressable key={option.value} style={[styles.visibilityCard, visibility === option.value && styles.visibilityCardActive]} onPress={() => setVisibility(option.value)}><View style={[styles.radio, visibility === option.value && styles.radioActive]}>{visibility === option.value ? <View style={styles.radioDot} /> : null}</View><View style={styles.flex}><Text style={[styles.visibilityTitle, visibility === option.value && styles.visibilityTitleActive]}>{option.label}</Text><Text style={styles.visibilityCopy}>{option.copy}</Text></View></Pressable>)}</View>
