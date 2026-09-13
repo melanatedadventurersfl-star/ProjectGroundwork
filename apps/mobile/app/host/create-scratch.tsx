@@ -4,8 +4,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getGroups, type CommunityGroup } from '../../src/community/api';
+import { DEFAULT_OUTDOOR_INTERESTS, isPeopleCommunity } from '../../src/community/communityModel';
 import { createDraftOuting, getOutingHostAccess } from '../../src/hosting/api';
 import { createCampaignWorkspace } from '../../src/hosting/creation';
+import { getPrimaryHostCommunityId, listManagedHostCommunityIds, setHostOutingInterests, setPrimaryHostCommunity } from '../../src/hosting/communityIntegration';
 import { addEventComponent } from '../../src/hosting/eventBuilder';
 import { setOutingVisibility, type EventVisibility } from '../../src/hosting/hostProfiles';
 import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
@@ -25,9 +27,12 @@ export default function CreateHostOutingScreen() {
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Social');
+  const [interests, setInterests] = useState<string[]>(['Social']);
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [visibility, setVisibility] = useState<EventVisibility>('public');
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [managedGroups, setManagedGroups] = useState<CommunityGroup[]>([]);
+  const [primaryCommunityId, setPrimaryCommunityId] = useState<string | null>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -43,11 +48,35 @@ export default function CreateHostOutingScreen() {
   const capacityNumber = useMemo(() => { const value = Number.parseInt(capacity, 10); return Number.isFinite(value) && value > 0 ? value : null; }, [capacity]);
 
   useEffect(() => {
-    void getGroups().then(setGroups).catch(() => setGroups([]));
+    void Promise.all([getGroups(), listManagedHostCommunityIds(), getPrimaryHostCommunityId()])
+      .then(([nextGroups, managedIds, primaryId]) => {
+        const peopleGroups = nextGroups.filter(isPeopleCommunity);
+        const managedSet = new Set(managedIds);
+        const nextManaged = peopleGroups.filter((group) => managedSet.has(group.id));
+        setGroups(peopleGroups);
+        setManagedGroups(nextManaged);
+        const resolvedPrimary = primaryId && managedSet.has(primaryId) ? primaryId : nextManaged.length === 1 ? nextManaged[0]?.id ?? null : null;
+        setPrimaryCommunityId(resolvedPrimary);
+      })
+      .catch(() => {
+        setGroups([]);
+        setManagedGroups([]);
+      });
   }, []);
 
   function toggleGroup(groupId: string) {
     setSelectedGroupIds((current) => current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]);
+  }
+
+  function toggleInterest(label: string) {
+    setInterests((current) => current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
+  }
+
+  function chooseCategory(nextCategory: string) {
+    setCategory(nextCategory);
+    const directInterest = DEFAULT_OUTDOOR_INTERESTS.find((item) => item.toLowerCase() === nextCategory.toLowerCase());
+    if (directInterest) setInterests((current) => current.includes(directInterest) ? current : [...current, directInterest]);
+    if (nextCategory === 'Paddling') setInterests((current) => current.includes('Water') ? current : [...current, 'Water']);
   }
 
   async function createOuting() {
@@ -64,9 +93,15 @@ export default function CreateHostOutingScreen() {
       const dollars = Number.parseFloat(price || '0');
       const priceCents = paid ? Math.round(dollars * 100) : 0;
       if (paid && (!Number.isFinite(dollars) || dollars <= 0)) throw new Error('Enter a valid ticket price.');
+
+      if (primaryCommunityId) await setPrimaryHostCommunity(primaryCommunityId);
+
       const outing = await createDraftOuting({ title, summary, description, category, difficulty, startsAt: start.toISOString(), endsAt: end.toISOString(), city, state, venueName, capacity: capacityNumber, meetingInstructions });
-      await setOutingVisibility(outing.id, visibility, selectedGroupIds);
-      await addGeneralAdmissionTicket(outing.id, capacityNumber, priceCents);
+      await Promise.all([
+        setOutingVisibility(outing.id, visibility, selectedGroupIds),
+        setHostOutingInterests(outing.id, interests),
+        addGeneralAdmissionTicket(outing.id, capacityNumber, priceCents),
+      ]);
       const campaign = await createCampaignWorkspace({ adventureId: outing.id, title: outing.title, location: [outing.venue_name, outing.city, outing.state].filter(Boolean).join(', '), startsAt: outing.starts_at, endsAt: outing.ends_at });
       await Promise.all([addEventComponent(campaign.id, 'tickets', outing.starts_at), addEventComponent(campaign.id, 'team', outing.starts_at), addEventComponent(campaign.id, 'finance', outing.starts_at)]);
       router.replace(`/host/build/${outing.id}` as never);
@@ -79,7 +114,12 @@ export default function CreateHostOutingScreen() {
     <Field label="Title" value={title} onChangeText={setTitle} placeholder="Sunset paddle on the river" />
     <Field label="Short hook" value={summary} onChangeText={setSummary} placeholder="An easygoing evening paddle for beginners and regulars." />
     <Field label="Description" value={description} onChangeText={setDescription} placeholder="What should someone know before they decide to join?" multiline />
-    <Text style={styles.label}>Event type</Text><View style={styles.chips}>{categories.map((item) => <Chip key={item} label={item} active={category === item} onPress={() => setCategory(item)} />)}</View>
+    <Text style={styles.label}>Event type</Text><View style={styles.chips}>{categories.map((item) => <Chip key={item} label={item} active={category === item} onPress={() => chooseCategory(item)} />)}</View>
+
+    <Text style={styles.sectionLabel}>Interests</Text>
+    <Text style={styles.sectionCopy}>Choose every topic that fits. An event can be camping, hiking, water, and family-friendly at the same time.</Text>
+    <View style={styles.chips}>{DEFAULT_OUTDOOR_INTERESTS.map((item) => <Chip key={item} label={item} active={interests.includes(item)} onPress={() => toggleInterest(item)} />)}</View>
+
     <Text style={styles.label}>Difficulty</Text><View style={styles.chips}>{difficulties.map((item) => <Chip key={item} label={item.charAt(0).toUpperCase() + item.slice(1)} active={difficulty === item} onPress={() => setDifficulty(item)} />)}</View>
     <Field label="Starts" value={startsAt} onChangeText={setStartsAt} placeholder="Sep 19, 2026 9:00 AM" />
     <Field label="Ends" value={endsAt} onChangeText={setEndsAt} placeholder="Sep 19, 2026 11:30 AM" />
@@ -89,9 +129,13 @@ export default function CreateHostOutingScreen() {
     <Field label="Expected attendance" value={capacity} onChangeText={setCapacity} placeholder="20" keyboardType="number-pad" />
     <Field label="Meeting instructions" value={meetingInstructions} onChangeText={setMeetingInstructions} placeholder="Parking, arrival window, and meeting details." multiline />
 
+    <Text style={styles.sectionLabel}>Host community</Text>
+    <Text style={styles.sectionCopy}>When this event is published, it will appear as an outing in your primary community.</Text>
+    {managedGroups.length ? <View style={styles.chips}>{managedGroups.map((group) => <Chip key={group.id} label={group.name} active={primaryCommunityId === group.id} onPress={() => setPrimaryCommunityId(group.id)} />)}</View> : <Text style={styles.communityNote}>No managed community is connected yet. You can build the event now, but it will not appear in a host community until one is connected.</Text>}
+
     <Text style={styles.sectionLabel}>Who can see this event?</Text>
     <View style={styles.visibilityList}>{visibilityOptions.map((option) => <Pressable key={option.value} style={[styles.visibilityCard, visibility === option.value && styles.visibilityCardActive]} onPress={() => setVisibility(option.value)}><View style={[styles.radio, visibility === option.value && styles.radioActive]}>{visibility === option.value ? <View style={styles.radioDot} /> : null}</View><View style={styles.flex}><Text style={[styles.visibilityTitle, visibility === option.value && styles.visibilityTitleActive]}>{option.label}</Text><Text style={styles.visibilityCopy}>{option.copy}</Text></View></Pressable>)}</View>
-    {visibility === 'community' ? <View style={styles.communityPicker}><Text style={styles.label}>Allowed communities</Text>{groups.length ? <View style={styles.chips}>{groups.map((group) => <Chip key={group.id} label={group.name} active={selectedGroupIds.includes(group.id)} onPress={() => toggleGroup(group.id)} />)}</View> : <Text style={styles.communityNote}>No communities are available to select. Create or join a community before making this event community-only.</Text>}</View> : null}
+    {visibility === 'community' ? <View style={styles.communityPicker}><Text style={styles.label}>Allowed communities</Text>{groups.length ? <View style={styles.chips}>{groups.map((group) => <Chip key={group.id} label={group.name} active={selectedGroupIds.includes(group.id)} onPress={() => toggleGroup(group.id)} />)}</View> : <Text style={styles.communityNote}>No communities are available to select.</Text>}</View> : null}
 
     <Text style={styles.sectionLabel}>Admission</Text><View style={styles.segment}><Pressable style={[styles.segmentButton, !paid && styles.segmentActive]} onPress={() => { setPaid(false); setPrice('0'); }}><Text style={[styles.segmentText, !paid && styles.segmentTextActive]}>Free event</Text></Pressable><Pressable style={[styles.segmentButton, paid && styles.segmentActive]} onPress={() => setPaid(true)}><Text style={[styles.segmentText, paid && styles.segmentTextActive]}>Paid event</Text></Pressable></View>
     {paid ? <Field label="Starting ticket price" value={price} onChangeText={setPrice} placeholder="35.00" keyboardType="decimal-pad" prefix="$" /> : null}
@@ -102,4 +146,4 @@ export default function CreateHostOutingScreen() {
 
 function Field({ label, prefix, multiline = false, ...props }: any) { return <View style={styles.fieldWrap}><Text style={styles.label}>{label}</Text><View style={styles.inputWrap}>{prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}<TextInput {...props} multiline={multiline} placeholderTextColor="#66736B" style={[styles.input, multiline && styles.multiline]} textAlignVertical={multiline ? 'top' : 'center'} /></View></View>; }
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) { return <Pressable style={[styles.chip, active && styles.chipActive]} onPress={onPress}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>; }
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0B100D' }, content: { padding: 20, paddingBottom: 64 }, back: { color: '#D7B45A', fontWeight: '800', marginBottom: 18 }, eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 32, lineHeight: 38, fontWeight: '900', marginTop: 4 }, subtitle: { color: '#A7B0AA', fontSize: 13, lineHeight: 20, marginTop: 5, marginBottom: 8 }, fieldWrap: { marginTop: 13 }, label: { color: '#D4DAD6', fontSize: 12, fontWeight: '800', marginBottom: 7 }, inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', borderRadius: 13 }, input: { flex: 1, minHeight: 48, color: '#FFF8E8', paddingHorizontal: 13, fontSize: 14 }, multiline: { minHeight: 92, paddingTop: 13 }, prefix: { color: '#D7B45A', fontSize: 15, fontWeight: '900', marginLeft: 13 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 3 }, chip: { borderRadius: 18, borderWidth: 1, borderColor: '#364139', paddingHorizontal: 11, paddingVertical: 8, backgroundColor: '#151B17' }, chipActive: { backgroundColor: '#443616', borderColor: '#8A6A25' }, chipText: { color: '#A9B1AC', fontSize: 11, fontWeight: '800' }, chipTextActive: { color: '#E7C464' }, twoCol: { flexDirection: 'row', gap: 10 }, flex: { flex: 1 }, stateCol: { width: 95 }, helper: { color: '#738078', fontSize: 10, lineHeight: 15, marginTop: 7 }, sectionLabel: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 24, marginBottom: 9, textTransform: 'uppercase' }, visibilityList: { gap: 8 }, visibilityCard: { borderRadius: 14, borderWidth: 1, borderColor: '#344039', backgroundColor: '#151B17', minHeight: 66, padding: 11, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }, visibilityCardActive: { borderColor: '#8A6A25', backgroundColor: '#292314' }, radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: '#66736B', alignItems: 'center', justifyContent: 'center', marginTop: 1 }, radioActive: { borderColor: '#D7B45A' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D7B45A' }, visibilityTitle: { color: '#D4DAD6', fontSize: 12, fontWeight: '900' }, visibilityTitleActive: { color: '#E7C464' }, visibilityCopy: { color: '#7D8981', fontSize: 10, lineHeight: 14, marginTop: 3 }, communityPicker: { marginTop: 12 }, communityNote: { color: '#8F9A93', fontSize: 10, lineHeight: 15, marginTop: 4 }, segment: { flexDirection: 'row', borderRadius: 13, borderWidth: 1, borderColor: '#344039', overflow: 'hidden' }, segmentButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151B17' }, segmentActive: { backgroundColor: '#443616' }, segmentText: { color: '#9FA9A3', fontWeight: '800', fontSize: 12 }, segmentTextActive: { color: '#E7C464' }, primary: { minHeight: 52, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginTop: 24 }, primaryText: { color: '#172017', fontSize: 15, fontWeight: '900' }, error: { color: '#FF8A80', fontSize: 12, lineHeight: 18, marginTop: 15 } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0B100D' }, content: { padding: 20, paddingBottom: 64 }, back: { color: '#D7B45A', fontWeight: '800', marginBottom: 18 }, eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 32, lineHeight: 38, fontWeight: '900', marginTop: 4 }, subtitle: { color: '#A7B0AA', fontSize: 13, lineHeight: 20, marginTop: 5, marginBottom: 8 }, fieldWrap: { marginTop: 13 }, label: { color: '#D4DAD6', fontSize: 12, fontWeight: '800', marginBottom: 7 }, inputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', borderRadius: 13 }, input: { flex: 1, minHeight: 48, color: '#FFF8E8', paddingHorizontal: 13, fontSize: 14 }, multiline: { minHeight: 92, paddingTop: 13 }, prefix: { color: '#D7B45A', fontSize: 15, fontWeight: '900', marginLeft: 13 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 3 }, chip: { borderRadius: 18, borderWidth: 1, borderColor: '#364139', paddingHorizontal: 11, paddingVertical: 8, backgroundColor: '#151B17' }, chipActive: { backgroundColor: '#443616', borderColor: '#8A6A25' }, chipText: { color: '#A9B1AC', fontSize: 11, fontWeight: '800' }, chipTextActive: { color: '#E7C464' }, twoCol: { flexDirection: 'row', gap: 10 }, flex: { flex: 1 }, stateCol: { width: 95 }, helper: { color: '#738078', fontSize: 10, lineHeight: 15, marginTop: 7 }, sectionLabel: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 24, marginBottom: 7, textTransform: 'uppercase' }, sectionCopy: { color: '#8F9A93', fontSize: 11, lineHeight: 16, marginBottom: 10 }, visibilityList: { gap: 8 }, visibilityCard: { borderRadius: 14, borderWidth: 1, borderColor: '#344039', backgroundColor: '#151B17', minHeight: 66, padding: 11, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }, visibilityCardActive: { borderColor: '#8A6A25', backgroundColor: '#292314' }, radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: '#66736B', alignItems: 'center', justifyContent: 'center', marginTop: 1 }, radioActive: { borderColor: '#D7B45A' }, radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D7B45A' }, visibilityTitle: { color: '#D4DAD6', fontSize: 12, fontWeight: '900' }, visibilityTitleActive: { color: '#E7C464' }, visibilityCopy: { color: '#7D8981', fontSize: 10, lineHeight: 14, marginTop: 3 }, communityPicker: { marginTop: 12 }, communityNote: { color: '#8F9A93', fontSize: 10.5, lineHeight: 16, marginTop: 4 }, segment: { flexDirection: 'row', borderRadius: 13, borderWidth: 1, borderColor: '#344039', overflow: 'hidden' }, segmentButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151B17' }, segmentActive: { backgroundColor: '#443616' }, segmentText: { color: '#9FA9A3', fontWeight: '800', fontSize: 12 }, segmentTextActive: { color: '#E7C464' }, primary: { minHeight: 52, borderRadius: 14, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center', marginTop: 24 }, primaryText: { color: '#172017', fontSize: 15, fontWeight: '900' }, error: { color: '#FF8A80', fontSize: 12, lineHeight: 18, marginTop: 15 } });
