@@ -282,11 +282,11 @@ export default function TrailGuideScreen() {
     const priority = [
       ...visiblePriority,
       ...filteredPlaces.filter((place) => !visibleIds.has(place.id)),
-      ...cityPlaces.filter((place) => !filteredPlaces.some((candidate) => candidate.id === place.id)),
     ];
+    const loadTarget = showAll ? filteredPlaces.length : Math.min(PHOTO_POOL_TARGET, filteredPlaces.length);
     const candidates = priority
       .filter((place) => photoByIdRef.current[place.id] == null)
-      .slice(0, PHOTO_POOL_TARGET);
+      .slice(0, loadTarget);
 
     const commitPhoto = (placeId: string, photo: TrailGuideHeroPhoto | null) => {
       if (!active || !photo) return;
@@ -317,7 +317,7 @@ export default function TrailGuideScreen() {
     })();
 
     return () => { active = false; };
-  }, [cityPlaces, filteredPlaces]);
+  }, [filteredPlaces, showAll]);
 
   const recommendedPlaces = useMemo(() => filteredPlaces.slice(0, RECOMMENDED_LIMIT), [filteredPlaces]);
   const featuredPlace = recommendedPlaces[0] ?? null;
