@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
@@ -59,25 +59,32 @@ function NearbyCard({ place }: { place: TrailGuidePlace }) {
 export default function TrailGuidePlaceDetailScreen() {
   const { id, notice } = useLocalSearchParams<{ id: string; notice?: string }>();
   const { session } = useAuth();
-  const { width } = useWindowDimensions();
   const place = getTrailGuidePlace(id);
   const heroCandidates = useTrailGuideHeroCandidates(place);
   const [googleDetails, setGoogleDetails] = useState<GoogleTrailGuidePlaceDetails | null>(null);
   const [gmSummary, setGmSummary] = useState<{ averageRating: number | null; reviewCount: number } | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [carouselWidth, setCarouselWidth] = useState(0);
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [transientNotice, setTransientNotice] = useState<string | null>(null);
+  const carouselOffsetRef = useRef(0);
+  const carouselSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let active = true;
     setGoogleDetails(null);
     setActivePhotoIndex(0);
     setFailedPhotoUrls([]);
+    carouselOffsetRef.current = 0;
+    if (carouselSettleTimer.current) clearTimeout(carouselSettleTimer.current);
     if (!place) return () => { active = false; };
     void resolveGoogleTrailGuidePlaceDetails(place).then((details) => { if (active) setGoogleDetails(details); });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (carouselSettleTimer.current) clearTimeout(carouselSettleTimer.current);
+    };
   }, [place]);
 
   useEffect(() => {
@@ -195,13 +202,41 @@ export default function TrailGuidePlaceDetailScreen() {
     setFailedPhotoUrls((current) => current.includes(photoUrl) ? current : [...current, photoUrl]);
   };
 
+  const commitCarouselIndex = (offsetX: number) => {
+    if (!carouselWidth || gallery.length === 0) return;
+    const next = Math.max(0, Math.min(gallery.length - 1, Math.round(offsetX / carouselWidth)));
+    setActivePhotoIndex(next);
+  };
+
+  const scheduleCarouselIndex = (offsetX: number) => {
+    carouselOffsetRef.current = offsetX;
+    if (carouselSettleTimer.current) clearTimeout(carouselSettleTimer.current);
+    carouselSettleTimer.current = setTimeout(() => commitCarouselIndex(carouselOffsetRef.current), 120);
+  };
+
+  const settleCarousel = (offsetX: number) => {
+    carouselOffsetRef.current = offsetX;
+    if (carouselSettleTimer.current) clearTimeout(carouselSettleTimer.current);
+    carouselSettleTimer.current = null;
+    commitCarouselIndex(offsetX);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
+        <View style={styles.hero} onLayout={(event) => setCarouselWidth(event.nativeEvent.layout.width)}>
           {gallery.length > 0 ? (
-            <ScrollView horizontal pagingEnabled bounces={false} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(event) => setActivePhotoIndex(Math.round(event.nativeEvent.contentOffset.x / width))}>
-              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              bounces={false}
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={32}
+              onScroll={(event) => scheduleCarouselIndex(event.nativeEvent.contentOffset.x)}
+              onScrollEndDrag={(event) => settleCarousel(event.nativeEvent.contentOffset.x)}
+              onMomentumScrollEnd={(event) => settleCarousel(event.nativeEvent.contentOffset.x)}
+            >
+              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width: carouselWidth || 1, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
             </ScrollView>
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Finding destination photos…</Text></View>

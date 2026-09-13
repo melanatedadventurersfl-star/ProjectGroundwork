@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const MODEL = "gpt-4.1-mini";
 const MAX_GOOGLE_PHOTOS = 8;
-const MAX_ANALYZED_PHOTOS = 6;
+const MAX_ANALYZED_PHOTOS = 3;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -104,12 +104,29 @@ function analysisSchema(photoCount: number) {
   };
 }
 
+function landscapeMetadataScore(photo: ResolvedPhoto) {
+  const width = photo.widthPx ?? 0;
+  const height = photo.heightPx ?? 0;
+  if (!width || !height) return Math.max(0, 0.6 - (photo.order * 0.04));
+  const ratio = width / height;
+  const aspect = ratio >= 1.3 && ratio <= 2.4 ? 1 : ratio >= 1.05 ? 0.78 : ratio >= 0.9 ? 0.5 : 0.2;
+  const size = Math.min(1, (width * height) / 4_000_000);
+  const order = Math.max(0.35, 1 - (photo.order * 0.08));
+  return (0.62 * aspect) + (0.18 * size) + (0.2 * order);
+}
+
+function rankFastPhotos(photos: ResolvedPhoto[]) {
+  return [...photos].sort((a, b) => landscapeMetadataScore(b) - landscapeMetadataScore(a));
+}
+
 async function analyzePhotos(
   openAiKey: string,
   photos: ResolvedPhoto[],
   context: { name: string; area: string; category: string; type: string; tags: string[]; summary: string },
+  requestedLimit: number,
 ) {
-  const candidates = photos.slice(0, MAX_ANALYZED_PHOTOS);
+  const limit = Math.max(1, Math.min(MAX_ANALYZED_PHOTOS, requestedLimit));
+  const candidates = rankFastPhotos(photos).slice(0, limit);
   if (!candidates.length) return new Map<number, Omit<PhotoAnalysis, "index">>();
 
   const content: any[] = [
@@ -121,15 +138,15 @@ async function analyzePhotos(
         `Destination type: ${context.type || "unknown"}.`,
         context.tags.length ? `Tags: ${context.tags.join(", ")}.` : "",
         context.summary ? `Summary: ${context.summary}.` : "",
-        "Classify each image by its dominant subject. Score heroSuitability for a wide destination header, representativeness for how well it shows what a visitor should expect, and destinationMatch for whether it plausibly shows this exact place. Penalize signs, bathrooms, food, close-up wildlife, portraits, person-heavy images, screenshots, and tight detail shots. For campgrounds, favor campsites, RV/tent sites, campground-overview scenes, beach access, landscape, and recreation over wildlife. Return one result for every image index.",
+        "Classify each image by its dominant subject. Score heroSuitability for a wide destination header, representativeness for how well it shows what a visitor should expect, and destinationMatch for whether it plausibly shows this exact place. Penalize signs, bathrooms, food, close-up wildlife, portraits, person-heavy images, screenshots, and tight detail shots. For campgrounds, favor campsites, RV/tent sites, campground-overview scenes, beach access, landscape, and recreation over wildlife. Return one result for every supplied image index.",
       ].filter(Boolean).join("\n"),
     },
   ];
 
-  for (const photo of candidates) {
-    content.push({ type: "input_text", text: `Photo ${photo.order}` });
+  candidates.forEach((photo, index) => {
+    content.push({ type: "input_text", text: `Photo ${index}` });
     content.push({ type: "input_image", image_url: photo.url, detail: "low" });
-  }
+  });
 
   try {
     const upstream = await fetch("https://api.openai.com/v1/responses", {
@@ -165,7 +182,9 @@ async function analyzePhotos(
     const result = new Map<number, Omit<PhotoAnalysis, "index">>();
     for (const row of parsed.photos ?? []) {
       if (!Number.isInteger(row.index) || row.index < 0 || row.index >= candidates.length) continue;
-      result.set(row.index, {
+      const originalOrder = candidates[row.index]?.order;
+      if (!Number.isInteger(originalOrder)) continue;
+      result.set(originalOrder, {
         category: row.category,
         heroSuitability: Math.max(0, Math.min(1, Number(row.heroSuitability) || 0)),
         representativeness: Math.max(0, Math.min(1, Number(row.representativeness) || 0)),
@@ -194,6 +213,16 @@ Deno.serve(async (req: Request) => {
     const state = clean(body?.state || "FL", 40) || "FL";
     const includeGallery = body?.includeGallery !== false;
     const includeHeroAnalysis = body?.includeHeroAnalysis === true;
+    const photoPurpose = body?.photoPurpose === "card" ? "card" : "hero";
+    const requestedPhotoCount = Number(body?.maxPhotos);
+    const maxPhotos = Number.isFinite(requestedPhotoCount)
+      ? Math.max(1, Math.min(MAX_GOOGLE_PHOTOS, Math.round(requestedPhotoCount)))
+      : photoPurpose === "card" ? 3 : MAX_GOOGLE_PHOTOS;
+    const requestedAnalysisLimit = Number(body?.analysisLimit);
+    const analysisLimit = Number.isFinite(requestedAnalysisLimit)
+      ? Math.max(1, Math.min(MAX_ANALYZED_PHOTOS, Math.round(requestedAnalysisLimit)))
+      : MAX_ANALYZED_PHOTOS;
+    const maxWidthPx = photoPurpose === "card" ? "640" : "1600";
     const trailGuideCategory = clean(body?.trailGuideCategory, 80);
     const trailGuideType = clean(body?.trailGuideType, 120);
     const trailGuideSummary = clean(body?.trailGuideSummary, 800);
@@ -222,7 +251,7 @@ Deno.serve(async (req: Request) => {
           "places.photos",
         ].join(","),
       },
-      body: JSON.stringify({ textQuery: query, pageSize: 3 }),
+      body: JSON.stringify({ textQuery: query, pageSize: 1 }),
     });
 
     const searchData = await searchResponse.json();
@@ -233,12 +262,12 @@ Deno.serve(async (req: Request) => {
     const place = Array.isArray(searchData?.places) ? searchData.places[0] : null;
     if (!place?.id) return json({ place: null, photos: [] }, 200, "private, max-age=120");
 
-    const photos = includeGallery && Array.isArray(place.photos) ? place.photos.slice(0, MAX_GOOGLE_PHOTOS) : [];
+    const photos = includeGallery && Array.isArray(place.photos) ? place.photos.slice(0, maxPhotos) : [];
     const resolvedPhotos = (await Promise.all(photos.map(async (photo: any, index: number) => {
       if (!photo?.name) return null;
       try {
         const mediaUrl = new URL(`https://places.googleapis.com/v1/${photo.name}/media`);
-        mediaUrl.searchParams.set("maxWidthPx", "1600");
+        mediaUrl.searchParams.set("maxWidthPx", maxWidthPx);
         mediaUrl.searchParams.set("skipHttpRedirect", "true");
         mediaUrl.searchParams.set("key", apiKey);
         const mediaResponse = await fetch(mediaUrl);
@@ -272,7 +301,7 @@ Deno.serve(async (req: Request) => {
           type: trailGuideType,
           tags: trailGuideTags,
           summary: trailGuideSummary,
-        });
+        }, analysisLimit);
         for (const photo of resolvedPhotos) {
           const row = analysis.get(photo.order);
           if (row) photo.analysis = row;
@@ -295,7 +324,7 @@ Deno.serve(async (req: Request) => {
           : [],
         businessStatus: place.businessStatus ?? null,
       },
-      photos: resolvedPhotos,
+      photos: rankFastPhotos(resolvedPhotos),
     }, 200, "private, max-age=300");
   } catch (error) {
     console.error("place-photo", error);

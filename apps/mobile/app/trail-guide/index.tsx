@@ -13,7 +13,7 @@ import {
 } from '../../src/trailGuide/catalog';
 import { getTrailGuideConditionSignal } from '../../src/trailGuide/conditions';
 import { trailGuideArticles, type TrailGuideArticle } from '../../src/trailGuide/guides';
-import { resolveTrailGuidePrimaryPhoto, type TrailGuideHeroPhoto, useTrailGuidePrimaryPhoto } from '../../src/trailGuide/heroSelection';
+import { resolveTrailGuidePrimaryPhoto, type TrailGuideHeroPhoto } from '../../src/trailGuide/heroSelection';
 import {
   distanceMiles,
   TRAIL_GUIDE_SELECTABLE_CITIES,
@@ -116,9 +116,13 @@ function weatherUpdatedLabel(weather: WeatherForecast | null) {
   return time ? `Updated ${time}` : null;
 }
 
-function PlacePhoto({ place, style }: { place: TrailGuidePlace; style: object }) {
-  const photo = useTrailGuidePrimaryPhoto(place);
+function PlacePhoto({ photo, style }: { photo?: TrailGuideHeroPhoto | null; style: object }) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [photo?.url]);
+
   if (!photo || failed) {
     return (
       <View style={[style, styles.photoPlaceholder]}>
@@ -155,12 +159,12 @@ function QuickGuideCard({ guide, photo }: { guide: TrailGuideArticle; photo?: Tr
   );
 }
 
-function RecommendedCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo: TrailGuideHeroPhoto; weather: WeatherForecast | null; distance: string | null }) {
+function RecommendedCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo?: TrailGuideHeroPhoto | null; weather: WeatherForecast | null; distance: string | null }) {
   const signal = getTrailGuideConditionSignal(place, weather);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Open ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.recommendedCard, pressed && styles.cardPressed]}>
       <View style={styles.recommendedImage}>
-        <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+        <PlacePhoto photo={photo} style={StyleSheet.absoluteFillObject} />
         <View style={styles.cardShade} />
         <View style={[styles.signalBadge, signal.tone === 'good' && styles.signalGood, signal.tone === 'caution' && styles.signalCaution]}><Text style={styles.signalBadgeText}>{signal.label}</Text></View>
       </View>
@@ -175,11 +179,11 @@ function RecommendedCard({ place, photo, weather, distance }: { place: TrailGuid
   );
 }
 
-function FeaturedDestinationCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo: TrailGuideHeroPhoto; weather: WeatherForecast | null; distance: string | null }) {
+function FeaturedDestinationCard({ place, photo, weather, distance }: { place: TrailGuidePlace; photo?: TrailGuideHeroPhoto | null; weather: WeatherForecast | null; distance: string | null }) {
   const signal = getTrailGuideConditionSignal(place, weather);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Open featured destination ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.featuredCard, pressed && styles.cardPressed]}>
-      <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+      <PlacePhoto photo={photo} style={StyleSheet.absoluteFillObject} />
       <View style={styles.featuredShade} />
       <View style={styles.featuredTopRow}>
         <View style={styles.featuredLabel}><Text style={styles.featuredLabelText}>BEST RIGHT NOW</Text></View>
@@ -203,11 +207,11 @@ export default function TrailGuideScreen() {
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [distanceById, setDistanceById] = useState<Record<string, number>>({});
   const [photoById, setPhotoById] = useState<Record<string, TrailGuideHeroPhoto>>({});
-  const [photoPoolBusy, setPhotoPoolBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const restoredScrollKey = useRef<string | null>(null);
+  const photoByIdRef = useRef<Record<string, TrailGuideHeroPhoto>>({});
 
   const { backgroundSource, coordinates, locationLabel, locationBusy, manualCityKey, selectCity, requestCurrentLocation } = useTrailGuideLocationBackground();
   const cityKey = cityKeyFromLocationLabel(locationLabel);
@@ -272,40 +276,53 @@ export default function TrailGuideScreen() {
   const filteredPlaces = useMemo(() => category === 'All' ? rankedCityPlaces : rankedCityPlaces.filter((place) => place.category === category), [category, rankedCityPlaces]);
 
   useEffect(() => {
-    const readyCount = cityPlaces.filter((place) => photoById[place.id] != null).length;
-    if (readyCount >= Math.min(PHOTO_POOL_TARGET, cityPlaces.length)) {
-      setPhotoPoolBusy(false);
-      return;
-    }
-
     let active = true;
+    const visiblePriority = filteredPlaces.slice(0, EXPLORE_PREVIEW_LIMIT);
+    const visibleIds = new Set(visiblePriority.map((place) => place.id));
     const priority = [
-      ...filteredPlaces,
-      ...cityPlaces.filter((place) => !filteredPlaces.some((candidate) => candidate.id === place.id)),
+      ...visiblePriority,
+      ...filteredPlaces.filter((place) => !visibleIds.has(place.id)),
     ];
-    const candidates = priority.filter((place) => photoById[place.id] == null).slice(0, Math.max(1, PHOTO_POOL_TARGET - readyCount));
-    if (candidates.length === 0) {
-      setPhotoPoolBusy(false);
-      return;
-    }
+    const loadTarget = showAll ? filteredPlaces.length : Math.min(PHOTO_POOL_TARGET, filteredPlaces.length);
+    const candidates = priority
+      .filter((place) => photoByIdRef.current[place.id] == null)
+      .slice(0, loadTarget);
 
-    setPhotoPoolBusy(true);
-    void Promise.all(candidates.map(async (place) => {
-      const photo = await resolveTrailGuidePrimaryPhoto(place);
-      return photo ? [place.id, photo] as const : null;
-    })).then((rows) => {
+    const commitPhoto = (placeId: string, photo: TrailGuideHeroPhoto | null) => {
+      if (!active || !photo) return;
+      photoByIdRef.current = { ...photoByIdRef.current, [placeId]: photo };
+      setPhotoById(photoByIdRef.current);
+    };
+
+    const loadOne = async (place: TrailGuidePlace) => {
+      try {
+        const photo = await resolveTrailGuidePrimaryPhoto(place);
+        commitPhoto(place.id, photo);
+      } catch {
+        // Keep the fixed-size placeholder when a photo source fails.
+      }
+    };
+
+    void (async () => {
+      const first = candidates[0];
+      if (first) await loadOne(first);
       if (!active) return;
-      const resolved = rows.filter((row): row is readonly [string, TrailGuideHeroPhoto] => row !== null);
-      if (resolved.length > 0) setPhotoById((current) => ({ ...current, ...Object.fromEntries(resolved) }));
-    }).finally(() => { if (active) setPhotoPoolBusy(false); });
+
+      const remainingVisible = candidates.slice(1, EXPLORE_PREVIEW_LIMIT);
+      await Promise.all(remainingVisible.map(loadOne));
+      if (!active) return;
+
+      const belowFold = candidates.slice(EXPLORE_PREVIEW_LIMIT);
+      await Promise.all(belowFold.map(loadOne));
+    })();
 
     return () => { active = false; };
-  }, [cityPlaces, filteredPlaces, photoById]);
+  }, [filteredPlaces, showAll]);
 
-  const recommendedPlaces = useMemo(() => filteredPlaces.filter((place) => photoById[place.id]).slice(0, RECOMMENDED_LIMIT), [filteredPlaces, photoById]);
+  const recommendedPlaces = useMemo(() => filteredPlaces.slice(0, RECOMMENDED_LIMIT), [filteredPlaces]);
   const featuredPlace = recommendedPlaces[0] ?? null;
   const featuredPhoto = featuredPlace ? photoById[featuredPlace.id] ?? null : null;
-  const secondaryRecommendedPlaces = featuredPlace ? recommendedPlaces.filter((place) => place.id !== featuredPlace.id) : recommendedPlaces;
+  const secondaryRecommendedPlaces = featuredPlace ? recommendedPlaces.slice(1) : recommendedPlaces;
   const explorePreviewPlaces = useMemo(() => filteredPlaces.slice(0, EXPLORE_PREVIEW_LIMIT), [filteredPlaces]);
   const explorePlaces = showAll ? filteredPlaces : explorePreviewPlaces;
 
@@ -340,6 +357,11 @@ export default function TrailGuideScreen() {
     return `${distance < 10 ? distance.toFixed(1) : Math.round(distance)} mi`;
   }
 
+  function resetPhotoPool() {
+    photoByIdRef.current = {};
+    setPhotoById({});
+  }
+
   function selectCategory(next: DiscoveryCategory) {
     setCategory(next);
     setShowAll(false);
@@ -350,7 +372,7 @@ export default function TrailGuideScreen() {
     setCategory('All');
     setShowAll(false);
     setDistanceById({});
-    setPhotoById({});
+    resetPhotoPool();
     await selectCity(nextCityKey);
   }
 
@@ -359,7 +381,7 @@ export default function TrailGuideScreen() {
     setCategory('All');
     setShowAll(false);
     setDistanceById({});
-    setPhotoById({});
+    resetPhotoPool();
     await requestCurrentLocation();
   }
 
@@ -433,6 +455,61 @@ export default function TrailGuideScreen() {
         </ImageBackground>
 
         <View style={styles.body}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+            {discoveryCategories.map((item) => {
+              const active = category === item;
+              return <Pressable key={item} accessibilityRole="button" onPress={() => selectCategory(item)} style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}><Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item === 'All' ? 'For You' : item}</Text></Pressable>;
+            })}
+          </ScrollView>
+
+          {featuredPlace ? (
+            <View style={styles.featuredSection}>
+              <View style={styles.sectionHeadingRow}>
+                <View style={styles.flex}><Text style={styles.sectionTitle}>Best Right Now</Text><Text style={styles.sectionSubtitle}>A local pick ranked for current conditions.</Text></View>
+                <Text style={styles.cityMicroLabel}>{cityName}</Text>
+              </View>
+              <FeaturedDestinationCard place={featuredPlace} photo={featuredPhoto} weather={weather} distance={formatDistance(featuredPlace)} />
+            </View>
+          ) : null}
+
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{recommendationTitle}</Text><Text style={styles.sectionSubtitle}>More places worth a look based on {cityName} conditions{coordinates ? ' within 50 miles.' : '.'}</Text></View>
+          {secondaryRecommendedPlaces.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
+              {secondaryRecommendedPlaces.map((place) => (
+                <RecommendedCard key={place.id} place={place} photo={photoById[place.id]} weather={weather} distance={formatDistance(place)} />
+              ))}
+            </ScrollView>
+          ) : null}
+
+          <View style={styles.exploreSectionHeader}>
+            <View style={styles.exploreTitleRow}><Text style={styles.sectionTitle}>{exploreTitle}</Text><Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text></View>
+            <Text style={styles.sectionSubtitle}>{coordinates ? 'Outdoor places within 50 miles, ranked for current conditions.' : 'Curated outdoor places ranked for current conditions.'}</Text>
+          </View>
+
+          {explorePlaces.length > 0 ? (
+            <View style={styles.exploreGrid}>
+              {explorePlaces.map((place) => {
+                const signal = getTrailGuideConditionSignal(place, weather);
+                const distance = formatDistance(place);
+                const activities = getActivityIndicators(place);
+                return (
+                  <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`Open ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.exploreCard, pressed && styles.cardPressed]}>
+                    <PlacePhoto photo={photoById[place.id]} style={styles.exploreImage} />
+                    <View style={styles.exploreCopy}>
+                      <Text numberOfLines={2} style={styles.exploreName}>{place.name}</Text>
+                      <View style={styles.exploreMetaRow}><Text numberOfLines={1} style={styles.exploreType}>{place.type}</Text>{distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}</View>
+                      {activities.length > 0 ? <View style={styles.activityRow}>{activities.map((activity) => <View key={activity.key} style={styles.activityChip}><Text style={styles.activityGlyph}>{activity.glyph}</Text><Text style={styles.activityText}>{activity.label}</Text></View>)}</View> : null}
+                      <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}><Text style={styles.smallSignalText}>{signal.label}</Text></View>
+                    </View>
+                    <AppIcon name="chevron-forward" color="#839087" size={20} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>No {categoryLabel} yet</Text><Text style={styles.emptyText}>Try another category to keep exploring {cityName}.</Text></View>}
+
+          {filteredPlaces.length > EXPLORE_PREVIEW_LIMIT ? <Pressable accessibilityRole="button" onPress={() => setShowAll((current) => !current)} style={({ pressed }) => [styles.seeAllButton, pressed && styles.chipPressed]}><Text style={styles.seeAllText}>{showAll ? 'Show Less' : `See All ${filteredPlaces.length} ${categoryLabel}`}</Text><AppIcon name={showAll ? 'chevron-up' : 'chevron-forward'} color="#79D26A" size={18} /></Pressable> : null}
+
           <View style={styles.guideShelf}>
             <View style={styles.quickGuidesHeader}>
               <View style={styles.flex}>
@@ -454,62 +531,6 @@ export default function TrailGuideScreen() {
             </ScrollView>
             <Text style={styles.swipeHint}>Swipe for more →</Text>
           </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-            {discoveryCategories.map((item) => {
-              const active = category === item;
-              return <Pressable key={item} accessibilityRole="button" onPress={() => selectCategory(item)} style={({ pressed }) => [styles.categoryChip, active && styles.categoryChipActive, pressed && styles.chipPressed]}><Text style={[styles.categoryText, active && styles.categoryTextActive]}>{item === 'All' ? 'For You' : item}</Text></Pressable>;
-            })}
-          </ScrollView>
-
-          {featuredPlace && featuredPhoto ? (
-            <View style={styles.featuredSection}>
-              <View style={styles.sectionHeadingRow}>
-                <View style={styles.flex}><Text style={styles.sectionTitle}>Best Right Now</Text><Text style={styles.sectionSubtitle}>A local pick ranked for current conditions.</Text></View>
-                <Text style={styles.cityMicroLabel}>{cityName}</Text>
-              </View>
-              <FeaturedDestinationCard place={featuredPlace} photo={featuredPhoto} weather={weather} distance={formatDistance(featuredPlace)} />
-            </View>
-          ) : null}
-
-          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{recommendationTitle}</Text><Text style={styles.sectionSubtitle}>More places worth a look based on {cityName} conditions{coordinates ? ' within 50 miles.' : '.'}</Text></View>
-          {secondaryRecommendedPlaces.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recommendedRow}>
-              {secondaryRecommendedPlaces.map((place) => {
-                const photo = photoById[place.id];
-                return photo ? <RecommendedCard key={place.id} place={place} photo={photo} weather={weather} distance={formatDistance(place)} /> : null;
-              })}
-            </ScrollView>
-          ) : <View style={styles.recommendationLoading}><AppIcon name="photo" color="#79D26A" size={18} /><Text style={styles.recommendationLoadingText}>{photoPoolBusy ? `Finding ${category === 'All' ? '' : `${category.toLowerCase()} `}picks…` : `No photo-ready ${category === 'All' ? '' : `${category.toLowerCase()} `}picks yet.`}</Text></View>}
-
-          <View style={styles.exploreSectionHeader}>
-            <View style={styles.exploreTitleRow}><Text style={styles.sectionTitle}>{exploreTitle}</Text><Text style={styles.dynamicCount}>{filteredPlaces.length} {categoryLabel}</Text></View>
-            <Text style={styles.sectionSubtitle}>{coordinates ? 'Outdoor places within 50 miles, ranked for current conditions.' : 'Curated outdoor places ranked for current conditions.'}</Text>
-          </View>
-
-          {explorePlaces.length > 0 ? (
-            <View style={styles.exploreGrid}>
-              {explorePlaces.map((place) => {
-                const signal = getTrailGuideConditionSignal(place, weather);
-                const distance = formatDistance(place);
-                const activities = getActivityIndicators(place);
-                return (
-                  <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`Open ${place.name}`} onPress={() => router.push(`/trail-guide/${place.id}` as never)} style={({ pressed }) => [styles.exploreCard, pressed && styles.cardPressed]}>
-                    <PlacePhoto place={place} style={styles.exploreImage} />
-                    <View style={styles.exploreCopy}>
-                      <Text numberOfLines={2} style={styles.exploreName}>{place.name}</Text>
-                      <View style={styles.exploreMetaRow}><Text numberOfLines={1} style={styles.exploreType}>{place.type}</Text>{distance ? <Text style={styles.exploreDistance}>{distance}</Text> : null}</View>
-                      {activities.length > 0 ? <View style={styles.activityRow}>{activities.map((activity) => <View key={activity.key} style={styles.activityChip}><Text style={styles.activityGlyph}>{activity.glyph}</Text><Text style={styles.activityText}>{activity.label}</Text></View>)}</View> : null}
-                      <View style={[styles.smallSignal, signal.tone === 'good' && styles.smallSignalGood, signal.tone === 'caution' && styles.smallSignalCaution]}><Text style={styles.smallSignalText}>{signal.label}</Text></View>
-                    </View>
-                    <AppIcon name="chevron-forward" color="#839087" size={20} />
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : <View style={styles.emptyState}><Text style={styles.emptyTitle}>No {categoryLabel} yet</Text><Text style={styles.emptyText}>Try another category to keep exploring {cityName}.</Text></View>}
-
-          {filteredPlaces.length > EXPLORE_PREVIEW_LIMIT ? <Pressable accessibilityRole="button" onPress={() => setShowAll((current) => !current)} style={({ pressed }) => [styles.seeAllButton, pressed && styles.chipPressed]}><Text style={styles.seeAllText}>{showAll ? 'Show Less' : `See All ${filteredPlaces.length} ${categoryLabel}`}</Text><AppIcon name={showAll ? 'chevron-up' : 'chevron-forward'} color="#79D26A" size={18} /></Pressable> : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -551,7 +572,7 @@ const styles = StyleSheet.create({
   weatherLoadingRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
   weatherLoadingText: { color: '#E5E9E6', fontSize: 10, fontWeight: '800' },
   body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 14, paddingTop: 12, backgroundColor: '#08100C' },
-  guideShelf: { marginHorizontal: -2, borderRadius: 20, backgroundColor: '#182018', paddingHorizontal: 13, paddingTop: 13, paddingBottom: 10, borderWidth: 1, borderColor: '#384536' },
+  guideShelf: { marginHorizontal: -2, marginTop: 25, borderRadius: 20, backgroundColor: '#182018', paddingHorizontal: 13, paddingTop: 13, paddingBottom: 10, borderWidth: 1, borderColor: '#384536' },
   quickGuidesHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   guideShelfTitle: { color: '#F5F0E4', fontSize: 21, lineHeight: 24, fontWeight: '900' },
   guideShelfSubtitle: { color: '#A7B1A8', fontSize: 9.5, lineHeight: 13, marginTop: 2 },

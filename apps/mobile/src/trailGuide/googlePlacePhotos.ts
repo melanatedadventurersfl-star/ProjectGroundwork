@@ -19,6 +19,8 @@ export type GooglePhotoCategory =
   | 'person_heavy'
   | 'other';
 
+export type GooglePhotoPurpose = 'card' | 'hero';
+
 type GooglePlacePhotoAnalysis = {
   category?: GooglePhotoCategory;
   heroSuitability?: number;
@@ -86,11 +88,52 @@ export type GoogleTrailGuidePlaceDetails = {
   photos: GoogleTrailGuidePhoto[];
 };
 
+type ResolveOptions = {
+  purpose?: GooglePhotoPurpose;
+  analyze?: boolean;
+};
+
+type PhotoRequestLane = 'hero' | 'card' | 'background';
+
 const detailsSessionCache = new Map<string, Promise<GoogleTrailGuidePlaceDetails | null>>();
+const requestQueues: Record<PhotoRequestLane, Array<() => void>> = {
+  hero: [],
+  card: [],
+  background: [],
+};
+const MAX_CONCURRENT_PHOTO_REQUESTS = 2;
+let activePhotoRequests = 0;
+
+function drainPhotoRequestQueue() {
+  while (activePhotoRequests < MAX_CONCURRENT_PHOTO_REQUESTS) {
+    const start = requestQueues.hero.shift() ?? requestQueues.card.shift() ?? requestQueues.background.shift();
+    if (!start) break;
+    start();
+  }
+}
+
+function queuePhotoRequest<T>(lane: PhotoRequestLane, task: () => Promise<T>) {
+  return new Promise<T>((resolve, reject) => {
+    requestQueues[lane].push(() => {
+      activePhotoRequests += 1;
+      void task()
+        .then(resolve, reject)
+        .finally(() => {
+          activePhotoRequests = Math.max(0, activePhotoRequests - 1);
+          drainPhotoRequestQueue();
+        });
+    });
+    drainPhotoRequestQueue();
+  });
+}
 
 function numeric01(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : null;
+}
+
+function cacheKey(placeId: string, purpose: GooglePhotoPurpose, analyze: boolean) {
+  return `${placeId}:${purpose}:${analyze ? 'ranked' : 'fast'}`;
 }
 
 function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, mapsUrl?: string | null): GoogleTrailGuidePhoto | null {
@@ -112,25 +155,35 @@ function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, m
   };
 }
 
-export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace): Promise<GoogleTrailGuidePlaceDetails | null> {
-  const existing = detailsSessionCache.get(place.id);
+export async function resolveGoogleTrailGuidePlaceDetails(
+  place: TrailGuidePlace,
+  options: ResolveOptions = {},
+): Promise<GoogleTrailGuidePlaceDetails | null> {
+  const purpose = options.purpose ?? 'hero';
+  const analyze = options.analyze === true;
+  const key = cacheKey(place.id, purpose, analyze);
+  const existing = detailsSessionCache.get(key);
   if (existing) return existing;
 
   const pending = (async () => {
     try {
-      const { data, error } = await supabase.functions.invoke<GooglePlacePhotoResponse>('place-photo', {
+      const lane: PhotoRequestLane = analyze ? 'background' : purpose === 'hero' ? 'hero' : 'card';
+      const { data, error } = await queuePhotoRequest(lane, () => supabase.functions.invoke<GooglePlacePhotoResponse>('place-photo', {
         body: {
           name: place.name,
           area: place.area,
           state: 'FL',
           includeGallery: true,
-          includeHeroAnalysis: true,
+          includeHeroAnalysis: analyze,
+          photoPurpose: purpose,
+          maxPhotos: purpose === 'card' || !analyze ? 3 : 8,
+          analysisLimit: 3,
           trailGuideCategory: place.category,
           trailGuideType: place.type,
           trailGuideTags: place.tags,
           trailGuideSummary: place.summary,
         },
-      });
+      }));
       if (error || data?.error) return null;
 
       const placeData = data?.place;
@@ -159,19 +212,29 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
     }
   })();
 
-  detailsSessionCache.set(place.id, pending);
+  detailsSessionCache.set(key, pending);
   const result = await pending;
-  if (!result) detailsSessionCache.delete(place.id);
+  if (!result) detailsSessionCache.delete(key);
   return result;
 }
 
-export async function resolveGoogleTrailGuidePlaceGallery(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto[]> {
-  const details = await resolveGoogleTrailGuidePlaceDetails(place);
+export function resolveGoogleTrailGuideAnalyzedPlaceDetails(
+  place: TrailGuidePlace,
+  purpose: GooglePhotoPurpose = 'hero',
+) {
+  return resolveGoogleTrailGuidePlaceDetails(place, { purpose, analyze: true });
+}
+
+export async function resolveGoogleTrailGuidePlaceGallery(
+  place: TrailGuidePlace,
+  purpose: GooglePhotoPurpose = 'hero',
+): Promise<GoogleTrailGuidePhoto[]> {
+  const details = await resolveGoogleTrailGuidePlaceDetails(place, { purpose });
   return details?.photos ?? [];
 }
 
 export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto | null> {
-  const details = await resolveGoogleTrailGuidePlaceDetails(place);
+  const details = await resolveGoogleTrailGuidePlaceDetails(place, { purpose: 'card' });
   return details?.photos[0] ?? null;
 }
 
