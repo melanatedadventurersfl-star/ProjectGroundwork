@@ -44,6 +44,11 @@ function money(value: number | null) {
   return value == null ? null : `$${value.toFixed(2)}`;
 }
 
+function priceDisplay(value: number, pricingStatus: string | null, rateMode: string | null) {
+  if (pricingStatus === 'free' && value === 0) return 'Free';
+  return `${rateMode === 'starting_at' ? 'From ' : ''}${money(value)}`;
+}
+
 function formatSourceDate(value: string | null | undefined) {
   if (!value) return null;
   const parsed = new Date(`${value}T12:00:00`);
@@ -257,17 +262,36 @@ export function TrailGuidePlacePracticalDetails({
     );
   }
 
+  const pricingStatus = trailGuideString(data, 'pricing.status');
+  const rateMode = trailGuideString(data, 'pricing.rate_mode');
+  const pricingMessage = trailGuideString(data, 'pricing.display_text');
   const tentPrice = trailGuideNumber(data, 'pricing.tent_total') ?? trailGuideNumber(data, 'pricing.tent_base');
   const rvPrice = trailGuideNumber(data, 'pricing.rv_total') ?? trailGuideNumber(data, 'pricing.rv_base');
+  const campsitePrice = trailGuideNumber(data, 'pricing.campsite_total') ?? trailGuideNumber(data, 'pricing.campsite_base');
+  const primitivePrice = trailGuideNumber(data, 'pricing.primitive_total') ?? trailGuideNumber(data, 'pricing.primitive_base');
   const cabinPrice = trailGuideNumber(data, 'pricing.cabin_total') ?? trailGuideNumber(data, 'pricing.cabin_base');
+  const reservationFee = trailGuideNumber(data, 'pricing.reservation_fee');
+  const rvUtilityFee = trailGuideNumber(data, 'pricing.rv_utility_fee');
   const prices = [
     tentPrice != null ? { key: 'tent', value: tentPrice, label: 'Tent / night' } : null,
     rvPrice != null ? { key: 'rv', value: rvPrice, label: 'RV / night' } : null,
+    campsitePrice != null && tentPrice == null && rvPrice == null ? { key: 'site', value: campsitePrice, label: 'Site / night' } : null,
+    primitivePrice != null && primitivePrice !== tentPrice ? { key: 'primitive', value: primitivePrice, label: 'Primitive / night' } : null,
     cabinPrice != null ? { key: 'cabin', value: cabinPrice, label: 'Cabin / night' } : null,
   ].filter((item): item is { key: string; value: number; label: string } => Boolean(item));
   const reservationsAvailable = trailGuideBoolean(data, 'reservations.available') === true;
   const reservationSource = data.sources.find((source) => source.sourceType === 'reservation')
     ?? (reservationsAvailable ? trailGuidePrimarySource(data) : null);
+  const pricingFallback = category === 'Camping' && prices.length === 0
+    ? pricingStatus === 'free'
+      ? 'Camping is free. Check reservation or permit requirements before you go.'
+      : 'Current pricing is not published in Trail Guide yet. Check the official booking source for the current rate.'
+    : null;
+  const pricingSummary = pricingMessage || pricingFallback;
+  const pricingFees = [
+    reservationFee != null ? `${money(reservationFee)} reservation fee` : null,
+    rvUtilityFee != null ? `${money(rvUtilityFee)} RV utility fee / night` : null,
+  ].filter(Boolean).join(' · ');
   const alert = trailGuideString(data, 'alerts.current');
 
   return (
@@ -282,7 +306,7 @@ export function TrailGuidePlacePracticalDetails({
         </View>
       ) : null}
 
-      {(essentials.length || prices.length || reservationSource) ? (
+      {(category === 'Camping' || essentials.length || prices.length || reservationSource) ? (
         <View style={styles.stayCard}>
           <Text style={styles.cardTitle}>Stay here</Text>
 
@@ -292,13 +316,16 @@ export function TrailGuidePlacePracticalDetails({
                 <View key={price.key} style={styles.priceRowItem}>
                   {index > 0 ? <View style={styles.priceDivider} /> : null}
                   <View style={styles.priceCell}>
-                    <Text style={styles.priceValue}>{money(price.value)}</Text>
+                    <Text style={styles.priceValue}>{priceDisplay(price.value, pricingStatus, rateMode)}</Text>
                     <Text style={styles.priceLabel}>{price.label}</Text>
                   </View>
                 </View>
               ))}
             </View>
           ) : null}
+
+          {pricingSummary ? <Text style={styles.pricingSummary}>{pricingSummary}</Text> : null}
+          {pricingFees ? <Text style={styles.pricingFees}>{pricingFees}</Text> : null}
 
           {essentials.length ? (
             <View style={styles.essentialGrid}>
@@ -404,6 +431,8 @@ const styles = StyleSheet.create({
   priceDivider: { width: 1, height: 30, backgroundColor: '#2A382F' },
   priceValue: { color: '#FFF8E8', fontSize: 18, lineHeight: 21, fontWeight: '900' },
   priceLabel: { color: '#88958D', fontSize: 7.5, marginTop: 1, fontWeight: '700', textAlign: 'center' },
+  pricingSummary: { color: '#C8D0CB', fontSize: 9.5, lineHeight: 14, textAlign: 'center', paddingHorizontal: 4 },
+  pricingFees: { color: '#D7B45A', fontSize: 8.5, lineHeight: 12, fontWeight: '800', textAlign: 'center' },
   essentialGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   essentialCell: { width: '31.6%', minHeight: 82, borderRadius: 12, borderWidth: 1, borderColor: '#2A382F', backgroundColor: '#152019', paddingHorizontal: 6, paddingVertical: 7, alignItems: 'center', justifyContent: 'center' },
   essentialIcon: { fontSize: 20, lineHeight: 23, marginBottom: 3 },
