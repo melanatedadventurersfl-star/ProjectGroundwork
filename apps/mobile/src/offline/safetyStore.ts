@@ -12,6 +12,20 @@ import type {
 const databasePromise = SQLite.openDatabaseAsync('ma-offline.db');
 let schemaPromise: Promise<void> | null = null;
 
+type SafetySessionRow = {
+  id: string;
+  adventure_id: string;
+  profile_id: string;
+  status: LocalSafetySession['status'];
+  started_at: string;
+  expected_return_at: string | null;
+  ended_at: string | null;
+  safe_point_latitude: number | null;
+  safe_point_longitude: number | null;
+  last_check_in: LocalSafetySession['lastCheckIn'];
+  last_check_in_at: string | null;
+};
+
 function makeId() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
     const random = Math.floor(Math.random() * 16);
@@ -135,19 +149,7 @@ export async function saveSafetySession(session: LocalSafetySession) {
   );
 }
 
-function rowToSession(row: {
-  id: string;
-  adventure_id: string;
-  profile_id: string;
-  status: LocalSafetySession['status'];
-  started_at: string;
-  expected_return_at: string | null;
-  ended_at: string | null;
-  safe_point_latitude: number | null;
-  safe_point_longitude: number | null;
-  last_check_in: LocalSafetySession['lastCheckIn'];
-  last_check_in_at: string | null;
-}): LocalSafetySession {
+function rowToSession(row: SafetySessionRow): LocalSafetySession {
   return {
     id: row.id,
     adventureId: row.adventure_id,
@@ -165,7 +167,7 @@ function rowToSession(row: {
 
 export async function getActiveSafetySession(adventureId: string): Promise<LocalSafetySession | null> {
   const db = await getDb();
-  const row = await db.getFirstAsync<any>(
+  const row = await db.getFirstAsync<SafetySessionRow>(
     `select * from offline_safety_sessions
      where adventure_id = ? and status = 'active'
      order by started_at desc limit 1`,
