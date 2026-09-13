@@ -38,6 +38,12 @@ export type CommunityGroup = {
   name: string;
   description: string | null;
   kind: 'adventure' | 'interest' | 'local';
+  management_type?: 'official' | 'member_led';
+  community_type?: 'host' | 'member_led' | 'official' | 'private';
+  owner_type?: 'platform' | 'host' | 'member';
+  host_profile_id?: string | null;
+  created_by?: string | null;
+  is_topic?: boolean;
   adventure_id: string | null;
   city: string | null;
   state: string | null;
@@ -124,7 +130,7 @@ export async function getGroups(): Promise<CommunityGroup[]> {
 
   const { data: groups, error } = await supabase
     .from('community_groups')
-    .select('id, name, description, kind, adventure_id, city, state, image_url, cover_image_url, visibility')
+    .select('id, name, description, kind, management_type, community_type, owner_type, host_profile_id, created_by, is_topic, adventure_id, city, state, image_url, cover_image_url, visibility')
     .order('kind', { ascending: true })
     .order('created_at', { ascending: false });
   if (error) throw error;

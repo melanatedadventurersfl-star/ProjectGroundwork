@@ -24,6 +24,9 @@ import {
   type CommunityGroup,
   type CommunityPost,
 } from '../../src/community/api';
+import type { AdventureSummary } from '../../src/adventures/types';
+import { CommunityHostOutingsPanel } from '../../src/community/CommunityHostOutingsPanel';
+import { listCommunityHostOutings } from '../../src/community/communityOutings';
 import { supabase } from '../../src/lib/supabase';
 import {
   getGroupCampfireAccess,
@@ -31,7 +34,7 @@ import {
   type LocalEvent,
 } from '../../src/local-events/api';
 
-type GroupTab = 'feed' | 'learn' | 'campfire' | 'members' | 'about';
+type GroupTab = 'feed' | 'learn' | 'outings' | 'campfire' | 'members' | 'about';
 
 type LearnSection = {
   title: string;
@@ -134,6 +137,7 @@ export default function GroupDetailScreen() {
   const [group, setGroup] = useState<CommunityGroup | null>(null);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [campfires, setCampfires] = useState<LocalEvent[]>([]);
+  const [hostOutings, setHostOutings] = useState<AdventureSummary[]>([]);
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [canCreateCampfire, setCanCreateCampfire] = useState(false);
   const [draft, setDraft] = useState('');
@@ -155,15 +159,17 @@ export default function GroupDetailScreen() {
       setError(null);
       const nextGroup = await getGroup(id);
       const isLocal = nextGroup.kind === 'local';
-      const [nextPosts, nextCampfires, nextAccess, memberResult] = await Promise.all([
+      const [nextPosts, nextCampfires, nextHostOutings, nextAccess, memberResult] = await Promise.all([
         getCommunityFeed(undefined, id),
         isLocal ? listGroupCampfires(id).catch(() => []) : Promise.resolve([]),
+        listCommunityHostOutings(id).catch(() => []),
         isLocal ? getGroupCampfireAccess(id).catch(() => false) : Promise.resolve(false),
         supabase.rpc('get_group_member_directory', { target_group_id: id }),
       ]);
       setGroup(nextGroup);
       setPosts(nextPosts);
       setCampfires(nextCampfires);
+      setHostOutings(nextHostOutings);
       setCanCreateCampfire(nextAccess);
       setMembers((memberResult.data ?? []) as CommunityMember[]);
       if (!isLocal && activeTab === 'campfire') setActiveTab('feed');
@@ -221,12 +227,16 @@ export default function GroupDetailScreen() {
   const memberLabel = `${group?.member_count ?? 0} member${group?.member_count === 1 ? '' : 's'}`;
   const heroImage = group?.cover_image_url || group?.image_url;
   const localCommunity = group?.kind === 'local';
-  const communityLabel = localCommunity
-    ? group?.city ? `${group.city.toUpperCase()} COMMUNITY` : 'LOCAL COMMUNITY'
-    : 'OFFICIAL COMMUNITY';
+  const communityLabel = group?.community_type === 'host'
+    ? 'HOST COMMUNITY'
+    : group?.community_type === 'official'
+      ? 'GO MELANATED COMMUNITY'
+      : localCommunity
+        ? group?.city ? `${group.city.toUpperCase()} COMMUNITY` : 'LOCAL COMMUNITY'
+        : group?.kind === 'adventure' ? 'TRIP COMMUNITY' : 'MEMBER COMMUNITY';
   const tabItems: [GroupTab, string][] = localCommunity
-    ? [['feed', 'Feed'], ['learn', 'Learn'], ['campfire', 'Campfire'], ['members', 'Members'], ['about', 'About']]
-    : [['feed', 'Feed'], ['learn', 'Learn'], ['members', 'Members'], ['about', 'About']];
+    ? [['feed', 'Posts'], ['outings', 'Outings'], ['campfire', 'Meetups'], ['members', 'Members'], ['about', 'About']]
+    : [['feed', 'Posts'], ['outings', 'Outings'], ['members', 'Members'], ['about', 'About']];
 
   const hero = (
     <View style={styles.heroShell}>
@@ -355,6 +365,15 @@ export default function GroupDetailScreen() {
           </View>
         ) : null}
 
+        {activeTab === 'outings' ? (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionEyebrow}>COMMUNITY OUTINGS</Text>
+            <Text style={styles.sectionTitle}>What this community is planning</Text>
+            <Text style={styles.sectionIntro}>Published host events appear here automatically from Host Center.</Text>
+            <CommunityHostOutingsPanel outings={hostOutings} />
+          </View>
+        ) : null}
+
         {localCommunity && activeTab === 'campfire' ? (
           <View style={styles.sectionBlock}>
             <View style={styles.sectionTitleRow}>
@@ -387,7 +406,7 @@ export default function GroupDetailScreen() {
             <View style={styles.aboutSurface}>
               <View style={styles.aboutSection}><Text style={styles.aboutHeading}>About</Text><Text style={styles.featureText}>{group?.description ?? 'A Melanated community built around a shared outdoor interest.'}</Text></View>
               <View style={styles.aboutDivider} />
-              <View style={styles.aboutSection}><Text style={styles.aboutHeading}>How it works</Text><Text style={styles.featureText}>{localCommunity ? 'Learn is curated knowledge. Feed is where members ask questions and share experience. Campfire is for casual local gatherings planned by Community Leaders.' : 'Learn is curated knowledge. Feed is where members ask questions and share experience. Members connects people around the shared interest.'}</Text></View>
+              <View style={styles.aboutSection}><Text style={styles.aboutHeading}>How it works</Text><Text style={styles.featureText}>{localCommunity ? 'Posts are the conversation. Outings come from linked host events. Meetups are casual local gatherings planned by Community Leaders.' : 'Posts are the conversation. Outings come from linked host events. Members shows the people who make up this community.'}</Text></View>
               <View style={styles.aboutDivider} />
               <View style={styles.aboutSection}><Text style={styles.aboutHeading}>Community standard</Text><Text style={styles.featureText}>Keep it useful, welcoming, safe, and rooted in helping people enjoy the outdoors with confidence.</Text></View>
             </View>
