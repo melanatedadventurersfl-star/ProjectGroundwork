@@ -21,6 +21,8 @@ export const DEFAULT_OUTDOOR_INTERESTS = [
   'RV',
   'Overlanding',
   'Beginner Friendly',
+  'Beach',
+  'Social',
   'Food',
   'Photography',
 ] as const;
