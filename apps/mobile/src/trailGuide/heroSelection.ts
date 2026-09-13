@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
 import type { TrailGuidePlace } from './catalog';
-import { resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePhoto } from './googlePlacePhotos';
+import { resolveGoogleTrailGuideAnalyzedGallery, resolveGoogleTrailGuidePlaceDetails, type GoogleTrailGuidePhoto } from './googlePlacePhotos';
 import { CURATED_TRAIL_GUIDE_PHOTOS, type TrailGuidePhoto } from './placePhotos';
 
 const PHOTO_BUCKET = 'trail-guide-photos';
@@ -42,6 +42,10 @@ type CandidateRow = {
   is_generic: boolean;
   hero_eligible: boolean;
   gallery_eligible: boolean;
+};
+
+type HeroResolveOptions = {
+  analyzeGoogle?: boolean;
 };
 
 const sessionCache = new Map<string, Promise<TrailGuideHeroPhoto[]>>();
@@ -264,11 +268,13 @@ function googleHeroEligible(place: TrailGuidePlace, photo: GoogleTrailGuidePhoto
   return !blocked && !portrait && !wildlifeCampground && !lowHeroScore && score >= 0.48;
 }
 
-async function googleCandidates(place: TrailGuidePlace): Promise<TrailGuideHeroPhoto[]> {
-  const details = await resolveGoogleTrailGuidePlaceDetails(place);
-  if (!details?.photos.length) return [];
+async function googleCandidates(place: TrailGuidePlace, analyzeGoogle: boolean): Promise<TrailGuideHeroPhoto[]> {
+  const photos = analyzeGoogle
+    ? await resolveGoogleTrailGuideAnalyzedGallery(place)
+    : (await resolveGoogleTrailGuidePlaceDetails(place))?.photos ?? [];
+  if (!photos.length) return [];
 
-  return details.photos.slice(0, 10).map((photo, index) => {
+  return photos.slice(0, 10).map((photo, index) => {
     const score = googleCandidateScore(place, photo, index);
     const category = photo.category ?? primaryCategory(place);
     return {
@@ -348,14 +354,16 @@ function buildDiverseGallery(candidates: TrailGuideHeroPhoto[]) {
   return result;
 }
 
-export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace) {
-  const existing = sessionCache.get(place.id);
+export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace, options?: HeroResolveOptions) {
+  const analyzeGoogle = options?.analyzeGoogle === true;
+  const cacheKey = `${place.id}:${analyzeGoogle ? 'analyzed' : 'fast'}`;
+  const existing = sessionCache.get(cacheKey);
   if (existing) return existing;
 
   const pending = (async () => {
     const [stored, google] = await Promise.all([
       databaseCandidates(place),
-      googleCandidates(place),
+      googleCandidates(place, analyzeGoogle),
     ]);
     const curated = curatedCandidate(place);
     const destinationSpecific = [
@@ -366,7 +374,7 @@ export async function resolveTrailGuideHeroCandidates(place: TrailGuidePlace) {
     return buildDiverseGallery(destinationSpecific.length ? destinationSpecific : [genericCandidate(place)]);
   })();
 
-  sessionCache.set(place.id, pending);
+  sessionCache.set(cacheKey, pending);
   return pending;
 }
 
@@ -387,9 +395,15 @@ export function useTrailGuideHeroCandidates(place?: TrailGuidePlace) {
     }
     const curated = curatedCandidate(place);
     setPhotos(curated ? buildDiverseGallery([curated]) : []);
-    void resolveTrailGuideHeroCandidates(place).then((next) => {
-      if (active) setPhotos(next.length ? next : [genericCandidate(place)]);
-    });
+    void resolveTrailGuideHeroCandidates(place)
+      .then((next) => {
+        if (!active) return null;
+        setPhotos(next.length ? next : [genericCandidate(place)]);
+        return resolveTrailGuideHeroCandidates(place, { analyzeGoogle: true });
+      })
+      .then((analyzed) => {
+        if (active && analyzed?.length) setPhotos(analyzed);
+      });
     return () => { active = false; };
   }, [place]);
 
@@ -416,6 +430,11 @@ export function useTrailGuidePrimaryPhoto(place?: TrailGuidePlace) {
 }
 
 export function clearTrailGuideHeroSelectionCache(placeId?: string) {
-  if (placeId) sessionCache.delete(placeId);
-  else sessionCache.clear();
+  if (placeId) {
+    for (const key of sessionCache.keys()) {
+      if (key.startsWith(`${placeId}:`)) sessionCache.delete(key);
+    }
+  } else {
+    sessionCache.clear();
+  }
 }

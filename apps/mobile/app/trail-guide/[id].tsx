@@ -65,10 +65,15 @@ export default function TrailGuidePlaceDetailScreen() {
   const [googleDetails, setGoogleDetails] = useState<GoogleTrailGuidePlaceDetails | null>(null);
   const [gmSummary, setGmSummary] = useState<{ averageRating: number | null; reviewCount: number } | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [heroWidth, setHeroWidth] = useState(width);
   const [failedPhotoUrls, setFailedPhotoUrls] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [transientNotice, setTransientNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setHeroWidth(width);
+  }, [width]);
 
   useEffect(() => {
     let active = true;
@@ -122,7 +127,8 @@ export default function TrailGuidePlaceDetailScreen() {
   );
 
   useEffect(() => {
-    if (activePhotoIndex >= gallery.length) setActivePhotoIndex(0);
+    const maxIndex = Math.max(0, gallery.length - 1);
+    if (activePhotoIndex > maxIndex) setActivePhotoIndex(maxIndex);
   }, [activePhotoIndex, gallery.length]);
 
   const nearby = useMemo(() => {
@@ -195,13 +201,33 @@ export default function TrailGuidePlaceDetailScreen() {
     setFailedPhotoUrls((current) => current.includes(photoUrl) ? current : [...current, photoUrl]);
   };
 
+  const syncPhotoIndex = (offsetX: number) => {
+    const next = Math.round(offsetX / Math.max(1, heroWidth));
+    setActivePhotoIndex(Math.max(0, Math.min(next, Math.max(0, gallery.length - 1))));
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
+        <View
+          style={styles.hero}
+          onLayout={(event) => {
+            const measuredWidth = event.nativeEvent.layout.width;
+            if (measuredWidth > 0 && Math.abs(measuredWidth - heroWidth) > 0.5) setHeroWidth(measuredWidth);
+          }}
+        >
           {gallery.length > 0 ? (
-            <ScrollView horizontal pagingEnabled bounces={false} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(event) => setActivePhotoIndex(Math.round(event.nativeEvent.contentOffset.x / width))}>
-              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              bounces={false}
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={64}
+              onScroll={(event) => syncPhotoIndex(event.nativeEvent.contentOffset.x)}
+              onScrollEndDrag={(event) => syncPhotoIndex(event.nativeEvent.contentOffset.x)}
+              onMomentumScrollEnd={(event) => syncPhotoIndex(event.nativeEvent.contentOffset.x)}
+            >
+              {gallery.map((photo, index) => <Image key={`${photo.url}-${index}`} source={{ uri: photo.url }} style={{ width: heroWidth, height: 205 }} resizeMode="cover" onError={() => markPhotoFailed(photo.url)} />)}
             </ScrollView>
           ) : (
             <View style={[StyleSheet.absoluteFill, styles.photoPlaceholder]}><AppIcon name="photo" color="#65726B" size={38} /><Text style={styles.photoLoading}>Finding destination photos…</Text></View>
