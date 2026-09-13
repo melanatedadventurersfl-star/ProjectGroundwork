@@ -86,11 +86,33 @@ export type GoogleTrailGuidePlaceDetails = {
   photos: GoogleTrailGuidePhoto[];
 };
 
+export type GoogleTrailGuidePhotoOptions = {
+  includeHeroAnalysis?: boolean;
+  maxWidthPx?: number;
+};
+
+const DEFAULT_FAST_WIDTH = 900;
+const DEFAULT_ANALYZED_WIDTH = 1280;
 const detailsSessionCache = new Map<string, Promise<GoogleTrailGuidePlaceDetails | null>>();
 
 function numeric01(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : null;
+}
+
+function normalizeOptions(options?: GoogleTrailGuidePhotoOptions) {
+  const includeHeroAnalysis = options?.includeHeroAnalysis === true;
+  const requestedWidth = Number(options?.maxWidthPx);
+  const fallbackWidth = includeHeroAnalysis ? DEFAULT_ANALYZED_WIDTH : DEFAULT_FAST_WIDTH;
+  const maxWidthPx = Number.isFinite(requestedWidth)
+    ? Math.max(480, Math.min(1600, Math.round(requestedWidth)))
+    : fallbackWidth;
+  return { includeHeroAnalysis, maxWidthPx };
+}
+
+function cacheKey(place: TrailGuidePlace, options?: GoogleTrailGuidePhotoOptions) {
+  const normalized = normalizeOptions(options);
+  return `${place.id}:${normalized.includeHeroAnalysis ? 'analyzed' : 'fast'}:${normalized.maxWidthPx}`;
 }
 
 function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, mapsUrl?: string | null): GoogleTrailGuidePhoto | null {
@@ -112,8 +134,13 @@ function toTrailGuidePhoto(item: GooglePlacePhotoItem, place: TrailGuidePlace, m
   };
 }
 
-export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace): Promise<GoogleTrailGuidePlaceDetails | null> {
-  const existing = detailsSessionCache.get(place.id);
+export async function resolveGoogleTrailGuidePlaceDetails(
+  place: TrailGuidePlace,
+  options?: GoogleTrailGuidePhotoOptions,
+): Promise<GoogleTrailGuidePlaceDetails | null> {
+  const normalized = normalizeOptions(options);
+  const key = cacheKey(place, normalized);
+  const existing = detailsSessionCache.get(key);
   if (existing) return existing;
 
   const pending = (async () => {
@@ -124,7 +151,8 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
           area: place.area,
           state: 'FL',
           includeGallery: true,
-          includeHeroAnalysis: true,
+          includeHeroAnalysis: normalized.includeHeroAnalysis,
+          maxWidthPx: normalized.maxWidthPx,
           trailGuideCategory: place.category,
           trailGuideType: place.type,
           trailGuideTags: place.tags,
@@ -159,15 +187,22 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
     }
   })();
 
-  detailsSessionCache.set(place.id, pending);
+  detailsSessionCache.set(key, pending);
   const result = await pending;
-  if (!result) detailsSessionCache.delete(place.id);
+  if (!result) detailsSessionCache.delete(key);
   return result;
 }
 
-export async function resolveGoogleTrailGuidePlaceGallery(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto[]> {
-  const details = await resolveGoogleTrailGuidePlaceDetails(place);
+export async function resolveGoogleTrailGuidePlaceGallery(
+  place: TrailGuidePlace,
+  options?: GoogleTrailGuidePhotoOptions,
+): Promise<GoogleTrailGuidePhoto[]> {
+  const details = await resolveGoogleTrailGuidePlaceDetails(place, options);
   return details?.photos ?? [];
+}
+
+export async function resolveGoogleTrailGuideAnalyzedGallery(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto[]> {
+  return resolveGoogleTrailGuidePlaceGallery(place, { includeHeroAnalysis: true, maxWidthPx: DEFAULT_ANALYZED_WIDTH });
 }
 
 export async function resolveGoogleTrailGuidePlacePhoto(place: TrailGuidePlace): Promise<GoogleTrailGuidePhoto | null> {
