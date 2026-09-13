@@ -1,4 +1,4 @@
-import { Children, type ReactNode, useEffect, useState } from 'react'
+import { Children, Fragment, isValidElement, type ReactNode, useEffect, useState } from 'react'
 import { router } from 'expo-router'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
@@ -123,7 +123,8 @@ export function SocialProfileHeader({
   const displayStats = isOwner
     ? [...stats.filter((stat) => stat.label.toLowerCase() !== 'badges'), { label: 'Badges', value: ownerPassport?.badgeCount ?? 0, onPress: () => router.push('/member/badges') }]
     : stats
-  const ownerActions = isOwner && actions ? Children.toArray(actions).slice(0, 2) : []
+  const ownerActionSource = isOwner && isValidElement<{ children?: ReactNode }>(actions) && actions.type === Fragment ? actions.props.children : actions
+  const ownerActions = isOwner && ownerActionSource ? Children.toArray(ownerActionSource).slice(0, 2) : []
 
   return <View style={styles.shell}>
     <View style={styles.cover}>
@@ -181,8 +182,8 @@ const styles = StyleSheet.create({
   coverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,9,7,.18)' },
   coverBottomFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 72, backgroundColor: 'rgba(9,17,15,.42)' },
   coverActions: { position: 'absolute', right: 14, bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ownerCoverActions: { position: 'absolute', right: 14, bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  ownerCoverActionSlot: { width: 118, height: 42 },
+  ownerCoverActions: { position: 'absolute', right: 14, top: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ownerCoverActionSlot: { width: 42, height: 42 },
   body: { paddingHorizontal: 18, paddingBottom: 14 },
   identityTop: { flexDirection: 'row', gap: 14, alignItems: 'flex-end', marginTop: -54 },
   avatarWrap: { width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: '#09110F', backgroundColor: '#09110F', position: 'relative' },
