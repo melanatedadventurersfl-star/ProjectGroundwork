@@ -17,11 +17,12 @@ async function getAnnouncements(adventureId: string): Promise<OfflineAnnouncemen
 
 export async function downloadEventPack(adventureId: string): Promise<OfflineEventPack> {
   const adventure = await getAdventure(adventureId);
-  const [schedule, announcements, roster] = await Promise.all([
+  const [schedule, announcements, rosterResult] = await Promise.all([
     getSchedule(adventureId).catch(() => []),
     getAnnouncements(adventureId).catch(() => []),
     getRoster(adventureId).catch(() => []),
   ]);
+  const roster = rosterResult.map((person) => ({ ...person, email: null }));
   const pack: OfflineEventPack = {
     version: 1,
     adventure,
