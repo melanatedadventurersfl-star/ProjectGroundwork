@@ -50,6 +50,7 @@ export type CreateHostOutingInput = {
   venueName?: string;
   capacity?: number | null;
   meetingInstructions?: string;
+  hostOrganizationId?: string | null;
 };
 
 export type UpdateHostOutingInput = CreateHostOutingInput;
@@ -169,6 +170,7 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
       starting_price_cents: 0,
       is_featured: false,
       created_by: profileId,
+      organization_id: input.hostOrganizationId ?? null,
     })
     .select(HOST_OUTING_SELECT)
     .single();
@@ -204,6 +206,7 @@ export async function updateHostOuting(adventureId: string, input: UpdateHostOut
       capacity: nextCapacity,
       spots_remaining: nextCapacity == null ? null : Math.max(nextCapacity - usedSpots, 0),
       meeting_instructions: input.meetingInstructions?.trim() || null,
+      ...(input.hostOrganizationId !== undefined ? { organization_id: input.hostOrganizationId } : {}),
     })
     .eq('id', adventureId)
     .select(HOST_OUTING_SELECT)
