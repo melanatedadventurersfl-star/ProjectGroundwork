@@ -441,13 +441,13 @@ export default function TrailGuideScreen() {
               </View>
               <Pressable onPress={() => router.push('/trail-guide/guides' as never)} style={({ pressed }) => [styles.seeGuidesButton, pressed && styles.chipPressed]}>
                 <Text style={styles.seeGuidesText}>See All</Text>
-                <AppIcon name="chevron-forward" color="#6B5927" size={14} />
+                <AppIcon name="chevron-forward" color="#D7B45A" size={14} />
               </Pressable>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickGuidesRow}>
               {quickGuides.map((guide) => <QuickGuideCard key={guide.id} guide={guide} photo={guidePhotoById[guide.id]} />)}
               <Pressable onPress={() => router.push('/trail-guide/guides' as never)} style={({ pressed }) => [styles.moreGuidesCard, pressed && styles.cardPressed]}>
-                <AppIcon name="guide" color="#6B5927" size={24} />
+                <AppIcon name="guide" color="#D7B45A" size={24} />
                 <Text style={styles.moreGuidesTitle}>More Guides</Text>
                 <Text style={styles.moreGuidesBody}>Safety, camping, water, weather, and planning.</Text>
               </Pressable>
@@ -551,12 +551,12 @@ const styles = StyleSheet.create({
   weatherLoadingRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
   weatherLoadingText: { color: '#E5E9E6', fontSize: 10, fontWeight: '800' },
   body: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 14, paddingTop: 12, backgroundColor: '#08100C' },
-  guideShelf: { marginHorizontal: -2, borderRadius: 20, backgroundColor: '#EAE1C8', paddingHorizontal: 13, paddingTop: 13, paddingBottom: 10, borderWidth: 1, borderColor: '#B9A66F' },
+  guideShelf: { marginHorizontal: -2, borderRadius: 20, backgroundColor: '#182018', paddingHorizontal: 13, paddingTop: 13, paddingBottom: 10, borderWidth: 1, borderColor: '#384536' },
   quickGuidesHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  guideShelfTitle: { color: '#17211C', fontSize: 21, lineHeight: 24, fontWeight: '900' },
-  guideShelfSubtitle: { color: '#59635D', fontSize: 9.5, lineHeight: 13, marginTop: 2 },
-  seeGuidesButton: { minHeight: 34, borderRadius: 999, borderWidth: 1, borderColor: '#9D8A51', backgroundColor: '#F5EEDB', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  seeGuidesText: { color: '#5D4D21', fontSize: 9, fontWeight: '900' },
+  guideShelfTitle: { color: '#F5F0E4', fontSize: 21, lineHeight: 24, fontWeight: '900' },
+  guideShelfSubtitle: { color: '#A7B1A8', fontSize: 9.5, lineHeight: 13, marginTop: 2 },
+  seeGuidesButton: { minHeight: 34, borderRadius: 999, borderWidth: 1, borderColor: '#75683D', backgroundColor: '#253027', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  seeGuidesText: { color: '#D7B45A', fontSize: 9, fontWeight: '900' },
   quickGuidesRow: { gap: 10, paddingRight: 2 },
   quickGuideCard: { width: 158, height: 142, borderRadius: 17, overflow: 'hidden', borderWidth: 2, backgroundColor: '#17251B', padding: 11, justifyContent: 'flex-end' },
   quickGuideFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#203126' },
@@ -564,10 +564,10 @@ const styles = StyleSheet.create({
   quickGuideTopicPill: { position: 'absolute', top: 9, left: 9, borderRadius: 999, borderWidth: 1, backgroundColor: 'rgba(6,12,8,0.78)', paddingHorizontal: 7, paddingVertical: 4 },
   quickGuideTopic: { fontSize: 7, fontWeight: '900', letterSpacing: 0.6 },
   quickGuideTitle: { color: '#FFFDF6', fontSize: 14.5, lineHeight: 17, fontWeight: '900', textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 3 },
-  moreGuidesCard: { width: 142, height: 142, borderRadius: 17, borderWidth: 1, borderColor: '#A69158', backgroundColor: '#F5EEDB', padding: 12, justifyContent: 'center', gap: 5 },
-  moreGuidesTitle: { color: '#17211C', fontSize: 13, fontWeight: '900' },
-  moreGuidesBody: { color: '#626A64', fontSize: 9, lineHeight: 12 },
-  swipeHint: { color: '#6D746F', fontSize: 7.5, fontWeight: '800', textAlign: 'right', marginTop: 7 },
+  moreGuidesCard: { width: 142, height: 142, borderRadius: 17, borderWidth: 1, borderColor: '#5C5435', backgroundColor: '#253027', padding: 12, justifyContent: 'center', gap: 5 },
+  moreGuidesTitle: { color: '#F5F0E4', fontSize: 13, fontWeight: '900' },
+  moreGuidesBody: { color: '#A7B1A8', fontSize: 9, lineHeight: 12 },
+  swipeHint: { color: '#8E998F', fontSize: 7.5, fontWeight: '800', textAlign: 'right', marginTop: 7 },
   categoryRow: { gap: 8, paddingTop: 16, paddingBottom: 5, paddingRight: 4 },
   categoryChip: { minHeight: 44, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: '#344139', backgroundColor: '#111A15', paddingHorizontal: 16 },
   categoryChipActive: { backgroundColor: '#79D26A', borderColor: '#79D26A' },
