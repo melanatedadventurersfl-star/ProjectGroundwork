@@ -288,8 +288,8 @@ export async function removeCommunityPostMedia(path: string) {
 
 export const removeCommunityPostImage = removeCommunityPostMedia;
 
-export async function createPost(input: CreateCommunityPostInput): Promise<void>;
-export async function createPost(body: string, adventureId?: string, groupId?: string): Promise<void>;
+export async function createPost(input: CreateCommunityPostInput): Promise<string>;
+export async function createPost(body: string, adventureId?: string, groupId?: string): Promise<string>;
 export async function createPost(inputOrBody: CreateCommunityPostInput | string, adventureId?: string, groupId?: string) {
   const userId = await currentUserId();
   const input: CreateCommunityPostInput = typeof inputOrBody === 'string'
@@ -310,7 +310,7 @@ export async function createPost(inputOrBody: CreateCommunityPostInput | string,
   if (audience === 'circle' && !input.circleId) throw new Error('Choose a Circle.');
   if (audience === 'group' && !input.groupId) throw new Error('Choose a Group.');
 
-  const { error } = await supabase.from('community_posts').insert({
+  const { data, error } = await supabase.from('community_posts').insert({
     author_id: userId,
     body,
     post_type: input.postType ?? 'update',
@@ -320,8 +320,9 @@ export async function createPost(inputOrBody: CreateCommunityPostInput | string,
     circle_id: audience === 'circle' ? input.circleId ?? null : null,
     image_url: input.imagePath ?? null,
     metadata: input.metadata ?? {},
-  });
+  }).select('id').single();
   if (error) throw error;
+  return data.id as string;
 }
 
 export async function updatePost(postId: string, body: string) {

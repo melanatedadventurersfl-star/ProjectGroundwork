@@ -13,7 +13,8 @@ import {
   type CommunityGroup,
   type CommunityPostType,
 } from '../../src/community/api';
-import { isPeopleCommunity } from '../../src/community/communityModel';
+import { setCommunityPostInterests } from '../../src/community/communityInterests';
+import { DEFAULT_OUTDOOR_INTERESTS, isPeopleCommunity } from '../../src/community/communityModel';
 
 const GOLD = '#D7B45A';
 const BG = '#0F1713';
@@ -42,6 +43,7 @@ export default function CreateInCommunityScreen() {
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [mode, setMode] = useState<PostMode>('update');
+  const [interestTags, setInterestTags] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,6 +111,10 @@ export default function CreateInCommunityScreen() {
 
   const cannotSubmit = submitting || !selectedGroup || (!body.trim() && !photo);
 
+  function toggleInterest(label: string) {
+    setInterestTags((current) => current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
+  }
+
   async function submit() {
     if (cannotSubmit || !selectedGroup) return;
 
@@ -125,7 +131,7 @@ export default function CreateInCommunityScreen() {
     try {
       if (photo) uploadedPath = await uploadCommunityPostImage(photo);
 
-      await createPost({
+      const postId = await createPost({
         body,
         postType: mode,
         audience: 'group',
@@ -133,8 +139,9 @@ export default function CreateInCommunityScreen() {
         groupId: selectedGroup.id,
         adventureId: selectedGroup.adventure_id ?? null,
         imagePath: uploadedPath,
-        metadata: photo ? { media_type: 'image' } : {},
+        metadata: { ...(photo ? { media_type: 'image' } : {}), interest_labels: interestTags },
       });
+      if (interestTags.length) await setCommunityPostInterests(postId, interestTags);
 
       router.back();
     } catch (caught) {
@@ -206,6 +213,17 @@ export default function CreateInCommunityScreen() {
               <Ionicons name="help-circle-outline" size={17} color={mode === 'ask' ? GREEN : TEXT} />
               <Text style={[styles.modeText, mode === 'ask' && styles.modeTextSelected]}>Ask</Text>
             </Pressable>
+          </View>
+
+          <View>
+            <Text style={styles.sectionLabel}>TOPICS</Text>
+            <Text style={styles.sectionHelper}>Optional. Choose everything this post is about.</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 9, paddingRight: 12 }}>
+              {DEFAULT_OUTDOOR_INTERESTS.map((label) => {
+                const selected = interestTags.includes(label);
+                return <Pressable key={label} onPress={() => toggleInterest(label)} style={[styles.modeChip, selected && styles.modeChipSelected]}><Text style={[styles.modeText, selected && styles.modeTextSelected]}>{label}</Text></Pressable>;
+              })}
+            </ScrollView>
           </View>
 
           <View style={styles.composerCard}>
