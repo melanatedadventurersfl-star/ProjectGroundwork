@@ -6,6 +6,7 @@ import {
   trailGuideBoolean,
   trailGuideNumber,
   trailGuidePrimarySource,
+  trailGuideSourceForField,
   trailGuideString,
   trailGuideStringArray,
   type TrailGuideStructuredData,
@@ -38,6 +39,12 @@ type QuickDetail = {
   icon: string;
   label: string;
   value: string;
+};
+
+type PriceItem = {
+  key: string;
+  label: string;
+  value: number;
 };
 
 function money(value: number | null) {
@@ -135,7 +142,7 @@ function quickDetails(data: TrailGuideStructuredData): QuickDetail[] {
   const quietHours = trailGuideString(data, 'quiet_hours.range');
   const maxRvLength = trailGuideNumber(data, 'camping.max_rv_length_ft');
   const fourWheelDrive = trailGuideBoolean(data, 'beach_driving.four_wheel_drive_recommended');
-  const petFee = trailGuideNumber(data, 'pets.fee');
+  const petFee = trailGuideNumber(data, 'pricing.pet_fee') ?? trailGuideNumber(data, 'pets.fee');
 
   return [
     visitHours ? { icon: '🕐', label: 'Hours', value: visitHours } : null,
@@ -257,18 +264,57 @@ export function TrailGuidePlacePracticalDetails({
     );
   }
 
-  const tentPrice = trailGuideNumber(data, 'pricing.tent_total') ?? trailGuideNumber(data, 'pricing.tent_base');
-  const rvPrice = trailGuideNumber(data, 'pricing.rv_total') ?? trailGuideNumber(data, 'pricing.rv_base');
-  const cabinPrice = trailGuideNumber(data, 'pricing.cabin_total') ?? trailGuideNumber(data, 'pricing.cabin_base');
-  const prices = [
-    tentPrice != null ? { key: 'tent', value: tentPrice, label: 'Tent / night' } : null,
-    rvPrice != null ? { key: 'rv', value: rvPrice, label: 'RV / night' } : null,
-    cabinPrice != null ? { key: 'cabin', value: cabinPrice, label: 'Cabin / night' } : null,
-  ].filter((item): item is { key: string; value: number; label: string } => Boolean(item));
+  const priceDefinitions = [
+    ['tent', 'Tent / night', 'pricing.tent_total', 'pricing.tent_base'],
+    ['rv', 'RV / night', 'pricing.rv_total', 'pricing.rv_base'],
+    ['primitive', 'Primitive / night', 'pricing.primitive_total', 'pricing.primitive_base'],
+    ['electric', 'Electric / night', 'pricing.electric_total', 'pricing.electric_base'],
+    ['full-hookup', 'Full hookup / night', 'pricing.full_hookup_total', 'pricing.full_hookup_base'],
+    ['cabin', 'Cabin / night', 'pricing.cabin_total', 'pricing.cabin_base'],
+  ] as const;
+  const prices = priceDefinitions.map(([key, label, totalField, baseField]) => {
+    const value = trailGuideNumber(data, totalField) ?? trailGuideNumber(data, baseField);
+    return value == null ? null : { key, label, value };
+  }).filter((item): item is PriceItem => Boolean(item));
+  const pricingStatus = trailGuideString(data, 'pricing.status');
+  const reservationFee = trailGuideNumber(data, 'pricing.reservation_fee');
+  const vehicleFee = trailGuideNumber(data, 'pricing.vehicle_fee');
+  const petFee = trailGuideNumber(data, 'pricing.pet_fee') ?? trailGuideNumber(data, 'pets.fee');
+  const utilityFee = trailGuideNumber(data, 'pricing.utility_fee');
+  const taxes = trailGuideString(data, 'pricing.taxes');
+  const seasonal = trailGuideString(data, 'pricing.seasonal');
+  const weekend = trailGuideString(data, 'pricing.weekend');
+  const resident = trailGuideString(data, 'pricing.resident');
+  const nonresident = trailGuideString(data, 'pricing.nonresident');
+  const pricingNotes = [
+    reservationFee != null ? `Reservation fee: ${money(reservationFee)} per reservation` : null,
+    utilityFee != null ? `Utility fee: ${money(utilityFee)} per night where applicable` : null,
+    vehicleFee != null ? `Vehicle fee: ${money(vehicleFee)}` : null,
+    petFee != null ? `Pet fee: ${money(petFee)}` : null,
+    taxes,
+    seasonal ? `Seasonal pricing: ${seasonal}` : null,
+    weekend ? `Weekend pricing: ${weekend}` : null,
+    resident ? `Resident pricing: ${resident}` : null,
+    nonresident ? `Nonresident pricing: ${nonresident}` : null,
+  ].filter((item): item is string => Boolean(item));
+  const pricingStateText = pricingStatus === 'dynamic'
+    ? 'Rates vary by date. Check live availability for the current total.'
+    : pricingStatus === 'not_published'
+      ? 'Current pricing not published.'
+      : category === 'Camping' && prices.length === 0
+        ? 'Current pricing not published.'
+        : null;
+  const pricingSourceField = priceDefinitions
+    .flatMap(([, , totalField, baseField]) => [totalField, baseField])
+    .find((field) => trailGuideSourceForField(data, field))
+    ?? (trailGuideSourceForField(data, 'pricing.status') ? 'pricing.status' : null);
+  const pricingSource = pricingSourceField ? trailGuideSourceForField(data, pricingSourceField) : null;
   const reservationsAvailable = trailGuideBoolean(data, 'reservations.available') === true;
   const reservationSource = data.sources.find((source) => source.sourceType === 'reservation')
     ?? (reservationsAvailable ? trailGuidePrimarySource(data) : null);
+  const reservationUrl = trailGuideString(data, 'reservations.url') ?? reservationSource?.sourceUrl ?? null;
   const alert = trailGuideString(data, 'alerts.current');
+  const verifiedDate = formatVerifiedDate(data.lastVerifiedAt);
 
   return (
     <View style={styles.section}>
@@ -282,22 +328,34 @@ export function TrailGuidePlacePracticalDetails({
         </View>
       ) : null}
 
-      {(essentials.length || prices.length || reservationSource) ? (
+      {(category === 'Camping' || essentials.length || prices.length || reservationUrl) ? (
         <View style={styles.stayCard}>
           <Text style={styles.cardTitle}>Stay here</Text>
 
           {prices.length ? (
-            <View style={styles.priceBand}>
-              {prices.map((price, index) => (
-                <View key={price.key} style={styles.priceRowItem}>
-                  {index > 0 ? <View style={styles.priceDivider} /> : null}
-                  <View style={styles.priceCell}>
-                    <Text style={styles.priceValue}>{money(price.value)}</Text>
-                    <Text style={styles.priceLabel}>{price.label}</Text>
-                  </View>
+            <View style={styles.priceGrid}>
+              {prices.map((price) => (
+                <View key={price.key} style={styles.priceCell}>
+                  <Text style={styles.priceValue}>{money(price.value)}</Text>
+                  <Text style={styles.priceLabel}>{price.label}</Text>
                 </View>
               ))}
             </View>
+          ) : null}
+
+          {pricingStateText ? <View style={styles.pricingState}><Text style={styles.pricingStateText}>{pricingStateText}</Text></View> : null}
+
+          {pricingNotes.length ? (
+            <View style={styles.pricingNotes}>
+              {pricingNotes.map((note) => <Text key={note} style={styles.pricingNote}>• {note}</Text>)}
+            </View>
+          ) : null}
+
+          {pricingSource ? (
+            <Pressable onPress={() => void Linking.openURL(pricingSource.sourceUrl)} style={({ pressed }) => [styles.pricingSource, pressed && styles.pressed]}>
+              <Text style={styles.pricingSourceText}>{verifiedDate ? `Rates checked ${verifiedDate}` : 'Verified pricing source'} · {pricingSource.sourceName}</Text>
+              <AppIcon name="open" color="#8EBE82" size={13} />
+            </Pressable>
           ) : null}
 
           {essentials.length ? (
@@ -313,8 +371,8 @@ export function TrailGuidePlacePracticalDetails({
             </View>
           ) : null}
 
-          {reservationSource ? (
-            <Pressable onPress={() => void Linking.openURL(reservationSource.sourceUrl)} style={({ pressed }) => [styles.reserveButton, pressed && styles.pressed]}>
+          {reservationUrl ? (
+            <Pressable onPress={() => void Linking.openURL(reservationUrl)} style={({ pressed }) => [styles.reserveButton, pressed && styles.pressed]}>
               <AppIcon name="calendar" color="#17211C" size={17} />
               <Text style={styles.reserveText}>Check camping availability</Text>
             </Pressable>
@@ -398,12 +456,16 @@ const styles = StyleSheet.create({
   alertLabel: { color: '#F1D77A', fontSize: 8, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.55 },
   alertText: { color: '#E8DFC7', fontSize: 10.5, lineHeight: 15, marginTop: 3 },
   stayCard: { borderRadius: 17, borderWidth: 1, borderColor: '#243128', backgroundColor: '#101914', padding: 11, gap: 9 },
-  priceBand: { minHeight: 58, borderRadius: 13, borderWidth: 1, borderColor: '#28362D', backgroundColor: '#121C16', flexDirection: 'row', alignItems: 'stretch', paddingHorizontal: 6 },
-  priceRowItem: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  priceCell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  priceDivider: { width: 1, height: 30, backgroundColor: '#2A382F' },
+  priceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  priceCell: { width: '48.8%', minHeight: 58, borderRadius: 12, borderWidth: 1, borderColor: '#28362D', backgroundColor: '#121C16', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, paddingVertical: 7 },
   priceValue: { color: '#FFF8E8', fontSize: 18, lineHeight: 21, fontWeight: '900' },
   priceLabel: { color: '#88958D', fontSize: 7.5, marginTop: 1, fontWeight: '700', textAlign: 'center' },
+  pricingState: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#405044', backgroundColor: '#152019', justifyContent: 'center', paddingHorizontal: 10 },
+  pricingStateText: { color: '#C8D2CB', fontSize: 10, lineHeight: 14, fontWeight: '800' },
+  pricingNotes: { borderRadius: 11, backgroundColor: '#0D1510', paddingHorizontal: 9, paddingVertical: 7, gap: 3 },
+  pricingNote: { color: '#AAB6AE', fontSize: 8.5, lineHeight: 12.5 },
+  pricingSource: { minHeight: 34, borderRadius: 10, borderWidth: 1, borderColor: '#2E4635', backgroundColor: '#111B15', paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  pricingSourceText: { flex: 1, color: '#8EBE82', fontSize: 8.5, lineHeight: 12, fontWeight: '800' },
   essentialGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   essentialCell: { width: '31.6%', minHeight: 82, borderRadius: 12, borderWidth: 1, borderColor: '#2A382F', backgroundColor: '#152019', paddingHorizontal: 6, paddingVertical: 7, alignItems: 'center', justifyContent: 'center' },
   essentialIcon: { fontSize: 20, lineHeight: 23, marginBottom: 3 },
