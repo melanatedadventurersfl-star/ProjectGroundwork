@@ -88,8 +88,7 @@ export type GoogleTrailGuidePlaceDetails = {
 
 type ResolveOptions = {
   includeHeroAnalysis?: boolean;
-  photoMaxWidthPx?: number;
-  analysisLimit?: number;
+  maxWidthPx?: number;
 };
 
 const detailsSessionCache = new Map<string, Promise<GoogleTrailGuidePlaceDetails | null>>();
@@ -132,8 +131,7 @@ async function fetchGoogleTrailGuidePlaceDetails(
         state: 'FL',
         includeGallery: true,
         includeHeroAnalysis: options.includeHeroAnalysis === true,
-        photoMaxWidthPx: options.photoMaxWidthPx ?? 900,
-        analysisLimit: options.analysisLimit ?? 3,
+        maxWidthPx: options.maxWidthPx ?? 900,
         trailGuideCategory: place.category,
         trailGuideType: place.type,
         trailGuideTags: place.tags,
@@ -173,8 +171,7 @@ function warmAnalyzedDetails(place: TrailGuidePlace) {
   analysisWarmups.add(place.id);
   const pending = fetchGoogleTrailGuidePlaceDetails(place, {
     includeHeroAnalysis: true,
-    photoMaxWidthPx: 1200,
-    analysisLimit: 3,
+    maxWidthPx: 1200,
   });
   analyzedSessionCache.set(place.id, pending);
   void pending.finally(() => analysisWarmups.delete(place.id));
@@ -193,8 +190,7 @@ export async function resolveGoogleTrailGuidePlaceDetails(place: TrailGuidePlace
 
   const pending = fetchGoogleTrailGuidePlaceDetails(place, {
     includeHeroAnalysis: false,
-    photoMaxWidthPx: 900,
-    analysisLimit: 3,
+    maxWidthPx: 900,
   });
 
   detailsSessionCache.set(place.id, pending);
