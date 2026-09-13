@@ -1,8 +1,22 @@
 import { getAdventure } from '../adventures/api';
-import { getRoster, getSchedule } from '../operations/api';
 import { supabase } from '../lib/supabase';
-import { getEventPack, removeEventPack, saveEventPack } from './safetyStore';
+import { getRoster, getSchedule } from '../operations/api';
+import { ensureSafetyOwner } from './safetyOwner';
+import {
+  getEventPack as getStoredEventPack,
+  removeEventPack as removeStoredEventPack,
+  saveEventPack,
+} from './safetyStore';
 import type { OfflineAnnouncement, OfflineEventPack } from './safetyTypes';
+
+async function ensureCurrentOwner() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const profileId = data.session?.user.id;
+  if (!profileId) return null;
+  await ensureSafetyOwner(profileId);
+  return profileId;
+}
 
 async function getAnnouncements(adventureId: string): Promise<OfflineAnnouncement[]> {
   const now = Date.now();
@@ -16,6 +30,9 @@ async function getAnnouncements(adventureId: string): Promise<OfflineAnnouncemen
 }
 
 export async function downloadEventPack(adventureId: string): Promise<OfflineEventPack> {
+  const profileId = await ensureCurrentOwner();
+  if (!profileId) throw new Error('Sign in to download this event for offline use.');
+
   const adventure = await getAdventure(adventureId);
   const [schedule, announcements, rosterResult] = await Promise.all([
     getSchedule(adventureId).catch(() => []),
@@ -35,7 +52,17 @@ export async function downloadEventPack(adventureId: string): Promise<OfflineEve
   return pack;
 }
 
-export { getEventPack, removeEventPack };
+export async function getEventPack(adventureId: string) {
+  const profileId = await ensureCurrentOwner();
+  if (!profileId) return null;
+  return getStoredEventPack(adventureId);
+}
+
+export async function removeEventPack(adventureId: string) {
+  const profileId = await ensureCurrentOwner();
+  if (!profileId) return;
+  await removeStoredEventPack(adventureId);
+}
 
 export function isEventPackStale(pack: OfflineEventPack, maxAgeHours = 24) {
   const age = Date.now() - new Date(pack.downloadedAt).getTime();
