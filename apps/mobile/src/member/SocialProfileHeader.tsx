@@ -1,4 +1,4 @@
-import { Children, type ReactNode, useEffect, useState } from 'react'
+import { Children, Fragment, isValidElement, type ReactNode, useEffect, useState } from 'react'
 import { router } from 'expo-router'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
@@ -123,7 +123,8 @@ export function SocialProfileHeader({
   const displayStats = isOwner
     ? [...stats.filter((stat) => stat.label.toLowerCase() !== 'badges'), { label: 'Badges', value: ownerPassport?.badgeCount ?? 0, onPress: () => router.push('/member/badges') }]
     : stats
-  const ownerActions = isOwner && actions ? Children.toArray(actions).slice(0, 2) : []
+  const ownerActionSource = isOwner && isValidElement<{ children?: ReactNode }>(actions) && actions.type === Fragment ? actions.props.children : actions
+  const ownerActions = isOwner && ownerActionSource ? Children.toArray(ownerActionSource).slice(0, 2) : []
 
   return <View style={styles.shell}>
     <View style={styles.cover}>
