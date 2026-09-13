@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const MODEL = "gpt-4.1-mini";
 const MAX_GOOGLE_PHOTOS = 8;
-const MAX_ANALYZED_PHOTOS = 6;
+const MAX_ANALYZED_PHOTOS = 3;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -66,6 +66,12 @@ function clean(value: unknown, max = 500) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+function boundedInteger(value: unknown, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
 function readOutputText(payload: any) {
   if (typeof payload?.output_text === "string") return payload.output_text;
   for (const item of payload?.output ?? []) {
@@ -108,8 +114,9 @@ async function analyzePhotos(
   openAiKey: string,
   photos: ResolvedPhoto[],
   context: { name: string; area: string; category: string; type: string; tags: string[]; summary: string },
+  maxPhotos: number,
 ) {
-  const candidates = photos.slice(0, MAX_ANALYZED_PHOTOS);
+  const candidates = photos.slice(0, Math.min(MAX_ANALYZED_PHOTOS, maxPhotos));
   if (!candidates.length) return new Map<number, Omit<PhotoAnalysis, "index">>();
 
   const content: any[] = [
@@ -194,6 +201,8 @@ Deno.serve(async (req: Request) => {
     const state = clean(body?.state || "FL", 40) || "FL";
     const includeGallery = body?.includeGallery !== false;
     const includeHeroAnalysis = body?.includeHeroAnalysis === true;
+    const photoMaxWidthPx = boundedInteger(body?.photoMaxWidthPx, 900, 400, 1600);
+    const analysisLimit = boundedInteger(body?.analysisLimit, 3, 1, MAX_ANALYZED_PHOTOS);
     const trailGuideCategory = clean(body?.trailGuideCategory, 80);
     const trailGuideType = clean(body?.trailGuideType, 120);
     const trailGuideSummary = clean(body?.trailGuideSummary, 800);
@@ -238,7 +247,7 @@ Deno.serve(async (req: Request) => {
       if (!photo?.name) return null;
       try {
         const mediaUrl = new URL(`https://places.googleapis.com/v1/${photo.name}/media`);
-        mediaUrl.searchParams.set("maxWidthPx", "1600");
+        mediaUrl.searchParams.set("maxWidthPx", String(photoMaxWidthPx));
         mediaUrl.searchParams.set("skipHttpRedirect", "true");
         mediaUrl.searchParams.set("key", apiKey);
         const mediaResponse = await fetch(mediaUrl);
@@ -272,7 +281,7 @@ Deno.serve(async (req: Request) => {
           type: trailGuideType,
           tags: trailGuideTags,
           summary: trailGuideSummary,
-        });
+        }, analysisLimit);
         for (const photo of resolvedPhotos) {
           const row = analysis.get(photo.order);
           if (row) photo.analysis = row;
