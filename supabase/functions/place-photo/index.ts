@@ -2,7 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const MODEL = "gpt-4.1-mini";
 const MAX_GOOGLE_PHOTOS = 8;
-const MAX_ANALYZED_PHOTOS = 6;
+const MAX_ANALYZED_PHOTOS = 3;
+const DEFAULT_PHOTO_WIDTH = 900;
+const MIN_PHOTO_WIDTH = 480;
+const MAX_PHOTO_WIDTH = 1600;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -64,6 +67,12 @@ function json(body: unknown, status = 200, cacheControl?: string) {
 
 function clean(value: unknown, max = 500) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function requestedPhotoWidth(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_PHOTO_WIDTH;
+  return Math.max(MIN_PHOTO_WIDTH, Math.min(MAX_PHOTO_WIDTH, Math.round(parsed)));
 }
 
 function readOutputText(payload: any) {
@@ -194,6 +203,7 @@ Deno.serve(async (req: Request) => {
     const state = clean(body?.state || "FL", 40) || "FL";
     const includeGallery = body?.includeGallery !== false;
     const includeHeroAnalysis = body?.includeHeroAnalysis === true;
+    const maxWidthPx = requestedPhotoWidth(body?.maxWidthPx);
     const trailGuideCategory = clean(body?.trailGuideCategory, 80);
     const trailGuideType = clean(body?.trailGuideType, 120);
     const trailGuideSummary = clean(body?.trailGuideSummary, 800);
@@ -238,7 +248,7 @@ Deno.serve(async (req: Request) => {
       if (!photo?.name) return null;
       try {
         const mediaUrl = new URL(`https://places.googleapis.com/v1/${photo.name}/media`);
-        mediaUrl.searchParams.set("maxWidthPx", "1600");
+        mediaUrl.searchParams.set("maxWidthPx", String(maxWidthPx));
         mediaUrl.searchParams.set("skipHttpRedirect", "true");
         mediaUrl.searchParams.set("key", apiKey);
         const mediaResponse = await fetch(mediaUrl);
