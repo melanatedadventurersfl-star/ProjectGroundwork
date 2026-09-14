@@ -4,25 +4,43 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'apps/mobile/app.config.js'
+      - 'apps/mobile/app/_layout.tsx'
+      - 'apps/mobile/app/admin/organization-invites.tsx'
+      - 'apps/mobile/app/auth/callback.tsx'
+      - 'apps/mobile/app/experience/**'
       - 'apps/mobile/app/host/**'
+      - 'apps/mobile/app/tenant-sign-up.tsx'
+      - 'apps/mobile/app/vendor-login.tsx'
       - 'apps/mobile/src/hosting/**'
       - 'apps/mobile/src/management/**'
       - 'apps/mobile/src/platform/**'
+      - 'apps/mobile/src/reliability/startup.tsx'
       - 'apps/mobile/scripts/verify_tenant_isolation.mjs'
       - 'supabase/functions/**'
       - 'supabase/migrations/**'
+      - 'web/password-reset/index.html'
       - '.github/workflows/tenant-isolation-ci.yml'
   push:
     branches:
       - main
     paths:
+      - 'apps/mobile/app.config.js'
+      - 'apps/mobile/app/_layout.tsx'
+      - 'apps/mobile/app/admin/organization-invites.tsx'
+      - 'apps/mobile/app/auth/callback.tsx'
+      - 'apps/mobile/app/experience/**'
       - 'apps/mobile/app/host/**'
+      - 'apps/mobile/app/tenant-sign-up.tsx'
+      - 'apps/mobile/app/vendor-login.tsx'
       - 'apps/mobile/src/hosting/**'
       - 'apps/mobile/src/management/**'
       - 'apps/mobile/src/platform/**'
+      - 'apps/mobile/src/reliability/startup.tsx'
       - 'apps/mobile/scripts/verify_tenant_isolation.mjs'
       - 'supabase/functions/**'
       - 'supabase/migrations/**'
+      - 'web/password-reset/index.html'
       - '.github/workflows/tenant-isolation-ci.yml'
 
 permissions:
