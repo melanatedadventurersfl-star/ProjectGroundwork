@@ -1,4 +1,5 @@
 import Storage from 'expo-sqlite/kv-store';
+import { Platform } from 'react-native';
 
 import type { EventVisibility } from './hostProfiles';
 import type { EventBuilderDifficulty } from './eventBuilderConfig';
@@ -38,8 +39,36 @@ function keyFor(organizationId: string) {
   return `host-event-draft:v2:${organizationId}`;
 }
 
+function getWebStorage() {
+  if (typeof globalThis === 'undefined' || !('localStorage' in globalThis)) {
+    throw new Error('Browser storage is unavailable.');
+  }
+  return globalThis.localStorage;
+}
+
+async function getItem(key: string) {
+  if (Platform.OS === 'web') return getWebStorage().getItem(key);
+  return Storage.getItem(key);
+}
+
+async function setItem(key: string, value: string) {
+  if (Platform.OS === 'web') {
+    getWebStorage().setItem(key, value);
+    return;
+  }
+  await Storage.setItem(key, value);
+}
+
+async function removeItem(key: string) {
+  if (Platform.OS === 'web') {
+    getWebStorage().removeItem(key);
+    return;
+  }
+  await Storage.removeItem(key);
+}
+
 export async function loadLocalEventDraft(organizationId: string): Promise<LocalEventDraft | null> {
-  const raw = await Storage.getItem(keyFor(organizationId));
+  const raw = await getItem(keyFor(organizationId));
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<LocalEventDraft>;
@@ -51,9 +80,9 @@ export async function loadLocalEventDraft(organizationId: string): Promise<Local
 }
 
 export async function saveLocalEventDraft(draft: LocalEventDraft) {
-  await Storage.setItem(keyFor(draft.organizationId), JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
+  await setItem(keyFor(draft.organizationId), JSON.stringify({ ...draft, updatedAt: new Date().toISOString() }));
 }
 
 export async function removeLocalEventDraft(organizationId: string) {
-  await Storage.removeItem(keyFor(organizationId));
+  await removeItem(keyFor(organizationId));
 }
