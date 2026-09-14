@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { requireActiveOrganizationId } from '../platform/tenantScope';
 
 export type OpportunityType = 'vendor' | 'community_event' | 'partnership' | 'sponsorship' | 'venue' | 'marketing' | 'other';
 export type OpportunityStage = 'saved' | 'discovered' | 'reviewing' | 'applied' | 'approved' | 'scheduled' | 'archived';
@@ -21,7 +22,7 @@ export type DiscoveredOpportunity = {
 export type DiscoveryResult = { sourceId: string; sourceLabel: string; sourceRootUrl: string; events: DiscoveredOpportunity[] };
 
 export type SavedOpportunity = {
-  id: string; owner_profile_id: string; title: string; summary: string; source_id: string; source_label: string; source_url: string;
+  id: string; organization_id: string; owner_profile_id: string; title: string; summary: string; source_id: string; source_label: string; source_url: string;
   organizer_name: string; verification_status: OpportunityVerification; relevance_label: OpportunityRelevance; relevance_basis: string;
   starts_at: string | null; ends_at: string | null; venue_name: string; address: string; city: string; state: string;
   image_url: string; ticket_url: string; application_url: string; vendor_fee_text: string; application_deadline: string | null;
@@ -40,7 +41,8 @@ export async function previewOpportunityFromUrl(sourceUrl: string): Promise<Oppo
 }
 
 export async function discoverOpportunities(sourceId: string): Promise<DiscoveryResult> {
-  const { data, error } = await supabase.functions.invoke('opportunity-discover', { body: { sourceId } });
+  const organizationId = await requireActiveOrganizationId();
+  const { data, error } = await supabase.functions.invoke('opportunity-discover', { body: { sourceId, organizationId } });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
   return data as DiscoveryResult;
@@ -50,6 +52,11 @@ async function requireProfileId() {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user?.id) throw new Error('Sign in to manage opportunities.');
   return data.user.id;
+}
+
+async function requireOpportunityContext() {
+  const [ownerId, organizationId] = await Promise.all([requireProfileId(), requireActiveOrganizationId()]);
+  return { ownerId, organizationId };
 }
 
 function stageLabel(stage: OpportunityStage) {
@@ -63,21 +70,21 @@ function stageLabel(stage: OpportunityStage) {
 }
 
 export async function findHostOpportunityBySourceUrl(sourceUrl: string): Promise<SavedOpportunity | null> {
-  const ownerId = await requireProfileId();
-  const { data, error } = await supabase.from('host_opportunities').select('*').eq('owner_profile_id', ownerId).eq('source_url', sourceUrl).neq('stage', 'archived').maybeSingle();
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  const { data, error } = await supabase.from('host_opportunities').select('*').eq('organization_id', organizationId).eq('owner_profile_id', ownerId).eq('source_url', sourceUrl).neq('stage', 'archived').maybeSingle();
   if (error) throw error;
   return (data as SavedOpportunity | null) ?? null;
 }
 
 export async function getHostOpportunity(id: string): Promise<SavedOpportunity> {
-  const ownerId = await requireProfileId();
-  const { data, error } = await supabase.from('host_opportunities').select('*').eq('id', id).eq('owner_profile_id', ownerId).single();
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  const { data, error } = await supabase.from('host_opportunities').select('*').eq('id', id).eq('organization_id', organizationId).eq('owner_profile_id', ownerId).single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
 
-async function throwIfDuplicate(ownerId: string, sourceUrl: string) {
-  const { data, error } = await supabase.from('host_opportunities').select('id,title,stage').eq('owner_profile_id', ownerId).eq('source_url', sourceUrl).maybeSingle();
+async function throwIfDuplicate(ownerId: string, organizationId: string, sourceUrl: string) {
+  const { data, error } = await supabase.from('host_opportunities').select('id,title,stage').eq('organization_id', organizationId).eq('owner_profile_id', ownerId).eq('source_url', sourceUrl).maybeSingle();
   if (error) throw error;
   if (data) {
     const where = stageLabel(data.stage as OpportunityStage);
@@ -86,16 +93,16 @@ async function throwIfDuplicate(ownerId: string, sourceUrl: string) {
 }
 
 export async function listHostOpportunities(): Promise<SavedOpportunity[]> {
-  const ownerId = await requireProfileId();
-  const { data, error } = await supabase.from('host_opportunities').select('*').eq('owner_profile_id', ownerId).neq('stage', 'archived').order('created_at', { ascending: false });
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  const { data, error } = await supabase.from('host_opportunities').select('*').eq('organization_id', organizationId).eq('owner_profile_id', ownerId).neq('stage', 'archived').order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as SavedOpportunity[];
 }
 
 export async function saveDiscoveredOpportunity(event: DiscoveredOpportunity, sourceId: string, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
-  const ownerId = await requireProfileId();
-  await throwIfDuplicate(ownerId, event.sourceUrl);
-  const payload = { owner_profile_id: ownerId, title: event.title, summary: event.summary || '', source_id: sourceId, source_label: sourceLabel,
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  await throwIfDuplicate(ownerId, organizationId, event.sourceUrl);
+  const payload = { organization_id: organizationId, owner_profile_id: ownerId, title: event.title, summary: event.summary || '', source_id: sourceId, source_label: sourceLabel,
     source_url: event.sourceUrl, organizer_name: event.organizer || '', verification_status: 'platform_sourced' as OpportunityVerification,
     relevance_label: event.relevanceLabel, relevance_basis: event.relevanceBasis || '', starts_at: event.startsAt || null, ends_at: event.endsAt || null,
     venue_name: event.venueName || '', address: event.address || '', city: event.city || '', state: event.state || '', image_url: event.imageUrl || '',
@@ -119,42 +126,42 @@ function importedPayload(preview: OpportunityPreview, sourceLabel: string) {
 }
 
 export async function saveImportedOpportunity(preview: OpportunityPreview, sourceLabel: string, tags: string[] = []): Promise<SavedOpportunity> {
-  const ownerId = await requireProfileId();
-  await throwIfDuplicate(ownerId, preview.sourceUrl);
-  const payload = { owner_profile_id: ownerId, ...importedPayload(preview, sourceLabel), stage: 'saved' as OpportunityStage, tags };
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  await throwIfDuplicate(ownerId, organizationId, preview.sourceUrl);
+  const payload = { organization_id: organizationId, owner_profile_id: ownerId, ...importedPayload(preview, sourceLabel), stage: 'saved' as OpportunityStage, tags };
   const { data, error } = await supabase.from('host_opportunities').insert(payload).select('*').single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
 
 export async function refreshImportedOpportunity(id: string, preview: OpportunityPreview, sourceLabel: string): Promise<SavedOpportunity> {
-  const ownerId = await requireProfileId();
-  const { data, error } = await supabase.from('host_opportunities').update(importedPayload(preview, sourceLabel)).eq('id', id).eq('owner_profile_id', ownerId).select('*').single();
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  const { data, error } = await supabase.from('host_opportunities').update(importedPayload(preview, sourceLabel)).eq('id', id).eq('organization_id', organizationId).eq('owner_profile_id', ownerId).select('*').single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
 
 export async function setOpportunityStage(id: string, stage: OpportunityStage) {
-  const ownerId = await requireProfileId();
-  const { error } = await supabase.from('host_opportunities').update({ stage, updated_at: new Date().toISOString() }).eq('id', id).eq('owner_profile_id', ownerId);
+  const { ownerId, organizationId } = await requireOpportunityContext();
+  const { error } = await supabase.from('host_opportunities').update({ stage, updated_at: new Date().toISOString() }).eq('id', id).eq('organization_id', organizationId).eq('owner_profile_id', ownerId);
   if (error) throw error;
 }
 
 export async function updateOpportunityTags(id: string, tags: string[]) {
-  const ownerId = await requireProfileId();
+  const { ownerId, organizationId } = await requireOpportunityContext();
   const normalized = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean))).slice(0, 20);
-  const { data, error } = await supabase.from('host_opportunities').update({ tags: normalized, updated_at: new Date().toISOString() }).eq('id', id).eq('owner_profile_id', ownerId).select('*').single();
+  const { data, error } = await supabase.from('host_opportunities').update({ tags: normalized, updated_at: new Date().toISOString() }).eq('id', id).eq('organization_id', organizationId).eq('owner_profile_id', ownerId).select('*').single();
   if (error) throw error;
   return data as SavedOpportunity;
 }
 
 export async function updateOpportunityWorkspace(id: string, values: { notes?: string; followUpAt?: string | null; stage?: OpportunityStage }) {
-  const ownerId = await requireProfileId();
+  const { ownerId, organizationId } = await requireOpportunityContext();
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (values.notes !== undefined) payload.notes = values.notes.trim();
   if (values.followUpAt !== undefined) payload.follow_up_at = values.followUpAt || null;
   if (values.stage !== undefined) payload.stage = values.stage;
-  const { data, error } = await supabase.from('host_opportunities').update(payload).eq('id', id).eq('owner_profile_id', ownerId).select('*').single();
+  const { data, error } = await supabase.from('host_opportunities').update(payload).eq('id', id).eq('organization_id', organizationId).eq('owner_profile_id', ownerId).select('*').single();
   if (error) throw error;
   return data as SavedOpportunity;
 }

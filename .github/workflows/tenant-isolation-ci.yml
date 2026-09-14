@@ -1,0 +1,49 @@
+name: Tenant Isolation CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/mobile/app/host/**'
+      - 'apps/mobile/src/hosting/**'
+      - 'apps/mobile/src/management/**'
+      - 'apps/mobile/src/platform/**'
+      - 'apps/mobile/scripts/verify_tenant_isolation.mjs'
+      - 'supabase/functions/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/tenant-isolation-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/app/host/**'
+      - 'apps/mobile/src/hosting/**'
+      - 'apps/mobile/src/management/**'
+      - 'apps/mobile/src/platform/**'
+      - 'apps/mobile/scripts/verify_tenant_isolation.mjs'
+      - 'supabase/functions/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/tenant-isolation-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify tenant boundaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Verify tenant isolation invariants
+        run: node apps/mobile/scripts/verify_tenant_isolation.mjs

@@ -1,7 +1,9 @@
 import { supabase } from '../lib/supabase';
+import { requireActiveOrganizationId } from '../platform/tenantScope';
 
 export type HostVendorProfile = {
   id: string;
+  organization_id: string;
   owner_profile_id: string | null;
   created_by: string | null;
   business_name: string;
@@ -35,12 +37,12 @@ export type HostVendorProfile = {
   featured: boolean;
 };
 
-const CORE_SELECT = 'id,owner_profile_id,created_by,business_name,category,description,contact_name,email,phone,website,social_links,service_area,brand_assets,documents,internal_notes';
+const CORE_SELECT = 'id,organization_id,owner_profile_id,created_by,business_name,category,description,contact_name,email,phone,website,social_links,service_area,brand_assets,documents,internal_notes';
 const DEMO_SELECT = `${CORE_SELECT},is_demo,demo_key,sample_pricing,typical_setup,demo_event_count,rating`;
 const MARKET_SELECT = `${DEMO_SELECT},marketplace_visible,marketplace_category,marketplace_subcategory,vendor_kind,availability_status,verification_status,starting_price_text,travel_radius_miles,event_types,response_time_text,featured`;
 
 type CoreVendorRow = Pick<HostVendorProfile,
-  'id' | 'owner_profile_id' | 'created_by' | 'business_name' | 'category' | 'description' | 'contact_name' | 'email' | 'phone' | 'website' | 'social_links' | 'service_area' | 'brand_assets' | 'documents' | 'internal_notes'>;
+  'id' | 'organization_id' | 'owner_profile_id' | 'created_by' | 'business_name' | 'category' | 'description' | 'contact_name' | 'email' | 'phone' | 'website' | 'social_links' | 'service_area' | 'brand_assets' | 'documents' | 'internal_notes'>;
 
 type DemoVendorRow = CoreVendorRow & Pick<HostVendorProfile,
   'is_demo' | 'demo_key' | 'sample_pricing' | 'typical_setup' | 'demo_event_count' | 'rating'>;
@@ -76,9 +78,11 @@ function normalizeDemoVendor(row: DemoVendorRow): HostVendorProfile {
 }
 
 export async function listHostVendorProfiles(): Promise<HostVendorProfile[]> {
+  const organizationId = await requireActiveOrganizationId();
   const marketplace = await supabase
     .from('host_vendor_profiles')
     .select(MARKET_SELECT)
+    .eq('organization_id', organizationId)
     .order('marketplace_visible', { ascending: false })
     .order('featured', { ascending: false })
     .order('business_name', { ascending: true });
@@ -88,6 +92,7 @@ export async function listHostVendorProfiles(): Promise<HostVendorProfile[]> {
   const demo = await supabase
     .from('host_vendor_profiles')
     .select(DEMO_SELECT)
+    .eq('organization_id', organizationId)
     .order('is_demo', { ascending: true })
     .order('business_name', { ascending: true });
 
@@ -96,6 +101,7 @@ export async function listHostVendorProfiles(): Promise<HostVendorProfile[]> {
   const legacy = await supabase
     .from('host_vendor_profiles')
     .select(CORE_SELECT)
+    .eq('organization_id', organizationId)
     .order('business_name', { ascending: true });
 
   if (legacy.error) throw legacy.error;
@@ -107,14 +113,18 @@ export async function listMarketplaceVendors(): Promise<HostVendorProfile[]> {
 }
 
 export async function listSavedVendorIds(): Promise<string[]> {
-  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const [{ data: authData, error: authError }, organizationId] = await Promise.all([
+    supabase.auth.getUser(),
+    requireActiveOrganizationId(),
+  ]);
   if (authError) throw authError;
   if (!authData.user) return [];
 
   const { data, error } = await supabase
     .from('host_saved_vendors')
-    .select('vendor_profile_id')
-    .eq('user_id', authData.user.id);
+    .select('vendor_profile_id,host_vendor_profiles!inner(organization_id)')
+    .eq('user_id', authData.user.id)
+    .eq('host_vendor_profiles.organization_id', organizationId);
 
   if (error) {
     if (String(error.message ?? '').toLowerCase().includes('host_saved_vendors')) return [];
@@ -125,9 +135,21 @@ export async function listSavedVendorIds(): Promise<string[]> {
 }
 
 export async function saveMarketplaceVendor(vendorProfileId: string): Promise<void> {
-  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const [{ data: authData, error: authError }, organizationId] = await Promise.all([
+    supabase.auth.getUser(),
+    requireActiveOrganizationId(),
+  ]);
   if (authError) throw authError;
   if (!authData.user) throw new Error('You must be signed in to save a vendor.');
+
+  const { data: vendor, error: vendorError } = await supabase
+    .from('host_vendor_profiles')
+    .select('id')
+    .eq('id', vendorProfileId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+  if (vendorError) throw vendorError;
+  if (!vendor) throw new Error('This vendor belongs to a different organization.');
 
   const { error } = await supabase.from('host_saved_vendors').upsert({
     user_id: authData.user.id,
@@ -138,9 +160,21 @@ export async function saveMarketplaceVendor(vendorProfileId: string): Promise<vo
 }
 
 export async function removeSavedMarketplaceVendor(vendorProfileId: string): Promise<void> {
-  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const [{ data: authData, error: authError }, organizationId] = await Promise.all([
+    supabase.auth.getUser(),
+    requireActiveOrganizationId(),
+  ]);
   if (authError) throw authError;
   if (!authData.user) throw new Error('You must be signed in to remove a saved vendor.');
+
+  const { data: vendor, error: vendorError } = await supabase
+    .from('host_vendor_profiles')
+    .select('id')
+    .eq('id', vendorProfileId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+  if (vendorError) throw vendorError;
+  if (!vendor) throw new Error('This vendor belongs to a different organization.');
 
   const { error } = await supabase
     .from('host_saved_vendors')
@@ -159,11 +193,15 @@ export async function createHostVendorProfile(input: {
   phone?: string;
   serviceArea?: string;
 }): Promise<void> {
-  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const [{ data: authData, error: authError }, organizationId] = await Promise.all([
+    supabase.auth.getUser(),
+    requireActiveOrganizationId(),
+  ]);
   if (authError) throw authError;
   if (!authData.user) throw new Error('You must be signed in to add a vendor.');
 
   const { error } = await supabase.from('host_vendor_profiles').insert({
+    organization_id: organizationId,
     business_name: input.businessName.trim(),
     category: input.category.trim() || 'Other',
     contact_name: input.contactName?.trim() || null,
@@ -202,7 +240,7 @@ export function vendorAvailabilityLabel(status: HostVendorProfile['availability_
 
 export function vendorVerificationLabel(status: HostVendorProfile['verification_status']) {
   if (status === 'documents_verified') return 'Documents verified';
-  if (status === 'go_melanated_verified') return 'Go Melanated verified';
+  if (status === 'go_melanated_verified') return 'Platform verified';
   if (status === 'new') return 'New vendor';
   return 'Profile complete';
 }

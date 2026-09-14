@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { requireActiveOrganizationId } from '../platform/tenantScope';
 
 export type HostLibraryScope = 'system' | 'organization' | 'personal';
 export type HostLibraryCategory =
@@ -13,6 +14,7 @@ export type HostLibraryCategory =
 
 export type HostLibraryItem = {
   id: string;
+  organizationId: string;
   itemKey: string;
   scope: HostLibraryScope;
   category: HostLibraryCategory;
@@ -26,6 +28,7 @@ export type HostLibraryItem = {
 
 type LibraryRow = {
   id: string;
+  organization_id: string;
   item_key: string;
   scope: HostLibraryScope;
   category: HostLibraryCategory;
@@ -37,11 +40,12 @@ type LibraryRow = {
   is_active: boolean;
 };
 
-const librarySelect = 'id,item_key,scope,category,title,summary,content,owner_profile_id,source_event_id,is_active';
+const librarySelect = 'id,organization_id,item_key,scope,category,title,summary,content,owner_profile_id,source_event_id,is_active';
 
 function mapLibraryItem(row: LibraryRow): HostLibraryItem {
   return {
     id: row.id,
+    organizationId: row.organization_id,
     itemKey: row.item_key,
     scope: row.scope,
     category: row.category,
@@ -55,9 +59,11 @@ function mapLibraryItem(row: LibraryRow): HostLibraryItem {
 }
 
 export async function listHostLibraryItems(category?: HostLibraryCategory): Promise<HostLibraryItem[]> {
+  const organizationId = await requireActiveOrganizationId();
   let query = supabase
     .from('host_library_items')
     .select(librarySelect)
+    .eq('organization_id', organizationId)
     .eq('is_active', true)
     .order('scope', { ascending: true })
     .order('title', { ascending: true });
@@ -79,13 +85,17 @@ export async function createPersonalLibraryItem(input: {
   const title = input.title.trim();
   if (!title) throw new Error('Add a title for this library item.');
 
-  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const [{ data: authData, error: authError }, organizationId] = await Promise.all([
+    supabase.auth.getUser(),
+    requireActiveOrganizationId(),
+  ]);
   if (authError) throw authError;
   const profileId = authData.user?.id;
   if (!profileId) throw new Error('Sign in to save reusable items.');
 
-  const itemKey = `personal-${input.category}-${profileId}-${Date.now()}`;
+  const itemKey = `personal-${input.category}-${organizationId}-${profileId}-${Date.now()}`;
   const { error } = await supabase.from('host_library_items').insert({
+    organization_id: organizationId,
     item_key: itemKey,
     scope: 'personal',
     category: input.category,
@@ -99,9 +109,11 @@ export async function createPersonalLibraryItem(input: {
 }
 
 export async function archiveHostLibraryItem(itemId: string) {
+  const organizationId = await requireActiveOrganizationId();
   const { error } = await supabase
     .from('host_library_items')
     .update({ is_active: false, updated_at: new Date().toISOString() })
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .eq('organization_id', organizationId);
   if (error) throw error;
 }
