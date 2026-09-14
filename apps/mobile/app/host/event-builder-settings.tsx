@@ -76,7 +76,7 @@ export default function EventBuilderSettingsScreen() {
       const nextDifficultyTypes = parseLines(difficultyTypes).filter((item) => nextEventTypes.includes(item));
       const nextDefaultEventType = nextEventTypes.includes(config.defaultEventType)
         ? config.defaultEventType
-        : nextEventTypes[0];
+        : nextEventTypes[0] ?? 'Social';
       const nextConfig: EventBuilderConfig = {
         ...config,
         eventTypes: nextEventTypes,
