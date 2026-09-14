@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getHostOutingById, updateHostOuting, type EventLocationType, type HostOuting } from '../../../src/hosting/api';
@@ -8,10 +8,12 @@ import { setHostOutingInterests } from '../../../src/hosting/communityIntegratio
 import { EventDateTimeField } from '../../../src/hosting/EventDateTimeField';
 import { resolveEventBuilderConfig, type EventBuilderConfig, type EventBuilderDifficulty } from '../../../src/hosting/eventBuilderConfig';
 import { EventTagPicker } from '../../../src/hosting/EventTagPicker';
-import { getActiveOrganization } from '../../../src/platform/organizations';
+import { persistSelectedVenueMetadata } from '../../../src/hosting/venueDiscovery';
+import { VenueSearchField, type SelectedVenueSnapshot } from '../../../src/hosting/VenueSearchField';
+import { listMyOrganizations } from '../../../src/platform/organizations';
 
 const difficulties: EventBuilderDifficulty[] = ['easy', 'moderate', 'challenging'];
-const locationTypes: Array<{ value: EventLocationType; label: string }> = [
+const locationTypes: { value: EventLocationType; label: string }[] = [
   { value: 'physical', label: 'Physical' },
   { value: 'online', label: 'Online' },
   { value: 'hybrid', label: 'Hybrid' },
@@ -21,6 +23,7 @@ const locationTypes: Array<{ value: EventLocationType; label: string }> = [
 export default function EditHostOutingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [outing, setOuting] = useState<HostOuting | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [config, setConfig] = useState<EventBuilderConfig>(() => resolveEventBuilderConfig(null));
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -32,6 +35,7 @@ export default function EditHostOutingScreen() {
   const [endsAt, setEndsAt] = useState<string | null>(null);
   const [locationType, setLocationType] = useState<EventLocationType>('physical');
   const [venueName, setVenueName] = useState('');
+  const [selectedVenue, setSelectedVenue] = useState<SelectedVenueSnapshot | null>(null);
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [onlineUrl, setOnlineUrl] = useState('');
@@ -46,9 +50,13 @@ export default function EditHostOutingScreen() {
     async function load() {
       if (!id) return;
       try {
-        const [found, organization] = await Promise.all([getHostOutingById(id), getActiveOrganization()]);
-        const nextConfig = resolveEventBuilderConfig(organization);
-        setConfig(nextConfig);
+        const [found, organizations] = await Promise.all([getHostOutingById(id), listMyOrganizations()]);
+        const owningOrganization = organizations.find((item) => item.id === found.platform_organization_id)
+          ?? organizations.find((item) => item.isActive)
+          ?? organizations[0]
+          ?? null;
+        setConfig(resolveEventBuilderConfig(owningOrganization));
+        setOrganizationId(owningOrganization?.id ?? found.platform_organization_id ?? null);
         setOuting(found);
         setTitle(found.title);
         setSummary(found.summary);
@@ -106,6 +114,15 @@ export default function EditHostOutingScreen() {
         platformOrganizationId: outing.platform_organization_id,
       });
       await setHostOutingInterests(id, tags);
+      if (selectedVenue) {
+        await persistSelectedVenueMetadata(id, {
+          address: selectedVenue.address,
+          latitude: selectedVenue.latitude,
+          longitude: selectedVenue.longitude,
+          placeId: selectedVenue.placeId,
+          source: selectedVenue.source,
+        });
+      }
       router.replace(`/host/review/${id}` as never);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to save changes.');
@@ -120,6 +137,8 @@ export default function EditHostOutingScreen() {
   const difficultyApplies = config.difficultyEventTypes.includes(category);
   const physicalNeeded = locationType === 'physical' || locationType === 'hybrid';
   const onlineNeeded = locationType === 'online' || locationType === 'hybrid';
+  const parsedCapacity = capacityMode === 'limited' ? Number.parseInt(capacity, 10) : null;
+  const capacityNumber = parsedCapacity != null && Number.isFinite(parsedCapacity) && parsedCapacity > 0 ? parsedCapacity : null;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -153,11 +172,29 @@ export default function EditHostOutingScreen() {
 
         {physicalNeeded ? (
           <>
-            <Field label="Venue or location" value={venueName} onChangeText={setVenueName} editable={!readOnly} />
             <View style={styles.row}>
               <View style={styles.flex}><Field label="City" value={city} onChangeText={setCity} editable={!readOnly} /></View>
-              <View style={styles.state}><Field label="State" value={state} onChangeText={setState} editable={!readOnly} /></View>
+              <View style={styles.state}><Field label="State" value={state} onChangeText={(next) => setState(next.toUpperCase().slice(0, 2))} editable={!readOnly} autoCapitalize="characters" /></View>
             </View>
+            {readOnly ? <Field label="Venue or location" value={venueName} editable={false} /> : (
+              <VenueSearchField
+                organizationId={organizationId}
+                value={venueName}
+                city={city}
+                state={state}
+                eventType={category}
+                capacity={capacityNumber}
+                selectedVenue={selectedVenue}
+                onChangeText={(next) => { setVenueName(next); setSelectedVenue(null); }}
+                onSelect={(venue) => {
+                  setSelectedVenue(venue);
+                  setVenueName(venue.name);
+                  if (venue.city) setCity(venue.city);
+                  if (venue.state) setState(venue.state);
+                }}
+                onUseCustom={() => setSelectedVenue(null)}
+              />
+            )}
           </>
         ) : null}
         {onlineNeeded ? <Field label="Online meeting or streaming link" value={onlineUrl} onChangeText={setOnlineUrl} editable={!readOnly} autoCapitalize="none" keyboardType="url" /> : null}
@@ -178,7 +215,7 @@ export default function EditHostOutingScreen() {
   );
 }
 
-function Field({ label, multiline = false, editable = true, ...props }: any) {
+function Field({ label, multiline = false, editable = true, ...props }: TextInputProps & { label: string; multiline?: boolean; editable?: boolean }) {
   return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput {...props} editable={editable} multiline={multiline} textAlignVertical={multiline ? 'top' : 'center'} placeholderTextColor="#66736B" style={[styles.input, multiline && styles.multiline, !editable && styles.readOnly]} /></View>;
 }
 
