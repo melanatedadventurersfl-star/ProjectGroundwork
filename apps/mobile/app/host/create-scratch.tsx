@@ -20,7 +20,7 @@ import { addGeneralAdmissionTicket } from '../../src/hosting/tickets';
 import { getActiveOrganization, type OrganizationWorkspace } from '../../src/platform/organizations';
 
 const difficulties: EventBuilderDifficulty[] = ['easy', 'moderate', 'challenging'];
-const locationTypes: Array<{ value: EventLocationType; label: string }> = [
+const locationTypes: { value: EventLocationType; label: string }[] = [
   { value: 'physical', label: 'Physical' },
   { value: 'online', label: 'Online' },
   { value: 'hybrid', label: 'Hybrid' },
@@ -143,25 +143,28 @@ export default function CreateHostOutingScreen() {
   const locationSummary = locationLabel(locationType, venueName, city, state, onlineUrl);
   const previewCover = coverUri ?? activeOrganization?.coverImageUrl ?? null;
 
-  const missingItems = useMemo<MissingItem[]>(() => [
-    { key: 'title', label: 'Event title', section: 'details', complete: Boolean(title.trim()) },
-    { key: 'summary', label: 'Short description', section: 'details', complete: Boolean(summary.trim()) },
-    { key: 'description', label: 'Full description', section: 'details', complete: Boolean(description.trim()) },
-    { key: 'startsAt', label: 'Start date and time', section: 'schedule', complete: validDate(startsAt) },
-    { key: 'endsAt', label: 'End date and time', section: 'schedule', complete: scheduleValid(startsAt, endsAt) },
-    { key: 'physical', label: 'Physical location', section: 'schedule', complete: physicalComplete },
-    { key: 'online', label: 'Online link', section: 'schedule', complete: onlineComplete },
-    { key: 'capacity', label: 'Capacity', section: 'schedule', complete: capacityMode === 'unlimited' || capacityNumber != null },
-    { key: 'access', label: 'Access group', section: 'access', complete: accessComplete },
-    { key: 'price', label: 'Ticket price', section: 'admission', complete: admissionComplete },
-  ].filter((item) => {
-    if (item.key === 'physical') return physicalLocationNeeded;
-    if (item.key === 'online') return onlineLocationNeeded;
-    if (item.key === 'capacity') return capacityMode === 'limited';
-    if (item.key === 'access') return visibility === 'community';
-    if (item.key === 'price') return paid;
-    return true;
-  }), [accessComplete, admissionComplete, capacityMode, capacityNumber, description, endsAt, onlineComplete, onlineLocationNeeded, paid, physicalComplete, physicalLocationNeeded, priceNumber, startsAt, summary, title, visibility]);
+  const missingItems = useMemo<MissingItem[]>(() => {
+    const items: MissingItem[] = [
+      { key: 'title', label: 'Event title', section: 'details', complete: Boolean(title.trim()) },
+      { key: 'summary', label: 'Short description', section: 'details', complete: Boolean(summary.trim()) },
+      { key: 'description', label: 'Full description', section: 'details', complete: Boolean(description.trim()) },
+      { key: 'startsAt', label: 'Start date and time', section: 'schedule', complete: validDate(startsAt) },
+      { key: 'endsAt', label: 'End date and time', section: 'schedule', complete: scheduleValid(startsAt, endsAt) },
+      { key: 'physical', label: 'Physical location', section: 'schedule', complete: physicalComplete },
+      { key: 'online', label: 'Online link', section: 'schedule', complete: onlineComplete },
+      { key: 'capacity', label: 'Capacity', section: 'schedule', complete: capacityMode === 'unlimited' || capacityNumber != null },
+      { key: 'access', label: 'Access group', section: 'access', complete: accessComplete },
+      { key: 'price', label: 'Ticket price', section: 'admission', complete: admissionComplete },
+    ];
+    return items.filter((item) => {
+      if (item.key === 'physical') return physicalLocationNeeded;
+      if (item.key === 'online') return onlineLocationNeeded;
+      if (item.key === 'capacity') return capacityMode === 'limited';
+      if (item.key === 'access') return visibility === 'community';
+      if (item.key === 'price') return paid;
+      return true;
+    });
+  }, [accessComplete, admissionComplete, capacityMode, capacityNumber, description, endsAt, onlineComplete, onlineLocationNeeded, paid, physicalComplete, physicalLocationNeeded, startsAt, summary, title, visibility]);
 
   const requiredComplete = missingItems.filter((item) => item.complete).length;
   const requiredTotal = missingItems.length;
@@ -247,16 +250,46 @@ export default function CreateHostOutingScreen() {
     }
   }, [builderConfig.showCommunityVisibility, visibility]);
 
+  const localDraft = useMemo<LocalEventDraft | null>(() => activeOrganization ? {
+    version: 2,
+    organizationId: activeOrganization.id,
+    creationKey,
+    title,
+    summary,
+    description,
+    category,
+    tags,
+    difficulty,
+    startsAt,
+    endsAt,
+    locationType,
+    venueName,
+    city,
+    state,
+    onlineUrl,
+    capacityMode,
+    capacity,
+    meetingInstructions,
+    visibility,
+    selectedGroupIds,
+    primaryCommunityId,
+    paid,
+    price,
+    coverUri,
+    coverAltText,
+    updatedAt: new Date().toISOString(),
+  } : null, [activeOrganization, capacity, capacityMode, category, city, coverAltText, coverUri, creationKey, description, difficulty, endsAt, locationType, meetingInstructions, onlineUrl, paid, price, primaryCommunityId, selectedGroupIds, startsAt, state, summary, tags, title, venueName, visibility]);
+
   useEffect(() => {
-    if (!draftHydrated || !activeOrganization) return;
+    if (!draftHydrated || !localDraft) return;
     setSaveState('saving');
     const timer = setTimeout(() => {
-      void saveLocalEventDraft(buildLocalDraft(activeOrganization.id))
+      void saveLocalEventDraft(localDraft)
         .then(() => setSaveState('saved'))
         .catch(() => setSaveState('error'));
     }, 650);
     return () => clearTimeout(timer);
-  }, [activeOrganization, capacity, capacityMode, category, city, coverAltText, coverUri, creationKey, description, difficulty, draftHydrated, endsAt, locationType, meetingInstructions, onlineUrl, paid, price, primaryCommunityId, selectedGroupIds, startsAt, state, summary, tags, title, venueName, visibility]);
+  }, [draftHydrated, localDraft]);
 
   function hydrateStoredDraft(draft: LocalEventDraft) {
     setCreationKey(draft.creationKey);
@@ -286,52 +319,22 @@ export default function CreateHostOutingScreen() {
     setCoverAltText(draft.coverAltText);
   }
 
-  function buildLocalDraft(organizationId: string): LocalEventDraft {
-    return {
-      version: 2,
-      organizationId,
-      creationKey,
-      title,
-      summary,
-      description,
-      category,
-      tags,
-      difficulty,
-      startsAt,
-      endsAt,
-      locationType,
-      venueName,
-      city,
-      state,
-      onlineUrl,
-      capacityMode,
-      capacity,
-      meetingInstructions,
-      visibility,
-      selectedGroupIds,
-      primaryCommunityId,
-      paid,
-      price,
-      coverUri,
-      coverAltText,
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
   async function saveNow() {
-    if (!activeOrganization) return;
+    if (!localDraft) return false;
     setSaveState('saving');
     try {
-      await saveLocalEventDraft(buildLocalDraft(activeOrganization.id));
+      await saveLocalEventDraft(localDraft);
       setSaveState('saved');
+      return true;
     } catch {
       setSaveState('error');
+      return false;
     }
   }
 
   async function saveAndExit() {
-    await saveNow();
-    router.back();
+    const saved = await saveNow();
+    if (saved) router.back();
   }
 
   function toggleGroup(groupId: string) {
@@ -401,6 +404,7 @@ export default function CreateHostOutingScreen() {
     setSaving(true);
     setError('');
     setCreatedDraftId(null);
+    let createdId: string | null = null;
     try {
       const access = await getOutingHostAccess();
       if (!access.approved) throw new Error('Event management permission is required.');
@@ -429,6 +433,7 @@ export default function CreateHostOutingScreen() {
         platformOrganizationId: activeOrganization?.id ?? null,
         creationKey,
       });
+      createdId = outing.id;
       setCreatedDraftId(outing.id);
 
       const warnings: string[] = [];
@@ -465,7 +470,7 @@ export default function CreateHostOutingScreen() {
       router.replace(`/host/review/${outing.id}${warningQuery}` as never);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Unable to create this event draft.';
-      setError(createdDraftId ? `Your draft was created, but setup stopped: ${message}` : message);
+      setError(createdId ? `Your draft was created, but setup stopped: ${message}` : message);
     } finally {
       setSaving(false);
     }
