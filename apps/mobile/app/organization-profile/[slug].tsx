@@ -82,6 +82,7 @@ export default function PublicOrganizationProfileScreen(){
  const hostType=hostTypeLabel(setup.hostType);
 
  function renderSection(code:string){
+  if(!org||!setup)return null;
   if(code==='about'){
    const hasDetails=Boolean(setup.shortDescription||org.description||org.specialties?.length||setup.serviceAreas.length||setup.audiences.length||setup.languages.length||setup.accessibility||setup.foundedYear||socials.length);
    if(!hasDetails)return null;
