@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import AiPlannerLegacyScreen from '../../src/hosting/AiPlannerLegacyScreen';
-import AiPlannerV3Screen from '../../src/hosting/AiPlannerV3Screen';
+import AiPlannerV31Screen from '../../src/hosting/AiPlannerV31Screen';
 import { getAiPlannerTenantContext, type AiPlannerTenantContext } from '../../src/hosting/aiPlannerTenant';
 
 export default function AiPlannerRoute() {
@@ -25,7 +25,7 @@ export default function AiPlannerRoute() {
   }
 
   if (!tenant || tenant.isPlatformDefault) return <AiPlannerLegacyScreen />;
-  return <AiPlannerV3Screen tenant={tenant} />;
+  return <AiPlannerV31Screen tenant={tenant} />;
 }
 
 const styles = StyleSheet.create({
