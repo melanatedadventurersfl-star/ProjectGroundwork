@@ -26,6 +26,7 @@ import type {
   SafetyBreadcrumb,
   SafetyCheckInStatus,
 } from '../../src/offline/safetyTypes';
+import { getTrailLocationPolicy, getTrailPowerSnapshot, subscribeTrailPower } from '../../src/power/trailPower';
 import { bearingDegrees, bearingLabel, distanceMeters, formatDistance, shouldRecordBreadcrumb } from '../../src/safety/geo';
 import {
   countPendingOfflineActions,
@@ -117,6 +118,7 @@ export default function AdventureSafetyScreen() {
   const [busy, setBusy] = useState(false);
   const [returnHours, setReturnHours] = useState(2);
   const [sweep, setSweep] = useState<Record<string, RosterSweepStatus>>({});
+  const [trailPower, setTrailPower] = useState(getTrailPowerSnapshot());
   const lastRecorded = useRef<GeoPoint | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -144,6 +146,8 @@ export default function AdventureSafetyScreen() {
     void load();
   }, [load]));
 
+  useEffect(() => subscribeTrailPower(setTrailPower), []);
+
   const getLocation = useCallback(async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) return null;
@@ -163,16 +167,17 @@ export default function AdventureSafetyScreen() {
       const permission = await Location.getForegroundPermissionsAsync();
       if (!permission.granted || disposed) return;
 
+      const locationPolicy = getTrailLocationPolicy();
       subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 30,
-          timeInterval: 60_000,
+          distanceInterval: locationPolicy.distanceInterval,
+          timeInterval: locationPolicy.timeInterval,
         },
         (location) => {
           const point = toPoint(location);
           setCurrentPoint(point);
-          if (!shouldRecordBreadcrumb(lastRecorded.current, point, 30)) return;
+          if (!shouldRecordBreadcrumb(lastRecorded.current, point, locationPolicy.breadcrumbDistance)) return;
 
           lastRecorded.current = point;
           void recordSafetyBreadcrumb(session.id, point).then(async () => {
@@ -186,7 +191,7 @@ export default function AdventureSafetyScreen() {
       disposed = true;
       subscription?.remove();
     };
-  }, [session]);
+  }, [session, trailPower.mode]);
 
   const navigationTarget = useMemo(() => {
     if (session?.safePointLatitude != null && session.safePointLongitude != null) {

@@ -60,7 +60,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.melanatedadventurers.app"
+      "bundleIdentifier": "com.melanatedadventurers.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.melanatedadventurers.app",
@@ -73,7 +76,7 @@
     },
     "extra": {
       "router": {},
-      "nativeBuildAssetRevision": "go-melanated-launcher-v15",
+      "nativeBuildAssetRevision": "go-melanated-launcher-v16",
       "eas": {
         "projectId": "ed241cfc-f4eb-4aa2-832f-ce76b1ec7c9c"
       }
