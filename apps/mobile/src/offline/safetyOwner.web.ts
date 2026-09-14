@@ -6,6 +6,8 @@ const SAFETY_KEYS = [
   'ma.offlineSafety.queue',
   'ma.offlineSafety.rosterSweep',
   'ma.offlineSafety.hostFieldSnapshots',
+  'ma.offlineArrival.scans',
+  'ma.offlineArrival.deviceId',
 ] as const;
 
 function storage() {
