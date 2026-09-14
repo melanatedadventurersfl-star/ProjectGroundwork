@@ -95,9 +95,10 @@ export default function ReviewEventDraftScreen() {
         || (event.location_type === 'online' ? Boolean(event.online_url) : Boolean(event.venue_name && event.city && event.state)),
       Boolean(event.visibility),
     ];
+    const eventCapacity = event.capacity;
     const registrationChecks = [
       tickets.some((ticket) => ticket.is_active),
-      event.capacity == null || tickets.some((ticket) => ticket.is_active && (ticket.quantity_total == null || ticket.quantity_total <= event.capacity!)),
+      eventCapacity == null || tickets.some((ticket) => ticket.is_active && (ticket.capacity == null || ticket.capacity <= eventCapacity)),
     ];
     const added = new Set(components.filter((item) => item.status !== 'disabled').map((item) => item.component_key));
     const operationsChecks = [added.has('team'), added.has('finance'), added.has('schedule') || added.has('venue')];
