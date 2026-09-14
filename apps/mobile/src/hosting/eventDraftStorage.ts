@@ -5,6 +5,20 @@ import type { EventVisibility } from './hostProfiles';
 import type { EventBuilderDifficulty } from './eventBuilderConfig';
 import type { EventLocationType } from './api';
 
+export type LocalEventVenue = {
+  placeId: string | null;
+  name: string;
+  address: string | null;
+  city: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+  mapsUrl: string | null;
+  websiteUrl: string | null;
+  source: string;
+  sourceLabel: string;
+};
+
 export type LocalEventDraft = {
   version: 2;
   organizationId: string;
@@ -32,6 +46,9 @@ export type LocalEventDraft = {
   price: string;
   coverUri: string | null;
   coverAltText: string;
+  selectedVenue?: LocalEventVenue | null;
+  activeStep?: 'basics' | 'schedule' | 'access';
+  showMoreDetails?: boolean;
   updatedAt: string;
 };
 
