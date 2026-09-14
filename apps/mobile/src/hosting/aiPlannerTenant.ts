@@ -16,6 +16,12 @@ export type AiPlannerSection =
 
 export type AiPlannerSectionStatus = 'not_started' | 'in_progress' | 'complete' | 'needs_review' | 'not_applicable';
 
+export type AiPlannerVenueDiscoverySettings = {
+  communityDirectoryEnabled: boolean;
+  defaultAreaHint: string;
+  defaultRadiusKm: number | null;
+};
+
 export type AiPlannerTenantContext = {
   organizationId: string | null;
   experienceId: string | null;
@@ -24,6 +30,7 @@ export type AiPlannerTenantContext = {
   organizationKind: string;
   eventCategories: string[];
   venueTypes: string[];
+  venueDiscovery: AiPlannerVenueDiscoverySettings;
   sections: AiPlannerSection[];
   attendeeLabel: string;
   brandVoice: string;
@@ -33,7 +40,7 @@ export type AiPlannerTenantContext = {
 export const GENERIC_EVENT_CATEGORIES = [
   'Networking', 'Workshop', 'Conference', 'Fundraiser', 'Gala / Awards',
   'Vendor Market / Pop-up', 'Employee / Team Event', 'Private Event',
-  'Virtual Event', 'Outdoor Event', 'Other',
+  'Virtual Event', 'Hybrid Event', 'Outdoor Event', 'Other',
 ];
 
 export const GENERIC_VENUE_TYPES = [
@@ -70,6 +77,11 @@ const GENERIC_CONTEXT: AiPlannerTenantContext = {
   organizationKind: 'other',
   eventCategories: GENERIC_EVENT_CATEGORIES,
   venueTypes: GENERIC_VENUE_TYPES,
+  venueDiscovery: {
+    communityDirectoryEnabled: false,
+    defaultAreaHint: '',
+    defaultRadiusKm: null,
+  },
   sections: DEFAULT_PLANNER_SECTIONS,
   attendeeLabel: 'attendees',
   brandVoice: 'clear, practical and professional',
@@ -89,6 +101,11 @@ function sectionArray(value: unknown): AiPlannerSection[] {
   return stringArray(value).filter((item): item is AiPlannerSection => allowed.has(item as AiPlannerSection));
 }
 
+function finitePositiveNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
 export async function getAiPlannerTenantContext(): Promise<AiPlannerTenantContext> {
   try {
     const context = await getActiveExperienceContext();
@@ -96,6 +113,7 @@ export async function getAiPlannerTenantContext(): Promise<AiPlannerTenantContex
 
     const publicSettings = asRecord(context.experience.publicSettings);
     const planner = asRecord(publicSettings.aiPlanner ?? publicSettings.ai_planner ?? publicSettings.planner);
+    const venueDiscovery = asRecord(planner.venueDiscovery ?? planner.venue_discovery);
     const categories = stringArray(planner.eventCategories ?? planner.event_categories ?? planner.categories);
     const venueTypes = stringArray(planner.venueTypes ?? planner.venue_types);
     const configuredSections = sectionArray(planner.sections);
@@ -105,6 +123,9 @@ export async function getAiPlannerTenantContext(): Promise<AiPlannerTenantContex
     const brandVoice = typeof planner.brandVoice === 'string'
       ? planner.brandVoice.trim()
       : typeof planner.brand_voice === 'string' ? planner.brand_voice.trim() : '';
+    const defaultAreaHint = typeof venueDiscovery.defaultAreaHint === 'string'
+      ? venueDiscovery.defaultAreaHint.trim()
+      : typeof venueDiscovery.default_area_hint === 'string' ? venueDiscovery.default_area_hint.trim() : '';
 
     return {
       organizationId: context.organization.id,
@@ -114,6 +135,11 @@ export async function getAiPlannerTenantContext(): Promise<AiPlannerTenantContex
       organizationKind: context.organization.kind,
       eventCategories: categories.length ? categories : GENERIC_EVENT_CATEGORIES,
       venueTypes: venueTypes.length ? venueTypes : GENERIC_VENUE_TYPES,
+      venueDiscovery: {
+        communityDirectoryEnabled: venueDiscovery.communityDirectoryEnabled === true || venueDiscovery.community_directory_enabled === true,
+        defaultAreaHint,
+        defaultRadiusKm: finitePositiveNumber(venueDiscovery.defaultRadiusKm ?? venueDiscovery.default_radius_km),
+      },
       sections: configuredSections.length ? configuredSections : DEFAULT_PLANNER_SECTIONS,
       attendeeLabel: attendeeLabel || 'attendees',
       brandVoice: brandVoice || 'clear, practical and professional',
