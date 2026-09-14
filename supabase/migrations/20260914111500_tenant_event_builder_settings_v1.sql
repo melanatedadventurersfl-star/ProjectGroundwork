@@ -7,6 +7,45 @@ alter table public.organizations
 comment on column public.organizations.event_builder_settings is
   'Tenant-controlled event builder schema: event types, tags, conditional difficulty, labels, visibility and defaults.';
 
+-- Adventure difficulty remains populated for legacy compatibility, but generic events can explicitly hide it.
+alter table public.adventures
+  add column if not exists difficulty_applicable boolean not null default true;
+
+comment on column public.adventures.difficulty_applicable is
+  'Whether adventure difficulty is meaningful and should be shown for this event.';
+
+create or replace view public.adventure_discovery as
+select
+  a.id,
+  a.slug,
+  a.title,
+  a.summary,
+  a.category,
+  a.difficulty,
+  a.status,
+  a.starts_at,
+  a.ends_at,
+  a.city,
+  a.state,
+  a.venue_name,
+  a.hero_image_url,
+  a.capacity,
+  a.spots_remaining,
+  a.starting_price_cents,
+  a.is_featured,
+  a.address,
+  a.latitude,
+  a.longitude,
+  a.timezone,
+  a.difficulty_applicable
+from public.adventures a
+where a.status in ('published', 'sold_out')
+  and a.ends_at >= now();
+
+alter view public.adventure_discovery set (security_invoker = true);
+revoke all on public.adventure_discovery from anon;
+grant select on public.adventure_discovery to authenticated;
+
 -- Adding a returned column changes the function signature, so recreate the RPC.
 drop function if exists public.list_my_organizations();
 
