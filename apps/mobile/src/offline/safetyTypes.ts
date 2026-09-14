@@ -3,8 +3,17 @@ import type { RosterEntry, ScheduleItem } from '../operations/types';
 
 export type SafetyCheckInStatus = 'starting' | 'okay' | 'back' | 'need_help';
 export type SafetySessionStatus = 'active' | 'completed' | 'cancelled';
-export type OfflineActionKind = 'safety_session_start' | 'safety_session_update' | 'safety_check_in';
+export type OfflineActionKind =
+  | 'safety_session_start'
+  | 'safety_session_update'
+  | 'safety_check_in'
+  | 'field_check_in'
+  | 'field_headcount'
+  | 'field_incident'
+  | 'field_host_message';
 export type RosterSweepStatus = 'returned' | 'still_out' | 'left_early' | 'needs_follow_up';
+export type OfflineDeliveryStatus = 'sent' | 'queued' | 'failed';
+export type OfflineMessageAudience = 'registered' | 'checked_in' | 'waitlist';
 
 export type GeoPoint = {
   latitude: number;
@@ -51,11 +60,21 @@ export type OfflineAnnouncement = {
   expires_at: string | null;
 };
 
+export type OfflineHostMessage = {
+  id: string;
+  audience: OfflineMessageAudience;
+  subject: string;
+  body: string;
+  sent_at: string;
+  delivery_status?: OfflineDeliveryStatus;
+};
+
 export type OfflineEventPack = {
-  version: 1;
+  version: 1 | 2;
   adventure: AdventureDetail;
   schedule: ScheduleItem[];
   announcements: OfflineAnnouncement[];
+  messages?: OfflineHostMessage[];
   roster: RosterEntry[];
   downloadedAt: string;
 };
