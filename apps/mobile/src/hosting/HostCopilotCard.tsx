@@ -38,17 +38,17 @@ export function HostCopilotCard({ city, state, onApply }: Props) {
         <View style={styles.spark}><Text style={styles.sparkText}>✦</Text></View>
         <View style={styles.flex}>
           <Text style={styles.eyebrow}>PLAN WITH COPILOT</Text>
-          <Text style={styles.title}>Describe it. We’ll build the first draft.</Text>
+          <Text style={styles.title}>Describe it. Copilot will structure the first draft.</Text>
         </View>
       </View>
-      <Text style={styles.body}>Tell us the vibe, location, timing, group size, or who it’s for. Copilot can structure the outing and prioritize verified Black- and brown-owned stops when they fit.</Text>
+      <Text style={styles.body}>Share the event type, location, timing, audience, group size, or other requirements. Copilot uses the active organization context and only applies organization-specific priorities when they are configured.</Text>
 
       <TextInput
         value={prompt}
         onChangeText={setPrompt}
         multiline
         maxLength={2000}
-        placeholder="Beginner sunset hike near Tampa next Saturday for about 15 people, with a community-owned food stop afterward if there’s a verified option nearby."
+        placeholder="A Saturday professional networking event for about 80 people, with check-in at 5:30 PM, light food, two speakers, and a 9 PM finish."
         placeholderTextColor="#69766F"
         style={styles.input}
         textAlignVertical="top"
@@ -77,7 +77,7 @@ export function HostCopilotCard({ city, state, onApply }: Props) {
             <Text style={styles.fact}>{result.plan.category}</Text>
             <Text style={styles.dot}>•</Text>
             <Text style={styles.fact}>{result.plan.capacity} people</Text>
-            {result.plan.city ? <><Text style={styles.dot}>•</Text><Text style={styles.fact}>{result.plan.city}, {result.plan.state}</Text></> : null}
+            {result.plan.city ? <><Text style={styles.dot}>•</Text><Text style={styles.fact}>{result.plan.city}{result.plan.state ? `, ${result.plan.state}` : ''}</Text></> : null}
           </View>
 
           {result.plan.safetyNotes.length ? (
@@ -96,19 +96,17 @@ export function HostCopilotCard({ city, state, onApply }: Props) {
 
           {result.plan.communityStops.length ? (
             <View style={styles.communityBox}>
-              <Text style={styles.communityTitle}>COMMUNITY-CENTERED STOPS</Text>
-              <Text style={styles.communityIntro}>Ownership labels below come only from verified Go Melanated place records.</Text>
+              <Text style={styles.communityTitle}>VERIFIED SUPPLEMENTAL STOPS</Text>
+              <Text style={styles.communityIntro}>These recommendations use only verified place records configured for the active organization. Copilot does not infer business ownership.</Text>
               {result.plan.communityStops.map((stop) => (
                 <View key={stop.placeId} style={styles.stop}>
                   <Text style={styles.stopName}>{stop.name}</Text>
-                  <Text style={styles.ownership}>{ownershipLabel(stop.ownershipTags)}</Text>
+                  {stop.ownershipTags.length ? <Text style={styles.ownership}>{ownershipLabel(stop.ownershipTags)}</Text> : null}
                   <Text style={styles.stopReason}>{stop.reason}</Text>
                 </View>
               ))}
             </View>
-          ) : (
-            <Text style={styles.noStops}>No verified community-owned stop was matched yet. Copilot will never guess business ownership.</Text>
-          )}
+          ) : null}
 
           {result.plan.confidenceNotes.length ? <Text style={styles.confidence}>{result.plan.confidenceNotes.join(' ')}</Text> : null}
 
@@ -158,7 +156,6 @@ const styles = StyleSheet.create({
   stopName: { color: '#FFF8E8', fontSize: 12, fontWeight: '900' },
   ownership: { color: '#D7B45A', fontSize: 9, fontWeight: '800', marginTop: 2 },
   stopReason: { color: '#9DA9A1', fontSize: 10, lineHeight: 15, marginTop: 3 },
-  noStops: { color: '#7C8880', fontSize: 9.5, lineHeight: 14, marginTop: 10 },
   confidence: { color: '#727D76', fontSize: 9.5, lineHeight: 14, marginTop: 10 },
   applyButton: { minHeight: 44, borderRadius: 12, backgroundColor: '#2E4B38', borderWidth: 1, borderColor: '#477358', alignItems: 'center', justifyContent: 'center', marginTop: 13 },
   applyText: { color: '#E9F2EC', fontSize: 12, fontWeight: '900' },
