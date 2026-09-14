@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getActiveOrganization } from '../platform/organizations';
 import { publishHostOuting, type HostOutingStatus } from './api';
 
 export type DistributionProviderId = 'go_melanated' | 'facebook' | 'instagram' | 'eventbrite' | 'email' | 'sms' | 'other';
@@ -99,8 +100,24 @@ type ConnectionRow = {
   capabilities: Record<string, unknown> | null;
 };
 
+async function activeDistributionProviders() {
+  const organization = await getActiveOrganization();
+  if (!organization) throw new Error('Choose an organization before opening distribution tools.');
+  return organization.isPlatformDefault
+    ? DISTRIBUTION_PROVIDERS
+    : DISTRIBUTION_PROVIDERS.filter((provider) => provider.id !== 'go_melanated');
+}
+
+async function assertPlatformDefaultDistribution() {
+  const organization = await getActiveOrganization();
+  if (!organization?.isPlatformDefault) {
+    throw new Error('This publishing destination is not available for the active organization.');
+  }
+}
+
 export async function getEventDistributionState(campaignId: string, adventureId: string): Promise<EventDistributionState> {
-  const [connectionResult, adventureResult] = await Promise.all([
+  const [providers, connectionResult, adventureResult] = await Promise.all([
+    activeDistributionProviders(),
     supabase
       .from('host_event_connections')
       .select('id,campaign_id,provider,external_event_id,display_name,status,last_synced_at,capabilities')
@@ -111,7 +128,8 @@ export async function getEventDistributionState(campaignId: string, adventureId:
   if (connectionResult.error) throw connectionResult.error;
   if (adventureResult.error) throw adventureResult.error;
 
-  const rows = (connectionResult.data ?? []) as ConnectionRow[];
+  const allowed = new Set(providers.map((provider) => provider.id));
+  const rows = ((connectionResult.data ?? []) as ConnectionRow[]).filter((row) => allowed.has(row.provider));
   return {
     adventureStatus: adventureResult.data.status as HostOutingStatus,
     connections: rows.map(mapConnection),
@@ -119,13 +137,16 @@ export async function getEventDistributionState(campaignId: string, adventureId:
 }
 
 export async function listHostDistributionProviders(): Promise<HostDistributionProviderSummary[]> {
-  const { data, error } = await supabase
-    .from('host_event_connections')
-    .select('id,campaign_id,provider,external_event_id,display_name,status,last_synced_at,capabilities');
-  if (error) throw error;
+  const [providers, result] = await Promise.all([
+    activeDistributionProviders(),
+    supabase
+      .from('host_event_connections')
+      .select('id,campaign_id,provider,external_event_id,display_name,status,last_synced_at,capabilities'),
+  ]);
+  if (result.error) throw result.error;
 
-  const rows = (data ?? []) as ConnectionRow[];
-  return DISTRIBUTION_PROVIDERS.map((provider) => {
+  const rows = (result.data ?? []) as ConnectionRow[];
+  return providers.map((provider) => {
     const providerRows = rows.filter((row) => row.provider === provider.id);
     const eventCount = new Set(providerRows.map((row) => row.campaign_id)).size;
     const attention = providerRows.some((row) => row.status === 'attention');
@@ -155,14 +176,16 @@ export function isProviderConnected(state: EventDistributionState, provider: Dis
 }
 
 export async function publishEventToGoMelanated(adventureId: string) {
+  await assertPlatformDefaultDistribution();
   return publishHostOuting(adventureId);
 }
 
 export async function publishMarketingItemToGoMelanated(itemId: string): Promise<{ postId: string; promotionId: string }> {
+  await assertPlatformDefaultDistribution();
   const { data, error } = await supabase.rpc('publish_host_marketing_to_go_melanated', { p_item_id: itemId });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.post_id || !row?.promotion_id) throw new Error('Go Melanated did not return a published post.');
+  if (!row?.post_id || !row?.promotion_id) throw new Error('The native destination did not return a published post.');
   return { postId: String(row.post_id), promotionId: String(row.promotion_id) };
 }
 
