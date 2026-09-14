@@ -17,6 +17,7 @@
     "eas:submit:android": "eas submit --platform android --profile production --latest"
   },
   "dependencies": {
+    "@maplibre/maplibre-react-native": "11.3.10",
     "@react-native-vector-icons/ionicons": "^13.1.2",
     "@supabase/supabase-js": "^2.57.4",
     "expo": "~57.0.9",
