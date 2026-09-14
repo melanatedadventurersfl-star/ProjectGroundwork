@@ -91,6 +91,13 @@ requireText(hardeningMigration, "(storage.foldername(name))[1] = 'tenants'", 'ne
 requireText(hardeningMigration, 'It no longer provisions a tenant as a side effect', 'public profile identity must not mutate/provision parent tenant identity');
 forbidText(hardeningMigration, 'insert into public.organizations', 'host profile synchronization must never create another tenant');
 
+const failClosedMigration = 'supabase/migrations/20260914170200_tenant_host_identity_fail_closed_v2.sql';
+requireText(failClosedMigration, 'o.legacy_host_organization_id = h.id', 'legacy host identities must reconcile from explicit historical ownership');
+requireText(failClosedMigration, 'o.primary_host_organization_id = h.id', 'primary host identities must reconcile from explicit tenant ownership');
+requireText(failClosedMigration, "raise exception 'A platform organization is required for every host profile'", 'new host identities must fail closed without explicit tenant ownership');
+forbidText(failClosedMigration, 'active_organization_for_profile', 'host identity assignment must not infer ownership from the currently selected tenant');
+forbidText(failClosedMigration, 'is_platform_default = true', 'host identity assignment must not fall back to the flagship tenant');
+
 const bridgeMigration = 'supabase/migrations/20260914170100_tenant_host_access_bridge_v1.sql';
 requireText(bridgeMigration, 'o.is_platform_default = false', 'tenant RBAC bridge must preserve flagship-specific host approval semantics');
 requireText(bridgeMigration, "private.has_organization_permission(o.id, 'events.manage'", 'non-default client hosts must authorize through tenant RBAC');
