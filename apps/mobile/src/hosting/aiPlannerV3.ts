@@ -87,7 +87,7 @@ function titleCase(value: string) {
   return value.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function unique(values: string[]) {
+function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
@@ -113,7 +113,7 @@ function setFieldState(plan: V3PlanState, key: string, status: PlannerFieldStatu
   };
 }
 
-function fieldStatusFor(message: string): PlannerFieldStatus {
+function inferredStatus(message: string): PlannerFieldStatus {
   return /\b(about|around|roughly|approximately|probably|maybe|thinking|likely|somewhere|sometime)\b/i.test(message) ? 'tentative' : 'confirmed';
 }
 
@@ -125,20 +125,24 @@ function normalizeState(value: string) {
 
 function parseDate(value: string) {
   const text = value.trim();
-  let year: number | undefined;
-  let month: number | undefined;
-  let day: number | undefined;
+  let year = 0;
+  let month = 0;
+  let day = 0;
   const iso = text.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
   const slash = text.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}|\d{2}))?\b/);
   const monthMatch = text.toLowerCase().match(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(20\d{2}))?\b/);
   if (iso) {
-    year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]);
+    year = Number(iso[1] ?? 0);
+    month = Number(iso[2] ?? 0);
+    day = Number(iso[3] ?? 0);
   } else if (slash) {
-    month = Number(slash[1]); day = Number(slash[2]);
-    year = slash[3] ? Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3]) : new Date().getFullYear();
+    month = Number(slash[1] ?? 0);
+    day = Number(slash[2] ?? 0);
+    const rawYear = slash[3] ?? String(new Date().getFullYear());
+    year = Number(rawYear.length === 2 ? `20${rawYear}` : rawYear);
   } else if (monthMatch) {
-    month = MONTHS[monthMatch[1] ?? ''];
-    day = Number(monthMatch[2]);
+    month = MONTHS[monthMatch[1] ?? ''] ?? 0;
+    day = Number(monthMatch[2] ?? 0);
     year = monthMatch[3] ? Number(monthMatch[3]) : new Date().getFullYear();
   }
   if (!year || !month || !day) return '';
@@ -147,7 +151,8 @@ function parseDate(value: string) {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function parseClock(rawHour: string, rawMinute: string | undefined, meridiem: string | undefined) {
+function parseClock(rawHour?: string, rawMinute?: string, meridiem?: string) {
+  if (!rawHour) return '';
   let hour = Number(rawHour);
   const minute = Number(rawMinute ?? 0);
   if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute > 59) return '';
@@ -161,17 +166,17 @@ function parseClock(rawHour: string, rawMinute: string | undefined, meridiem: st
 
 function parseTimeRange(message: string) {
   const range = message.match(/\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|–|to|until|through)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
-  if (!range) {
-    const single = message.match(/\b(?:at|around|about|starting|starts?)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-    return single ? { start: parseClock(single[1], single[2], single[3]), end: '' } : { start: '', end: '' };
+  if (range) {
+    let startMeridiem = range[3];
+    const endMeridiem = range[6];
+    if (!startMeridiem && endMeridiem) startMeridiem = endMeridiem;
+    return {
+      start: parseClock(range[1], range[2], startMeridiem),
+      end: parseClock(range[4], range[5], endMeridiem || startMeridiem),
+    };
   }
-  let startMeridiem = range[3];
-  const endMeridiem = range[6];
-  if (!startMeridiem && endMeridiem) startMeridiem = endMeridiem;
-  return {
-    start: parseClock(range[1], range[2], startMeridiem),
-    end: parseClock(range[4], range[5], endMeridiem || startMeridiem),
-  };
+  const single = message.match(/\b(?:at|around|about|starting|starts?)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  return single ? { start: parseClock(single[1], single[2], single[3]), end: '' } : { start: '', end: '' };
 }
 
 function dateTime(date: string, time: string) {
@@ -200,17 +205,20 @@ function inferCategory(message: string, tenant: AiPlannerTenantContext) {
 }
 
 function parseLocation(message: string) {
-  const comma = message.match(/\b(?:in|around|near)\s+([A-Za-z .'-]+?),\s*([A-Za-z]{2}|[A-Za-z ]+?)(?=\s+(?:on|at|for|with|from|and|that|this)\b|[.!?]|$)/i);
-  if (comma) return { city: titleCase(comma[1]), state: normalizeState(comma[2]) };
-  const knownState = message.match(/\b(?:in|around|near)\s+([A-Za-z .'-]+?)\s+(Florida|Georgia|Texas|California|New York|North Carolina|South Carolina|Virginia|Maryland|Alabama|Tennessee)\b/i);
-  if (knownState) return { city: titleCase(knownState[1]), state: normalizeState(knownState[2]) };
+  const commaAnywhere = message.match(/\b([A-Za-z .'-]{2,60}),\s*([A-Za-z]{2}|[A-Za-z ]{4,30})\b/);
+  if (commaAnywhere) {
+    const state = normalizeState(commaAnywhere[2] ?? '');
+    if (state) return { city: titleCase(commaAnywhere[1] ?? ''), state };
+  }
+  const introduced = message.match(/\b(?:in|around|near)\s+([A-Za-z .'-]+?)\s+(Florida|Georgia|Texas|California|New York|North Carolina|South Carolina|Virginia|Maryland|Alabama|Tennessee)\b/i);
+  if (introduced) return { city: titleCase(introduced[1] ?? ''), state: normalizeState(introduced[2] ?? '') };
   return null;
 }
 
 function markReview(plan: V3PlanState, section: AiPlannerSection) {
   const marker = `${REVIEW_MARKER}${section}__`;
-  const na = `${NA_MARKER}${section}__`;
-  plan.requirements = unique([...(plan.requirements ?? []).filter((item) => item !== na), marker]);
+  const notApplicable = `${NA_MARKER}${section}__`;
+  plan.requirements = unique([...(plan.requirements ?? []).filter((item) => item !== notApplicable), marker]);
 }
 
 function clearReview(plan: V3PlanState, section: AiPlannerSection) {
@@ -238,7 +246,7 @@ function extractFacts(message: string, source: AiPlanState, tenant: AiPlannerTen
   const before = copyPlan(source);
   const changed = new Set<string>();
   const systemMessages: string[] = [];
-  const status = fieldStatusFor(message);
+  const status = inferredStatus(message);
   const lower = normalize(message);
   let conflictMessage: string | null = null;
 
@@ -274,8 +282,9 @@ function extractFacts(message: string, source: AiPlanState, tenant: AiPlannerTen
 
   const attendance = message.match(/\b(?:about|around|roughly|approximately|expecting|for|with)?\s*(\d{1,5})\s*(?:people|attendees|guests|participants)\b/i);
   const capped = message.match(/\b(\d{1,4})\s+or\s+(?:fewer|less)\b/i);
-  if (attendance || capped) {
-    const next = Number((attendance || capped)?.[1]);
+  const attendanceMatch = attendance ?? capped;
+  if (attendanceMatch?.[1]) {
+    const next = Number(attendanceMatch[1]);
     const old = plan.capacity;
     if (Number.isFinite(next) && next > 0) {
       plan.capacity = next;
@@ -315,9 +324,14 @@ function extractFacts(message: string, source: AiPlanState, tenant: AiPlannerTen
     const weekdayText = message.match(/\b(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat)\b/i)?.[1]?.toLowerCase();
     if (weekdayText) {
       const expected = WEEKDAYS[weekdayText];
-      const [year, month, day] = date.split('-').map(Number);
-      const actual = new Date(year, month - 1, day).getDay();
-      if (expected !== actual) conflictMessage = `The weekday and date do not match. ${date} falls on a different day than ${weekdayText}. Which one should I use?`;
+      const parts = date.split('-').map(Number);
+      const year = parts[0] ?? 0;
+      const month = parts[1] ?? 0;
+      const day = parts[2] ?? 0;
+      if (expected !== undefined && year && month && day) {
+        const actual = new Date(year, month - 1, day).getDay();
+        if (expected !== actual) conflictMessage = `The weekday and date do not match. ${date} falls on a different day than ${weekdayText}. Which one should I use?`;
+      }
     }
     plan.plannerDate = date;
     plan.datePreference = undefined;
@@ -340,9 +354,6 @@ function extractFacts(message: string, source: AiPlanState, tenant: AiPlannerTen
       setFieldState(plan, 'endsAt', status, plan.endsAt);
     }
   }
-  if (date && !timeRange.start) {
-    plan.plannerStep = undefined;
-  }
 
   if (/\bfree\b/.test(lower) && !/free[- ]?form/.test(lower)) {
     plan.paid = false;
@@ -354,9 +365,9 @@ function extractFacts(message: string, source: AiPlanState, tenant: AiPlannerTen
   const price = message.match(/\$\s*(\d+(?:\.\d{1,2})?)/);
   if (/\bpaid\b/.test(lower) || price) {
     plan.paid = true;
-    if (price) plan.priceCents = Math.round(Number(price[1]) * 100);
+    if (price?.[1]) plan.priceCents = Math.round(Number(price[1]) * 100);
     changed.add('registration');
-    setFieldState(plan, 'admission', price ? 'confirmed' : status, price ? `$${price[1]}` : 'Paid');
+    setFieldState(plan, 'admission', price?.[1] ? 'confirmed' : status, price?.[1] ? `$${price[1]}` : 'Paid');
   }
 
   if (/\b(make it|set it|this is|event is)\s+private\b/.test(lower)) {
@@ -442,14 +453,14 @@ function extractFacts(message: string, source: AiPlanState, tenant: AiPlannerTen
   return { plan, changedFields: [...changed], systemMessages, conflictMessage };
 }
 
-export function getWorkspaceProgress(plan: AiPlanState) {
-  const current = plan as V3PlanState;
+export function getWorkspaceProgress(planInput: AiPlanState) {
+  const plan = planInput as V3PlanState;
   const fields = [
     Boolean(plan.title),
     Boolean(plan.category),
     Boolean(plan.startsAt),
     Boolean(plan.endsAt),
-    Boolean(current.virtualEvent || (plan.city && plan.state)),
+    Boolean(plan.virtualEvent || (plan.city && plan.state)),
   ];
   const complete = fields.filter(Boolean).length;
   return { complete, total: 5, ready: complete === 5 };
@@ -500,12 +511,11 @@ export function stageLabel(stage: AiPlannerV3Turn['stage']) {
 }
 
 function summarizeKnown(plan: V3PlanState, tenant: AiPlannerTenantContext) {
-  const parts = [
+  return [
     plan.capacity ? `${plan.capacity} ${tenant.attendeeLabel}` : plan.attendanceRange || '',
     plan.city && plan.state ? `${plan.city}, ${plan.state}` : plan.virtualEvent ? 'Virtual' : '',
     plan.paid === false ? 'Free' : plan.paid && plan.priceCents ? `$${(plan.priceCents / 100).toFixed(plan.priceCents % 100 ? 2 : 0)}` : plan.paid ? 'Paid' : '',
-  ].filter(Boolean);
-  return parts.join(' · ');
+  ].filter(Boolean).join(' · ');
 }
 
 function answerPlanningQuestion(message: string, plan: V3PlanState) {
@@ -538,6 +548,7 @@ function nextConversation(plan: V3PlanState, tenant: AiPlannerTenantContext, cha
   }
   if (!plan.startsAt || !plan.endsAt) {
     if (plan.startsAt && !plan.endsAt) return { message: `${updatePrefix}I have the start time. About what time should it wrap up?`, options: ['Not sure yet'], activeSection: 'schedule' as const };
+    if (plan.plannerDate && !plan.startsAt) return { message: `${updatePrefix}I have the date. What start and end time are you thinking?`, options: ['Not sure yet'], activeSection: 'schedule' as const };
     return { message: `${updatePrefix}${known ? `${known}. ` : ''}What date and time are you thinking? Include an end time if you know it.`, options: ['Not sure yet'], activeSection: 'schedule' as const };
   }
   if (!plan.virtualEvent && (!plan.city || !plan.state)) {
@@ -547,8 +558,7 @@ function nextConversation(plan: V3PlanState, tenant: AiPlannerTenantContext, cha
     return { message: `${updatePrefix}${known ? `${known}. ` : ''}Will this be free or paid? If paid, include the ticket price if you already know it.`, options: ['Free', 'Paid', 'Not decided'], activeSection: 'registration' as const };
   }
 
-  const workspace = getWorkspaceProgress(plan);
-  if (workspace.ready) {
+  if (getWorkspaceProgress(plan).ready) {
     return {
       message: `${updatePrefix}The core event setup is in place${known ? `: ${known}` : ''}. We can keep planning without filling every section right now.`,
       options: plan.virtualEvent ? ['Review plan', 'Communications', 'Guests'] : ['Find venues', 'Review plan', 'Communications', 'Guests'],
@@ -617,9 +627,44 @@ export function reviewPlannerV3State(planInput: AiPlanState, tenant: AiPlannerTe
   return decorateFromV2(base, copyPlan(planInput));
 }
 
+function manualVenueTurn(planInput: V3PlanState, tenant: AiPlannerTenantContext, venueName: string): AiPlannerV3Turn {
+  const plan = copyPlan(planInput);
+  const changedVenue = Boolean(plan.venueName && normalize(plan.venueName) !== normalize(venueName));
+  plan.venueName = venueName.trim();
+  plan.venueSource = 'host_entered';
+  plan.venueSourceLabel = 'Entered by host';
+  plan.venueDeferred = false;
+  addComponent(plan, 'venue');
+  clearReview(plan, 'venue');
+  setFieldState(plan, 'venue', 'confirmed', plan.venueName);
+  if (changedVenue) {
+    markReview(plan, 'guests');
+    markReview(plan, 'staffing');
+  }
+  const statuses = getPlannerSectionStatuses(plan);
+  const reviewed = reviewPlannerState(plan, tenant);
+  return {
+    message: `${plan.venueName} is set as the venue. ${changedVenue ? 'Guest and staffing details need another look because the venue changed.' : 'I kept venue-specific details separate so we can verify them before publishing.'}`,
+    plan,
+    readiness: reviewed.readiness,
+    stage: planningStage(plan, reviewed.readiness),
+    gaps: gapsFor(plan),
+    options: ['Review plan', 'Keep planning'],
+    recommendation: null,
+    taskPacks: taskPacksFor(plan),
+    activeSection: null,
+    command: null,
+    sectionStatuses: statuses,
+    venueResults: [],
+    venueWarnings: [],
+    changedFields: ['venue'],
+    systemMessages: ['Updated: venue'],
+    conflictMessage: null,
+  };
+}
+
 export async function runAiPlannerV3Turn(input: AiPlannerV3Input): Promise<AiPlannerV3Turn> {
   const message = input.message.trim();
-  const lower = normalize(message);
   const original = copyPlan(input.plan);
 
   if (/^(review plan|review the plan|show me what is missing|what is missing)$/i.test(message) || input.action === 'review') {
@@ -627,7 +672,24 @@ export async function runAiPlannerV3Turn(input: AiPlannerV3Input): Promise<AiPla
   }
   if (/^(create|create it|create event|create workspace|create event workspace|ready to create|create draft)$/i.test(message) || input.action === 'create') {
     const reviewed = reviewPlannerV3State(original, input.tenant);
-    return { ...reviewed, message: getWorkspaceProgress(original).ready ? 'The core event record is ready. I can create the Event Workspace now.' : `The planning draft is saved, but the Event Workspace still needs ${reviewed.gaps.filter((gap) => ['event title','event type','date and time','start time','end time','location'].includes(gap)).join(', ') || 'a few core details'}.`, command: getWorkspaceProgress(original).ready ? 'create_workspace' : null };
+    const requiredGaps = reviewed.gaps.filter((gap) => ['event title','event type','date and time','start time','end time','location'].includes(gap));
+    return {
+      ...reviewed,
+      message: getWorkspaceProgress(original).ready
+        ? 'The core event record is ready. I can create the Event Workspace now.'
+        : `The planning draft is saved, but the Event Workspace still needs ${requiredGaps.join(', ') || 'a few core details'}.`,
+      command: getWorkspaceProgress(original).ready ? 'create_workspace' : null,
+    };
+  }
+
+  if (/^i know the location$/i.test(message) && (input.section === 'venue' || !original.venueName)) {
+    const reviewed = reviewPlannerState(original, input.tenant);
+    return {
+      ...decorateFromV2(reviewed, original),
+      message: 'What venue, address or meeting place should I use?',
+      options: ['Leave open'],
+      activeSection: 'venue',
+    };
   }
 
   if (input.action === 'venue_select' || input.action === 'venue_search_more' || (input.action === 'recommend' && input.section === 'venue') || /^(recommend locations|find venues|search again)$/i.test(message)) {
@@ -638,12 +700,12 @@ export async function runAiPlannerV3Turn(input: AiPlannerV3Input): Promise<AiPla
   if (input.action === 'section' && input.section) {
     const plan = copyPlan(original);
     const statuses = getPlannerSectionStatuses(plan);
-    const readiness = reviewPlannerState(plan, input.tenant).readiness;
+    const reviewed = reviewPlannerState(plan, input.tenant);
     return {
       message: sectionPrompt(input.section, plan),
       plan,
-      readiness,
-      stage: planningStage(plan, readiness),
+      readiness: reviewed.readiness,
+      stage: planningStage(plan, reviewed.readiness),
       gaps: gapsFor(plan),
       options: sectionOptions(input.section, plan),
       recommendation: null,
@@ -669,12 +731,12 @@ export async function runAiPlannerV3Turn(input: AiPlannerV3Input): Promise<AiPla
       setFieldState(plan, section, 'deferred');
     }
     const statuses = getPlannerSectionStatuses(plan);
-    const readiness = reviewPlannerState(plan, input.tenant).readiness;
+    const reviewed = reviewPlannerState(plan, input.tenant);
     return {
       message: `${section ? PLANNER_SECTION_LABELS[section] : 'That decision'} can stay open for now. Your planning draft is still moving forward.`,
       plan,
-      readiness,
-      stage: planningStage(plan, readiness),
+      readiness: reviewed.readiness,
+      stage: planningStage(plan, reviewed.readiness),
       gaps: gapsFor(plan),
       options: ['Keep planning', 'Review plan'],
       recommendation: null,
@@ -689,6 +751,14 @@ export async function runAiPlannerV3Turn(input: AiPlannerV3Input): Promise<AiPla
       conflictMessage: null,
     };
   }
+
+  const locationOnly = parseLocation(message);
+  const looksLikeVenueName = input.section === 'venue'
+    && !locationOnly
+    && message.length <= 120
+    && !/[?]/.test(message)
+    && !/\b(people|attendees|guests|free|paid|october|november|december|january|february|march|april|may|june|july|august|september)\b/i.test(message);
+  if (looksLikeVenueName) return manualVenueTurn(original, input.tenant, message);
 
   const extracted = extractFacts(message, original, input.tenant);
   const plan = extracted.plan;
