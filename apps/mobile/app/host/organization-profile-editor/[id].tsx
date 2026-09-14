@@ -30,7 +30,7 @@ import {
 } from '../../../src/hosting/hostProfileSetup';
 
 const C = { bg:'#0A0F0C', panel:'#131B16', raised:'#19231C', line:'#2D3A32', cream:'#FFF8E8', muted:'#95A29A', dim:'#6F7D75', gold:'#D7B45A', green:'#7CCB92', red:'#E8A09A' };
-const STEPS: Array<{ key: Exclude<HostSetupStage,'complete'>; label: string }> = [
+const STEPS: { key: Exclude<HostSetupStage,'complete'>; label: string }[] = [
   { key:'profile', label:'Profile' },
   { key:'about', label:'About' },
   { key:'media', label:'Media' },
@@ -38,14 +38,14 @@ const STEPS: Array<{ key: Exclude<HostSetupStage,'complete'>; label: string }> =
   { key:'features', label:'Features' },
   { key:'preview', label:'Preview' },
 ];
-const HOST_TYPES: Array<{ key: HostType; label: string }> = [
+const HOST_TYPES: { key: HostType; label: string }[] = [
   { key:'individual', label:'Individual host' }, { key:'business', label:'Business' }, { key:'organization', label:'Organization' },
   { key:'nonprofit', label:'Nonprofit' }, { key:'community', label:'Community' }, { key:'venue', label:'Venue' },
   { key:'creator', label:'Creator' }, { key:'other', label:'Other' },
 ];
 const DEFAULT_ORDER = ['about','events','photos','history','team','faq','policies','contact'];
 const SECTION_LABELS: Record<string,string> = { about:'About', events:'Upcoming events', photos:'Photos', history:'Hosting history', team:'Team', faq:'FAQ', policies:'Policies', contact:'Contact' };
-const IMPORT_FIELDS: Array<{ key: keyof HostProfileImportPreview; label: string }> = [
+const IMPORT_FIELDS: { key: keyof HostProfileImportPreview; label: string }[] = [
   { key:'name', label:'Name' }, { key:'hostType', label:'Host type' }, { key:'tagline', label:'Tagline' }, { key:'shortDescription', label:'Short description' },
   { key:'description', label:'About' }, { key:'city', label:'City' }, { key:'state', label:'State' }, { key:'websiteUrl', label:'Website' },
   { key:'publicEmail', label:'Public email' }, { key:'phone', label:'Phone' }, { key:'instagramUrl', label:'Instagram' }, { key:'facebookUrl', label:'Facebook' },
@@ -92,7 +92,7 @@ export default function HostOrganizationProfileEditorScreen() {
   const [importText,setImportText] = useState('');
   const [importBusy,setImportBusy] = useState(false);
   const [importResult,setImportResult] = useState<{ importId:string; sourceLabel:string; extractionSource:string; preview:HostProfileImportPreview }|null>(null);
-  const [selectedImportFields,setSelectedImportFields] = useState<Array<keyof HostProfileImportPreview>>([]);
+  const [selectedImportFields,setSelectedImportFields] = useState<(keyof HostProfileImportPreview)[]>([]);
 
   const hydrate = useCallback((nextOrg:HostOrganization,nextSetup:HostProfileSetupData) => {
     setName(nextOrg.name || ''); setHostType(nextSetup.hostType); setTagline(nextOrg.tagline || ''); setShortDescription(nextSetup.shortDescription || '');
@@ -238,7 +238,17 @@ export default function HostOrganizationProfileEditorScreen() {
   }
 
   function moveSection(index:number,direction:-1|1) {
-    setSectionOrder((current)=>{ const next=[...current]; const target=index+direction; if(target<0||target>=next.length)return current; [next[index],next[target]]=[next[target],next[index]]; return next; });
+    setSectionOrder((current)=>{
+      const next=[...current];
+      const target=index+direction;
+      if(target<0||target>=next.length)return current;
+      const source=next[index];
+      const destination=next[target];
+      if(source===undefined||destination===undefined)return current;
+      next[index]=destination;
+      next[target]=source;
+      return next;
+    });
   }
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator color={C.gold} size="large"/><Text style={styles.muted}>Loading profile setup…</Text></SafeAreaView>;
