@@ -79,6 +79,7 @@ export type EventDistributionConnection = {
 
 export type EventDistributionState = {
   adventureStatus: HostOutingStatus;
+  nativePlatformAvailable: boolean;
   connections: EventDistributionConnection[];
 };
 
@@ -132,6 +133,7 @@ export async function getEventDistributionState(campaignId: string, adventureId:
   const rows = ((connectionResult.data ?? []) as ConnectionRow[]).filter((row) => allowed.has(row.provider));
   return {
     adventureStatus: adventureResult.data.status as HostOutingStatus,
+    nativePlatformAvailable: allowed.has('go_melanated'),
     connections: rows.map(mapConnection),
   };
 }
