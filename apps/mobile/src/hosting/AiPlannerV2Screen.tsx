@@ -112,7 +112,7 @@ function V2VenueCard({ candidate, onUse, onSave, onPrefer, onBlock }: {
       <View style={styles.venueMetaActions}>
         {candidate.mapsUrl ? <Pressable onPress={() => void Linking.openURL(candidate.mapsUrl!)}><Text style={styles.venueLink}>Open map</Text></Pressable> : null}
         {candidate.websiteUrl ? <Pressable onPress={() => void Linking.openURL(candidate.websiteUrl!)}><Text style={styles.venueLink}>Website</Text></Pressable> : null}
-        <Pressable onPress={onBlock}><Text style={styles.venueBlock}>Don't recommend</Text></Pressable>
+        <Pressable onPress={onBlock}><Text style={styles.venueBlock}>Don&apos;t recommend</Text></Pressable>
       </View>
     </View>
   </View>;
