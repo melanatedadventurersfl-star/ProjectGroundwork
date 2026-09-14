@@ -1,5 +1,10 @@
 import { prepareLocalImage } from '../lib/imageUpload';
 import { supabase } from '../lib/supabase';
+import {
+  assertHostOrganizationInActiveTenant,
+  requireActiveOrganizationId,
+  tenantStoragePath,
+} from '../platform/tenantScope';
 
 const HOST_MEDIA_BUCKET = 'adventure-photos';
 const PROFILE_IMPORT_BUCKET = 'event-imports';
@@ -139,6 +144,7 @@ export async function getHostProfileSetup(organizationId: string): Promise<HostP
 }
 
 export async function updateHostProfileSetup(organizationId: string, input: Partial<Omit<HostProfileSetupData, 'organizationId'>>) {
+  const { platformOrganizationId } = await assertHostOrganizationInActiveTenant(organizationId);
   const payload: Record<string, unknown> = {};
   if (input.hostType !== undefined) payload.host_type = input.hostType;
   if (input.shortDescription !== undefined) payload.short_description = input.shortDescription?.trim() || null;
@@ -151,7 +157,7 @@ export async function updateHostProfileSetup(organizationId: string, input: Part
   if (input.setupCompletedAt !== undefined) payload.setup_completed_at = input.setupCompletedAt;
   if (input.profileSectionOrder !== undefined) payload.profile_section_order = input.profileSectionOrder;
   if (input.contactVisibility !== undefined) payload.contact_visibility = input.contactVisibility;
-  const { data, error } = await supabase.from('host_organizations').update(payload).eq('id', organizationId).select(SETUP_COLUMNS).single();
+  const { data, error } = await supabase.from('host_organizations').update(payload).eq('id', organizationId).eq('platform_organization_id', platformOrganizationId).select(SETUP_COLUMNS).single();
   if (error) throw error;
   return normalizeSetup(data);
 }
@@ -207,10 +213,11 @@ export async function listOrganizationGallery(organizationId: string): Promise<O
 }
 
 export async function uploadOrganizationGalleryPhoto(input: { organizationId: string; localUri: string; caption?: string; altText?: string; featured?: boolean }) {
-  const profileId = await currentProfileId();
+  const [profileId, tenant] = await Promise.all([currentProfileId(), assertHostOrganizationInActiveTenant(input.organizationId)]);
   const prepared = await prepareLocalImage({ uri: input.localUri });
   const { count } = await supabase.from('host_media').select('id', { count: 'exact', head: true }).eq('organization_id', input.organizationId).is('adventure_id', null).eq('kind', 'gallery');
-  const path = `${profileId}/organizations/${input.organizationId}/gallery-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${prepared.extension}`;
+  const fileName = `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${prepared.extension}`;
+  const path = tenantStoragePath(tenant.platformOrganizationId, 'host-profiles', input.organizationId, 'gallery', profileId, fileName);
   const { error: uploadError } = await supabase.storage.from(HOST_MEDIA_BUCKET).upload(path, prepared.bytes, { contentType: prepared.contentType, cacheControl: '3600', upsert: false });
   if (uploadError) throw uploadError;
   try {
@@ -235,26 +242,31 @@ export async function uploadOrganizationGalleryPhoto(input: { organizationId: st
 }
 
 export async function updateOrganizationGalleryPhoto(photoId: string, input: { caption?: string | null; altText?: string | null; isFeatured?: boolean; sortOrder?: number }) {
+  const { data: current, error: currentError } = await supabase.from('host_media').select('organization_id').eq('id', photoId).single();
+  if (currentError) throw currentError;
+  if (!current.organization_id) throw new Error('This gallery photo is not attached to a host profile.');
+  await assertHostOrganizationInActiveTenant(current.organization_id);
+
   const payload: Record<string, unknown> = {};
   if (input.caption !== undefined) payload.caption = input.caption?.trim() || null;
   if (input.altText !== undefined) payload.alt_text = input.altText?.trim() || null;
   if (input.sortOrder !== undefined) payload.sort_order = input.sortOrder;
   if (input.isFeatured !== undefined) {
     if (input.isFeatured) {
-      const { data: current, error: currentError } = await supabase.from('host_media').select('organization_id').eq('id', photoId).single();
-      if (currentError) throw currentError;
       await supabase.from('host_media').update({ is_featured: false }).eq('organization_id', current.organization_id).is('adventure_id', null).eq('kind', 'gallery');
     }
     payload.is_featured = input.isFeatured;
   }
-  const { error } = await supabase.from('host_media').update(payload).eq('id', photoId);
+  const { error } = await supabase.from('host_media').update(payload).eq('id', photoId).eq('organization_id', current.organization_id);
   if (error) throw error;
 }
 
 export async function deleteOrganizationGalleryPhoto(photoId: string) {
-  const { data, error } = await supabase.from('host_media').select('image_url').eq('id', photoId).single();
+  const { data, error } = await supabase.from('host_media').select('image_url,organization_id').eq('id', photoId).single();
   if (error) throw error;
-  const deleteResult = await supabase.from('host_media').delete().eq('id', photoId);
+  if (!data.organization_id) throw new Error('This gallery photo is not attached to a host profile.');
+  await assertHostOrganizationInActiveTenant(data.organization_id);
+  const deleteResult = await supabase.from('host_media').delete().eq('id', photoId).eq('organization_id', data.organization_id);
   if (deleteResult.error) throw deleteResult.error;
   if (data.image_url && !/^https?:\/\//i.test(data.image_url)) await supabase.storage.from(HOST_MEDIA_BUCKET).remove([data.image_url]);
 }
@@ -280,9 +292,11 @@ export async function previewHostProfileImport(input: {
   sourceText?: string;
 }): Promise<HostProfileImportResult> {
   const profileId = await currentProfileId();
+  const tenant = await assertHostOrganizationInActiveTenant(input.organizationId);
   const uploadedPaths: string[] = [];
   const requestBody: Record<string, unknown> = {
     organizationId: input.organizationId,
+    platformOrganizationId: tenant.platformOrganizationId,
     mode: input.mode,
     sourceUrl: input.sourceUrl?.trim() || null,
     sourceText: input.sourceText?.trim() || null,
@@ -301,7 +315,7 @@ export async function previewHostProfileImport(input: {
         if (!response.ok) throw new Error(`Unable to read ${file.name} from this device.`);
         const bytes = await response.arrayBuffer();
         if (bytes.byteLength > MAX_IMPORT_BYTES) throw new Error(`${file.name} is larger than 10 MB.`);
-        const path = `${profileId}/${sessionId}/${String(index + 1).padStart(2, '0')}-${safeImportName(file.name)}`;
+        const path = tenantStoragePath(tenant.platformOrganizationId, 'host-profiles', input.organizationId, 'imports', profileId, sessionId, `${String(index + 1).padStart(2, '0')}-${safeImportName(file.name)}`);
         const mimeType = file.mimeType || response.headers.get('content-type') || 'application/octet-stream';
         const { error } = await supabase.storage.from(PROFILE_IMPORT_BUCKET).upload(path, bytes, { contentType: mimeType, upsert: false });
         if (error) throw error;
@@ -322,11 +336,13 @@ export async function previewHostProfileImport(input: {
 }
 
 export async function markHostProfileImportApplied(importId: string, approvedPayload: Record<string, unknown>) {
-  const { error } = await supabase.from('host_profile_imports').update({ approved_payload: approvedPayload, status: 'applied', applied_at: new Date().toISOString() }).eq('id', importId);
+  const platformOrganizationId = await requireActiveOrganizationId();
+  const { error } = await supabase.from('host_profile_imports').update({ approved_payload: approvedPayload, status: 'applied', applied_at: new Date().toISOString() }).eq('id', importId).eq('platform_organization_id', platformOrganizationId);
   if (error) throw error;
 }
 
 export async function markHostProfileImportDiscarded(importId: string) {
-  const { error } = await supabase.from('host_profile_imports').update({ status: 'discarded' }).eq('id', importId);
+  const platformOrganizationId = await requireActiveOrganizationId();
+  const { error } = await supabase.from('host_profile_imports').update({ status: 'discarded' }).eq('id', importId).eq('platform_organization_id', platformOrganizationId);
   if (error) throw error;
 }
