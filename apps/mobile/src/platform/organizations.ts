@@ -59,6 +59,7 @@ export type OrganizationWorkspace = {
   roles: OrganizationRole[];
   isActive: boolean;
   isPlatformDefault: boolean;
+  eventBuilderSettings: Record<string, unknown>;
 };
 
 export type OrganizationPublicBusiness = {
@@ -124,6 +125,9 @@ function normalizeOrganization(row: any): OrganizationWorkspace {
     roles: Array.isArray(row.roles) ? row.roles : [],
     isActive: row.is_active === true,
     isPlatformDefault: row.is_platform_default === true,
+    eventBuilderSettings: row.event_builder_settings && typeof row.event_builder_settings === 'object' && !Array.isArray(row.event_builder_settings)
+      ? row.event_builder_settings as Record<string, unknown>
+      : {},
   };
 }
 
@@ -185,6 +189,23 @@ export async function hasOrganizationPermission(
   });
   if (error) throw error;
   return data === true;
+}
+
+export async function updateOrganizationEventBuilderSettings(
+  organizationId: string,
+  settings: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase
+    .from('organizations')
+    .update({ event_builder_settings: settings, updated_at: new Date().toISOString() })
+    .eq('id', organizationId)
+    .select('event_builder_settings')
+    .single();
+  if (error) throw error;
+  const value = data?.event_builder_settings;
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 export async function provisionOrganization(input: ProvisionOrganizationInput): Promise<ProvisionOrganizationResult> {
