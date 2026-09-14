@@ -152,11 +152,12 @@ export default function AiPlannerV2Screen() {
   }
 
   async function undoLastChange() {
-    if (loading || !undoStack.length) {
+    if (loading) return;
+    const previous = undoStack.at(-1);
+    if (!previous) {
       setMessages((current) => [...current, { role: 'assistant', text: 'There is no earlier plan change to undo.' }]);
       return;
     }
-    const previous = undoStack[undoStack.length - 1];
     const nextTenant = tenant ?? await getAiPlannerTenantContext();
     const reviewed = reviewPlannerState(previous, nextTenant);
     setUndoStack((stack) => stack.slice(0, -1));
