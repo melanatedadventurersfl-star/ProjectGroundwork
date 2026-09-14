@@ -141,6 +141,12 @@ export default function EventBuilderSettingsScreen() {
 
             <Panel title="Tags" copy="Tags help organizers describe an event without forcing it into several event types.">
               <TextArea value={tags} onChangeText={setTags} editable={canManage} placeholder={'Networking\nEducation\nFamily Friendly'} />
+              <Text style={styles.label}>Custom host tags</Text>
+              <View style={styles.segment}>
+                <Pressable disabled={!canManage} style={[styles.segmentButton, !config.allowCustomTags && styles.segmentActive]} onPress={() => patch({ allowCustomTags: false })}><Text style={[styles.segmentText, !config.allowCustomTags && styles.segmentTextActive]}>Preset only</Text></Pressable>
+                <Pressable disabled={!canManage} style={[styles.segmentButton, config.allowCustomTags && styles.segmentActive]} onPress={() => patch({ allowCustomTags: true })}><Text style={[styles.segmentText, config.allowCustomTags && styles.segmentTextActive]}>Allow custom</Text></Pressable>
+              </View>
+              <Text style={styles.helper}>When enabled, hosts can add a tag that is not already in the organization list.</Text>
             </Panel>
 
             <Panel title="Conditional difficulty" copy="Only list event types where Easy, Moderate, and Challenging make sense. Leave this empty for clients that do not use difficulty.">

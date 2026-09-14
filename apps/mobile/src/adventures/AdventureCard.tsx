@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AdventureImage } from './AdventureImage';
-import type { AdventureSummary } from './types';
+import { adventureLocationLabel, type AdventureSummary } from './types';
 
 type Props = { adventure: AdventureSummary; onToggleSaved: (adventure: AdventureSummary) => void };
 
@@ -24,7 +24,7 @@ export function AdventureCard({ adventure, onToggleSaved }: Props) {
           </Pressable>
         </View>
         <Text style={s.title} numberOfLines={2}>{adventure.title}</Text>
-        <Text style={s.meta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state}</Text>
+        <Text style={s.meta} numberOfLines={1}>⌖ {adventureLocationLabel(adventure)}</Text>
         <Text style={s.meta}>▣ {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
         <View style={s.bottomRow}>
           <View style={s.quickActions}>
