@@ -24,6 +24,7 @@ export type HostOuting = {
   description: string;
   category: string;
   difficulty: 'easy' | 'moderate' | 'challenging';
+  difficulty_applicable: boolean;
   status: HostOutingStatus;
   starts_at: string;
   ends_at: string;
@@ -43,6 +44,7 @@ export type CreateHostOutingInput = {
   description: string;
   category: string;
   difficulty: 'easy' | 'moderate' | 'challenging';
+  difficultyApplicable?: boolean;
   startsAt: string;
   endsAt: string;
   city: string;
@@ -55,7 +57,7 @@ export type CreateHostOutingInput = {
 
 export type UpdateHostOutingInput = CreateHostOutingInput;
 
-const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,status,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at';
+const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,difficulty_applicable,status,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at';
 
 async function currentProfileId() {
   const { data } = await supabase.auth.getSession();
@@ -158,6 +160,7 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
       description: input.description.trim(),
       category: input.category.trim() || 'Social',
       difficulty: input.difficulty,
+      difficulty_applicable: input.difficultyApplicable ?? true,
       status: 'draft',
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
@@ -198,6 +201,7 @@ export async function updateHostOuting(adventureId: string, input: UpdateHostOut
       description: input.description.trim(),
       category: input.category.trim() || 'Social',
       difficulty: input.difficulty,
+      difficulty_applicable: input.difficultyApplicable ?? existing.difficulty_applicable,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
       city: input.city.trim(),
