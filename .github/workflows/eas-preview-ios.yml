@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/offline-ticketing-arrival
     paths:
       - 'apps/mobile/app.json'
       - 'apps/mobile/app.config.js'
@@ -63,12 +64,12 @@ jobs:
       - name: Production bundle smoke test before EAS
         run: npm run mobile:bundlecheck
         env:
-          EXPO_PUBLIC_APP_ENV: preview
+          EXPO_PUBLIC_APP_ENV: production
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
           EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
           EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
-          EXPO_PUBLIC_BUILD_PROFILE: preview
+          EXPO_PUBLIC_BUILD_PROFILE: production
           EXPO_PUBLIC_BUILD_SOURCE: github-actions-ios
 
       - name: Verify Expo authentication
@@ -83,12 +84,12 @@ jobs:
         working-directory: apps/mobile
         run: node -e "const app=require('./app.json'); if (!app.expo?.extra?.eas?.projectId) process.exit(1)"
 
-      - name: Build installable iOS preview
+      - name: Build iOS production binary
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}
           EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
-          EXPO_PUBLIC_BUILD_PROFILE: preview
+          EXPO_PUBLIC_BUILD_PROFILE: production
           EXPO_PUBLIC_BUILD_SOURCE: github-actions-ios
-        run: npx eas-cli@latest build --platform ios --profile preview --non-interactive --clear-cache
+        run: npx eas-cli@latest build --platform ios --profile production --non-interactive --clear-cache
