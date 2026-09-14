@@ -29,6 +29,9 @@ type V31Input = {
 };
 
 type ContextualPlan = V3PlanState & {
+  components: string[];
+  requirements: string[];
+  safetyNotes: string[];
   sectionNotes?: Partial<Record<AiPlannerSection, string[]>>;
 };
 
@@ -206,7 +209,7 @@ function contextualSectionTurn(section: AiPlannerSection, message: string, sourc
   if (section === 'finance' && !plan.components.includes('finance')) plan.components.push('finance');
   if (section === 'safety') {
     if (!plan.components.includes('safety')) plan.components.push('safety');
-    plan.safetyNotes = [...(plan.safetyNotes ?? []), trimmed].slice(-12);
+    plan.safetyNotes = [...plan.safetyNotes, trimmed].slice(-12);
   }
   if (section === 'documents') {
     const marker = '__planner_recommended_documents__';
