@@ -71,7 +71,7 @@ export default function TenantSignUpScreen() {
         <View style={styles.mark}><Text style={styles.markText}>APP</Text></View>
         <Text style={styles.eyebrow}>ORGANIZATION INVITATION</Text>
         <Text style={styles.title}>Create your account</Text>
-        <Text style={styles.subtitle}>This signup belongs to the organization that invited you. It does not enroll you in Go Melanated.</Text>
+        <Text style={styles.subtitle}>This account belongs to the organization that invited you.</Text>
 
         {!inviteToken || !slug ? <View style={styles.invalid}><Text style={styles.invalidTitle}>Invitation incomplete</Text><Text style={styles.invalidText}>Use the complete invitation link from the organization.</Text></View> : null}
 
