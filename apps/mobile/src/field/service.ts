@@ -90,7 +90,7 @@ export async function queueFieldCheckIn(adventureId: string, attendee: RosterEnt
     method: 'offline_sync',
     credential_code: attendee.credential_code ?? null,
     offline_recorded_at: recordedAt,
-  }, 140);
+  }, 55);
 
   const next = await saveOptimistic({ ...snapshot, roster: nextRoster });
   void flushOfflineQueue();
@@ -120,7 +120,7 @@ export async function queueFieldHeadcount(adventureId: string, actualCount: numb
     recorded_by: profileId,
     recorded_at: recordedAt,
     notes: record.notes,
-  }, 70);
+  }, 40);
 
   const next = await saveOptimistic({ ...snapshot, headcounts: [record, ...snapshot.headcounts] });
   void flushOfflineQueue();
@@ -149,7 +149,7 @@ export async function queueFieldIncident(input: {
     location: input.location?.trim() || null,
     description: input.description.trim() || 'Field incident recorded for follow-up.',
   };
-  const priority = input.severity === 'critical' ? 900 : input.severity === 'high' ? 350 : input.severity === 'moderate' ? 180 : 80;
+  const priority = input.severity === 'critical' ? 85 : input.severity === 'high' ? 75 : input.severity === 'moderate' ? 65 : 50;
 
   await queueOfflineAction('field_incident', {
     id,
@@ -203,7 +203,7 @@ export async function queueHostBroadcast(input: {
     body,
     sent_at: sentAt,
     created_at: sentAt,
-  }, 160);
+  }, 60);
 
   const next = await saveOptimistic({ ...snapshot, messages: [message, ...snapshot.messages] });
   void flushOfflineQueue();
