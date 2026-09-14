@@ -7,6 +7,7 @@ const SAFETY_TABLES = [
   'offline_safety_breadcrumbs',
   'offline_action_queue',
   'offline_roster_sweep',
+  'offline_host_field_snapshots',
 ] as const;
 
 async function getDb() {

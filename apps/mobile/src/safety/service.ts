@@ -2,28 +2,20 @@ import { supabase } from '../lib/supabase';
 import { ensureSafetyOwner } from '../offline/safetyOwner';
 import {
   addBreadcrumb,
-  completeOfflineAction,
   countPendingOfflineActions as countLocalPendingOfflineActions,
   createOfflineUuid,
-  failOfflineAction,
   getActiveSafetySession as getLocalActiveSafetySession,
   getBreadcrumbs,
-  listPendingOfflineActions,
   queueOfflineAction,
   saveSafetySession,
   updateLocalSafetySession,
 } from '../offline/safetyStore';
+import { flushOfflineQueue } from '../offline/syncQueue';
 import type {
   GeoPoint,
   LocalSafetySession,
   SafetyCheckInStatus,
 } from '../offline/safetyTypes';
-
-export type SafetySyncResult = {
-  synced: number;
-  pending: number;
-  lastError: string | null;
-};
 
 async function currentProfileId() {
   const { data, error } = await supabase.auth.getSession();
@@ -70,7 +62,7 @@ export async function startSafetySession(input: {
   }, 2000);
 
   await queueSafetyCheckIn(session, 'starting', input.safePoint ?? null);
-  void flushSafetyQueue();
+  void flushOfflineQueue();
   return session;
 }
 
@@ -91,7 +83,7 @@ export async function markSafePoint(
       updated_at: new Date().toISOString(),
     },
   }, 90);
-  void flushSafetyQueue();
+  void flushOfflineQueue();
   return next;
 }
 
@@ -131,7 +123,7 @@ export async function queueSafetyCheckIn(
     },
   }, status === 'need_help' ? 999 : 95);
 
-  void flushSafetyQueue();
+  void flushOfflineQueue();
   return next;
 }
 
@@ -145,64 +137,9 @@ export async function recordSafetyBreadcrumb(sessionId: string, point: GeoPoint)
   });
 }
 
-async function syncAction(action: Awaited<ReturnType<typeof listPendingOfflineActions>>[number]) {
-  const payload = JSON.parse(action.payload) as Record<string, unknown>;
-
-  if (action.kind === 'safety_session_start') {
-    const { error } = await supabase.from('adventure_safety_sessions').upsert(payload, { onConflict: 'id' });
-    if (error) throw error;
-    return;
-  }
-
-  if (action.kind === 'safety_session_update') {
-    const sessionId = String(payload.session_id ?? '');
-    const patch = payload.patch as Record<string, unknown> | undefined;
-    if (!sessionId || !patch) throw new Error('Invalid queued safety session update.');
-    const { error } = await supabase.from('adventure_safety_sessions').update(patch).eq('id', sessionId);
-    if (error) throw error;
-    return;
-  }
-
-  if (action.kind === 'safety_check_in') {
-    const { error } = await supabase.from('adventure_safety_check_ins').upsert(payload, { onConflict: 'id' });
-    if (error) throw error;
-  }
-}
-
-let flushPromise: Promise<SafetySyncResult> | null = null;
-
-export async function flushSafetyQueue(): Promise<SafetySyncResult> {
-  if (flushPromise) return flushPromise;
-  flushPromise = (async () => {
-    await currentProfileId();
-    let synced = 0;
-    let lastError: string | null = null;
-    const actions = await listPendingOfflineActions();
-
-    for (const action of actions) {
-      try {
-        await syncAction(action);
-        await completeOfflineAction(action.id);
-        synced += 1;
-      } catch (caught) {
-        lastError = caught instanceof Error ? caught.message : 'Sync failed.';
-        await failOfflineAction(action.id, lastError);
-        break;
-      }
-    }
-
-    return {
-      synced,
-      pending: await countLocalPendingOfflineActions(),
-      lastError,
-    };
-  })();
-
-  try {
-    return await flushPromise;
-  } finally {
-    flushPromise = null;
-  }
+export async function flushSafetyQueue() {
+  await currentProfileId();
+  return flushOfflineQueue();
 }
 
 export async function getActiveSafetySession(adventureId: string) {
