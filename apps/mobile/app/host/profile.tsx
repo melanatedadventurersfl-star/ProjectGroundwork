@@ -24,7 +24,7 @@ export default function HostProfileHubScreen() {
     <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Host Center</Text></Pressable>
     <Text style={styles.eyebrow}>HOST PROFILE</Text>
     <Text style={styles.title}>Your host profiles</Text>
-    <Text style={styles.copy}>Each host profile is an organization identity. A solo host can use their own name as the organization name.</Text>
+    <Text style={styles.copy}>Build the public identity people see, then manage its team, followers, events, and history separately.</Text>
 
     {error ? <View style={styles.errorCard}><Text style={styles.error}>{error}</Text></View> : null}
     {loading ? <View style={styles.loading}><ActivityIndicator color={C.gold} /><Text style={styles.muted}>Loading host profiles…</Text></View> : null}
@@ -32,7 +32,7 @@ export default function HostProfileHubScreen() {
     {!loading && organizations.length === 0 ? <View style={styles.empty}>
       <View style={styles.emptyIcon}><AppIcon name="storefront" color={C.gold} size={28} /></View>
       <Text style={styles.emptyTitle}>Create your first host profile</Text>
-      <Text style={styles.muted}>Use a business, organization, group, brand, or your own name.</Text>
+      <Text style={styles.muted}>Use a business, organization, nonprofit, community, venue, creator brand, or your own name.</Text>
     </View> : null}
 
     {organizations.map((org) => <View key={org.id} style={styles.card}>
@@ -50,7 +50,8 @@ export default function HostProfileHubScreen() {
         <Stat value={org.follower_count ?? 0} label="Followers" />
       </View>
       <View style={styles.actions}>
-        <Pressable style={styles.primary} onPress={() => router.push(`/host/organization/${org.id}` as never)}><Text style={styles.primaryText}>Manage profile</Text></Pressable>
+        <Pressable style={styles.primary} onPress={() => router.push(`/host/organization-profile-editor/${org.id}` as never)}><Text style={styles.primaryText}>Edit public profile</Text></Pressable>
+        <Pressable style={styles.secondary} onPress={() => router.push(`/host/organization/${org.id}` as never)}><Text style={styles.secondaryText}>Team + history</Text></Pressable>
         <Pressable style={styles.secondary} onPress={() => router.push({ pathname:'/host/social-profiles', params:{ organizationId:org.id } } as never)}><Text style={styles.secondaryText}>Social profile data</Text></Pressable>
         <Pressable style={styles.secondary} onPress={() => router.push({ pathname:'/host/meta-connect', params:{ organizationId:org.id } } as never)}><Text style={styles.secondaryText}>Connect Facebook + Instagram</Text></Pressable>
         <Pressable style={styles.secondary} onPress={() => router.push(`/organization-profile/${org.slug}` as never)}><Text style={styles.secondaryText}>View public profile</Text></Pressable>
