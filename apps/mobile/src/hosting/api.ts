@@ -90,6 +90,28 @@ export async function getOutingHostAccess(): Promise<{
   record: OutingHostRecord | null;
 }> {
   const profileId = await currentProfileId();
+  const { data: organizations, error: organizationsError } = await supabase.rpc('list_my_organizations');
+  if (organizationsError) throw organizationsError;
+
+  const rows = Array.isArray(organizations) ? organizations : [];
+  const activeOrganization = rows.find((row: any) => row?.is_active === true)
+    ?? rows.find((row: any) => row?.is_platform_default === true)
+    ?? rows[0]
+    ?? null;
+
+  if (activeOrganization && activeOrganization.is_platform_default !== true) {
+    const { data: canManage, error: permissionError } = await supabase.rpc('organization_has_permission', {
+      p_organization_id: activeOrganization.id,
+      p_permission_code: 'events.manage',
+    });
+    if (permissionError) throw permissionError;
+    return {
+      approved: canManage === true,
+      paidEnabled: canManage === true,
+      record: null,
+    };
+  }
+
   const [hostResult, approvedResult, paidResult] = await Promise.all([
     supabase.from('outing_hosts').select('profile_id,status,host_type,risk_tier,can_create_paid_outings,payout_status,application_note,approved_at,terms_accepted_at').eq('profile_id', profileId).maybeSingle(),
     supabase.rpc('is_approved_outing_host', { p_profile_id: profileId }),
