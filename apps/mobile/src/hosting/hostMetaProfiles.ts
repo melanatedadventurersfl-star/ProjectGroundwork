@@ -1,6 +1,7 @@
 import { Linking } from 'react-native';
 
 import { supabase } from '../lib/supabase';
+import { getActiveOrganization } from '../platform/organizations';
 
 export type MetaConnectionStatus = {
   configured: boolean;
@@ -46,6 +47,10 @@ export function getMetaConnectionStatus(organizationId: string) {
 }
 
 export async function startMetaConnection(organizationId: string) {
+  const organization = await getActiveOrganization();
+  if (!organization || organization.id !== organizationId) throw new Error('Choose this organization before connecting Meta.');
+  if (!organization.isPlatformDefault) throw new Error('Native Meta return links are not configured for this organization yet.');
+
   const returnUrl = `melanatedadventurers://host/meta-connect?organizationId=${encodeURIComponent(organizationId)}`;
   const result = await invoke<{ configured: boolean; authUrl: string }>({ action: 'start', organizationId, returnUrl });
   if (!result.authUrl) throw new Error('Meta did not return a sign-in URL.');

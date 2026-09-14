@@ -10,12 +10,12 @@ import { resolveVendorEntry, sanitizeVendorDestination, type VendorAccessStatus 
 const PASSWORD_RESET_REDIRECT = 'https://hqndxityqrdiiwqyjagu.supabase.co/functions/v1/password-reset';
 
 function accessMessage(status?: VendorAccessStatus | null) {
-  if (status === 'pending') return { title: 'Vendor application pending', body: 'Your vendor application is still under review. You can use the member app while it is being reviewed.' };
+  if (status === 'pending') return { title: 'Vendor application pending', body: 'Your vendor application is still under review. You can return to your organization workspace while it is being reviewed.' };
   if (status === 'needs_info') return { title: 'More information needed', body: 'Your Vendor Center application needs additional information before access can be approved.' };
   if (status === 'paused') return { title: 'Vendor access paused', body: 'This account cannot enter Vendor Center while vendor access is paused.' };
   if (status === 'declined') return { title: 'Vendor access unavailable', body: 'This account is not approved for Vendor Center access.' };
   if (status === 'revoked') return { title: 'Vendor access revoked', body: 'This account no longer has Vendor Center access.' };
-  return { title: 'Vendor access required', body: 'This Go Melanated account does not have approved Vendor Center access.' };
+  return { title: 'Vendor access required', body: 'This account does not have approved Vendor Center access.' };
 }
 
 export default function VendorLoginScreen() {
@@ -74,8 +74,8 @@ export default function VendorLoginScreen() {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.brandBlock}>
-          <View style={styles.mark}><Text style={styles.markText}>GM</Text></View>
-          <Text style={styles.brand}>GO MELANATED</Text>
+          <View style={styles.mark}><Text style={styles.markText}>VC</Text></View>
+          <Text style={styles.brand}>VENDOR WORKSPACE</Text>
           <Text style={styles.product}>Vendor Center</Text>
           <Text style={styles.tagline}>Find opportunities, manage bookings and run your vendor business from one workspace.</Text>
         </View>
@@ -86,11 +86,11 @@ export default function VendorLoginScreen() {
             <Text style={styles.panelTitle}>{blocked.title}</Text>
             <Text style={styles.panelBody}>{blocked.body}</Text>
             {accessState?.status === null || accessState?.status === 'needs_info' || accessState?.status === 'declined' ? <Pressable style={styles.primary} onPress={() => router.replace('/vendor/apply' as never)}><Text style={styles.primaryText}>{accessState?.status ? 'Update Vendor Application' : 'Apply for Vendor Access'}</Text></Pressable> : null}
-            <Pressable style={styles.secondary} onPress={() => router.replace('/(tabs)' as never)}><Text style={styles.secondaryText}>Return to Go Melanated</Text></Pressable>
+            <Pressable style={styles.secondary} onPress={() => router.back()}><Text style={styles.secondaryText}>Back</Text></Pressable>
           </> : <>
             <Text style={styles.panelEyebrow}>VENDOR SIGN IN</Text>
             <Text style={styles.panelTitle}>Welcome back</Text>
-            <Text style={styles.panelBody}>Use your existing Go Melanated account. Approved vendors go directly into Vendor Center.</Text>
+            <Text style={styles.panelBody}>Use your existing account. Approved vendors go directly into Vendor Center for their active organization.</Text>
 
             <TextInput autoCapitalize="none" autoComplete="email" autoCorrect={false} keyboardType="email-address" placeholder="Email" placeholderTextColor="#738078" value={email} onChangeText={setEmail} style={styles.input} />
             <View style={styles.passwordRow}>
@@ -100,12 +100,10 @@ export default function VendorLoginScreen() {
             <Pressable disabled={working} onPress={() => void resetPassword()} style={styles.forgot}><Text style={styles.forgotText}>Forgot password?</Text></Pressable>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable disabled={!canSubmit || working} style={[styles.primary, (!canSubmit || working) && styles.disabled]} onPress={() => void signIn()}>{working ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Enter Vendor Center</Text>}</Pressable>
-            <View style={styles.divider} />
-            <Pressable onPress={() => router.replace('/(auth)/sign-in' as never)}><Text style={styles.memberLink}>Member sign in →</Text></Pressable>
           </>}
         </View>
 
-        <Text style={styles.security}>One account. Separate workspaces. Vendor Center appears after your vendor application is approved.</Text>
+        <Text style={styles.security}>One account. Separate organization workspace. Your vendor permission determines access.</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   </SafeAreaView>;
