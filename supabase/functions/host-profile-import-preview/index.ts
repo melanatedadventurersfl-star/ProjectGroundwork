@@ -14,6 +14,9 @@ const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 const clean = (value: unknown, max = 8000) => String(value ?? "").trim().slice(0, max);
 
+type DocumentType = "host_profile" | "event" | "vendor" | "venue" | "brand_kit" | "unknown";
+type Classification = { documentType: DocumentType; confidence: number; reasons: string[] };
+
 function safeTenantImportPath(path: string, platformOrganizationId: string, hostOrganizationId: string, userId: string) {
   const prefix = `tenants/${platformOrganizationId}/host-profiles/${hostOrganizationId}/imports/${userId}/`;
   return path.startsWith(prefix) && !path.includes("../") && !path.includes("\\");
@@ -97,20 +100,94 @@ function findLabeled(text: string, labels: string[]) {
   return "";
 }
 
-function fallbackFromText(text: string) {
+function findOrganizerName(text: string) {
+  const labeled = findLabeled(text, ["Business name", "Organization name", "Company name", "Host name", "Organizer", "Organization", "Company"]);
+  if (labeled) return labeled;
+  const inline = text.match(/(?:hosted|presented|organized|produced)\s+by\s+([^\n|•]{2,160})/i);
+  return inline?.[1] ? clean(inline[1].replace(/\s{2,}.*/, ""), 160) : "";
+}
+
+function listAfterLabel(text: string, labels: string[]) {
+  for (const label of labels) {
+    const inline = findLabeled(text, [label]);
+    if (inline) return unique(inline.split(/[,;|]/).map((item) => clean(item, 120))).slice(0, 20);
+  }
+  return [];
+}
+
+function scorePatterns(text: string, patterns: RegExp[]) {
+  return patterns.reduce((score, pattern) => score + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function classifyDocument(text: string): Classification {
+  const value = text.slice(0, 80000);
+  if (!value.trim()) return { documentType: "unknown", confidence: 0.2, reasons: ["No readable text was available for document classification."] };
+
+  const eventScore = scorePatterns(value, [
+    /\b(event date|event details|event schedule|doors open|admission|ticket(?:s|ing)?|early access|general admission)\b/i,
+    /\b(venue|check[- ]?in|refund policy|parking|dress code|capacity)\b/i,
+    /\b(hosted|presented|organized)\s+by\b/i,
+    /\b\d{1,2}:\d{2}\s*(?:am|pm)\b/i,
+    /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+  ]);
+  const profileScore = scorePatterns(value, [
+    /\b(about us|company overview|organization overview|our mission|our story|media kit)\b/i,
+    /\b(services|specialties|service areas|who we serve|founded|established)\b/i,
+    /\b(contact us|website|social media)\b/i,
+  ]);
+  const vendorScore = scorePatterns(value, [/\b(vendor application|vendor packet|exhibitor|booth fee|booth size|vendor requirements)\b/i]);
+  const venueScore = scorePatterns(value, [/\b(venue rental|rental rates|floor plan|room capacity|facility rules|banquet hall)\b/i]);
+  const brandScore = scorePatterns(value, [/\b(brand guidelines|brand guide|logo usage|color palette|typography|brand standards)\b/i]);
+
+  const scored: Array<[DocumentType, number]> = [
+    ["event", eventScore], ["host_profile", profileScore], ["vendor", vendorScore], ["venue", venueScore], ["brand_kit", brandScore],
+  ];
+  scored.sort((a, b) => b[1] - a[1]);
+  const [winner, winnerScore] = scored[0];
+  const runnerUp = scored[1]?.[1] ?? 0;
+  if (winnerScore <= 0) return { documentType: "unknown", confidence: 0.35, reasons: ["The document does not contain enough recognizable profile, event, vendor, venue, or brand-kit signals."] };
+
+  const confidence = Math.min(0.98, 0.55 + winnerScore * 0.08 + Math.max(0, winnerScore - runnerUp) * 0.06);
+  const reasonByType: Record<DocumentType, string> = {
+    event: "Event-specific details such as dates, admission, schedule, venue, or check-in were detected.",
+    host_profile: "Organization/profile details such as services, mission, service areas, or company background were detected.",
+    vendor: "Vendor or exhibitor terms were detected.",
+    venue: "Venue rental or facility details were detected.",
+    brand_kit: "Brand-guideline, logo, color, or typography details were detected.",
+    unknown: "The document type could not be identified reliably.",
+  };
+  return { documentType: winner, confidence, reasons: [reasonByType[winner]] };
+}
+
+function fallbackFromText(text: string, classification: Classification) {
   const preview = emptyPreview();
-  preview.name = findLabeled(text, ["Business name", "Organization name", "Company name", "Host name", "Name"]);
+  preview.name = findOrganizerName(text);
   preview.tagline = findLabeled(text, ["Tagline", "Slogan"]);
-  preview.description = findLabeled(text, ["About", "Description", "Mission"]);
-  preview.shortDescription = preview.description.slice(0, 220);
+  preview.description = findLabeled(text, ["About the organizer", "About the host", "About us", "Company overview", "Organization overview", "Mission"]);
+  preview.shortDescription = findLabeled(text, ["Short description", "Summary", "Company summary", "Organization summary"]) || preview.description.slice(0, 220);
   preview.websiteUrl = text.match(/https?:\/\/[^\s<>)]+/i)?.[0] ?? "";
   preview.publicEmail = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? "";
   preview.phone = text.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/)?.[0] ?? "";
   preview.instagramUrl = text.match(/https?:\/\/(?:www\.)?instagram\.com\/[^\s<>)]+/i)?.[0] ?? "";
   preview.facebookUrl = text.match(/https?:\/\/(?:www\.)?facebook\.com\/[^\s<>)]+/i)?.[0] ?? "";
-  const yearMatch = text.match(/(?:founded|established|since)\s*(?:in\s*)?(18\d{2}|19\d{2}|20\d{2})/i);
-  preview.foundedYear = yearMatch ? Number(yearMatch[1]) : null;
-  preview.confidenceNotes = ["Basic extraction was used. Review every field before applying it to the public profile."];
+  preview.specialties = listAfterLabel(text, ["Specialties", "Services", "Offerings", "What we do"]);
+  preview.serviceAreas = listAfterLabel(text, ["Service areas", "Areas served", "Markets served"]);
+  preview.audiences = listAfterLabel(text, ["Audience", "Audiences", "Who we serve"]);
+  preview.languages = listAfterLabel(text, ["Languages"]);
+  preview.accessibility = findLabeled(text, ["Accessibility", "Accessibility information", "Accommodations"]);
+  const founded = text.match(/(?:founded|established|since)\s*(?:in\s*)?(18\d{2}|19\d{2}|20\d{2})/i);
+  preview.foundedYear = founded ? Number(founded[1]) : null;
+  if (/\bnonprofit|non-profit|501\(c\)/i.test(text)) preview.hostType = "nonprofit";
+  else if (/\bvenue\b/i.test(text) && classification.documentType === "host_profile") preview.hostType = "venue";
+  else if (/\bcompany|business\b/i.test(text)) preview.hostType = "business";
+  else if (preview.name) preview.hostType = "organization";
+
+  preview.confidenceNotes = ["Basic source extraction was used. Review every proposed field before applying it to the public profile."];
+  if (classification.documentType === "event") {
+    preview.confidenceNotes.push("This appears to be an event document. Only clearly identified host or organizer details are proposed here. Import the full document in Event Builder.");
+  } else if (classification.documentType !== "host_profile" && classification.documentType !== "unknown") {
+    preview.confidenceNotes.push(`This appears to be a ${classification.documentType.replace("_", " ")} document. Only supported host-profile details are proposed here.`);
+  }
   return preview;
 }
 
@@ -118,8 +195,11 @@ function schema() {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["name","hostType","tagline","shortDescription","description","city","state","websiteUrl","publicEmail","phone","instagramUrl","facebookUrl","specialties","serviceAreas","audiences","languages","accessibility","foundedYear","confidenceNotes"],
+    required: ["documentType","documentTypeConfidence","documentTypeReasons","name","hostType","tagline","shortDescription","description","city","state","websiteUrl","publicEmail","phone","instagramUrl","facebookUrl","specialties","serviceAreas","audiences","languages","accessibility","foundedYear","confidenceNotes"],
     properties: {
+      documentType: { type: "string", enum: ["host_profile","event","vendor","venue","brand_kit","unknown"] },
+      documentTypeConfidence: { type: "number", minimum: 0, maximum: 1 },
+      documentTypeReasons: { type: "array", maxItems: 10, items: { type: "string" } },
       name: { type: "string" },
       hostType: { type: "string", enum: ["","individual","business","organization","nonprofit","community","venue","creator","other"] },
       tagline: { type: "string" }, shortDescription: { type: "string" }, description: { type: "string" }, city: { type: "string" }, state: { type: "string" },
@@ -170,6 +250,15 @@ function normalizePreview(raw: any) {
   return preview;
 }
 
+function normalizeClassification(raw: any, fallback: Classification): Classification {
+  const valid = new Set<DocumentType>(["host_profile","event","vendor","venue","brand_kit","unknown"]);
+  const documentType = valid.has(raw?.documentType) ? raw.documentType as DocumentType : fallback.documentType;
+  const confidenceNumber = Number(raw?.documentTypeConfidence);
+  const confidence = Number.isFinite(confidenceNumber) ? Math.max(0, Math.min(1, confidenceNumber)) : fallback.confidence;
+  const reasons = unique(Array.isArray(raw?.documentTypeReasons) ? raw.documentTypeReasons.map((value: unknown) => clean(value, 300)) : fallback.reasons).slice(0, 10);
+  return { documentType, confidence, reasons };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -195,9 +284,7 @@ Deno.serve(async (req: Request) => {
     const organizationId = clean(body?.organizationId, 80);
     const platformOrganizationId = clean(body?.platformOrganizationId, 80);
     const mode = clean(body?.mode, 30);
-    if (!organizationId || !platformOrganizationId || !["files","website","pasted_text"].includes(mode)) {
-      return json({ error: "Invalid profile import request." }, 400);
-    }
+    if (!organizationId || !platformOrganizationId || !["files","website","pasted_text"].includes(mode)) return json({ error: "Invalid profile import request." }, 400);
 
     const { data: organizationRows, error: organizationsError } = await client.rpc("list_my_organizations");
     if (organizationsError) throw organizationsError;
@@ -211,12 +298,8 @@ Deno.serve(async (req: Request) => {
     if (permissionError) throw permissionError;
     if (canManage !== true) return json({ error: "Organization settings permission is required." }, 403);
 
-    const { data: hostOrganization, error: hostError } = await client
-      .from("host_organizations")
-      .select("id,platform_organization_id")
-      .eq("id", organizationId)
-      .eq("platform_organization_id", platformOrganizationId)
-      .maybeSingle();
+    const { data: hostOrganization, error: hostError } = await client.from("host_organizations")
+      .select("id,platform_organization_id").eq("id", organizationId).eq("platform_organization_id", platformOrganizationId).maybeSingle();
     if (hostError) throw hostError;
     if (!hostOrganization) return json({ error: "This host profile belongs to a different organization." }, 403);
 
@@ -240,8 +323,7 @@ Deno.serve(async (req: Request) => {
       if (!response.ok) return json({ error: `Unable to read that website (${response.status}).` }, 400);
       const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
       if (contentType && !contentType.includes("text/html") && !contentType.includes("text/plain")) return json({ error: "That URL does not point to a readable public web page." }, 400);
-      const html = (await response.text()).slice(0, 250000);
-      const text = htmlToText(html);
+      const text = htmlToText((await response.text()).slice(0, 250000));
       if (!text) return json({ error: "No readable public profile details were found on that page." }, 400);
       textSources.push(text);
       sourceLabel = parsed.hostname;
@@ -283,8 +365,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const combinedText = textSources.join("\n\n--- SOURCE ---\n\n").slice(0, 80000);
+    const deterministicClassification = classifyDocument(combinedText);
+    let classification = deterministicClassification;
     let extractionSource: "ai" | "source" | "fallback" = combinedText ? "source" : "fallback";
-    let preview = fallbackFromText(combinedText);
+    let extractionMessage = combinedText ? "Basic source extraction was used." : "No readable text was available for basic extraction.";
+    let preview = fallbackFromText(combinedText, classification);
 
     if (openAiKey && (combinedText || inputContent.length)) {
       const content = [...inputContent];
@@ -294,7 +379,7 @@ Deno.serve(async (req: Request) => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
         body: JSON.stringify({
           model: MODEL,
-          instructions: "Extract a proposed public host, business, organization, nonprofit, community, venue, or creator profile from the supplied source material. Use only details supported by the source. Do not infer race, ethnicity, mission, audience, ownership, certifications, accessibility, service area, or contact details. Leave missing fields empty. Imported information is only a proposal for human review and must not be treated as published data.",
+          instructions: "First classify the supplied material as host_profile, event, vendor, venue, brand_kit, or unknown. Then extract only public host/business/organization profile details explicitly supported by the source. If the material is primarily an event document, extract only clearly identified organizer/host identity and contact details. Do not treat the event title, event venue, event audience, event accessibility, ticketing, schedule, or event policies as host-profile fields. Do not infer race, ethnicity, mission, audience, ownership, certifications, accessibility, service area, or contact details. Leave missing fields empty. Imported information is only a proposal for human review and must not be treated as published data.",
           input: [{ role: "user", content }],
           text: { format: { type: "json_schema", name: "host_profile_import_preview", strict: true, schema: schema() } },
         }),
@@ -303,14 +388,37 @@ Deno.serve(async (req: Request) => {
       const output = upstream.ok ? readOutputText(payload) : "";
       if (output) {
         try {
-          preview = normalizePreview(JSON.parse(output));
+          const raw = JSON.parse(output);
+          preview = normalizePreview(raw);
+          const aiClassification = normalizeClassification(raw, deterministicClassification);
+          classification = deterministicClassification.documentType === "event" && deterministicClassification.confidence >= 0.7 ? deterministicClassification : aiClassification;
           extractionSource = "ai";
+          extractionMessage = "AI extraction completed. Review every proposed field before applying it.";
         } catch {
           preview.confidenceNotes = unique([...preview.confidenceNotes, "AI extraction returned an unreadable result, so basic source extraction was used."]);
+          extractionMessage = "AI extraction returned an unreadable result. Basic source extraction was used instead.";
         }
+      } else {
+        preview.confidenceNotes = unique([...preview.confidenceNotes, "AI extraction was unavailable, so basic source extraction was used."]);
+        extractionMessage = "AI extraction was unavailable. Basic source extraction was used instead.";
       }
+    } else if (!openAiKey) {
+      preview.confidenceNotes = unique([...preview.confidenceNotes, "AI extraction is not configured for this environment. Basic source extraction was used."]);
+      extractionMessage = "AI extraction is not configured. Basic source extraction was used.";
     }
 
+    if (classification.documentType === "event" && !preview.confidenceNotes.some((note) => /event document/i.test(note))) {
+      preview.confidenceNotes = unique([...preview.confidenceNotes, "This appears to be an event document. Only clearly identified host or organizer details are proposed here. Import the full document in Event Builder."]);
+    }
+
+    const extractedPayload = {
+      ...preview,
+      _documentType: classification.documentType,
+      _documentTypeConfidence: classification.confidence,
+      _documentTypeReasons: classification.reasons,
+      _extractionSource: extractionSource,
+      _extractionMessage: extractionMessage,
+    };
     const { data: importRow, error: importError } = await client.from("host_profile_imports").insert({
       organization_id: organizationId,
       platform_organization_id: platformOrganizationId,
@@ -318,13 +426,24 @@ Deno.serve(async (req: Request) => {
       source_type: mode,
       source_label: sourceLabel,
       source_url: sourceUrl,
-      extracted_payload: preview,
+      extracted_payload: extractedPayload,
       approved_payload: {},
       status: "preview",
     }).select("id").single();
     if (importError) throw importError;
 
-    return json({ importId: importRow.id, sourceLabel, sourceUrl, extractionSource, preview });
+    return json({
+      importId: importRow.id,
+      sourceLabel,
+      sourceUrl,
+      extractionSource,
+      extractionMessage,
+      documentType: classification.documentType,
+      documentTypeConfidence: classification.confidence,
+      documentTypeReasons: classification.reasons,
+      eventHandoffRecommended: classification.documentType === "event",
+      preview,
+    });
   } catch (error) {
     console.error("host-profile-import-preview", error);
     return json({ error: error instanceof Error ? error.message : "Unable to read these host profile details." }, 500);
