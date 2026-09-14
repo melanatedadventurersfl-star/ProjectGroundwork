@@ -1,36 +1,153 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { followOrganization, getHostOrganization, isFollowingOrganization, listOrganizationHistory, listOrganizationTeam, unfollowOrganization, type HostHistoryItem, type HostOrganization, type OrganizationTeamMember } from '../../src/hosting/hostProfiles';
+
+import {
+  followOrganization,
+  getHostOrganization,
+  isFollowingOrganization,
+  listOrganizationHistory,
+  listOrganizationTeam,
+  unfollowOrganization,
+  type HostHistoryItem,
+  type HostOrganization,
+  type OrganizationTeamMember,
+} from '../../src/hosting/hostProfiles';
+import {
+  getHostProfileSetup,
+  listOrganizationGallery,
+  type HostProfileSetupData,
+  type OrganizationGalleryPhoto,
+} from '../../src/hosting/hostProfileSetup';
 import { listOrganizationSocialProfiles, socialKindLabel, type HostSocialProfile } from '../../src/hosting/hostSocialProfiles';
 import { AppIcon } from '../../src/ui/AppIcon';
 
 const C={bg:'#0A0F0C',panel:'#131B16',raised:'#19231C',line:'#2D3A32',cream:'#FFF8E8',muted:'#95A29A',dim:'#6F7D75',gold:'#D7B45A'};
+const DEFAULT_ORDER=['about','events','photos','history','team','faq','policies','contact'];
 
 export default function PublicOrganizationProfileScreen(){
- const {slug}=useLocalSearchParams<{slug:string}>(); const [org,setOrg]=useState<HostOrganization|null>(null); const [team,setTeam]=useState<OrganizationTeamMember[]>([]); const [history,setHistory]=useState<HostHistoryItem[]>([]); const [socials,setSocials]=useState<HostSocialProfile[]>([]); const [following,setFollowing]=useState(false); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [busy,setBusy]=useState(false);
- useEffect(()=>{let active=true;(async()=>{if(!slug)return;setLoading(true);try{const o=await getHostOrganization(slug);const [t,h,s,f]=await Promise.all([listOrganizationTeam(o.id),listOrganizationHistory(o.id),listOrganizationSocialProfiles(o.id,true),isFollowingOrganization(o.id).catch(()=>false)]);if(!active)return;setOrg(o);setTeam(t);setHistory(h);setSocials(s);setFollowing(f)}catch(caught){if(active)setError(caught instanceof Error?caught.message:'Unable to load host profile.')}finally{if(active)setLoading(false)}})();return()=>{active=false}},[slug]);
- const completed=useMemo(()=>history.filter(item=>item.status==='completed'||new Date(item.ends_at)<new Date()),[history]); const upcoming=useMemo(()=>history.filter(item=>item.status!=='completed'&&new Date(item.ends_at)>=new Date()),[history]); const primarySocial=useMemo(()=>socials.find(item=>item.is_primary)??socials[0]??null,[socials]);
- async function toggleFollow(){if(!org)return;setBusy(true);try{if(following)await unfollowOrganization(org.id);else await followOrganization(org.id);setFollowing(v=>!v)}finally{setBusy(false)}}
+ const {slug}=useLocalSearchParams<{slug:string}>();
+ const [org,setOrg]=useState<HostOrganization|null>(null);
+ const [setup,setSetup]=useState<HostProfileSetupData|null>(null);
+ const [gallery,setGallery]=useState<OrganizationGalleryPhoto[]>([]);
+ const [team,setTeam]=useState<OrganizationTeamMember[]>([]);
+ const [history,setHistory]=useState<HostHistoryItem[]>([]);
+ const [socials,setSocials]=useState<HostSocialProfile[]>([]);
+ const [following,setFollowing]=useState(false);
+ const [loading,setLoading]=useState(true);
+ const [error,setError]=useState('');
+ const [busy,setBusy]=useState(false);
+
+ useEffect(()=>{
+  let active=true;
+  void (async()=>{
+   if(!slug)return;
+   setLoading(true);
+   try{
+    const nextOrg=await getHostOrganization(slug);
+    const [nextTeam,nextHistory,nextSocials,nextFollowing,nextSetup,nextGallery]=await Promise.all([
+     listOrganizationTeam(nextOrg.id),
+     listOrganizationHistory(nextOrg.id),
+     listOrganizationSocialProfiles(nextOrg.id,true),
+     isFollowingOrganization(nextOrg.id).catch(()=>false),
+     getHostProfileSetup(nextOrg.id),
+     listOrganizationGallery(nextOrg.id),
+    ]);
+    if(!active)return;
+    setOrg(nextOrg);setTeam(nextTeam);setHistory(nextHistory);setSocials(nextSocials);setFollowing(nextFollowing);setSetup(nextSetup);setGallery(nextGallery);
+   }catch(caught){if(active)setError(caught instanceof Error?caught.message:'Unable to load host profile.');}
+   finally{if(active)setLoading(false);}
+  })();
+  return()=>{active=false};
+ },[slug]);
+
+ const completed=useMemo(()=>history.filter(item=>item.status==='completed'||new Date(item.ends_at)<new Date()),[history]);
+ const upcoming=useMemo(()=>history.filter(item=>item.status!=='completed'&&new Date(item.ends_at)>=new Date()),[history]);
+ const primarySocial=useMemo(()=>socials.find(item=>item.is_primary)??socials[0]??null,[socials]);
+ const sectionOrder=useMemo(()=>{
+  const raw=setup?.profileSectionOrder?.length?setup.profileSectionOrder:DEFAULT_ORDER;
+  return [...raw,...DEFAULT_ORDER.filter(item=>!raw.includes(item))];
+ },[setup]);
+
+ async function toggleFollow(){if(!org)return;setBusy(true);try{if(following)await unfollowOrganization(org.id);else await followOrganization(org.id);setFollowing(value=>!value);}finally{setBusy(false);}}
+
  if(loading)return <SafeAreaView style={styles.center}><ActivityIndicator color={C.gold}/></SafeAreaView>;
- if(error||!org)return <SafeAreaView style={styles.center}><Text style={styles.error}>{error||'Host profile not found.'}</Text></SafeAreaView>;
+ if(error||!org||!setup)return <SafeAreaView style={styles.center}><Text style={styles.error}>{error||'Host profile not found.'}</Text></SafeAreaView>;
+
+ const showEmail=setup.contactVisibility.email&&Boolean(org.public_email);
+ const showPhone=setup.contactVisibility.phone&&Boolean(org.phone);
+ const showWebsite=setup.contactVisibility.website&&Boolean(org.website_url);
+ const showSocials=setup.contactVisibility.socials;
+ const location=[org.city,org.state].filter(Boolean).join(', ');
+ const hostType=hostTypeLabel(setup.hostType);
+
+ function renderSection(code:string){
+  if(code==='about'){
+   const hasDetails=Boolean(setup.shortDescription||org.description||org.specialties?.length||setup.serviceAreas.length||setup.audiences.length||setup.languages.length||setup.accessibility||setup.foundedYear||socials.length);
+   if(!hasDetails)return null;
+   return <View key={code}>
+    <Section title="About"/>
+    <View style={styles.card}>
+     {setup.shortDescription?<Text style={styles.lead}>{setup.shortDescription}</Text>:null}
+     {org.description?<Text style={styles.body}>{org.description}</Text>:null}
+     {setup.foundedYear?<Detail label="Established" value={String(setup.foundedYear)}/>:null}
+     {setup.serviceAreas.length?<Detail label="Service areas" value={setup.serviceAreas.join(' · ')}/>:null}
+     {setup.audiences.length?<Detail label="Typical audiences" value={setup.audiences.join(' · ')}/>:null}
+     {setup.languages.length?<Detail label="Languages" value={setup.languages.join(' · ')}/>:null}
+     {setup.accessibility?<Detail label="Accessibility" value={setup.accessibility}/>:null}
+    </View>
+    {org.specialties?.length?<View style={styles.chips}>{org.specialties.map(item=><View key={item} style={styles.chip}><Text style={styles.chipText}>{item}</Text></View>)}</View>:null}
+    {showSocials&&socials.length?<><Text style={styles.subsection}>Social presence</Text><View style={styles.socialList}>{socials.map(item=><Pressable key={item.id} style={[styles.socialCard,item.is_primary&&styles.socialPrimary]} onPress={()=>void Linking.openURL(item.url)}>{item.image_url?<Image source={{uri:item.image_url}} style={styles.socialImage}/>:<View style={styles.socialImageFallback}><AppIcon name={item.kind==='instagram'?'camera':'community'} color={C.gold} size={18}/></View>}<View style={styles.flex}><View style={styles.socialTitleRow}><Text style={styles.socialKind}>{socialKindLabel(item.kind)}</Text>{item.is_primary?<Text style={styles.primaryBadge}>PRIMARY</Text>:null}</View><Text style={styles.socialName}>{item.display_name}</Text>{item.handle?<Text style={styles.socialHandle}>{item.handle}</Text>:null}{item.description?<Text style={styles.socialDescription} numberOfLines={2}>{item.description}</Text>:null}{item.audience_count!=null?<Text style={styles.socialAudience}>{item.audience_count.toLocaleString()} {item.audience_label||(item.kind==='facebook_group'?'members':'followers')}</Text>:null}</View><Text style={styles.eventArrow}>›</Text></Pressable>)}</View></>:null}
+   </View>;
+  }
+  if(code==='events')return <View key={code}><Section title="Upcoming events"/>{upcoming.length?upcoming.map(item=><EventCard key={item.id} item={item}/>):<View style={styles.card}><Text style={styles.muted}>No upcoming events posted yet.</Text></View>}</View>;
+  if(code==='photos'){
+   if(!gallery.length)return null;
+   return <View key={code}><Section title="Photos"/><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>{gallery.map(photo=><View key={photo.id} style={styles.galleryItem}><Image source={{uri:photo.imageUrl}} accessibilityLabel={photo.altText||photo.caption||undefined} style={[styles.galleryPhoto,photo.isFeatured&&styles.galleryFeatured]}/>{photo.caption?<Text style={styles.galleryCaption} numberOfLines={2}>{photo.caption}</Text>:null}</View>)}</ScrollView></View>;
+  }
+  if(code==='history'){
+   if(!completed.length)return null;
+   return <View key={code}><Section title="Hosting history"/>{completed.map(item=><View key={item.id} style={styles.history}><EventCard item={item}/>{item.host_media?.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>{item.host_media.map(photo=><Image key={photo.id} source={{uri:photo.image_url}} style={styles.photo}/>)}</ScrollView>:null}</View>)}</View>;
+  }
+  if(code==='team'){
+   if(!team.length)return null;
+   return <View key={code}><Section title="Team"/><View style={styles.card}>{team.map(member=><View key={member.profileId} style={styles.person}>{member.avatarUrl?<Image source={{uri:member.avatarUrl}} style={styles.avatar}/>:<View style={styles.avatarFallback}><AppIcon name="profile" color={C.gold} size={16}/></View>}<View style={styles.flex}><Text style={styles.personName}>{member.displayName}</Text><Text style={styles.personMeta}>{member.publicLabel||member.role}</Text></View></View>)}</View></View>;
+  }
+  if(code==='faq'){
+   if(!org.faq?.length)return null;
+   return <View key={code}><Section title="FAQ"/>{org.faq.map((item,index)=><View key={`${item.question}-${index}`} style={styles.card}><Text style={styles.cardTitle}>{item.question}</Text><Text style={styles.body}>{item.answer}</Text></View>)}</View>;
+  }
+  if(code==='policies'){
+   if(!org.policies?.length)return null;
+   return <View key={code}><Section title="Policies"/>{org.policies.map((item,index)=><View key={`${item.title}-${index}`} style={styles.card}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.body}>{item.body}</Text></View>)}</View>;
+  }
+  if(code==='contact'){
+   if(!showEmail&&!showPhone&&!showWebsite&&!(showSocials&&(org.instagram_url||org.facebook_url)))return null;
+   return <View key={code}><Section title="Contact"/><View style={styles.card}>{showWebsite?<LinkRow label="Website" value={org.website_url!} onPress={()=>void Linking.openURL(org.website_url!)}/>:null}{showEmail?<LinkRow label="Email" value={org.public_email!} onPress={()=>void Linking.openURL(`mailto:${org.public_email}`)}/>:null}{showPhone?<LinkRow label="Phone" value={org.phone!} onPress={()=>void Linking.openURL(`tel:${org.phone}`)}/>:null}{showSocials&&org.instagram_url?<LinkRow label="Instagram" value="Open Instagram" onPress={()=>void Linking.openURL(org.instagram_url!)}/>:null}{showSocials&&org.facebook_url?<LinkRow label="Facebook" value="Open Facebook" onPress={()=>void Linking.openURL(org.facebook_url!)}/>:null}</View></View>;
+  }
+  return null;
+ }
+
  return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
   <Pressable onPress={()=>router.back()}><Text style={styles.back}>‹ Back</Text></Pressable>
-  <View style={styles.hero}>{org.cover_image_url?<Image source={{uri:org.cover_image_url}} style={styles.cover}/>:<View style={styles.coverFallback}/>}<View style={styles.identity}>{org.logo_url?<Image source={{uri:org.logo_url}} style={styles.logo}/>:<View style={styles.logoFallback}><AppIcon name="storefront" color={C.gold} size={30}/></View>}<View style={styles.flex}><Text style={styles.name}>{org.name}</Text><Text style={styles.location}>{[org.city,org.state].filter(Boolean).join(', ')}</Text>{org.tagline?<Text style={styles.tagline}>{org.tagline}</Text>:null}</View></View><View style={styles.actions}><Pressable disabled={busy} style={styles.follow} onPress={()=>void toggleFollow()}><Text style={styles.followText}>{following?'Following':'Follow'}</Text></Pressable>{org.public_email?<Pressable style={styles.secondary} onPress={()=>void Linking.openURL(`mailto:${org.public_email}`)}><Text style={styles.secondaryText}>Message</Text></Pressable>:null}{org.website_url?<Pressable style={styles.secondary} onPress={()=>void Linking.openURL(org.website_url!)}><Text style={styles.secondaryText}>Website</Text></Pressable>:null}{primarySocial?<Pressable style={styles.secondary} onPress={()=>void Linking.openURL(primarySocial.url)}><Text style={styles.secondaryText}>{primarySocial.kind==='facebook_group'?'Join community':'Social'}</Text></Pressable>:null}</View><View style={styles.stats}><Stat value={completed.length} label="Hosted"/><Stat value={upcoming.length} label="Upcoming"/><Stat value={team.length} label="Team"/></View></View>
-  {org.description?<><Section title="About"/><View style={styles.card}><Text style={styles.body}>{org.description}</Text></View></>:null}
-  {socials.length?<><Section title="Social presence"/><View style={styles.socialList}>{socials.map(item=><Pressable key={item.id} style={[styles.socialCard,item.is_primary&&styles.socialPrimary]} onPress={()=>void Linking.openURL(item.url)}>{item.image_url?<Image source={{uri:item.image_url}} style={styles.socialImage}/>:<View style={styles.socialImageFallback}><AppIcon name={item.kind==='instagram'?'camera':'community'} color={C.gold} size={18}/></View>}<View style={styles.flex}><View style={styles.socialTitleRow}><Text style={styles.socialKind}>{socialKindLabel(item.kind)}</Text>{item.is_primary?<Text style={styles.primaryBadge}>PRIMARY</Text>:null}</View><Text style={styles.socialName}>{item.display_name}</Text>{item.handle?<Text style={styles.socialHandle}>{item.handle}</Text>:null}{item.description?<Text style={styles.socialDescription} numberOfLines={2}>{item.description}</Text>:null}{item.audience_count!=null?<Text style={styles.socialAudience}>{item.audience_count.toLocaleString()} {item.audience_label||(item.kind==='facebook_group'?'members':'followers')}</Text>:null}</View><Text style={styles.eventArrow}>›</Text></Pressable>)}</View></>:null}
-  {org.specialties?.length?<><Section title="Specialties"/><View style={styles.chips}>{org.specialties.map(item=><View key={item} style={styles.chip}><Text style={styles.chipText}>{item}</Text></View>)}</View></>:null}
-  <Section title="Upcoming events"/>{upcoming.length?upcoming.map(item=><EventCard key={item.id} item={item}/>):<View style={styles.card}><Text style={styles.muted}>No upcoming events posted yet.</Text></View>}
-  {completed.length?<><Section title="Hosting history"/>{completed.map(item=><View key={item.id} style={styles.history}><EventCard item={item}/>{item.host_media?.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>{item.host_media.map(photo=><Image key={photo.id} source={{uri:photo.image_url}} style={styles.photo}/>)}</ScrollView>:null}</View>)}</>:null}
-  {team.length?<><Section title="Team"/><View style={styles.card}>{team.map(member=><View key={member.profileId} style={styles.person}>{member.avatarUrl?<Image source={{uri:member.avatarUrl}} style={styles.avatar}/>:<View style={styles.avatarFallback}><AppIcon name="profile" color={C.gold} size={16}/></View>}<View style={styles.flex}><Text style={styles.personName}>{member.displayName}</Text><Text style={styles.personMeta}>{member.publicLabel||member.role}</Text></View></View>)}</View></>:null}
-  {org.faq?.length?<><Section title="FAQ"/>{org.faq.map((item,index)=><View key={index} style={styles.card}><Text style={styles.cardTitle}>{item.question}</Text><Text style={styles.body}>{item.answer}</Text></View>)}</>:null}
-  {org.policies?.length?<><Section title="Policies"/>{org.policies.map((item,index)=><View key={index} style={styles.card}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.body}>{item.body}</Text></View>)}</>:null}
-  {(org.instagram_url||org.facebook_url||org.phone||org.public_email)?<><Section title="Contact"/><View style={styles.card}>{org.public_email?<LinkRow label="Email" value={org.public_email} onPress={()=>void Linking.openURL(`mailto:${org.public_email}`)}/>:null}{org.phone?<LinkRow label="Phone" value={org.phone} onPress={()=>void Linking.openURL(`tel:${org.phone}`)}/>:null}{org.instagram_url?<LinkRow label="Instagram" value="Open Instagram" onPress={()=>void Linking.openURL(org.instagram_url!)}/>:null}{org.facebook_url?<LinkRow label="Facebook" value="Open Facebook" onPress={()=>void Linking.openURL(org.facebook_url!)}/>:null}</View></>:null}
- </ScrollView></SafeAreaView>
+  <View style={styles.hero}>
+   {org.cover_image_url?<Image source={{uri:org.cover_image_url}} style={styles.cover}/>:<View style={styles.coverFallback}/>} 
+   <View style={styles.identity}>{org.logo_url?<Image source={{uri:org.logo_url}} style={styles.logo}/>:<View style={styles.logoFallback}><AppIcon name="storefront" color={C.gold} size={30}/></View>}<View style={styles.flex}><Text style={styles.name}>{org.name}</Text><Text style={styles.location}>{[hostType,location].filter(Boolean).join(' · ')}</Text>{org.tagline?<Text style={styles.tagline}>{org.tagline}</Text>:null}</View></View>
+   <View style={styles.actions}><Pressable disabled={busy} style={styles.follow} onPress={()=>void toggleFollow()}><Text style={styles.followText}>{following?'Following':'Follow'}</Text></Pressable>{showEmail?<Pressable style={styles.secondary} onPress={()=>void Linking.openURL(`mailto:${org.public_email}`)}><Text style={styles.secondaryText}>Message</Text></Pressable>:null}{showWebsite?<Pressable style={styles.secondary} onPress={()=>void Linking.openURL(org.website_url!)}><Text style={styles.secondaryText}>Website</Text></Pressable>:null}{showSocials&&primarySocial?<Pressable style={styles.secondary} onPress={()=>void Linking.openURL(primarySocial.url)}><Text style={styles.secondaryText}>{primarySocial.kind==='facebook_group'?'Join community':'Social'}</Text></Pressable>:null}</View>
+   <View style={styles.stats}><Stat value={completed.length} label="Hosted"/><Stat value={upcoming.length} label="Upcoming"/><Stat value={team.length} label="Team"/></View>
+  </View>
+  {sectionOrder.map(renderSection)}
+ </ScrollView></SafeAreaView>;
 }
+
+function hostTypeLabel(value:string){return ({individual:'Individual host',business:'Business',organization:'Organization',nonprofit:'Nonprofit',community:'Community',venue:'Venue',creator:'Creator',other:'Host'} as Record<string,string>)[value]||'Host';}
 function Stat({value,label}:{value:number;label:string}){return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>}
 function Section({title}:{title:string}){return <Text style={styles.section}>{title}</Text>}
+function Detail({label,value}:{label:string;value:string}){return <View style={styles.detail}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>}
 function EventCard({item}:{item:HostHistoryItem}){return <View style={styles.event}><View style={styles.flex}><Text style={styles.eventTitle}>{item.title}</Text><Text style={styles.eventMeta}>{formatDate(item.starts_at)} · {[item.city,item.state].filter(Boolean).join(', ')}</Text></View><Text style={styles.eventArrow}>›</Text></View>}
-function LinkRow({label,value,onPress}:{label:string;value:string;onPress:()=>void}){return <Pressable style={styles.linkRow} onPress={onPress}><View><Text style={styles.linkLabel}>{label}</Text><Text style={styles.linkValue}>{value}</Text></View><Text style={styles.eventArrow}>›</Text></Pressable>}
+function LinkRow({label,value,onPress}:{label:string;value:string;onPress:()=>void}){return <Pressable style={styles.linkRow} onPress={onPress}><View style={styles.flex}><Text style={styles.linkLabel}>{label}</Text><Text style={styles.linkValue}>{value}</Text></View><Text style={styles.eventArrow}>›</Text></Pressable>}
 function formatDate(value:string){const d=new Date(value);return Number.isNaN(d.valueOf())?value:d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}
-const styles=StyleSheet.create({safe:{flex:1,backgroundColor:C.bg},center:{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'},content:{padding:18,paddingBottom:120},back:{color:C.gold,fontWeight:'900',marginBottom:12},hero:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:22,overflow:'hidden'},cover:{width:'100%',height:210,backgroundColor:C.raised},coverFallback:{height:120,backgroundColor:'#17221B'},identity:{flexDirection:'row',gap:13,alignItems:'center',padding:16},logo:{width:78,height:78,borderRadius:21,backgroundColor:C.raised},logoFallback:{width:78,height:78,borderRadius:21,backgroundColor:'#292516',alignItems:'center',justifyContent:'center'},flex:{flex:1},name:{color:C.cream,fontSize:27,fontWeight:'900'},location:{color:C.gold,fontSize:10,fontWeight:'800',marginTop:3},tagline:{color:C.muted,fontSize:11,lineHeight:16,marginTop:6},actions:{flexDirection:'row',gap:8,paddingHorizontal:16,flexWrap:'wrap'},follow:{minHeight:44,borderRadius:12,backgroundColor:C.gold,paddingHorizontal:20,alignItems:'center',justifyContent:'center'},followText:{color:'#152018',fontWeight:'900',fontSize:11},secondary:{minHeight:44,borderRadius:12,borderWidth:1,borderColor:C.line,paddingHorizontal:18,alignItems:'center',justifyContent:'center'},secondaryText:{color:C.cream,fontWeight:'900',fontSize:11},stats:{flexDirection:'row',gap:8,padding:16},stat:{flex:1,backgroundColor:C.raised,borderRadius:12,padding:10},statValue:{color:C.cream,fontSize:18,fontWeight:'900'},statLabel:{color:C.dim,fontSize:8,marginTop:2},section:{color:C.cream,fontSize:19,fontWeight:'900',marginTop:24,marginBottom:9},card:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:8},cardTitle:{color:C.cream,fontSize:13,fontWeight:'900',marginBottom:6},body:{color:'#CBD4CE',fontSize:12,lineHeight:19},muted:{color:C.muted,fontSize:11},socialList:{gap:8},socialCard:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:16,padding:13,flexDirection:'row',alignItems:'center',gap:11},socialPrimary:{borderColor:'#6C5A2A'},socialImage:{width:52,height:52,borderRadius:15,backgroundColor:C.raised},socialImageFallback:{width:52,height:52,borderRadius:15,backgroundColor:'#292516',alignItems:'center',justifyContent:'center'},socialTitleRow:{flexDirection:'row',alignItems:'center',gap:6},socialKind:{color:C.gold,fontSize:8,fontWeight:'900',letterSpacing:.4},primaryBadge:{color:'#152018',backgroundColor:C.gold,fontSize:7,fontWeight:'900',paddingHorizontal:6,paddingVertical:3,borderRadius:999},socialName:{color:C.cream,fontSize:13,fontWeight:'900',marginTop:3},socialHandle:{color:C.muted,fontSize:9,marginTop:1},socialDescription:{color:C.muted,fontSize:9,lineHeight:14,marginTop:4},socialAudience:{color:C.gold,fontSize:9,fontWeight:'900',marginTop:4},chips:{flexDirection:'row',flexWrap:'wrap',gap:7},chip:{backgroundColor:'#292516',borderWidth:1,borderColor:'#554923',borderRadius:999,paddingHorizontal:11,paddingVertical:7},chipText:{color:C.gold,fontSize:9,fontWeight:'900'},event:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:15,padding:14,marginBottom:8,flexDirection:'row',alignItems:'center'},eventTitle:{color:C.cream,fontSize:12,fontWeight:'900'},eventMeta:{color:C.muted,fontSize:9,marginTop:4},eventArrow:{color:C.gold,fontSize:22},history:{marginBottom:8},photoRow:{gap:8,paddingVertical:6},photo:{width:140,height:94,borderRadius:12,backgroundColor:C.raised},person:{minHeight:58,flexDirection:'row',gap:10,alignItems:'center',borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:C.line},avatar:{width:38,height:38,borderRadius:19},avatarFallback:{width:38,height:38,borderRadius:19,backgroundColor:C.raised,alignItems:'center',justifyContent:'center'},personName:{color:C.cream,fontSize:11,fontWeight:'900'},personMeta:{color:C.muted,fontSize:9,marginTop:2,textTransform:'capitalize'},linkRow:{minHeight:56,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:C.line},linkLabel:{color:C.muted,fontSize:9},linkValue:{color:C.cream,fontSize:11,fontWeight:'800',marginTop:3},error:{color:'#F0A199'}});
+
+const styles=StyleSheet.create({
+ safe:{flex:1,backgroundColor:C.bg},center:{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'},content:{padding:18,paddingBottom:120},back:{color:C.gold,fontWeight:'900',marginBottom:12},hero:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:22,overflow:'hidden'},cover:{width:'100%',height:210,backgroundColor:C.raised},coverFallback:{height:120,backgroundColor:'#17221B'},identity:{flexDirection:'row',gap:13,alignItems:'center',padding:16},logo:{width:78,height:78,borderRadius:21,backgroundColor:C.raised},logoFallback:{width:78,height:78,borderRadius:21,backgroundColor:'#292516',alignItems:'center',justifyContent:'center'},flex:{flex:1},name:{color:C.cream,fontSize:27,fontWeight:'900'},location:{color:C.gold,fontSize:10,fontWeight:'800',marginTop:3},tagline:{color:C.muted,fontSize:11,lineHeight:16,marginTop:6},actions:{flexDirection:'row',gap:8,paddingHorizontal:16,flexWrap:'wrap'},follow:{minHeight:44,borderRadius:12,backgroundColor:C.gold,paddingHorizontal:20,alignItems:'center',justifyContent:'center'},followText:{color:'#152018',fontWeight:'900',fontSize:11},secondary:{minHeight:44,borderRadius:12,borderWidth:1,borderColor:C.line,paddingHorizontal:18,alignItems:'center',justifyContent:'center'},secondaryText:{color:C.cream,fontWeight:'900',fontSize:11},stats:{flexDirection:'row',gap:8,padding:16},stat:{flex:1,backgroundColor:C.raised,borderRadius:12,padding:10},statValue:{color:C.cream,fontSize:18,fontWeight:'900'},statLabel:{color:C.dim,fontSize:8,marginTop:2},section:{color:C.cream,fontSize:19,fontWeight:'900',marginTop:24,marginBottom:9},subsection:{color:C.cream,fontSize:14,fontWeight:'900',marginTop:13,marginBottom:8},card:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:8},cardTitle:{color:C.cream,fontSize:13,fontWeight:'900',marginBottom:6},lead:{color:C.cream,fontSize:13,lineHeight:20,fontWeight:'800',marginBottom:8},body:{color:'#CBD4CE',fontSize:12,lineHeight:19},muted:{color:C.muted,fontSize:11},detail:{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:C.line,paddingTop:10,marginTop:10},detailLabel:{color:C.gold,fontSize:8,fontWeight:'900',textTransform:'uppercase'},detailValue:{color:'#CBD4CE',fontSize:11,lineHeight:17,marginTop:3},chips:{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:8},chip:{backgroundColor:'#292516',borderWidth:1,borderColor:'#554923',borderRadius:999,paddingHorizontal:11,paddingVertical:7},chipText:{color:C.gold,fontSize:9,fontWeight:'900'},socialList:{gap:8},socialCard:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:16,padding:13,flexDirection:'row',alignItems:'center',gap:11},socialPrimary:{borderColor:'#6C5A2A'},socialImage:{width:52,height:52,borderRadius:15,backgroundColor:C.raised},socialImageFallback:{width:52,height:52,borderRadius:15,backgroundColor:'#292516',alignItems:'center',justifyContent:'center'},socialTitleRow:{flexDirection:'row',alignItems:'center',gap:6},socialKind:{color:C.gold,fontSize:8,fontWeight:'900',letterSpacing:.4},primaryBadge:{color:'#152018',backgroundColor:C.gold,fontSize:7,fontWeight:'900',paddingHorizontal:6,paddingVertical:3,borderRadius:999},socialName:{color:C.cream,fontSize:13,fontWeight:'900',marginTop:3},socialHandle:{color:C.muted,fontSize:9,marginTop:1},socialDescription:{color:C.muted,fontSize:9,lineHeight:14,marginTop:4},socialAudience:{color:C.gold,fontSize:9,fontWeight:'900',marginTop:4},event:{backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:15,padding:14,marginBottom:8,flexDirection:'row',alignItems:'center'},eventTitle:{color:C.cream,fontSize:12,fontWeight:'900'},eventMeta:{color:C.muted,fontSize:9,marginTop:4},eventArrow:{color:C.gold,fontSize:22},history:{marginBottom:8},photoRow:{gap:8,paddingVertical:6},photo:{width:140,height:94,borderRadius:12,backgroundColor:C.raised},galleryRow:{gap:9,paddingRight:18},galleryItem:{width:210},galleryPhoto:{width:210,height:145,borderRadius:15,backgroundColor:C.raised,borderWidth:1,borderColor:C.line},galleryFeatured:{borderColor:C.gold},galleryCaption:{color:C.muted,fontSize:9,lineHeight:14,marginTop:5},person:{minHeight:58,flexDirection:'row',gap:10,alignItems:'center',borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:C.line},avatar:{width:38,height:38,borderRadius:19},avatarFallback:{width:38,height:38,borderRadius:19,backgroundColor:C.raised,alignItems:'center',justifyContent:'center'},personName:{color:C.cream,fontSize:11,fontWeight:'900'},personMeta:{color:C.muted,fontSize:9,marginTop:2,textTransform:'capitalize'},linkRow:{minHeight:56,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:C.line},linkLabel:{color:C.muted,fontSize:9},linkValue:{color:C.cream,fontSize:11,fontWeight:'800',marginTop:3},error:{color:'#F0A199'}
+});
