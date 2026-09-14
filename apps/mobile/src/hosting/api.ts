@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 
 export type OutingHostStatus = 'pending' | 'needs_info' | 'approved' | 'paused' | 'declined' | 'revoked';
 export type OutingHostType = 'community' | 'organization' | 'official';
+export type EventLocationType = 'physical' | 'online' | 'hybrid' | 'tbd';
 
 export type OutingHostRecord = {
   profile_id: string;
@@ -26,6 +27,7 @@ export type HostOuting = {
   difficulty: 'easy' | 'moderate' | 'challenging';
   difficulty_applicable: boolean;
   status: HostOutingStatus;
+  visibility: 'public' | 'unlisted' | 'private' | 'community';
   starts_at: string;
   ends_at: string;
   city: string;
@@ -36,6 +38,13 @@ export type HostOuting = {
   spots_remaining: number | null;
   starting_price_cents: number;
   published_at: string | null;
+  hero_image_url: string | null;
+  hero_alt_text: string | null;
+  location_type: EventLocationType;
+  online_url: string | null;
+  organization_id: string | null;
+  platform_organization_id: string | null;
+  creation_key: string | null;
 };
 
 export type CreateHostOutingInput = {
@@ -47,18 +56,21 @@ export type CreateHostOutingInput = {
   difficultyApplicable?: boolean;
   startsAt: string;
   endsAt: string;
-  city: string;
-  state: string;
+  locationType?: EventLocationType;
+  city?: string;
+  state?: string;
   venueName?: string;
+  onlineUrl?: string;
   capacity?: number | null;
   meetingInstructions?: string;
   hostOrganizationId?: string | null;
   platformOrganizationId?: string | null;
+  creationKey?: string | null;
 };
 
 export type UpdateHostOutingInput = CreateHostOutingInput;
 
-const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,difficulty_applicable,status,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at';
+const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,difficulty_applicable,status,visibility,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at,hero_image_url,hero_alt_text,location_type,online_url,organization_id,platform_organization_id,creation_key';
 
 async function currentProfileId() {
   const { data } = await supabase.auth.getSession();
@@ -71,17 +83,39 @@ function validatedSchedule(startsAtValue: string, endsAtValue: string) {
   const startsAt = new Date(startsAtValue);
   const endsAt = new Date(endsAtValue);
   if (Number.isNaN(startsAt.valueOf()) || Number.isNaN(endsAt.valueOf())) throw new Error('Use valid start and end dates.');
-  if (endsAt <= startsAt) throw new Error('The outing must end after it starts.');
+  if (endsAt <= startsAt) throw new Error('The event must end after it starts.');
   return { startsAt, endsAt };
 }
 
+function normalizedLocation(input: UpdateHostOutingInput) {
+  const locationType = input.locationType ?? 'physical';
+  const city = input.city?.trim() ?? '';
+  const state = input.state?.trim().toUpperCase() ?? '';
+  const onlineUrl = input.onlineUrl?.trim() ?? '';
+
+  if ((locationType === 'physical' || locationType === 'hybrid') && (!city || !state)) {
+    throw new Error('Add the city and state.');
+  }
+  if ((locationType === 'online' || locationType === 'hybrid') && !onlineUrl) {
+    throw new Error('Add the online meeting or streaming link.');
+  }
+
+  return {
+    locationType,
+    city: city || (locationType === 'online' ? 'Online' : locationType === 'tbd' ? 'TBD' : ''),
+    state,
+    onlineUrl: onlineUrl || null,
+  };
+}
+
 function validateOutingInput(input: UpdateHostOutingInput) {
-  if (!input.title.trim()) throw new Error('Add an outing title.');
-  if (!input.summary.trim()) throw new Error('Add a short summary.');
-  if (!input.description.trim()) throw new Error('Add an outing description.');
-  if (!input.city.trim() || !input.state.trim()) throw new Error('Add the city and state.');
+  if (!input.title.trim()) throw new Error('Add an event title.');
+  if (!input.summary.trim()) throw new Error('Add a short description.');
+  if (!input.description.trim()) throw new Error('Add the event details.');
   if (input.capacity != null && (!Number.isInteger(input.capacity) || input.capacity < 1)) throw new Error('Capacity must be at least 1.');
-  return validatedSchedule(input.startsAt, input.endsAt);
+  const schedule = validatedSchedule(input.startsAt, input.endsAt);
+  const location = normalizedLocation(input);
+  return { ...schedule, ...location };
 }
 
 export async function getOutingHostAccess(): Promise<{
@@ -163,15 +197,39 @@ export async function listMyHostOutings(): Promise<HostOuting[]> {
   return (data ?? []) as HostOuting[];
 }
 
+export async function getHostOutingById(adventureId: string): Promise<HostOuting> {
+  const profileId = await currentProfileId();
+  const { data, error } = await supabase
+    .from('adventures')
+    .select(HOST_OUTING_SELECT)
+    .eq('id', adventureId)
+    .eq('created_by', profileId)
+    .single();
+  if (error) throw error;
+  return data as HostOuting;
+}
+
 export async function createDraftOuting(input: CreateHostOutingInput): Promise<HostOuting> {
   const profileId = await currentProfileId();
-  const { startsAt, endsAt } = validateOutingInput(input);
+  const { startsAt, endsAt, locationType, city, state, onlineUrl } = validateOutingInput(input);
+  const creationKey = input.creationKey?.trim() || null;
+
+  if (creationKey) {
+    const existing = await supabase
+      .from('adventures')
+      .select(HOST_OUTING_SELECT)
+      .eq('creation_key', creationKey)
+      .eq('created_by', profileId)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data) return existing.data as HostOuting;
+  }
 
   const slugBase = input.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 48) || 'outing';
+    .slice(0, 48) || 'event';
   const slug = `${slugBase}-${Date.now().toString(36)}`;
 
   const { data, error } = await supabase
@@ -187,9 +245,11 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
       status: 'draft',
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
-      city: input.city.trim(),
-      state: input.state.trim().toUpperCase(),
+      city,
+      state,
       venue_name: input.venueName?.trim() || null,
+      location_type: locationType,
+      online_url: onlineUrl,
       capacity: input.capacity ?? null,
       spots_remaining: input.capacity ?? null,
       meeting_instructions: input.meetingInstructions?.trim() || null,
@@ -197,19 +257,32 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
       is_featured: false,
       created_by: profileId,
       organization_id: input.hostOrganizationId ?? null,
+      creation_key: creationKey,
       ...(input.platformOrganizationId ? { platform_organization_id: input.platformOrganizationId } : {}),
     })
     .select(HOST_OUTING_SELECT)
     .single();
-  if (error) throw error;
+
+  if (error) {
+    if (creationKey && error.code === '23505') {
+      const recovered = await supabase
+        .from('adventures')
+        .select(HOST_OUTING_SELECT)
+        .eq('creation_key', creationKey)
+        .eq('created_by', profileId)
+        .single();
+      if (!recovered.error && recovered.data) return recovered.data as HostOuting;
+    }
+    throw error;
+  }
   return data as HostOuting;
 }
 
 export async function updateHostOuting(adventureId: string, input: UpdateHostOutingInput): Promise<HostOuting> {
-  const { startsAt, endsAt } = validateOutingInput(input);
+  const { startsAt, endsAt, locationType, city, state, onlineUrl } = validateOutingInput(input);
   const existing = (await listMyHostOutings()).find((item) => item.id === adventureId);
-  if (!existing) throw new Error('Outing not found.');
-  if (existing.status === 'cancelled' || existing.status === 'completed') throw new Error('Cancelled and completed outings cannot be edited.');
+  if (!existing) throw new Error('Event not found.');
+  if (existing.status === 'cancelled' || existing.status === 'completed') throw new Error('Cancelled and completed events cannot be edited.');
 
   const nextCapacity = input.capacity ?? null;
   const usedSpots = existing.capacity != null && existing.spots_remaining != null
@@ -228,9 +301,11 @@ export async function updateHostOuting(adventureId: string, input: UpdateHostOut
       difficulty_applicable: input.difficultyApplicable ?? existing.difficulty_applicable,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
-      city: input.city.trim(),
-      state: input.state.trim().toUpperCase(),
+      city,
+      state,
       venue_name: input.venueName?.trim() || null,
+      location_type: locationType,
+      online_url: onlineUrl,
       capacity: nextCapacity,
       spots_remaining: nextCapacity == null ? null : Math.max(nextCapacity - usedSpots, 0),
       meeting_instructions: input.meetingInstructions?.trim() || null,
