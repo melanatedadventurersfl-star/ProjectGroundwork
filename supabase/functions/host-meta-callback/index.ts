@@ -72,6 +72,16 @@ Deno.serve(async (req: Request) => {
   if (stateResult.error || !stateResult.data) return new Response("OAuth state is invalid.", { status: 400 });
   const oauthState = stateResult.data;
 
+  const organizationResult = await admin
+    .from("organizations")
+    .select("is_platform_default")
+    .eq("id", oauthState.organization_id)
+    .maybeSingle();
+  if (organizationResult.error || organizationResult.data?.is_platform_default !== true) {
+    await admin.from("host_meta_oauth_states").update({ consumed_at: new Date().toISOString() }).eq("id", oauthState.id);
+    return new Response("Meta connection is not available for this organization.", { status: 403 });
+  }
+
   if (oauthState.consumed_at || new Date(oauthState.expires_at).valueOf() < Date.now()) {
     return redirect(addResult(oauthState.return_url, { meta: "error", reason: "expired" }));
   }
