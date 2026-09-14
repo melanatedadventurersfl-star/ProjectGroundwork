@@ -5,6 +5,7 @@ const SAFETY_KEYS = [
   'ma.offlineSafety.breadcrumbs',
   'ma.offlineSafety.queue',
   'ma.offlineSafety.rosterSweep',
+  'ma.offlineSafety.hostFieldSnapshots',
 ] as const;
 
 function storage() {
