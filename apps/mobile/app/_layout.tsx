@@ -18,6 +18,7 @@ import {
   markGuidedTutorialFinished,
 } from '../src/onboarding/tutorialPreference';
 import { awardTutorialCompletionStamp } from '../src/onboarding/tutorialRewards';
+import { getOrganizationExperience } from '../src/platform/experience';
 import { listMyOrganizations } from '../src/platform/organizations';
 import { logStartupStage, StartupFailureView, StartupLoadingView } from '../src/reliability/startup';
 import { BackgroundUpdateManager } from '../src/updates/BackgroundUpdateManager';
@@ -150,10 +151,10 @@ function AppShell() {
     let active = true;
     setMemberSurfaceGate('checking');
     void listMyOrganizations()
-      .then((organizations) => {
+      .then(async (organizations) => {
         if (!active) return;
-        const hasGoMembership = organizations.some((organization) => organization.isPlatformDefault && organization.status === 'active');
-        if (hasGoMembership) {
+        const hasPlatformMembership = organizations.some((organization) => organization.isPlatformDefault && organization.status === 'active');
+        if (hasPlatformMembership) {
           setMemberSurfaceGate('allowed');
           return;
         }
@@ -161,7 +162,9 @@ function AppShell() {
         const tenantOrganization = organizations.find((organization) => !organization.isPlatformDefault && organization.status === 'active') ?? null;
         if (tenantOrganization) {
           setMemberSurfaceGate('redirecting');
-          router.replace(`/experience/${tenantOrganization.slug}` as never);
+          const experience = await getOrganizationExperience(tenantOrganization.id);
+          if (!active) return;
+          router.replace(`/experience/${experience?.publicSlug || tenantOrganization.slug}` as never);
           return;
         }
 
@@ -169,7 +172,7 @@ function AppShell() {
         router.replace('/account-status' as never);
       })
       .catch((error) => {
-        console.warn('[tenant-separation] Unable to verify Go Melanated membership', error);
+        console.warn('[tenant-separation] Unable to verify platform membership', error);
         if (!active) return;
         setMemberSurfaceGate('redirecting');
         router.replace('/account-status' as never);
