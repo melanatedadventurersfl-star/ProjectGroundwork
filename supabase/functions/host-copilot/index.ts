@@ -59,6 +59,15 @@ Deno.serve(async (req: Request) => {
     const { data: approved, error: accessError } = await userClient.rpc("is_approved_outing_host", { p_profile_id: userId });
     if (accessError || approved !== true) return json({ error: "Approved host access is required." }, 403);
 
+    const { data: organizations, error: organizationError } = await userClient.rpc("list_my_organizations");
+    if (organizationError) return json({ error: "Unable to verify the active organization." }, 403);
+    const activeOrganization = Array.isArray(organizations)
+      ? organizations.find((organization: any) => organization?.is_active === true)
+      : null;
+    if (!activeOrganization?.is_platform_default) {
+      return json({ error: "This legacy outing planner is not available for the active organization." }, 403);
+    }
+
     const body = await req.json();
     const prompt = String(body?.prompt ?? "").trim().slice(0, 2000);
     const city = String(body?.city ?? "").trim().slice(0, 100);
