@@ -26,6 +26,7 @@ export type HostOuting = {
   category: string;
   difficulty: 'easy' | 'moderate' | 'challenging';
   difficulty_applicable: boolean;
+  event_tags: string[];
   status: HostOutingStatus;
   visibility: 'public' | 'unlisted' | 'private' | 'community';
   starts_at: string;
@@ -70,7 +71,7 @@ export type CreateHostOutingInput = {
 
 export type UpdateHostOutingInput = CreateHostOutingInput;
 
-const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,difficulty_applicable,status,visibility,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at,hero_image_url,hero_alt_text,location_type,online_url,organization_id,platform_organization_id,creation_key';
+const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,difficulty_applicable,event_tags,status,visibility,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at,hero_image_url,hero_alt_text,location_type,online_url,organization_id,platform_organization_id,creation_key';
 
 async function currentProfileId() {
   const { data } = await supabase.auth.getSession();
