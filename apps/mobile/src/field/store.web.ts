@@ -30,6 +30,10 @@ export async function getHostFieldSnapshot(adventureId: string): Promise<HostFie
   return read()[adventureId] ?? null;
 }
 
+export async function listHostFieldSnapshots(): Promise<HostFieldSnapshot[]> {
+  return Object.values(read()).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+}
+
 export async function removeHostFieldSnapshot(adventureId: string) {
   const all = read();
   delete all[adventureId];
