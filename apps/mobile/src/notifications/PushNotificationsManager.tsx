@@ -4,6 +4,8 @@ import { router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
+import { startTrailPowerMonitor } from '../power/trailPower';
+import { refreshTripPrepRemindersForCurrentUser } from '../readiness/tripPrep';
 import { markNotificationRead, registerPushToken } from './api';
 
 Notifications.setNotificationHandler({
@@ -68,6 +70,10 @@ export function PushNotificationsManager({ enabled }: { enabled: boolean }) {
     void registerDeviceForPush().catch((error) => {
       console.warn('[push] Device registration failed', error);
     });
+    void refreshTripPrepRemindersForCurrentUser().catch((error) => {
+      console.warn('[trip-prep] Unable to refresh offline prep reminders', error);
+    });
+    const stopTrailPowerMonitor = startTrailPowerMonitor();
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(openNotificationResponse);
 
@@ -78,6 +84,7 @@ export function PushNotificationsManager({ enabled }: { enabled: boolean }) {
     });
 
     return () => {
+      stopTrailPowerMonitor();
       responseSubscription.remove();
     };
   }, [enabled]);

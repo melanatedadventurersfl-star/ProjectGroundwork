@@ -91,4 +91,4 @@ jobs:
           EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
           EXPO_PUBLIC_BUILD_PROFILE: preview
           EXPO_PUBLIC_BUILD_SOURCE: github-actions-ios
-        run: npx eas-cli@latest build --platform ios --profile preview --non-interactive --clear-cache
+        run: npx eas-cli@latest build --platform ios --profile preview --non-interactive --refresh-ad-hoc-provisioning-profile --clear-cache

@@ -1,6 +1,7 @@
 import Ionicons from '@react-native-vector-icons/ionicons';
+import * as Location from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +27,7 @@ import {
   isOfflineMapConfigured,
 } from '../../src/maps/offlineMaps';
 import type { OfflineMapPack, OfflineMapProgress } from '../../src/maps/types';
+import { getTrailPowerSnapshot, setTrailPowerManualEnabled, subscribeTrailPower } from '../../src/power/trailPower';
 
 const RADIUS_OPTIONS = [
   { km: 3, label: 'Camp' },
@@ -76,6 +78,8 @@ export default function PreTripReadinessScreen() {
   const [radiusKm, setRadiusKm] = useState(8);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(Platform.OS === 'web');
+  const [trailPower, setTrailPower] = useState(getTrailPowerSnapshot());
 
   const mapsConfigured = isOfflineMapConfigured();
   const nativeMapsRequired = Platform.OS !== 'web';
@@ -83,10 +87,12 @@ export default function PreTripReadinessScreen() {
   const load = useCallback(async () => {
     if (!adventureId) return;
     try {
-      const [savedPack, savedMap] = await Promise.all([
+      const [savedPack, savedMap, locationPermission] = await Promise.all([
         getEventPack(adventureId),
         getOfflineMapPack(adventureId),
+        Platform.OS === 'web' ? Promise.resolve({ granted: true }) : Location.getForegroundPermissionsAsync(),
       ]);
+      setLocationPermissionGranted(Boolean(locationPermission.granted));
       setPack(savedPack);
       setMapPack(savedMap);
       if (savedMap?.radiusKm) setRadiusKm(savedMap.radiusKm);
@@ -105,11 +111,13 @@ export default function PreTripReadinessScreen() {
     void load();
   }, [load]));
 
+  useEffect(() => subscribeTrailPower(setTrailPower), []);
+
   const locationReady = adventure?.latitude != null && adventure.longitude != null;
   const eventPackReady = Boolean(pack);
   const eventPackFresh = Boolean(pack && !isEventPackStale(pack));
   const mapReady = !nativeMapsRequired || mapPack?.state === 'complete' || mapProgress?.state === 'complete';
-  const readyOffline = eventPackFresh && locationReady && mapReady;
+  const readyOffline = eventPackFresh && locationReady && mapReady && locationPermissionGranted;
 
   const checks = useMemo(() => [
     {
@@ -142,6 +150,24 @@ export default function PreTripReadinessScreen() {
       required: true,
     },
     {
+      icon: 'navigate-outline',
+      title: 'Location permission',
+      detail: locationPermissionGranted
+        ? 'Foreground location is available for Safety Mode and offline return guidance.'
+        : 'Enable foreground location before the trip so Safety Mode can record your route.',
+      ready: locationPermissionGranted,
+      required: true,
+    },
+    {
+      icon: 'battery-half-outline',
+      title: 'Battery',
+      detail: trailPower.batteryLevel >= 0
+        ? `${Math.round(trailPower.batteryLevel * 100)}% · ${trailPower.mode === 'critical' ? 'Trail Power Mode active' : trailPower.mode === 'trail_power' ? 'Trail Power Mode active' : trailPower.mode === 'suggested' ? 'Trail Power Mode recommended' : 'Normal power profile'}`
+        : 'Battery level is unavailable on this device.',
+      ready: trailPower.batteryLevel < 0 || trailPower.batteryLevel >= 0.30 || trailPower.mode === 'trail_power' || trailPower.mode === 'critical',
+      required: false,
+    },
+    {
       icon: 'calendar-outline',
       title: 'Schedule',
       detail: pack?.schedule.length
@@ -159,7 +185,10 @@ export default function PreTripReadinessScreen() {
       ready: Boolean(pack),
       required: false,
     },
-  ], [adventure, eventPackFresh, locationReady, mapPack, mapProgress, mapReady, mapsConfigured, nativeMapsRequired, pack]);
+  ], [adventure, eventPackFresh, locationPermissionGranted, locationReady, mapPack, mapProgress, mapReady, mapsConfigured, nativeMapsRequired, pack, trailPower]);
+
+  const requiredChecks = checks.filter((check) => check.required);
+  const requiredReadyCount = requiredChecks.filter((check) => check.ready).length;
 
   async function prepareOffline() {
     if (!adventureId) return;
@@ -242,8 +271,8 @@ export default function PreTripReadinessScreen() {
             <Text style={styles.heroTitle}>{adventure?.title ?? 'Adventure'}</Text>
             <Text style={styles.heroText}>
               {readyOffline
-                ? 'The essential trip data and map region are ready if service drops.'
-                : 'Download the essentials while you still have a reliable connection.'}
+                ? `${requiredReadyCount} of ${requiredChecks.length} essentials ready for offline use.`
+                : `${requiredReadyCount} of ${requiredChecks.length} essentials ready. Finish the remaining items before signal gets weak.`}
             </Text>
           </View>
         </View>
@@ -300,6 +329,15 @@ export default function PreTripReadinessScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <View style={styles.card}>
+          <Text style={styles.cardEyebrow}>TRAIL POWER MODE</Text>
+          <Text style={styles.cardTitle}>{trailPower.mode === 'critical' ? 'Battery protection is active' : trailPower.manualEnabled || trailPower.lowPowerMode ? 'Reduced-power field profile' : 'Automatic battery protection'}</Text>
+          <Text style={styles.subtle}>At 30% the app recommends Trail Power Mode. At 15% it automatically reduces foreground breadcrumb sampling. Safety controls remain available.</Text>
+          <Pressable style={styles.textButton} onPress={() => setTrailPowerManualEnabled(!trailPower.manualEnabled)}>
+            <Text style={styles.textButtonText}>{trailPower.manualEnabled ? 'Use automatic power mode' : 'Turn on Trail Power Mode'}</Text>
+          </Pressable>
+        </View>
 
         <Pressable disabled={busy} style={styles.primaryButton} onPress={() => void prepareOffline()}>
           {busy ? <ActivityIndicator color="#10231C" /> : <Ionicons name="download-outline" size={20} color="#10231C" />}
