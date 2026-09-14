@@ -178,6 +178,16 @@ export default function ManageHostOutingScreen() {
           </Pressable>
         </View>
 
+        {!isClosed ? (
+          <Pressable style={styles.arrivalButton} onPress={() => router.push(`/arrival/${outing.id}` as never)}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.arrivalTitle}>Arrival Mode</Text>
+              <Text style={styles.arrivalMeta}>Scan QR tickets, search attendees, and keep checking people in when service drops.</Text>
+            </View>
+            <Text style={styles.arrivalArrow}>›</Text>
+          </Pressable>
+        ) : null}
+
         {outing.status === 'draft' || outing.status === 'scheduled' ? (
           <View style={styles.launchCard}>
             <Text style={styles.cardEyebrow}>READY TO LAUNCH?</Text>
@@ -198,10 +208,10 @@ export default function ManageHostOutingScreen() {
         ))}
 
         {!isClosed ? <>
-          <Text style={styles.sectionTitle}>Check-in</Text>
+          <Text style={styles.sectionTitle}>Online quick check-in</Text>
           <View style={styles.checkinCard}>
             <Text style={styles.cardTitleSmall}>Enter a ticket credential</Text>
-            <Text style={styles.cardMeta}>The database verifies that the credential belongs to one of your outings before marking attendance.</Text>
+            <Text style={styles.cardMeta}>This online shortcut verifies a credential immediately. Use Arrival Mode for QR scanning, offline check-in, manual lookup, and duplicate reconciliation.</Text>
             <TextInput value={credential} onChangeText={setCredential} autoCapitalize="none" placeholder="Credential code" placeholderTextColor="#69756D" style={styles.input} />
             <Pressable disabled={working || !credential.trim()} style={[styles.secondary, (!credential.trim() || working) && styles.disabled]} onPress={() => void manualCheckIn()}><Text style={styles.secondaryText}>Check In Attendee</Text></Pressable>
           </View>
@@ -266,6 +276,10 @@ const styles = StyleSheet.create({
   toolCard: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', padding: 13 },
   toolTitle: { color: '#FFF8E8', fontSize: 13, fontWeight: '900' },
   toolMeta: { color: '#87928B', fontSize: 10, lineHeight: 14, marginTop: 4 },
+  arrivalButton: { minHeight: 70, borderRadius: 15, borderWidth: 1, borderColor: '#45705F', backgroundColor: '#15271F', padding: 14, marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  arrivalTitle: { color: '#A8E0CB', fontSize: 15, fontWeight: '900' },
+  arrivalMeta: { color: '#9FB0A8', fontSize: 10, lineHeight: 15, marginTop: 3 },
+  arrivalArrow: { color: '#D7B45A', fontSize: 28, fontWeight: '700' },
   launchCard: { borderRadius: 18, backgroundColor: '#443615', borderWidth: 1, borderColor: '#7E6324', padding: 17, marginTop: 17 },
   cardEyebrow: { color: '#E7C464', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   cardTitle: { color: '#FFF5DA', fontSize: 20, lineHeight: 26, fontWeight: '900', marginTop: 5 },
