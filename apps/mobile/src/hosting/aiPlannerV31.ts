@@ -10,7 +10,7 @@ import {
   type AiPlannerV3Turn,
   type V3PlanState,
 } from './aiPlannerV3';
-import type { AiPlannerSection, AiPlannerTenantContext } from './aiPlannerTenant';
+import { PLANNER_SECTION_LABELS, type AiPlannerSection, type AiPlannerTenantContext } from './aiPlannerTenant';
 import type { VenueCandidate } from './venueDiscovery';
 
 export { compactSectionOrder, getWorkspaceProgress, isPlanningDraftReady, reviewPlannerV3State, stageLabel };
@@ -28,6 +28,13 @@ type V31Input = {
   venueCandidate?: VenueCandidate | null;
 };
 
+type ContextualPlan = V3PlanState & {
+  components: string[];
+  requirements: string[];
+  safetyNotes: string[];
+  sectionNotes?: Partial<Record<AiPlannerSection, string[]>>;
+};
+
 const NUMBER_WORDS: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
   eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
@@ -39,6 +46,9 @@ const STATE_NAMES: Record<string, string> = {
 };
 
 const KNOWN_CATEGORY_TERMS = /\b(networking|networker|mixer|workshop|class|seminar|conference|summit|convention|fundraiser|fundraising|charity|gala|awards?|vendor market|vendor fair|marketplace|pop[- ]?up|employee|team|staff|private party|birthday|anniversary|celebration|hybrid|virtual|online|zoom|outdoor|camp|hike|kayak|paddle|beach|bike ride|nature walk)\b/i;
+const VENUE_REFINEMENTS = new Set(['search again', 'more affordable', 'downtown', 'parking important', 'more upscale', 'near airport', 'private room', 'larger space', 'accessibility important']);
+const CONTEXT_CONTROLS = new Set(['keep planning', 'review plan', 'not decided', 'not sure yet', 'leave open', 'skip for now', 'recommend for me']);
+const CONTEXT_SECTIONS = new Set<AiPlannerSection>(['guests', 'staffing', 'vendors', 'communications', 'marketing', 'finance', 'safety', 'documents']);
 
 function titleCase(value: string) {
   return value.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -165,14 +175,91 @@ function stateOnlyTurn(planInput: V3PlanState, state: string, tenant: AiPlannerT
   };
 }
 
+function isExplicitGlobalInterrupt(message: string) {
+  return /\b(actually|instead|change|switch|make it|move it|attendance|attendees|guests expected|event date|start time|end time|free|paid|ticket price|public|private|virtual|hybrid)\b/i.test(message)
+    || /\$\s*\d/.test(message)
+    || /\b\d{1,5}\s+(?:people|attendees|guests|participants)\b/i.test(message);
+}
+
+function contextualSectionTurn(section: AiPlannerSection, message: string, source: V3PlanState, tenant: AiPlannerTenantContext): AiPlannerV3Turn | null {
+  const trimmed = message.trim();
+  const normalized = trimmed.toLowerCase();
+  if (!trimmed || !CONTEXT_SECTIONS.has(section) || CONTEXT_CONTROLS.has(normalized) || isExplicitGlobalInterrupt(trimmed)) return null;
+
+  const plan: ContextualPlan = {
+    ...source,
+    components: [...(source.components ?? [])],
+    requirements: [...(source.requirements ?? [])],
+    safetyNotes: [...(source.safetyNotes ?? [])],
+    fieldStates: { ...(source.fieldStates ?? {}) },
+    sectionNotes: { ...((source as ContextualPlan).sectionNotes ?? {}) },
+  };
+  const currentNotes = [...(plan.sectionNotes?.[section] ?? [])];
+  plan.sectionNotes = { ...(plan.sectionNotes ?? {}), [section]: [...currentNotes, trimmed].slice(-12) };
+  plan.fieldStates = {
+    ...(plan.fieldStates ?? {}),
+    [section]: { status: 'confirmed', value: trimmed, updatedAt: new Date().toISOString() },
+  };
+
+  if (section === 'guests') plan.meetingInstructions = [plan.meetingInstructions, trimmed].filter(Boolean).join('\n');
+  if (section === 'staffing' && !plan.components.includes('team')) plan.components.push('team');
+  if (section === 'vendors' && !plan.components.includes('vendors')) plan.components.push('vendors');
+  if (section === 'communications' && !plan.components.includes('communications')) plan.components.push('communications');
+  if (section === 'marketing' && !plan.components.includes('marketing')) plan.components.push('marketing');
+  if (section === 'finance' && !plan.components.includes('finance')) plan.components.push('finance');
+  if (section === 'safety') {
+    if (!plan.components.includes('safety')) plan.components.push('safety');
+    plan.safetyNotes = [...plan.safetyNotes, trimmed].slice(-12);
+  }
+  if (section === 'documents') {
+    const marker = '__planner_recommended_documents__';
+    if (!plan.requirements.includes(marker)) plan.requirements.push(marker);
+  }
+
+  const reviewed = reviewPlannerV3State(plan, tenant);
+  const label = PLANNER_SECTION_LABELS[section];
+  let response = `${label} updated. I kept that detail with this section.`;
+  if (section === 'marketing') {
+    const channel = trimmed.replace(/^(through|via|on)\s+/i, '').trim();
+    response = `${channel ? titleCase(channel) : 'That channel'} is added to the marketing plan. We can build the campaign around it or keep planning.`;
+  } else if (section === 'communications') {
+    response = 'That is added to the communications plan. We can turn it into a message schedule when you are ready.';
+  } else if (section === 'staffing') {
+    response = 'That is added to Staffing. I will keep it separate from the event attendance count.';
+  } else if (section === 'guests') {
+    response = 'Guest instructions updated. I will use that for arrival and attendee guidance.';
+  }
+
+  return {
+    ...reviewed,
+    plan,
+    message: response,
+    activeSection: section,
+    options: ['Keep planning', 'Review plan'],
+    changedFields: [label],
+    systemMessages: [`Updated: ${label.toLowerCase()}`],
+  };
+}
+
 export async function runAiPlannerV31Turn(input: V31Input): Promise<AiPlannerV3Turn> {
   const normalizedMessage = normalizeAttendanceWords(input.message);
   const plan = inferFreeformIdentity(normalizedMessage, input.plan as V3PlanState, input.tenant);
+  const normalized = normalizedMessage.trim().toLowerCase();
+
+  if (input.section === 'venue' && VENUE_REFINEMENTS.has(normalized)) {
+    const turn = await runAiPlannerV3Turn({ ...input, message: normalizedMessage, plan, section: 'venue', action: 'venue_search_more' });
+    return humanizeConfirmation(replacePersistenceClaims(turn));
+  }
 
   if (input.section === 'venue' && !plan.state) {
     const state = normalizeState(normalizedMessage);
     if (plan.city && state) return stateOnlyTurn(plan, normalizedMessage, input.tenant);
     if (!state && isSimpleAreaAnswer(normalizedMessage)) return cityOnlyTurn(plan, normalizedMessage, input.tenant);
+  }
+
+  if (input.section && !input.action) {
+    const contextual = contextualSectionTurn(input.section, normalizedMessage, plan, input.tenant);
+    if (contextual) return contextual;
   }
 
   const turn = await runAiPlannerV3Turn({ ...input, message: normalizedMessage, plan });
