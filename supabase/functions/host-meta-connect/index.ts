@@ -11,12 +11,6 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: cors });
 }
 
-function bytesToBase64(bytes: Uint8Array) {
-  let value = "";
-  for (const byte of bytes) value += String.fromCharCode(byte);
-  return btoa(value);
-}
-
 function base64ToBytes(value: string) {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -26,7 +20,7 @@ function base64ToBytes(value: string) {
 
 async function cryptoKey(secret: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
-  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["decrypt"]);
 }
 
 async function decryptToken(ciphertext: string, secret: string) {
@@ -250,6 +244,16 @@ Deno.serve(async (req: Request) => {
 
     const permission = await userClient.rpc("can_manage_host_organization", { p_organization_id: organizationId });
     if (permission.error || permission.data !== true) return json({ error: "Organization owner or admin access is required." }, 403);
+
+    const organizationResult = await admin
+      .from("organizations")
+      .select("is_platform_default")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if (organizationResult.error) throw organizationResult.error;
+    if (organizationResult.data?.is_platform_default !== true) {
+      return json({ error: "Meta connection is not available for this organization.", code: "TENANT_META_DISABLED" }, 403);
+    }
 
     const configured = Boolean(appId && graphVersion && tokenSecret && callbackUrl);
 

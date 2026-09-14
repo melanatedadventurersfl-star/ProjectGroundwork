@@ -33,8 +33,8 @@ export default function HostApplicationScreen() {
   async function submit() {
     if (!types.length) return Alert.alert('Choose an outing type', 'Select at least one kind of outing you want to host.');
     if (!homeArea.trim()) return Alert.alert('Add your area', 'Tell us where you expect to host most often.');
-    if (experience.trim().length < 20) return Alert.alert('Tell us a little more', 'Describe your group leadership or outdoor experience.');
-    if (motivation.trim().length < 20) return Alert.alert('Tell us why', 'Share why you want to host with Go Melanated.');
+    if (experience.trim().length < 20) return Alert.alert('Tell us a little more', 'Describe your group leadership or event experience.');
+    if (motivation.trim().length < 20) return Alert.alert('Tell us why', 'Share why you want to host for this organization.');
     if (!orientationAccepted || !safetyAccepted) return Alert.alert('Finish the Host Pathway', 'Complete the orientation and safety acknowledgements before submitting.');
 
     setSaving(true);
@@ -80,17 +80,17 @@ export default function HostApplicationScreen() {
         <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Host Hub</Text></Pressable>
         <Text style={styles.eyebrow}>HOST PATHWAY</Text>
         <Text style={styles.title}>Ready to lead an outing?</Text>
-        <Text style={styles.subtitle}>We keep approval lightweight, but we want every host to understand the responsibility that comes with bringing people together outdoors.</Text>
+        <Text style={styles.subtitle}>We keep approval lightweight, but we want every host to understand the responsibility that comes with bringing people together.</Text>
 
         <Section title="1 · Your hosting idea">
           <Text style={styles.label}>What would you like to host?</Text>
           <View style={styles.chips}>{outingOptions.map((item) => <Pressable key={item} onPress={() => toggleType(item)} style={[styles.chip, types.includes(item) && styles.chipActive]}><Text style={[styles.chipText, types.includes(item) && styles.chipTextActive]}>{item}</Text></Pressable>)}</View>
           <Field label="Where will you usually host?" value={homeArea} onChangeText={setHomeArea} placeholder="Tampa Bay, Jacksonville, Orlando…" />
-          <Field label="Group leadership / outdoor experience" value={experience} onChangeText={setExperience} placeholder="Tell us about groups you have led, outdoor experience, volunteering, clubs, or similar experience." multiline />
+          <Field label="Group leadership / event experience" value={experience} onChangeText={setExperience} placeholder="Tell us about groups you have led, event experience, volunteering, clubs, or similar experience." multiline />
           <Field label="Typical group size" value={groupSize} onChangeText={setGroupSize} placeholder="10–20 people" />
-          <Field label="Relevant certifications (optional)" value={certifications} onChangeText={setCertifications} placeholder="CPR, Wilderness First Aid, guide certifications…" />
-          <Field label="Why do you want to host with Go Melanated?" value={motivation} onChangeText={setMotivation} placeholder="What kind of experience do you want to create for the community?" multiline />
-          <Pressable onPress={() => setPaid((value) => !value)} style={[styles.choice, paid && styles.choiceActive]}><Text style={styles.choiceTitle}>{paid ? '✓ ' : ''}I may want to host paid outings</Text><Text style={styles.choiceText}>Paid hosting is reviewed separately and still requires payout onboarding before money can be collected.</Text></Pressable>
+          <Field label="Relevant certifications (optional)" value={certifications} onChangeText={setCertifications} placeholder="CPR, first aid, guide certifications…" />
+          <Field label="Why do you want to host for this organization?" value={motivation} onChangeText={setMotivation} placeholder="What kind of experience do you want to create?" multiline />
+          <Pressable onPress={() => setPaid((value) => !value)} style={[styles.choice, paid && styles.choiceActive]}><Text style={styles.choiceTitle}>{paid ? '✓ ' : ''}I may want to host paid events</Text><Text style={styles.choiceText}>Paid hosting is reviewed separately and still requires payout onboarding before money can be collected.</Text></Pressable>
         </Section>
 
         <Section title="2 · Host orientation">
@@ -99,12 +99,12 @@ export default function HostApplicationScreen() {
         </Section>
 
         <Section title="3 · Safety & community commitment">
-          <Text style={styles.commitment}>I will provide accurate outing information, communicate meaningful changes, stay within my experience, follow Go Melanated community standards, and understand that hosting privileges may be paused when safety or trust concerns require review.</Text>
+          <Text style={styles.commitment}>I will provide accurate event information, communicate meaningful changes, stay within my experience, follow my organization’s standards, and understand that hosting privileges may be paused when safety or trust concerns require review.</Text>
           <Pressable onPress={() => setSafetyAccepted((value) => !value)} style={[styles.ack, safetyAccepted && styles.ackActive]}><Text style={styles.ackTitle}>{safetyAccepted ? '✓ I agree' : 'I understand and agree'}</Text></Pressable>
         </Section>
 
         <Pressable disabled={saving} onPress={() => void submit()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Submitting…' : 'Submit Host Application'}</Text></Pressable>
-        <Text style={styles.micro}>Approval unlocks free community outings first. Paid-outing permission remains a separate trust and payout decision.</Text>
+        <Text style={styles.micro}>Approval unlocks standard hosting tools first. Paid-event permission remains a separate trust and payout decision.</Text>
       </ScrollView>
     </SafeAreaView>
   );

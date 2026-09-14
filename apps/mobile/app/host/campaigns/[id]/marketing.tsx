@@ -15,7 +15,6 @@ import {
   type CampaignMarketingStatus,
 } from '../../../../src/hosting/campaignMarketing';
 import {
-  DISTRIBUTION_PROVIDERS,
   getEventDistributionState,
   isProviderConnected,
   publishEventToGoMelanated,
@@ -63,7 +62,7 @@ export default function CampaignMarketingScreen() {
   const [newCopy, setNewCopy] = useState('');
   const [newDate, setNewDate] = useState('');
   const [newType, setNewType] = useState<CampaignMarketingContentType>('post');
-  const [newPlatforms, setNewPlatforms] = useState<CampaignMarketingPlatform[]>(['go_melanated']);
+  const [newPlatforms, setNewPlatforms] = useState<CampaignMarketingPlatform[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,12 +90,22 @@ export default function CampaignMarketingScreen() {
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
+  const nativePlatformAvailable = distribution?.nativePlatformAvailable === true;
+  const availablePlatforms = useMemo(
+    () => nativePlatformAvailable ? selectablePlatforms : selectablePlatforms.filter((platform) => platform !== 'go_melanated'),
+    [nativePlatformAvailable],
+  );
+  const filterOptions = useMemo<MarketingFilter[]>(
+    () => nativePlatformAvailable ? ['all', 'go_melanated', 'social', 'email'] : ['all', 'social', 'email'],
+    [nativePlatformAvailable],
+  );
+
   const filteredItems = useMemo(() => items.filter((item) => {
     if (filter === 'email') return item.contentType === 'email' || item.platforms.includes('email');
-    if (filter === 'go_melanated') return item.platforms.includes('go_melanated');
+    if (filter === 'go_melanated') return nativePlatformAvailable && item.platforms.includes('go_melanated');
     if (filter === 'social') return item.platforms.some((platform) => ['facebook', 'instagram'].includes(platform));
     return true;
-  }), [filter, items]);
+  }), [filter, items, nativePlatformAvailable]);
 
   const groups = useMemo(() => {
     const byDate = new Map<string, CampaignMarketingItem[]>();
@@ -108,17 +117,21 @@ export default function CampaignMarketingScreen() {
   const ready = items.filter((item) => item.status === 'ready').length;
   const published = items.filter((item) => item.status === 'published').length;
   const externalConnections = distribution?.connections.filter((connection) => connection.provider !== 'go_melanated' && connection.status === 'connected').length ?? 0;
-  const goMelanatedConnected = distribution ? isProviderConnected(distribution, 'go_melanated') : false;
+  const goMelanatedConnected = nativePlatformAvailable && distribution ? isProviderConnected(distribution, 'go_melanated') : false;
   const eventLive = distribution ? ['published', 'sold_out', 'scheduled'].includes(distribution.adventureStatus) : false;
 
   function togglePlatform(platform: CampaignMarketingPlatform, current: CampaignMarketingPlatform[], setCurrent: (value: CampaignMarketingPlatform[]) => void) {
     setCurrent(current.includes(platform) ? current.filter((value) => value !== platform) : [...current, platform]);
   }
 
+  function visiblePlatforms(platforms: CampaignMarketingPlatform[]) {
+    return nativePlatformAvailable ? platforms : platforms.filter((platform) => platform !== 'go_melanated');
+  }
+
   function openItem(item: CampaignMarketingItem) {
     setSelectedItem(item);
     setSelectedCopy(item.copyText ?? '');
-    setSelectedPlatforms(item.platforms.length ? item.platforms : ['go_melanated']);
+    setSelectedPlatforms(visiblePlatforms(item.platforms));
     setSuccess('');
   }
 
@@ -137,14 +150,14 @@ export default function CampaignMarketingScreen() {
         title: newTitle,
         plannedFor: newDate,
         contentType: newType,
-        platforms: newPlatforms,
+        platforms: visiblePlatforms(newPlatforms),
         copyText: newCopy,
       });
       setNewTitle('');
       setNewCopy('');
       setNewDate('');
       setNewType('post');
-      setNewPlatforms(['go_melanated']);
+      setNewPlatforms([]);
       setComposerOpen(false);
       await load();
     } catch (caught) {
@@ -164,10 +177,11 @@ export default function CampaignMarketingScreen() {
     setError('');
     setSuccess('');
     try {
-      await updateCampaignMarketingDraft(selectedItem.id, { copyText: selectedCopy, platforms: selectedPlatforms });
+      const platforms = visiblePlatforms(selectedPlatforms);
+      await updateCampaignMarketingDraft(selectedItem.id, { copyText: selectedCopy, platforms });
       setSuccess('Draft updated.');
       await load();
-      setSelectedItem((current) => current ? { ...current, copyText: selectedCopy, platforms: selectedPlatforms } : null);
+      setSelectedItem((current) => current ? { ...current, copyText: selectedCopy, platforms } : null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to update this item.');
     } finally {
@@ -191,7 +205,7 @@ export default function CampaignMarketingScreen() {
   }
 
   async function publishSelectedToGoMelanated() {
-    if (!selectedItem) return;
+    if (!selectedItem || !nativePlatformAvailable) return;
     setSavingId(selectedItem.id);
     setError('');
     setSuccess('');
@@ -206,14 +220,14 @@ export default function CampaignMarketingScreen() {
       setSelectedItem(null);
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to publish to Go Melanated.');
+      setError(caught instanceof Error ? caught.message : 'Unable to publish to the native destination.');
     } finally {
       setSavingId(null);
     }
   }
 
   async function publishEvent() {
-    if (!campaign) return;
+    if (!campaign || !nativePlatformAvailable) return;
     setSavingId('event-publish');
     setError('');
     setSuccess('');
@@ -222,7 +236,7 @@ export default function CampaignMarketingScreen() {
       setSuccess('Event published to Go Melanated.');
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to publish the event to Go Melanated.');
+      setError(caught instanceof Error ? caught.message : 'Unable to publish the event to the native destination.');
     } finally {
       setSavingId(null);
     }
@@ -244,17 +258,17 @@ export default function CampaignMarketingScreen() {
         <Text style={styles.title}>Marketing</Text>
         <Text style={styles.subtitle}>{campaign.shortTitle}</Text>
 
-        <View style={styles.connectionStrip}>
+        {nativePlatformAvailable ? <View style={styles.connectionStrip}>
           <View style={styles.connectionMark}><Text style={styles.connectionMarkText}>GM</Text></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.connectionTitle}>Go Melanated</Text>
             <Text style={styles.connectionCopy}>{goMelanatedConnected ? 'Native connection active' : 'Native connection is being prepared'} · {eventLive ? 'Event live' : 'Event draft'}</Text>
           </View>
           {!eventLive && campaign.canManage ? <Pressable disabled={savingId === 'event-publish'} style={styles.publishEventButton} onPress={() => void publishEvent()}>{savingId === 'event-publish' ? <ActivityIndicator size="small" color="#151B16" /> : <Text style={styles.publishEventText}>Publish event</Text>}</Pressable> : <Text style={styles.liveLabel}>{eventLive ? 'LIVE' : ''}</Text>}
-        </View>
+        </View> : null}
 
-        <Pressable style={styles.appsStrip} onPress={() => router.push('/host/connections' as never)}>
-          <View style={{ flex: 1 }}><Text style={styles.appsTitle}>Connections & Apps</Text><Text style={styles.appsCopy}>{externalConnections} external channel{externalConnections === 1 ? '' : 's'} connected · Future apps use the same destination model</Text></View>
+        <Pressable style={[styles.appsStrip, !nativePlatformAvailable && styles.appsStripFirst]} onPress={() => router.push('/host/connections' as never)}>
+          <View style={{ flex: 1 }}><Text style={styles.appsTitle}>Connections & Apps</Text><Text style={styles.appsCopy}>{externalConnections} external channel{externalConnections === 1 ? '' : 's'} connected · Manage publishing destinations and integrations</Text></View>
           <Text style={styles.connectionAction}>Manage →</Text>
         </Pressable>
 
@@ -270,13 +284,13 @@ export default function CampaignMarketingScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Content calendar</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-            {(['all', 'go_melanated', 'social', 'email'] as MarketingFilter[]).map((value) => <Pressable key={value} style={[styles.filterChip, filter === value && styles.filterChipActive]} onPress={() => setFilter(value)}><Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{value === 'go_melanated' ? 'Go Melanated' : capitalize(value)}</Text></Pressable>)}
+            {filterOptions.map((value) => <Pressable key={value} style={[styles.filterChip, filter === value && styles.filterChipActive]} onPress={() => setFilter(value)}><Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{value === 'go_melanated' ? 'Go Melanated' : capitalize(value)}</Text></Pressable>)}
           </ScrollView>
         </View>
 
         {groups.length === 0 ? <View style={styles.emptyCard}><Text style={styles.muted}>No marketing items in this view.</Text></View> : groups.map(([date, dayItems]) => <View key={date} style={styles.dayGroup}>
           <Text style={styles.dateLabel}>{formatDate(date)}</Text>
-          {dayItems.map((item) => <MarketingCard key={item.id} item={item} onPress={() => openItem(item)} />)}
+          {dayItems.map((item) => <MarketingCard key={item.id} item={item} nativePlatformAvailable={nativePlatformAvailable} onPress={() => openItem(item)} />)}
         </View>)}
       </ScrollView>
 
@@ -292,11 +306,11 @@ export default function CampaignMarketingScreen() {
           <Text style={styles.sheetLabel}>TYPE</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>{composerTypes.map((type) => <Pressable key={type.value} style={[styles.typeChip, newType === type.value && styles.typeChipActive]} onPress={() => setNewType(type.value)}><Text style={[styles.typeText, newType === type.value && styles.typeTextActive]}>{type.label}</Text></Pressable>)}</ScrollView>
           <Text style={styles.sheetLabel}>DESTINATIONS</Text>
-          <View style={styles.destinationGrid}>{selectablePlatforms.map((platform) => <DestinationChip key={platform} platform={platform} active={newPlatforms.includes(platform)} connected={platform === 'go_melanated' || Boolean(distribution && isProviderConnected(distribution, platform as DistributionProviderId))} onPress={() => togglePlatform(platform, newPlatforms, setNewPlatforms)} />)}</View>
+          <View style={styles.destinationGrid}>{availablePlatforms.map((platform) => <DestinationChip key={platform} platform={platform} active={newPlatforms.includes(platform)} connected={platform === 'go_melanated' ? nativePlatformAvailable : Boolean(distribution && isProviderConnected(distribution, platform as DistributionProviderId))} onPress={() => togglePlatform(platform, newPlatforms, setNewPlatforms)} />)}</View>
           <TextInput style={styles.input} value={newTitle} onChangeText={setNewTitle} placeholder="Internal title" placeholderTextColor="#68736C" />
           <TextInput style={[styles.input, styles.copyInput]} value={newCopy} onChangeText={setNewCopy} placeholder="What should members or followers see?" placeholderTextColor="#68736C" multiline />
           <TextInput style={styles.input} value={newDate} onChangeText={setNewDate} placeholder="YYYY-MM-DD" placeholderTextColor="#68736C" autoCapitalize="none" keyboardType="numbers-and-punctuation" />
-          <Text style={styles.helper}>Go Melanated can publish now. Other selected destinations stay planned until their provider connection supports publishing.</Text>
+          <Text style={styles.helper}>{nativePlatformAvailable ? 'Go Melanated can publish now. Other selected destinations stay planned until their provider connection supports publishing.' : 'Selected destinations stay planned until their connected provider supports publishing.'}</Text>
           <Pressable disabled={savingId === 'new'} style={styles.primary} onPress={() => void addItem()}>{savingId === 'new' ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Add to calendar</Text>}</Pressable>
         </Pressable>
       </Pressable>
@@ -308,14 +322,14 @@ export default function CampaignMarketingScreen() {
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>{selectedItem?.title}</Text>
           <Text style={styles.sheetSub}>{selectedItem ? `${formatDate(selectedItem.plannedFor)} · ${statusLabels[selectedItem.status]}` : ''}</Text>
-          {selectedItem?.status === 'published' ? <View style={styles.publishedBanner}><Text style={styles.publishedTitle}>Published</Text><Text style={styles.publishedBody}>This item has a recorded publication. Go Melanated publications create a real member-facing event update.</Text></View> : null}
+          {selectedItem?.status === 'published' ? <View style={styles.publishedBanner}><Text style={styles.publishedTitle}>Published</Text><Text style={styles.publishedBody}>{nativePlatformAvailable ? 'This item has a recorded publication. Native publications create a member-facing event update.' : 'This item has a recorded publication.'}</Text></View> : null}
           <Text style={styles.sheetLabel}>DESTINATIONS</Text>
-          <View style={styles.destinationGrid}>{selectablePlatforms.map((platform) => <DestinationChip key={platform} platform={platform} active={selectedPlatforms.includes(platform)} connected={platform === 'go_melanated' || Boolean(distribution && isProviderConnected(distribution, platform as DistributionProviderId))} onPress={() => togglePlatform(platform, selectedPlatforms, setSelectedPlatforms)} />)}</View>
+          <View style={styles.destinationGrid}>{availablePlatforms.map((platform) => <DestinationChip key={platform} platform={platform} active={selectedPlatforms.includes(platform)} connected={platform === 'go_melanated' ? nativePlatformAvailable : Boolean(distribution && isProviderConnected(distribution, platform as DistributionProviderId))} onPress={() => togglePlatform(platform, selectedPlatforms, setSelectedPlatforms)} />)}</View>
           <Text style={styles.sheetLabel}>COPY</Text>
           <TextInput style={[styles.input, styles.copyInput]} value={selectedCopy} onChangeText={setSelectedCopy} placeholder="Add the post or message copy" placeholderTextColor="#68736C" multiline />
           {campaign.canManage ? <Pressable disabled={!selectedItem || savingId === selectedItem?.id} style={styles.secondaryButton} onPress={() => void saveSelectedDraft()}><Text style={styles.secondaryButtonText}>Save destinations & copy</Text></Pressable> : null}
-          {campaign.canManage && selectedItem && selectedItem.status !== 'published' ? <Pressable disabled={savingId === selectedItem.id} style={styles.gmPublishButton} onPress={() => void publishSelectedToGoMelanated()}>{savingId === selectedItem.id ? <ActivityIndicator color="#151B16" /> : <Text style={styles.gmPublishText}>Publish to Go Melanated</Text>}</Pressable> : null}
-          {selectedItem?.status === 'published' ? <Pressable style={styles.secondaryButton} onPress={() => { setSelectedItem(null); router.push({ pathname: '/adventures/[id]', params: { id: campaign.adventureId } } as never); }}><Text style={styles.secondaryButtonText}>Open member event</Text></Pressable> : null}
+          {nativePlatformAvailable && campaign.canManage && selectedItem && selectedItem.status !== 'published' ? <Pressable disabled={savingId === selectedItem.id} style={styles.gmPublishButton} onPress={() => void publishSelectedToGoMelanated()}>{savingId === selectedItem.id ? <ActivityIndicator color="#151B16" /> : <Text style={styles.gmPublishText}>Publish to Go Melanated</Text>}</Pressable> : null}
+          {nativePlatformAvailable && selectedItem?.status === 'published' ? <Pressable style={styles.secondaryButton} onPress={() => { setSelectedItem(null); router.push({ pathname: '/adventures/[id]', params: { id: campaign.adventureId } } as never); }}><Text style={styles.secondaryButtonText}>Open member event</Text></Pressable> : null}
           {campaign.canManage && selectedItem?.status !== 'published' ? <><Text style={styles.sheetLabel}>WORKFLOW STATUS</Text>{manualStatuses.map((status) => <Pressable key={status} disabled={!selectedItem || savingId === selectedItem.id} style={styles.statusRow} onPress={() => selectedItem ? void changeStatus(selectedItem.id, status) : undefined}><Text style={styles.statusRowText}>{statusLabels[status]}</Text>{selectedItem?.status === status ? <Text style={styles.selected}>✓</Text> : null}</Pressable>)}</> : null}
         </Pressable>
       </Pressable>
@@ -323,12 +337,13 @@ export default function CampaignMarketingScreen() {
   </SafeAreaView>;
 }
 
-function MarketingCard({ item, onPress }: { item: CampaignMarketingItem; onPress: () => void }) {
+function MarketingCard({ item, nativePlatformAvailable, onPress }: { item: CampaignMarketingItem; nativePlatformAvailable: boolean; onPress: () => void }) {
+  const platforms = nativePlatformAvailable ? item.platforms : item.platforms.filter((platform) => platform !== 'go_melanated');
   return <Pressable style={styles.itemCard} onPress={onPress}>
     <View style={styles.itemTop}><Text style={[styles.status, item.status === 'published' && styles.statusPublished]}>{statusLabels[item.status].toUpperCase()}</Text><Text style={styles.type}>{item.contentType.replaceAll('_', ' ').toUpperCase()}</Text></View>
     <Text style={styles.itemTitle}>{item.title}</Text>
     {item.copyText ? <Text style={styles.copyPreview} numberOfLines={2}>{item.copyText}</Text> : null}
-    <Text style={styles.platforms}>{item.platforms.length ? item.platforms.map(platformLabel).join(' · ') : 'Destinations not selected'}</Text>
+    <Text style={styles.platforms}>{platforms.length ? platforms.map(platformLabel).join(' · ') : 'Destinations not selected'}</Text>
     {item.scheduledAt ? <Text style={styles.detail}>{new Date(item.scheduledAt).toLocaleString()}</Text> : null}
   </Pressable>;
 }
@@ -350,7 +365,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#0B100D' }, screen: { flex: 1 }, content: { padding: 20, paddingBottom: 118 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   back: { color: '#CBD4CE', fontWeight: '900', marginBottom: 14 }, eyebrow: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: 1 }, title: { color: '#FFF8E8', fontSize: 33, lineHeight: 39, fontWeight: '900', marginTop: 4 }, subtitle: { color: '#8D9891', fontSize: 13, marginTop: 5, marginBottom: 16 },
   connectionStrip: { minHeight: 72, borderRadius: 16, borderWidth: 1, borderColor: '#4B5835', backgroundColor: '#171E13', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }, connectionMark: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, connectionMarkText: { color: '#151B16', fontSize: 12, fontWeight: '900' }, connectionTitle: { color: '#FFF8E8', fontSize: 13, fontWeight: '900' }, connectionCopy: { color: '#8D9891', fontSize: 9.5, lineHeight: 13, marginTop: 3 }, publishEventButton: { minHeight: 34, paddingHorizontal: 11, borderRadius: 10, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, publishEventText: { color: '#151B16', fontSize: 9.5, fontWeight: '900' }, liveLabel: { color: '#A8D46B', fontSize: 9, fontWeight: '900' },
-  appsStrip: { minHeight: 59, marginTop: 8, borderRadius: 15, borderWidth: 1, borderColor: '#323D36', backgroundColor: '#141A16', paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }, appsTitle: { color: '#FFF8E8', fontSize: 12.5, fontWeight: '900' }, appsCopy: { color: '#76827B', fontSize: 9.5, marginTop: 3 }, connectionAction: { color: '#D7B45A', fontSize: 10.5, fontWeight: '900' },
+  appsStrip: { minHeight: 59, marginTop: 8, borderRadius: 15, borderWidth: 1, borderColor: '#323D36', backgroundColor: '#141A16', paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }, appsStripFirst: { marginTop: 0 }, appsTitle: { color: '#FFF8E8', fontSize: 12.5, fontWeight: '900' }, appsCopy: { color: '#76827B', fontSize: 9.5, marginTop: 3 }, connectionAction: { color: '#D7B45A', fontSize: 10.5, fontWeight: '900' },
   errorCard: { borderRadius: 12, borderWidth: 1, borderColor: '#684139', backgroundColor: '#211715', padding: 12, marginTop: 12 }, errorText: { color: '#D7A398', fontSize: 11, lineHeight: 17 }, successCard: { borderRadius: 12, borderWidth: 1, borderColor: '#405C38', backgroundColor: '#152116', padding: 12, marginTop: 12 }, successText: { color: '#AFCB9D', fontSize: 11, lineHeight: 17 },
   metrics: { flexDirection: 'row', gap: 8, marginTop: 13 }, metric: { flex: 1, borderRadius: 13, borderWidth: 1, borderColor: '#2B342E', backgroundColor: '#141A16', padding: 12 }, metricValue: { color: '#FFF8E8', fontSize: 21, fontWeight: '900' }, metricLabel: { color: '#7D8881', fontSize: 9, fontWeight: '900', marginTop: 3 },
   sectionHeader: { marginTop: 24, marginBottom: 12 }, sectionTitle: { color: '#D7B45A', fontSize: 10, fontWeight: '900', letterSpacing: .9, textTransform: 'uppercase', marginBottom: 9 }, filters: { gap: 7 }, filterChip: { borderRadius: 17, borderWidth: 1, borderColor: '#39433D', paddingHorizontal: 11, paddingVertical: 7 }, filterChipActive: { borderColor: '#D7B45A', backgroundColor: '#352D18' }, filterText: { color: '#8D9891', fontSize: 9.5, fontWeight: '900' }, filterTextActive: { color: '#E7C464' },

@@ -11,9 +11,19 @@ const buildNumber =
   process.env.GITHUB_RUN_NUMBER ||
   'local';
 
+function envValue(name) {
+  return process.env[name]?.trim() || null;
+}
+
+function requiredTenantEnv(name) {
+  const value = envValue(name);
+  if (!value) throw new Error(`${name} is required when EXPO_PUBLIC_TENANT_PUBLIC_SLUG is set.`);
+  return value;
+}
+
 function shareHost() {
   try {
-    const value = process.env.EXPO_PUBLIC_SHARE_BASE_URL?.trim();
+    const value = envValue('EXPO_PUBLIC_SHARE_BASE_URL');
     if (!value) return null;
     const url = new URL(value);
     return url.protocol === 'https:' ? url.host : null;
@@ -22,16 +32,58 @@ function shareHost() {
   }
 }
 
-const publicShareHost = shareHost();
-const webBaseUrl = process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim() || null;
+function tenantPlugins(appName) {
+  return (base.plugins || []).map((plugin) => {
+    const name = Array.isArray(plugin) ? plugin[0] : plugin;
+    if (name === 'expo-location') {
+      return ['expo-location', {
+        locationWhenInUsePermission: `Allow ${appName} to use your location for nearby and location-aware features.`,
+      }];
+    }
+    if (name === 'expo-contacts') {
+      return ['expo-contacts', {
+        contactsPermission: `Allow ${appName} to access contacts for features you choose.`,
+      }];
+    }
+    if (name === 'expo-image-picker') {
+      return ['expo-image-picker', {
+        photosPermission: `Allow ${appName} to add photos from your library.`,
+        cameraPermission: `Allow ${appName} to take photos.`,
+        microphonePermission: false,
+      }];
+    }
+    return plugin;
+  });
+}
 
-// The selected Go Melanated launcher artwork is a complete, finished icon.
-// Do not feed that same finished square into Android's adaptive foreground
-// layer, because launchers will scale/mask it a second time and can make the
-// artwork appear cropped, tiny, or visually replaced by the adaptive mask.
-// Android will instead use the canonical icon declared at android.icon.
+const tenantPublicSlug = envValue('EXPO_PUBLIC_TENANT_PUBLIC_SLUG');
+const publicShareHost = shareHost();
+const webBaseUrl = envValue('EXPO_PUBLIC_WEB_BASE_URL');
+
+const tenantIdentity = tenantPublicSlug
+  ? {
+      publicSlug: tenantPublicSlug,
+      name: requiredTenantEnv('EXPO_PUBLIC_TENANT_APP_NAME'),
+      slug: requiredTenantEnv('EXPO_PUBLIC_TENANT_APP_SLUG'),
+      scheme: requiredTenantEnv('EXPO_PUBLIC_TENANT_APP_SCHEME'),
+      iosBundleIdentifier: requiredTenantEnv('EXPO_PUBLIC_TENANT_IOS_BUNDLE_IDENTIFIER'),
+      androidPackage: requiredTenantEnv('EXPO_PUBLIC_TENANT_ANDROID_PACKAGE'),
+      icon: requiredTenantEnv('EXPO_PUBLIC_TENANT_APP_ICON'),
+      splashImage: requiredTenantEnv('EXPO_PUBLIC_TENANT_SPLASH_IMAGE'),
+      easProjectId: requiredTenantEnv('EXPO_PUBLIC_TENANT_EAS_PROJECT_ID'),
+      description: envValue('EXPO_PUBLIC_TENANT_APP_DESCRIPTION'),
+      assetRevision: envValue('EXPO_PUBLIC_TENANT_ASSET_REVISION') || `tenant-${tenantPublicSlug}-v1`,
+    }
+  : null;
+
 const android = {
   ...(base.android || {}),
+  ...(tenantIdentity
+    ? {
+        package: tenantIdentity.androidPackage,
+        icon: tenantIdentity.icon,
+      }
+    : {}),
   ...(publicShareHost
     ? {
         intentFilters: [
@@ -50,6 +102,7 @@ delete android.adaptiveIcon;
 
 const ios = {
   ...(base.ios || {}),
+  ...(tenantIdentity ? { bundleIdentifier: tenantIdentity.iosBundleIdentifier } : {}),
   ...(publicShareHost
     ? {
         associatedDomains: [
@@ -62,6 +115,24 @@ const ios = {
 
 module.exports = {
   ...base,
+  ...(tenantIdentity
+    ? {
+        name: tenantIdentity.name,
+        slug: tenantIdentity.slug,
+        description: tenantIdentity.description || `${tenantIdentity.name} organization app`,
+        scheme: tenantIdentity.scheme,
+        icon: tenantIdentity.icon,
+        splash: {
+          ...(base.splash || {}),
+          image: tenantIdentity.splashImage,
+        },
+        plugins: tenantPlugins(tenantIdentity.name),
+        updates: {
+          ...(base.updates || {}),
+          url: `https://u.expo.dev/${tenantIdentity.easProjectId}`,
+        },
+      }
+    : {}),
   android,
   ios,
   web: {
@@ -74,7 +145,18 @@ module.exports = {
   },
   extra: {
     ...base.extra,
-    nativeBuildAssetRevision: 'go-melanated-launcher-v15',
+    ...(tenantIdentity
+      ? {
+          tenantPublicSlug: tenantIdentity.publicSlug,
+          tenantAppName: tenantIdentity.name,
+          nativeBuildAssetRevision: tenantIdentity.assetRevision,
+          eas: { projectId: tenantIdentity.easProjectId },
+        }
+      : {
+          tenantPublicSlug: null,
+          tenantAppName: null,
+          nativeBuildAssetRevision: 'go-melanated-launcher-v15',
+        }),
     buildCommit,
     buildNumber,
     buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
