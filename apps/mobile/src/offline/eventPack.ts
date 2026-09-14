@@ -1,4 +1,5 @@
 import { getAdventure } from '../adventures/api';
+import { listHostMessages } from '../hosting/communications';
 import { supabase } from '../lib/supabase';
 import { getRoster, getSchedule } from '../operations/api';
 import { ensureSafetyOwner } from './safetyOwner';
@@ -7,7 +8,7 @@ import {
   removeEventPack as removeStoredEventPack,
   saveEventPack,
 } from './safetyStore';
-import type { OfflineAnnouncement, OfflineEventPack } from './safetyTypes';
+import type { OfflineAnnouncement, OfflineEventPack, OfflineHostMessage } from './safetyTypes';
 
 async function ensureCurrentOwner() {
   const { data, error } = await supabase.auth.getSession();
@@ -29,22 +30,36 @@ async function getAnnouncements(adventureId: string): Promise<OfflineAnnouncemen
   return (data ?? []).filter((item) => !item.expires_at || new Date(item.expires_at).getTime() > now) as OfflineAnnouncement[];
 }
 
+async function getMessages(adventureId: string): Promise<OfflineHostMessage[]> {
+  const rows = await listHostMessages(adventureId);
+  return rows.map((row) => ({
+    id: String(row.id),
+    audience: row.audience as OfflineHostMessage['audience'],
+    subject: String(row.subject),
+    body: String(row.body),
+    sent_at: String(row.sent_at),
+    delivery_status: 'sent',
+  }));
+}
+
 export async function downloadEventPack(adventureId: string): Promise<OfflineEventPack> {
   const profileId = await ensureCurrentOwner();
   if (!profileId) throw new Error('Sign in to download this event for offline use.');
 
   const adventure = await getAdventure(adventureId);
-  const [schedule, announcements, rosterResult] = await Promise.all([
+  const [schedule, announcements, messages, rosterResult] = await Promise.all([
     getSchedule(adventureId).catch(() => []),
     getAnnouncements(adventureId).catch(() => []),
+    getMessages(adventureId).catch(() => []),
     getRoster(adventureId).catch(() => []),
   ]);
   const roster = rosterResult.map((person) => ({ ...person, email: null }));
   const pack: OfflineEventPack = {
-    version: 1,
+    version: 2,
     adventure,
     schedule,
     announcements,
+    messages,
     roster,
     downloadedAt: new Date().toISOString(),
   };
