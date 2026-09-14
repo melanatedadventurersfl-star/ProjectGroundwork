@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/offline-ticketing-arrival
     paths:
       - 'apps/mobile/app.json'
       - 'apps/mobile/app.config.js'
