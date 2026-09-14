@@ -9,17 +9,13 @@ This directory is the implementation home for the Melanated Adventurers member a
 - TypeScript
 - Expo Router
 - Supabase
-- Stripe PaymentSheet
+- MapLibre React Native for native maps and offline regions
 
-## Bootstrap command
+## Native development build
 
-From the repository root:
+The mobile app includes native modules such as MapLibre. Use an Expo development build or EAS build for iOS and Android. Expo Go does not contain the required MapLibre native module.
 
-```bash
-npx create-expo-app@latest apps/mobile --template default@sdk-57
-```
-
-Because this README occupies the target directory, move it temporarily or create the Expo app in a temporary directory and copy the generated files into `apps/mobile`.
+Offline map regions also require `EXPO_PUBLIC_MAP_STYLE_URL` to point to a MapLibre-compatible style from a provider that permits offline region downloads.
 
 ## Required route groups
 
@@ -28,6 +24,8 @@ app/
   (auth)/
   (tabs)/
   adventures/
+  readiness/
+  safety/
   checkout/
   host/
   _layout.tsx

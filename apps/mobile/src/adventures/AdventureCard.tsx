@@ -29,12 +29,12 @@ export function AdventureCard({ adventure, onToggleSaved }: Props) {
         <View style={s.bottomRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Open offline and safety tools for ${adventure.title}`}
+            accessibilityLabel={`Open offline readiness and safety tools for ${adventure.title}`}
             hitSlop={6}
             style={s.safetyButton}
             onPress={(event) => {
               event.stopPropagation();
-              router.push({ pathname: '/safety/[adventureId]', params: { adventureId: adventure.id } });
+              router.push({ pathname: '/readiness/[adventureId]', params: { adventureId: adventure.id } });
             }}
           >
             <Text style={s.safetyText}>◇ Offline + Safety</Text>
