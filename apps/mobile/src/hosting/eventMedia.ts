@@ -1,8 +1,7 @@
 import { prepareLocalImage } from '../lib/imageUpload';
 import { supabase } from '../lib/supabase';
 
-const EVENT_MEDIA_BUCKET = 'adventure-photos';
-const EVENT_COVER_TTL_SECONDS = 60 * 60 * 24 * 365;
+const EVENT_MEDIA_BUCKET = 'event-media';
 
 async function currentProfileId() {
   const { data } = await supabase.auth.getSession();
@@ -28,18 +27,13 @@ export async function uploadEventCover(input: {
   });
   if (uploadError) throw uploadError;
 
-  const { data: signed, error: signedError } = await supabase.storage
-    .from(EVENT_MEDIA_BUCKET)
-    .createSignedUrl(path, EVENT_COVER_TTL_SECONDS);
-  if (signedError) {
-    await supabase.storage.from(EVENT_MEDIA_BUCKET).remove([path]).catch(() => undefined);
-    throw signedError;
-  }
+  const { data: publicUrl } = supabase.storage.from(EVENT_MEDIA_BUCKET).getPublicUrl(path);
+  const imageUrl = publicUrl.publicUrl;
 
   const { error: updateError } = await supabase
     .from('adventures')
     .update({
-      hero_image_url: signed.signedUrl,
+      hero_image_url: imageUrl,
       hero_alt_text: input.altText?.trim() || null,
     })
     .eq('id', input.adventureId)
@@ -50,5 +44,5 @@ export async function uploadEventCover(input: {
     throw updateError;
   }
 
-  return signed.signedUrl;
+  return imageUrl;
 }
