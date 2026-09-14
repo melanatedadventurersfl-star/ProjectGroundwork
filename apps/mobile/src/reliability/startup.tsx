@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,6 +18,11 @@ export type StartupStage =
   | 'first-screen';
 
 const BOOT_WATCHDOG_MS = 12000;
+
+function tenantAppName() {
+  const value = Constants.expoConfig?.extra?.tenantAppName;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
 
 export function logStartupStage(stage: StartupStage, details?: Record<string, unknown>) {
   const payload = {
@@ -64,12 +70,13 @@ export function useStartupWatchdog(ready: boolean, onTimeout: () => void, timeou
   }, [onTimeout, ready, timeoutMs]);
 }
 
-export function StartupLoadingView({ message = 'Getting the trail ready…' }: { message?: string }) {
+export function StartupLoadingView({ message }: { message?: string }) {
+  const tenantName = tenantAppName();
   return (
     <View style={styles.screen} testID="startup-loading-screen">
-      <Text style={styles.eyebrow}>GO MELANATED</Text>
+      <Text style={styles.eyebrow}>{(tenantName || 'Go Melanated').toUpperCase()}</Text>
       <Text style={styles.title}>Starting up</Text>
-      <Text style={styles.copy}>{message}</Text>
+      <Text style={styles.copy}>{message || (tenantName ? 'Starting your app…' : 'Getting the trail ready…')}</Text>
     </View>
   );
 }
@@ -81,12 +88,13 @@ export function StartupFailureView({
   error?: unknown;
   onRetry: () => void;
 }) {
+  const tenantName = tenantAppName();
   const diagnostic = error instanceof Error ? error.message : 'The app did not finish starting.';
 
   return (
     <View style={styles.screen} testID="startup-recovery-screen">
-      <Text style={styles.eyebrow}>GO MELANATED</Text>
-      <Text style={styles.title}>We hit a trail snag</Text>
+      <Text style={styles.eyebrow}>{(tenantName || 'Go Melanated').toUpperCase()}</Text>
+      <Text style={styles.title}>{tenantName ? 'Startup problem' : 'We hit a trail snag'}</Text>
       <Text style={styles.copy}>The app could not finish loading. Your account and data are still safe.</Text>
       <Pressable accessibilityRole="button" style={styles.button} onPress={onRetry}>
         <Text style={styles.buttonText}>Try again</Text>

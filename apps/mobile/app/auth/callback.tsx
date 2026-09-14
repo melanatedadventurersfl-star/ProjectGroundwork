@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -10,6 +11,11 @@ function getParams(url: string) {
   const normalized = url.replace('#', '?');
   const query = normalized.split('?')[1] ?? '';
   return new URLSearchParams(query);
+}
+
+function tenantPublicSlug() {
+  const value = Constants.expoConfig?.extra?.tenantPublicSlug;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 export default function AuthCallbackScreen() {
@@ -48,9 +54,11 @@ export default function AuthCallbackScreen() {
         if (!active) return;
         if (type === 'recovery' || url.includes('type=recovery')) {
           router.replace('/reset-password' as never);
-        } else {
-          router.replace('/(tabs)' as never);
+          return;
         }
+
+        const tenantSlug = tenantPublicSlug();
+        router.replace(tenantSlug ? `/experience/${tenantSlug}` as never : '/(tabs)' as never);
       } catch (caught) {
         if (!active) return;
         setMessage(getFriendlyAuthError(caught, 'This sign-in link could not be completed. Request a new link and try again.'));
@@ -69,7 +77,7 @@ export default function AuthCallbackScreen() {
     <SafeAreaView style={styles.screen}>
       <View style={styles.card}>
         <ActivityIndicator color="#D7B45A" size="large" />
-        <Text style={styles.eyebrow}>MELANATED</Text>
+        <Text style={styles.eyebrow}>ACCOUNT SECURITY</Text>
         <Text style={styles.title}>Securing your account</Text>
         <Text style={styles.body}>{message}</Text>
       </View>

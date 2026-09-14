@@ -11,7 +11,7 @@ type Key = keyof AiPrivacyPreferences;
 const rows: { key: Key; title: string; body: string }[] = [
   { key: 'personal_memory_enabled', title: 'Personal Memory', body: 'Remember planning preferences you explicitly allow, such as common event types, locations, attendance ranges and preferred setup patterns.' },
   { key: 'event_history_learning_enabled', title: 'Learn From Event History', body: 'Use your past event decisions to suggest future defaults. This stays off unless you enable it.' },
-  { key: 'organization_memory_enabled', title: 'Shared Organization Memory', body: 'Use approved Go Melanated operational knowledge that your account is already allowed to access.' },
+  { key: 'organization_memory_enabled', title: 'Shared Organization Memory', body: 'Use approved operational knowledge from your active organization that your account is already allowed to access.' },
   { key: 'save_conversations_enabled', title: 'Save AI Planning Conversations', body: 'Keep AI planning conversations so you can return to them later.' },
   { key: 'recommendation_history_enabled', title: 'Recommendation History', body: 'Remember which AI recommendations you accepted or changed so future planning can become more relevant.' },
   { key: 'product_analytics_enabled', title: 'Product Improvement Analytics', body: 'Share structured planning signals such as event type, feature use and planning completion. Raw AI conversation text is not required for this setting.' },

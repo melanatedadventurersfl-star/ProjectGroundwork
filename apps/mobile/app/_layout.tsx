@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { router, Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
@@ -30,6 +31,11 @@ import { WhatsNewModal } from '../src/updates/WhatsNewModal';
 export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
   console.error('[startup] Unhandled root render error', error);
   return <StartupFailureView error={error} onRetry={retry} />;
+}
+
+function configuredTenantSlug() {
+  const value = Constants.expoConfig?.extra?.tenantPublicSlug;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function isGuestPublicPath(pathname: string) {
@@ -76,16 +82,32 @@ function AppShell() {
   const activeUpdateKey = activeUpdateIdentity.updateId || activeUpdateIdentity.commit || 'embedded';
   const releaseSeenKey = `${currentReleaseNotes.id}:${activeUpdateKey}`;
 
+  const dedicatedTenantSlug = configuredTenantSlug();
+  const isDedicatedTenantApp = Boolean(dedicatedTenantSlug);
   const tenantExperienceMatch = pathname.match(/^\/experience\/([^/]+)/);
   const tenantExperienceSlug = tenantExperienceMatch?.[1] ?? null;
   const isTenantExperience = Boolean(tenantExperienceSlug);
+  const expectedTenantPrefix = dedicatedTenantSlug ? `/experience/${dedicatedTenantSlug}` : null;
+  const isExpectedTenantExperience = Boolean(
+    expectedTenantPrefix &&
+    (pathname === expectedTenantPrefix || pathname.startsWith(`${expectedTenantPrefix}/`)),
+  );
+  const isDedicatedTenantAllowedPath = !isDedicatedTenantApp ||
+    pathname === '/' ||
+    isExpectedTenantExperience ||
+    pathname.startsWith('/tenant-sign-in') ||
+    pathname.startsWith('/tenant-sign-up') ||
+    pathname.startsWith('/auth/callback') ||
+    pathname.startsWith('/reset-password');
+  const tenantBinaryRouteBlocked = isDedicatedTenantApp && !isDedicatedTenantAllowedPath;
+  const isTenantShell = isTenantExperience || isDedicatedTenantApp;
   const isHostCenter = pathname === '/host' || pathname.startsWith('/host/');
   const isVendorCenter = pathname === '/vendor' || pathname.startsWith('/vendor/');
   const isOperationsCenter = isHostCenter || isVendorCenter;
   const isOverwatch = pathname === '/overwatch' || pathname.startsWith('/overwatch/');
   const isAdminSurface = pathname.startsWith('/admin') || pathname.startsWith('/founder-tools');
   const isLegacyOrganizationPreview = pathname.startsWith('/organization-member-profile') || pathname.startsWith('/organization-business-preview') || pathname.startsWith('/organization-profile');
-  const isProtectedWorkspace = isOperationsCenter || isOverwatch || isTenantExperience;
+  const isProtectedWorkspace = isOperationsCenter || isOverwatch || isTenantShell;
   const isAuthScreen =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/auth/callback') ||
@@ -100,11 +122,18 @@ function AppShell() {
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
-  const isGoMemberSurface = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !isManagement && !isAdminSurface && !isLegacyOrganizationPreview;
+  const isGoMemberSurface = Boolean(session) && !isDedicatedTenantApp && !isAuthScreen && !isProtectedWorkspace && !isManagement && !isAdminSurface && !isLegacyOrganizationPreview;
   const memberGateLocked = isGoMemberSurface && memberSurfaceGate !== 'allowed';
   const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && (!tutorialGateReady || memberGateLocked);
   const hideBottomNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || keyboardVisible || tutorialGateLocked || tutorialVisible;
   const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+
+  useEffect(() => {
+    if (!isDedicatedTenantApp || !dedicatedTenantSlug || !tenantBinaryRouteBlocked || isLoading) return;
+    router.replace(session
+      ? `/experience/${encodeURIComponent(dedicatedTenantSlug)}` as never
+      : `/tenant-sign-in?slug=${encodeURIComponent(dedicatedTenantSlug)}` as never);
+  }, [dedicatedTenantSlug, isDedicatedTenantApp, isLoading, session, tenantBinaryRouteBlocked]);
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -125,7 +154,7 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (isLoading || session || isGuestPublicPath(pathname)) return;
+    if (isDedicatedTenantApp || isLoading || session || isGuestPublicPath(pathname)) return;
     if (tenantExperienceSlug) {
       router.replace(`/tenant-sign-in?slug=${encodeURIComponent(tenantExperienceSlug)}` as never);
       return;
@@ -139,7 +168,7 @@ function AppShell() {
       return;
     }
     router.replace('/(auth)/sign-in' as never);
-  }, [isHostCenter, isLoading, isVendorCenter, pathname, session, tenantExperienceSlug]);
+  }, [isDedicatedTenantApp, isHostCenter, isLoading, isVendorCenter, pathname, session, tenantExperienceSlug]);
 
   useEffect(() => {
     if (isLoading || !session?.user.id || !isGoMemberSurface) {
@@ -181,7 +210,7 @@ function AppShell() {
   }, [isGoMemberSurface, isLoading, session?.user.id]);
 
   useEffect(() => {
-    if (isLoading || !session?.user.id || pathname !== '/onboarding') return;
+    if (isDedicatedTenantApp || isLoading || !session?.user.id || pathname !== '/onboarding') return;
 
     let active = true;
     void supabase.rpc('is_platform_admin').then(({ data, error }) => {
@@ -196,7 +225,7 @@ function AppShell() {
     return () => {
       active = false;
     };
-  }, [isLoading, pathname, session?.user.id]);
+  }, [isDedicatedTenantApp, isLoading, pathname, session?.user.id]);
 
   useEffect(() => {
     const userId = session?.user.id ?? null;
@@ -244,11 +273,11 @@ function AppShell() {
   }, [isAuthScreen, isLoading, isProtectedWorkspace, memberGateLocked, releaseSeenKey, tutorialGateLocked, tutorialVisible]);
 
   useEffect(() => subscribeGuidedTutorial(() => {
-    if (pathname.startsWith('/experience/')) return;
+    if (isDedicatedTenantApp || pathname.startsWith('/experience/')) return;
     setWhatsNewVisible(false);
     setTutorialVisible(true);
     router.replace('/(tabs)' as never);
-  }), [pathname]);
+  }), [isDedicatedTenantApp, pathname]);
 
   function closeTutorial() {
     setTutorialVisible(false);
@@ -272,15 +301,17 @@ function AppShell() {
     setWhatsNewVisible(false);
   }
 
-  if (isLoading || memberGateLocked) return <StartupLoadingView message={memberGateLocked ? 'Opening your organization app…' : 'Restoring your session…'} />;
+  if (isLoading || memberGateLocked || tenantBinaryRouteBlocked) {
+    return <StartupLoadingView message={memberGateLocked || tenantBinaryRouteBlocked ? 'Opening your organization app…' : 'Restoring your session…'} />;
+  }
 
   return (
     <View style={styles.appShell} testID="app-shell">
-      {isTenantExperience ? null : <TrailheadProgressObserver />}
-      <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !isTenantExperience && !tutorialGateLocked && !tutorialVisible} />
+      {isTenantShell ? null : <TrailheadProgressObserver />}
+      <PushNotificationsManager enabled={Boolean(session) && !isAuthScreen && !isTenantShell && !tutorialGateLocked && !tutorialVisible} />
       <BackgroundUpdateManager disabled={tutorialVisible} />
       <OtaActivationGuard />
-      <View style={[styles.mainShell, desktopWeb && !isManagement && !isAuthScreen && !isOverwatch && !isTenantExperience && styles.desktopMainShell]}>
+      <View style={[styles.mainShell, desktopWeb && !isManagement && !isAuthScreen && !isOverwatch && !isTenantShell && styles.desktopMainShell]}>
         {hideTopNav ? null : <PersistentTopNav />}
         <KeyboardAvoidingView style={styles.stackArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} enabled>
           <StatusBar style="light" />
@@ -296,8 +327,8 @@ function AppShell() {
       </View>
       {hideBottomNav ? null : <PersistentBottomNav />}
       {session && !tutorialVisible && !isAuthScreen && !isProtectedWorkspace && !memberGateLocked ? <TrailheadTooltip /> : null}
-      {tutorialVisible && !isTenantExperience ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
-      {whatsNewVisible && !isTenantExperience ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
+      {tutorialVisible && !isTenantShell ? <GuidedTutorial visible onFinish={finishTutorial} onSkip={closeTutorialToHome} onNavigate={closeTutorial} /> : null}
+      {whatsNewVisible && !isTenantShell ? <WhatsNewModal visible release={currentReleaseNotes} onDismiss={dismissWhatsNew} /> : null}
     </View>
   );
 }

@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -5,7 +6,12 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../src/auth/AuthProvider';
 import { supabase } from '../src/lib/supabase';
 
-function BrandedLoadingScreen() {
+function configValue(key: string) {
+  const value = Constants.expoConfig?.extra?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function DefaultLoadingScreen() {
   return (
     <View style={styles.loadingScreen}>
       <View style={styles.mark}>
@@ -18,12 +24,33 @@ function BrandedLoadingScreen() {
   );
 }
 
+function TenantLoadingScreen({ appName }: { appName: string }) {
+  const initials = appName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'APP';
+  return (
+    <View style={styles.loadingScreen}>
+      <View style={styles.mark}>
+        <Text style={styles.markText}>{initials}</Text>
+      </View>
+      <Text style={styles.brand}>{appName.toUpperCase()}</Text>
+      <Text style={styles.tagline}>Opening your organization app…</Text>
+      <ActivityIndicator color="#D7B45A" style={styles.spinner} />
+    </View>
+  );
+}
+
 export default function IndexScreen() {
   const { session, isLoading } = useAuth();
   const [isCheckingProfile, setIsCheckingProfile] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const tenantPublicSlug = configValue('tenantPublicSlug');
+  const tenantAppName = configValue('tenantAppName') || 'Organization';
 
   useEffect(() => {
+    if (tenantPublicSlug) {
+      setIsCheckingProfile(false);
+      setHasCompletedOnboarding(false);
+      return;
+    }
     if (!session?.user.id) {
       setIsCheckingProfile(false);
       setHasCompletedOnboarding(false);
@@ -41,9 +68,15 @@ export default function IndexScreen() {
         setHasCompletedOnboarding(Boolean(data?.onboarding_completed_at));
         setIsCheckingProfile(false);
       });
-  }, [session?.user.id]);
+  }, [session?.user.id, tenantPublicSlug]);
 
-  if (isLoading || isCheckingProfile) return <BrandedLoadingScreen />;
+  if (tenantPublicSlug) {
+    if (isLoading) return <TenantLoadingScreen appName={tenantAppName} />;
+    if (!session) return <Redirect href={`/tenant-sign-in?slug=${encodeURIComponent(tenantPublicSlug)}` as never} />;
+    return <Redirect href={`/experience/${tenantPublicSlug}` as never} />;
+  }
+
+  if (isLoading || isCheckingProfile) return <DefaultLoadingScreen />;
   if (!session) return <Redirect href="/(tabs)" />;
   return <Redirect href={hasCompletedOnboarding ? '/(tabs)' : '/onboarding'} />;
 }
@@ -57,8 +90,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   mark: {
-    width: 126,
+    minWidth: 126,
     height: 106,
+    paddingHorizontal: 18,
     borderRadius: 28,
     borderWidth: 2,
     borderColor: '#D7B45A',
@@ -66,7 +100,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   markText: { color: '#FFF8E8', fontSize: 46, fontWeight: '900', letterSpacing: 3 },
-  brand: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.7, marginTop: 24, fontSize: 15 },
-  tagline: { color: '#C6CEC8', marginTop: 8, fontSize: 14 },
+  brand: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.7, marginTop: 24, fontSize: 15, textAlign: 'center' },
+  tagline: { color: '#C6CEC8', marginTop: 8, fontSize: 14, textAlign: 'center' },
   spinner: { marginTop: 30 },
 });

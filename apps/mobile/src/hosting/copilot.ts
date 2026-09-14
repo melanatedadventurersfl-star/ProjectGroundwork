@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getActiveOrganization } from '../platform/organizations';
 
 export type HostCopilotCommunityStop = {
   placeId: string;
@@ -36,6 +37,11 @@ export type HostCopilotResponse = {
 export async function generateHostCopilotPlan(input: { prompt: string; city?: string; state?: string }): Promise<HostCopilotResponse> {
   const prompt = input.prompt.trim();
   if (prompt.length < 10) throw new Error('Tell the copilot a little more about the outing you want to host.');
+
+  const organization = await getActiveOrganization();
+  if (!organization?.isPlatformDefault) {
+    throw new Error('This legacy outing planner is not available for the active organization.');
+  }
 
   const { data, error } = await supabase.functions.invoke('host-copilot', {
     body: {
