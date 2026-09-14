@@ -8,8 +8,14 @@ Offline safety storage is scoped to the currently signed-in profile. Safety sess
 
 Safety sync is deliberately narrow. V1 queues safety session state and explicit safety check-ins only. Normal RSVPs, saves, posts, uploads, payments, support requests, and other writes still require a connection unless their feature adds its own conflict-safe queue later.
 
-Power behavior is conservative. Foreground route recording uses balanced location accuracy, a 30-meter movement threshold, and a 60-second Android time interval while the Safety screen is active. It stops when that screen is no longer active. V1 does not depend on unrestricted background location execution.
+Power behavior is conservative. Foreground route recording uses balanced location accuracy, a 30-meter movement threshold, and a 60-second Android time interval while the Safety screen is active. It stops when that screen is no longer active. The safety flow does not depend on unrestricted background location execution.
 
-The offline route view is a breadcrumb recovery trace, not a downloaded street or trail basemap. It continues to provide coordinates plus distance and bearing to the saved safe point or event location without data service. Full offline map tiles remain a separate provider integration.
+Offline Maps + Readiness adds a native MapLibre map layer for iOS and Android. A member can prepare an Adventure before leaving service, refresh its event pack, select a 3 km, 8 km, or 15 km map area, and download the selected region for offline use. The app tracks the native pack ID, progress, resource count, downloaded size, and completion state in a local manifest. A partial or failed map download never counts as ready.
 
-Remote images and newly requested private signed media may still require a connection unless the device already has them in its image cache. Host roster data is downloaded only when existing server authorization allows it. Attendee email addresses are removed before local storage. The pack should be removed when it is no longer needed.
+The map style is configured through `EXPO_PUBLIC_MAP_STYLE_URL`. Production builds must point this at a MapLibre-compatible style from a provider that permits offline region downloads. No public tile service is hard-coded as a bulk-download source. Browser builds keep the readiness experience but do not attempt native offline map downloads.
+
+Trip Readiness checks the current offline event pack, map region, saved event coordinates, schedule, and host announcements. The required readiness state is based on a fresh event pack, usable event coordinates, and a completed native map pack on iOS and Android. Schedule and announcement counts are shown as useful context but do not block readiness.
+
+The breadcrumb recovery trace remains available in Adventure Safety Mode and complements the downloaded map. Full breadcrumb history stays local by default. Downloading a map does not enable continuous location tracking.
+
+Remote images and newly requested private signed media may still require a connection unless the device already has them in its image cache. Host roster data is downloaded only when existing server authorization allows it. Attendee email addresses are removed before local storage. The event pack should be removed when it is no longer needed.
