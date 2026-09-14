@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -17,9 +17,21 @@ const HOST_TYPES:Array<{key:HostType;label:string;copy:string}>=[
  {key:'other',label:'Other',copy:'Another kind of host'},
 ];
 
+function firstParam(value:string|string[]|undefined){return Array.isArray(value)?value[0]??'':value??''}
+function suggestedHostType(kind:string):HostType{
+ if(kind==='company'||kind==='brand')return 'business';
+ if(kind==='nonprofit')return 'nonprofit';
+ if(kind==='community')return 'community';
+ if(kind==='other')return 'other';
+ return 'organization';
+}
+
 export default function NewOrganizationHostProfileScreen(){
- const [name,setName]=useState('');
- const [hostType,setHostType]=useState<HostType>('business');
+ const params=useLocalSearchParams<{suggestedName?:string|string[];suggestedKind?:string|string[]}>();
+ const tenantName=firstParam(params.suggestedName);
+ const tenantKind=firstParam(params.suggestedKind);
+ const [name,setName]=useState(tenantName);
+ const [hostType,setHostType]=useState<HostType>(suggestedHostType(tenantKind));
  const [city,setCity]=useState('');
  const [state,setState]=useState('');
  const [saving,setSaving]=useState(false);
@@ -37,13 +49,13 @@ export default function NewOrganizationHostProfileScreen(){
 
  return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
   <Pressable onPress={()=>router.back()}><Text style={styles.back}>‹ Host profiles</Text></Pressable>
-  <Text style={styles.eyebrow}>NEW HOST PROFILE</Text><Text style={styles.title}>Start with the identity people should recognize.</Text><Text style={styles.copy}>You only need the basics here. After this, add your logo, photos, About details, service areas, contact options, and existing business materials.</Text>
+  <Text style={styles.eyebrow}>NEW HOST PROFILE</Text><Text style={styles.title}>Start with the identity people should recognize.</Text><Text style={styles.copy}>{tenantName?`This profile will belong to ${tenantName}. Review the suggested name, then continue with its own public information and media.`:'You only need the basics here. After this, add your logo, photos, About details, service areas, contact options, and existing business materials.'}</Text>
   {error?<View style={styles.errorCard}><Text style={styles.error}>{error}</Text></View>:null}
   <View style={styles.card}>
-   <Field label="Public host name" value={name} onChangeText={setName} placeholder="Groundwork Test Company"/>
+   <Field label="Public host name" value={name} onChangeText={setName} placeholder="Organization or business name"/>
    <Text style={styles.label}>What kind of host is this?</Text>
    <View style={styles.types}>{HOST_TYPES.map((item)=><Pressable key={item.key} style={[styles.type,hostType===item.key&&styles.typeActive]} onPress={()=>setHostType(item.key)}><Text style={[styles.typeTitle,hostType===item.key&&styles.typeTitleActive]}>{item.label}</Text><Text style={styles.typeCopy}>{item.copy}</Text></Pressable>)}</View>
-   <View style={styles.row}><View style={styles.flex}><Field label="Home city (optional)" value={city} onChangeText={setCity} placeholder="Jacksonville"/></View><View style={styles.state}><Field label="State" value={state} onChangeText={(value:string)=>setState(value.toUpperCase())} placeholder="FL"/></View></View>
+   <View style={styles.row}><View style={styles.flex}><Field label="Home city (optional)" value={city} onChangeText={setCity} placeholder="City"/></View><View style={styles.state}><Field label="State" value={state} onChangeText={(value:string)=>setState(value.toUpperCase())} placeholder="ST"/></View></View>
    <View style={styles.nextCard}><Text style={styles.nextTitle}>Next</Text><Text style={styles.nextCopy}>Profile → About → Media → Brand → Features → Preview</Text></View>
    <Pressable disabled={saving||!name.trim()} style={[styles.primary,(saving||!name.trim())&&styles.disabled]} onPress={()=>void create()}>{saving?<ActivityIndicator color="#162019"/>:<Text style={styles.primaryText}>Create profile and continue</Text>}</Pressable>
   </View>
