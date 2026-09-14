@@ -21,9 +21,9 @@ function requiredTenantEnv(name) {
   return value;
 }
 
-function shareHost() {
+function shareHost(envName) {
   try {
-    const value = envValue('EXPO_PUBLIC_SHARE_BASE_URL');
+    const value = envValue(envName);
     if (!value) return null;
     const url = new URL(value);
     return url.protocol === 'https:' ? url.host : null;
@@ -35,6 +35,14 @@ function shareHost() {
 function tenantPlugins(appName) {
   return (base.plugins || []).map((plugin) => {
     const name = Array.isArray(plugin) ? plugin[0] : plugin;
+    if (name === 'expo-camera') {
+      return ['expo-camera', {
+        cameraPermission: `Allow ${appName} to use the camera for features you choose.`,
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: true,
+      }];
+    }
     if (name === 'expo-location') {
       return ['expo-location', {
         locationWhenInUsePermission: `Allow ${appName} to use your location for nearby and location-aware features.`,
@@ -57,8 +65,8 @@ function tenantPlugins(appName) {
 }
 
 const tenantPublicSlug = envValue('EXPO_PUBLIC_TENANT_PUBLIC_SLUG');
-const publicShareHost = shareHost();
-const webBaseUrl = envValue('EXPO_PUBLIC_WEB_BASE_URL');
+const publicShareHost = shareHost(tenantPublicSlug ? 'EXPO_PUBLIC_TENANT_SHARE_BASE_URL' : 'EXPO_PUBLIC_SHARE_BASE_URL');
+const webBaseUrl = envValue(tenantPublicSlug ? 'EXPO_PUBLIC_TENANT_WEB_BASE_URL' : 'EXPO_PUBLIC_WEB_BASE_URL');
 
 const tenantIdentity = tenantPublicSlug
   ? {
