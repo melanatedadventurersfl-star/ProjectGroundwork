@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createEventFromDraft, type EventDraft, type ImportPreviewResult } from '../../../src/hosting/creation';
 import { loadEventDraftPreview } from '../../../src/hosting/eventPortfolio';
+import { isAiPlanningDraft } from '../../../src/hosting/planningDrafts';
 
 export default function SavedEventDraftScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
@@ -22,6 +23,10 @@ export default function SavedEventDraftScreen() {
       setError('');
       try {
         if (!draftId) throw new Error('Draft ID is missing.');
+        if (await isAiPlanningDraft(draftId)) {
+          if (active) router.replace(`/host/plan-ai?draftId=${encodeURIComponent(draftId)}` as never);
+          return;
+        }
         const preview = await loadEventDraftPreview(draftId);
         if (!active) return;
         setResult(preview);
