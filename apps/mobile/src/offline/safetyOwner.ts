@@ -8,6 +8,8 @@ const SAFETY_TABLES = [
   'offline_action_queue',
   'offline_roster_sweep',
   'offline_host_field_snapshots',
+  'offline_arrival_scans',
+  'offline_arrival_meta',
 ] as const;
 
 async function getDb() {

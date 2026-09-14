@@ -19,6 +19,15 @@
       "expo-status-bar",
       "@maplibre/maplibre-react-native",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Go Melanated to scan event tickets at check-in.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
         "expo-notifications",
         {
           "defaultChannel": "general",

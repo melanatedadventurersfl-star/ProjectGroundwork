@@ -7,6 +7,7 @@ export type OfflineActionKind =
   | 'safety_session_start'
   | 'safety_session_update'
   | 'safety_check_in'
+  | 'arrival_scan'
   | 'field_check_in'
   | 'field_headcount'
   | 'field_incident'

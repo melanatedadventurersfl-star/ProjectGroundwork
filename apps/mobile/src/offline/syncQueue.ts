@@ -1,3 +1,4 @@
+import { updateLocalArrivalScan } from '../arrival/store';
 import { supabase } from '../lib/supabase';
 import {
   completeOfflineAction,
@@ -33,6 +34,29 @@ async function syncAction(action: Awaited<ReturnType<typeof listPendingOfflineAc
   if (action.kind === 'safety_check_in') {
     const { error } = await supabase.from('adventure_safety_check_ins').upsert(payload, { onConflict: 'id' });
     if (error) throw error;
+    return;
+  }
+
+  if (action.kind === 'arrival_scan') {
+    const scanId = String(payload.scan_id ?? '');
+    const { data, error } = await supabase.rpc('sync_adventure_arrival_scan', {
+      p_scan_id: scanId,
+      p_adventure_id: String(payload.adventure_id ?? ''),
+      p_attendee_id: String(payload.attendee_id ?? ''),
+      p_device_id: String(payload.device_id ?? ''),
+      p_scanned_at: String(payload.scanned_at ?? ''),
+      p_scan_method: String(payload.scan_method ?? ''),
+      p_credential_code: payload.credential_code ? String(payload.credential_code) : null,
+    });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    if (scanId && result) {
+      await updateLocalArrivalScan(scanId, {
+        reconciliationStatus: result.scan_status === 'duplicate' ? 'duplicate' : 'valid',
+        duplicateCount: Number(result.duplicate_count ?? 0),
+        lastError: null,
+      });
+    }
     return;
   }
 
@@ -86,6 +110,14 @@ export async function flushOfflineQueue(): Promise<OfflineSyncResult> {
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : 'Sync failed.';
         lastError = message;
+        if (action.kind === 'arrival_scan') {
+          try {
+            const payload = JSON.parse(action.payload) as { scan_id?: string };
+            if (payload.scan_id) await updateLocalArrivalScan(payload.scan_id, { reconciliationStatus: 'failed', lastError: message });
+          } catch {
+            // Keep the queue failure as the source of truth if the local scan cannot be updated.
+          }
+        }
         await failOfflineAction(action.id, message);
       }
     }
