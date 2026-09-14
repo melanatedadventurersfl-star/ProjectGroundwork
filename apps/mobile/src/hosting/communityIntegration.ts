@@ -16,7 +16,14 @@ export function interestSlug(label: string) {
 }
 
 export async function setHostOutingInterests(adventureId: string, labels: string[]) {
-  const slugs = Array.from(new Set(labels.map(interestSlug).filter(Boolean)));
+  const normalizedLabels = Array.from(new Set(labels.map((label) => label.trim()).filter(Boolean)));
+  const { error: tagError } = await supabase
+    .from('adventures')
+    .update({ event_tags: normalizedLabels })
+    .eq('id', adventureId);
+  if (tagError) throw tagError;
+
+  const slugs = Array.from(new Set(normalizedLabels.map(interestSlug).filter(Boolean)));
   const { error } = await supabase.rpc('set_adventure_interests', {
     p_adventure_id: adventureId,
     p_interest_slugs: slugs,

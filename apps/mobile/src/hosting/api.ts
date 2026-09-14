@@ -24,6 +24,7 @@ export type HostOuting = {
   description: string;
   category: string;
   difficulty: 'easy' | 'moderate' | 'challenging';
+  difficulty_applicable: boolean;
   status: HostOutingStatus;
   starts_at: string;
   ends_at: string;
@@ -43,6 +44,7 @@ export type CreateHostOutingInput = {
   description: string;
   category: string;
   difficulty: 'easy' | 'moderate' | 'challenging';
+  difficultyApplicable?: boolean;
   startsAt: string;
   endsAt: string;
   city: string;
@@ -51,11 +53,12 @@ export type CreateHostOutingInput = {
   capacity?: number | null;
   meetingInstructions?: string;
   hostOrganizationId?: string | null;
+  platformOrganizationId?: string | null;
 };
 
 export type UpdateHostOutingInput = CreateHostOutingInput;
 
-const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,status,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at';
+const HOST_OUTING_SELECT = 'id,title,summary,description,category,difficulty,difficulty_applicable,status,starts_at,ends_at,city,state,venue_name,meeting_instructions,capacity,spots_remaining,starting_price_cents,published_at';
 
 async function currentProfileId() {
   const { data } = await supabase.auth.getSession();
@@ -87,6 +90,28 @@ export async function getOutingHostAccess(): Promise<{
   record: OutingHostRecord | null;
 }> {
   const profileId = await currentProfileId();
+  const { data: organizations, error: organizationsError } = await supabase.rpc('list_my_organizations');
+  if (organizationsError) throw organizationsError;
+
+  const rows = Array.isArray(organizations) ? organizations : [];
+  const activeOrganization = rows.find((row: any) => row?.is_active === true)
+    ?? rows.find((row: any) => row?.is_platform_default === true)
+    ?? rows[0]
+    ?? null;
+
+  if (activeOrganization && activeOrganization.is_platform_default !== true) {
+    const { data: canManage, error: permissionError } = await supabase.rpc('organization_has_permission', {
+      p_organization_id: activeOrganization.id,
+      p_permission_code: 'events.manage',
+    });
+    if (permissionError) throw permissionError;
+    return {
+      approved: canManage === true,
+      paidEnabled: canManage === true,
+      record: null,
+    };
+  }
+
   const [hostResult, approvedResult, paidResult] = await Promise.all([
     supabase.from('outing_hosts').select('profile_id,status,host_type,risk_tier,can_create_paid_outings,payout_status,application_note,approved_at,terms_accepted_at').eq('profile_id', profileId).maybeSingle(),
     supabase.rpc('is_approved_outing_host', { p_profile_id: profileId }),
@@ -158,6 +183,7 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
       description: input.description.trim(),
       category: input.category.trim() || 'Social',
       difficulty: input.difficulty,
+      difficulty_applicable: input.difficultyApplicable ?? true,
       status: 'draft',
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
@@ -171,6 +197,7 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
       is_featured: false,
       created_by: profileId,
       organization_id: input.hostOrganizationId ?? null,
+      ...(input.platformOrganizationId ? { platform_organization_id: input.platformOrganizationId } : {}),
     })
     .select(HOST_OUTING_SELECT)
     .single();
@@ -198,6 +225,7 @@ export async function updateHostOuting(adventureId: string, input: UpdateHostOut
       description: input.description.trim(),
       category: input.category.trim() || 'Social',
       difficulty: input.difficulty,
+      difficulty_applicable: input.difficultyApplicable ?? existing.difficulty_applicable,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
       city: input.city.trim(),
@@ -207,6 +235,7 @@ export async function updateHostOuting(adventureId: string, input: UpdateHostOut
       spots_remaining: nextCapacity == null ? null : Math.max(nextCapacity - usedSpots, 0),
       meeting_instructions: input.meetingInstructions?.trim() || null,
       ...(input.hostOrganizationId !== undefined ? { organization_id: input.hostOrganizationId } : {}),
+      ...(input.platformOrganizationId !== undefined ? { platform_organization_id: input.platformOrganizationId } : {}),
     })
     .eq('id', adventureId)
     .select(HOST_OUTING_SELECT)
