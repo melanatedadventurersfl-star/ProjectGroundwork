@@ -1,5 +1,6 @@
 -- Event Builder UX V2
--- Adds explicit location modes, online links, cover alt text, and an idempotency key.
+-- Adds explicit location modes, online links, cover alt text, idempotent creation,
+-- and tenant-safe cover-image uploads.
 
 alter table public.adventures
   add column if not exists location_type text not null default 'physical',
@@ -26,6 +27,31 @@ comment on column public.adventures.hero_alt_text is
   'Accessible text describing the event hero image.';
 comment on column public.adventures.creation_key is
   'Client-generated idempotency key used to prevent duplicate draft creation on retries.';
+
+-- event-media is already the public image bucket used by local events. Tenant event
+-- managers may upload only inside their own profile folder and only for an event they own.
+drop policy if exists "Organization event managers upload event covers" on storage.objects;
+create policy "Organization event managers upload event covers"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'event-media'
+  and (storage.foldername(name))[1] = (select auth.uid()::text)
+  and (storage.foldername(name))[2] = 'event-covers'
+  and exists (
+    select 1
+    from public.adventures a
+    where a.id = ((storage.foldername(name))[3])::uuid
+      and a.created_by = (select auth.uid())
+      and a.platform_organization_id is not null
+      and private.has_organization_permission(
+        a.platform_organization_id,
+        'events.manage',
+        (select auth.uid())
+      )
+  )
+);
 
 create or replace view public.adventure_discovery as
 select
