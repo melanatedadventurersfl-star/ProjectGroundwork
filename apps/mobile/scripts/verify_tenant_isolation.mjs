@@ -21,6 +21,70 @@ function forbidText(relativePath, text, reason) {
   }
 }
 
+const appConfig = 'apps/mobile/app.config.js';
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_APP_NAME', 'tenant native builds must require their own app identity');
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_APP_SCHEME', 'tenant native builds must require their own URL scheme');
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_IOS_BUNDLE_IDENTIFIER', 'tenant native builds must require their own iOS bundle id');
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_ANDROID_PACKAGE', 'tenant native builds must require their own Android package');
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_EAS_PROJECT_ID', 'tenant native builds must use their own update project');
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_SHARE_BASE_URL', 'tenant native builds must not inherit the flagship share host');
+requireText(appConfig, 'EXPO_PUBLIC_TENANT_WEB_BASE_URL', 'tenant native builds must not inherit the flagship web base');
+requireText(appConfig, 'cameraPermission: `Allow ${appName}', 'tenant camera permission copy must use tenant identity');
+requireText(appConfig, 'locationWhenInUsePermission: `Allow ${appName}', 'tenant location permission copy must use tenant identity');
+requireText(appConfig, 'contactsPermission: `Allow ${appName}', 'tenant contacts permission copy must use tenant identity');
+
+const rootLayout = 'apps/mobile/app/_layout.tsx';
+requireText(rootLayout, 'tenantBinaryRouteBlocked', 'dedicated tenant binaries must fail closed before flagship routes render');
+requireText(rootLayout, '!isDedicatedTenantApp && !isAuthScreen', 'flagship member membership gates must not become tenant binary navigation');
+requireText(rootLayout, 'isTenantShell ? null : <TrailheadProgressObserver />', 'tenant binaries must not mount flagship Trailhead progress');
+requireText(rootLayout, '!isTenantShell && !tutorialGateLocked', 'tenant binaries must not start flagship push manager behavior');
+requireText(rootLayout, 'if (isDedicatedTenantApp || pathname.startsWith', 'tenant binaries must ignore flagship tutorial navigation');
+
+const startup = 'apps/mobile/src/reliability/startup.tsx';
+requireText(startup, 'tenantAppName()', 'startup loading and recovery must resolve tenant identity');
+requireText(startup, "tenantName || 'Go Melanated'", 'flagship startup branding must only be a fallback when no tenant identity exists');
+requireText(startup, "tenantName ? 'Startup problem'", 'tenant recovery copy must stay neutral');
+
+const authCallback = 'apps/mobile/app/auth/callback.tsx';
+requireText(authCallback, 'tenantPublicSlug()', 'auth completion must know when it is running inside a dedicated tenant binary');
+requireText(authCallback, 'router.replace(tenantSlug ? `/experience/${tenantSlug}`', 'tenant auth completion must return to the tenant experience');
+forbidText(authCallback, '<Text style={styles.eyebrow}>MELANATED</Text>', 'shared auth callback cannot display flagship branding');
+
+const tenantSignup = 'apps/mobile/app/tenant-sign-up.tsx';
+forbidText(tenantSignup, 'Go Melanated', 'tenant signup cannot mention the flagship app');
+
+const tenantMenu = 'apps/mobile/app/experience/[slug]/menu.tsx';
+forbidText(tenantMenu, 'Go Melanated', 'tenant menu cannot mention the flagship app');
+forbidText(tenantMenu, 'Passport', 'tenant menu cannot advertise flagship Passport data');
+forbidText(tenantMenu, 'Trail Guide', 'tenant menu cannot advertise flagship Trail Guide data');
+
+const organizationInvites = 'apps/mobile/app/admin/organization-invites.tsx';
+forbidText(organizationInvites, 'melanatedadventurers://sign-up', 'organization invites must not use the flagship app scheme');
+requireText(organizationInvites, 'link.signupPath', 'organization invites must use the organization-aware signup path returned by the server');
+
+const vendorLogin = 'apps/mobile/app/vendor-login.tsx';
+forbidText(vendorLogin, 'GO MELANATED', 'shared Vendor Center login cannot display flagship branding');
+forbidText(vendorLogin, 'Return to Go Melanated', 'shared Vendor Center cannot route tenants back to the flagship app');
+
+const passwordResetPage = 'web/password-reset/index.html';
+forbidText(passwordResetPage, 'Go Melanated', 'shared password reset page must stay tenant-neutral');
+
+const distribution = 'apps/mobile/src/hosting/distribution.ts';
+requireText(distribution, "DISTRIBUTION_PROVIDERS.filter((provider) => provider.id !== 'go_melanated')", 'nondefault tenants must not receive the flagship publishing destination');
+requireText(distribution, 'assertPlatformDefaultDistribution', 'flagship publishing calls must fail closed for nondefault tenants');
+
+const tenantPlanner = 'supabase/functions/host-ai-planner-v2/index.ts';
+forbidText(tenantPlanner, 'Go Melanated', 'tenant planner instructions cannot inherit flagship identity');
+requireText(tenantPlanner, 'tenant-neutral AI Event Planner', 'tenant planner must stay explicitly organization-neutral');
+
+const metaConnect = 'supabase/functions/host-meta-connect/index.ts';
+requireText(metaConnect, '.select("is_platform_default")', 'Meta start/status must verify organization identity at the server boundary');
+requireText(metaConnect, 'TENANT_META_DISABLED', 'nondefault tenant Meta calls must fail closed');
+
+const metaCallback = 'supabase/functions/host-meta-callback/index.ts';
+requireText(metaCallback, '.select("is_platform_default")', 'Meta callback must re-check organization identity from saved OAuth state');
+requireText(metaCallback, 'Meta connection is not available for this organization.', 'tenant Meta callback must stop before a flagship return link');
+
 const hostProfiles = 'apps/mobile/src/hosting/hostProfiles.ts';
 requireText(hostProfiles, "requireActiveOrganizationId", 'host profile lists must resolve the active tenant');
 requireText(hostProfiles, ".eq('platform_organization_id', platformOrganizationId)", 'host profile queries must filter by active platform organization');
