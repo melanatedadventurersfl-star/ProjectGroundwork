@@ -10,6 +10,7 @@ export type AdventureSummary = {
   category: string;
   difficulty: AdventureDifficulty;
   difficulty_applicable?: boolean;
+  event_tags?: string[];
   status: AdventureStatus;
   starts_at: string;
   ends_at: string;
