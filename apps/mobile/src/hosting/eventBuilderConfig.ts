@@ -16,6 +16,7 @@ export type EventBuilderConfig = {
   tags: string[];
   difficultyEventTypes: string[];
   showCommunityVisibility: boolean;
+  allowCustomTags: boolean;
   defaultEventType: string;
   defaultState: string;
   defaultCapacity: number | null;
@@ -52,6 +53,7 @@ const GENERIC_CONFIG: EventBuilderConfig = {
   ],
   difficultyEventTypes: [],
   showCommunityVisibility: false,
+  allowCustomTags: true,
   defaultEventType: 'Social',
   defaultState: '',
   defaultCapacity: null,
@@ -69,6 +71,7 @@ const GO_MELANATED_CONFIG: EventBuilderConfig = {
   tags: [...DEFAULT_OUTDOOR_INTERESTS],
   difficultyEventTypes: ['Hiking', 'Camping', 'Paddling', 'Beach', 'Cycling'],
   showCommunityVisibility: true,
+  allowCustomTags: true,
   defaultEventType: 'Social',
   defaultState: 'FL',
   defaultCapacity: 20,
@@ -120,6 +123,9 @@ export function resolveEventBuilderConfig(organization: OrganizationWorkspace | 
     showCommunityVisibility: typeof settings.show_community_visibility === 'boolean'
       ? settings.show_community_visibility
       : base.showCommunityVisibility,
+    allowCustomTags: typeof settings.allow_custom_tags === 'boolean'
+      ? settings.allow_custom_tags
+      : base.allowCustomTags,
     defaultEventType,
     defaultState: stringValue(settings.default_state) ?? base.defaultState,
     defaultCapacity: defaultCapacity === undefined ? base.defaultCapacity : defaultCapacity,
@@ -139,6 +145,7 @@ export function eventBuilderConfigToSettings(config: EventBuilderConfig): Record
     tags: config.tags,
     difficulty_event_types: config.difficultyEventTypes,
     show_community_visibility: config.showCommunityVisibility,
+    allow_custom_tags: config.allowCustomTags,
     default_event_type: config.defaultEventType,
     default_state: config.defaultState,
     default_capacity: config.defaultCapacity,
