@@ -44,6 +44,20 @@ export async function getHostFieldSnapshot(adventureId: string): Promise<HostFie
   }
 }
 
+export async function listHostFieldSnapshots(): Promise<HostFieldSnapshot[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ payload: string }>(
+    'select payload from offline_host_field_snapshots order by saved_at desc',
+  );
+  return rows.flatMap((row) => {
+    try {
+      return [JSON.parse(row.payload) as HostFieldSnapshot];
+    } catch {
+      return [];
+    }
+  });
+}
+
 export async function removeHostFieldSnapshot(adventureId: string) {
   const db = await getDb();
   await db.runAsync('delete from offline_host_field_snapshots where adventure_id = ?', adventureId);
