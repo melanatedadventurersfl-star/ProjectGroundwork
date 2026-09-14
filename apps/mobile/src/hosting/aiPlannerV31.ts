@@ -42,7 +42,7 @@ const NUMBER_WORDS: Record<string, number> = {
 };
 
 const STATE_NAMES: Record<string, string> = {
-  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC',
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MS', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC',
 };
 
 const KNOWN_CATEGORY_TERMS = /\b(networking|networker|mixer|workshop|class|seminar|conference|summit|convention|fundraiser|fundraising|charity|gala|awards?|vendor market|vendor fair|marketplace|pop[- ]?up|employee|team|staff|private party|birthday|anniversary|celebration|hybrid|virtual|online|zoom|outdoor|camp|hike|kayak|paddle|beach|bike ride|nature walk)\b/i;
@@ -65,7 +65,7 @@ function normalizeAttendanceWords(message: string) {
     (_match, rawNumber: string, noun: string) => `${NUMBER_WORDS[rawNumber.toLowerCase()] ?? rawNumber} ${noun}`);
 }
 
-function inferFreeformIdentity(message: string, plan: V3PlanState, tenant: AiPlannerTenantContext) {
+function inferFreeformIdentity(message: string, plan: V3PlanState, tenant: AiPlannerTenantContext): V3PlanState {
   if (plan.title || plan.category || KNOWN_CATEGORY_TERMS.test(message)) return plan;
   const match = message.match(/\b(?:i(?:'m| am)?\s+(?:planning|hosting|doing)|i\s+want\s+to\s+(?:plan|host|do)|we(?:'re| are)?\s+(?:planning|hosting|doing)|plan|host)\s+(?:a|an)?\s*([^,.!?]+?)(?=\s+(?:for|with|on|in|around|near)\b|[,.!?]|$)/i);
   if (!match?.[1]) return plan;
