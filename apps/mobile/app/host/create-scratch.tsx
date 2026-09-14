@@ -170,6 +170,34 @@ export default function CreateHostOutingScreen() {
   const requiredTotal = missingItems.length;
   const allRequiredComplete = requiredComplete === requiredTotal;
 
+  function hydrateStoredDraft(draft: LocalEventDraft) {
+    setCreationKey(draft.creationKey);
+    setTitle(draft.title);
+    setSummary(draft.summary);
+    setDescription(draft.description);
+    setCategory(draft.category);
+    setTags(draft.tags);
+    setDifficulty(draft.difficulty);
+    setStartsAt(draft.startsAt);
+    setEndsAt(draft.endsAt);
+    setLocationType(draft.locationType);
+    setVenueName(draft.venueName);
+    setCity(draft.city);
+    setState(draft.state);
+    setOnlineUrl(draft.onlineUrl);
+    setCapacityMode(draft.capacityMode);
+    setCapacity(draft.capacity);
+    setMeetingInstructions(draft.meetingInstructions);
+    setShowMeetingInstructions(Boolean(draft.meetingInstructions));
+    setVisibility(draft.visibility);
+    setSelectedGroupIds(draft.selectedGroupIds);
+    setPrimaryCommunityId(draft.primaryCommunityId);
+    setPaid(draft.paid);
+    setPrice(draft.price);
+    setCoverUri(draft.coverUri);
+    setCoverAltText(draft.coverAltText);
+  }
+
   useEffect(() => {
     let mounted = true;
     void (async () => {
@@ -290,34 +318,6 @@ export default function CreateHostOutingScreen() {
     }, 650);
     return () => clearTimeout(timer);
   }, [draftHydrated, localDraft]);
-
-  function hydrateStoredDraft(draft: LocalEventDraft) {
-    setCreationKey(draft.creationKey);
-    setTitle(draft.title);
-    setSummary(draft.summary);
-    setDescription(draft.description);
-    setCategory(draft.category);
-    setTags(draft.tags);
-    setDifficulty(draft.difficulty);
-    setStartsAt(draft.startsAt);
-    setEndsAt(draft.endsAt);
-    setLocationType(draft.locationType);
-    setVenueName(draft.venueName);
-    setCity(draft.city);
-    setState(draft.state);
-    setOnlineUrl(draft.onlineUrl);
-    setCapacityMode(draft.capacityMode);
-    setCapacity(draft.capacity);
-    setMeetingInstructions(draft.meetingInstructions);
-    setShowMeetingInstructions(Boolean(draft.meetingInstructions));
-    setVisibility(draft.visibility);
-    setSelectedGroupIds(draft.selectedGroupIds);
-    setPrimaryCommunityId(draft.primaryCommunityId);
-    setPaid(draft.paid);
-    setPrice(draft.price);
-    setCoverUri(draft.coverUri);
-    setCoverAltText(draft.coverAltText);
-  }
 
   async function saveNow() {
     if (!localDraft) return false;
