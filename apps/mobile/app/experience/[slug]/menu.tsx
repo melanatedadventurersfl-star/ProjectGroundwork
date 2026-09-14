@@ -62,7 +62,7 @@ export default function TenantMenuScreen() {
 
     <View style={[styles.separationCard, { borderColor: `${accent}50` }]}>
       <AppIcon name="privacy" color={accent} size={20} />
-      <View style={styles.flex}><Text style={[styles.separationTitle, { color: text }]}>Separate organization experience</Text><Text style={styles.separationText}>{brandName} does not expose Go Melanated profile, community, Passport, Trail Guide, membership, or saved-content data.</Text></View>
+      <View style={styles.flex}><Text style={[styles.separationTitle, { color: text }]}>Private organization experience</Text><Text style={styles.separationText}>{brandName} keeps its profile, community, membership, and saved-content data inside this organization experience.</Text></View>
     </View>
 
     <Pressable style={styles.signOut} onPress={() => void handleSignOut()}><AppIcon name="profile" color="#E9AAA2" size={18} /><Text style={styles.signOutText}>Sign out of this app</Text></Pressable>
