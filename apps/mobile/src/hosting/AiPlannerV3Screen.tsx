@@ -16,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDraftOuting, getOutingHostAccess } from './api';
-import { addAiTaskPacks, getAiPrivacyPreferences, type AiPlanState, type AiPrivacyPreferences } from './aiPlanner';
+import { addAiTaskPacks, getAiPrivacyPreferences, type AiPrivacyPreferences } from './aiPlanner';
+import { type AiPlannerV2Action } from './aiPlannerV2';
 import { linkAiPlannerSessionToEvent, persistAiPlannerTurn } from './aiPlannerPersistence';
 import {
   compactSectionOrder,
@@ -44,7 +45,12 @@ import {
   type PlanningDraftChange,
 } from './planningDrafts';
 import { addGeneralAdmissionTicket } from './tickets';
-import { persistSelectedVenueMetadata, type VenueCandidate } from './venueDiscovery';
+import {
+  persistSelectedVenueMetadata,
+  saveVenueToShortlist,
+  setOrganizationVenuePreference,
+  type VenueCandidate,
+} from './venueDiscovery';
 
 const VALID_COMPONENTS = new Set<EventComponentKey>(['tickets','food','vendors','marketing','communications','team','volunteers','finance','venue','schedule','activities','lodging','equipment','safety','sponsors','transportation','pages']);
 const OFF_PREFS: AiPrivacyPreferences = { personal_memory_enabled: false, event_history_learning_enabled: false, organization_memory_enabled: false, save_conversations_enabled: false, product_analytics_enabled: false, recommendation_history_enabled: false };
@@ -87,12 +93,12 @@ function sourceSummary(plan: V3PlanState, tenant: AiPlannerTenantContext) {
   ].filter(Boolean).join(' · ');
 }
 
-function optionAction(option: string) {
+function optionAction(option: string): AiPlannerV2Action | undefined {
   const normalized = option.trim().toLowerCase();
-  if (normalized === 'review plan') return 'review' as const;
-  if (normalized === 'recommend locations' || normalized === 'find venues') return 'recommend' as const;
-  if (normalized === 'search again') return 'venue_search_more' as const;
-  if (normalized === 'create event workspace') return 'create' as const;
+  if (normalized === 'review plan') return 'review';
+  if (normalized === 'recommend locations' || normalized === 'find venues') return 'recommend';
+  if (normalized === 'search again') return 'venue_search_more';
+  if (normalized === 'create event workspace') return 'create';
   return undefined;
 }
 
@@ -106,7 +112,13 @@ function optionSection(option: string, current: AiPlannerSection | null) {
   return current;
 }
 
-function VenueCard({ candidate, onUse, onSave, onBlock }: { candidate: VenueCandidate; onUse: () => void; onSave: () => void; onBlock: () => void }) {
+function VenueCard({ candidate, onUse, onSave, onPrefer, onBlock }: {
+  candidate: VenueCandidate;
+  onUse: () => void;
+  onSave: () => void;
+  onPrefer: () => void;
+  onBlock: () => void;
+}) {
   return <View style={styles.venueCard}>
     {candidate.photoUrl ? <Image source={{ uri: candidate.photoUrl }} style={styles.venueImage} resizeMode="cover" /> : null}
     <View style={styles.venueBody}>
@@ -118,7 +130,8 @@ function VenueCard({ candidate, onUse, onSave, onBlock }: { candidate: VenueCand
       <View style={styles.venueActions}>
         <Pressable style={styles.primarySmall} onPress={onUse}><Text style={styles.primarySmallText}>Use venue</Text></Pressable>
         <Pressable style={styles.secondarySmall} onPress={onSave}><Text style={styles.secondarySmallText}>Save</Text></Pressable>
-        <Pressable onPress={onBlock}><Text style={styles.blockText}>Don't recommend</Text></Pressable>
+        <Pressable style={styles.secondarySmall} onPress={onPrefer}><Text style={styles.secondarySmallText}>Prefer</Text></Pressable>
+        <Pressable onPress={onBlock}><Text style={styles.blockText}>Do not recommend</Text></Pressable>
       </View>
     </View>
   </View>;
@@ -298,7 +311,7 @@ export default function AiPlannerV3Screen({ tenant }: { tenant: AiPlannerTenantC
     }
   }
 
-  async function send(text = input, meta: { section?: AiPlannerSection | null; action?: any; venueCandidate?: VenueCandidate | null } = {}) {
+  async function send(text = input, meta: { section?: AiPlannerSection | null; action?: AiPlannerV2Action; venueCandidate?: VenueCandidate | null } = {}) {
     const trimmed = text.trim();
     if (!trimmed || loading || creating) return;
     if (/^undo$/i.test(trimmed)) {
@@ -372,8 +385,44 @@ export default function AiPlannerV3Screen({ tenant }: { tenant: AiPlannerTenantC
     await send(PLANNER_SECTION_LABELS[section], { section, action: 'section' });
   }
 
-  async function useVenue(candidate: VenueCandidate) {
+  async function selectVenue(candidate: VenueCandidate) {
     await send(`Use ${candidate.name}`, { section: 'venue', action: 'venue_select', venueCandidate: candidate });
+  }
+
+  async function saveVenue(candidate: VenueCandidate) {
+    if (!tenant.organizationId) return;
+    try {
+      await saveVenueToShortlist(tenant.organizationId, candidate, {
+        eventType: plan.category || null,
+        attendance: plan.capacity || plan.attendanceRange || null,
+        city: plan.city || null,
+        state: plan.state || null,
+      });
+      setMessages((current) => [...current, { role: 'system', text: `${candidate.name} saved to your venue shortlist` }]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to save that venue.');
+    }
+  }
+
+  async function preferVenue(candidate: VenueCandidate) {
+    if (!tenant.organizationId) return;
+    try {
+      await setOrganizationVenuePreference(tenant.organizationId, candidate, 'preferred');
+      setMessages((current) => [...current, { role: 'system', text: `${candidate.name} marked as preferred for ${tenant.organizationName}` }]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to update that venue preference.');
+    }
+  }
+
+  async function blockVenue(candidate: VenueCandidate) {
+    if (!tenant.organizationId) return;
+    try {
+      await setOrganizationVenuePreference(tenant.organizationId, candidate, 'blocked');
+      setMessages((current) => [...current, { role: 'system', text: `${candidate.name} will not be recommended for this organization` }]);
+      await send('Search again', { section: 'venue', action: 'venue_search_more' });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to update that venue preference.');
+    }
   }
 
   function directEdit(key: 'title' | 'city' | 'state' | 'capacity' | 'startsAt' | 'endsAt', value: string) {
@@ -383,6 +432,10 @@ export default function AiPlannerV3Screen({ tenant }: { tenant: AiPlannerTenantC
     else if (key === 'city') next.city = value;
     else if (key === 'state') next.state = value.toUpperCase();
     else next[key] = value;
+    next.fieldStates = {
+      ...(next.fieldStates ?? {}),
+      [key]: { status: 'confirmed', value: key === 'capacity' ? next.capacity : next[key], updatedAt: new Date().toISOString() },
+    };
     const reviewed = reviewPlannerV3State(next, tenant);
     setPlan(next);
     setTurn(reviewed);
@@ -460,9 +513,10 @@ export default function AiPlannerV3Screen({ tenant }: { tenant: AiPlannerTenantC
           {currentTurn.venueResults.map((candidate) => <VenueCard
             key={candidate.id}
             candidate={candidate}
-            onUse={() => void useVenue(candidate)}
-            onSave={() => void send(`Save ${candidate.name}`, { section: 'venue', action: 'venue_save', venueCandidate: candidate })}
-            onBlock={() => void send('Search again', { section: 'venue', action: 'venue_search_more' })}
+            onUse={() => void selectVenue(candidate)}
+            onSave={() => void saveVenue(candidate)}
+            onPrefer={() => void preferVenue(candidate)}
+            onBlock={() => void blockVenue(candidate)}
           />)}
           {currentTurn.venueWarnings.map((warning) => <Text key={warning} style={styles.warning}>{warning}</Text>)}
         </View> : null}
