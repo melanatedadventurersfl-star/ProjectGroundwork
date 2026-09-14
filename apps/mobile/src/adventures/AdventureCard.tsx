@@ -27,18 +27,32 @@ export function AdventureCard({ adventure, onToggleSaved }: Props) {
         <Text style={s.meta} numberOfLines={1}>⌖ {adventure.city}, {adventure.state}</Text>
         <Text style={s.meta}>▣ {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
         <View style={s.bottomRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open offline readiness and safety tools for ${adventure.title}`}
-            hitSlop={6}
-            style={s.safetyButton}
-            onPress={(event) => {
-              event.stopPropagation();
-              router.push({ pathname: '/readiness/[adventureId]', params: { adventureId: adventure.id } });
-            }}
-          >
-            <Text style={s.safetyText}>◇ Offline + Safety</Text>
-          </Pressable>
+          <View style={s.quickActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open offline readiness and safety tools for ${adventure.title}`}
+              hitSlop={6}
+              style={s.safetyButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                router.push({ pathname: '/readiness/[adventureId]', params: { adventureId: adventure.id } });
+              }}
+            >
+              <Text style={s.safetyText}>◇ Offline</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open saved host updates for ${adventure.title}`}
+              hitSlop={6}
+              style={s.updateButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                router.push({ pathname: '/communications/[adventureId]', params: { adventureId: adventure.id } });
+              }}
+            >
+              <Text style={s.updateText}>Updates</Text>
+            </Pressable>
+          </View>
           <Text style={[s.price, adventure.starting_price_cents === 0 && s.free]}>{priceLabel(adventure)}</Text>
         </View>
       </View>
@@ -56,9 +70,12 @@ const s = StyleSheet.create({
   star: { color: '#F7F7F4', fontSize: 20 },
   title: { color: '#F7F7F4', fontSize: 17, lineHeight: 21, fontWeight: '900', marginTop: 5 },
   meta: { color: '#ABB5B0', fontSize: 11, marginTop: 4 },
-  bottomRow: { marginTop: 'auto', paddingTop: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  safetyButton: { backgroundColor: '#182B24', borderWidth: 1, borderColor: '#36564A', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 },
-  safetyText: { color: '#76D1B7', fontWeight: '900', fontSize: 9 },
-  price: { color: '#F5C542', fontWeight: '900', fontSize: 15 },
+  bottomRow: { marginTop: 'auto', paddingTop: 7, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  quickActions: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+  safetyButton: { backgroundColor: '#182B24', borderWidth: 1, borderColor: '#36564A', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 5 },
+  safetyText: { color: '#76D1B7', fontWeight: '900', fontSize: 8 },
+  updateButton: { backgroundColor: '#252117', borderWidth: 1, borderColor: '#514726', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 5 },
+  updateText: { color: '#F5C542', fontWeight: '900', fontSize: 8 },
+  price: { color: '#F5C542', fontWeight: '900', fontSize: 14, flexShrink: 0 },
   free: { color: '#76D1B7' },
 });
