@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getActiveOrganization } from '../platform/organizations';
 
 export type HostVendorProfile = {
   id: string;
@@ -75,10 +76,18 @@ function normalizeDemoVendor(row: DemoVendorRow): HostVendorProfile {
   };
 }
 
+async function activeOrganizationId() {
+  const organization = await getActiveOrganization();
+  if (!organization) throw new Error('Choose an organization before opening vendors.');
+  return organization.id;
+}
+
 export async function listHostVendorProfiles(): Promise<HostVendorProfile[]> {
+  const organizationId = await activeOrganizationId();
   const marketplace = await supabase
     .from('host_vendor_profiles')
     .select(MARKET_SELECT)
+    .eq('organization_id', organizationId)
     .order('marketplace_visible', { ascending: false })
     .order('featured', { ascending: false })
     .order('business_name', { ascending: true });
@@ -88,6 +97,7 @@ export async function listHostVendorProfiles(): Promise<HostVendorProfile[]> {
   const demo = await supabase
     .from('host_vendor_profiles')
     .select(DEMO_SELECT)
+    .eq('organization_id', organizationId)
     .order('is_demo', { ascending: true })
     .order('business_name', { ascending: true });
 
@@ -96,6 +106,7 @@ export async function listHostVendorProfiles(): Promise<HostVendorProfile[]> {
   const legacy = await supabase
     .from('host_vendor_profiles')
     .select(CORE_SELECT)
+    .eq('organization_id', organizationId)
     .order('business_name', { ascending: true });
 
   if (legacy.error) throw legacy.error;
@@ -162,8 +173,10 @@ export async function createHostVendorProfile(input: {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!authData.user) throw new Error('You must be signed in to add a vendor.');
+  const organizationId = await activeOrganizationId();
 
   const { error } = await supabase.from('host_vendor_profiles').insert({
+    organization_id: organizationId,
     business_name: input.businessName.trim(),
     category: input.category.trim() || 'Other',
     contact_name: input.contactName?.trim() || null,
@@ -202,7 +215,7 @@ export function vendorAvailabilityLabel(status: HostVendorProfile['availability_
 
 export function vendorVerificationLabel(status: HostVendorProfile['verification_status']) {
   if (status === 'documents_verified') return 'Documents verified';
-  if (status === 'go_melanated_verified') return 'Go Melanated verified';
+  if (status === 'go_melanated_verified') return 'Verified vendor';
   if (status === 'new') return 'New vendor';
   return 'Profile complete';
 }
