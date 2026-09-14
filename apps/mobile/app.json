@@ -17,6 +17,7 @@
       "expo-router",
       "expo-sqlite",
       "expo-status-bar",
+      "@maplibre/maplibre-react-native",
       [
         "expo-notifications",
         {
