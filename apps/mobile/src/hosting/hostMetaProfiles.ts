@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 
 export type MetaConnectionStatus = {
   configured: boolean;
+  returnConfigured?: boolean;
   connection: null | {
     facebook_page_id: string | null;
     facebook_page_name: string | null;
@@ -46,8 +47,7 @@ export function getMetaConnectionStatus(organizationId: string) {
 }
 
 export async function startMetaConnection(organizationId: string) {
-  const returnUrl = `melanatedadventurers://host/meta-connect?organizationId=${encodeURIComponent(organizationId)}`;
-  const result = await invoke<{ configured: boolean; authUrl: string }>({ action: 'start', organizationId, returnUrl });
+  const result = await invoke<{ configured: boolean; authUrl: string }>({ action: 'start', organizationId });
   if (!result.authUrl) throw new Error('Meta did not return a sign-in URL.');
   await Linking.openURL(result.authUrl);
 }
