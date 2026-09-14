@@ -76,7 +76,7 @@ export async function validateCredentialOffline(adventureId: string, rawValue: s
   const attendee = findCredential(snapshot.roster, code);
   if (attendee) {
     const localScans = await getLocalArrivalScans(adventureId);
-    const alreadyLocal = localScans.some((scan) => scan.attendeeId === attendee.attendee_id && scan.reconciliationStatus !== 'failed');
+    const alreadyLocal = localScans.some((scan) => scan.attendeeId === attendee.attendee_id);
     if (attendee.checked_in_at || alreadyLocal) return { status: 'already_checked_in', attendee };
     return { status: 'valid', attendee };
   }
@@ -98,7 +98,7 @@ export async function queueArrivalCheckIn(input: {
   if (!snapshot) throw new Error('Download the field roster before checking people in offline.');
 
   const existingScans = await getLocalArrivalScans(input.adventureId);
-  const prior = existingScans.find((scan) => scan.attendeeId === input.attendee.attendee_id && scan.reconciliationStatus !== 'failed');
+  const prior = existingScans.find((scan) => scan.attendeeId === input.attendee.attendee_id);
   if (input.attendee.checked_in_at || prior) {
     return { scan: prior ?? null, snapshot, alreadyCheckedIn: true };
   }
@@ -159,8 +159,11 @@ export async function countPendingArrivalActions(adventureId: string) {
 
 async function mergeServerScans(adventureId: string, serverScans: ServerArrivalScan[]) {
   const snapshot = await getHostFieldSnapshot(adventureId);
+  const localBefore = await getLocalArrivalScans(adventureId);
+  const localById = new Map(localBefore.map((scan) => [scan.id, scan]));
+
   for (const server of serverScans) {
-    const existing = (await getLocalArrivalScans(adventureId)).find((item) => item.id === server.id);
+    const existing = localById.get(server.id);
     if (existing) {
       await updateLocalArrivalScan(server.id, {
         reconciliationStatus: server.reconciliation_status,
@@ -169,7 +172,7 @@ async function mergeServerScans(adventureId: string, serverScans: ServerArrivalS
       continue;
     }
     const attendee = snapshot?.roster.find((entry) => entry.attendee_id === server.attendee_id);
-    await saveLocalArrivalScan({
+    const scan: LocalArrivalScan = {
       id: server.id,
       adventureId: server.adventure_id,
       attendeeId: server.attendee_id,
@@ -181,7 +184,9 @@ async function mergeServerScans(adventureId: string, serverScans: ServerArrivalS
       reconciliationStatus: server.reconciliation_status,
       duplicateCount: 0,
       lastError: null,
-    });
+    };
+    await saveLocalArrivalScan(scan);
+    localById.set(scan.id, scan);
   }
 
   const all = await getLocalArrivalScans(adventureId);
