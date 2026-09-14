@@ -9,10 +9,13 @@ comment on column public.organizations.event_builder_settings is
 
 -- Adventure difficulty remains populated for legacy compatibility, but generic events can explicitly hide it.
 alter table public.adventures
-  add column if not exists difficulty_applicable boolean not null default true;
+  add column if not exists difficulty_applicable boolean not null default true,
+  add column if not exists event_tags text[] not null default '{}'::text[];
 
 comment on column public.adventures.difficulty_applicable is
   'Whether adventure difficulty is meaningful and should be shown for this event.';
+comment on column public.adventures.event_tags is
+  'Tenant-neutral event tags selected by the host. Outdoor interest linking remains available separately.';
 
 create or replace view public.adventure_discovery as
 select
@@ -37,7 +40,8 @@ select
   a.latitude,
   a.longitude,
   a.timezone,
-  a.difficulty_applicable
+  a.difficulty_applicable,
+  a.event_tags
 from public.adventures a
 where a.status in ('published', 'sold_out')
   and a.ends_at >= now();
