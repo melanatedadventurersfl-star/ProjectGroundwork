@@ -138,6 +138,7 @@ export default function HostCampaignCommandCenter() {
     return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.pageTitle}>Event unavailable</Text>{error ? <Text style={styles.error}>{error}</Text> : null}<Pressable style={styles.primaryButton} onPress={() => void load()}><Text style={styles.primaryButtonText}>Try again</Text></Pressable></View></SafeAreaView>;
   }
 
+  const eventId = event.id;
   const days = getCampaignDaysUntil(campaign, new Date(referenceNow));
   const activeTasks = campaign.tasks.filter((task) => task.status !== 'complete');
   const overdueTasks = activeTasks.filter((task) => task.dueAt && new Date(task.dueAt).getTime() < referenceNow);
@@ -146,14 +147,14 @@ export default function HostCampaignCommandCenter() {
   const revenue = operations.revenueCents || analytics.grossRevenueCents;
 
   function routeForReadiness(action: EventReadinessAction) {
-    if (action === 'cover') return `/host/edit/${event.id}?focus=cover`;
-    if (action === 'details' || action === 'location') return `/host/edit/${event.id}`;
-    if (action === 'tickets') return `/host/inventory/${event.id}`;
-    if (action === 'communications') return `/host/event-communications/${event.id}`;
-    if (action === 'team') return `/host/build/${event.id}?focus=team`;
-    if (action === 'finance') return `/host/build/${event.id}?focus=finance`;
-    if (action === 'pages') return `/host/build/${event.id}?focus=pages`;
-    return `/host/build/${event.id}?focus=schedule`;
+    if (action === 'cover') return `/host/edit/${eventId}?focus=cover`;
+    if (action === 'details' || action === 'location') return `/host/edit/${eventId}`;
+    if (action === 'tickets') return `/host/inventory/${eventId}`;
+    if (action === 'communications') return `/host/event-communications/${eventId}`;
+    if (action === 'team') return `/host/build/${eventId}?focus=team`;
+    if (action === 'finance') return `/host/build/${eventId}?focus=finance`;
+    if (action === 'pages') return `/host/build/${eventId}?focus=pages`;
+    return `/host/build/${eventId}?focus=schedule`;
   }
 
   const nextActions: ActionItem[] = [];
