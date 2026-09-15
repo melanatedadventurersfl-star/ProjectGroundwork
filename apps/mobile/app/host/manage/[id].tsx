@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getHostOutingById } from '../../../src/hosting/api';
+import { getHostCampaign } from '../../../src/hosting/campaigns';
 import { createCampaignWorkspace } from '../../../src/hosting/creation';
 import { getCampaignForAdventure } from '../../../src/hosting/eventBuilder';
 
@@ -30,7 +31,9 @@ export default function LegacyManageEventRedirect() {
           campaign = await getCampaignForAdventure(id);
         }
         if (!campaign) throw new Error('The event workspace is unavailable.');
-        if (active) router.replace(`/host/campaigns/${campaign.slug}` as never);
+        const fullCampaign = await getHostCampaign(String(campaign.id));
+        if (!fullCampaign) throw new Error('The event workspace is unavailable.');
+        if (active) router.replace(`/host/campaigns/${fullCampaign.slug}` as never);
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : 'Unable to open this event.');
       }
