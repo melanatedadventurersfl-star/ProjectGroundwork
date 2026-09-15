@@ -8,7 +8,10 @@ export type EventReadinessAction =
   | 'location'
   | 'tickets'
   | 'operations'
-  | 'communications';
+  | 'communications'
+  | 'team'
+  | 'finance'
+  | 'pages';
 
 export type EventReadinessItem = {
   key: string;
