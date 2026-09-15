@@ -45,10 +45,6 @@ type V31Input = {
   venueCandidate?: VenueCandidate | null;
 };
 
-const DETERMINISTIC_CHOICES = /^(free|paid|10 or fewer|11[–-]50|51[–-]100|100\+|not decided|not sure yet|leave open|skip for now)$/i;
-const REVIEW_COMMANDS = /^(review plan|review the plan|show me what is missing|what is missing)$/i;
-const CREATE_COMMANDS = /^(create|create it|create event|create workspace|create event workspace|ready to create|create draft)$/i;
-
 function withDebug(turn: BaseAiPlannerV3Turn, debug: PlannerTurnDebug): AiPlannerV3Turn {
   return { ...turn, debug };
 }
@@ -76,23 +72,19 @@ function fallbackTurn(input: V31Input, response?: PlannerBrainResponse | null): 
 }
 
 function explicitControl(input: V31Input) {
-  const message = input.message.trim();
-  if (input.action === 'section' || input.action === 'venue_select' || input.action === 'venue_search_more') return true;
-  if (input.action === 'recommend' && input.section === 'venue') return true;
-  if (input.action === 'review' || input.action === 'create') return true;
-  return REVIEW_COMMANDS.test(message) || CREATE_COMMANDS.test(message) || DETERMINISTIC_CHOICES.test(message);
+  return input.action === 'section'
+    || input.action === 'venue_select'
+    || input.action === 'venue_search_more'
+    || (input.action === 'recommend' && input.section === 'venue')
+    || input.action === 'review'
+    || input.action === 'create';
 }
 
 async function runDeterministic(input: V31Input): Promise<AiPlannerV3Turn> {
-  const message = input.message.trim();
-  const action = input.action
-    ?? (REVIEW_COMMANDS.test(message) ? 'review'
-      : CREATE_COMMANDS.test(message) ? 'create'
-        : undefined);
-  const turn = await runAiPlannerV3Turn({ ...input, action });
+  const turn = await runAiPlannerV3Turn(input);
   return withDebug(turn, {
     engine: input.action === 'venue_select' || input.action === 'venue_search_more' || (input.action === 'recommend' && input.section === 'venue') ? 'tool' : 'deterministic',
-    action: action ?? 'choice',
+    action: input.action ?? 'control',
   });
 }
 
