@@ -62,6 +62,19 @@ function keyify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'item';
 }
 
+async function currentActiveOrganizationId() {
+  const { data, error } = await supabase.rpc('list_my_organizations');
+  if (error) throw error;
+  const rows = Array.isArray(data) ? data : [];
+  const active = rows.find((row: any) => row?.is_active === true)
+    ?? rows.find((row: any) => row?.is_platform_default === true)
+    ?? rows[0]
+    ?? null;
+  const organizationId = active?.id ? String(active.id) : '';
+  if (!organizationId) throw new Error('Choose an organization workspace before creating an event workspace.');
+  return organizationId;
+}
+
 export async function createCampaignWorkspace(input: {
   adventureId: string;
   title: string;
@@ -75,9 +88,19 @@ export async function createCampaignWorkspace(input: {
   const ownerProfileId = authData.user?.id;
   if (!ownerProfileId) throw new Error('Sign in to create an event workspace.');
 
+  const { data: existing, error: existingError } = await supabase
+    .from('host_campaigns')
+    .select('id,slug')
+    .eq('adventure_id', input.adventureId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return existing;
+
+  const organizationId = await currentActiveOrganizationId();
   const slug = `${keyify(input.title)}-${input.adventureId.slice(0, 8)}`;
   const { data: campaign, error: campaignError } = await supabase.from('host_campaigns').insert({
     adventure_id: input.adventureId,
+    organization_id: organizationId,
     slug,
     title: input.title,
     short_title: input.title.slice(0, 80),
@@ -88,7 +111,18 @@ export async function createCampaignWorkspace(input: {
     accent: '#D7B45A',
     owner_profile_id: ownerProfileId,
   }).select('id,slug').single();
-  if (campaignError) throw campaignError;
+  if (campaignError) {
+    if (campaignError.code === '23505') {
+      const { data: recovered, error: recoveredError } = await supabase
+        .from('host_campaigns')
+        .select('id,slug')
+        .eq('adventure_id', input.adventureId)
+        .maybeSingle();
+      if (recoveredError) throw recoveredError;
+      if (recovered) return recovered;
+    }
+    throw campaignError;
+  }
 
   const content = input.template?.content ?? {};
   const milestoneTitles = Array.isArray(content.default_milestones) ? content.default_milestones.map(String) : ['Venue locked', 'Ticketing ready', 'Experience locked', 'Event ready'];
