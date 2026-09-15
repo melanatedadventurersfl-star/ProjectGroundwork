@@ -83,19 +83,6 @@ function explicitControl(input: V31Input) {
   return REVIEW_COMMANDS.test(message) || CREATE_COMMANDS.test(message) || DETERMINISTIC_CHOICES.test(message);
 }
 
-function deterministicAction(input: V31Input): AiPlannerV3Turn {
-  const message = input.message.trim();
-  const action = input.action
-    ?? (REVIEW_COMMANDS.test(message) ? 'review'
-      : CREATE_COMMANDS.test(message) ? 'create'
-        : undefined);
-  const normalizedInput = { ...input, action };
-  return withDebug(
-    runAiPlannerV3Turn(normalizedInput) as unknown as BaseAiPlannerV3Turn,
-    { engine: input.action === 'venue_select' || input.action === 'venue_search_more' || (input.action === 'recommend' && input.section === 'venue') ? 'tool' : 'deterministic', action: action ?? 'choice' },
-  ) as unknown as AiPlannerV3Turn;
-}
-
 async function runDeterministic(input: V31Input): Promise<AiPlannerV3Turn> {
   const message = input.message.trim();
   const action = input.action
