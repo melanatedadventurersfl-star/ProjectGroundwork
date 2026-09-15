@@ -58,7 +58,7 @@ export type VenueDiscoveryResponse = {
 };
 
 export async function discoverVenues(input: VenueDiscoveryRequest): Promise<VenueDiscoveryResponse> {
-  const { data, error } = await supabase.functions.invoke('host-venue-discovery', {
+  const { data, error } = await supabase.functions.invoke('host-venue-discovery-v2', {
     body: {
       organizationId: input.organizationId,
       city: input.city?.trim() ?? '',
