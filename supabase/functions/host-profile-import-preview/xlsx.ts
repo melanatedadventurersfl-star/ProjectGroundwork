@@ -29,6 +29,15 @@ function normalizeLabel(value: string) {
   return String(value ?? "").toLowerCase().replace(/[:\-]+$/, "").replace(/\s+/g, " ").trim();
 }
 
+function attribute(attrs: string, name: string) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return attrs.match(new RegExp(`(?:^|\\s)${escaped}="([^"]*)"`, "i"))?.[1] ?? "";
+}
+
+function namespacedId(attrs: string) {
+  return attrs.match(/(?:^|\s)(?:[A-Za-z_][\w.-]*:)?id="([^"]+)"/i)?.[1] ?? "";
+}
+
 function columnIndex(reference: string) {
   const letters = String(reference ?? "").match(/^[A-Z]+/i)?.[0]?.toUpperCase() ?? "";
   let value = 0;
@@ -36,11 +45,15 @@ function columnIndex(reference: string) {
   return Math.max(0, value - 1);
 }
 
+function textRuns(xml: string) {
+  return [...xml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?t\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?t>/g)]
+    .map((match) => match[1])
+    .join("");
+}
+
 function cellText(cellXml: string, type: string, sharedStrings: string[]) {
-  if (type === "inlineStr") {
-    return decodeXmlEntities([...cellXml.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((match) => match[1]).join(""));
-  }
-  const raw = cellXml.match(/<v[^>]*>([\s\S]*?)<\/v>/)?.[1] ?? "";
+  if (type === "inlineStr") return decodeXmlEntities(textRuns(cellXml));
+  const raw = cellXml.match(/<(?:[A-Za-z_][\w.-]*:)?v\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?v>/)?.[1] ?? "";
   if (type === "s") {
     const index = Number(raw);
     return Number.isInteger(index) && sharedStrings[index] !== undefined ? sharedStrings[index] : "";
@@ -123,22 +136,29 @@ export async function extractXlsxText(bytes: Uint8Array) {
     workbook.file("xl/sharedStrings.xml")?.async("string") ?? Promise.resolve(""),
   ]);
 
-  const sharedStrings = [...sharedXml.matchAll(/<si[^>]*>([\s\S]*?)<\/si>/g)].map((match) =>
-    decodeXmlEntities([...match[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((item) => item[1]).join(""))
-  );
+  const sharedStrings = [...sharedXml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?si\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?si>/g)]
+    .map((match) => decodeXmlEntities(textRuns(match[1])));
 
   const relationships = new Map<string, string>();
-  for (const match of relsXml.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/>/g)) {
-    relationships.set(match[1], match[2]);
+  for (const match of relsXml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?Relationship\b([^>]*)\/?\s*>/g)) {
+    const attrs = match[1];
+    const id = attribute(attrs, "Id");
+    const target = attribute(attrs, "Target");
+    if (id && target) relationships.set(id, target);
   }
 
-  const sheetEntries = [...workbookXml.matchAll(/<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"[^>]*\/>/g)];
-  const outputs: string[] = [];
+  const sheetEntries: Array<{ name: string; id: string }> = [];
+  for (const match of workbookXml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?sheet\b([^>]*)\/?\s*>/g)) {
+    const attrs = match[1];
+    const name = decodeXmlEntities(attribute(attrs, "name"));
+    const id = namespacedId(attrs);
+    if (name && id) sheetEntries.push({ name, id });
+  }
 
-  for (const match of sheetEntries) {
-    const sheetName = decodeXmlEntities(match[1]);
-    if (shouldSkipSheet(sheetName)) continue;
-    const target = relationships.get(match[2]);
+  const outputs: string[] = [];
+  for (const sheet of sheetEntries) {
+    if (shouldSkipSheet(sheet.name)) continue;
+    const target = relationships.get(sheet.id);
     if (!target) continue;
 
     const normalizedTarget = target.replace(/^\//, "").replace(/^xl\//, "");
@@ -147,12 +167,12 @@ export async function extractXlsxText(bytes: Uint8Array) {
 
     const sheetXml = await sheetFile.async("string");
     const rows: string[][] = [];
-    for (const rowMatch of sheetXml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+    for (const rowMatch of sheetXml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?row\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?row>/g)) {
       const row: string[] = [];
-      for (const cellMatch of rowMatch[1].matchAll(/<c([^>]*)>([\s\S]*?)<\/c>/g)) {
+      for (const cellMatch of rowMatch[1].matchAll(/<(?:[A-Za-z_][\w.-]*:)?c\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?c>/g)) {
         const attrs = cellMatch[1];
-        const reference = attrs.match(/\br="([^"]+)"/)?.[1] ?? "";
-        const type = attrs.match(/\bt="([^"]+)"/)?.[1] ?? "";
+        const reference = attribute(attrs, "r");
+        const type = attribute(attrs, "t");
         const index = columnIndex(reference);
         while (row.length <= index) row.push("");
         row[index] = cellText(cellMatch[2], type, sharedStrings);
@@ -160,7 +180,7 @@ export async function extractXlsxText(bytes: Uint8Array) {
       if (row.some((cell) => cell.trim())) rows.push(row);
     }
 
-    if (rows.length) outputs.push(rowsToText(sheetName, rows));
+    if (rows.length) outputs.push(rowsToText(sheet.name, rows));
   }
 
   return outputs.join("\n\n").slice(0, 80000);
