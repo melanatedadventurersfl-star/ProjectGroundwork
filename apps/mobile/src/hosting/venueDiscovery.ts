@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 
 export type VenueDiscoverySource = 'tenant_history' | 'community_directory' | 'google_places';
+export type VenueDiscoveryMode = 'direct' | 'recommendation';
 
 export type VenueCandidate = {
   id: string;
@@ -29,8 +30,9 @@ export type VenueCandidate = {
 
 export type VenueDiscoveryRequest = {
   organizationId: string | null;
-  city: string;
-  state: string;
+  city?: string;
+  state?: string;
+  mode?: VenueDiscoveryMode;
   eventType?: string;
   capacity?: number | null;
   attendanceRange?: string | null;
@@ -54,8 +56,9 @@ export async function discoverVenues(input: VenueDiscoveryRequest): Promise<Venu
   const { data, error } = await supabase.functions.invoke('host-venue-discovery', {
     body: {
       organizationId: input.organizationId,
-      city: input.city.trim(),
-      state: input.state.trim().toUpperCase(),
+      city: input.city?.trim() ?? '',
+      state: input.state?.trim().toUpperCase() ?? '',
+      searchMode: input.mode ?? 'recommendation',
       eventType: input.eventType?.trim() || null,
       capacity: input.capacity ?? null,
       attendanceRange: input.attendanceRange?.trim() || null,

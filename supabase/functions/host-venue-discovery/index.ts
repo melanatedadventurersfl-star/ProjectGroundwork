@@ -32,6 +32,35 @@ function categoryTerms(eventType: string) {
   if (/outdoor|camp|hike|kayak|paddle/.test(value)) return ["park", "outdoor event space", "campground", "event venue"];
   return ["event venue", "meeting room", "community center", "hotel"];
 }
+function addressPart(place: any, type: string, field: "longText" | "shortText" = "longText") {
+  const component = Array.isArray(place?.addressComponents)
+    ? place.addressComponents.find((item: any) => Array.isArray(item?.types) && item.types.includes(type))
+    : null;
+  return clean(component?.[field], 120);
+}
+function placeCity(place: any, fallback = "") {
+  return addressPart(place, "locality")
+    || addressPart(place, "postal_town")
+    || addressPart(place, "sublocality")
+    || addressPart(place, "administrative_area_level_2")
+    || fallback;
+}
+function placeState(place: any, fallback = "") {
+  return addressPart(place, "administrative_area_level_1", "shortText").toUpperCase() || fallback;
+}
+function directMatchScore(name: string, address: string | null, query: string) {
+  const target = normalize(name);
+  const q = normalize(query);
+  if (!q) return 0;
+  if (target === q) return 120;
+  if (target.startsWith(q)) return 100;
+  if (target.includes(q)) return 80;
+  const words = q.split(" ").filter((word) => word.length >= 2);
+  const haystack = normalize(`${name} ${address ?? ""}`);
+  if (words.length && words.every((word) => haystack.includes(word))) return 60;
+  if (words.some((word) => haystack.includes(word))) return 20;
+  return 0;
+}
 async function photoUrl(apiKey: string, photoName?: string) {
   if (!photoName) return null;
   try {
@@ -71,6 +100,7 @@ Deno.serve(async (req: Request) => {
     const organizationId = clean(body?.organizationId, 80) || null;
     const city = clean(body?.city, 120);
     const state = clean(body?.state, 40).toUpperCase();
+    const searchMode = body?.searchMode === "direct" ? "direct" : "recommendation";
     const eventType = clean(body?.eventType, 120) || "general event";
     const refinement = clean(body?.refinement, 180);
     const areaHint = clean(body?.areaHint, 120);
@@ -78,7 +108,9 @@ Deno.serve(async (req: Request) => {
     const excluded = new Set(arr(body?.excludePlaceIds, 40));
     const maxResults = Math.max(1, Math.min(8, Number(body?.maxResults) || 5));
     const communityEnabled = body?.communityDirectoryEnabled === true;
-    if (!city || !state) return json({ error: "City and state are required for venue discovery." }, 400);
+
+    if (searchMode === "direct" && refinement.length < 2) return json({ error: "Enter at least two characters to search venues." }, 400);
+    if (searchMode === "recommendation" && (!city || !state)) return json({ error: "City and state are required for venue recommendations." }, 400);
 
     if (organizationId) {
       const { data: allowed, error } = await userClient.rpc("organization_has_permission", { p_organization_id: organizationId, p_permission_code: "events.view" });
@@ -88,7 +120,9 @@ Deno.serve(async (req: Request) => {
     const [prefsResult, historyResult, communityResult] = await Promise.all([
       organizationId ? admin.from("organization_venue_preferences").select("provider_place_id,venue_name,preference").eq("organization_id", organizationId) : Promise.resolve({ data: [] } as any),
       organizationId ? admin.from("adventures").select("venue_name,address,latitude,longitude,venue_place_id,venue_source,city,state").eq("platform_organization_id", organizationId).not("venue_name", "is", null).limit(200) : Promise.resolve({ data: [] } as any),
-      communityEnabled ? admin.from("community_places").select("id,name,category,address,city,state,website_url").eq("is_active", true).eq("ownership_verification_status", "verified").eq("state", state).ilike("city", city).limit(10) : Promise.resolve({ data: [] } as any),
+      searchMode === "recommendation" && communityEnabled
+        ? admin.from("community_places").select("id,name,category,address,city,state,website_url").eq("is_active", true).eq("ownership_verification_status", "verified").eq("state", state).ilike("city", city).limit(10)
+        : Promise.resolve({ data: [] } as any),
     ]);
 
     const preferred = new Set<string>();
@@ -104,13 +138,20 @@ Deno.serve(async (req: Request) => {
       if (!candidate.name || blocked.has(key) || blocked.has(`name:${normalize(candidate.name)}`)) return;
       const current = candidates.get(key);
       if (!current) candidates.set(key, candidate);
-      else candidates.set(key, { ...current, ...candidate, historyUses: Math.max(current.historyUses || 0, candidate.historyUses || 0), preferred: Boolean(current.preferred || candidate.preferred), photoUrl: candidate.photoUrl || current.photoUrl || null });
+      else candidates.set(key, {
+        ...current,
+        ...candidate,
+        historyUses: Math.max(current.historyUses || 0, candidate.historyUses || 0),
+        preferred: Boolean(current.preferred || candidate.preferred),
+        photoUrl: candidate.photoUrl || current.photoUrl || null,
+      });
     };
 
     const historyCounts = new Map<string, number>();
     for (const row of historyResult.data ?? []) {
       const name = clean(row.venue_name, 200);
       if (!name) continue;
+      if (searchMode === "direct" && directMatchScore(name, row.address ?? null, refinement) === 0) continue;
       const key = row.venue_place_id ? `id:${row.venue_place_id}` : `name:${normalize(name)}`;
       historyCounts.set(key, (historyCounts.get(key) || 0) + 1);
       add({
@@ -139,13 +180,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const terms = requestedTypes.length ? requestedTypes : categoryTerms(eventType);
-    const textQuery = [refinement, `${eventType} venue`, terms.slice(0, 5).join(" or "), areaHint, city, state].filter(Boolean).join(" in ");
+    const textQuery = searchMode === "direct"
+      ? [refinement, city, state].filter(Boolean).join(", ")
+      : [refinement, `${eventType} venue`, terms.slice(0, 5).join(" or "), areaHint, city, state].filter(Boolean).join(" in ");
+
     const googleResponse = await fetch(SEARCH_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": googleKey,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.primaryTypeDisplayName,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri,places.photos,places.businessStatus",
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.addressComponents,places.location,places.types,places.primaryTypeDisplayName,places.rating,places.userRatingCount,places.googleMapsUri,places.websiteUri,places.photos,places.businessStatus",
       },
       body: JSON.stringify({ textQuery, maxResultCount: 20, languageCode: "en", regionCode: "US" }),
     });
@@ -157,20 +201,29 @@ Deno.serve(async (req: Request) => {
       if (placeId && excluded.has(placeId)) continue;
       const name = clean(place?.displayName?.text, 200);
       if (!name) continue;
+      const formattedAddress = clean(place?.formattedAddress, 300) || null;
+      if (searchMode === "direct" && directMatchScore(name, formattedAddress, refinement) === 0) continue;
       const key = placeId ? `id:${placeId}` : `name:${normalize(name)}`;
       if (blocked.has(key) || blocked.has(`name:${normalize(name)}`)) continue;
       const historyUses = historyCounts.get(key) || 0;
       const preferredVenue = preferred.has(key) || preferred.has(`name:${normalize(name)}`);
       const photo = await photoUrl(googleKey, place?.photos?.[0]?.name);
       const primaryType = clean(place?.primaryTypeDisplayName?.text, 120) || null;
-      const reasonBits = [preferredVenue ? "Preferred by your organization" : "", historyUses ? `Used ${historyUses} time${historyUses === 1 ? "" : "s"} by your organization` : "", primaryType ? `Google classifies it as ${primaryType.toLowerCase()}` : "", refinement ? `Matches the current search preference: ${refinement}` : ""].filter(Boolean);
+      const resolvedCity = placeCity(place, city);
+      const resolvedState = placeState(place, state);
+      const reasonBits = [
+        preferredVenue ? "Preferred by your organization" : "",
+        historyUses ? `Used ${historyUses} time${historyUses === 1 ? "" : "s"} by your organization` : "",
+        primaryType ? `Google classifies it as ${primaryType.toLowerCase()}` : "",
+        searchMode === "direct" ? `Matches ${refinement}` : refinement ? `Matches the current search preference: ${refinement}` : "",
+      ].filter(Boolean);
       add({
         id: placeId ? `google:${placeId}` : `google:${normalize(name)}`,
         placeId,
         name,
-        address: clean(place?.formattedAddress, 300) || null,
-        city,
-        state,
+        address: formattedAddress,
+        city: resolvedCity,
+        state: resolvedState,
         latitude: typeof place?.location?.latitude === "number" ? place.location.latitude : null,
         longitude: typeof place?.location?.longitude === "number" ? place.location.longitude : null,
         primaryType,
@@ -216,16 +269,22 @@ Deno.serve(async (req: Request) => {
     }
 
     const ranked = [...candidates.values()].map((candidate) => {
-      let score = 0;
-      if (candidate.preferred) score += 50;
-      if (candidate.historyUses) score += Math.min(30, candidate.historyUses * 6);
-      const haystack = normalize([candidate.name, candidate.primaryType, ...(candidate.types || [])].join(" "));
-      for (const term of [...terms, refinement].filter(Boolean)) {
-        const words = normalize(term).split(" ").filter((word) => word.length >= 3);
-        if (words.some((word) => haystack.includes(word))) score += 4;
+      let score = searchMode === "direct" ? directMatchScore(candidate.name, candidate.address, refinement) : 0;
+      if (candidate.preferred) score += searchMode === "direct" ? 12 : 50;
+      if (candidate.historyUses) score += searchMode === "direct" ? Math.min(12, candidate.historyUses * 3) : Math.min(30, candidate.historyUses * 6);
+      if (searchMode === "recommendation") {
+        const haystack = normalize([candidate.name, candidate.primaryType, ...(candidate.types || [])].join(" "));
+        for (const term of [...terms, refinement].filter(Boolean)) {
+          const words = normalize(term).split(" ").filter((word) => word.length >= 3);
+          if (words.some((word) => haystack.includes(word))) score += 4;
+        }
       }
-      if (candidate.rating) score += Math.min(10, candidate.rating * 2);
-      const reason = candidate.fitSignals.length ? candidate.fitSignals.join(". ") + "." : `Matches the requested ${eventType.toLowerCase()} venue search in ${city}.`;
+      if (candidate.rating) score += Math.min(searchMode === "direct" ? 5 : 10, candidate.rating * 2);
+      const reason = candidate.fitSignals.length
+        ? candidate.fitSignals.join(". ") + "."
+        : searchMode === "direct"
+          ? `Matches ${refinement}.`
+          : `Matches the requested ${eventType.toLowerCase()} venue search in ${city}.`;
       return { ...candidate, reason, score };
     }).sort((a, b) => b.score - a.score).slice(0, maxResults).map(({ score, ...candidate }) => candidate);
 
@@ -235,7 +294,7 @@ Deno.serve(async (req: Request) => {
     }, {});
     const warnings = [];
     if (!googleResponse.ok) warnings.push("Live Google Places results were unavailable, so these options come from saved organization or community data only.");
-    if (!ranked.length) warnings.push("No venue matches were returned. Try changing the area or venue preferences.");
+    if (!ranked.length) warnings.push(searchMode === "direct" ? "No matching places were found. Try a longer venue name or add a city to the search text." : "No venue matches were returned. Try changing the area or venue preferences.");
 
     return json({ query: textQuery, candidates: ranked, sourceCounts, warnings });
   } catch (error) {
