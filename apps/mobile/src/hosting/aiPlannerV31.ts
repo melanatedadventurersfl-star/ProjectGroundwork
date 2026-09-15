@@ -65,7 +65,7 @@ function normalizeAttendanceWords(message: string) {
     (_match, rawNumber: string, noun: string) => `${NUMBER_WORDS[rawNumber.toLowerCase()] ?? rawNumber} ${noun}`);
 }
 
-function inferFreeformIdentity(message: string, plan: V3PlanState, tenant: AiPlannerTenantContext) {
+function inferFreeformIdentity(message: string, plan: V3PlanState, tenant: AiPlannerTenantContext): V3PlanState {
   if (plan.title || plan.category || KNOWN_CATEGORY_TERMS.test(message)) return plan;
   const match = message.match(/\b(?:i(?:'m| am)?\s+(?:planning|hosting|doing)|i\s+want\s+to\s+(?:plan|host|do)|we(?:'re| are)?\s+(?:planning|hosting|doing)|plan|host)\s+(?:a|an)?\s*([^,.!?]+?)(?=\s+(?:for|with|on|in|around|near)\b|[,.!?]|$)/i);
   if (!match?.[1]) return plan;

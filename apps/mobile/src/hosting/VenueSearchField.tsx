@@ -61,22 +61,24 @@ export function VenueSearchField({
   const [error, setError] = useState('');
   const [customMode, setCustomMode] = useState(false);
   const [ideasMode, setIdeasMode] = useState(false);
-  const canSearch = Boolean(city.trim() && state.trim());
   const query = value.trim();
+  const canRecommend = Boolean(city.trim() && state.trim());
 
   useEffect(() => {
-    if (customMode || selectedVenue || !canSearch || query.length < 2) {
+    if (customMode || selectedVenue || query.length < 2) {
       setResults([]);
       setLoading(false);
-      setError('');
+      if (query.length < 2) setError('');
       return;
     }
     let active = true;
     const timer = setTimeout(() => {
+      setIdeasMode(false);
       setLoading(true);
       setError('');
       void discoverVenues({
         organizationId,
+        mode: 'direct',
         city,
         state,
         eventType,
@@ -97,12 +99,12 @@ export function VenueSearchField({
         .finally(() => {
           if (active) setLoading(false);
         });
-    }, 350);
+    }, 300);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [canSearch, capacity, city, customMode, eventType, organizationId, query, selectedVenue, state]);
+  }, [capacity, city, customMode, eventType, organizationId, query, selectedVenue, state]);
 
   const selectedMeta = useMemo(() => {
     if (!selectedVenue) return '';
@@ -110,8 +112,8 @@ export function VenueSearchField({
   }, [selectedVenue]);
 
   async function findIdeas() {
-    if (!canSearch) {
-      setError('Add the city and state first so venue ideas stay in the right area.');
+    if (!canRecommend) {
+      setError('Add a city and state to get broader venue recommendations. Direct venue search above works without them.');
       return;
     }
     setIdeasMode(true);
@@ -120,6 +122,7 @@ export function VenueSearchField({
     try {
       const response = await discoverVenues({
         organizationId,
+        mode: 'recommendation',
         city,
         state,
         eventType,
@@ -164,10 +167,11 @@ export function VenueSearchField({
             setIdeasMode(false);
             onChangeText(next);
           }}
-          placeholder="Search a venue or enter your own"
+          placeholder="Start typing a venue name"
           placeholderTextColor="#68756D"
           style={styles.input}
           autoCorrect={false}
+          autoCapitalize="words"
         />
         {loading ? <ActivityIndicator size="small" color="#D7B45A" /> : selectedVenue ? <Text style={styles.check}>✓</Text> : <Text style={styles.searchIcon}>⌕</Text>}
       </View>
@@ -182,7 +186,7 @@ export function VenueSearchField({
         </View>
       ) : null}
 
-      {!selectedVenue && !canSearch && !customMode ? <Text style={styles.helper}>Add city and state to search live venues.</Text> : null}
+      {!selectedVenue && !customMode && query.length < 2 ? <Text style={styles.helper}>Search by venue name. City and state will fill from the place you choose.</Text> : null}
 
       {!selectedVenue && results.length ? (
         <View style={styles.results}>
@@ -192,7 +196,7 @@ export function VenueSearchField({
               {candidate.photoUrl ? <Image source={{ uri: candidate.photoUrl }} style={styles.photo} /> : <View style={styles.photoFallback}><Text style={styles.photoFallbackText}>⌖</Text></View>}
               <View style={styles.resultCopy}>
                 <Text style={styles.resultName} numberOfLines={1}>{candidate.name}</Text>
-                <Text style={styles.resultMeta} numberOfLines={2}>{candidate.address ?? `${candidate.city}, ${candidate.state}`}</Text>
+                <Text style={styles.resultMeta} numberOfLines={2}>{candidate.address ?? [candidate.city, candidate.state].filter(Boolean).join(', ')}</Text>
                 <View style={styles.badges}>
                   {candidate.primaryType ? <Text style={styles.badge}>{candidate.primaryType}</Text> : null}
                   {candidate.historyUses > 0 ? <Text style={styles.historyBadge}>Used {candidate.historyUses}×</Text> : null}
@@ -226,7 +230,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, minHeight: 48, color: '#FFF8E8', paddingHorizontal: 12, fontSize: 16 },
   searchIcon: { color: '#78857D', fontSize: 19 },
   check: { color: '#8FD09E', fontSize: 14, fontWeight: '900' },
-  helper: { color: '#6F7C74', fontSize: 9, marginTop: 6 },
+  helper: { color: '#6F7C74', fontSize: 9, lineHeight: 13, marginTop: 6 },
   selectedCard: { marginTop: 7, borderRadius: 11, borderWidth: 1, borderColor: '#34463A', backgroundColor: '#0E1711', paddingHorizontal: 10, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
   selectedCopy: { flex: 1 },
   selectedName: { color: '#E8EDE9', fontSize: 10.5, fontWeight: '900' },
