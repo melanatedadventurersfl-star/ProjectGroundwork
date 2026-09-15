@@ -332,7 +332,7 @@ export default function HostCampaignCommandCenter() {
 
       <Pressable style={styles.assistantCard} onPress={() => router.push(`/host/assistant/${event.id}` as never)}>
         <View style={styles.assistantIcon}><Text style={styles.assistantIconText}>✦</Text></View>
-        <View style={styles.flex}><Text style={styles.assistantEyebrow}>EVENT ASSISTANT</Text><Text style={styles.assistantTitle}>Work with this event's current setup</Text><Text style={styles.assistantCopy}>Ask about the event, planning gaps, tasks, and next steps.</Text></View>
+        <View style={styles.flex}><Text style={styles.assistantEyebrow}>EVENT ASSISTANT</Text><Text style={styles.assistantTitle}>Work with the current event setup</Text><Text style={styles.assistantCopy}>Ask about the event, planning gaps, tasks, and next steps.</Text></View>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
 
