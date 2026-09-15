@@ -1,5 +1,22 @@
 import { supabase } from '../lib/supabase';
-import type { VenueCandidate } from './venueDiscovery';
+
+export type EventVenueSelection = {
+  placeId: string | null;
+  name: string;
+  address: string | null;
+  city: string;
+  state: string;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  primaryType: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  photoUrl: string | null;
+  mapsUrl: string | null;
+  websiteUrl: string | null;
+  source: string;
+};
 
 export type EventVenue = {
   id: string;
@@ -131,9 +148,9 @@ export async function getEventVenue(adventureId: string): Promise<EventVenue | n
 export async function saveSelectedEventVenue(input: {
   adventureId: string;
   organizationId: string;
-  candidate: VenueCandidate;
+  candidate: EventVenueSelection;
 }) {
-  const provider = input.candidate.placeId ? 'google_places' : input.candidate.source;
+  const provider = input.candidate.placeId ? 'google_places' : input.candidate.source === 'community_directory' ? 'community_directory' : input.candidate.source === 'tenant_history' ? 'tenant_history' : 'manual';
   const row = {
     adventure_id: input.adventureId,
     organization_id: input.organizationId,
