@@ -1,9 +1,11 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { assignCampaignTask, getHostCampaign, listCampaignTeam, updateCampaignTaskStatus, type CampaignTaskPriority, type CampaignTaskStatus, type CampaignTeamMember, type HostCampaign } from '../../../../../src/hosting/campaigns';
+import { eventActionRoute } from '../../../../../src/hosting/eventActions';
+import type { EventComponentKey } from '../../../../../src/hosting/eventBuilder';
 import { dueState } from '../../../../../src/hosting/workModel';
 import { supabase } from '../../../../../src/lib/supabase';
 
@@ -14,10 +16,19 @@ const priorityOptions: { value: CampaignTaskPriority; label: string }[] = [
   { value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' }, { value: 'normal', label: 'Normal' },
 ];
 
+type TaskTarget = {
+  target_component: string | null;
+  target_entity_type: string | null;
+  target_entity_id: string | null;
+  target_focus: string | null;
+  action_type: string | null;
+};
+
 export default function CampaignTaskDetailScreen() {
   const params = useLocalSearchParams<{ id: string; taskId: string }>();
   const [campaign, setCampaign] = useState<HostCampaign | null>(null);
   const [team, setTeam] = useState<CampaignTeamMember[]>([]);
+  const [target, setTarget] = useState<TaskTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -26,21 +37,48 @@ export default function CampaignTaskDetailScreen() {
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { const next = await getHostCampaign(String(params.id)); setCampaign(next); setTeam(next ? await listCampaignTeam(next) : []); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load task.'); }
+    try {
+      const next = await getHostCampaign(String(params.id));
+      setCampaign(next);
+      if (next) setTeam(await listCampaignTeam(next)); else setTeam([]);
+      const { data: targetRow, error: targetError } = await supabase
+        .from('host_campaign_tasks')
+        .select('target_component,target_entity_type,target_entity_id,target_focus,action_type')
+        .eq('id', String(params.taskId))
+        .maybeSingle();
+      if (targetError) throw targetError;
+      setTarget((targetRow as TaskTarget | null) ?? null);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load task.'); }
     finally { setLoading(false); }
-  }, [params.id]);
+  }, [params.id, params.taskId]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   const task = campaign?.tasks.find((item) => item.id === String(params.taskId));
   const assignee = team.find((member) => member.profileId === task?.assigneeProfileId) ?? null;
+
+  useEffect(() => {
+    if (!campaign || !task || !target?.target_component) return;
+    const route = eventActionRoute({
+      adventureId: campaign.adventureId,
+      campaignId: campaign.id,
+      campaignSlug: campaign.slug,
+      component: target.target_component as EventComponentKey,
+      entityType: target.target_entity_type,
+      entityId: target.target_entity_id,
+      focus: target.target_focus,
+      taskId: task.id,
+      actionType: target.action_type,
+    });
+    const currentTaskRoute = `/host/campaigns/${campaign.slug}/tasks/${task.id}`;
+    if (route !== currentTaskRoute) router.replace(route as never);
+  }, [campaign, target, task]);
 
   async function changeStatus(status: CampaignTaskStatus) { if (!task) return; setPicker(null); setSaving(true); try { await updateCampaignTaskStatus(task.id, status); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to update task.'); } finally { setSaving(false); } }
   async function assign(profileId: string | null) { if (!task) return; setPicker(null); setSaving(true); try { await assignCampaignTask(task.id, profileId); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to assign task.'); } finally { setSaving(false); } }
   async function changePriority(priority: CampaignTaskPriority) { if (!task) return; setPicker(null); setSaving(true); const { error: updateError } = await supabase.from('host_campaign_tasks').update({ priority }).eq('id', task.id); if (updateError) setError(updateError.message); else await load(); setSaving(false); }
   async function saveDueDate() { if (!task) return; const value = dueInput.trim(); const parsed = value ? new Date(`${value}T17:00:00`) : null; if (value && (!parsed || Number.isNaN(parsed.getTime()))) { setError('Use YYYY-MM-DD for the due date.'); return; } setSaving(true); const { error: updateError } = await supabase.from('host_campaign_tasks').update({ due_at: parsed?.toISOString() ?? null, due_label: parsed ? `Due ${parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'No due date' }).eq('id', task.id); if (updateError) setError(updateError.message); else { setPicker(null); await load(); } setSaving(false); }
 
-  if (loading && !task) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" /></View></SafeAreaView>;
+  if (loading && !task) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator color="#D7B45A" /><Text style={styles.loadingText}>Opening the related work area…</Text></View></SafeAreaView>;
   if (!campaign || !task) return <SafeAreaView style={styles.safe}><View style={styles.center}><Text style={styles.title}>Task unavailable</Text><Pressable onPress={() => router.back()}><Text style={styles.back}>Back</Text></Pressable></View></SafeAreaView>;
 
   const statusLabel = statusOptions.find((option) => option.value === task.status)?.label ?? task.status;
@@ -48,6 +86,7 @@ export default function CampaignTaskDetailScreen() {
   const dueValue = timingState === 'calendar' || timingState === 'relative' ? task.dueLabel : timingState === 'review' ? 'Review date' : 'Not scheduled';
 
   return <SafeAreaView style={styles.safe}><View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹ {campaign.shortTitle}</Text></Pressable><Text style={styles.headerLabel}>TASK</Text></View><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    {target?.target_component ? <View style={styles.routing}><ActivityIndicator color="#D7B45A" /><Text style={styles.routingText}>Opening {target.target_component.replace(/_/g, ' ')} for this task…</Text></View> : null}
     <Text style={[styles.status, task.status === 'blocked' && styles.blocked]}>{statusLabel.toUpperCase()}</Text><Text style={styles.title}>{task.title}</Text><Text style={styles.event}>{campaign.shortTitle}</Text>
     <View style={styles.infoGrid}><Info label="Work Area" value={task.category} /><Info label="Priority" value={task.priority} /><Info label="Due" value={dueValue} /><Info label="Assigned" value={assignee?.displayName ?? 'Unassigned'} /></View>
     {timingState === 'dependency' ? <View style={styles.timingCard}><Text style={styles.label}>DEPENDENCY TIMING</Text><Text style={styles.timingText}>{task.dueLabel}</Text></View> : null}
@@ -70,4 +109,4 @@ export default function CampaignTaskDetailScreen() {
 function Info({ label, value }: { label: string; value: string }) { return <View style={styles.info}><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value}</Text></View>; }
 function Control({ label, value, onPress }: { label: string; value: string; onPress: () => void }) { return <Pressable style={styles.control} onPress={onPress}><View><Text style={styles.label}>{label}</Text><Text style={styles.controlValue}>{value}</Text></View><Text style={styles.chevron}>›</Text></Pressable>; }
 
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0B100D' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }, header: { paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#222C26' }, back: { color: '#D7B45A', fontSize: 10, fontWeight: '900' }, headerLabel: { color: '#737F77', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 8 }, content: { padding: 18, paddingBottom: 70 }, status: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .8 }, blocked: { color: '#FF6974' }, title: { color: '#FFF8E8', fontSize: 27, lineHeight: 32, fontWeight: '900', marginTop: 6 }, event: { color: '#A990ED', fontSize: 10, fontWeight: '800', marginTop: 7 }, infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 }, info: { width: '48.5%', borderRadius: 13, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 11 }, label: { color: '#77827B', fontSize: 7.5, fontWeight: '900', textTransform: 'uppercase' }, value: { color: '#F4F1E8', fontSize: 11, fontWeight: '800', marginTop: 4, textTransform: 'capitalize' }, ownerCard: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 11 }, timingCard: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#554D2E', backgroundColor: '#1D1A10', padding: 12 }, timingText: { color: '#D7B45A', fontSize: 11, fontWeight: '800', marginTop: 5 }, reviewCard: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#604337', backgroundColor: '#211713', padding: 12 }, reviewText: { color: '#E7A05C', fontSize: 11, fontWeight: '800', marginTop: 5 }, reviewMeta: { color: '#9B897E', fontSize: 8, lineHeight: 12, marginTop: 4 }, blocker: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#633B43', backgroundColor: '#211417', padding: 12 }, blockerText: { color: '#FF9CA5', fontSize: 10, fontWeight: '800', marginTop: 5 }, controls: { marginTop: 18, borderRadius: 15, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', overflow: 'hidden' }, control: { minHeight: 58, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2B352F' }, controlValue: { color: '#F4F1E8', fontSize: 12, fontWeight: '800', marginTop: 3, textTransform: 'capitalize' }, chevron: { color: '#D7B45A', fontSize: 20 }, error: { color: '#FF8A80', fontSize: 10, marginTop: 14 }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.58)', justifyContent: 'flex-end' }, sheet: { backgroundColor: '#121814', borderTopLeftRadius: 23, borderTopRightRadius: 23, padding: 18, paddingBottom: 28, borderWidth: 1, borderColor: '#2F3933' }, handle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#47514B', marginBottom: 12 }, sheetTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginBottom: 8 }, sheetHelp: { color: '#849087', fontSize: 8, lineHeight: 12, marginBottom: 8 }, option: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2B352F' }, optionText: { color: '#F4F1E8', fontSize: 12, fontWeight: '800' }, selected: { color: '#A8CF55', fontSize: 16, fontWeight: '900' }, input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#39463E', backgroundColor: '#0F1511', color: '#FFF8E8', paddingHorizontal: 12, marginTop: 5 }, dueActions: { flexDirection: 'row', gap: 8, marginTop: 10 }, secondary: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#39463E', alignItems: 'center', justifyContent: 'center' }, secondaryText: { color: '#AAB4AE', fontSize: 9, fontWeight: '900' }, primary: { flex: 1.5, minHeight: 42, borderRadius: 12, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#172017', fontSize: 9, fontWeight: '900' } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#0B100D' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }, loadingText: { color: '#7C887F', fontSize: 9 }, header: { paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#222C26' }, back: { color: '#D7B45A', fontSize: 10, fontWeight: '900' }, headerLabel: { color: '#737F77', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 8 }, content: { padding: 18, paddingBottom: 70 }, routing: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: '#4E4529', backgroundColor: '#1B180E', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, marginBottom: 14 }, routingText: { color: '#C8B66F', fontSize: 9, fontWeight: '800' }, status: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: .8 }, blocked: { color: '#FF6974' }, title: { color: '#FFF8E8', fontSize: 27, lineHeight: 32, fontWeight: '900', marginTop: 6 }, event: { color: '#A990ED', fontSize: 10, fontWeight: '800', marginTop: 7 }, infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 }, info: { width: '48.5%', borderRadius: 13, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 11 }, label: { color: '#77827B', fontSize: 7.5, fontWeight: '900', textTransform: 'uppercase' }, value: { color: '#F4F1E8', fontSize: 11, fontWeight: '800', marginTop: 4, textTransform: 'capitalize' }, ownerCard: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', padding: 11 }, timingCard: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#554D2E', backgroundColor: '#1D1A10', padding: 12 }, timingText: { color: '#D7B45A', fontSize: 11, fontWeight: '800', marginTop: 5 }, reviewCard: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#604337', backgroundColor: '#211713', padding: 12 }, reviewText: { color: '#E7A05C', fontSize: 11, fontWeight: '800', marginTop: 5 }, reviewMeta: { color: '#9B897E', fontSize: 8, lineHeight: 12, marginTop: 4 }, blocker: { marginTop: 8, borderRadius: 13, borderWidth: 1, borderColor: '#633B43', backgroundColor: '#211417', padding: 12 }, blockerText: { color: '#FF9CA5', fontSize: 10, fontWeight: '800', marginTop: 5 }, controls: { marginTop: 18, borderRadius: 15, borderWidth: 1, borderColor: '#2B352F', backgroundColor: '#131A16', overflow: 'hidden' }, control: { minHeight: 58, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2B352F' }, controlValue: { color: '#F4F1E8', fontSize: 12, fontWeight: '800', marginTop: 3, textTransform: 'capitalize' }, chevron: { color: '#D7B45A', fontSize: 20 }, error: { color: '#FF8A80', fontSize: 10, marginTop: 14 }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.58)', justifyContent: 'flex-end' }, sheet: { backgroundColor: '#121814', borderTopLeftRadius: 23, borderTopRightRadius: 23, padding: 18, paddingBottom: 28, borderWidth: 1, borderColor: '#2F3933' }, handle: { alignSelf: 'center', width: 42, height: 4, borderRadius: 2, backgroundColor: '#47514B', marginBottom: 12 }, sheetTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900', marginBottom: 8 }, sheetHelp: { color: '#849087', fontSize: 8, lineHeight: 12, marginBottom: 8 }, option: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2B352F' }, optionText: { color: '#F4F1E8', fontSize: 12, fontWeight: '800' }, selected: { color: '#A8CF55', fontSize: 16, fontWeight: '900' }, input: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#39463E', backgroundColor: '#0F1511', color: '#FFF8E8', paddingHorizontal: 12, marginTop: 5 }, dueActions: { flexDirection: 'row', gap: 8, marginTop: 10 }, secondary: { flex: 1, minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#39463E', alignItems: 'center', justifyContent: 'center' }, secondaryText: { color: '#AAB4AE', fontSize: 9, fontWeight: '900' }, primary: { flex: 1.5, minHeight: 42, borderRadius: 12, backgroundColor: '#D7B45A', alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#172017', fontSize: 9, fontWeight: '900' } });
