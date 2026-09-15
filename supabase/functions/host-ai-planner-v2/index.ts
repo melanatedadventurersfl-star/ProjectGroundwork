@@ -3,6 +3,20 @@ import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 
 const MODEL = "gpt-4.1-mini";
 const jsonHeaders = { "Content-Type": "application/json" };
+const plannerSections = [
+  "basics",
+  "schedule",
+  "venue",
+  "registration",
+  "guests",
+  "staffing",
+  "vendors",
+  "communications",
+  "marketing",
+  "finance",
+  "safety",
+  "documents",
+];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -16,40 +30,79 @@ function unique(values: string[]) {
   return [...new Set(values)];
 }
 
+function planSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "title",
+      "summary",
+      "description",
+      "category",
+      "difficulty",
+      "startsAt",
+      "endsAt",
+      "venueName",
+      "city",
+      "state",
+      "capacity",
+      "attendanceRange",
+      "meetingInstructions",
+      "paid",
+      "priceCents",
+      "components",
+      "requirements",
+      "safetyNotes",
+      "backupPlan",
+    ],
+    properties: {
+      title: { type: "string" },
+      summary: { type: "string" },
+      description: { type: "string" },
+      category: { type: "string" },
+      difficulty: { type: "string", enum: ["easy", "moderate", "challenging"] },
+      startsAt: { type: "string" },
+      endsAt: { type: "string" },
+      venueName: { type: "string" },
+      city: { type: "string" },
+      state: { type: "string" },
+      capacity: { type: "integer", minimum: 0 },
+      attendanceRange: { type: "string" },
+      meetingInstructions: { type: "string" },
+      paid: { type: "boolean" },
+      priceCents: { type: "integer", minimum: 0 },
+      components: { type: "array", items: { type: "string" }, maxItems: 20 },
+      requirements: { type: "array", items: { type: "string" }, maxItems: 30 },
+      safetyNotes: { type: "array", items: { type: "string" }, maxItems: 30 },
+      backupPlan: { type: "string" },
+    },
+  };
+}
+
 function schema() {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["message", "plan", "readiness", "stage", "gaps", "options", "recommendation", "taskPacks"],
+    required: [
+      "message",
+      "plan",
+      "readiness",
+      "stage",
+      "gaps",
+      "options",
+      "recommendation",
+      "taskPacks",
+      "action",
+      "activeSection",
+      "venueRefinement",
+      "changedFields",
+      "sectionUpdates",
+    ],
     properties: {
       message: { type: "string" },
-      plan: {
-        type: "object",
-        additionalProperties: false,
-        required: ["title","summary","description","category","difficulty","startsAt","endsAt","venueName","city","state","capacity","meetingInstructions","paid","priceCents","components","requirements","safetyNotes","backupPlan"],
-        properties: {
-          title: { type: "string" },
-          summary: { type: "string" },
-          description: { type: "string" },
-          category: { type: "string" },
-          difficulty: { type: "string", enum: ["easy","moderate","challenging"] },
-          startsAt: { type: "string" },
-          endsAt: { type: "string" },
-          venueName: { type: "string" },
-          city: { type: "string" },
-          state: { type: "string" },
-          capacity: { type: "integer", minimum: 0 },
-          meetingInstructions: { type: "string" },
-          paid: { type: "boolean" },
-          priceCents: { type: "integer", minimum: 0 },
-          components: { type: "array", items: { type: "string" }, maxItems: 20 },
-          requirements: { type: "array", items: { type: "string" }, maxItems: 30 },
-          safetyNotes: { type: "array", items: { type: "string" }, maxItems: 30 },
-          backupPlan: { type: "string" },
-        },
-      },
+      plan: planSchema(),
       readiness: { type: "integer", minimum: 0, maximum: 100 },
-      stage: { type: "string", enum: ["possibility","momentum","confidence","ready"] },
+      stage: { type: "string", enum: ["possibility", "momentum", "confidence", "ready"] },
       gaps: { type: "array", items: { type: "string" }, maxItems: 20 },
       options: { type: "array", items: { type: "string" }, maxItems: 6 },
       recommendation: {
@@ -58,7 +111,7 @@ function schema() {
           {
             type: "object",
             additionalProperties: false,
-            required: ["label","reason","needsVerification"],
+            required: ["label", "reason", "needsVerification"],
             properties: {
               label: { type: "string" },
               reason: { type: "string" },
@@ -67,7 +120,33 @@ function schema() {
           },
         ],
       },
-      taskPacks: { type: "array", items: { type: "string", enum: ["food","waivers","safety","vendors","equipment","communications","marketing","event_day"] }, maxItems: 8 },
+      taskPacks: {
+        type: "array",
+        items: { type: "string", enum: ["food", "waivers", "safety", "vendors", "equipment", "communications", "marketing", "event_day"] },
+        maxItems: 8,
+      },
+      action: { type: "string", enum: ["continue", "venue_search", "venue_refine", "review", "create_workspace"] },
+      activeSection: {
+        anyOf: [
+          { type: "null" },
+          { type: "string", enum: plannerSections },
+        ],
+      },
+      venueRefinement: { type: "string" },
+      changedFields: { type: "array", items: { type: "string" }, maxItems: 20 },
+      sectionUpdates: {
+        type: "array",
+        maxItems: 12,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["section", "note"],
+          properties: {
+            section: { type: "string", enum: plannerSections },
+            note: { type: "string" },
+          },
+        },
+      },
     },
   };
 }
@@ -82,118 +161,94 @@ function outputText(payload: any) {
   return "";
 }
 
-function titleCase(value: string) {
-  return value.trim().replace(/\s+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function fallback(message: string, current: any, tenant: any) {
-  const plan = {
+function cleanPlan(current: any) {
+  return {
     title: clean(current?.title, 180),
     summary: clean(current?.summary, 500),
     description: clean(current?.description, 2500),
     category: clean(current?.category, 120),
-    difficulty: ["easy","moderate","challenging"].includes(current?.difficulty) ? current.difficulty : "easy",
+    difficulty: ["easy", "moderate", "challenging"].includes(current?.difficulty) ? current.difficulty : "easy",
     startsAt: clean(current?.startsAt, 80),
     endsAt: clean(current?.endsAt, 80),
     venueName: clean(current?.venueName, 220),
     city: clean(current?.city, 120),
     state: clean(current?.state, 80),
-    capacity: Number(current?.capacity || 0),
-    meetingInstructions: clean(current?.meetingInstructions, 1000),
+    capacity: Number.isInteger(Number(current?.capacity)) && Number(current?.capacity) > 0 ? Number(current.capacity) : 0,
+    attendanceRange: clean(current?.attendanceRange, 80),
+    meetingInstructions: clean(current?.meetingInstructions, 1200),
     paid: current?.paid === true,
-    priceCents: Number(current?.priceCents || 0),
-    components: Array.isArray(current?.components) ? current.components.map(String).slice(0, 20) : [],
-    requirements: Array.isArray(current?.requirements) ? current.requirements.map(String).slice(0, 30) : [],
-    safetyNotes: Array.isArray(current?.safetyNotes) ? current.safetyNotes.map(String).slice(0, 30) : [],
+    priceCents: Number.isInteger(Number(current?.priceCents)) && Number(current?.priceCents) > 0 ? Number(current.priceCents) : 0,
+    components: Array.isArray(current?.components) ? unique(current.components.map(String).map((item: string) => item.trim()).filter(Boolean)).slice(0, 20) : [],
+    requirements: Array.isArray(current?.requirements) ? unique(current.requirements.map(String).map((item: string) => item.trim()).filter(Boolean)).slice(0, 30) : [],
+    safetyNotes: Array.isArray(current?.safetyNotes) ? unique(current.safetyNotes.map(String).map((item: string) => item.trim()).filter(Boolean)).slice(0, 30) : [],
     backupPlan: clean(current?.backupPlan, 1200),
   };
+}
 
-  const lower = message.toLowerCase().trim();
-  const configuredCategories = Array.isArray(tenant?.eventCategories)
-    ? tenant.eventCategories.map(String).filter(Boolean).slice(0, 10)
-    : [];
-  const genericCategories = configuredCategories.length
-    ? configuredCategories
-    : ["Networking","Workshop","Conference","Fundraiser","Gala / Awards","Vendor Market / Pop-up"];
-
-  const inferred = [
-    { match: /\b(networking|mixer)\b/, category: "Networking", title: "Networking Event" },
-    { match: /\b(workshop|class|seminar)\b/, category: "Workshop", title: "Workshop" },
-    { match: /\b(conference|summit|convention)\b/, category: "Conference", title: "Conference" },
-    { match: /\b(fundraiser|fundraising|charity event)\b/, category: "Fundraiser", title: "Fundraiser" },
-    { match: /\b(gala|awards? dinner|awards? ceremony)\b/, category: "Gala / Awards", title: "Gala / Awards Event" },
-    { match: /\b(vendor market|vendor fair|pop[- ]?up|marketplace)\b/, category: "Vendor Market / Pop-up", title: "Vendor Market" },
-    { match: /\b(employee training|team training|staff training|team event)\b/, category: "Employee / Team Event", title: "Team Event" },
-    { match: /\b(private party|birthday|anniversary|celebration)\b/, category: "Private Event", title: "Private Event" },
-    { match: /\b(virtual event|webinar|online event)\b/, category: "Virtual Event", title: "Virtual Event" },
-    { match: /\b(nature walk|hike|hiking|kayak|paddle|canoe|camping|campout|outdoor event)\b/, category: "Outdoor Event", title: "Outdoor Event" },
-  ].find((item) => item.match.test(lower));
-
-  if (inferred) {
-    if (!plan.category) plan.category = inferred.category;
-    if (!plan.title) plan.title = inferred.title;
-    if (!plan.summary) plan.summary = `A ${inferred.category.toLowerCase()} event.`;
-    if (!plan.description) plan.description = plan.summary;
-  }
-
-  const location = message.match(/\bin\s+([a-z .'-]+?)(?:,\s*([a-z]{2}))?(?:\s+(?:for|with|on|at|next|this|and)\b|[,.!?]|$)/i);
-  if (location && !plan.city) {
-    plan.city = titleCase(location[1] || "");
-    if (!plan.state && location[2]) plan.state = location[2].toUpperCase();
-  }
-
-  const capacity = lower.match(/\b(\d{1,4})\s*(people|guests|attendees|persons)\b/);
-  if (capacity) plan.capacity = Number(capacity[1]);
-
+function fallback(message: string, current: any, section: string) {
+  const plan = cleanPlan(current);
   const gaps = [
     !plan.title ? "Event title" : "",
     !plan.category ? "Event type" : "",
-    !plan.city ? "City" : "",
-    !plan.state ? "State" : "",
-    !plan.capacity ? "Expected attendance" : "",
     !plan.startsAt ? "Date and start time" : "",
     !plan.endsAt ? "End time" : "",
+    !plan.city ? "City" : "",
+    !plan.state ? "State" : "",
   ].filter(Boolean);
-
-  const readiness = Math.max(10, Math.min(90, 100 - gaps.length * 10));
-  let nextMessage = "What kind of event are you planning?";
-  let options = genericCategories.slice(0, 6);
-  if (plan.title && !plan.city) {
-    nextMessage = "What city should I plan around?";
-    options = [];
-  } else if (plan.title && plan.city && !plan.state) {
-    nextMessage = `What state is ${plan.city} in?`;
-    options = [];
-  } else if (plan.title && plan.city && plan.state && !plan.capacity) {
-    nextMessage = `About how many ${clean(tenant?.attendeeLabel, 40) || "attendees"} are you planning for?`;
-    options = ["10 or fewer","10–25","25–50","50+","Not sure yet"];
-  } else if (plan.title) {
-    nextMessage = "I have the event idea. Choose a planning section or tell me what you want to change next.";
-    options = ["Date & schedule","Venue","Registration","Communications","Review plan"];
-  }
-
-  const category = plan.category.toLowerCase();
-  const taskPacks = ["communications","event_day"];
-  if (plan.components.includes("food")) taskPacks.push("food");
-  if (plan.components.includes("vendors")) taskPacks.push("vendors");
-  if (plan.components.includes("equipment")) taskPacks.push("equipment");
-  if (plan.paid || plan.components.includes("marketing")) taskPacks.push("marketing");
-  if (plan.components.includes("safety") || /outdoor|hiking|paddling|camping|kayak|canoe/.test(category)) taskPacks.push("safety");
+  const readiness = Math.max(10, Math.min(90, 100 - gaps.length * 12));
 
   return {
-    message: nextMessage,
+    message: message
+      ? "I kept your plan intact. I could not use the planning intelligence service for this turn, so I did not guess at new details."
+      : "Tell me what you want to plan.",
     plan,
     readiness,
     stage: readiness >= 85 ? "ready" : readiness >= 65 ? "confidence" : readiness >= 30 ? "momentum" : "possibility",
     gaps,
-    options,
+    options: ["Keep planning", "Review plan"],
     recommendation: null,
-    taskPacks: unique(taskPacks),
+    taskPacks: unique([
+      "communications",
+      "event_day",
+      ...(plan.components.includes("food") ? ["food"] : []),
+      ...(plan.components.includes("vendors") ? ["vendors"] : []),
+      ...(plan.components.includes("equipment") ? ["equipment"] : []),
+      ...(plan.components.includes("marketing") || plan.paid ? ["marketing"] : []),
+      ...(plan.components.includes("safety") ? ["safety"] : []),
+    ]),
+    action: "continue",
+    activeSection: plannerSections.includes(section) ? section : null,
+    venueRefinement: "",
+    changedFields: [],
+    sectionUpdates: [],
   };
+}
+
+async function canUsePlanner(userClient: any, userId: string, tenant: any) {
+  const organizationId = clean(tenant?.organizationId, 80);
+  if (organizationId) {
+    const { data: canManage, error } = await userClient.rpc("organization_has_permission", {
+      p_organization_id: organizationId,
+      p_permission_code: "events.manage",
+    });
+    if (error) {
+      console.error("host-ai-planner tenant permission", error);
+      return false;
+    }
+    return canManage === true;
+  }
+
+  const { data: approved, error } = await userClient.rpc("is_approved_outing_host", { p_profile_id: userId });
+  if (error) {
+    console.error("host-ai-planner legacy permission", error);
+    return false;
+  }
+  return approved === true;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return json({ error: "Authentication required" }, 401);
 
@@ -210,25 +265,29 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: userError } = await userClient.auth.getUser();
   if (userError || !userData.user?.id) return json({ error: "Authentication required" }, 401);
   const userId = userData.user.id;
-  const { data: approved, error: accessError } = await userClient.rpc("is_approved_outing_host", { p_profile_id: userId });
-  if (accessError || approved !== true) return json({ error: "Approved host access is required." }, 403);
 
   let message = "";
   let currentPlan: any = {};
   let tenant: any = {};
+  let section = "";
 
   try {
     const body = await req.json();
-    message = clean(body?.message, 2500);
+    message = clean(body?.message, 3000);
     if (!message) return json({ error: "Tell the planner what you want to work on." }, 400);
+
     currentPlan = body?.plan && typeof body.plan === "object" ? body.plan : {};
     tenant = body?.tenant && typeof body.tenant === "object" ? body.tenant : {};
+    section = clean(body?.section, 80);
     const history = Array.isArray(body?.history) ? body.history.slice(-16) : [];
     const preferences = body?.preferences ?? {};
-    const section = clean(body?.section, 80);
     const action = clean(body?.action, 40);
+    const mode = clean(body?.mode, 40);
 
-    if (!openAiKey) return json(fallback(message, currentPlan, tenant));
+    const allowed = await canUsePlanner(userClient, userId, tenant);
+    if (!allowed) return json({ error: "Event planning permission required." }, 403);
+
+    if (!openAiKey) return json(fallback(message, currentPlan, section));
 
     const source = JSON.stringify({
       message,
@@ -236,13 +295,16 @@ Deno.serve(async (req: Request) => {
       history,
       section,
       action,
+      mode,
       tenant: {
+        organizationId: clean(tenant?.organizationId, 80),
         organizationName: clean(tenant?.organizationName, 160),
         organizationKind: clean(tenant?.organizationKind, 80),
         eventCategories: Array.isArray(tenant?.eventCategories) ? tenant.eventCategories.slice(0, 20) : [],
         venueTypes: Array.isArray(tenant?.venueTypes) ? tenant.venueTypes.slice(0, 20) : [],
         attendeeLabel: clean(tenant?.attendeeLabel, 60),
         brandVoice: clean(tenant?.brandVoice, 240),
+        sections: Array.isArray(tenant?.sections) ? tenant.sections.slice(0, 20) : [],
       },
       privacy: {
         personalMemory: Boolean(preferences.personal_memory_enabled),
@@ -253,46 +315,75 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    const instructions = `You are a tenant-neutral AI Event Planner inside a multi-organization event platform. The active organization and its planner configuration are supplied in the input. Never assume the organization is an outdoor, nature, camping, recreation or community group unless the current event or tenant settings explicitly say so.
+    const instructions = `You are the reasoning layer for an event-planning workspace inside a multi-organization platform.
 
-Turn rough event ideas into structured event drafts through conversation. Infer facts the host already supplied before asking questions. For example, "a networking event in Jacksonville for 75 professionals" already supplies event type, city and attendance. Preserve confirmed details. Event-specific host input overrides prior event decisions, which override tenant settings, which override generic planning defaults.
+You are a planner, not a form wizard. Understand what the host means even when their wording does not match a predefined pathway. Answer the host's question directly, reason from the event context, and build the structured plan in the same turn when their message contains useful decisions.
 
-Ask one useful question at a time. Honor the requested section and action when supplied. Do not answer a section request with a generic "what do you want to work on next" prompt. If a section is already developed, summarize it and offer concrete next actions. Treat intentionally incomplete events as normal. Readiness is planning completeness, not permission to save a draft.
+Do not require the host to use exact phrases. A host may describe a movie night, rooftop mixer, listening party, vendor activation, retreat, dinner, launch, training, field day, screening, cruise, festival, or a completely new event concept. Preserve their concept and title. If the tenant category list does not contain an exact category, use the closest appropriate category or "Other" without replacing the host's event identity.
 
-Recommendations must be explicit suggestions with a reason. Never treat a recommendation request as a skip. Never invent venue availability, prices, permits, rules, weather, vendor facts or access details. Mark changing or external recommendations needsVerification=true. Separate confirmed facts from suggestions.
+Extract multiple facts from one message. Preserve confirmed details unless the host clearly changes them. A later explicit decision overrides an earlier one. Distinguish advice from confirmed facts. Do not silently turn a suggestion into a confirmed event detail.
 
-Use neutral event terminology from the tenant configuration. Do not introduce hiking, camping, paddling, trails, weather backup or outdoor safety unless relevant to this event. For business events, consider appropriate areas such as venue, registration, guests, staffing, vendors, communications, marketing, finance, AV, accessibility and documents when useful. For outdoor events, activity-specific safety can become relevant.
+The current section is context, not a prison. If the host is in Marketing and says "Through Facebook", treat that as a marketing detail. If they interrupt with "Actually make it 150 people", update attendance and continue naturally.
 
-Recognize corrections and contradictions. A later explicit value replaces an earlier value. Do not silently keep both. Do not use historical personalization unless the matching privacy toggle is on. Return the full updated plan every turn.`;
+Answer open-ended planning questions with useful reasoning. Examples include comparing venue formats, deciding what kind of space fits the event, thinking through staffing, guest flow, pricing strategy, promotion, vendor needs, or whether a proposed idea makes operational sense. Do not answer only questions that match examples in code.
+
+Do not force every response to end in a question. Sometimes the best response is an answer, a recommendation, a short summary of what changed, or a few next actions.
+
+Build the plan as you answer. Use components for applicable planning systems. Use requirements for concise operational decisions or constraints that do not have a dedicated field. Use sectionUpdates for useful section-specific notes. Do not stuff casual conversation into the plan.
+
+Use action="venue_search" only when the host explicitly asks to find, search for, show, or recommend real places. Use action="venue_refine" when they are refining an existing venue search. Put the search intent in venueRefinement. Never invent real venues, availability, prices, capacity, parking, permits, booking terms, or external facts. The app will call the venue discovery tool when you request it.
+
+Use action="review" when the host asks to review the plan. Use action="create_workspace" only when the host explicitly asks to create the event or workspace. The client will still validate required fields and permissions.
+
+Treat dates, money, capacity, permissions, publishing, and destructive changes as structured facts that the client validates. You can extract them, but do not claim an event is created, saved, published, booked, paid, or sent unless the app confirms that action.
+
+Never claim a planning draft is saved. The client owns persistence status.
+
+Never assume this tenant is an outdoor, nature, camping, recreation, Black-centered, community, or Go Melanated organization unless the supplied tenant or current event says so. Do not leak terminology or assumptions from another tenant.
+
+Respect privacy toggles. Do not infer from historical personalization when the corresponding privacy setting is off.
+
+Return the full updated plan every turn. For unknown scalar fields, preserve the supplied current value. If a boolean such as paid is unknown, keep the current value rather than inventing one. Keep external recommendations clearly marked with needsVerification=true.`;
 
     const upstream = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openAiKey}`,
+      },
       body: JSON.stringify({
         model: MODEL,
         instructions,
         input: [{ role: "user", content: [{ type: "input_text", text: source }] }],
-        text: { format: { type: "json_schema", name: "host_ai_planner_turn", strict: true, schema: schema() } },
+        text: {
+          format: {
+            type: "json_schema",
+            name: "host_ai_planner_fluid_turn",
+            strict: true,
+            schema: schema(),
+          },
+        },
       }),
     });
 
     const payload = await upstream.json();
     if (!upstream.ok) {
       console.error("host-ai-planner upstream", payload);
-      return json(fallback(message, currentPlan, tenant));
+      return json(fallback(message, currentPlan, section));
     }
+
     const text = outputText(payload);
-    if (!text) return json(fallback(message, currentPlan, tenant));
+    if (!text) return json(fallback(message, currentPlan, section));
 
     try {
       return json(JSON.parse(text));
     } catch (parseError) {
       console.error("host-ai-planner parse", parseError);
-      return json(fallback(message, currentPlan, tenant));
+      return json(fallback(message, currentPlan, section));
     }
   } catch (error) {
     console.error("host-ai-planner", error);
-    if (message) return json(fallback(message, currentPlan, tenant));
+    if (message) return json(fallback(message, currentPlan, section));
     return json({ error: "Unable to start AI planning." }, 500);
   }
 });
