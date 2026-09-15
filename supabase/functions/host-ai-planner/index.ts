@@ -30,7 +30,12 @@ Deno.serve(async (req: Request) => {
     !Array.isArray(tenant) &&
     ("organizationId" in tenant || "organizationName" in tenant || "experienceId" in tenant),
   );
-  const target = hasTenantContext ? "host-ai-planner-v2" : "host-ai-planner-legacy";
+  const chatbotMode = body.mode === "chatbot";
+  const target = chatbotMode && hasTenantContext
+    ? "host-ai-planner-chatbot"
+    : hasTenantContext
+      ? "host-ai-planner-v2"
+      : "host-ai-planner-legacy";
 
   try {
     const upstream = await fetch(`${supabaseUrl}/functions/v1/${target}`, {
