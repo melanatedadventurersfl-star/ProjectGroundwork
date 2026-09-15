@@ -251,7 +251,7 @@ export default function HostOrganizationProfileEditorScreen() {
   }
 
   async function chooseImportFiles() {
-    const result = await DocumentPicker.getDocumentAsync({ multiple:true, copyToCacheDirectory:true, type:['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','text/plain','text/html','image/jpeg','image/png','image/webp'] });
+    const result = await DocumentPicker.getDocumentAsync({ multiple:true, copyToCacheDirectory:true, type:['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/plain','text/html','image/jpeg','image/png','image/webp'] });
     if (!result.canceled) setImportFiles(result.assets.slice(0,8));
   }
 
@@ -473,7 +473,7 @@ function ImportPanel({mode,setMode,files,url,text,setUrl,setText,onChooseFiles,o
     <Section title="Bring your existing details" copy="Upload a media kit, profile document, flyer, website, or existing About copy. We identify what kind of document you uploaded before suggesting profile changes. Nothing is applied until you review it."/>
     <View style={styles.card}>
       <View style={styles.modeRow}>{(['files','website','pasted_text'] as const).map((key)=><Pressable key={key} style={[styles.mode,mode===key&&styles.modeActive]} onPress={()=>setMode(key)}><Text style={[styles.modeText,mode===key&&styles.modeTextActive]}>{key==='files'?'Upload':key==='website'?'Website':'Paste'}</Text></Pressable>)}</View>
-      {!result&&mode==='files'?<Pressable style={styles.importDrop} onPress={()=>void onChooseFiles()}><Text style={styles.uploadTitle}>{files.length?`${files.length} file${files.length===1?'':'s'} selected`:'Choose source files'}</Text><Text style={styles.muted}>PDF, Word, text, HTML, JPG, PNG, WebP</Text></Pressable>:null}
+      {!result&&mode==='files'?<Pressable style={styles.importDrop} onPress={()=>void onChooseFiles()}><Text style={styles.uploadTitle}>{files.length?`${files.length} file${files.length===1?'':'s'} selected`:'Choose source files'}</Text><Text style={styles.muted}>PDF, Word, Excel, text, HTML, JPG, PNG, WebP</Text></Pressable>:null}
       {!result&&mode==='website'?<Field label="Public website or profile page" value={url} onChangeText={setUrl} autoCapitalize="none" placeholder="https://"/>:null}
       {!result&&mode==='pasted_text'?<Field label="Existing profile or business copy" value={text} onChangeText={setText} multiline placeholder="Paste your About text, services, contact details, service areas, or other public information."/>:null}
       {!result?<Pressable disabled={busy} style={styles.analyzeButton} onPress={()=>void onAnalyze()}>{busy?<ActivityIndicator color="#152018"/>:<Text style={styles.primaryText}>Review suggested details</Text>}</Pressable>:<>
