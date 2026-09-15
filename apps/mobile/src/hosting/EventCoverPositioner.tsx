@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getEventCoverPosition, saveEventCoverPosition, type EventCoverPosition } from './eventMedia';
@@ -33,7 +33,6 @@ export function EventCoverPositioner({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
-  const startRef = useRef({ focalX: 0.5, focalY: 0.5 });
 
   useEffect(() => {
     let active = true;
@@ -49,23 +48,26 @@ export function EventCoverPositioner({
     return () => { active = false; };
   }, [adventureId, imageUrl]);
 
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => !disabled,
-    onMoveShouldSetPanResponder: (_, gesture) => !disabled && (Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2),
-    onPanResponderGrant: () => {
-      startRef.current = { focalX: position.focalX, focalY: position.focalY };
-      setStatus('');
-    },
-    onPanResponderMove: (_, gesture) => {
-      const width = Math.max(1, size.width * position.zoom);
-      const height = Math.max(1, size.height * position.zoom);
-      setPosition((current) => ({
-        ...current,
-        focalX: clamp(startRef.current.focalX - gesture.dx / width, 0, 1),
-        focalY: clamp(startRef.current.focalY - gesture.dy / height, 0, 1),
-      }));
-    },
-  }), [disabled, position.focalX, position.focalY, position.zoom, size.height, size.width]);
+  const panResponder = useMemo(() => {
+    let dragStart = { focalX: position.focalX, focalY: position.focalY };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => !disabled,
+      onMoveShouldSetPanResponder: (_, gesture) => !disabled && (Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2),
+      onPanResponderGrant: () => {
+        dragStart = { focalX: position.focalX, focalY: position.focalY };
+        setStatus('');
+      },
+      onPanResponderMove: (_, gesture) => {
+        const width = Math.max(1, size.width * position.zoom);
+        const height = Math.max(1, size.height * position.zoom);
+        setPosition((current) => ({
+          ...current,
+          focalX: clamp(dragStart.focalX - gesture.dx / width, 0, 1),
+          focalY: clamp(dragStart.focalY - gesture.dy / height, 0, 1),
+        }));
+      },
+    });
+  }, [disabled, position.focalX, position.focalY, position.zoom, size.height, size.width]);
 
   function adjustZoom(delta: number) {
     setStatus('');
