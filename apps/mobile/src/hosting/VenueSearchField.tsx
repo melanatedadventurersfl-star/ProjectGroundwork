@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { discoverVenues, type VenueCandidate } from './venueDiscovery';
+import { discoverVenues, type VenueCandidate, type VenueProviderStatus } from './venueDiscovery';
 
 export type SelectedVenueSnapshot = {
   placeId: string | null;
@@ -9,8 +9,13 @@ export type SelectedVenueSnapshot = {
   address: string | null;
   city: string;
   state: string;
+  postalCode: string | null;
   latitude: number | null;
   longitude: number | null;
+  primaryType: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  photoUrl: string | null;
   mapsUrl: string | null;
   websiteUrl: string | null;
   source: string;
@@ -24,8 +29,13 @@ function snapshot(candidate: VenueCandidate): SelectedVenueSnapshot {
     address: candidate.address,
     city: candidate.city,
     state: candidate.state,
+    postalCode: candidate.postalCode,
     latitude: candidate.latitude,
     longitude: candidate.longitude,
+    primaryType: candidate.primaryType,
+    rating: candidate.rating,
+    ratingCount: candidate.ratingCount,
+    photoUrl: candidate.photoUrl,
     mapsUrl: candidate.mapsUrl,
     websiteUrl: candidate.websiteUrl,
     source: candidate.source,
@@ -59,6 +69,7 @@ export function VenueSearchField({
   const [results, setResults] = useState<VenueCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [googleStatus, setGoogleStatus] = useState<VenueProviderStatus | null>(null);
   const [customMode, setCustomMode] = useState(false);
   const [ideasMode, setIdeasMode] = useState(false);
   const query = value.trim();
@@ -89,11 +100,13 @@ export function VenueSearchField({
         .then((response) => {
           if (!active) return;
           setResults(response.candidates);
+          setGoogleStatus(response.providers.googlePlaces.status);
           setError(response.warnings[0] ?? '');
         })
         .catch(() => {
           if (!active) return;
           setResults([]);
+          setGoogleStatus('error');
           setError('Venue search is unavailable right now. You can still enter the location manually.');
         })
         .finally(() => {
@@ -131,9 +144,11 @@ export function VenueSearchField({
         maxResults: 6,
       });
       setResults(response.candidates);
+      setGoogleStatus(response.providers.googlePlaces.status);
       setError(response.warnings[0] ?? '');
     } catch {
       setResults([]);
+      setGoogleStatus('error');
       setError('Venue ideas are unavailable right now.');
     } finally {
       setLoading(false);
@@ -167,7 +182,7 @@ export function VenueSearchField({
             setIdeasMode(false);
             onChangeText(next);
           }}
-          placeholder="Start typing a venue name"
+          placeholder="Search Google Places by venue name"
           placeholderTextColor="#68756D"
           style={styles.input}
           autoCorrect={false}
@@ -178,15 +193,21 @@ export function VenueSearchField({
 
       {selectedVenue ? (
         <View style={styles.selectedCard}>
+          {selectedVenue.photoUrl ? <Image source={{ uri: selectedVenue.photoUrl }} style={styles.selectedPhoto} /> : null}
           <View style={styles.selectedCopy}>
             <Text style={styles.selectedName}>{selectedVenue.name}</Text>
             {selectedMeta ? <Text style={styles.selectedMeta}>{selectedMeta}</Text> : null}
+            <View style={styles.badges}>
+              <Text style={selectedVenue.placeId ? styles.googleBadge : styles.badge}>{selectedVenue.placeId ? '✓ Google Places' : selectedVenue.sourceLabel}</Text>
+              {selectedVenue.rating ? <Text style={styles.badge}>★ {selectedVenue.rating.toFixed(1)}{selectedVenue.ratingCount ? ` (${selectedVenue.ratingCount})` : ''}</Text> : null}
+            </View>
           </View>
           <Pressable onPress={() => onChangeText(value)} hitSlop={8}><Text style={styles.change}>Change</Text></Pressable>
         </View>
       ) : null}
 
-      {!selectedVenue && !customMode && query.length < 2 ? <Text style={styles.helper}>Search by venue name. City and state will fill from the place you choose.</Text> : null}
+      {!selectedVenue && !customMode && query.length < 2 ? <Text style={styles.helper}>Start typing a venue name. City and state fill from the Google place you choose.</Text> : null}
+      {!selectedVenue && googleStatus && googleStatus !== 'available' ? <Text style={styles.providerWarning}>{googleStatus === 'unconfigured' ? 'Google Places is not configured. Saved venues may still appear.' : 'Google Places is temporarily unavailable. Saved venues may still appear.'}</Text> : null}
 
       {!selectedVenue && results.length ? (
         <View style={styles.results}>
@@ -198,6 +219,8 @@ export function VenueSearchField({
                 <Text style={styles.resultName} numberOfLines={1}>{candidate.name}</Text>
                 <Text style={styles.resultMeta} numberOfLines={2}>{candidate.address ?? [candidate.city, candidate.state].filter(Boolean).join(', ')}</Text>
                 <View style={styles.badges}>
+                  {candidate.source === 'google_places' ? <Text style={styles.googleBadge}>Google Places</Text> : <Text style={styles.badge}>{candidate.sourceLabel}</Text>}
+                  {candidate.rating ? <Text style={styles.badge}>★ {candidate.rating.toFixed(1)}</Text> : null}
                   {candidate.primaryType ? <Text style={styles.badge}>{candidate.primaryType}</Text> : null}
                   {candidate.historyUses > 0 ? <Text style={styles.historyBadge}>Used {candidate.historyUses}×</Text> : null}
                   {candidate.preferred ? <Text style={styles.preferredBadge}>Preferred</Text> : null}
@@ -231,7 +254,9 @@ const styles = StyleSheet.create({
   searchIcon: { color: '#78857D', fontSize: 19 },
   check: { color: '#8FD09E', fontSize: 14, fontWeight: '900' },
   helper: { color: '#6F7C74', fontSize: 9, lineHeight: 13, marginTop: 6 },
+  providerWarning: { color: '#DDA077', fontSize: 8.5, lineHeight: 13, marginTop: 6 },
   selectedCard: { marginTop: 7, borderRadius: 11, borderWidth: 1, borderColor: '#34463A', backgroundColor: '#0E1711', paddingHorizontal: 10, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  selectedPhoto: { width: 54, height: 54, borderRadius: 9, backgroundColor: '#19231D' },
   selectedCopy: { flex: 1 },
   selectedName: { color: '#E8EDE9', fontSize: 10.5, fontWeight: '900' },
   selectedMeta: { color: '#7E8A82', fontSize: 8.5, lineHeight: 13, marginTop: 2 },
@@ -247,6 +272,7 @@ const styles = StyleSheet.create({
   resultMeta: { color: '#7D8981', fontSize: 8.5, lineHeight: 12, marginTop: 2 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 },
   badge: { color: '#AAB4AE', fontSize: 7.5, fontWeight: '800', backgroundColor: '#172019', borderRadius: 7, paddingHorizontal: 5, paddingVertical: 3 },
+  googleBadge: { color: '#98C4FF', fontSize: 7.5, fontWeight: '900', backgroundColor: '#132033', borderRadius: 7, paddingHorizontal: 5, paddingVertical: 3 },
   historyBadge: { color: '#D9C274', fontSize: 7.5, fontWeight: '900', backgroundColor: '#2A2414', borderRadius: 7, paddingHorizontal: 5, paddingVertical: 3 },
   preferredBadge: { color: '#99D5A7', fontSize: 7.5, fontWeight: '900', backgroundColor: '#14231A', borderRadius: 7, paddingHorizontal: 5, paddingVertical: 3 },
   chevron: { color: '#D7B45A', fontSize: 19 },
