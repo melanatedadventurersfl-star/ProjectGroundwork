@@ -7,11 +7,8 @@ export type EventReadinessAction =
   | 'details'
   | 'location'
   | 'tickets'
-  | 'team'
-  | 'finance'
   | 'operations'
-  | 'communications'
-  | 'pages';
+  | 'communications';
 
 export type EventReadinessItem = {
   key: string;
@@ -59,6 +56,12 @@ function validSchedule(event: HostOuting) {
   return Number.isFinite(start) && Number.isFinite(end) && end > start;
 }
 
+function ticketCapacityReady(event: HostOuting, tickets: HostTicketType[]) {
+  if (!tickets.length) return false;
+  if (event.capacity == null) return true;
+  return tickets.every((ticket) => ticket.capacity == null || ticket.capacity <= event.capacity!);
+}
+
 export function evaluateEventReadiness(input: {
   event: HostOuting;
   tickets: HostTicketType[];
@@ -68,18 +71,31 @@ export function evaluateEventReadiness(input: {
   const { event, tickets, components, operations } = input;
   const activeComponents = new Set(components.filter((item) => item.status !== 'disabled').map((item) => item.component_key));
   const activeTickets = tickets.filter((ticket) => ticket.is_active);
-  const capacityAligned = activeTickets.length > 0 && (
-    event.capacity == null || activeTickets.some((ticket) => ticket.capacity == null || ticket.capacity <= event.capacity!)
-  );
-  const hasCommunicationSchedule = activeComponents.has('communications')
-    && ((operations?.scheduledCommunications ?? 0) + (operations?.draftCommunications ?? 0) > 0);
-  const hasOperatingPlan = activeComponents.has('schedule') || activeComponents.has('venue') || event.location_type === 'online';
+  const capacityAligned = ticketCapacityReady(event, activeTickets);
+  const communicationEnabled = activeComponents.has('communications');
+  const scheduledCommunications = operations?.scheduledCommunications ?? 0;
+  const draftCommunications = operations?.draftCommunications ?? 0;
+  const messagesReady = !communicationEnabled || scheduledCommunications > 0;
+  const operatingPlanReady = locationReady(event)
+    && (event.location_type === 'online' || activeComponents.has('venue') || activeComponents.has('schedule'));
+
+  const communicationItems: EventReadinessItem[] = communicationEnabled ? [{
+    key: 'messages',
+    label: 'Attendee communications',
+    detail: messagesReady
+      ? `${scheduledCommunications} message${scheduledCommunications === 1 ? '' : 's'} scheduled`
+      : draftCommunications
+        ? `${draftCommunications} draft message${draftCommunications === 1 ? '' : 's'} need scheduling`
+        : 'Set up attendee confirmations or reminders',
+    done: messagesReady,
+    action: 'communications',
+  }] : [];
 
   const rawAreas: EventReadinessArea[] = [
     {
       key: 'core',
       label: 'Event details',
-      weight: 35,
+      weight: 40,
       items: [
         { key: 'cover', label: 'Event cover', detail: event.hero_image_url ? 'Cover added' : 'Add an event cover', done: Boolean(event.hero_image_url), action: 'cover' },
         { key: 'identity', label: 'Event details', detail: event.title && event.summary ? 'Name and description ready' : 'Add the event name and description', done: Boolean(event.title?.trim() && event.summary?.trim()), action: 'details' },
@@ -93,7 +109,7 @@ export function evaluateEventReadiness(input: {
     {
       key: 'registration',
       label: 'Registration',
-      weight: 20,
+      weight: 25,
       items: [
         { key: 'admission', label: 'Admission', detail: activeTickets.length ? `${activeTickets.length} active option${activeTickets.length === 1 ? '' : 's'}` : 'Add an active admission option', done: activeTickets.length > 0, action: 'tickets' },
         { key: 'capacity', label: 'Capacity', detail: capacityAligned ? 'Capacity aligned' : 'Review event and ticket capacity', done: capacityAligned, action: 'tickets' },
@@ -104,11 +120,15 @@ export function evaluateEventReadiness(input: {
     {
       key: 'operations',
       label: 'Operations',
-      weight: 25,
+      weight: 20,
       items: [
-        { key: 'team', label: 'Team', detail: activeComponents.has('team') ? 'Team workspace connected' : 'Set up the event team', done: activeComponents.has('team'), action: 'team' },
-        { key: 'finance', label: 'Money', detail: activeComponents.has('finance') ? 'Finance workspace connected' : 'Set up event finances', done: activeComponents.has('finance'), action: 'finance' },
-        { key: 'operating-plan', label: 'Operating plan', detail: hasOperatingPlan ? 'Venue or schedule workspace connected' : 'Add venue or schedule planning', done: hasOperatingPlan, action: 'operations' },
+        {
+          key: 'operating-plan',
+          label: 'Operating plan',
+          detail: operatingPlanReady ? 'Location and operating workspace are connected' : 'Connect the event location to venue or schedule planning',
+          done: operatingPlanReady,
+          action: 'operations',
+        },
       ],
       complete: false,
       readyCount: 0,
@@ -116,11 +136,8 @@ export function evaluateEventReadiness(input: {
     {
       key: 'communications',
       label: 'Communications',
-      weight: 20,
-      items: [
-        { key: 'messages', label: 'Attendee messages', detail: hasCommunicationSchedule ? `${operations?.scheduledCommunications ?? 0} scheduled · ${operations?.draftCommunications ?? 0} draft` : 'Set up attendee messages', done: hasCommunicationSchedule, action: 'communications' },
-        { key: 'pages', label: 'Event information', detail: activeComponents.has('pages') ? 'Event pages connected' : 'Add attendee-facing event information', done: activeComponents.has('pages'), action: 'pages' },
-      ],
+      weight: 15,
+      items: communicationItems,
       complete: false,
       readyCount: 0,
     },
@@ -128,7 +145,7 @@ export function evaluateEventReadiness(input: {
 
   const areas = rawAreas.map((area) => {
     const readyCount = area.items.filter((item) => item.done).length;
-    return { ...area, readyCount, complete: readyCount === area.items.length };
+    return { ...area, readyCount, complete: area.items.length === 0 || readyCount === area.items.length };
   });
 
   const percent = Math.round(areas.reduce((sum, area) => {
@@ -136,12 +153,12 @@ export function evaluateEventReadiness(input: {
     return sum + ratio * area.weight;
   }, 0));
   const incomplete = areas.flatMap((area) => area.items.filter((item) => !item.done));
-  const registration = areas.find((area) => area.key === 'registration')!;
+  const coreArea = areas.find((area) => area.key === 'core')!;
+  const registrationArea = areas.find((area) => area.key === 'registration')!;
   const operationsArea = areas.find((area) => area.key === 'operations')!;
   const communicationsArea = areas.find((area) => area.key === 'communications')!;
-  const location = areas.find((area) => area.key === 'core')!.items.find((item) => item.key === 'location')!;
-  const coreWithoutCover = areas.find((area) => area.key === 'core')!.items.filter((item) => item.key !== 'cover');
-  const experienceLocked = coreWithoutCover.every((item) => item.done) && operationsArea.complete;
+  const location = coreArea.items.find((item) => item.key === 'location')!;
+  const experienceLocked = coreArea.items.filter((item) => item.key !== 'cover').every((item) => item.done) && operationsArea.complete;
 
   return {
     percent,
@@ -150,9 +167,9 @@ export function evaluateEventReadiness(input: {
     incomplete,
     milestones: [
       { key: 'venue', label: 'Venue locked', done: location.done, detail: location.detail },
-      { key: 'ticketing', label: 'Ticketing ready', done: registration.complete, detail: registration.complete ? 'Admission and capacity ready' : 'Finish admission and capacity' },
-      { key: 'experience', label: 'Experience locked', done: experienceLocked, detail: experienceLocked ? 'Core operations are ready' : 'Finish core details and operations' },
-      { key: 'communications', label: 'Communications ready', done: communicationsArea.complete, detail: communicationsArea.complete ? 'Attendee information is ready' : 'Finish messages and event information' },
+      { key: 'ticketing', label: 'Ticketing ready', done: registrationArea.complete, detail: registrationArea.complete ? 'Admission and capacity ready' : 'Finish admission and capacity' },
+      { key: 'experience', label: 'Experience locked', done: experienceLocked, detail: experienceLocked ? 'Core event plan is ready' : 'Finish event details and the operating plan' },
+      { key: 'communications', label: 'Communications ready', done: communicationsArea.complete, detail: communicationsArea.complete ? (communicationEnabled ? 'Attendee messaging is scheduled' : 'No attendee messaging required') : 'Schedule attendee communications' },
       { key: 'event', label: 'Event ready', done: incomplete.length === 0, detail: incomplete.length === 0 ? 'Ready to publish or operate' : `${incomplete.length} item${incomplete.length === 1 ? '' : 's'} still need attention` },
     ],
   };
