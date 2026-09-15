@@ -208,7 +208,7 @@ export default function HostCampaignCommandCenter() {
     setActionBusy('duplicate');
     setError('');
     try {
-      const copy = await duplicateCampaignEvent(campaign);
+      const copy = await duplicateCampaignEvent(campaign!);
       router.replace(`/host/campaigns/${copy.slug}` as never);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to duplicate this event.');
@@ -229,8 +229,8 @@ export default function HostCampaignCommandCenter() {
     setActionBusy('complete');
     setError('');
     try {
-      await transitionHostOuting(event.id, 'completed');
-      await archiveCampaignWorkspace(campaign);
+      await transitionHostOuting(event!.id, 'completed');
+      await archiveCampaignWorkspace(campaign!);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to complete this event.');
@@ -251,7 +251,7 @@ export default function HostCampaignCommandCenter() {
     setActionBusy('cancel');
     setError('');
     try {
-      await cancelCampaignEvent(campaign);
+      await cancelCampaignEvent(campaign!);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to cancel this event.');
@@ -272,7 +272,7 @@ export default function HostCampaignCommandCenter() {
     setActionBusy('archive');
     setError('');
     try {
-      await archiveCampaignWorkspace(campaign);
+      await archiveCampaignWorkspace(campaign!);
       router.replace('/host/events' as never);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to archive this workspace.');
