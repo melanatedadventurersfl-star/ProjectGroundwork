@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getHostOutingById, updateHostOuting, type EventLocationType, type HostOuting } from '../../../src/hosting/api';
@@ -47,8 +47,9 @@ export default function EditHostOutingScreen() {
   const [meetingInstructions, setMeetingInstructions] = useState('');
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [coverAltText, setCoverAltText] = useState('');
-  const [coverChanged, setCoverChanged] = useState(false);
   const [coverAltChanged, setCoverAltChanged] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverStatus, setCoverStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,16 +94,48 @@ export default function EditHostOutingScreen() {
   }, [id]);
 
   async function pickCover() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Photo library access is needed to add an event cover.');
-      return;
+    if (!id || coverUploading) return;
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError('Photo library access is needed to add an event cover.');
+        return;
+      }
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [16, 9], quality: 0.88 });
-    if (result.canceled || !result.assets?.[0]) return;
-    setCoverUri(result.assets[0].uri);
-    setCoverChanged(true);
+
+    setCoverStatus('');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.88,
+      base64: Platform.OS === 'web',
+    });
+    const asset = result.assets?.[0];
+    if (result.canceled || !asset) return;
+
+    const previousCover = outing?.hero_image_url ?? null;
+    setCoverUri(asset.uri);
+    setCoverUploading(true);
+    setCoverStatus('Uploading cover…');
     setError('');
+    try {
+      const imageUrl = await uploadEventCover({
+        adventureId: id,
+        localUri: asset.uri,
+        base64: asset.base64,
+        altText: coverAltText,
+      });
+      setCoverUri(imageUrl);
+      setCoverStatus('Cover saved');
+      setOuting((current) => current ? { ...current, hero_image_url: imageUrl, hero_alt_text: coverAltText.trim() || null } : current);
+    } catch (caught) {
+      setCoverUri(previousCover);
+      setCoverStatus('');
+      setError(caught instanceof Error ? caught.message : 'Unable to upload the event cover.');
+    } finally {
+      setCoverUploading(false);
+    }
   }
 
   async function save() {
@@ -145,9 +178,7 @@ export default function EditHostOutingScreen() {
           source: selectedVenue.source,
         });
       }
-      if (coverChanged && coverUri) {
-        await uploadEventCover({ adventureId: id, localUri: coverUri, altText: coverAltText });
-      } else if (coverAltChanged) {
+      if (coverAltChanged) {
         const { error: altError } = await supabase.from('adventures').update({ hero_alt_text: coverAltText.trim() || null }).eq('id', id);
         if (altError) throw altError;
       }
@@ -176,13 +207,14 @@ export default function EditHostOutingScreen() {
         <Pressable onPress={() => router.replace(`/host/review/${id}` as never)}><Text style={styles.back}>‹ Event review</Text></Pressable>
         <Text style={styles.eyebrow}>EVENT DETAILS</Text>
         <Text style={styles.title}>{readOnly ? 'Archived details' : coverFocused ? 'Add the event cover' : 'Edit the event'}</Text>
-        <Text style={styles.subtitle}>{readOnly ? 'Completed and cancelled events stay read-only.' : coverFocused ? 'Choose the image attendees should see, then save the event.' : 'Changes save to this event. Existing registrations stay attached.'}</Text>
+        <Text style={styles.subtitle}>{readOnly ? 'Completed and cancelled events stay read-only.' : coverFocused ? 'Choose the image attendees should see. The cover saves as soon as the upload finishes.' : 'Changes save to this event. Existing registrations stay attached.'}</Text>
 
         <View style={[styles.coverSection, coverFocused && styles.coverSectionFocused]}>
           <View style={styles.coverHeader}><View style={styles.flex}><Text style={styles.sectionTitle}>Event cover</Text><Text style={styles.sectionCopy}>Shown on the event review and attendee-facing event page.</Text></View>{outing.hero_image_url ? <Text style={styles.savedBadge}>CURRENT</Text> : null}</View>
-          <Pressable disabled={readOnly} style={styles.coverPicker} onPress={() => void pickCover()}>
-            {coverUri ? <ImageBackground source={{ uri: coverUri }} style={styles.coverImage} imageStyle={styles.coverImageRadius}><View style={styles.coverShade} /><Text style={styles.coverAction}>{readOnly ? 'Event cover' : 'Change cover'}</Text></ImageBackground> : <View style={styles.coverEmpty}><Text style={styles.coverPlus}>＋</Text><Text style={styles.coverEmptyTitle}>Add cover image</Text><Text style={styles.coverEmptyCopy}>Recommended 16:9 landscape image.</Text></View>}
+          <Pressable disabled={readOnly || coverUploading} style={styles.coverPicker} onPress={() => void pickCover()}>
+            {coverUri ? <ImageBackground source={{ uri: coverUri }} style={styles.coverImage} imageStyle={styles.coverImageRadius}><View style={styles.coverShade} /><Text style={styles.coverAction}>{readOnly ? 'Event cover' : coverUploading ? 'Uploading…' : 'Change cover'}</Text></ImageBackground> : <View style={styles.coverEmpty}><Text style={styles.coverPlus}>＋</Text><Text style={styles.coverEmptyTitle}>{coverUploading ? 'Uploading cover…' : 'Add cover image'}</Text><Text style={styles.coverEmptyCopy}>Recommended 16:9 landscape image. JPG, PNG or WebP up to 10 MB.</Text></View>}
           </Pressable>
+          {coverStatus ? <Text style={styles.coverStatus}>{coverStatus}</Text> : null}
           {coverUri ? <Field label="Image description" value={coverAltText} onChangeText={(value) => { setCoverAltText(value); setCoverAltChanged(true); }} editable={!readOnly} placeholder="Describe the image for accessibility" /> : null}
         </View>
 
@@ -213,7 +245,7 @@ export default function EditHostOutingScreen() {
         <Field label={config.labels.meetingInstructions} value={meetingInstructions} onChangeText={setMeetingInstructions} editable={!readOnly} multiline />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        {!readOnly ? <Pressable disabled={saving} style={[styles.primary, saving && styles.disabled]} onPress={() => void save()}>{saving ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Save Changes</Text>}</Pressable> : null}
+        {!readOnly ? <Pressable disabled={saving || coverUploading} style={[styles.primary, (saving || coverUploading) && styles.disabled]} onPress={() => void save()}>{saving ? <ActivityIndicator color="#172017" /> : <Text style={styles.primaryText}>Save Changes</Text>}</Pressable> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -232,7 +264,7 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 76, maxWidth: 760, width: '100%', alignSelf: 'center' }, flex: { flex: 1 }, back: { color: '#D7B45A', fontSize: 11, fontWeight: '900', marginBottom: 18 },
   eyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 30, lineHeight: 36, fontWeight: '900', marginTop: 4 }, subtitle: { color: '#A7B0AA', fontSize: 11, lineHeight: 17, marginTop: 5, marginBottom: 14 },
   coverSection: { borderRadius: 16, borderWidth: 1, borderColor: '#344039', backgroundColor: '#121914', padding: 12, marginBottom: 5 }, coverSectionFocused: { borderColor: '#D7B45A', borderWidth: 2 }, coverHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 9 }, sectionTitle: { color: '#FFF8E8', fontSize: 13, fontWeight: '900' }, sectionCopy: { color: '#7F8B83', fontSize: 8.5, lineHeight: 13, marginTop: 3 }, savedBadge: { color: '#8FD09E', fontSize: 7, fontWeight: '900', backgroundColor: '#17301F', paddingHorizontal: 7, paddingVertical: 5, borderRadius: 8 },
-  coverPicker: { minHeight: 135, borderRadius: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#46544C', overflow: 'hidden', backgroundColor: '#0D1410' }, coverImage: { minHeight: 190, justifyContent: 'flex-end', padding: 12 }, coverImageRadius: { borderRadius: 12 }, coverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,11,8,.3)' }, coverAction: { alignSelf: 'flex-start', color: '#FFF8E8', backgroundColor: 'rgba(8,13,10,.78)', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, fontSize: 9, fontWeight: '900' }, coverEmpty: { minHeight: 135, alignItems: 'center', justifyContent: 'center' }, coverPlus: { color: '#D7B45A', fontSize: 24 }, coverEmptyTitle: { color: '#E3E8E5', fontSize: 11, fontWeight: '900', marginTop: 4 }, coverEmptyCopy: { color: '#77847C', fontSize: 8.5, marginTop: 3 },
+  coverPicker: { minHeight: 135, borderRadius: 13, borderWidth: 1, borderStyle: 'dashed', borderColor: '#46544C', overflow: 'hidden', backgroundColor: '#0D1410' }, coverImage: { minHeight: 190, justifyContent: 'flex-end', padding: 12 }, coverImageRadius: { borderRadius: 12 }, coverShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,11,8,.3)' }, coverAction: { alignSelf: 'flex-start', color: '#FFF8E8', backgroundColor: 'rgba(8,13,10,.78)', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, fontSize: 9, fontWeight: '900' }, coverEmpty: { minHeight: 135, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }, coverPlus: { color: '#D7B45A', fontSize: 24 }, coverEmptyTitle: { color: '#E3E8E5', fontSize: 11, fontWeight: '900', marginTop: 4 }, coverEmptyCopy: { color: '#77847C', fontSize: 8.5, lineHeight: 13, marginTop: 3, textAlign: 'center' }, coverStatus: { color: '#8FD09E', fontSize: 9, fontWeight: '800', marginTop: 8 },
   field: { marginTop: 13 }, label: { color: '#D4DAD6', fontSize: 10.5, fontWeight: '900', marginTop: 13, marginBottom: 7 }, input: { minHeight: 48, borderWidth: 1, borderColor: '#344039', backgroundColor: '#141A16', borderRadius: 13, color: '#FFF8E8', paddingHorizontal: 13, fontSize: 15 }, multiline: { minHeight: 105, paddingTop: 13 }, readOnly: { opacity: .58 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 2 }, chip: { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: '#364139', paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151B17' }, chipActive: { backgroundColor: '#443616', borderColor: '#8A6A25' }, chipText: { color: '#A9B1AC', fontSize: 10, fontWeight: '800' }, chipTextActive: { color: '#E7C464' },
   row: { flexDirection: 'row', gap: 10 }, state: { width: 95 }, helper: { color: '#718078', fontSize: 9.5, lineHeight: 14, marginTop: 8 }, segment: { flexDirection: 'row', borderRadius: 12, borderWidth: 1, borderColor: '#344039', overflow: 'hidden', marginTop: 8 }, segmentButton: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0D1410' }, segmentActive: { backgroundColor: '#322A14' }, segmentText: { color: '#9FA9A3', fontWeight: '900', fontSize: 10 }, segmentTextActive: { color: '#E7C464' },
