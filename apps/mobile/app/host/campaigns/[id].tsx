@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getHostOutingById, type HostOuting } from '../../../src/hosting/api';
@@ -9,6 +9,7 @@ import { listCampaignMarketingItems } from '../../../src/hosting/campaignMarketi
 import { getEventAnalyticsSummary, type EventAnalyticsSummary } from '../../../src/hosting/eventAnalytics';
 import { getEventOperationsSummary, listEventComponents, type EventOperationsSummary } from '../../../src/hosting/eventBuilder';
 import { evaluateEventReadiness, type EventReadinessAction, type EventReadinessResult } from '../../../src/hosting/eventReadiness';
+import { PositionedEventCover } from '../../../src/hosting/PositionedEventCover';
 import { listHostTicketTypes, type HostTicketType } from '../../../src/hosting/tickets';
 
 const emptyAnalytics: EventAnalyticsSummary = {
@@ -151,9 +152,6 @@ export default function HostCampaignCommandCenter() {
     if (action === 'details' || action === 'location') return `/host/edit/${eventId}`;
     if (action === 'tickets') return `/host/inventory/${eventId}`;
     if (action === 'communications') return `/host/event-communications/${eventId}`;
-    if (action === 'team') return `/host/build/${eventId}?focus=team`;
-    if (action === 'finance') return `/host/build/${eventId}?focus=finance`;
-    if (action === 'pages') return `/host/build/${eventId}?focus=pages`;
     return `/host/build/${eventId}?focus=schedule`;
   }
 
@@ -182,6 +180,7 @@ export default function HostCampaignCommandCenter() {
     { key: 'registration', title: 'Registration', status: `${registered} registered`, onPress: () => router.push(`/host/inventory/${event.id}` as never) },
     { key: 'tasks', title: 'Tasks', status: overdueTasks.length ? `${activeTasks.length} open · ${overdueTasks.length} overdue` : `${activeTasks.length} open`, onPress: () => router.push(`/host/campaigns/${campaign.slug}/tasks` as never) },
   ];
+  if (activeComponents.has('venue') && event.location_type !== 'online') manageCards.push({ key: 'venue', title: 'Venue', status: event.venue_name ? `${event.venue_name} · ${event.city}, ${event.state}` : 'Location needs attention', onPress: () => router.push(`/host/venue/${event.id}` as never) });
   if (activeComponents.has('communications')) manageCards.push({ key: 'communications', title: 'Communications', status: `${operations.scheduledCommunications} scheduled · ${operations.draftCommunications} draft`, onPress: () => router.push(`/host/event-communications/${event.id}` as never) });
   if (operationsActive) manageCards.push({ key: 'operations', title: 'Operations', status: operations.overdueTaskCount ? `${operations.overdueTaskCount} overdue` : `${operations.openTaskCount ?? activeTasks.length} open items`, onPress: () => router.push(`/host/build/${event.id}?focus=schedule` as never) });
   if (activeComponents.has('team')) manageCards.push({ key: 'team', title: 'Team', status: `${teamCount} ${teamCount === 1 ? 'person' : 'people'}`, onPress: () => router.push(`/host/build/${event.id}?focus=team` as never) });
@@ -206,7 +205,7 @@ export default function HostCampaignCommandCenter() {
         </View>
 
         <View style={styles.identityCard}>
-          {event.hero_image_url ? <Image source={{ uri: event.hero_image_url }} style={styles.cover} resizeMode="cover" /> : <Pressable style={styles.coverFallback} onPress={() => router.push(`/host/edit/${event.id}?focus=cover` as never)}><Text style={styles.coverPlus}>＋</Text><Text style={styles.coverFallbackText}>Add event cover</Text></Pressable>}
+          {event.hero_image_url ? <Pressable onPress={() => router.push(`/host/edit/${event.id}?focus=cover` as never)}><PositionedEventCover adventureId={event.id} imageUrl={event.hero_image_url} style={styles.cover} /></Pressable> : <Pressable style={styles.coverFallback} onPress={() => router.push(`/host/edit/${event.id}?focus=cover` as never)}><Text style={styles.coverPlus}>＋</Text><Text style={styles.coverFallbackText}>Add event cover</Text></Pressable>}
           <View style={styles.identityBody}>
             <Text style={styles.pageTitle}>{event.title}</Text>
             <Text style={styles.meta}>{eventRange(event.starts_at, event.ends_at)}</Text>
