@@ -36,6 +36,9 @@ export async function uploadEventCover(input: {
     .update({
       hero_image_url: imageUrl,
       hero_alt_text: input.altText?.trim() || null,
+      hero_focal_x: 0.5,
+      hero_focal_y: 0.5,
+      hero_zoom: 1,
     })
     .eq('id', input.adventureId)
     .select('id')
@@ -48,4 +51,36 @@ export async function uploadEventCover(input: {
   }
 
   return imageUrl;
+}
+
+export type EventCoverPosition = {
+  focalX: number;
+  focalY: number;
+  zoom: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export async function getEventCoverPosition(adventureId: string): Promise<EventCoverPosition> {
+  const { data, error } = await supabase.from('adventures').select('hero_focal_x,hero_focal_y,hero_zoom').eq('id', adventureId).single();
+  if (error) throw error;
+  return {
+    focalX: Number(data?.hero_focal_x ?? 0.5),
+    focalY: Number(data?.hero_focal_y ?? 0.5),
+    zoom: Number(data?.hero_zoom ?? 1),
+  };
+}
+
+export async function saveEventCoverPosition(adventureId: string, position: EventCoverPosition) {
+  const payload = {
+    hero_focal_x: clamp(position.focalX, 0, 1),
+    hero_focal_y: clamp(position.focalY, 0, 1),
+    hero_zoom: clamp(position.zoom, 1, 3),
+  };
+  const { data, error } = await supabase.from('adventures').update(payload).eq('id', adventureId).select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('You do not have permission to reposition this event cover.');
+  return payload;
 }

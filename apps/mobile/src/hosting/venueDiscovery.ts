@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 
 export type VenueDiscoverySource = 'tenant_history' | 'community_directory' | 'google_places';
 export type VenueDiscoveryMode = 'direct' | 'recommendation';
+export type VenueProviderStatus = 'available' | 'error' | 'unconfigured';
 
 export type VenueCandidate = {
   id: string;
@@ -10,6 +11,7 @@ export type VenueCandidate = {
   address: string | null;
   city: string;
   state: string;
+  postalCode: string | null;
   latitude: number | null;
   longitude: number | null;
   primaryType: string | null;
@@ -50,10 +52,13 @@ export type VenueDiscoveryResponse = {
   candidates: VenueCandidate[];
   sourceCounts: Record<string, number>;
   warnings: string[];
+  providers: {
+    googlePlaces: { status: VenueProviderStatus };
+  };
 };
 
 export async function discoverVenues(input: VenueDiscoveryRequest): Promise<VenueDiscoveryResponse> {
-  const { data, error } = await supabase.functions.invoke('host-venue-discovery', {
+  const { data, error } = await supabase.functions.invoke('host-venue-discovery-v2', {
     body: {
       organizationId: input.organizationId,
       city: input.city?.trim() ?? '',
@@ -73,11 +78,17 @@ export async function discoverVenues(input: VenueDiscoveryRequest): Promise<Venu
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
+  const googleStatus = data?.providers?.googlePlaces?.status;
   return {
     query: String(data?.query ?? ''),
     candidates: Array.isArray(data?.candidates) ? data.candidates as VenueCandidate[] : [],
     sourceCounts: data?.sourceCounts && typeof data.sourceCounts === 'object' ? data.sourceCounts : {},
     warnings: Array.isArray(data?.warnings) ? data.warnings.map(String) : [],
+    providers: {
+      googlePlaces: {
+        status: googleStatus === 'available' || googleStatus === 'error' || googleStatus === 'unconfigured' ? googleStatus : 'error',
+      },
+    },
   };
 }
 

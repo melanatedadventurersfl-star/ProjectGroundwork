@@ -199,12 +199,11 @@ export async function listMyHostOutings(): Promise<HostOuting[]> {
 }
 
 export async function getHostOutingById(adventureId: string): Promise<HostOuting> {
-  const profileId = await currentProfileId();
+  await currentProfileId();
   const { data, error } = await supabase
     .from('adventures')
     .select(HOST_OUTING_SELECT)
     .eq('id', adventureId)
-    .eq('created_by', profileId)
     .single();
   if (error) throw error;
   return data as HostOuting;
@@ -281,8 +280,7 @@ export async function createDraftOuting(input: CreateHostOutingInput): Promise<H
 
 export async function updateHostOuting(adventureId: string, input: UpdateHostOutingInput): Promise<HostOuting> {
   const { startsAt, endsAt, locationType, city, state, onlineUrl } = validateOutingInput(input);
-  const existing = (await listMyHostOutings()).find((item) => item.id === adventureId);
-  if (!existing) throw new Error('Event not found.');
+  const existing = await getHostOutingById(adventureId);
   if (existing.status === 'cancelled' || existing.status === 'completed') throw new Error('Cancelled and completed events cannot be edited.');
 
   const nextCapacity = input.capacity ?? null;
