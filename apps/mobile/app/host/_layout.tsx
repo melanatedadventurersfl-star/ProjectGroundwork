@@ -18,9 +18,47 @@ type HostNavItem = {
 const NAV: HostNavItem[] = [
   { label: 'Home', icon: 'dashboard', route: '/host', match: (path: string) => path === '/host' || path === '/host/' },
   { label: 'Work', icon: 'tasks', route: '/host/work', match: (path: string) => path.startsWith('/host/work') },
-  { label: 'Events', icon: 'trips', route: '/host/events', match: (path: string) => path.startsWith('/host/events') || path.startsWith('/host/manage') || path.startsWith('/host/build') || path.startsWith('/host/assistant') || path.startsWith('/host/analytics') },
+  {
+    label: 'Events',
+    icon: 'trips',
+    route: '/host/events',
+    match: (path: string) => path.startsWith('/host/events')
+      || path.startsWith('/host/manage')
+      || path.startsWith('/host/build')
+      || path.startsWith('/host/assistant')
+      || path.startsWith('/host/analytics')
+      || path.startsWith('/host/campaigns/')
+      || path.startsWith('/host/edit/')
+      || path.startsWith('/host/review/')
+      || path.startsWith('/host/venue/')
+      || path.startsWith('/host/event-communications/')
+      || path.startsWith('/host/inventory/')
+      || path.startsWith('/host/cover-position/')
+      || path.startsWith('/host/drafts/'),
+  },
   { label: 'Calendar', icon: 'calendar', route: '/host/calendar', match: (path: string) => path.startsWith('/host/calendar') },
-  { label: 'More', icon: 'more', route: '/host/more', match: (path: string) => path.startsWith('/host/more') || path.startsWith('/host/menu') || path.startsWith('/host/vendors') || path.startsWith('/host/teams') || path.startsWith('/host/opportunities') || path.startsWith('/host/directories') || path.startsWith('/host/finances') || path.startsWith('/host/communications') || path.startsWith('/host/inventory') || path.startsWith('/host/library') || path.startsWith('/host/ai-privacy') || path.startsWith('/host/setup') || path.startsWith('/host/campaigns') || path.startsWith('/host/connections') || path.startsWith('/host/experience') || path.startsWith('/host/home-layout') || path.startsWith('/host/profile') },
+  {
+    label: 'More',
+    icon: 'more',
+    route: '/host/more',
+    match: (path: string) => path.startsWith('/host/more')
+      || path.startsWith('/host/menu')
+      || path.startsWith('/host/vendors')
+      || path.startsWith('/host/teams')
+      || path.startsWith('/host/opportunities')
+      || path.startsWith('/host/directories')
+      || path.startsWith('/host/finances')
+      || path.startsWith('/host/communications')
+      || path === '/host/inventory'
+      || path.startsWith('/host/library')
+      || path.startsWith('/host/ai-privacy')
+      || path.startsWith('/host/setup')
+      || path === '/host/campaigns'
+      || path.startsWith('/host/connections')
+      || path.startsWith('/host/experience')
+      || path.startsWith('/host/home-layout')
+      || path.startsWith('/host/profile'),
+  },
 ];
 
 export default function HostLayout() {
