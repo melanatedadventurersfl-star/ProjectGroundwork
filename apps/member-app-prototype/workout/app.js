@@ -75,11 +75,43 @@ function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)
 
 function goalSettings(goal,movement,experience){
   const accessory = ['biceps','triceps','calves','core','shoulder-accessory','quad-accessory','hamstring-accessory'].includes(movement);
+  const compound = ['squat','hinge','single-leg','horizontal-push','horizontal-pull','vertical-push','vertical-pull'].includes(movement);
   const newLifter = experience === 'new';
-  if (goal === 'strength') return {sets:accessory?2:(newLifter?2:3),reps:accessory?'8–12':'5–6',rest:accessory?75:150,setSeconds:38};
-  if (goal === 'fat-loss') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?45:60,setSeconds:42};
-  if (goal === 'general') return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?45:75,setSeconds:40};
-  return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?60:90,setSeconds:42};
+  if (goal === 'strength') return {sets:accessory?2:(newLifter?2:3),reps:accessory?'8–12':'6–8',rest:accessory?30:(compound?60:45),setSeconds:40};
+  if (goal === 'fat-loss') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?30:45,setSeconds:42};
+  if (goal === 'general') return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?45:30),setSeconds:40};
+  return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?60:45),setSeconds:42};
+}
+
+function recommendedRepCount(reps){
+  const nums=String(reps).match(/\d+/g)?.map(Number) || [];
+  if(!nums.length) return '';
+  if(String(reps).toLowerCase().includes('sec')) return String(nums[0]);
+  if(nums.length===1) return String(nums[0]);
+  return String(Math.max(nums[0],Math.round((nums[0]+nums[1])/2)));
+}
+
+function buildWarmup(exercises){
+  const moves=new Set(exercises.map(e=>e.movement));
+  const items=[{name:'Easy march + arm swing',seconds:30,cue:'Raise your temperature and breathe easily.'}];
+  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({name:'Bodyweight squat stretch',seconds:30,cue:'Controlled depth, knees tracking comfortably.'});
+  if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({name:'Dynamic hip hinge reach',seconds:30,cue:'Soft knees, reach hips back, stand tall.'});
+  if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({name:'Arm circles + shoulder sweep',seconds:30,cue:'Small circles into larger comfortable circles.'});
+  if(items.length<4) items.push({name:'Alternating reverse lunge reach',seconds:30,cue:'Move slowly through a comfortable range.'});
+  return items.slice(0,4);
+}
+
+function buildCooldown(exercises){
+  const muscles=new Set(exercises.flatMap(e=>e.muscles||[]));
+  const items=[];
+  if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({name:'Chest + shoulder stretch',seconds:30,cue:'Gentle stretch only, no forcing the range.'});
+  if(muscles.has('Back')||muscles.has('Lats')) items.push({name:'Lat + upper-back stretch',seconds:30,cue:'Breathe slowly and let the shoulders relax.'});
+  if(muscles.has('Quads')) items.push({name:'Standing quad stretch',seconds:30,cue:'Keep knees close and posture tall.'});
+  if(muscles.has('Hamstrings')) items.push({name:'Hamstring stretch',seconds:30,cue:'Hinge gently until you feel light tension.'});
+  if(muscles.has('Glutes')) items.push({name:'Glute stretch',seconds:30,cue:'Stay relaxed and avoid forcing the hip.'});
+  if(muscles.has('Calves')) items.push({name:'Calf stretch',seconds:30,cue:'Keep the heel down and breathe steadily.'});
+  if(items.length<3) items.push({name:'Full-body reach + breathing',seconds:30,cue:'Slow inhale, longer exhale, relax the shoulders.'});
+  return items.slice(0,4);
 }
 
 function equipmentAllows(exercise,equipment){
@@ -156,24 +188,29 @@ function buildDay(blueprint,profile,index){
     selected.push({...exercise,settings,start:estimateStartingLoad(exercise,profile)});
   }
 
+  const warmup=buildWarmup(selected);
+  const cooldown=buildCooldown(selected);
+  const prepSeconds=[...warmup,...cooldown].reduce((sum,item)=>sum+item.seconds,0);
   const budget=profile.minutes*60;
-  const warmup=Math.min(360,Math.max(180,Math.round(profile.minutes*.1*60)));
-  let total=()=>warmup+selected.reduce((s,e)=>s+estimateExerciseSeconds(e),0);
+  let total=()=>prepSeconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0);
 
   for (let i=selected.length-1;i>=0 && total()>budget;i--) {
     if (selected[i].settings.sets>2) selected[i].settings.sets=2;
   }
-  while (selected.length>3 && total()>budget) selected.pop();
+  while (selected.length>2 && total()>budget) selected.pop();
 
   return {
     id:`day-${index+1}`,
     name:blueprint.name,
     focus:blueprint.focus,
-    warmupMinutes:Math.round(warmup/60),
+    warmup,
+    cooldown,
+    warmupMinutes:Math.ceil(warmup.reduce((sum,item)=>sum+item.seconds,0)/60),
+    cooldownMinutes:Math.ceil(cooldown.reduce((sum,item)=>sum+item.seconds,0)/60),
     estimatedMinutes:Math.max(10,Math.ceil(total()/60)),
     exercises:selected.map(e=>({
       id:e.id,name:e.name,movement:e.movement,muscles:e.muscles,loadMode:e.loadMode,
-      sets:e.settings.sets,reps:e.settings.reps,rest:e.settings.rest,
+      sets:e.settings.sets,reps:e.settings.reps,startReps:recommendedRepCount(e.settings.reps),rest:Math.max(30,Math.min(60,e.settings.rest)),
       setup:e.setup||25,increment:e.increment||5,
       startWeight:e.start.weight,startLabel:e.start.label,startSource:e.start.source||'',
       calibrationRequired:e.start.calibrate
@@ -250,20 +287,32 @@ function regeneratePlan(){
 }
 
 function createWorkout(day){
-  return {
+  const workout={
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
-    startedAt:new Date().toISOString(),currentExerciseIndex:0,currentSetIndex:0,phase:'work',
+    startedAt:new Date().toISOString(),currentExerciseIndex:0,currentSetIndex:0,
+    phase:'warmup',timedStageIndex:0,timedStageEndsAt:null,
+    warmup:day.warmup||[],cooldown:day.cooldown||[],
+    exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
       const suggestedWeight=calibrated?.weight ?? ex.startWeight ?? 0;
+      const suggestedReps=ex.startReps||recommendedRepCount(ex.reps);
+      const weightValue=['bodyweight','timed','band','assisted'].includes(ex.loadMode)?'':String(suggestedWeight||'');
       return {
-        ...ex,suggestedWeight,
+        ...ex,suggestedWeight,suggestedReps,
         calibrationRequired:ex.calibrationRequired && !calibrated,
-        sets:Array.from({length:ex.sets},()=>({id:uid('set'),weight:'',reps:'',completed:false,completedAt:null}))
+        sets:Array.from({length:ex.sets},()=>({id:uid('set'),weight:weightValue,reps:String(suggestedReps||''),completed:false,completedAt:null}))
       };
     })
   };
+  const first=workout.warmup[0];
+  if(first) workout.timedStageEndsAt=new Date(Date.now()+first.seconds*1000).toISOString();
+  else {
+    workout.phase='work';
+    workout.exerciseStartedAt=new Date().toISOString();
+  }
+  return workout;
 }
 
 function startWorkout(dayId){
@@ -288,6 +337,21 @@ function nextPosition(w,ei,si){
   return null;
 }
 function workoutElapsedSeconds(w){ return Math.max(0,Math.floor((Date.now()-new Date(w.startedAt).getTime())/1000)); }
+function exerciseElapsedSeconds(w){
+  if(!w?.exerciseStartedAt) return 0;
+  return Math.max(0,Math.floor((Date.now()-new Date(w.exerciseStartedAt).getTime())/1000));
+}
+function stageRemaining(w){
+  if(!w||!['warmup','cooldown'].includes(w.phase)||!w.timedStageEndsAt)return 0;
+  return Math.max(0,Math.ceil((new Date(w.timedStageEndsAt).getTime()-Date.now())/1000));
+}
+function recordExerciseDuration(w,index){
+  if(!w?.exerciseStartedAt||index<0)return;
+  const elapsed=Math.max(0,Math.floor((Date.now()-new Date(w.exerciseStartedAt).getTime())/1000));
+  w.exerciseDurations=w.exerciseDurations||{};
+  w.exerciseDurations[w.exercises[index]?.id||String(index)]=elapsed;
+}
+
 function restRemaining(w){
   if(!w||w.phase!=='rest')return 0;
   if(Number.isFinite(w.restPausedRemaining))return Math.max(0,Math.ceil(w.restPausedRemaining));
@@ -296,11 +360,39 @@ function restRemaining(w){
 }
 function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(0,Math.min(100,(restRemaining(w)/d)*100)); }
 
+function startCooldown(){
+  const w=store.activeWorkout;if(!w)return;
+  recordExerciseDuration(w,w.currentExerciseIndex);
+  w.phase='cooldown';w.exerciseStartedAt=null;w.timedStageIndex=0;
+  const first=w.cooldown?.[0];
+  if(first) w.timedStageEndsAt=new Date(Date.now()+first.seconds*1000).toISOString();
+  else { finishWorkout(true); return; }
+  saveStore();render();
+}
+
+function advanceTimedStage(){
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const items=w.phase==='warmup'?w.warmup:w.cooldown;
+  if(w.timedStageIndex+1<items.length){
+    w.timedStageIndex+=1;
+    const next=items[w.timedStageIndex];
+    w.timedStageEndsAt=new Date(Date.now()+next.seconds*1000).toISOString();
+    saveStore();render();return;
+  }
+  if(w.phase==='warmup'){
+    w.phase='work';w.timedStageIndex=0;w.timedStageEndsAt=null;w.exerciseStartedAt=new Date().toISOString();
+    saveStore();render();document.querySelector('#set-weight')?.focus();return;
+  }
+  w.timedStageEndsAt=null;
+  finishWorkout(true);
+}
+
 function beginRest(next,seconds){
   const w=store.activeWorkout;
   if(!w)return;
-  if(!next){ finishWorkout(true);return; }
-  w.phase='rest';w.restDuration=seconds;w.restEndsAt=new Date(Date.now()+seconds*1000).toISOString();
+  if(!next){ startCooldown();return; }
+  const safeRest=Math.max(30,Math.min(60,seconds||45));
+  w.phase='rest';w.restDuration=safeRest;w.restEndsAt=new Date(Date.now()+safeRest*1000).toISOString();
   w.restPausedRemaining=null;w.pendingPosition=next;saveStore();render();
 }
 
@@ -312,10 +404,16 @@ function completeCurrentSet(){
   pos.set.weight=weight;pos.set.reps=reps;pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
   const next=nextPosition(pos.workout,pos.ei,pos.si);
 
-  if(pos.si===0 && pos.exercise.calibrationRequired && pos.exercise.loadMode!=='bodyweight' && pos.exercise.loadMode!=='timed' && pos.exercise.loadMode!=='band'){
+  if(next && next.ei===pos.ei){
+    const nextSet=pos.exercise.sets[next.si];
+    nextSet.weight=weight;
+    nextSet.reps=reps;
+  }
+
+  if(pos.si===0 && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
     pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
   }
-  beginRest(next,pos.exercise.rest||60);
+  beginRest(next,pos.exercise.rest||45);
 }
 
 function applyCalibration(rir){
@@ -326,13 +424,22 @@ function applyCalibration(rir){
   store.calibration[pos.exercise.id]={weight:adjusted,updatedAt:new Date().toISOString(),rir};
   pos.exercise.suggestedWeight=adjusted;pos.exercise.calibrationRequired=false;
   const next=pos.workout.pendingPosition;
+  if(next && next.ei===pos.ei){
+    const nextSet=pos.exercise.sets[next.si];
+    nextSet.weight=String(adjusted||'');
+    nextSet.reps=pos.exercise.sets[0].reps||pos.exercise.suggestedReps||'';
+  }
   saveStore();
-  beginRest(next,pos.exercise.rest||60);
+  beginRest(next,pos.exercise.rest||45);
 }
 
 function advanceAfterRest(){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
-  const next=w.pendingPosition;if(!next){finishWorkout(true);return;}
+  const next=w.pendingPosition;if(!next){startCooldown();return;}
+  if(next.ei!==w.currentExerciseIndex){
+    recordExerciseDuration(w,w.currentExerciseIndex);
+    w.exerciseStartedAt=new Date().toISOString();
+  }
   w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
   saveStore();render();document.querySelector('#set-weight')?.focus();
 }
