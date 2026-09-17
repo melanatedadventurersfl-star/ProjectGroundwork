@@ -188,26 +188,29 @@ function buildDay(blueprint,profile,index){
     selected.push({...exercise,settings,start:estimateStartingLoad(exercise,profile)});
   }
 
-  const warmup=buildWarmup(selected);
-  const cooldown=buildCooldown(selected);
-  const prepSeconds=[...warmup,...cooldown].reduce((sum,item)=>sum+item.seconds,0);
+  const prepForSelected=()=>{
+    const warmup=buildWarmup(selected);
+    const cooldown=buildCooldown(selected);
+    return {warmup,cooldown,seconds:[...warmup,...cooldown].reduce((sum,item)=>sum+item.seconds,0)};
+  };
   const budget=profile.minutes*60;
-  let total=()=>prepSeconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0);
+  const total=()=>prepForSelected().seconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0);
 
   for (let i=selected.length-1;i>=0 && total()>budget;i--) {
     if (selected[i].settings.sets>2) selected[i].settings.sets=2;
   }
   while (selected.length>2 && total()>budget) selected.pop();
 
+  const prep=prepForSelected();
   return {
     id:`day-${index+1}`,
     name:blueprint.name,
     focus:blueprint.focus,
-    warmup,
-    cooldown,
-    warmupMinutes:Math.ceil(warmup.reduce((sum,item)=>sum+item.seconds,0)/60),
-    cooldownMinutes:Math.ceil(cooldown.reduce((sum,item)=>sum+item.seconds,0)/60),
-    estimatedMinutes:Math.max(10,Math.ceil(total()/60)),
+    warmup:prep.warmup,
+    cooldown:prep.cooldown,
+    warmupMinutes:Math.ceil(prep.warmup.reduce((sum,item)=>sum+item.seconds,0)/60),
+    cooldownMinutes:Math.ceil(prep.cooldown.reduce((sum,item)=>sum+item.seconds,0)/60),
+    estimatedMinutes:Math.max(10,Math.ceil((prep.seconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0))/60)),
     exercises:selected.map(e=>({
       id:e.id,name:e.name,movement:e.movement,muscles:e.muscles,loadMode:e.loadMode,
       sets:e.settings.sets,reps:e.settings.reps,startReps:recommendedRepCount(e.settings.reps),rest:Math.max(30,Math.min(60,e.settings.rest)),
@@ -672,7 +675,7 @@ function renderCalibration(pos){
 
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div><div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest">+15 SEC</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div><div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
 }
 
 function renderHistory(){
