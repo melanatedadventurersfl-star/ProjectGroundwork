@@ -445,9 +445,12 @@ function advanceAfterRest(){
 }
 function adjustRest(delta){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
-  if(Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=Math.max(0,w.restPausedRemaining+delta);
-  else w.restEndsAt=new Date(Date.now()+Math.max(0,restRemaining(w)+delta)*1000).toISOString();
-  w.restDuration=Math.max(1,(w.restDuration||1)+Math.max(0,delta));saveStore();updateTimers();
+  const current=restRemaining(w);
+  const nextRemaining=Math.max(30,Math.min(60,current+delta));
+  if(Number.isFinite(w.restPausedRemaining)) w.restPausedRemaining=nextRemaining;
+  else w.restEndsAt=new Date(Date.now()+nextRemaining*1000).toISOString();
+  w.restDuration=Math.max(30,Math.min(60,Math.max(w.restDuration||30,nextRemaining)));
+  saveStore();updateTimers();
 }
 function toggleRestPause(){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
@@ -574,8 +577,8 @@ function renderHome(){
         <article class="routine-card">
           <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN</span></div>
           <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
-          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed"><div><strong>${esc(ex.name)}</strong><small>${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)}${ex.calibrationRequired&&!store.calibration[ex.id]?' · calibrate first session':''}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
-          <div class="routine-footer"><span class="routine-meta">${day.exercises.length} exercises · ${day.warmupMinutes} min warm-up</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
+          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed"><div><strong>${esc(ex.name)}</strong><small>Start: ${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)} × ${esc(ex.startReps||recommendedRepCount(ex.reps))}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
+          <div class="routine-footer"><span class="routine-meta">${day.exercises.length} exercises · ${day.warmupMinutes} min stretch · ${day.cooldownMinutes} min cooldown</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
         </article>`).join('')}</div>
     </section>`;
 }
@@ -592,13 +595,40 @@ function renderCatalog(){
 function renderWorkout(){
   const pos=getActivePosition();
   if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
-  const done=completedSets(pos.workout.exercises),total=totalSets(pos.workout.exercises),pct=Math.round(done/Math.max(1,total)*100);
+  const w=pos.workout;
+  const done=completedSets(w.exercises),total=totalSets(w.exercises),pct=Math.round(done/Math.max(1,total)*100);
+  const inExercise=['work','rest','calibrate'].includes(w.phase);
+  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':'CURRENT EXERCISE';
   return `<div class="guided-shell">
-    <div class="session-status"><div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(pos.workout.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>Exercise ${pos.ei+1} of ${pos.workout.exercises.length}</span></div></div><div class="elapsed"><span>ELAPSED</span><strong id="elapsed-clock">${formatClock(workoutElapsedSeconds(pos.workout))}</strong></div></div>
+    <div class="session-status workout-status">
+      <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
+      <div class="clock-pair">
+        <div class="clock-card"><span>TOTAL</span><strong id="elapsed-clock">${formatClock(workoutElapsedSeconds(w))}</strong></div>
+        <div class="clock-card"><span>EXERCISE</span><strong id="exercise-clock">${inExercise?formatClock(exerciseElapsedSeconds(w)):'--:--'}</strong></div>
+      </div>
+    </div>
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-    <div class="step-strip">${pos.workout.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei?'current':''}"></span>`).join('')}</div>
-    <section class="exercise-stage">${pos.workout.phase==='rest'?renderRest(pos):pos.workout.phase==='calibrate'?renderCalibration(pos):renderWorkSet(pos)}</section>
+    <div class="step-strip">${w.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei&&inExercise?'current':''}"></span>`).join('')}</div>
+    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):renderWorkSet(pos)}</section>
     <div class="session-controls"><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
+  </div>`;
+}
+
+function renderTimedStage(w){
+  const items=w.phase==='warmup'?w.warmup:w.cooldown;
+  const item=items[w.timedStageIndex]||items[0];
+  const remaining=stageRemaining(w);
+  const isWarmup=w.phase==='warmup';
+  const nextLabel=w.timedStageIndex+1<items.length?items[w.timedStageIndex+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
+  return `<div class="timed-stage">
+    <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
+    <div class="stage-count">STEP ${w.timedStageIndex+1} OF ${items.length}</div>
+    <h3>${esc(item?.name||'Get ready')}</h3>
+    <p>${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
+    <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
+    <div class="stage-progress"><span style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
+    <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
+    <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
   </div>`;
 }
 
@@ -614,11 +644,10 @@ function renderWorkSet(pos){
   const next=nextPosition(pos.workout,pos.ei,pos.si);
   const isTimed=pos.exercise.loadMode==='timed';
   const noLoad=['bodyweight','timed','band'].includes(pos.exercise.loadMode);
-  const previous=pos.exercise.sets[pos.si-1];
-  const defaultWeight=previous?.completed?previous.weight:(pos.exercise.suggestedWeight||'');
-  const defaultReps=previous?.completed?previous.reps:'';
+  const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
+  const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div>
+    <div class="exercise-hero"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="initial-prescription"><span>STARTING PRESCRIPTION</span><strong>${esc(suggestedLabel(pos.exercise))} × ${esc(pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))} reps</strong></div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
@@ -689,9 +718,24 @@ function render(){
 }
 
 function updateTimers(){
-  const w=store.activeWorkout;const elapsed=document.querySelector('#elapsed-clock');if(w&&elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));
-  if(!w||w.phase!=='rest')return;const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
-  if(clock)clock.textContent=formatClock(remaining);if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
+  const w=store.activeWorkout;
+  const elapsed=document.querySelector('#elapsed-clock');
+  const exerciseClock=document.querySelector('#exercise-clock');
+  if(w&&elapsed) elapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  if(w&&exerciseClock&&['work','rest','calibrate'].includes(w.phase)) exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
+
+  if(w&&['warmup','cooldown'].includes(w.phase)){
+    const remaining=stageRemaining(w);
+    const clock=document.querySelector('#stage-clock');
+    if(clock) clock.textContent=formatClock(remaining);
+    if(remaining<=0) advanceTimedStage();
+    return;
+  }
+
+  if(!w||w.phase!=='rest')return;
+  const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
+  if(clock)clock.textContent=formatClock(remaining);
+  if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining))advanceAfterRest();
 }
 
@@ -710,6 +754,7 @@ function handleClick(event){
   else if(a==='add-rest')adjustRest(15);
   else if(a==='pause-rest')toggleRestPause();
   else if(a==='skip-rest')skipRest();
+  else if(a==='skip-stage')advanceTimedStage();
   else if(a==='finish')finishWorkout(false);
   else if(a==='discard')discardWorkout();
 }
