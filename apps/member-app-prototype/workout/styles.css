@@ -634,3 +634,32 @@ button:focus-visible, input:focus-visible {
   .bottom-nav{width:calc(100% - 12px);bottom:max(6px,env(safe-area-inset-bottom));padding:5px}
   .nav-item{min-height:50px;font-size:9px}
 }
+
+
+/* Guided session v2: dual clocks, stretch, cooldown, auto-filled prescription */
+.workout-status{align-items:center}
+.clock-pair{display:grid;grid-template-columns:repeat(2,minmax(92px,1fr));gap:8px}
+.clock-card{min-width:104px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--panel-2);text-align:right}
+.clock-card span{display:block;color:var(--muted);font-size:8px;font-weight:900;letter-spacing:.13em}
+.clock-card strong{display:block;margin-top:3px;font-size:20px;font-variant-numeric:tabular-nums}
+.initial-prescription{display:inline-flex;flex-direction:column;gap:4px;margin-top:14px;padding:10px 12px;border:1px solid rgba(216,180,92,.3);border-radius:12px;background:rgba(216,180,92,.07)}
+.initial-prescription span{color:var(--accent-2);font-size:8px;font-weight:900;letter-spacing:.12em}
+.initial-prescription strong{font-size:14px}
+.timed-stage{padding:clamp(26px,7vw,48px);text-align:center}
+.stage-count{color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.12em}
+.timed-stage h3{margin:16px auto 8px;max-width:650px;font-size:clamp(30px,8vw,54px);line-height:1;letter-spacing:-.05em}
+.timed-stage>p:not(.eyebrow){max-width:560px;margin:0 auto;color:var(--muted);font-size:13px;line-height:1.6}
+.stage-timer{margin:28px 0 8px;font-size:clamp(60px,18vw,94px);font-weight:900;letter-spacing:-.06em;font-variant-numeric:tabular-nums}
+.stage-progress{width:min(460px,100%);height:7px;margin:0 auto 22px;overflow:hidden;border-radius:999px;background:var(--panel-3)}
+.stage-progress span{display:block;height:100%;margin-left:auto;border-radius:inherit;background:var(--accent);transition:width .3s linear}
+.stage-skip{margin-top:14px}
+.timed-stage .next-preview{max-width:560px;margin-left:auto;margin-right:auto;text-align:left}
+.routine-meta{line-height:1.45}
+
+@media(max-width:620px){
+  .workout-status{align-items:flex-start}
+  .session-status.workout-status{grid-template-columns:1fr}
+  .clock-pair{width:100%}
+  .clock-card{text-align:left}
+  .clock-card strong{font-size:22px}
+}
