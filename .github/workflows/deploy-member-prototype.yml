@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/workout-mvp
     paths:
       - 'apps/member-app-prototype/**'
       - 'apps/mobile/**'
@@ -23,9 +24,6 @@ concurrency:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
