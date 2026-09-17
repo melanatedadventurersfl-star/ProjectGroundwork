@@ -45,7 +45,10 @@ window.EXERCISE_CATALOG = [
   {id:'calf-raise',name:'Standing Calf Raise',movement:'calves',muscles:['Calves'],equipment:['bodyweight','dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.08,increment:5,setup:15},
   {id:'plank',name:'Plank',movement:'core',muscles:['Core'],equipment:['bodyweight','dumbbells','bands','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'timed',increment:0,setup:10},
   {id:'dead-bug',name:'Dead Bug',movement:'core',muscles:['Core'],equipment:['bodyweight','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:10},
-  {id:'cable-crunch',name:'Cable Crunch',movement:'core',muscles:['Core'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.16,increment:5,setup:20}
+  {id:'cable-crunch',name:'Cable Crunch',movement:'core',muscles:['Core'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.16,increment:5,setup:20},
+  {id:'prone-w-raise',name:'Prone W Raise',movement:'horizontal-pull',muscles:['Upper Back','Rear Delts'],equipment:['bodyweight','bands','mixed-home'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:15},
+  {id:'prone-lat-pull',name:'Prone Lat Pull-Down',movement:'vertical-pull',muscles:['Lats','Upper Back'],equipment:['bodyweight','bands','mixed-home'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:15},
+  {id:'band-overhead-press',name:'Band Overhead Press',movement:'vertical-push',muscles:['Shoulders','Triceps'],equipment:['bands','mixed-home'],style:'band',difficulty:'beginner',loadMode:'band',increment:0,setup:20}
 ];
 
 window.EXERCISE_MOVEMENTS = {
