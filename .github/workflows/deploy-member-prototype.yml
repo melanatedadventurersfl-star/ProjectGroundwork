@@ -44,6 +44,11 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Validate standalone workout scripts
+        run: |
+          node --check apps/member-app-prototype/workout/catalog.js
+          node --check apps/member-app-prototype/workout/app.js
+
       - name: Install application dependencies
         run: npm ci
 
