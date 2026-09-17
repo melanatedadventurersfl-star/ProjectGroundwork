@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0c120f" />
-  <meta name="description" content="Guided 4-day strength workouts with set logging, rest timers, automatic exercise progression, history, and PR tracking." />
+  <meta name="description" content="Personalized guided strength plans built from goals, experience, equipment, body weight, and available workout time." />
   <title>Workout</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,27 +16,21 @@
     <header class="topbar">
       <button class="brand-wrap" type="button" data-action="go-home" aria-label="Go to workout home">
         <div class="brand-mark">W/</div>
-        <div class="brand-copy">
-          <h1>WORKOUT</h1>
-          <p>Guided strength training</p>
-        </div>
+        <div class="brand-copy"><h1>WORKOUT</h1><p>Personal training engine</p></div>
       </button>
-      <div class="top-actions">
-        <span class="storage-badge">Saved on this device</span>
-        <div class="avatar" aria-hidden="true">JC</div>
-      </div>
+      <div class="top-actions"><span class="storage-badge">Saved on this device</span><div class="avatar" aria-hidden="true">JC</div></div>
     </header>
-
     <main id="app" class="main" aria-live="polite"></main>
-
     <nav class="bottom-nav" aria-label="Workout navigation">
       <button class="nav-item active" type="button" data-tab="home"><span class="nav-icon">⌂</span><span>Plan</span></button>
       <button class="nav-item" type="button" data-tab="workout"><span class="nav-icon">▶</span><span>Workout</span><span class="nav-live" hidden></span></button>
+      <button class="nav-item" type="button" data-tab="catalog"><span class="nav-icon">▦</span><span>Catalog</span></button>
       <button class="nav-item" type="button" data-tab="history"><span class="nav-icon">↺</span><span>History</span></button>
       <button class="nav-item" type="button" data-tab="progress"><span class="nav-icon">↗</span><span>Progress</span></button>
     </nav>
   </div>
   <div id="toast-region" aria-live="assertive" aria-atomic="true"></div>
+  <script src="./catalog.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>
