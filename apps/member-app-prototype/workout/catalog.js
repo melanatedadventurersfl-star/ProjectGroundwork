@@ -1,0 +1,58 @@
+window.EXERCISE_CATALOG = [
+  {id:'goblet-squat',name:'Goblet Squat',movement:'squat',muscles:['Quads','Glutes'],equipment:['dumbbells','full-gym','mixed-home'],style:'free',difficulty:'beginner',loadMode:'dumbbell',baseLoadFactor:.12,increment:5,referenceKey:'squat',referenceMultiplier:.28,setup:35},
+  {id:'back-squat',name:'Barbell Back Squat',movement:'squat',muscles:['Quads','Glutes','Core'],equipment:['full-gym'],style:'free',difficulty:'intermediate',loadMode:'barbell',baseLoadFactor:.38,increment:5,referenceKey:'squat',referenceMultiplier:.82,setup:70},
+  {id:'leg-press',name:'Leg Press',movement:'squat',muscles:['Quads','Glutes'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.65,increment:10,referenceKey:'squat',referenceMultiplier:1.25,setup:40},
+  {id:'bodyweight-squat',name:'Bodyweight Squat',movement:'squat',muscles:['Quads','Glutes'],equipment:['bodyweight','dumbbells','bands','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:20},
+
+  {id:'romanian-deadlift',name:'Romanian Deadlift',movement:'hinge',muscles:['Hamstrings','Glutes','Back'],equipment:['full-gym'],style:'free',difficulty:'intermediate',loadMode:'barbell',baseLoadFactor:.34,increment:5,referenceKey:'deadlift',referenceMultiplier:.62,setup:55},
+  {id:'db-rdl',name:'Dumbbell Romanian Deadlift',movement:'hinge',muscles:['Hamstrings','Glutes'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.10,increment:5,referenceKey:'deadlift',referenceMultiplier:.18,setup:35},
+  {id:'hip-thrust',name:'Hip Thrust',movement:'hinge',muscles:['Glutes','Hamstrings'],equipment:['full-gym'],style:'free',difficulty:'beginner',loadMode:'barbell',baseLoadFactor:.42,increment:5,referenceKey:'deadlift',referenceMultiplier:.72,setup:65},
+  {id:'glute-bridge',name:'Glute Bridge',movement:'hinge',muscles:['Glutes','Hamstrings'],equipment:['bodyweight','dumbbells','bands','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:20},
+
+  {id:'split-squat',name:'Bulgarian Split Squat',movement:'single-leg',muscles:['Quads','Glutes'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'intermediate',loadMode:'dumbbell-pair',baseLoadFactor:.07,increment:5,referenceKey:'squat',referenceMultiplier:.14,setup:45},
+  {id:'reverse-lunge',name:'Reverse Lunge',movement:'single-leg',muscles:['Quads','Glutes'],equipment:['bodyweight','dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.06,increment:5,referenceKey:'squat',referenceMultiplier:.12,setup:30},
+  {id:'step-up',name:'Step-Up',movement:'single-leg',muscles:['Quads','Glutes'],equipment:['bodyweight','dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.06,increment:5,referenceKey:'squat',referenceMultiplier:.12,setup:30},
+
+  {id:'bench-press',name:'Barbell Bench Press',movement:'horizontal-push',muscles:['Chest','Triceps','Front Delts'],equipment:['full-gym'],style:'free',difficulty:'intermediate',loadMode:'barbell',baseLoadFactor:.32,increment:5,referenceKey:'bench',referenceMultiplier:.88,setup:60},
+  {id:'db-bench',name:'Dumbbell Bench Press',movement:'horizontal-push',muscles:['Chest','Triceps'],equipment:['dumbbells','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.09,increment:5,referenceKey:'bench',referenceMultiplier:.20,setup:40},
+  {id:'db-floor-press',name:'Dumbbell Floor Press',movement:'horizontal-push',muscles:['Chest','Triceps'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.08,increment:5,referenceKey:'bench',referenceMultiplier:.18,setup:30},
+  {id:'chest-press-machine',name:'Chest Press Machine',movement:'horizontal-push',muscles:['Chest','Triceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.28,increment:5,referenceKey:'bench',referenceMultiplier:.72,setup:25},
+  {id:'push-up',name:'Push-Up',movement:'horizontal-push',muscles:['Chest','Triceps','Core'],equipment:['bodyweight','dumbbells','bands','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:15},
+
+  {id:'cable-row',name:'Seated Cable Row',movement:'horizontal-pull',muscles:['Back','Biceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.26,increment:5,referenceKey:'row',referenceMultiplier:1,setup:25},
+  {id:'chest-row',name:'Chest-Supported Row',movement:'horizontal-pull',muscles:['Back','Biceps'],equipment:['dumbbells','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.08,increment:5,referenceKey:'row',referenceMultiplier:.35,setup:35},
+  {id:'one-arm-row',name:'One-Arm Dumbbell Row',movement:'horizontal-pull',muscles:['Back','Biceps'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell',baseLoadFactor:.11,increment:5,referenceKey:'row',referenceMultiplier:.42,setup:25},
+  {id:'band-row',name:'Band Row',movement:'horizontal-pull',muscles:['Back','Biceps'],equipment:['bands','mixed-home'],style:'band',difficulty:'beginner',loadMode:'band',increment:0,setup:20},
+
+  {id:'lat-pulldown',name:'Lat Pulldown',movement:'vertical-pull',muscles:['Lats','Biceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.28,increment:5,referenceKey:'row',referenceMultiplier:1.05,setup:25},
+  {id:'assisted-pullup',name:'Assisted Pull-Up',movement:'vertical-pull',muscles:['Lats','Biceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'assisted',increment:5,setup:35},
+  {id:'pull-up',name:'Pull-Up',movement:'vertical-pull',muscles:['Lats','Biceps','Core'],equipment:['bodyweight','mixed-home','full-gym'],style:'bodyweight',difficulty:'intermediate',loadMode:'bodyweight',increment:0,setup:20},
+  {id:'band-pulldown',name:'Band Lat Pulldown',movement:'vertical-pull',muscles:['Lats','Biceps'],equipment:['bands','mixed-home'],style:'band',difficulty:'beginner',loadMode:'band',increment:0,setup:25},
+
+  {id:'shoulder-press-machine',name:'Shoulder Press Machine',movement:'vertical-push',muscles:['Shoulders','Triceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.18,increment:5,referenceKey:'overhead',referenceMultiplier:.85,setup:25},
+  {id:'db-shoulder-press',name:'Dumbbell Shoulder Press',movement:'vertical-push',muscles:['Shoulders','Triceps'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.055,increment:5,referenceKey:'overhead',referenceMultiplier:.32,setup:30},
+  {id:'overhead-press',name:'Barbell Overhead Press',movement:'vertical-push',muscles:['Shoulders','Triceps'],equipment:['full-gym'],style:'free',difficulty:'intermediate',loadMode:'barbell',baseLoadFactor:.20,increment:5,referenceKey:'overhead',referenceMultiplier:.9,setup:45},
+  {id:'pike-pushup',name:'Pike Push-Up',movement:'vertical-push',muscles:['Shoulders','Triceps'],equipment:['bodyweight','mixed-home'],style:'bodyweight',difficulty:'intermediate',loadMode:'bodyweight',increment:0,setup:15},
+
+  {id:'leg-curl',name:'Leg Curl',movement:'hamstring-accessory',muscles:['Hamstrings'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.20,increment:5,setup:20},
+  {id:'leg-extension',name:'Leg Extension',movement:'quad-accessory',muscles:['Quads'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.22,increment:5,setup:20},
+  {id:'lateral-raise',name:'Dumbbell Lateral Raise',movement:'shoulder-accessory',muscles:['Shoulders'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.025,increment:5,setup:15},
+  {id:'band-lateral-raise',name:'Band Lateral Raise',movement:'shoulder-accessory',muscles:['Shoulders'],equipment:['bands','mixed-home'],style:'band',difficulty:'beginner',loadMode:'band',increment:0,setup:15},
+  {id:'biceps-curl',name:'Dumbbell Curl',movement:'biceps',muscles:['Biceps'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.035,increment:5,setup:15},
+  {id:'cable-curl',name:'Cable Curl',movement:'biceps',muscles:['Biceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.09,increment:5,setup:15},
+  {id:'triceps-pushdown',name:'Triceps Pushdown',movement:'triceps',muscles:['Triceps'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.10,increment:5,setup:15},
+  {id:'db-triceps-extension',name:'Overhead Dumbbell Triceps Extension',movement:'triceps',muscles:['Triceps'],equipment:['dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell',baseLoadFactor:.07,increment:5,setup:20},
+  {id:'calf-raise',name:'Standing Calf Raise',movement:'calves',muscles:['Calves'],equipment:['bodyweight','dumbbells','mixed-home','full-gym'],style:'free',difficulty:'beginner',loadMode:'dumbbell-pair',baseLoadFactor:.08,increment:5,setup:15},
+  {id:'plank',name:'Plank',movement:'core',muscles:['Core'],equipment:['bodyweight','dumbbells','bands','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'timed',increment:0,setup:10},
+  {id:'dead-bug',name:'Dead Bug',movement:'core',muscles:['Core'],equipment:['bodyweight','mixed-home','full-gym'],style:'bodyweight',difficulty:'beginner',loadMode:'bodyweight',increment:0,setup:10},
+  {id:'cable-crunch',name:'Cable Crunch',movement:'core',muscles:['Core'],equipment:['full-gym'],style:'machine',difficulty:'beginner',loadMode:'machine',baseLoadFactor:.16,increment:5,setup:20}
+];
+
+window.EXERCISE_MOVEMENTS = {
+  'squat':'Squat / knee dominant','hinge':'Hip hinge','single-leg':'Single-leg',
+  'horizontal-push':'Horizontal push','horizontal-pull':'Horizontal pull',
+  'vertical-push':'Vertical push','vertical-pull':'Vertical pull',
+  'hamstring-accessory':'Hamstrings','quad-accessory':'Quads',
+  'shoulder-accessory':'Shoulders','biceps':'Biceps','triceps':'Triceps',
+  'calves':'Calves','core':'Core'
+};
