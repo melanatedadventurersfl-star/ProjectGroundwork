@@ -467,7 +467,7 @@ function renderHome(){
         <article class="routine-card">
           <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN</span></div>
           <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
-          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed"><div><strong>${esc(ex.name)}</strong><small>${esc(ex.startLabel)} · calibrate first session</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
+          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed"><div><strong>${esc(ex.name)}</strong><small>${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)}${ex.calibrationRequired&&!store.calibration[ex.id]?' · calibrate first session':''}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
           <div class="routine-footer"><span class="routine-meta">${day.exercises.length} exercises · ${day.warmupMinutes} min warm-up</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
         </article>`).join('')}</div>
     </section>`;
