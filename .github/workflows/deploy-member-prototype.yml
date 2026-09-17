@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/workout-mvp
+      - feature/workout-plan-generator
     paths:
       - 'apps/member-app-prototype/**'
       - 'apps/mobile/**'
