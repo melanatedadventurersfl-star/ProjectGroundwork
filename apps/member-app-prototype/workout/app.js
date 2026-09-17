@@ -1,733 +1,615 @@
-const STORAGE_KEY = 'workout-web-store-v2';
-const LEGACY_KEY = 'workout-web-store-v1';
+const STORAGE_KEY = 'workout-web-store-v3';
+const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
+const catalog = window.EXERCISE_CATALOG || [];
+const movements = window.EXERCISE_MOVEMENTS || {};
 
-const routines = [
-  {
-    id: 'upper-a', name: 'Upper A', focus: 'Chest, back, shoulders', duration: 45,
-    exercises: [
-      ['bench-press', 'Barbell Bench Press', 3, '8–10', 90],
-      ['lat-pulldown', 'Lat Pulldown', 3, '8–12', 75],
-      ['shoulder-press', 'Shoulder Press', 3, '8–10', 75],
-      ['cable-row', 'Seated Cable Row', 3, '10–12', 75],
-      ['triceps-pushdown', 'Triceps Pushdown', 3, '10–15', 60],
-    ],
-  },
-  {
-    id: 'lower-a', name: 'Lower A', focus: 'Quads, glutes, calves', duration: 45,
-    exercises: [
-      ['back-squat', 'Back Squat', 3, '6–10', 90],
-      ['leg-press', 'Leg Press', 3, '10–12', 90],
-      ['leg-curl', 'Leg Curl', 3, '10–15', 60],
-      ['calf-raise', 'Standing Calf Raise', 3, '12–15', 60],
-      ['plank', 'Plank', 3, '30–60 sec', 60],
-    ],
-  },
-  {
-    id: 'upper-b', name: 'Upper B', focus: 'Back, chest, arms', duration: 45,
-    exercises: [
-      ['incline-press', 'Incline Dumbbell Press', 3, '8–12', 75],
-      ['chest-row', 'Chest-Supported Row', 3, '8–12', 75],
-      ['lateral-raise', 'Lateral Raise', 3, '12–15', 60],
-      ['biceps-curl', 'Dumbbell Curl', 3, '10–12', 60],
-      ['triceps-extension', 'Overhead Triceps Extension', 3, '10–12', 60],
-    ],
-  },
-  {
-    id: 'lower-b', name: 'Lower B', focus: 'Hamstrings, glutes, quads', duration: 45,
-    exercises: [
-      ['romanian-deadlift', 'Romanian Deadlift', 3, '8–10', 90],
-      ['split-squat', 'Bulgarian Split Squat', 3, '8–10', 75],
-      ['hip-thrust', 'Hip Thrust', 3, '8–12', 90],
-      ['leg-extension', 'Leg Extension', 3, '10–15', 60],
-      ['seated-calf', 'Seated Calf Raise', 3, '12–15', 60],
-    ],
-  },
-].map(routine => ({
-  ...routine,
-  exercises: routine.exercises.map(([id, name, sets, reps, rest]) => ({ id, name, sets, reps, rest })),
-}));
+const defaultStore = {
+  profile: null,
+  plan: null,
+  history: [],
+  activeWorkout: null,
+  calibration: {},
+  lastSummaryId: null
+};
 
-const defaultStore = { history: [], activeWorkout: null, lastSummaryId: null };
 let store = loadStore();
-let currentTab = store.activeWorkout ? 'workout' : 'home';
+let currentTab = store.profile && store.plan ? (store.activeWorkout ? 'workout' : 'home') : 'profile';
+let catalogQuery = '';
 let tickHandle = null;
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
+const BLUEPRINTS = {
+  2: [
+    {name:'Full Body A',focus:'Full body',patterns:['squat','horizontal-push','horizontal-pull','hinge','vertical-pull','core']},
+    {name:'Full Body B',focus:'Full body',patterns:['hinge','vertical-push','vertical-pull','single-leg','horizontal-push','core']}
+  ],
+  3: [
+    {name:'Full Body A',focus:'Strength foundation',patterns:['squat','horizontal-push','horizontal-pull','hinge','core']},
+    {name:'Full Body B',focus:'Posterior chain + shoulders',patterns:['hinge','vertical-push','vertical-pull','single-leg','biceps','core']},
+    {name:'Full Body C',focus:'Balanced hypertrophy',patterns:['single-leg','horizontal-push','horizontal-pull','quad-accessory','shoulder-accessory','triceps','core']}
+  ],
+  4: [
+    {name:'Upper A',focus:'Chest, back, shoulders',patterns:['horizontal-push','vertical-pull','horizontal-pull','vertical-push','triceps','biceps']},
+    {name:'Lower A',focus:'Quads, glutes, core',patterns:['squat','hinge','single-leg','quad-accessory','calves','core']},
+    {name:'Upper B',focus:'Back, chest, arms',patterns:['horizontal-pull','horizontal-push','vertical-pull','shoulder-accessory','biceps','triceps']},
+    {name:'Lower B',focus:'Hamstrings, glutes, quads',patterns:['hinge','squat','single-leg','hamstring-accessory','calves','core']}
+  ],
+  5: [
+    {name:'Upper',focus:'Upper-body compounds',patterns:['horizontal-push','horizontal-pull','vertical-push','vertical-pull','biceps','triceps']},
+    {name:'Lower',focus:'Lower-body compounds',patterns:['squat','hinge','single-leg','calves','core']},
+    {name:'Push',focus:'Chest, shoulders, triceps',patterns:['horizontal-push','vertical-push','shoulder-accessory','triceps','core']},
+    {name:'Pull',focus:'Back and biceps',patterns:['horizontal-pull','vertical-pull','horizontal-pull','biceps','core']},
+    {name:'Legs',focus:'Quads, hamstrings, glutes',patterns:['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves']}
+  ]
+};
 
-function loadStore() {
+function clone(value){ return JSON.parse(JSON.stringify(value)); }
+
+function loadStore(){
   try {
-    const next = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (next && Array.isArray(next.history)) return { ...clone(defaultStore), ...next };
-    const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY));
-    if (legacy && Array.isArray(legacy.history)) {
-      const migrated = { ...clone(defaultStore), history: legacy.history, activeWorkout: null };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-      return migrated;
+    const direct = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (direct && Array.isArray(direct.history)) return {...clone(defaultStore),...direct};
+    for (const key of LEGACY_KEYS) {
+      const old = JSON.parse(localStorage.getItem(key));
+      if (old && Array.isArray(old.history)) {
+        const migrated = {...clone(defaultStore),history:old.history,activeWorkout:null};
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));
+        return migrated;
+      }
     }
   } catch {}
   return clone(defaultStore);
 }
+function saveStore(){ localStorage.setItem(STORAGE_KEY,JSON.stringify(store)); syncLiveBadge(); }
+function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+function num(value){ const n=Number.parseFloat(value); return Number.isFinite(n)?n:0; }
+function esc(value){ return String(value ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function roundTo(value,step=5){ if(!value) return 0; return Math.max(step,Math.round(value/step)*step); }
+function formatClock(seconds){ const s=Math.max(0,Math.floor(seconds)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+function formatDate(iso){ return new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric'}).format(new Date(iso)); }
+function formatVolume(v){ return v>=1000?`${(v/1000).toFixed(v>=10000?0:1)}k lb`:`${Math.round(v)} lb`; }
+function startOfWeek(){ const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay()); return d; }
+function weeklyHistory(){ const start=startOfWeek(); return store.history.filter(x=>new Date(x.completedAt)>=start); }
+function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
+function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
+function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
 
-function saveStore() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  syncLiveBadge();
+function goalSettings(goal,movement,experience){
+  const accessory = ['biceps','triceps','calves','core','shoulder-accessory','quad-accessory','hamstring-accessory'].includes(movement);
+  const newLifter = experience === 'new';
+  if (goal === 'strength') return {sets:accessory?2:(newLifter?2:3),reps:accessory?'8–12':'5–6',rest:accessory?75:150,setSeconds:38};
+  if (goal === 'fat-loss') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?45:60,setSeconds:42};
+  if (goal === 'general') return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?45:75,setSeconds:40};
+  return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?60:90,setSeconds:42};
 }
 
-function uid(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function equipmentAllows(exercise,equipment){
+  if (equipment === 'full-gym') return exercise.equipment.includes('full-gym');
+  return exercise.equipment.includes(equipment);
 }
 
-function num(value) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+function avoided(exercise,profile){
+  const avoid = profile.avoid || [];
+  if (avoid.includes('overhead') && exercise.movement === 'vertical-push') return true;
+  if (avoid.includes('knee') && ['squat','single-leg','quad-accessory'].includes(exercise.movement)) return true;
+  if (avoid.includes('hinge') && ['hinge','hamstring-accessory'].includes(exercise.movement)) return true;
+  if (avoid.includes('floor') && ['plank','dead-bug','glute-bridge','db-floor-press','push-up'].includes(exercise.id)) return true;
+  return false;
 }
 
-function esc(value) {
-  return String(value).replace(/[&<>'"]/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
-  }[char]));
+function exerciseScore(exercise,profile,used){
+  let score=0;
+  if (!used.has(exercise.id)) score+=8;
+  if (profile.experience === 'new' && exercise.difficulty === 'beginner') score+=7;
+  if (profile.style === 'machines' && exercise.style === 'machine') score+=6;
+  if (profile.style === 'free' && exercise.style === 'free') score+=6;
+  if (profile.style === 'mixed') score+=2;
+  if (exercise.style === 'bodyweight' && profile.equipment === 'bodyweight') score+=8;
+  return score;
 }
 
-function formatClock(seconds) {
-  const total = Math.max(0, Math.floor(seconds));
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins}:${String(secs).padStart(2, '0')}`;
+function pickExercise(pattern,profile,used){
+  let candidates=catalog.filter(e=>e.movement===pattern && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
+  if (!candidates.length && pattern === 'quad-accessory') candidates=catalog.filter(e=>e.movement==='squat' && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
+  if (!candidates.length && pattern === 'hamstring-accessory') candidates=catalog.filter(e=>e.movement==='hinge' && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
+  if (!candidates.length && pattern === 'shoulder-accessory') candidates=catalog.filter(e=>e.movement==='vertical-push' && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
+  candidates.sort((a,b)=>exerciseScore(b,profile,used)-exerciseScore(a,profile,used));
+  return candidates[0] || null;
 }
 
-function formatDate(iso) {
-  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso));
+function estimateStartingLoad(exercise,profile){
+  if (exercise.loadMode === 'bodyweight') return {weight:0,label:'Bodyweight',calibrate:false};
+  if (exercise.loadMode === 'timed') return {weight:0,label:'Bodyweight · timed',calibrate:false};
+  if (exercise.loadMode === 'band') return {weight:0,label:'Light–medium band',calibrate:false};
+  if (exercise.loadMode === 'assisted') return {weight:0,label:'Choose comfortable assistance',calibrate:true};
+  const known = exercise.referenceKey && num(profile.lifts?.[exercise.referenceKey]);
+  let raw=0;
+  let source='body weight estimate';
+  if (known && exercise.referenceMultiplier) {
+    raw=known*exercise.referenceMultiplier;
+    source='based on your recent lift';
+  } else {
+    const exp={new:.70,beginner:.85,intermediate:1,advanced:1.1}[profile.experience] || .8;
+    raw=num(profile.weight)*num(exercise.baseLoadFactor)*exp;
+  }
+  if (exercise.loadMode === 'barbell') raw=Math.max(45,raw);
+  if (exercise.loadMode.includes('dumbbell')) raw=Math.max(5,raw);
+  const weight=roundTo(raw,exercise.increment||5);
+  const each=exercise.loadMode==='dumbbell-pair';
+  return {weight,label:`${weight} lb${each?' each':''}`,source,calibrate:true};
 }
 
-function formatVolume(value) {
-  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k lb`;
-  return `${Math.round(value)} lb`;
+function estimateExerciseSeconds(item){
+  const settings=item.settings;
+  return (item.setup||25) + settings.sets*settings.setSeconds + Math.max(0,settings.sets-1)*settings.rest + 35;
 }
 
-function startOfWeek() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - date.getDay());
-  return date;
-}
-
-function weeklyHistory() {
-  const start = startOfWeek();
-  return store.history.filter(entry => new Date(entry.completedAt) >= start);
-}
-
-function completedSets(exercises) {
-  return exercises.reduce((sum, exercise) => sum + exercise.sets.filter(set => set.completed).length, 0);
-}
-
-function totalSets(exercises) {
-  return exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
-}
-
-function volume(exercises) {
-  return exercises.reduce((total, exercise) => total + exercise.sets.reduce((sum, set) => (
-    sum + (set.completed ? num(set.weight) * num(set.reps) : 0)
-  ), 0), 0);
-}
-
-function previousBest(exerciseId, excludeWorkoutId = null) {
-  let best = null;
-  for (const workout of store.history) {
-    if (workout.id === excludeWorkoutId) continue;
-    const exercise = workout.exercises.find(item => item.id === exerciseId);
+function buildDay(blueprint,profile,index){
+  const used=new Set();
+  const maxByTime=profile.minutes<=20?3:profile.minutes<=30?4:profile.minutes<=45?5:profile.minutes<=60?6:7;
+  const selected=[];
+  for (const pattern of blueprint.patterns) {
+    if (selected.length>=maxByTime) break;
+    const exercise=pickExercise(pattern,profile,used);
     if (!exercise) continue;
-    for (const set of exercise.sets) {
-      if (!set.completed) continue;
-      const candidate = { weight: num(set.weight), reps: num(set.reps) };
-      if (!best || candidate.weight > best.weight || (candidate.weight === best.weight && candidate.reps > best.reps)) best = candidate;
+    used.add(exercise.id);
+    const settings=goalSettings(profile.goal,exercise.movement,profile.experience);
+    selected.push({...exercise,settings,start:estimateStartingLoad(exercise,profile)});
+  }
+
+  const budget=profile.minutes*60;
+  const warmup=Math.min(360,Math.max(180,Math.round(profile.minutes*.1*60)));
+  let total=()=>warmup+selected.reduce((s,e)=>s+estimateExerciseSeconds(e),0);
+
+  for (let i=selected.length-1;i>=0 && total()>budget;i--) {
+    if (selected[i].settings.sets>2) selected[i].settings.sets=2;
+  }
+  while (selected.length>3 && total()>budget) selected.pop();
+
+  return {
+    id:`day-${index+1}`,
+    name:blueprint.name,
+    focus:blueprint.focus,
+    warmupMinutes:Math.round(warmup/60),
+    estimatedMinutes:Math.max(10,Math.ceil(total()/60)),
+    exercises:selected.map(e=>({
+      id:e.id,name:e.name,movement:e.movement,muscles:e.muscles,loadMode:e.loadMode,
+      sets:e.settings.sets,reps:e.settings.reps,rest:e.settings.rest,
+      setup:e.setup||25,increment:e.increment||5,
+      startWeight:e.start.weight,startLabel:e.start.label,startSource:e.start.source||'',
+      calibrationRequired:e.start.calibrate
+    }))
+  };
+}
+
+function generatePlan(profile){
+  const blueprints=BLUEPRINTS[profile.days] || BLUEPRINTS[4];
+  return {
+    id:uid('plan'),
+    createdAt:new Date().toISOString(),
+    goal:profile.goal,
+    daysPerWeek:profile.days,
+    minutes:profile.minutes,
+    days:blueprints.map((b,i)=>buildDay(b,profile,i))
+  };
+}
+
+function planGoalLabel(goal){
+  return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Fat loss + conditioning',general:'General fitness'})[goal] || goal;
+}
+function experienceLabel(v){ return ({new:'New to lifting',beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'})[v]||v; }
+function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home mix'})[v]||v; }
+
+function nextPlanDay(){
+  if (!store.plan?.days?.length) return null;
+  const completed=store.history.filter(h=>h.planId===store.plan.id).length;
+  return store.plan.days[completed % store.plan.days.length];
+}
+
+function saveProfileFromForm(form){
+  const data=new FormData(form);
+  const profile={
+    goal:data.get('goal')||'muscle',
+    weight:num(data.get('weight')),
+    heightFeet:num(data.get('heightFeet')),
+    heightInches:num(data.get('heightInches')),
+    ageRange:data.get('ageRange')||'25-34',
+    experience:data.get('experience')||'new',
+    days:num(data.get('days'))||4,
+    minutes:num(data.get('minutes'))||45,
+    equipment:data.get('equipment')||'full-gym',
+    style:data.get('style')||'mixed',
+    avoid:data.getAll('avoid'),
+    lifts:{
+      bench:num(data.get('bench')),
+      squat:num(data.get('squat')),
+      deadlift:num(data.get('deadlift')),
+      overhead:num(data.get('overhead')),
+      row:num(data.get('row'))
+    }
+  };
+  if (profile.weight<=0) { toast('Enter your current body weight.'); return; }
+  store.profile=profile;
+  store.plan=generatePlan(profile);
+  saveStore();
+  currentTab='home';
+  render();
+}
+
+function editProfile(){
+  if (store.activeWorkout) { toast('Finish or discard the active workout before rebuilding the plan.'); return; }
+  currentTab='profile';
+  render();
+}
+
+function regeneratePlan(){
+  if (!store.profile || store.activeWorkout) return;
+  store.plan=generatePlan(store.profile);
+  saveStore();
+  toast('Plan rebuilt from your profile.');
+  render();
+}
+
+function createWorkout(day){
+  return {
+    id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
+    startedAt:new Date().toISOString(),currentExerciseIndex:0,currentSetIndex:0,phase:'work',
+    restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
+    exercises:day.exercises.map(ex=>{
+      const calibrated=store.calibration[ex.id];
+      const suggestedWeight=calibrated?.weight ?? ex.startWeight ?? 0;
+      return {
+        ...ex,suggestedWeight,
+        calibrationRequired:ex.calibrationRequired && !calibrated,
+        sets:Array.from({length:ex.sets},()=>({id:uid('set'),weight:'',reps:'',completed:false,completedAt:null}))
+      };
+    })
+  };
+}
+
+function startWorkout(dayId){
+  if (store.activeWorkout) { currentTab='workout'; render(); toast('Resume or finish your current workout first.'); return; }
+  const day=store.plan?.days?.find(d=>d.id===dayId);
+  if(!day) return;
+  store.activeWorkout=createWorkout(day);
+  saveStore(); currentTab='workout'; render();
+  document.querySelector('#set-weight')?.focus();
+}
+
+function getActivePosition(){
+  const w=store.activeWorkout;if(!w)return null;
+  const ei=Math.min(Math.max(0,w.currentExerciseIndex||0),w.exercises.length-1);
+  const ex=w.exercises[ei];
+  const si=Math.min(Math.max(0,w.currentSetIndex||0),ex.sets.length-1);
+  return {workout:w,ei,si,exercise:ex,set:ex.sets[si]};
+}
+function nextPosition(w,ei,si){
+  if(si+1<w.exercises[ei].sets.length)return {ei,si:si+1,type:'set'};
+  if(ei+1<w.exercises.length)return {ei:ei+1,si:0,type:'exercise'};
+  return null;
+}
+function workoutElapsedSeconds(w){ return Math.max(0,Math.floor((Date.now()-new Date(w.startedAt).getTime())/1000)); }
+function restRemaining(w){
+  if(!w||w.phase!=='rest')return 0;
+  if(Number.isFinite(w.restPausedRemaining))return Math.max(0,Math.ceil(w.restPausedRemaining));
+  if(!w.restEndsAt)return 0;
+  return Math.max(0,Math.ceil((new Date(w.restEndsAt).getTime()-Date.now())/1000));
+}
+function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(0,Math.min(100,(restRemaining(w)/d)*100)); }
+
+function beginRest(next,seconds){
+  const w=store.activeWorkout;
+  if(!w)return;
+  if(!next){ finishWorkout(true);return; }
+  w.phase='rest';w.restDuration=seconds;w.restEndsAt=new Date(Date.now()+seconds*1000).toISOString();
+  w.restPausedRemaining=null;w.pendingPosition=next;saveStore();render();
+}
+
+function completeCurrentSet(){
+  const pos=getActivePosition(); if(!pos||pos.workout.phase!=='work')return;
+  const weight=(document.querySelector('#set-weight')?.value||'').trim().replace(/[^0-9.]/g,'');
+  const reps=(document.querySelector('#set-reps')?.value||'').trim().replace(/[^0-9.]/g,'');
+  if(num(reps)<=0){toast(pos.exercise.loadMode==='timed'?'Enter the seconds completed.':'Enter the reps completed.');return;}
+  pos.set.weight=weight;pos.set.reps=reps;pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
+  const next=nextPosition(pos.workout,pos.ei,pos.si);
+
+  if(pos.si===0 && pos.exercise.calibrationRequired && pos.exercise.loadMode!=='bodyweight' && pos.exercise.loadMode!=='timed' && pos.exercise.loadMode!=='band'){
+    pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
+  }
+  beginRest(next,pos.exercise.rest||60);
+}
+
+function applyCalibration(rir){
+  const pos=getActivePosition(); if(!pos||pos.workout.phase!=='calibrate')return;
+  const actual=num(pos.exercise.sets[0].weight)||num(pos.exercise.suggestedWeight);
+  const multiplier=rir==='5+'?1.12:rir==='3-4'?1.06:rir==='2'?1:rir==='1'?.95:.90;
+  const adjusted=roundTo(actual*multiplier,pos.exercise.increment||5);
+  store.calibration[pos.exercise.id]={weight:adjusted,updatedAt:new Date().toISOString(),rir};
+  pos.exercise.suggestedWeight=adjusted;pos.exercise.calibrationRequired=false;
+  const next=pos.workout.pendingPosition;
+  saveStore();
+  beginRest(next,pos.exercise.rest||60);
+}
+
+function advanceAfterRest(){
+  const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
+  const next=w.pendingPosition;if(!next){finishWorkout(true);return;}
+  w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
+  saveStore();render();document.querySelector('#set-weight')?.focus();
+}
+function adjustRest(delta){
+  const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
+  if(Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=Math.max(0,w.restPausedRemaining+delta);
+  else w.restEndsAt=new Date(Date.now()+Math.max(0,restRemaining(w)+delta)*1000).toISOString();
+  w.restDuration=Math.max(1,(w.restDuration||1)+Math.max(0,delta));saveStore();updateTimers();
+}
+function toggleRestPause(){
+  const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
+  if(Number.isFinite(w.restPausedRemaining)){w.restEndsAt=new Date(Date.now()+w.restPausedRemaining*1000).toISOString();w.restPausedRemaining=null;}
+  else{w.restPausedRemaining=restRemaining(w);w.restEndsAt=null;}
+  saveStore();render();
+}
+function skipRest(){ advanceAfterRest(); }
+
+function previousBest(exerciseId,exclude=null){
+  let best=null;
+  for(const w of store.history){
+    if(w.id===exclude)continue;
+    const ex=w.exercises.find(e=>e.id===exerciseId);if(!ex)continue;
+    for(const s of ex.sets){if(!s.completed)continue;const c={weight:num(s.weight),reps:num(s.reps)};
+      if(!best||c.weight>best.weight||(c.weight===best.weight&&c.reps>best.reps))best=c;
     }
   }
   return best;
 }
-
-function bestLabel(exerciseId) {
-  const best = previousBest(exerciseId);
-  if (!best) return 'No previous sets';
-  if (exerciseId === 'plank') return `${best.reps} sec`;
-  if (!best.weight) return `${best.reps} reps`;
-  return `${best.weight} lb × ${best.reps}`;
+function bestLabel(exerciseId){
+  const b=previousBest(exerciseId);if(!b)return 'No previous sets';
+  const ex=catalog.find(e=>e.id===exerciseId);
+  if(ex?.loadMode==='timed')return `${b.reps} sec`;
+  if(!b.weight)return `${b.reps} reps`;
+  return `${b.weight} lb × ${b.reps}`;
 }
 
-function personalRecords() {
-  const records = new Map();
-  for (const workout of store.history) {
-    for (const exercise of workout.exercises) {
-      for (const set of exercise.sets) {
-        if (!set.completed) continue;
-        const candidate = { id: exercise.id, name: exercise.name, weight: num(set.weight), reps: num(set.reps) };
-        const current = records.get(exercise.id);
-        if (!current || candidate.weight > current.weight || (candidate.weight === current.weight && candidate.reps > current.reps)) {
-          records.set(exercise.id, candidate);
-        }
-      }
+function finishWorkout(auto=false){
+  const w=store.activeWorkout;if(!w)return;
+  const count=completedSets(w.exercises);if(!count){toast('Complete at least one set first.');return;}
+  if(!auto&&!confirm('Finish this workout now? Completed sets will be saved.'))return;
+  const old=new Map(w.exercises.map(e=>[e.id,previousBest(e.id)]));
+  const completedAt=new Date().toISOString();
+  const entry={...w,phase:'complete',completedAt,durationMinutes:Math.max(1,Math.round((new Date(completedAt)-new Date(w.startedAt))/60000)),completedSets:count,totalVolume:volume(w.exercises),newPRs:[]};
+  for(const ex of entry.exercises){
+    let session=null;
+    for(const s of ex.sets){if(!s.completed)continue;const c={weight:num(s.weight),reps:num(s.reps)};
+      if(!session||c.weight>session.weight||(c.weight===session.weight&&c.reps>session.reps))session=c;
     }
+    const before=old.get(ex.id);
+    if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
-  return [...records.values()].sort((a, b) => b.weight - a.weight);
+  delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;
+  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;saveStore();currentTab='summary';render();
 }
+function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
 
-function createWorkout(routine) {
-  return {
-    id: uid('workout'),
-    routineId: routine.id,
-    routineName: routine.name,
-    focus: routine.focus,
-    startedAt: new Date().toISOString(),
-    currentExerciseIndex: 0,
-    currentSetIndex: 0,
-    phase: 'work',
-    restEndsAt: null,
-    restDuration: 0,
-    restPausedRemaining: null,
-    exercises: routine.exercises.map(exercise => ({
-      id: exercise.id,
-      name: exercise.name,
-      targetSets: exercise.sets,
-      reps: exercise.reps,
-      rest: exercise.rest,
-      sets: Array.from({ length: exercise.sets }, () => ({
-        id: uid('set'), weight: '', reps: '', completed: false, completedAt: null,
-      })),
-    })),
-  };
-}
-
-function getActivePosition() {
-  const workout = store.activeWorkout;
-  if (!workout) return null;
-  const ei = Math.min(Math.max(0, workout.currentExerciseIndex || 0), workout.exercises.length - 1);
-  const exercise = workout.exercises[ei];
-  const si = Math.min(Math.max(0, workout.currentSetIndex || 0), exercise.sets.length - 1);
-  return { workout, ei, si, exercise, set: exercise.sets[si] };
-}
-
-function nextPosition(workout, ei, si) {
-  const exercise = workout.exercises[ei];
-  if (si + 1 < exercise.sets.length) return { ei, si: si + 1, type: 'set' };
-  if (ei + 1 < workout.exercises.length) return { ei: ei + 1, si: 0, type: 'exercise' };
-  return null;
-}
-
-function workoutElapsedSeconds(workout) {
-  return Math.max(0, Math.floor((Date.now() - new Date(workout.startedAt).getTime()) / 1000));
-}
-
-function restRemaining(workout) {
-  if (!workout || workout.phase !== 'rest') return 0;
-  if (Number.isFinite(workout.restPausedRemaining)) return Math.max(0, Math.ceil(workout.restPausedRemaining));
-  if (!workout.restEndsAt) return 0;
-  return Math.max(0, Math.ceil((new Date(workout.restEndsAt).getTime() - Date.now()) / 1000));
-}
-
-function restProgress(workout) {
-  const duration = Math.max(1, workout.restDuration || 1);
-  return Math.max(0, Math.min(100, (restRemaining(workout) / duration) * 100));
-}
-
-function startWorkout(routineId) {
-  if (store.activeWorkout) {
-    currentTab = 'workout';
-    render();
-    toast('Resume or finish your current workout first.');
-    return;
-  }
-  const routine = routines.find(item => item.id === routineId);
-  if (!routine) return;
-  store.activeWorkout = createWorkout(routine);
-  saveStore();
-  currentTab = 'workout';
-  render();
-  document.querySelector('#set-weight')?.focus();
-}
-
-function completeCurrentSet() {
-  const pos = getActivePosition();
-  if (!pos || pos.workout.phase !== 'work') return;
-  const weightInput = document.querySelector('#set-weight');
-  const repsInput = document.querySelector('#set-reps');
-  const weight = weightInput ? weightInput.value.trim() : pos.set.weight;
-  const reps = repsInput ? repsInput.value.trim() : pos.set.reps;
-  if (num(reps) <= 0) {
-    toast(pos.exercise.reps.includes('sec') ? 'Enter the seconds completed.' : 'Enter the reps completed.');
-    repsInput?.focus();
-    return;
-  }
-  pos.set.weight = weight.replace(/[^0-9.]/g, '');
-  pos.set.reps = reps.replace(/[^0-9.]/g, '');
-  pos.set.completed = true;
-  pos.set.completedAt = new Date().toISOString();
-
-  const next = nextPosition(pos.workout, pos.ei, pos.si);
-  if (!next) {
-    saveStore();
-    finishWorkout(true);
-    return;
-  }
-
-  const restSeconds = pos.exercise.rest || 60;
-  pos.workout.phase = 'rest';
-  pos.workout.restDuration = restSeconds;
-  pos.workout.restEndsAt = new Date(Date.now() + restSeconds * 1000).toISOString();
-  pos.workout.restPausedRemaining = null;
-  pos.workout.pendingPosition = next;
-  saveStore();
-  render();
-}
-
-function advanceAfterRest() {
-  const workout = store.activeWorkout;
-  if (!workout || workout.phase !== 'rest') return;
-  const next = workout.pendingPosition;
-  if (!next) {
-    finishWorkout(true);
-    return;
-  }
-  workout.currentExerciseIndex = next.ei;
-  workout.currentSetIndex = next.si;
-  workout.phase = 'work';
-  workout.restEndsAt = null;
-  workout.restDuration = 0;
-  workout.restPausedRemaining = null;
-  workout.pendingPosition = null;
-  saveStore();
-  render();
-  document.querySelector('#set-weight')?.focus();
-}
-
-function adjustRest(delta) {
-  const workout = store.activeWorkout;
-  if (!workout || workout.phase !== 'rest') return;
-  if (Number.isFinite(workout.restPausedRemaining)) {
-    workout.restPausedRemaining = Math.max(0, workout.restPausedRemaining + delta);
-  } else {
-    const remaining = restRemaining(workout);
-    workout.restEndsAt = new Date(Date.now() + Math.max(0, remaining + delta) * 1000).toISOString();
-  }
-  workout.restDuration = Math.max(1, (workout.restDuration || 1) + Math.max(0, delta));
-  saveStore();
-  updateTimers();
-}
-
-function toggleRestPause() {
-  const workout = store.activeWorkout;
-  if (!workout || workout.phase !== 'rest') return;
-  if (Number.isFinite(workout.restPausedRemaining)) {
-    workout.restEndsAt = new Date(Date.now() + workout.restPausedRemaining * 1000).toISOString();
-    workout.restPausedRemaining = null;
-  } else {
-    workout.restPausedRemaining = restRemaining(workout);
-    workout.restEndsAt = null;
-  }
-  saveStore();
-  render();
-}
-
-function skipRest() {
-  if (!store.activeWorkout || store.activeWorkout.phase !== 'rest') return;
-  advanceAfterRest();
-}
-
-function finishWorkout(auto = false) {
-  const workout = store.activeWorkout;
-  if (!workout) return;
-  const count = completedSets(workout.exercises);
-  if (!count) {
-    toast('Complete at least one set first.');
-    return;
-  }
-  if (!auto && !confirm('Finish this workout now? Completed sets will be saved.')) return;
-
-  const beforeRecords = new Map();
-  for (const exercise of workout.exercises) beforeRecords.set(exercise.id, previousBest(exercise.id));
-
-  const completedAt = new Date().toISOString();
-  const durationMinutes = Math.max(1, Math.round((new Date(completedAt) - new Date(workout.startedAt)) / 60000));
-  const entry = {
-    ...workout,
-    phase: 'complete',
-    completedAt,
-    durationMinutes,
-    completedSets: count,
-    totalVolume: volume(workout.exercises),
-    newPRs: [],
-  };
-
-  for (const exercise of entry.exercises) {
-    const oldBest = beforeRecords.get(exercise.id);
-    let sessionBest = null;
-    for (const set of exercise.sets) {
-      if (!set.completed) continue;
-      const candidate = { weight: num(set.weight), reps: num(set.reps) };
-      if (!sessionBest || candidate.weight > sessionBest.weight || (candidate.weight === sessionBest.weight && candidate.reps > sessionBest.reps)) {
-        sessionBest = candidate;
-      }
-    }
-    if (sessionBest && (!oldBest || sessionBest.weight > oldBest.weight || (sessionBest.weight === oldBest.weight && sessionBest.reps > oldBest.reps))) {
-      entry.newPRs.push({ exerciseId: exercise.id, name: exercise.name, ...sessionBest });
-    }
-  }
-
-  delete entry.pendingPosition;
-  delete entry.restEndsAt;
-  delete entry.restPausedRemaining;
-  store.history.unshift(entry);
-  store.history = store.history.slice(0, 100);
-  store.lastSummaryId = entry.id;
-  store.activeWorkout = null;
-  saveStore();
-  currentTab = 'summary';
-  render();
-}
-
-function discardWorkout() {
-  if (!store.activeWorkout) return;
-  if (!confirm('Discard this workout? Current progress will be removed.')) return;
-  store.activeWorkout = null;
-  saveStore();
-  currentTab = 'home';
-  render();
-}
-
-function setTab(tab) {
-  if (tab === 'summary') {
-    currentTab = 'summary';
-  } else {
-    currentTab = tab;
-  }
-  render();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function syncNav() {
-  document.querySelectorAll('.nav-item').forEach(button => {
-    button.classList.toggle('active', button.dataset.tab === currentTab || (currentTab === 'summary' && button.dataset.tab === 'history'));
-  });
-}
-
-function syncLiveBadge() {
-  const badge = document.querySelector('.nav-live');
-  if (badge) badge.hidden = !store.activeWorkout;
-}
-
-function toast(message) {
-  const region = document.querySelector('#toast-region') || document.body;
-  region.querySelector('.toast')?.remove();
-  const node = document.createElement('div');
-  node.className = 'toast';
-  node.textContent = message;
-  region.append(node);
-  setTimeout(() => node.remove(), 2200);
-}
-
-function renderHome() {
-  const week = weeklyHistory();
-  const weeklyVolume = week.reduce((sum, entry) => sum + (entry.totalVolume || 0), 0);
-  const last = store.history[0];
-  const nextRoutine = routines[store.history.length % routines.length];
+function renderProfile(){
+  const p=store.profile||{};
+  const lifts=p.lifts||{};
+  const checked=(field,value)=>p[field]===value?'checked':'';
+  const av=v=>(p.avoid||[]).includes(v)?'checked':'';
   return `
-    <div class="page-head">
-      <div>
-        <p class="eyebrow">4-DAY STRENGTH PLAN</p>
-        <h2 class="page-title">Train. Rest. Advance.</h2>
-        <p class="page-copy">Start a workout and the guided player takes over: one set at a time, timed rest, then the next set or exercise automatically.</p>
-      </div>
-    </div>
-
-    ${store.activeWorkout ? `
-      <button class="resume-card" type="button" data-action="resume">
-        <div class="resume-dot"></div>
-        <div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase === 'rest' ? 'Resting' : 'Set in progress'}</strong></div>
-        <div class="resume-arrow">→</div>
-      </button>` : ''}
-
-    <div class="hero">
-      <section class="hero-primary">
-        <p class="eyebrow">THIS WEEK</p>
-        <div class="hero-metrics">
-          <div class="hero-metric"><span class="hero-number">${week.length}</span><span class="hero-label">workouts complete</span></div>
-          <div class="hero-divider"></div>
-          <div class="hero-metric"><span class="hero-number">${formatVolume(weeklyVolume)}</span><span class="hero-label">training volume</span></div>
+  <div class="onboard-shell">
+    <div class="page-head"><div><p class="eyebrow">BUILD YOUR PLAN</p><h2 class="page-title">Tell us how you train.</h2><p class="page-copy">We’ll use your goal, experience, body weight, equipment and real session length to build a starting plan. Weight suggestions are conservative estimates and get refined during your first workout.</p></div></div>
+    <form id="profile-form" class="intake-form">
+      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
+        <div class="choice-grid">
+          ${[['muscle','Build muscle','Moderate reps + progressive overload'],['strength','Get stronger','Heavier work + longer recovery'],['fat-loss','Fat loss + conditioning','Higher reps + shorter recovery'],['general','General fitness','Balanced strength and work capacity']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="goal" value="${v}" ${checked('goal',v)||(!p.goal&&v==='muscle'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
         </div>
       </section>
-      <section class="hero-secondary">
-        <div><p class="eyebrow">NEXT IN ROTATION</p><h3>${esc(nextRoutine.name)}</h3><p>${esc(nextRoutine.focus)} · ${nextRoutine.duration} minutes · ${nextRoutine.exercises.length} exercises</p></div>
-        <button class="button" type="button" data-start="${nextRoutine.id}" ${store.activeWorkout ? 'disabled' : ''}>START GUIDED WORKOUT</button>
+
+      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Body weight helps create a conservative first estimate. It does not determine your strength.</p></div></div>
+        <div class="form-grid three">
+          <label class="field"><span>BODY WEIGHT (LB)</span><input name="weight" type="number" min="50" max="700" value="${esc(p.weight||'')}" required placeholder="180"></label>
+          <label class="field"><span>HEIGHT</span><div class="inline-inputs"><input name="heightFeet" type="number" min="3" max="8" value="${esc(p.heightFeet||'')}" placeholder="5"><input name="heightInches" type="number" min="0" max="11" value="${esc(p.heightInches||'')}" placeholder="10"></div></label>
+          <label class="field"><span>AGE RANGE</span><select name="ageRange">${['18-24','25-34','35-44','45-54','55-64','65+'].map(v=>`<option ${p.ageRange===v?'selected':''}>${v}</option>`).join('')}</select></label>
+        </div>
       </section>
+
+      <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
+        <div class="choice-grid four">
+          ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        </div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Your real schedule</h3><p>The time you choose is treated as a planning limit.</p></div></div>
+        <div class="form-grid two">
+          <label class="field"><span>DAYS PER WEEK</span><select name="days">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
+          <label class="field"><span>MINUTES PER WORKOUT</span><select name="minutes">${[20,30,45,60,75].map(v=>`<option value="${v}" ${num(p.minutes||45)===v?'selected':''}>${v} minutes</option>`).join('')}</select></label>
+        </div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>05</span><div><h3>Where are you training?</h3><p>We only choose exercises your setup supports.</p></div></div>
+        <div class="choice-grid">
+          ${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
+        </div>
+        <div class="choice-grid three sub-choice">
+          ${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
+        </div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
+        <div class="form-grid five">
+          ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
+        </div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
+        <div class="check-row">
+          ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
+        </div>
+      </section>
+      <div class="form-actions"><button type="submit" class="button large">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
+    </form>
+  </div>`;
+}
+
+function renderHome(){
+  const p=store.profile,plan=store.plan;
+  if(!p||!plan)return renderProfile();
+  const week=weeklyHistory();const weeklyVolume=week.reduce((s,x)=>s+(x.totalVolume||0),0);const next=nextPlanDay();
+  return `
+    <div class="page-head"><div><p class="eyebrow">YOUR PERSONAL PLAN</p><h2 class="page-title">${esc(planGoalLabel(p.goal))}.</h2><p class="page-copy">${p.days} days/week · ${p.minutes}-minute sessions · ${esc(experienceLabel(p.experience))} · ${esc(equipmentLabel(p.equipment))}. Each workout is calculated from the actual sets, rest and setup time.</p></div><button class="button secondary" data-action="edit-profile">EDIT PROFILE</button></div>
+    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
+    <div class="hero">
+      <section class="hero-primary"><p class="eyebrow">THIS WEEK</p><div class="hero-metrics"><div class="hero-metric"><span class="hero-number">${week.length}/${p.days}</span><span class="hero-label">workouts</span></div><div class="hero-divider"></div><div class="hero-metric"><span class="hero-number">${formatVolume(weeklyVolume)}</span><span class="hero-label">volume</span></div></div></section>
+      <section class="hero-secondary"><div><p class="eyebrow">NEXT SESSION</p><h3>${esc(next?.name||'Plan ready')}</h3><p>${esc(next?.focus||'')} · estimated ${next?.estimatedMinutes||p.minutes} min</p></div><button class="button" data-start="${next?.id||''}" ${store.activeWorkout?'disabled':''}>START GUIDED WORKOUT</button></section>
     </div>
-
-    <section class="section">
-      <div class="section-head"><div><p class="eyebrow">YOUR PLAN</p><h2>Choose a workout</h2></div><span class="section-meta">4 sessions · about 45 min each</span></div>
-      <div class="routine-grid">
-        ${routines.map((routine, index) => `
-          <article class="routine-card">
-            <div class="routine-top"><span class="routine-number">0${index + 1}</span><span class="routine-time">${routine.duration} MIN</span></div>
-            <h3>${esc(routine.name)}</h3>
-            <div class="routine-focus">${esc(routine.focus)}</div>
-            <div class="routine-plan">
-              ${routine.exercises.map(ex => `<div class="plan-row"><strong>${esc(ex.name)}</strong><span>${ex.sets} × ${esc(ex.reps)}</span></div>`).join('')}
-            </div>
-            <div class="routine-footer">
-              <span class="routine-meta">Timed rest: 60–90 sec</span>
-              <button class="button" type="button" data-start="${routine.id}" ${store.activeWorkout ? 'disabled' : ''}>START</button>
-            </div>
-          </article>`).join('')}
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-head"><div><p class="eyebrow">RECENT</p><h2>Last session</h2></div></div>
-      ${last ? `
-        <article class="history-card">
-          <div class="history-top"><div><h3>${esc(last.routineName)}</h3><div class="history-date">${formatDate(last.completedAt)}</div></div><div class="history-volume">${formatVolume(last.totalVolume || 0)}</div></div>
-          <div class="history-stats"><span>${last.completedSets} sets</span><span>•</span><span>${last.durationMinutes} min</span>${last.newPRs?.length ? `<span>•</span><span>${last.newPRs.length} PR${last.newPRs.length === 1 ? '' : 's'}</span>` : ''}</div>
-        </article>` : renderEmpty('No sessions yet', 'Finish your first guided workout and it will land here automatically.')}
+    <section class="profile-strip"><div><span>GOAL</span><strong>${esc(planGoalLabel(p.goal))}</strong></div><div><span>EXPERIENCE</span><strong>${esc(experienceLabel(p.experience))}</strong></div><div><span>SETUP</span><strong>${esc(equipmentLabel(p.equipment))}</strong></div><div><span>SESSION CAP</span><strong>${p.minutes} min</strong></div></section>
+    <section class="section"><div class="section-head"><div><p class="eyebrow">GENERATED PROGRAM</p><h2>${plan.days.length}-day rotation</h2></div><button class="text-button" data-action="regenerate">Regenerate</button></div>
+      <div class="routine-grid">${plan.days.map((day,i)=>`
+        <article class="routine-card">
+          <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN</span></div>
+          <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
+          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed"><div><strong>${esc(ex.name)}</strong><small>${esc(ex.startLabel)} · calibrate first session</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
+          <div class="routine-footer"><span class="routine-meta">${day.exercises.length} exercises · ${day.warmupMinutes} min warm-up</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
+        </article>`).join('')}</div>
     </section>`;
 }
 
-function renderWorkout() {
-  const pos = getActivePosition();
-  if (!pos) {
-    return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session</h2><p class="page-copy">Choose a routine from your plan to start the guided player.</p></div><button class="button" type="button" data-action="home">CHOOSE WORKOUT</button></div>`;
-  }
-  const done = completedSets(pos.workout.exercises);
-  const total = totalSets(pos.workout.exercises);
-  const pct = Math.round((done / Math.max(1, total)) * 100);
-  const pips = pos.workout.exercises.map((_, index) => `<span class="step-pip ${index < pos.ei ? 'done' : index === pos.ei ? 'current' : ''}"></span>`).join('');
+function renderCatalog(){
+  const q=catalogQuery.trim().toLowerCase();
+  const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty].join(' ').toLowerCase().includes(q));
   return `
-    <div class="guided-shell">
-      <div class="session-status">
-        <div class="session-title">
-          <p class="eyebrow">ACTIVE WORKOUT</p>
-          <h2>${esc(pos.workout.routineName)}</h2>
-          <div class="session-meta"><span>${done}/${total} sets complete</span><span>${Math.round(pct)}%</span><span>Exercise ${pos.ei + 1} of ${pos.workout.exercises.length}</span></div>
-        </div>
-        <div class="elapsed"><span>ELAPSED</span><strong id="elapsed-clock">${formatClock(workoutElapsedSeconds(pos.workout))}</strong></div>
-      </div>
-      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-      <div class="step-strip" aria-label="Exercise progress">${pips}</div>
-
-      <section class="exercise-stage">
-        ${pos.workout.phase === 'rest' ? renderRest(pos) : renderWorkSet(pos)}
-      </section>
-
-      <div class="session-controls">
-        <button class="button ghost" type="button" data-action="home">LEAVE & RESUME LATER</button>
-        <button class="button danger" type="button" data-action="finish">FINISH EARLY</button>
-        <button class="button danger" type="button" data-action="discard">DISCARD</button>
-      </div>
-    </div>`;
+    <div class="page-head"><div><p class="eyebrow">EXERCISE LIBRARY</p><h2 class="page-title">${catalog.length} movements.</h2><p class="page-copy">This catalog powers plan generation, equipment matching, starting-load estimates and progression.</p></div></div>
+    <div class="catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="${esc(catalogQuery)}"><span>${items.length} shown</span></div>
+    <div class="catalog-grid">${items.map(e=>`<article class="catalog-card"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div></article>`).join('')}</div>`;
 }
 
-function renderWorkSet(pos) {
-  const next = nextPosition(pos.workout, pos.ei, pos.si);
-  const completedChips = pos.exercise.sets.map((set, index) => {
-    if (index >= pos.si) return '';
-    const label = set.completed ? `${set.weight ? `${esc(set.weight)} lb · ` : ''}${esc(set.reps)} ${pos.exercise.reps.includes('sec') ? 'sec' : 'reps'}` : 'Skipped';
-    return `<span class="set-chip ${set.completed ? 'done' : ''}">Set ${index + 1}: ${label}</span>`;
-  }).join('');
-  const nextLabel = next ? (next.type === 'set' ? `Set ${next.si + 1} of ${pos.exercise.sets.length}` : pos.workout.exercises[next.ei].name) : 'Workout complete';
-  const isTimed = pos.exercise.reps.includes('sec');
-  const prior = previousBest(pos.exercise.id);
+function renderWorkout(){
+  const pos=getActivePosition();
+  if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
+  const done=completedSets(pos.workout.exercises),total=totalSets(pos.workout.exercises),pct=Math.round(done/Math.max(1,total)*100);
+  return `<div class="guided-shell">
+    <div class="session-status"><div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(pos.workout.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>Exercise ${pos.ei+1} of ${pos.workout.exercises.length}</span></div></div><div class="elapsed"><span>ELAPSED</span><strong id="elapsed-clock">${formatClock(workoutElapsedSeconds(pos.workout))}</strong></div></div>
+    <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <div class="step-strip">${pos.workout.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei?'current':''}"></span>`).join('')}</div>
+    <section class="exercise-stage">${pos.workout.phase==='rest'?renderRest(pos):pos.workout.phase==='calibrate'?renderCalibration(pos):renderWorkSet(pos)}</section>
+    <div class="session-controls"><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
+  </div>`;
+}
 
-  let defaultWeight = pos.set.weight;
-  let defaultReps = pos.set.reps;
-  const priorSet = pos.exercise.sets[pos.si - 1];
-  if (!defaultWeight && priorSet?.completed) defaultWeight = priorSet.weight;
-  if (!defaultReps && priorSet?.completed) defaultReps = priorSet.reps;
-  if (!defaultWeight && prior) defaultWeight = prior.weight ? String(prior.weight) : '';
+function suggestedLabel(ex){
+  if(ex.loadMode==='bodyweight'||ex.loadMode==='timed')return 'Bodyweight';
+  if(ex.loadMode==='band')return 'Band resistance';
+  if(ex.loadMode==='dumbbell-pair')return `${ex.suggestedWeight||0} lb each`;
+  if(ex.loadMode==='assisted')return 'Set assistance';
+  return ex.suggestedWeight?`${ex.suggestedWeight} lb`:'Calibration required';
+}
 
+function renderWorkSet(pos){
+  const next=nextPosition(pos.workout,pos.ei,pos.si);
+  const isTimed=pos.exercise.loadMode==='timed';
+  const noLoad=['bodyweight','timed','band'].includes(pos.exercise.loadMode);
+  const previous=pos.exercise.sets[pos.si-1];
+  const defaultWeight=previous?.completed?previous.weight:(pos.exercise.suggestedWeight||'');
+  const defaultReps=previous?.completed?previous.reps:'';
   return `
-    <div class="exercise-hero">
-      <div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei + 1}/${pos.workout.exercises.length}</span></div>
-      <h3>${esc(pos.exercise.name)}</h3>
-      <p class="exercise-target">${pos.exercise.targetSets} working sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p>
-      <div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div>
-    </div>
-    <div class="set-panel">
-      <div class="set-heading"><h4>Set ${pos.si + 1} of ${pos.exercise.sets.length}</h4><span>Log it, then rest timer starts</span></div>
+    <div class="exercise-hero"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div>
+    <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
-        <div class="field">
-          <label for="set-weight">WEIGHT (LB) ${isTimed ? '· OPTIONAL' : ''}</label>
-          <input id="set-weight" inputmode="decimal" autocomplete="off" placeholder="${isTimed ? 'Bodyweight' : '0'}" value="${esc(defaultWeight)}" />
-        </div>
-        <div class="field">
-          <label for="set-reps">${isTimed ? 'SECONDS' : 'REPS'}</label>
-          <input id="set-reps" inputmode="numeric" autocomplete="off" placeholder="${isTimed ? '45' : '0'}" value="${esc(defaultReps)}" />
-        </div>
+        <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
+        <div class="field"><label>${isTimed?'SECONDS':'REPS'}</label><input id="set-reps" inputmode="numeric" value="${esc(defaultReps)}" placeholder="${isTimed?'45':'0'}"></div>
       </div>
-      ${completedChips ? `<div class="set-history">${completedChips}</div>` : ''}
-      <button class="button primary-action" type="button" data-action="complete-set">COMPLETE SET ${pos.si + 1}</button>
-      <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel)}</strong></div><div class="next-arrow">→</div></div>
+      <button class="button primary-action" data-action="complete-set">COMPLETE SET ${pos.si+1}</button>
+      <div class="next-preview"><div><span>UP NEXT</span><strong>${next?(next.type==='set'?`Set ${next.si+1} · ${pos.exercise.name}`:pos.workout.exercises[next.ei].name):'Workout complete'}</strong></div><div class="next-arrow">→</div></div>
     </div>`;
 }
 
-function renderRest(pos) {
-  const remaining = restRemaining(pos.workout);
-  const next = pos.workout.pendingPosition;
-  const nextExercise = next ? pos.workout.exercises[next.ei] : null;
-  const nextSet = next ? next.si + 1 : null;
-  const changingExercise = next && next.ei !== pos.ei;
-  const paused = Number.isFinite(pos.workout.restPausedRemaining);
-  return `
-    <div class="rest-stage">
-      <div class="rest-label">${changingExercise ? 'EXERCISE COMPLETE · TRANSITION' : 'REST TIMER'}</div>
-      <div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%">
-        <div>
-          <div class="timer-value" id="rest-clock">${formatClock(remaining)}</div>
-          <div class="timer-sub">${paused ? 'PAUSED' : 'UNTIL NEXT SET'}</div>
-        </div>
-      </div>
-      <h3>${changingExercise ? 'Reset for the next exercise' : 'Recover, then go again'}</h3>
-      <p>${changingExercise ? 'The player will move to the next exercise automatically when the timer reaches zero.' : 'Stay ready. Your next set opens automatically when rest is over.'}</p>
-      <div class="timer-actions">
-        <button class="button secondary" type="button" data-action="add-rest">+15 SEC</button>
-        <button class="button secondary" type="button" data-action="pause-rest">${paused ? 'RESUME' : 'PAUSE'}</button>
-        <button class="button" type="button" data-action="skip-rest">SKIP REST</button>
-      </div>
-      ${nextExercise ? `
-        <div class="up-next-card">
-          <div class="up-next-number">${String(next.ei + 1).padStart(2, '0')}</div>
-          <div><span>UP NEXT</span><strong>${esc(nextExercise.name)}</strong></div>
-          <em>Set ${nextSet}/${nextExercise.sets.length}</em>
-        </div>` : ''}
-    </div>`;
+function renderCalibration(pos){
+  const first=pos.exercise.sets[0];
+  return `<div class="calibration-stage"><p class="eyebrow">QUICK CALIBRATION</p><h3>How much did you have left?</h3><p>You completed ${esc(first.reps)} reps at ${first.weight?esc(first.weight)+' lb':'your chosen resistance'}. Estimate how many clean reps you could still have done. We’ll adjust the next sets and remember it.</p>
+    <div class="rir-grid">
+      <button data-rir="5+"><strong>5+</strong><span>Very easy</span></button>
+      <button data-rir="3-4"><strong>3–4</strong><span>Easy</span></button>
+      <button data-rir="2"><strong>2</strong><span>Right on target</span></button>
+      <button data-rir="1"><strong>1</strong><span>Very hard</span></button>
+      <button data-rir="0"><strong>0</strong><span>Max effort</span></button>
+    </div><small class="calibration-note">This is a training estimate, not a strength test. Stop if a movement causes pain or feels unsafe.</small></div>`;
 }
 
-function renderHistory() {
-  return `
-    <div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts are stored on this browser and feed your progress and PRs.</p></div></div>
-    <div class="history-list">
-      ${store.history.length ? store.history.map(entry => `
-        <article class="history-card">
-          <div class="history-top"><div><h3>${esc(entry.routineName)}</h3><div class="history-date">${formatDate(entry.completedAt)}</div></div><div class="history-volume">${formatVolume(entry.totalVolume || 0)}</div></div>
-          <div class="history-stats"><span>${entry.completedSets} sets</span><span>•</span><span>${entry.durationMinutes} min</span>${entry.newPRs?.length ? `<span>•</span><span>${entry.newPRs.length} PR${entry.newPRs.length === 1 ? '' : 's'}</span>` : ''}</div>
-        </article>`).join('') : renderEmpty('No workout history', 'Your completed guided workouts will appear here.')}
-    </div>`;
+function renderRest(pos){
+  const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
+  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div><div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest">+15 SEC</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
 }
 
-function renderProgress() {
-  const week = weeklyHistory();
-  const allVolume = store.history.reduce((sum, entry) => sum + (entry.totalVolume || 0), 0);
-  const prs = personalRecords().slice(0, 12);
-  const totalWorkouts = store.history.length;
-  return `
-    <div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">Simple signals that show whether the training is stacking up.</p></div></div>
-    <div class="progress-grid">
-      <section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/4</div><div class="stat-label">workouts completed</div></section>
-      <section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged training volume</div></section>
-      <section class="panel"><h3>Total sessions</h3><div class="big-stat">${totalWorkouts}</div><div class="stat-label">completed workouts</div></section>
-      <section class="panel"><h3>Personal records</h3>${prs.length ? `<div class="pr-list">${prs.map(pr => `<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.id === 'plank' ? `${pr.reps} sec` : `${pr.weight} lb × ${pr.reps}`}</strong></div>`).join('')}</div>` : `<div class="stat-label">Complete workouts to establish your first PRs.</div>`}</section>
-    </div>`;
+function renderHistory(){
+  return `<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts, duration, volume and PRs.</p></div></div><div class="history-list">${store.history.length?store.history.map(x=>`<article class="history-card"><div class="history-top"><div><h3>${esc(x.routineName)}</h3><div class="history-date">${formatDate(x.completedAt)}</div></div><div class="history-volume">${formatVolume(x.totalVolume||0)}</div></div><div class="history-stats"><span>${x.completedSets} sets</span><span>•</span><span>${x.durationMinutes} min</span>${x.newPRs?.length?`<span>•</span><span>${x.newPRs.length} PR${x.newPRs.length===1?'':'s'}</span>`:''}</div></article>`).join(''):renderEmpty('No workout history','Complete your first generated workout and it will appear here.')}</div>`;
+}
+function personalRecords(){
+  const map=new Map();
+  for(const w of store.history)for(const ex of w.exercises)for(const s of ex.sets){if(!s.completed)continue;const c={id:ex.id,name:ex.name,weight:num(s.weight),reps:num(s.reps)};const old=map.get(ex.id);if(!old||c.weight>old.weight||(c.weight===old.weight&&c.reps>old.reps))map.set(ex.id,c);}
+  return [...map.values()].sort((a,b)=>b.weight-a.weight);
+}
+function renderProgress(){
+  const week=weeklyHistory(),allVolume=store.history.reduce((s,x)=>s+(x.totalVolume||0),0),prs=personalRecords().slice(0,12),calibrated=Object.keys(store.calibration).length;
+  return `<div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">The app learns from completed workouts and calibration sets.</p></div></div><div class="progress-grid"><section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/${store.profile?.days||0}</div><div class="stat-label">workouts completed</div></section><section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section><section class="panel"><h3>Calibrated movements</h3><div class="big-stat">${calibrated}</div><div class="stat-label">starting loads learned</div></section><section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section></div>`;
+}
+function renderSummary(){
+  const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
+  return `<div class="summary-hero"><div class="summary-check">✓</div><p class="eyebrow">WORKOUT COMPLETE</p><h2>${esc(x.routineName)} done.</h2><p>Your history, calibration data and progress are updated.</p><div class="summary-grid"><div class="summary-card"><strong>${x.durationMinutes}</strong><span>Minutes</span></div><div class="summary-card"><strong>${x.completedSets}</strong><span>Sets</span></div><div class="summary-card"><strong>${formatVolume(x.totalVolume||0)}</strong><span>Volume</span></div></div>${x.newPRs?.length?`<section class="panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">${x.newPRs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div></section>`:''}<div class="summary-actions"><button class="button" data-action="home">BACK TO PLAN</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>`;
+}
+function renderEmpty(title,copy){return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;}
+
+function setTab(tab){
+  if(!store.profile&&tab!=='profile'){currentTab='profile';}else currentTab=tab;
+  render();window.scrollTo({top:0,behavior:'smooth'});
+}
+function syncNav(){
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===currentTab||(currentTab==='summary'&&b.dataset.tab==='history')));
+  const nav=document.querySelector('.bottom-nav');if(nav)nav.classList.toggle('nav-disabled',!store.profile);
+}
+function syncLiveBadge(){const b=document.querySelector('.nav-live');if(b)b.hidden=!store.activeWorkout;}
+function toast(message){const r=document.querySelector('#toast-region')||document.body;r.querySelector('.toast')?.remove();const n=document.createElement('div');n.className='toast';n.textContent=message;r.append(n);setTimeout(()=>n.remove(),2300);}
+
+function render(){
+  const app=document.querySelector('#app');if(!app)return;
+  if(currentTab==='profile')app.innerHTML=renderProfile();
+  else if(currentTab==='home')app.innerHTML=renderHome();
+  else if(currentTab==='catalog')app.innerHTML=renderCatalog();
+  else if(currentTab==='workout')app.innerHTML=renderWorkout();
+  else if(currentTab==='history')app.innerHTML=renderHistory();
+  else if(currentTab==='progress')app.innerHTML=renderProgress();
+  else if(currentTab==='summary')app.innerHTML=renderSummary();
+  else app.innerHTML=renderHome();
+  syncNav();syncLiveBadge();updateTimers();
 }
 
-function renderSummary() {
-  const entry = store.history.find(item => item.id === store.lastSummaryId) || store.history[0];
-  if (!entry) return renderHistory();
-  return `
-    <div class="summary-hero">
-      <div class="summary-check">✓</div>
-      <p class="eyebrow">WORKOUT COMPLETE</p>
-      <h2>${esc(entry.routineName)} done.</h2>
-      <p>${entry.completedSets} sets logged across ${entry.exercises.filter(ex => ex.sets.some(set => set.completed)).length} exercises. Your history and progress are already updated.</p>
-      <div class="summary-grid">
-        <div class="summary-card"><strong>${entry.durationMinutes}</strong><span>Minutes</span></div>
-        <div class="summary-card"><strong>${entry.completedSets}</strong><span>Sets</span></div>
-        <div class="summary-card"><strong>${formatVolume(entry.totalVolume || 0)}</strong><span>Volume</span></div>
-      </div>
-      ${entry.newPRs?.length ? `
-        <section class="panel summary-prs">
-          <p class="eyebrow">NEW PERSONAL RECORD${entry.newPRs.length === 1 ? '' : 'S'}</p>
-          <div class="pr-list">${entry.newPRs.map(pr => `<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.exerciseId === 'plank' ? `${pr.reps} sec` : `${pr.weight} lb × ${pr.reps}`}</strong></div>`).join('')}</div>
-        </section>` : ''}
-      <div class="summary-actions">
-        <button class="button" type="button" data-action="home">BACK TO PLAN</button>
-        <button class="button secondary" type="button" data-action="history">VIEW HISTORY</button>
-      </div>
-    </div>`;
+function updateTimers(){
+  const w=store.activeWorkout;const elapsed=document.querySelector('#elapsed-clock');if(w&&elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  if(!w||w.phase!=='rest')return;const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
+  if(clock)clock.textContent=formatClock(remaining);if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
+  if(remaining<=0&&!Number.isFinite(w.restPausedRemaining))advanceAfterRest();
 }
 
-function renderEmpty(title, copy) {
-  return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;
+function handleClick(event){
+  const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
+  const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
+  const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
+  const node=event.target.closest('[data-action]');if(!node)return;
+  const a=node.dataset.action;
+  if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='history')setTab('history');
+  else if(a==='resume')setTab('workout');
+  else if(a==='edit-profile')editProfile();
+  else if(a==='regenerate')regeneratePlan();
+  else if(a==='complete-set')completeCurrentSet();
+  else if(a==='add-rest')adjustRest(15);
+  else if(a==='pause-rest')toggleRestPause();
+  else if(a==='skip-rest')skipRest();
+  else if(a==='finish')finishWorkout(false);
+  else if(a==='discard')discardWorkout();
 }
-
-function render() {
-  const app = document.querySelector('#app');
-  if (!app) return;
-  if (currentTab === 'home') app.innerHTML = renderHome();
-  else if (currentTab === 'workout') app.innerHTML = renderWorkout();
-  else if (currentTab === 'history') app.innerHTML = renderHistory();
-  else if (currentTab === 'progress') app.innerHTML = renderProgress();
-  else if (currentTab === 'summary') app.innerHTML = renderSummary();
-  else app.innerHTML = renderHome();
-  syncNav();
-  syncLiveBadge();
-  updateTimers();
-}
-
-function updateTimers() {
-  const workout = store.activeWorkout;
-  const elapsedNode = document.querySelector('#elapsed-clock');
-  if (workout && elapsedNode) elapsedNode.textContent = formatClock(workoutElapsedSeconds(workout));
-
-  if (!workout || workout.phase !== 'rest') return;
-  const remaining = restRemaining(workout);
-  const clock = document.querySelector('#rest-clock');
-  const ring = document.querySelector('#timer-ring');
-  if (clock) clock.textContent = formatClock(remaining);
-  if (ring) ring.style.setProperty('--timer-progress', `${restProgress(workout)}%`);
-
-  if (remaining <= 0 && !Number.isFinite(workout.restPausedRemaining)) {
-    advanceAfterRest();
-  }
-}
-
-function handleClick(event) {
-  const tab = event.target.closest('[data-tab]');
-  if (tab) {
-    setTab(tab.dataset.tab);
-    return;
-  }
-
-  const start = event.target.closest('[data-start]');
-  if (start) {
-    startWorkout(start.dataset.start);
-    return;
-  }
-
-  const actionNode = event.target.closest('[data-action]');
-  if (!actionNode) return;
-  const action = actionNode.dataset.action;
-  if (action === 'go-home' || action === 'home') setTab('home');
-  else if (action === 'history') setTab('history');
-  else if (action === 'resume') setTab('workout');
-  else if (action === 'complete-set') completeCurrentSet();
-  else if (action === 'add-rest') adjustRest(15);
-  else if (action === 'pause-rest') toggleRestPause();
-  else if (action === 'skip-rest') skipRest();
-  else if (action === 'finish') finishWorkout(false);
-  else if (action === 'discard') discardWorkout();
-}
-
-document.addEventListener('click', handleClick);
-document.addEventListener('keydown', event => {
-  if (event.key === 'Enter' && currentTab === 'workout' && store.activeWorkout?.phase === 'work') {
-    const active = document.activeElement;
-    if (active?.tagName === 'INPUT') {
-      event.preventDefault();
-      completeCurrentSet();
-    }
-  }
-});
-
-tickHandle = window.setInterval(updateTimers, 500);
-window.addEventListener('beforeunload', () => {
-  if (tickHandle) window.clearInterval(tickHandle);
-});
-
+document.addEventListener('click',handleClick);
+document.addEventListener('submit',event=>{if(event.target.id==='profile-form'){event.preventDefault();saveProfileFromForm(event.target);}});
+document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
+document.addEventListener('keydown',event=>{if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}});
+tickHandle=window.setInterval(updateTimers,500);
+window.addEventListener('beforeunload',()=>tickHandle&&clearInterval(tickHandle));
 render();
