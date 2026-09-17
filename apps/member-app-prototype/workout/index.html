@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0d0b" />
+  <meta name="description" content="A simple workout tracker for logging sets, reps, weight, and progress." />
+  <title>Workout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark">W/</div>
+        <div>
+          <h1>WORKOUT</h1>
+          <p>Simple training. Clear progress.</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="storage-badge">Saved on this device</span>
+        <div class="avatar">JC</div>
+      </div>
+    </header>
+
+    <main id="app" class="main"></main>
+
+    <nav class="bottom-nav" aria-label="Workout navigation">
+      <button class="nav-item active" data-tab="home"><span class="nav-icon">⌂</span><span>Home</span></button>
+      <button class="nav-item" data-tab="workout"><span class="nav-icon">＋</span><span>Workout</span></button>
+      <button class="nav-item" data-tab="history"><span class="nav-icon">↺</span><span>History</span></button>
+      <button class="nav-item" data-tab="progress"><span class="nav-icon">↗</span><span>Progress</span></button>
+    </nav>
+  </div>
+
+  <template id="empty-template">
+    <div class="empty-state">
+      <div class="empty-glyph">W/</div>
+      <h2>Nothing here yet</h2>
+      <p>Your completed workouts will show up here.</p>
+    </div>
+  </template>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
