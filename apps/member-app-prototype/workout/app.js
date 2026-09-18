@@ -191,8 +191,43 @@ function exerciseImageUrl(ex,index=0,useFallback=false){
   return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
 }
 
+const TIMED_STAGE_MEDIA = {
+  'Easy march + arm swing':'Arm_Circles',
+  'Bodyweight squat stretch':'Bodyweight_Squat',
+  'Dynamic hip hinge reach':'Romanian_Deadlift_from_Deficit',
+  'Arm circles + shoulder sweep':'Arm_Circles',
+  'Alternating reverse lunge reach':'Crossover_Reverse_Lunge',
+  'Chest + shoulder stretch':'Chest_And_Front_Of_Shoulder_Stretch',
+  'Lat + upper-back stretch':'Overhead_Lat',
+  'Standing quad stretch':'Standing_Elevated_Quad_Stretch',
+  'Hamstring stretch':'Hamstring_Stretch',
+  'Glute stretch':'IT_Band_and_Glute_Stretch',
+  'Calf stretch':'Standing_Gastrocnemius_Calf_Stretch',
+  'Full-body reach + breathing':'Upward_Stretch'
+};
+
+const TIMED_STAGE_WHY = {
+  'Easy march + arm swing':'Gets your whole body moving before the first loaded set.',
+  'Bodyweight squat stretch':'Prepares the hips, knees, and ankles for lower-body work.',
+  'Dynamic hip hinge reach':'Primes the hamstrings and hinge pattern before loaded pulls.',
+  'Arm circles + shoulder sweep':'Warms the shoulders before pressing and pulling.',
+  'Alternating reverse lunge reach':'Opens the hips and adds single-leg movement before training.',
+  'Chest + shoulder stretch':'Lets the chest and front of the shoulders relax after pressing.',
+  'Lat + upper-back stretch':'Lengthens the lats and upper back after rows and pulldowns.',
+  'Standing quad stretch':'Gives the quads a gentle post-workout stretch.',
+  'Hamstring stretch':'Helps the hamstrings relax after hinges and leg work.',
+  'Glute stretch':'Releases the glutes after squats, hinges, and lunges.',
+  'Calf stretch':'Lets the calf settle after standing and lower-body work.',
+  'Full-body reach + breathing':'Brings your breathing down and finishes the session gradually.'
+};
+
 function timedStageImageUrl(item,index=0){
-  return item?.mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(item.mediaId)+'/'+index+'.jpg':'';
+  const mediaId=item?.mediaId||TIMED_STAGE_MEDIA[item?.name];
+  return mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(mediaId)+'/'+index+'.jpg':'';
+}
+
+function timedStageWhy(item){
+  return item?.why||TIMED_STAGE_WHY[item?.name]||'This step prepares or recovers the muscles used in today’s session.';
 }
 
 function exerciseImageButton(ex,className='exercise-media',index=0){
@@ -915,7 +950,7 @@ function renderTimedStage(w){
       <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
       <h3>${esc(item?.name||'Get ready')}</h3>
       <p class="stage-cue">${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
-      ${item?.why?`<div class="stage-why"><span>WHY THIS STEP</span><strong>${esc(item.why)}</strong></div>`:''}
+      <div class="stage-why"><span>WHY THIS STEP</span><strong>${esc(timedStageWhy(item))}</strong></div>
       <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
       <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
       <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
