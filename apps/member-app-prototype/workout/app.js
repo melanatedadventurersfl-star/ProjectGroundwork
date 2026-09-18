@@ -331,6 +331,29 @@ function exerciseGuidance(ex){
   return {...base,setup:loadNote?base.setup+' '+loadNote:base.setup};
 }
 
+function exerciseDescription(ex){
+  if(!ex)return 'A controlled movement used in today’s workout.';
+  const muscleText=(ex.muscles||[]).slice(0,2).join(' and ').toLowerCase();
+  const target=muscleText||'the target muscles';
+  const descriptions={
+    'squat':'A lower-body squat pattern that builds the quads and glutes while training controlled knee and hip movement.',
+    'hinge':'A hip-hinge movement that trains the hamstrings, glutes, and back while keeping the load close and controlled.',
+    'single-leg':'A single-leg movement that develops leg strength, balance, and hip stability one side at a time.',
+    'horizontal-push':'A pressing movement that trains the chest, shoulders, and triceps by pushing resistance away from the body.',
+    'horizontal-pull':'A rowing movement that trains the upper back and arms by pulling resistance toward the torso.',
+    'vertical-push':'An overhead pressing pattern that trains the shoulders and triceps while the trunk stays braced.',
+    'vertical-pull':'A pulling movement that trains the lats and upper back by driving the elbows down toward the body.',
+    'quad-accessory':'A focused leg movement that emphasizes the quadriceps with a controlled range of motion.',
+    'hamstring-accessory':'A focused lower-body movement that emphasizes the hamstrings through controlled bending or hinging.',
+    'shoulder-accessory':'A lighter shoulder movement used to build control and strength through a comfortable range.',
+    'biceps':'An arm exercise that trains the biceps by bending the elbow without swinging the upper arm.',
+    'triceps':'An arm exercise that trains the triceps by straightening the elbow under control.',
+    'calves':'A lower-leg exercise that trains the calves by raising and lowering the heel through a controlled range.',
+    'core':'A trunk-stability exercise that trains the core to resist unwanted movement and maintain position.'
+  };
+  return descriptions[ex.movement]||('A controlled '+String(movements[ex.movement]||ex.movement||'strength').toLowerCase()+' exercise focused on '+target+'.');
+}
+
 function exerciseImageUrl(ex,index=0,useFallback=false){
   if(!ex)return '';
   const sourceId=useFallback?exerciseMediaFallbacks[ex.movement]:(exerciseMedia[ex.id]?.sourceId||exerciseMediaFallbacks[ex.movement]);
@@ -374,6 +397,10 @@ function timedStageImageUrl(item,index=0){
 
 function timedStageWhy(item){
   return item?.why||TIMED_STAGE_WHY[item?.name]||'This step prepares or recovers the muscles used in today’s session.';
+}
+
+function timedStageDescription(item){
+  return item?.description||item?.cue||'Move through this stretch slowly and stay within a comfortable range.';
 }
 
 function exerciseImageButton(ex,className='exercise-media',index=0){
@@ -569,6 +596,7 @@ function buildWarmup(exercises){
   const items=[{
     name:'Easy march + arm swing',
     seconds:30,
+    description:'March in place while swinging the arms naturally to gradually raise your heart rate and loosen the whole body.',
     cue:'Raise your temperature and breathe easily.',
     why:'Gets your whole body moving before the first loaded set.',
     mediaId:'Arm_Circles'
@@ -576,6 +604,7 @@ function buildWarmup(exercises){
   if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({
     name:'Bodyweight squat stretch',
     seconds:30,
+    description:'Move through easy bodyweight squats to warm the hips, knees, and ankles before loaded lower-body work.',
     cue:'Controlled depth, knees tracking comfortably.',
     why:'Prepares the hips, knees, and ankles for lower-body work.',
     mediaId:'Bodyweight_Squat'
@@ -583,6 +612,7 @@ function buildWarmup(exercises){
   if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({
     name:'Dynamic hip hinge reach',
     seconds:30,
+    description:'Practice a gentle hip hinge by reaching the hips back and returning tall, keeping the movement smooth and unloaded.',
     cue:'Soft knees, reach hips back, stand tall.',
     why:'Primes the hamstrings and hinge pattern before loaded pulls.',
     mediaId:'Romanian_Deadlift_from_Deficit'
@@ -590,6 +620,7 @@ function buildWarmup(exercises){
   if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({
     name:'Arm circles + shoulder sweep',
     seconds:30,
+    description:'Circle and sweep the arms through a comfortable range to warm the shoulders before pressing or pulling.',
     cue:'Small circles into larger comfortable circles.',
     why:'Warms the shoulders before pressing and pulling.',
     mediaId:'Arm_Circles'
@@ -597,6 +628,7 @@ function buildWarmup(exercises){
   if(items.length<4) items.push({
     name:'Alternating reverse lunge reach',
     seconds:30,
+    description:'Step back into an alternating reverse lunge while reaching to open the hips and prepare each leg individually.',
     cue:'Move slowly through a comfortable range.',
     why:'Opens the hips and adds single-leg movement before training.',
     mediaId:'Crossover_Reverse_Lunge'
@@ -610,6 +642,7 @@ function buildCooldown(exercises){
   if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({
     name:'Chest + shoulder stretch',
     seconds:30,
+    description:'Use a comfortable chest-opening position to gently lengthen the chest and front of the shoulders after pressing.',
     cue:'Gentle stretch only, no forcing the range.',
     why:'Lets the chest and front of the shoulders relax after pressing.',
     mediaId:'Chest_And_Front_Of_Shoulder_Stretch'
@@ -617,6 +650,7 @@ function buildCooldown(exercises){
   if(muscles.has('Back')||muscles.has('Lats')) items.push({
     name:'Lat + upper-back stretch',
     seconds:30,
+    description:'Reach into a relaxed upper-back and lat stretch, allowing the shoulders to settle while you breathe slowly.',
     cue:'Breathe slowly and let the shoulders relax.',
     why:'Lengthens the lats and upper back after rows and pulldowns.',
     mediaId:'Overhead_Lat'
@@ -624,6 +658,7 @@ function buildCooldown(exercises){
   if(muscles.has('Quads')) items.push({
     name:'Standing quad stretch',
     seconds:30,
+    description:'Stand tall and gently bend one knee to stretch the front of the thigh without pulling aggressively.',
     cue:'Keep knees close and posture tall.',
     why:'Gives the quads a gentle post-workout stretch.',
     mediaId:'Standing_Elevated_Quad_Stretch'
@@ -631,6 +666,7 @@ function buildCooldown(exercises){
   if(muscles.has('Hamstrings')) items.push({
     name:'Hamstring stretch',
     seconds:30,
+    description:'Hinge forward gently with a long spine until you feel a mild stretch through the back of the thigh.',
     cue:'Hinge gently until you feel light tension.',
     why:'Helps the hamstrings relax after hinges and leg work.',
     mediaId:'Hamstring_Stretch'
@@ -638,6 +674,7 @@ function buildCooldown(exercises){
   if(muscles.has('Glutes')) items.push({
     name:'Glute stretch',
     seconds:30,
+    description:'Settle into a comfortable hip position that creates a gentle stretch through the glutes without forcing the joint.',
     cue:'Stay relaxed and avoid forcing the hip.',
     why:'Releases the glutes after squats, hinges, and lunges.',
     mediaId:'IT_Band_and_Glute_Stretch'
@@ -645,6 +682,7 @@ function buildCooldown(exercises){
   if(muscles.has('Calves')) items.push({
     name:'Calf stretch',
     seconds:30,
+    description:'Keep the heel planted while leaning into a gentle calf stretch, using steady breathing instead of bouncing.',
     cue:'Keep the heel down and breathe steadily.',
     why:'Lets the calf settle after standing and lower-body work.',
     mediaId:'Standing_Gastrocnemius_Calf_Stretch'
@@ -652,6 +690,7 @@ function buildCooldown(exercises){
   if(items.length<3) items.push({
     name:'Full-body reach + breathing',
     seconds:30,
+    description:'Reach tall, breathe slowly, and let the shoulders relax to bring the session down gradually.',
     cue:'Slow inhale, longer exhale, relax the shoulders.',
     why:'Brings your breathing down and finishes the session gradually.',
     mediaId:'Upward_Stretch'
