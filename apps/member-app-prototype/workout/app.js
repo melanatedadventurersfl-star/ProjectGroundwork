@@ -843,6 +843,7 @@ function renderPlanTimedRow(item,type,index){
     <div class="plan-prep-copy">
       <span>${type==='warmup'?'WARM-UP':'COOLDOWN'} ${index+1}</span>
       <strong>${esc(item.name)}</strong>
+      <small class="plan-description">${esc(timedStageDescription(item))}</small>
       <small>${esc(item.cue||'Move through a comfortable range.')}</small>
     </div>
     <em>${Number(item.seconds)||30}s</em>
@@ -1413,7 +1414,7 @@ function renderHome(){
             <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
             <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
-            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong>${planPrescriptionHtml(ex)}</div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
+            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small>${planPrescriptionHtml(ex)}</div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
             <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
           </div>
@@ -1428,7 +1429,7 @@ function renderCatalog(){
   return `
     <div class="page-head"><div><p class="eyebrow">EXERCISE LIBRARY</p><h2 class="page-title">${catalog.length} movements.</h2><p class="page-copy">This catalog powers plan generation, equipment matching, starting-load estimates and progression.</p></div></div>
     <div class="catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="${esc(catalogQuery)}"><span>${items.length} shown</span></div>
-    <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
+    <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><p class="catalog-description">${esc(exerciseDescription(e))}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
 }
 
 function renderWorkout(){
