@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'workout-web-store-v3';
 const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
-const ACTIVE_WORKOUT_SCHEMA = 2;
+const ACTIVE_WORKOUT_SCHEMA = 3;
 const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
 
@@ -18,8 +18,6 @@ let clearedLegacyActiveWorkout = false;
 if (store.activeWorkout && store.activeWorkout.schemaVersion !== ACTIVE_WORKOUT_SCHEMA) {
   store.activeWorkout = null;
   clearedLegacyActiveWorkout = true;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-} else if (normalizeActiveWorkoutTimerState(store.activeWorkout)) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 let currentTab = store.profile && store.plan ? (store.activeWorkout ? 'workout' : 'home') : 'profile';
@@ -304,7 +302,7 @@ function createWorkout(day){
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,
-    phase:'warmup',timedStageIndex:0,timedStageStartedAt:null,timedStageEndsAt:null,
+    phase:'warmup',timedPhaseStartedAt:now,timedPhaseSkippedSeconds:0,
     warmup:day.warmup||[],cooldown:day.cooldown||[],
     exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
@@ -320,12 +318,9 @@ function createWorkout(day){
       };
     })
   };
-  const first=workout.warmup[0];
-  if(first){
-    workout.timedStageStartedAt=now;
-    workout.timedStageEndsAt=new Date(new Date(now).getTime()+first.seconds*1000).toISOString();
-  } else {
+  if(!workout.warmup.length){
     workout.phase='work';
+    workout.timedPhaseStartedAt=null;
     workout.exerciseStartedAt=now;
   }
   return workout;
@@ -361,47 +356,32 @@ function timedStageItems(w){
   if(!w) return [];
   return w.phase==='warmup'?(w.warmup||[]):w.phase==='cooldown'?(w.cooldown||[]):[];
 }
-function normalizeActiveWorkoutTimerState(w){
-  if(!w||!['warmup','cooldown'].includes(w.phase)) return false;
-  const items=timedStageItems(w);
-  if(!items.length) return false;
-  let changed=false;
-  const safeIndex=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
-  if(w.timedStageIndex!==safeIndex){w.timedStageIndex=safeIndex;changed=true;}
-  if(!w.timedStageStartedAt){
-    const prior=items.slice(0,safeIndex).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
-    const duration=Number(items[safeIndex]?.seconds)||30;
-    const legacyEnd=Date.parse(w.timedStageEndsAt||'');
-    const remaining=Number.isFinite(legacyEnd)?Math.max(0,Math.min(duration,(legacyEnd-Date.now())/1000)):duration;
-    const elapsedCurrent=Math.max(0,duration-remaining);
-    w.timedStageStartedAt=new Date(Date.now()-(prior+elapsedCurrent)*1000).toISOString();
-    changed=true;
-  }
-  return changed;
-}
 function timedStageSnapshot(w,nowMs=Date.now()){
   if(!w||!['warmup','cooldown'].includes(w.phase)) return null;
   const items=timedStageItems(w);
-  if(!items.length) return {complete:true,index:0,remaining:0,total:0,endsAt:null};
-  normalizeActiveWorkoutTimerState(w);
-  const startMs=Date.parse(w.timedStageStartedAt);
+  if(!items.length) return {complete:true,index:0,remaining:0,remainingExact:0,total:0};
+  const startMs=Date.parse(w.timedPhaseStartedAt||'');
   if(!Number.isFinite(startMs)) return null;
-  const elapsed=Math.max(0,(nowMs-startMs)/1000);
+  const skipped=Math.max(0,Number(w.timedPhaseSkippedSeconds)||0);
+  const elapsed=Math.max(0,(nowMs-startMs)/1000+skipped);
   let cumulative=0;
   for(let i=0;i<items.length;i++){
     cumulative+=Number(items[i].seconds)||0;
     if(elapsed<cumulative){
+      const remainingExact=Math.max(0,cumulative-elapsed);
       return {
-        complete:false,index:i,
-        remaining:Math.max(0,Math.ceil(cumulative-elapsed)),
-        total:Number(items[i].seconds)||30,
-        endsAt:new Date(startMs+cumulative*1000).toISOString()
+        complete:false,
+        index:i,
+        remaining:Math.max(0,Math.ceil(remainingExact)),
+        remainingExact,
+        total:Number(items[i].seconds)||30
       };
     }
   }
-  return {complete:true,index:items.length-1,remaining:0,total:Number(items[items.length-1]?.seconds)||30,endsAt:null};
+  return {complete:true,index:items.length-1,remaining:0,remainingExact:0,total:Number(items[items.length-1]?.seconds)||30};
 }
 function stageRemaining(w){ return timedStageSnapshot(w)?.remaining||0; }
+
 function recordExerciseDuration(w,index){
   if(!w?.exerciseStartedAt||index<0)return;
   const elapsed=Math.max(0,Math.floor((Date.now()-new Date(w.exerciseStartedAt).getTime())/1000));
@@ -421,20 +401,24 @@ function startCooldown(){
   const w=store.activeWorkout;if(!w)return;
   recordExerciseDuration(w,w.currentExerciseIndex);
   const now=new Date().toISOString();
-  w.phase='cooldown';w.exerciseStartedAt=null;w.timedStageIndex=0;w.timedStageStartedAt=now;
-  const first=w.cooldown?.[0];
-  if(first) w.timedStageEndsAt=new Date(new Date(now).getTime()+first.seconds*1000).toISOString();
-  else { finishWorkout(true); return; }
+  w.phase='cooldown';
+  w.exerciseStartedAt=null;
+  w.timedPhaseStartedAt=now;
+  w.timedPhaseSkippedSeconds=0;
+  if(!w.cooldown?.length){ finishWorkout(true); return; }
   saveStore();render();
 }
 
 function completeTimedStagePhase(w){
   if(w.phase==='warmup'){
-    w.phase='work';w.timedStageIndex=0;w.timedStageStartedAt=null;w.timedStageEndsAt=null;
+    w.phase='work';
+    w.timedPhaseStartedAt=null;
+    w.timedPhaseSkippedSeconds=0;
     w.exerciseStartedAt=new Date().toISOString();
     saveStore();render();document.querySelector('#set-weight')?.focus();return;
   }
-  w.timedStageStartedAt=null;w.timedStageEndsAt=null;
+  w.timedPhaseStartedAt=null;
+  w.timedPhaseSkippedSeconds=0;
   finishWorkout(true);
 }
 
@@ -444,24 +428,17 @@ function reconcileTimedStage(){
   const snap=timedStageSnapshot(w);
   if(!snap) return false;
   if(snap.complete){ completeTimedStagePhase(w); return true; }
-  const changed=w.timedStageIndex!==snap.index||w.timedStageEndsAt!==snap.endsAt;
-  if(changed){
-    w.timedStageIndex=snap.index;w.timedStageEndsAt=snap.endsAt;
-    saveStore();render();
-  }
-  return changed;
+  return false;
 }
 
 function advanceTimedStage(){
   const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
-  const items=timedStageItems(w);
   const snap=timedStageSnapshot(w);
-  if(!snap||!items.length)return;
-  const boundarySeconds=items.slice(0,snap.index+1).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
-  w.timedStageStartedAt=new Date(Date.now()-boundarySeconds*1000).toISOString();
+  if(!snap)return;
+  if(snap.complete){ completeTimedStagePhase(w); return; }
+  w.timedPhaseSkippedSeconds=(Number(w.timedPhaseSkippedSeconds)||0)+snap.remainingExact+0.001;
   const next=timedStageSnapshot(w);
   if(next?.complete){ completeTimedStagePhase(w); return; }
-  w.timedStageIndex=next.index;w.timedStageEndsAt=next.endsAt;
   saveStore();render();
 }
 
@@ -698,18 +675,20 @@ function renderWorkout(){
 }
 
 function renderTimedStage(w){
-  const items=w.phase==='warmup'?w.warmup:w.cooldown;
-  const item=items[w.timedStageIndex]||items[0];
-  const remaining=stageRemaining(w);
+  const items=timedStageItems(w);
+  const snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30};
+  const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1)));
+  const item=items[index]||items[0];
+  const remaining=snap.remaining||0;
   const isWarmup=w.phase==='warmup';
-  const nextLabel=w.timedStageIndex+1<items.length?items[w.timedStageIndex+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
-  return `<div class="timed-stage">
+  const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
+  return `<div class="timed-stage" data-stage-index="${index}">
     <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
-    <div class="stage-count">STEP ${w.timedStageIndex+1} OF ${items.length}</div>
+    <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
     <h3>${esc(item?.name||'Get ready')}</h3>
     <p>${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
     <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
-    <div class="stage-progress"><span style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
+    <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
     <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
     <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
   </div>`;
@@ -778,10 +757,7 @@ function renderEmpty(title,copy){return `<div class="empty-state"><div class="em
 
 function setTab(tab){
   if(!store.profile&&tab!=='profile'){currentTab='profile';}else currentTab=tab;
-  if(store.activeWorkout&&['warmup','cooldown'].includes(store.activeWorkout.phase)){
-    if(reconcileTimedStage()) return;
-  }
-  render();window.scrollTo({top:0,behavior:'smooth'});
+  render();updateTimers();window.scrollTo({top:0,behavior:'smooth'});
 }
 function syncNav(){
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===currentTab||(currentTab==='summary'&&b.dataset.tab==='history')));
@@ -810,16 +786,20 @@ function updateTimers(){
   if(['warmup','cooldown'].includes(w.phase)){
     const snap=timedStageSnapshot(w);
     if(!snap)return;
-    if(snap.complete||snap.index!==w.timedStageIndex){
-      reconcileTimedStage();return;
+    if(snap.complete){ reconcileTimedStage();return; }
+
+    const stage=document.querySelector('.timed-stage');
+    const renderedIndex=Number(stage?.dataset.stageIndex);
+    if(Number.isFinite(renderedIndex)&&renderedIndex!==snap.index){
+      render();return;
     }
-    if(w.timedStageEndsAt!==snap.endsAt){
-      w.timedStageEndsAt=snap.endsAt;saveStore();
-    }
+
     const elapsed=document.querySelector('#elapsed-clock');
     const stageClock=document.querySelector('#stage-clock');
+    const fill=document.querySelector('#stage-progress-fill');
     if(elapsed) elapsed.textContent=formatClock(workoutElapsedSeconds(w));
     if(stageClock) stageClock.textContent=formatClock(snap.remaining);
+    if(fill) fill.style.width=`${Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100))}%`;
     return;
   }
 
@@ -860,10 +840,7 @@ document.addEventListener('input',event=>{if(event.target.id==='catalog-search')
 document.addEventListener('keydown',event=>{if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}});
 tickHandle=window.setInterval(updateTimers,500);
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'){
-    if(store.activeWorkout&&['warmup','cooldown'].includes(store.activeWorkout.phase)) reconcileTimedStage();
-    updateTimers();
-  }
+  if(document.visibilityState==='visible') updateTimers();
 });
 window.addEventListener('pageshow',event=>{
   if(event.persisted){
@@ -871,8 +848,8 @@ window.addEventListener('pageshow',event=>{
   }
 });
 window.addEventListener('beforeunload',()=>tickHandle&&clearInterval(tickHandle));
-if(store.activeWorkout&&['warmup','cooldown'].includes(store.activeWorkout.phase)) reconcileTimedStage();
 render();
+updateTimers();
 if(clearedLegacyActiveWorkout){
   setTimeout(()=>toast('Previous test session cleared so this build can start with clean timer state.'),100);
 }
