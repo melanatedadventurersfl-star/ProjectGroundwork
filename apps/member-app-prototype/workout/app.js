@@ -1258,6 +1258,31 @@ function toggleRestPause(){
   else{w.restPausedRemaining=restRemaining(w);w.restEndsAt=null;}
   saveStore();render();
 }
+function resetActiveTimer(){
+  const w=store.activeWorkout;if(!w)return;
+  const now=new Date();
+  if(w.phase==='rest'){
+    const duration=Math.max(1,num(w.restDuration)||30);
+    if(Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=duration;
+    else w.restEndsAt=new Date(now.getTime()+duration*1000).toISOString();
+  }else if(w.phase==='timed-set'){
+    const duration=Math.max(1,num(w.timedSetDuration)||num(getActivePosition()?.set?.reps)||30);
+    w.timedSetStartedAt=now.toISOString();
+    w.timedSetEndsAt=new Date(now.getTime()+duration*1000).toISOString();
+  }else if(w.phase==='pre-set'){
+    w.preSetStartedAt=now.toISOString();
+  }else if(w.phase==='warmup'||w.phase==='cooldown'){
+    const snap=timedStageSnapshot(w);
+    const items=timedStageItems(w);
+    if(!snap||!items.length)return;
+    const prior=items.slice(0,snap.index).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+    w.timedPhaseStartedAt=now.toISOString();
+    w.timedPhaseSkippedSeconds=prior;
+  }else return;
+  saveStore();
+  fireWorkoutSignal('transition','timer-reset-'+w.id+'-'+w.phase+'-'+Date.now(),{voice:'Timer reset',label:'RESET'});
+  render();
+}
 function skipRest(){ advanceAfterRest(); }
 
 function previousBest(exerciseId,exclude=null){
@@ -1444,7 +1469,7 @@ function renderPreSet(pos){
       <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
       <p>${setup?'You have a few seconds to get into position before the start countdown.':'The set begins automatically after 3 · 2 · 1.'}</p>
       <div class="pre-set-target"><span>TARGET</span><strong>${esc(target)}</strong></div>
-      <button class="button secondary" type="button" data-action="start-set-now">START NOW</button>
+      <div class="timer-actions compact-timer-actions"><button class="button secondary" type="button" data-action="reset-timer">RESET TIMER</button><button class="button secondary" type="button" data-action="start-set-now">START NOW</button></div>
     </div>
   </div>`;
 }
@@ -1462,7 +1487,7 @@ function renderTimedWorkSet(pos){
       <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
       <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
       <div class="timed-finish-note" id="timed-finish-note">${snap.remaining<=3&&snap.remaining>0?String(snap.remaining)+'…':'Stay controlled. You’ll get a finish cue at zero.'}</div>
-      <button class="button secondary" type="button" data-action="end-timed-set">END SET EARLY</button>
+      <div class="timer-actions compact-timer-actions"><button class="button secondary" type="button" data-action="reset-timer">RESET TIMER</button><button class="button secondary" type="button" data-action="end-timed-set">END SET EARLY</button></div>
     </div>
   </div>`;
 }
@@ -1488,7 +1513,7 @@ function renderTimedStage(w){
       <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
       <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
       <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
-      <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
+      <div class="timer-actions compact-timer-actions"><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button></div>
     </div>
   </div>`;
 }
@@ -1559,7 +1584,7 @@ function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const result=pos.workout.lastProgressionResult;
   const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>When rest ends, the get-ready countdown starts automatically.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>When rest ends, the get-ready countdown starts automatically.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
 }
 
 function renderHistory(){
@@ -1716,6 +1741,7 @@ function handleClick(event){
   else if(a==='add-rest')adjustRest(15);
   else if(a==='pause-rest')toggleRestPause();
   else if(a==='skip-rest')skipRest();
+  else if(a==='reset-timer')resetActiveTimer();
   else if(a==='skip-stage')advanceTimedStage();
   else if(a==='finish')finishWorkout(false);
   else if(a==='discard')discardWorkout();
