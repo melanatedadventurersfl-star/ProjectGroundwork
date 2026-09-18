@@ -70,7 +70,16 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
-function saveStore(){ localStorage.setItem(STORAGE_KEY,JSON.stringify(store)); syncLiveBadge(); }
+function saveStore(){
+  let persisted=true;
+  try{
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
+  }catch{
+    persisted=false;
+  }
+  syncLiveBadge();
+  return persisted;
+}
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
 function num(value){ const n=Number.parseFloat(value); return Number.isFinite(n)?n:0; }
 function esc(value){ return String(value ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -514,7 +523,14 @@ function nextPlanDay(){
 }
 
 function saveProfileFromForm(form){
-  const data=new FormData(form);
+  if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
+  let data;
+  try{
+    data=new FormData(form);
+  }catch{
+    toast('Chrome could not read the plan form. Reload this page and try again.');
+    return false;
+  }
   const profile={
     goal:data.get('goal')||'muscle',
     weight:num(data.get('weight')),
@@ -535,12 +551,40 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
-  if (profile.weight<=0) { toast('Enter your current body weight.'); return; }
+  if(profile.weight<50||profile.weight>700){
+    toast('Enter a body weight between 50 and 700 lb.');
+    form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){
+    toast('Enter height feet between 3 and 8, or leave height blank.');
+    return false;
+  }
+  if(profile.heightInches<0||profile.heightInches>11){
+    toast('Enter height inches between 0 and 11.');
+    return false;
+  }
+  let plan;
+  try{
+    plan=generatePlan(profile);
+  }catch(error){
+    console.error('Workout plan generation failed',error);
+    toast('Could not build the plan. Please reload and try again.');
+    return false;
+  }
+  if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){
+    toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');
+    return false;
+  }
   store.profile=profile;
-  store.plan=generatePlan(profile);
-  saveStore();
+  store.plan=plan;
+  const persisted=saveStore();
   currentTab='home';
   render();
+  if(!persisted){
+    setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
+  }
+  return true;
 }
 
 function editProfile(){
@@ -827,7 +871,7 @@ function renderProfile(){
   return `
   <div class="onboard-shell">
     <div class="page-head"><div><p class="eyebrow">BUILD YOUR PLAN</p><h2 class="page-title">Tell us how you train.</h2><p class="page-copy">We’ll use your goal, experience, body weight, equipment and real session length to build a starting plan. Weight suggestions are conservative estimates and get refined during your first workout.</p></div></div>
-    <form id="profile-form" class="intake-form">
+    <form id="profile-form" class="intake-form" novalidate>
       <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
         <div class="choice-grid">
           ${[['muscle','Build muscle','Moderate reps + progressive overload'],['strength','Get stronger','Heavier work + longer recovery'],['fat-loss','Fat loss + conditioning','Higher reps + shorter recovery'],['general','General fitness','Balanced strength and work capacity']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="goal" value="${v}" ${checked('goal',v)||(!p.goal&&v==='muscle'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
@@ -875,7 +919,7 @@ function renderProfile(){
           ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
         </div>
       </section>
-      <div class="form-actions"><button type="submit" class="button large">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
+      <div class="form-actions"><button type="button" class="button large" data-action="build-plan">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
     </form>
   </div>`;
 }
@@ -1100,6 +1144,7 @@ function handleClick(event){
   else if(a==='history')setTab('history');
   else if(a==='resume')setTab('workout');
   else if(a==='edit-profile')editProfile();
+  else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='regenerate')regeneratePlan();
   else if(a==='complete-set')completeCurrentSet();
   else if(a==='add-rest')adjustRest(15);
@@ -1122,7 +1167,12 @@ document.addEventListener('error',event=>{
     img.remove();
   }
 },true);
-document.addEventListener('submit',event=>{if(event.target.id==='profile-form'){event.preventDefault();saveProfileFromForm(event.target);}});
+document.addEventListener('submit',event=>{
+  if(event.target.id==='profile-form'){
+    event.preventDefault();
+    saveProfileFromForm(event.target);
+  }
+});
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
