@@ -1023,3 +1023,123 @@ button:focus-visible, input:focus-visible {
   }
 }
 
+/* Full workout sequence in generated plan */
+.routine-sequence{
+  display:grid;
+  gap:10px;
+  margin:18px 0;
+}
+.routine-phase-head{
+  display:grid;
+  grid-template-columns:30px 1fr auto;
+  gap:10px;
+  align-items:center;
+  margin-top:4px;
+  padding:10px 0 6px;
+  border-top:1px solid var(--line);
+}
+.routine-phase-head:first-child{
+  border-top:0;
+  padding-top:0;
+}
+.routine-phase-head span{
+  display:grid;
+  place-items:center;
+  width:26px;
+  height:26px;
+  border-radius:9px;
+  background:var(--panel-3);
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+}
+.routine-phase-head strong{
+  font-size:10px;
+  letter-spacing:.12em;
+}
+.routine-phase-head em{
+  color:var(--muted);
+  font-size:9px;
+  font-style:normal;
+}
+.routine-phase-head.work strong{
+  color:var(--text);
+}
+.routine-phase-head.cooldown strong{
+  color:var(--accent-2);
+}
+.plan-prep-list{
+  display:grid;
+  gap:7px;
+}
+.plan-prep-row{
+  display:grid;
+  grid-template-columns:50px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  padding:8px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--panel-2);
+}
+.plan-prep-row.cooldown{
+  background:rgba(134,185,141,.05);
+}
+.plan-prep-media{
+  width:50px;
+  height:50px;
+  overflow:hidden;
+  border-radius:10px;
+  background:#f4f2ec;
+}
+.plan-prep-media img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  background:#f4f2ec;
+}
+.plan-prep-copy{
+  min-width:0;
+  display:grid;
+  gap:2px;
+}
+.plan-prep-copy span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.plan-prep-copy strong{
+  color:var(--text);
+  font-size:11px;
+}
+.plan-prep-copy small{
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.35;
+}
+.plan-prep-row em{
+  color:var(--muted);
+  font-size:10px;
+  font-style:normal;
+  font-weight:800;
+}
+.routine-sequence .routine-plan{
+  margin:0;
+  padding:0;
+  border:0;
+}
+@media(max-width:560px){
+  .plan-prep-row{
+    grid-template-columns:46px minmax(0,1fr) auto;
+    gap:8px;
+  }
+  .plan-prep-media{
+    width:46px;
+    height:46px;
+  }
+  .plan-prep-copy small{
+    font-size:8px;
+  }
+}
+
