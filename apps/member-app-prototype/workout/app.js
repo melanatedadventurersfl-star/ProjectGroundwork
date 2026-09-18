@@ -482,7 +482,6 @@ function startWorkout(dayId){
   if(!day) return;
   store.activeWorkout=createWorkout(day);
   saveStore(); currentTab='workout'; render();
-  document.querySelector('#set-weight')?.focus();
 }
 
 function getActivePosition(){
@@ -565,7 +564,7 @@ function completeTimedStagePhase(w){
     w.timedPhaseStartedAt=null;
     w.timedPhaseSkippedSeconds=0;
     w.exerciseStartedAt=new Date().toISOString();
-    saveStore();render();document.querySelector('#set-weight')?.focus();return;
+    saveStore();render();return;
   }
   w.timedPhaseStartedAt=null;
   w.timedPhaseSkippedSeconds=0;
@@ -646,7 +645,7 @@ function advanceAfterRest(){
     w.exerciseStartedAt=new Date().toISOString();
   }
   w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
-  saveStore();render();document.querySelector('#set-weight')?.focus();
+  saveStore();render();
 }
 function adjustRest(delta){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
@@ -926,6 +925,8 @@ function render(){
   else if(currentTab==='progress')app.innerHTML=renderProgress();
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
+  if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId));
   syncNav();syncLiveBadge();
 }
 
@@ -966,6 +967,10 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const detail=event.target.closest('[data-exercise-detail]');
+  if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
+  const close=event.target.closest('[data-action="close-details"]');
+  if(close){exerciseDetailId=null;render();return;}
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
@@ -985,9 +990,24 @@ function handleClick(event){
   else if(a==='discard')discardWorkout();
 }
 document.addEventListener('click',handleClick);
+document.addEventListener('error',event=>{
+  const img=event.target.closest?.('img[data-fallback-src]');
+  if(!img)return;
+  const fallback=img.dataset.fallbackSrc;
+  if(fallback&&img.src!==fallback&&!img.dataset.fallbackAttempted){
+    img.dataset.fallbackAttempted='1';
+    img.src=fallback;
+  }else{
+    img.closest('.exercise-media, .exercise-modal-media')?.classList.add('image-unavailable');
+    img.remove();
+  }
+},true);
 document.addEventListener('submit',event=>{if(event.target.id==='profile-form'){event.preventDefault();saveProfileFromForm(event.target);}});
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
-document.addEventListener('keydown',event=>{if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
+  if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
+});
 tickHandle=window.setInterval(updateTimers,500);
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible') updateTimers();
