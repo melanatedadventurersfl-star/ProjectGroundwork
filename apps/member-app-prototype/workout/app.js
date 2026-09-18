@@ -16,7 +16,7 @@ const defaultStore = {
   calibration: {},
   progression: {},
   progressionLog: [],
-  cueSettings: {sound:true,haptics:true},
+  cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   lastSummaryId: null
 };
 
@@ -96,11 +96,16 @@ function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0)
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
 let workoutAudioContext=null;
-const cueRuntime={lastToken:''};
+const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null};
 
 function workoutCueSettings(){
   const saved=store.cueSettings||{};
-  return {sound:saved.sound!==false,haptics:saved.haptics!==false};
+  return {
+    sound:saved.sound!==false,
+    voice:saved.voice!==false,
+    haptics:saved.haptics!==false,
+    flash:saved.flash!==false
+  };
 }
 function ensureWorkoutAudio(){
   if(!workoutCueSettings().sound)return null;
@@ -114,6 +119,48 @@ function ensureWorkoutAudio(){
 }
 function unlockWorkoutCues(){
   ensureWorkoutAudio();
+  if(workoutCueSettings().voice&&'speechSynthesis' in window){
+    try{window.speechSynthesis.resume?.();}catch{}
+  }
+}
+function speakWorkoutCue(text,token=''){
+  if(!text||!workoutCueSettings().voice||!('speechSynthesis' in window)||typeof window.SpeechSynthesisUtterance!=='function')return;
+  if(token&&cueRuntime.lastVoiceToken===token)return;
+  if(token)cueRuntime.lastVoiceToken=token;
+  try{
+    const utterance=new window.SpeechSynthesisUtterance(String(text));
+    utterance.rate=1.18;
+    utterance.pitch=1.02;
+    utterance.volume=1;
+    window.speechSynthesis.speak(utterance);
+  }catch{}
+}
+function triggerVisualCue(type,label='',token=''){
+  if(!workoutCueSettings().flash)return;
+  if(token&&cueRuntime.lastVisualToken===token)return;
+  if(token)cueRuntime.lastVisualToken=token;
+  const root=document.querySelector('.guided-shell');
+  if(!root)return;
+  const flash=document.querySelector('#workout-cue-flash');
+  if(cueRuntime.visualTimer)clearTimeout(cueRuntime.visualTimer);
+  root.classList.remove('cue-flash-warning','cue-flash-go','cue-flash-complete','cue-flash-transition');
+  void root.offsetWidth;
+  const className=type==='go'?'cue-flash-go':type==='complete'?'cue-flash-complete':type==='transition'?'cue-flash-transition':'cue-flash-warning';
+  root.classList.add(className);
+  if(flash){
+    flash.textContent=label||'';
+    flash.dataset.cueType=type;
+    flash.classList.add('show');
+  }
+  cueRuntime.visualTimer=setTimeout(()=>{
+    root.classList.remove(className);
+    flash?.classList.remove('show');
+  },type==='go'||type==='complete'?700:440);
+}
+function fireWorkoutSignal(type,token,{voice='',label=''}={}){
+  playWorkoutCue(type,token);
+  if(voice)speakWorkoutCue(voice,'voice-'+token);
+  triggerVisualCue(type,label,'visual-'+token);
 }
 function vibrateCue(type){
   if(!workoutCueSettings().haptics||typeof navigator==='undefined'||typeof navigator.vibrate!=='function')return;
@@ -160,17 +207,20 @@ function playWorkoutCue(type,token=''){
   }catch{}
 }
 function toggleCueSetting(key){
-  if(!['sound','haptics'].includes(key))return;
+  if(!['sound','voice','haptics','flash'].includes(key))return;
   store.cueSettings={...workoutCueSettings(),[key]:!workoutCueSettings()[key]};
   saveStore();
-  if(key==='sound'&&store.cueSettings.sound)unlockWorkoutCues();
+  if((key==='sound'||key==='voice')&&store.cueSettings[key])unlockWorkoutCues();
   render();
 }
 function renderCueControls(){
   const settings=workoutCueSettings();
   const hapticsAvailable=typeof navigator!=='undefined'&&typeof navigator.vibrate==='function';
+  const voiceAvailable='speechSynthesis' in window&&typeof window.SpeechSynthesisUtterance==='function';
   return '<div class="cue-controls" aria-label="Workout cue settings">'+
     '<button type="button" data-action="toggle-sound" aria-pressed="'+String(settings.sound)+'"><span>♪</span> Sound '+(settings.sound?'ON':'OFF')+'</button>'+
+    '<button type="button" data-action="toggle-voice" aria-pressed="'+String(settings.voice)+'" '+(!voiceAvailable?'disabled title="Voice cues are not supported by this browser"':'')+'><span>◖</span> Voice '+(voiceAvailable?(settings.voice?'ON':'OFF'):'N/A')+'</button>'+
+    '<button type="button" data-action="toggle-flash" aria-pressed="'+String(settings.flash)+'"><span>✦</span> Flash '+(settings.flash?'ON':'OFF')+'</button>'+
     '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'disabled title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
   '</div>';
 }
