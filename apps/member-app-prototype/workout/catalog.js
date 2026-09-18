@@ -93,7 +93,7 @@ window.EXERCISE_MEDIA = {
   'shoulder-press-machine': {sourceId:'Machine_Shoulder_Military_Press'},
   'db-shoulder-press': {sourceId:'Dumbbell_Shoulder_Press'},
   'overhead-press': {sourceId:'Standing_Military_Press'},
-  'pike-pushup': {sourceId:'Pike_Push-Up'},
+  'pike-pushup': {sourceId:'Handstand_Push-Ups'},
   'leg-curl': {sourceId:'Lying_Leg_Curls'},
   'leg-extension': {sourceId:'Leg_Extensions'},
   'lateral-raise': {sourceId:'Side_Lateral_Raise'},
@@ -106,7 +106,7 @@ window.EXERCISE_MEDIA = {
   'plank': {sourceId:'Plank'},
   'dead-bug': {sourceId:'Dead_Bug'},
   'cable-crunch': {sourceId:'Cable_Crunch'},
-  'prone-w-raise': {sourceId:'Incline_Dumbbell_Y_Raise'},
+  'prone-w-raise': {sourceId:'Lying_Rear_Delt_Raise'},
   'prone-lat-pull': {sourceId:'Straight-Arm_Pulldown'},
   'band-overhead-press': {sourceId:'Standing_Military_Press'}
 };
