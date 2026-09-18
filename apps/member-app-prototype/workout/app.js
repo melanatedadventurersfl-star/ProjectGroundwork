@@ -14,6 +14,7 @@ const defaultStore = {
   history: [],
   activeWorkout: null,
   calibration: {},
+  progression: {},
   lastSummaryId: null
 };
 
@@ -294,6 +295,56 @@ function recommendedRepCount(reps){
   if(String(reps).toLowerCase().includes('sec')) return String(nums[0]);
   if(nums.length===1) return String(nums[0]);
   return String(Math.max(nums[0],Math.round((nums[0]+nums[1])/2)));
+}
+function repBounds(reps){
+  const nums=String(reps||'').match(/\d+/g)?.map(Number)||[];
+  if(!nums.length)return {low:0,high:0};
+  if(nums.length===1)return {low:nums[0],high:nums[0]};
+  return {low:Math.min(nums[0],nums[1]),high:Math.max(nums[0],nums[1])};
+}
+function isWeightedMode(mode){
+  return ['barbell','dumbbell','dumbbell-pair','machine'].includes(mode);
+}
+function completedExerciseStats(ex){
+  const sets=(ex?.sets||[]).filter(set=>set.completed);
+  const reps=sets.map(set=>num(set.reps));
+  const weights=sets.map(set=>num(set.weight));
+  const bounds=repBounds(ex?.reps);
+  const lastWeight=weights.length?weights[weights.length-1]:num(ex?.suggestedWeight);
+  const firstReps=reps[0]||0,lastReps=reps[reps.length-1]||0;
+  return {
+    sets:sets,reps:reps,weights:weights,low:bounds.low,high:bounds.high,lastWeight:lastWeight,firstReps:firstReps,lastReps:lastReps,
+    allAtTop:Boolean(sets.length&&bounds.high&&reps.every(value=>value>=bounds.high)),
+    allAtLeastLow:Boolean(sets.length&&bounds.low&&reps.every(value=>value>=bounds.low)),
+    missedLow:bounds.low?reps.filter(value=>value<bounds.low).length:0,
+    repDrop:Math.max(0,firstReps-lastReps)
+  };
+}
+function minimumLoad(ex){
+  if(ex?.loadMode==='barbell')return 45;
+  if(ex?.loadMode?.includes('dumbbell'))return 5;
+  return Math.max(0,ex?.increment||5);
+}
+function adaptivePrescription(ex){
+  const saved=store.progression?.[ex.id];
+  if(!saved)return null;
+  return {
+    weight:Number.isFinite(saved.weight)?saved.weight:num(saved.weight),
+    reps:saved.reps||'',
+    rest:saved.rest||ex.rest,
+    label:saved.label||'',
+    reason:saved.reason||'',
+    feedback:saved.feedback||''
+  };
+}
+function progressionLabel(ex,weight,reps,labelOverride){
+  if(labelOverride)return labelOverride;
+  if(ex.loadMode==='timed')return String(reps||recommendedRepCount(ex.reps))+' sec';
+  if(ex.loadMode==='bodyweight')return 'Bodyweight × '+String(reps||recommendedRepCount(ex.reps));
+  if(ex.loadMode==='band')return 'Band resistance';
+  if(ex.loadMode==='assisted')return weight?String(weight)+' lb assistance':'Choose assistance';
+  if(ex.loadMode==='dumbbell-pair')return String(weight||0)+' lb each × '+String(reps||recommendedRepCount(ex.reps));
+  return weight?String(weight)+' lb × '+String(reps||recommendedRepCount(ex.reps)):String(reps||recommendedRepCount(ex.reps))+' reps';
 }
 
 function buildWarmup(exercises){
