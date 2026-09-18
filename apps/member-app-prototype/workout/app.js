@@ -464,7 +464,7 @@ function planSlotFromCandidate(candidate,template){
   const reps=adaptive?.reps||settings.reps;
   return {
     id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
-    sets:template.sets,reps:reps,startReps:recommendedRepCount(reps),rest:Math.max(30,Math.min(60,adaptive?.rest||template.rest||settings.rest)),
+    sets:template.sets,reps:reps,startReps:recommendedRepCount(reps),rest:Math.max(30,Math.min(60,template.rest||settings.rest)),
     setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
     startWeight:adaptive?.weight??calibrated??start.weight,startLabel:adaptive?.label||start.label,startSource:adaptive?'learned progression':start.source||'',
     calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
@@ -480,7 +480,7 @@ function workoutExerciseFromCandidate(candidate,template,setCount){
   const settings=goalSettings(profile.goal||'muscle',candidate.movement,profile.experience||'beginner');
   const suggestedWeight=adaptive?.weight??calibrated?.weight??start.weight??0;
   const suggestedReps=adaptive?.reps||recommendedRepCount(settings.reps);
-  const rest=Math.max(30,Math.min(60,adaptive?.rest||template.rest||settings.rest||45));
+  const rest=Math.max(30,Math.min(60,template.rest||settings.rest||45));
   const noWeight=['bodyweight','timed','band'].includes(candidate.loadMode);
   const weightValue=noWeight?'':(candidate.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
   return {
@@ -589,6 +589,7 @@ function applyExerciseSwap(candidateId,reason='other',neverShow=false){
 
   original.sets=completed;
   delete original.swapUndo;
+  replacement.swapSplitFromIndex=target.index;
   w.exercises.splice(target.index+1,0,replacement);
   swapContext=null;
   saveStore();
@@ -607,7 +608,19 @@ function undoExerciseSwap(mode,index,dayId=''){
   }
   const w=store.activeWorkout,current=w?.exercises?.[index];
   if(!w||!current?.swapUndo||(current.sets||[]).some(set=>set.completed))return;
-  const restored=clone({...current.swapUndo,swapUndo:undefined});
+  const restored=clone({...current.swapUndo,swapUndo:undefined,swapSplitFromIndex:undefined});
+  if(Number.isInteger(current.swapSplitFromIndex)){
+    const originalIndex=current.swapSplitFromIndex;
+    const completedCount=(w.exercises[originalIndex]?.sets||[]).filter(set=>set.completed).length;
+    w.exercises[originalIndex]=restored;
+    w.exercises.splice(index,1);
+    w.currentExerciseIndex=originalIndex;
+    w.currentSetIndex=Math.min(completedCount,Math.max(0,restored.sets.length-1));
+    saveStore();
+    beginPreSetPosition(originalIndex,w.currentSetIndex,false);
+    toast('Exercise swap undone. Completed sets were restored to the original exercise.');
+    return;
+  }
   w.exercises[index]=restored;
   w.currentExerciseIndex=index;w.currentSetIndex=0;
   saveStore();
@@ -1902,7 +1915,7 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
+    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-equipment-line"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
