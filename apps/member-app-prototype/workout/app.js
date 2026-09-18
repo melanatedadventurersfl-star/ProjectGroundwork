@@ -970,7 +970,11 @@ function handleClick(event){
   const detail=event.target.closest('[data-exercise-detail]');
   if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
-  if(close){exerciseDetailId=null;render();return;}
+  if(close){
+    const insidePanel=event.target.closest('[data-modal-panel]');
+    const explicitClose=event.target.closest('.modal-close');
+    if(!insidePanel||explicitClose){exerciseDetailId=null;render();return;}
+  }
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
