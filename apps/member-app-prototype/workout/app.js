@@ -15,6 +15,7 @@ const defaultStore = {
   activeWorkout: null,
   calibration: {},
   progression: {},
+  progressionLog: [],
   lastSummaryId: null
 };
 
@@ -922,6 +923,9 @@ function applyExerciseFeedback(feedback){
   const result=computeProgression(pos.exercise,feedback);
   store.progression=store.progression||{};
   store.progression[pos.exercise.id]=result;
+  store.progressionLog=Array.isArray(store.progressionLog)?store.progressionLog:[];
+  store.progressionLog.unshift({...result,workoutId:pos.workout.id,routineName:pos.workout.routineName,loggedAt:new Date().toISOString()});
+  store.progressionLog=store.progressionLog.slice(0,200);
   pos.exercise.feedback=feedback;
   pos.exercise.nextRecommendation=result;
   pos.workout.lastProgressionResult=result;
@@ -1035,7 +1039,7 @@ function finishWorkout(auto=false){
     const before=old.get(ex.id);
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
-  delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;
+  delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;delete entry.lastProgressionResult;
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;saveStore();currentTab='summary';render();
 }
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
@@ -1257,7 +1261,7 @@ function renderRest(pos){
 }
 
 function renderHistory(){
-  return `<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts, duration, volume and PRs.</p></div></div><div class="history-list">${store.history.length?store.history.map(x=>`<article class="history-card"><div class="history-top"><div><h3>${esc(x.routineName)}</h3><div class="history-date">${formatDate(x.completedAt)}</div></div><div class="history-volume">${formatVolume(x.totalVolume||0)}</div></div><div class="history-stats"><span>${x.completedSets} sets</span><span>•</span><span>${x.durationMinutes} min</span>${x.newPRs?.length?`<span>•</span><span>${x.newPRs.length} PR${x.newPRs.length===1?'':'s'}</span>`:''}</div></article>`).join(''):renderEmpty('No workout history','Complete your first generated workout and it will appear here.')}</div>`;
+  return `<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts, duration, volume, PRs, and adaptive decisions.</p></div></div><div class="history-list">${store.history.length?store.history.map(x=>{const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;return `<article class="history-card"><div class="history-top"><div><h3>${esc(x.routineName)}</h3><div class="history-date">${formatDate(x.completedAt)}</div></div><div class="history-volume">${formatVolume(x.totalVolume||0)}</div></div><div class="history-stats"><span>${x.completedSets} sets</span><span>•</span><span>${x.durationMinutes} min</span>${learned?`<span>•</span><span>${learned} learned target${learned===1?'':'s'}</span>`:''}${x.newPRs?.length?`<span>•</span><span>${x.newPRs.length} PR${x.newPRs.length===1?'':'s'}</span>`:''}</div></article>`;}).join(''):renderEmpty('No workout history','Complete your first generated workout and it will appear here.')}</div>`;
 }
 function personalRecords(){
   const map=new Map();
@@ -1266,8 +1270,9 @@ function personalRecords(){
 }
 function renderProgress(){
   const week=weeklyHistory(),allVolume=store.history.reduce((s,x)=>s+(x.totalVolume||0),0),prs=personalRecords().slice(0,12),calibrated=Object.keys(store.calibration).length;
-  const learned=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,10);
-  return `<div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">The app learns from completed sets, exercise feedback, and calibration.</p></div></div><div class="progress-grid"><section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/${store.profile?.days||0}</div><div class="stat-label">workouts completed</div></section><section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section><section class="panel"><h3>Learned movements</h3><div class="big-stat">${learned.length}</div><div class="stat-label">${calibrated} initially calibrated</div></section><section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section></div>${learned.length?`<section class="panel learned-panel"><p class="eyebrow">NEXT-SESSION TARGETS</p><div class="learned-list">${learned.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}`;
+  const learnedAll=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
+  const learned=learnedAll.slice(0,10);
+  return `<div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">The app learns from completed sets, exercise feedback, and calibration.</p></div></div><div class="progress-grid"><section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/${store.profile?.days||0}</div><div class="stat-label">workouts completed</div></section><section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section><section class="panel"><h3>Learned movements</h3><div class="big-stat">${learnedAll.length}</div><div class="stat-label">${calibrated} initially calibrated</div></section><section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section></div>${learned.length?`<section class="panel learned-panel"><p class="eyebrow">NEXT-SESSION TARGETS</p><div class="learned-list">${learned.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}`;
 }
 function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
