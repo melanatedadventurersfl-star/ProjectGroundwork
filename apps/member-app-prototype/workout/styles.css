@@ -1613,3 +1613,54 @@ button:focus-visible, input:focus-visible {
   }
 }
 
+/* Movement descriptions + timer reset polish */
+.exercise-description,
+.stretch-description,
+.catalog-description,
+.plan-description{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.5;
+}
+.exercise-description{
+  margin:7px 0 10px;
+  max-width:620px;
+}
+.modal-description{
+  margin:8px 0 14px;
+}
+.pre-set-description,
+.timed-work-description{
+  max-width:520px;
+  margin:8px auto 2px;
+}
+.stretch-description{
+  max-width:560px;
+  margin:8px auto 8px;
+}
+.plan-description{
+  display:block;
+  margin:5px 0 6px;
+  font-style:normal;
+}
+.catalog-description{
+  margin-top:7px;
+}
+.compact-timer-actions{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.compact-timer-actions .button{
+  margin-top:18px;
+}
+@media(max-width:560px){
+  .compact-timer-actions{
+    width:100%;
+  }
+  .compact-timer-actions .button{
+    flex:1 1 140px;
+  }
+}
+
