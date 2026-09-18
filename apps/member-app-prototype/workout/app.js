@@ -191,6 +191,10 @@ function exerciseImageUrl(ex,index=0,useFallback=false){
   return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
 }
 
+function timedStageImageUrl(item,index=0){
+  return item?.mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(item.mediaId)+'/'+index+'.jpg':'';
+}
+
 function exerciseImageButton(ex,className='exercise-media',index=0){
   const src=exerciseImageUrl(ex,index,false);
   const fallback=exerciseImageUrl(ex,index,true);
@@ -250,24 +254,96 @@ function recommendedRepCount(reps){
 
 function buildWarmup(exercises){
   const moves=new Set(exercises.map(e=>e.movement));
-  const items=[{name:'Easy march + arm swing',seconds:30,cue:'Raise your temperature and breathe easily.'}];
-  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({name:'Bodyweight squat stretch',seconds:30,cue:'Controlled depth, knees tracking comfortably.'});
-  if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({name:'Dynamic hip hinge reach',seconds:30,cue:'Soft knees, reach hips back, stand tall.'});
-  if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({name:'Arm circles + shoulder sweep',seconds:30,cue:'Small circles into larger comfortable circles.'});
-  if(items.length<4) items.push({name:'Alternating reverse lunge reach',seconds:30,cue:'Move slowly through a comfortable range.'});
+  const items=[{
+    name:'Easy march + arm swing',
+    seconds:30,
+    cue:'Raise your temperature and breathe easily.',
+    why:'Gets your whole body moving before the first loaded set.',
+    mediaId:'Arm_Circles'
+  }];
+  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({
+    name:'Bodyweight squat stretch',
+    seconds:30,
+    cue:'Controlled depth, knees tracking comfortably.',
+    why:'Prepares the hips, knees, and ankles for lower-body work.',
+    mediaId:'Bodyweight_Squat'
+  });
+  if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({
+    name:'Dynamic hip hinge reach',
+    seconds:30,
+    cue:'Soft knees, reach hips back, stand tall.',
+    why:'Primes the hamstrings and hinge pattern before loaded pulls.',
+    mediaId:'Romanian_Deadlift_from_Deficit'
+  });
+  if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({
+    name:'Arm circles + shoulder sweep',
+    seconds:30,
+    cue:'Small circles into larger comfortable circles.',
+    why:'Warms the shoulders before pressing and pulling.',
+    mediaId:'Arm_Circles'
+  });
+  if(items.length<4) items.push({
+    name:'Alternating reverse lunge reach',
+    seconds:30,
+    cue:'Move slowly through a comfortable range.',
+    why:'Opens the hips and adds single-leg movement before training.',
+    mediaId:'Crossover_Reverse_Lunge'
+  });
   return items.slice(0,4);
 }
 
 function buildCooldown(exercises){
   const muscles=new Set(exercises.flatMap(e=>e.muscles||[]));
   const items=[];
-  if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({name:'Chest + shoulder stretch',seconds:30,cue:'Gentle stretch only, no forcing the range.'});
-  if(muscles.has('Back')||muscles.has('Lats')) items.push({name:'Lat + upper-back stretch',seconds:30,cue:'Breathe slowly and let the shoulders relax.'});
-  if(muscles.has('Quads')) items.push({name:'Standing quad stretch',seconds:30,cue:'Keep knees close and posture tall.'});
-  if(muscles.has('Hamstrings')) items.push({name:'Hamstring stretch',seconds:30,cue:'Hinge gently until you feel light tension.'});
-  if(muscles.has('Glutes')) items.push({name:'Glute stretch',seconds:30,cue:'Stay relaxed and avoid forcing the hip.'});
-  if(muscles.has('Calves')) items.push({name:'Calf stretch',seconds:30,cue:'Keep the heel down and breathe steadily.'});
-  if(items.length<3) items.push({name:'Full-body reach + breathing',seconds:30,cue:'Slow inhale, longer exhale, relax the shoulders.'});
+  if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({
+    name:'Chest + shoulder stretch',
+    seconds:30,
+    cue:'Gentle stretch only, no forcing the range.',
+    why:'Lets the chest and front of the shoulders relax after pressing.',
+    mediaId:'Chest_And_Front_Of_Shoulder_Stretch'
+  });
+  if(muscles.has('Back')||muscles.has('Lats')) items.push({
+    name:'Lat + upper-back stretch',
+    seconds:30,
+    cue:'Breathe slowly and let the shoulders relax.',
+    why:'Lengthens the lats and upper back after rows and pulldowns.',
+    mediaId:'Overhead_Lat'
+  });
+  if(muscles.has('Quads')) items.push({
+    name:'Standing quad stretch',
+    seconds:30,
+    cue:'Keep knees close and posture tall.',
+    why:'Gives the quads a gentle post-workout stretch.',
+    mediaId:'Standing_Elevated_Quad_Stretch'
+  });
+  if(muscles.has('Hamstrings')) items.push({
+    name:'Hamstring stretch',
+    seconds:30,
+    cue:'Hinge gently until you feel light tension.',
+    why:'Helps the hamstrings relax after hinges and leg work.',
+    mediaId:'Hamstring_Stretch'
+  });
+  if(muscles.has('Glutes')) items.push({
+    name:'Glute stretch',
+    seconds:30,
+    cue:'Stay relaxed and avoid forcing the hip.',
+    why:'Releases the glutes after squats, hinges, and lunges.',
+    mediaId:'IT_Band_and_Glute_Stretch'
+  });
+  if(muscles.has('Calves')) items.push({
+    name:'Calf stretch',
+    seconds:30,
+    cue:'Keep the heel down and breathe steadily.',
+    why:'Lets the calf settle after standing and lower-body work.',
+    mediaId:'Standing_Gastrocnemius_Calf_Stretch'
+  });
+  if(items.length<3) items.push({
+    name:'Full-body reach + breathing',
+    seconds:30,
+    cue:'Slow inhale, longer exhale, relax the shoulders.',
+    why:'Brings your breathing down and finishes the session gradually.',
+    mediaId:'Upward_Stretch'
+  });
   return items.slice(0,4);
 }
 
@@ -831,15 +907,20 @@ function renderTimedStage(w){
   const remaining=snap.remaining||0;
   const isWarmup=w.phase==='warmup';
   const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
-  return `<div class="timed-stage" data-stage-index="${index}">
-    <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
-    <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
-    <h3>${esc(item?.name||'Get ready')}</h3>
-    <p>${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
-    <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
-    <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
-    <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
-    <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
+  const image=timedStageImageUrl(item,0);
+  return `<div class="timed-stage visual-timed-stage" data-stage-index="${index}">
+    <div class="timed-stage-media">${image?`<img src="${esc(image)}" loading="eager" decoding="async" alt="${esc(item?.name||'Stretch')} demonstration">`:''}</div>
+    <div class="timed-stage-copy">
+      <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
+      <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
+      <h3>${esc(item?.name||'Get ready')}</h3>
+      <p class="stage-cue">${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
+      ${item?.why?`<div class="stage-why"><span>WHY THIS STEP</span><strong>${esc(item.why)}</strong></div>`:''}
+      <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
+      <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
+      <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
+      <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
+    </div>
   </div>`;
 }
 
