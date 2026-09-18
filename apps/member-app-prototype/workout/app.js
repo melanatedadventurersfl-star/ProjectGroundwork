@@ -7,6 +7,7 @@ const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 let exerciseDetailId = null;
+let swapContext = null;
 
 const defaultStore = {
   profile: null,
@@ -16,6 +17,7 @@ const defaultStore = {
   calibration: {},
   progression: {},
   progressionLog: [],
+  exercisePreferences: {excluded:[],swapHistory:[]},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   lastSummaryId: null
 };
@@ -352,6 +354,105 @@ function exerciseDescription(ex){
     'core':'A trunk-stability exercise that trains the core to resist unwanted movement and maintain position.'
   };
   return descriptions[ex.movement]||('A controlled '+String(movements[ex.movement]||ex.movement||'strength').toLowerCase()+' exercise focused on '+target+'.');
+}
+
+
+const EXERCISE_EQUIPMENT = {
+  'goblet-squat':'1 dumbbell or kettlebell',
+  'back-squat':'Barbell · squat rack · weight plates',
+  'leg-press':'Leg press machine',
+  'bodyweight-squat':'No equipment',
+  'romanian-deadlift':'Barbell · weight plates',
+  'db-rdl':'Pair of dumbbells',
+  'hip-thrust':'Barbell · weight plates · bench or hip-thrust station',
+  'glute-bridge':'Exercise mat · optional dumbbell',
+  'split-squat':'Pair of dumbbells · bench',
+  'reverse-lunge':'Optional pair of dumbbells',
+  'step-up':'Stable bench or box · optional dumbbells',
+  'bench-press':'Flat bench · barbell · rack · weight plates',
+  'db-bench':'Flat bench · pair of dumbbells',
+  'db-floor-press':'Pair of dumbbells · floor space or mat',
+  'chest-press-machine':'Chest press machine',
+  'push-up':'Floor space or exercise mat',
+  'cable-row':'Seated cable row station · row handle',
+  'chest-row':'Incline bench · pair of dumbbells',
+  'one-arm-row':'Dumbbell · bench or stable support',
+  'band-row':'Resistance band · secure anchor',
+  'lat-pulldown':'Lat pulldown machine · pulldown bar',
+  'assisted-pullup':'Assisted pull-up machine',
+  'pull-up':'Pull-up bar',
+  'band-pulldown':'Resistance band · high secure anchor',
+  'shoulder-press-machine':'Shoulder press machine',
+  'db-shoulder-press':'Pair of dumbbells · bench optional',
+  'overhead-press':'Barbell · rack · weight plates',
+  'pike-pushup':'Floor space or exercise mat',
+  'leg-curl':'Leg curl machine',
+  'leg-extension':'Leg extension machine',
+  'lateral-raise':'Pair of dumbbells',
+  'band-lateral-raise':'Resistance band',
+  'biceps-curl':'Pair of dumbbells',
+  'cable-curl':'Cable station · curl attachment',
+  'triceps-pushdown':'Cable station · rope or bar attachment',
+  'db-triceps-extension':'1 dumbbell',
+  'calf-raise':'Stable floor · optional pair of dumbbells',
+  'plank':'Exercise mat or floor space',
+  'dead-bug':'Exercise mat or floor space',
+  'cable-crunch':'Cable station · rope attachment',
+  'prone-w-raise':'Exercise mat · optional light band',
+  'prone-lat-pull':'Exercise mat · optional resistance band',
+  'band-overhead-press':'Resistance band'
+};
+
+function equipmentRequirement(ex){
+  if(!ex)return 'Check the exercise setup.';
+  return EXERCISE_EQUIPMENT[ex.id]||
+    (ex.loadMode==='barbell'?'Barbell · rack or platform · weight plates':
+    ex.loadMode==='dumbbell-pair'?'Pair of dumbbells':
+    ex.loadMode==='dumbbell'?'Dumbbell':
+    ex.loadMode==='machine'?'Matching resistance machine':
+    ex.loadMode==='band'?'Resistance band · secure anchor if needed':
+    ex.loadMode==='assisted'?'Assisted exercise machine':
+    ex.loadMode==='bodyweight'||ex.loadMode==='timed'?'No special equipment':'Check the exercise setup.');
+}
+function exerciseSource(ex){
+  return catalog.find(item=>item.id===ex?.id)||ex;
+}
+function exerciseDifficultyRank(value){
+  return ({beginner:0,intermediate:1,advanced:2})[value]??1;
+}
+function muscleOverlap(a,b){
+  const left=new Set(a?.muscles||[]);
+  return (b?.muscles||[]).reduce((n,m)=>n+(left.has(m)?1:0),0);
+}
+function excludedExerciseIds(){
+  return new Set(store.exercisePreferences?.excluded||[]);
+}
+function swapCandidates(ex,{includeOtherEquipment=true,limit=7}={}){
+  const source=exerciseSource(ex);
+  if(!source)return [];
+  const profile=store.profile||{};
+  const excluded=excludedExerciseIds();
+  const activeIds=new Set((store.activeWorkout?.exercises||[]).map(item=>item.id));
+  const planIds=new Set((store.plan?.days||[]).flatMap(day=>(day.exercises||[]).map(item=>item.id)));
+  const scored=catalog
+    .filter(candidate=>candidate.id!==source.id&&!excluded.has(candidate.id))
+    .map(candidate=>{
+      const sameMovement=candidate.movement===source.movement;
+      const overlap=muscleOverlap(source,candidate);
+      const available=equipmentAllows(candidate,profile.equipment||'full-gym');
+      const difficultyGap=Math.abs(exerciseDifficultyRank(source.difficulty)-exerciseDifficultyRank(candidate.difficulty));
+      const setupGap=Math.abs((candidate.setup||25)-(source.setup||25));
+      const duplicatePenalty=(activeIds.has(candidate.id)||planIds.has(candidate.id))?6:0;
+      const score=(sameMovement?60:0)+(overlap*12)+(available?24:0)+(candidate.style===source.style?4:0)-difficultyGap*5-Math.min(8,setupGap/10)-duplicatePenalty;
+      const tier=sameMovement&&overlap?'Same movement + muscles':sameMovement?'Same movement':'Similar training purpose';
+      return {exercise:candidate,available,score,tier,setupGap};
+    })
+    .filter(item=>item.score>18&&(includeOtherEquipment||item.available))
+    .sort((a,b)=>(Number(b.available)-Number(a.available))||(b.score-a.score));
+  return scored.slice(0,limit);
+}
+function swapReasonLabel(reason){
+  return ({equipment:'Equipment unavailable',dislike:"Don't like this exercise",pain:'Pain or discomfort',difficulty:'Too difficult',easy:'Too easy',other:'Other'})[reason]||'Other';
 }
 
 function exerciseImageUrl(ex,index=0,useFallback=false){
