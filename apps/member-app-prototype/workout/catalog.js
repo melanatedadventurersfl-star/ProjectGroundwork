@@ -59,3 +59,72 @@ window.EXERCISE_MOVEMENTS = {
   'shoulder-accessory':'Shoulders','biceps':'Biceps','triceps':'Triceps',
   'calves':'Calves','core':'Core'
 };
+
+/*
+ * Exercise imagery is sourced from the public-domain Free Exercise DB.
+ * Paths point at the repository's exercise image folders. If a specific
+ * match fails to load, app.js falls back to a movement-level image.
+ */
+window.EXERCISE_MEDIA = {
+  'goblet-squat': {sourceId:'Goblet_Squat'},
+  'back-squat': {sourceId:'Barbell_Squat'},
+  'leg-press': {sourceId:'Leg_Press'},
+  'bodyweight-squat': {sourceId:'Bodyweight_Squat'},
+  'romanian-deadlift': {sourceId:'Romanian_Deadlift_from_Deficit'},
+  'db-rdl': {sourceId:'Stiff-Legged_Dumbbell_Deadlift'},
+  'hip-thrust': {sourceId:'Barbell_Hip_Thrust'},
+  'glute-bridge': {sourceId:'Butt_Lift_Bridge'},
+  'split-squat': {sourceId:'Split_Squat_with_Dumbbells'},
+  'reverse-lunge': {sourceId:'Dumbbell_Rear_Lunge'},
+  'step-up': {sourceId:'Dumbbell_Step_Ups'},
+  'bench-press': {sourceId:'Barbell_Bench_Press_-_Medium_Grip'},
+  'db-bench': {sourceId:'Dumbbell_Bench_Press'},
+  'db-floor-press': {sourceId:'Dumbbell_Floor_Press'},
+  'chest-press-machine': {sourceId:'Leverage_Incline_Chest_Press'},
+  'push-up': {sourceId:'Pushups'},
+  'cable-row': {sourceId:'Seated_Cable_Rows'},
+  'chest-row': {sourceId:'Dumbbell_Incline_Row'},
+  'one-arm-row': {sourceId:'One-Arm_Dumbbell_Row'},
+  'band-row': {sourceId:'Band_Pull_Apart'},
+  'lat-pulldown': {sourceId:'Wide-Grip_Lat_Pulldown'},
+  'assisted-pullup': {sourceId:'Assisted_Chin-Up'},
+  'pull-up': {sourceId:'Pullups'},
+  'band-pulldown': {sourceId:'Straight-Arm_Pulldown'},
+  'shoulder-press-machine': {sourceId:'Machine_Shoulder_Military_Press'},
+  'db-shoulder-press': {sourceId:'Dumbbell_Shoulder_Press'},
+  'overhead-press': {sourceId:'Standing_Military_Press'},
+  'pike-pushup': {sourceId:'Handstand_Push-Ups'},
+  'leg-curl': {sourceId:'Lying_Leg_Curls'},
+  'leg-extension': {sourceId:'Leg_Extensions'},
+  'lateral-raise': {sourceId:'Side_Lateral_Raise'},
+  'band-lateral-raise': {sourceId:'Band_Pull_Apart'},
+  'biceps-curl': {sourceId:'Alternate_Hammer_Curl'},
+  'cable-curl': {sourceId:'High_Cable_Curls'},
+  'triceps-pushdown': {sourceId:'Triceps_Pushdown'},
+  'db-triceps-extension': {sourceId:'Standing_Dumbbell_Triceps_Extension'},
+  'calf-raise': {sourceId:'Standing_Calf_Raises'},
+  'plank': {sourceId:'Plank'},
+  'dead-bug': {sourceId:'Dead_Bug'},
+  'cable-crunch': {sourceId:'Cable_Crunch'},
+  'prone-w-raise': {sourceId:'Lying_Rear_Delt_Raise'},
+  'prone-lat-pull': {sourceId:'Straight-Arm_Pulldown'},
+  'band-overhead-press': {sourceId:'Standing_Military_Press'}
+};
+
+window.EXERCISE_MEDIA_FALLBACKS = {
+  'squat':'Barbell_Squat',
+  'hinge':'Barbell_Deadlift',
+  'single-leg':'Dumbbell_Step_Ups',
+  'horizontal-push':'Dumbbell_Bench_Press',
+  'horizontal-pull':'Seated_Cable_Rows',
+  'vertical-pull':'Wide-Grip_Lat_Pulldown',
+  'vertical-push':'Dumbbell_Shoulder_Press',
+  'hamstring-accessory':'Lying_Leg_Curls',
+  'quad-accessory':'Leg_Extensions',
+  'shoulder-accessory':'Side_Lateral_Raise',
+  'biceps':'Alternate_Hammer_Curl',
+  'triceps':'Triceps_Pushdown',
+  'calves':'Standing_Calf_Raises',
+  'core':'Plank'
+};
+

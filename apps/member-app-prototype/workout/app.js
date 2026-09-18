@@ -3,6 +3,10 @@ const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
 const ACTIVE_WORKOUT_SCHEMA = 3;
 const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
+const exerciseMedia = window.EXERCISE_MEDIA || {};
+const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
+const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
+let exerciseDetailId = null;
 
 const defaultStore = {
   profile: null,
@@ -79,6 +83,152 @@ function weeklyHistory(){ const start=startOfWeek(); return store.history.filter
 function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
+const MOVEMENT_GUIDANCE = {
+  'squat': {
+    cue:'Keep your chest tall and let your knees track with your toes.',
+    setup:'Set your feet in a stable stance and brace before you descend.',
+    steps:['Brace your trunk and keep your whole foot planted.','Lower under control to a comfortable depth.','Drive through the floor and finish tall.'],
+    mistake:'Avoid letting the knees collapse inward or rushing the bottom position.'
+  },
+  'hinge': {
+    cue:'Push your hips back and keep the load close to your body.',
+    setup:'Stand tall, brace your trunk, and begin with soft knees.',
+    steps:['Send the hips backward while keeping a long spine.','Lower only as far as you can maintain control.','Squeeze the glutes and bring the hips forward to stand.'],
+    mistake:'Avoid turning the hinge into a squat or rounding through the lower back.'
+  },
+  'single-leg': {
+    cue:'Stay balanced over the working leg and control the descent.',
+    setup:'Plant the working foot securely before beginning the rep.',
+    steps:['Brace and lower with control.','Keep the front foot planted and knee tracking naturally.','Drive through the working leg to return.'],
+    mistake:'Avoid bouncing or allowing the working knee to cave inward.'
+  },
+  'horizontal-push': {
+    cue:'Set your shoulders, lower with control, then press smoothly.',
+    setup:'Create a stable base and keep the shoulder blades supported.',
+    steps:['Start with wrists stacked and shoulders set.','Lower under control without losing your upper-back position.','Press back to the start without slamming into lockout.'],
+    mistake:'Avoid excessive elbow flare or shrugging the shoulders forward.'
+  },
+  'horizontal-pull': {
+    cue:'Lead with your elbows and squeeze your shoulder blades back.',
+    setup:'Brace your torso and begin with the shoulders relaxed, not shrugged.',
+    steps:['Reach to a controlled starting stretch.','Pull the elbows toward your ribs.','Pause briefly, then return without losing posture.'],
+    mistake:'Avoid yanking with momentum or turning the rep into a shrug.'
+  },
+  'vertical-pull': {
+    cue:'Think elbows down toward your ribs instead of pulling with your hands.',
+    setup:'Set your grip, keep the chest tall, and brace your trunk.',
+    steps:['Begin from a controlled overhead stretch.','Drive the elbows down while keeping the torso stable.','Return slowly until the arms are long again.'],
+    mistake:'Avoid swinging backward or jerking the weight.'
+  },
+  'vertical-push': {
+    cue:'Brace your ribs down and press overhead without over-arching.',
+    setup:'Start from a stable stance or seat with the weights under control.',
+    steps:['Brace before the press.','Press upward through a comfortable path.','Lower slowly back to the starting position.'],
+    mistake:'Avoid leaning back excessively to turn the press into an incline press.'
+  },
+  'hamstring-accessory': {
+    cue:'Move slowly and squeeze the hamstrings through the working range.',
+    setup:'Adjust the machine or position so your joints line up comfortably.',
+    steps:['Begin from a controlled stretch.','Curl through the available range.','Return slowly without dropping the resistance.'],
+    mistake:'Avoid using momentum to finish the rep.'
+  },
+  'quad-accessory': {
+    cue:'Extend with control and squeeze the quads without kicking the weight.',
+    setup:'Adjust the pad and seat so the knee moves comfortably.',
+    steps:['Start from a controlled bent-knee position.','Extend smoothly and squeeze the quads.','Lower slowly to the start.'],
+    mistake:'Avoid swinging the weight or snapping into lockout.'
+  },
+  'shoulder-accessory': {
+    cue:'Lead with the elbows and keep the shoulders away from your ears.',
+    setup:'Use a light load you can move without momentum.',
+    steps:['Start with relaxed shoulders and soft elbows.','Raise through a comfortable shoulder range.','Lower slowly and stay in control.'],
+    mistake:'Avoid shrugging or swinging the weight.'
+  },
+  'biceps': {
+    cue:'Keep the upper arm quiet and curl without swinging.',
+    setup:'Stand or sit tall with the elbows close to your sides.',
+    steps:['Begin with the arm long but controlled.','Curl while keeping the elbow stable.','Squeeze briefly, then lower slowly.'],
+    mistake:'Avoid using your hips or shoulders to throw the weight upward.'
+  },
+  'triceps': {
+    cue:'Keep the upper arm stable and finish by straightening the elbow.',
+    setup:'Brace your torso and choose a position that keeps the shoulders comfortable.',
+    steps:['Start with tension on the triceps.','Extend the elbow through a controlled range.','Return slowly without letting the upper arm drift.'],
+    mistake:'Avoid turning the movement into a shoulder swing.'
+  },
+  'calves': {
+    cue:'Use a full controlled range instead of bouncing.',
+    setup:'Place the ball of the foot securely and keep the ankle aligned.',
+    steps:['Lower the heel into a comfortable stretch.','Rise onto the ball of the foot.','Pause briefly and lower under control.'],
+    mistake:'Avoid short, bouncing repetitions.'
+  },
+  'core': {
+    cue:'Brace first and move without losing trunk control.',
+    setup:'Set your body position so you can breathe while staying braced.',
+    steps:['Create tension through the trunk.','Perform the movement without letting the low back lose control.','Reset your brace before the next rep.'],
+    mistake:'Avoid holding your breath or rushing through a position you cannot control.'
+  }
+};
+
+function exerciseGuidance(ex){
+  const base=MOVEMENT_GUIDANCE[ex?.movement]||{
+    cue:'Move through a controlled, comfortable range.',
+    setup:'Set up securely before beginning the set.',
+    steps:['Brace before the movement.','Complete the rep under control.','Return to the starting position smoothly.'],
+    mistake:'Avoid using momentum to force the movement.'
+  };
+  const loadNote=ex?.loadMode==='dumbbell-pair'?'Use the same dumbbell weight in each hand.':
+    ex?.loadMode==='barbell'?'Secure the bar and plates before the set.':
+    ex?.loadMode==='machine'?'Adjust the seat, pad, and starting position before loading the machine.':
+    ex?.loadMode==='band'?'Anchor the band securely and check it before pulling.':
+    ex?.loadMode==='assisted'?'Choose enough assistance to keep every rep controlled.':'';
+  return {...base,setup:loadNote?base.setup+' '+loadNote:base.setup};
+}
+
+function exerciseImageUrl(ex,index=0,useFallback=false){
+  if(!ex)return '';
+  const sourceId=useFallback?exerciseMediaFallbacks[ex.movement]:(exerciseMedia[ex.id]?.sourceId||exerciseMediaFallbacks[ex.movement]);
+  return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
+}
+
+function exerciseImageButton(ex,className='exercise-media',index=0){
+  const src=exerciseImageUrl(ex,index,false);
+  const fallback=exerciseImageUrl(ex,index,true);
+  if(!src)return '<button class="'+className+' exercise-media missing" type="button" data-exercise-detail="'+esc(ex.id)+'"><span>VIEW FORM</span></button>';
+  return '<button class="'+className+' exercise-media" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
+    '<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">'+
+    '<span class="media-hint">VIEW FORM</span></button>';
+}
+
+function renderExerciseModal(){
+  if(!exerciseDetailId)return '';
+  const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
+  if(!ex)return '';
+  const guide=exerciseGuidance(ex);
+  const primary=exerciseImageUrl(ex,0,false),secondary=exerciseImageUrl(ex,1,false);
+  const primaryFallback=exerciseImageUrl(ex,0,true),secondaryFallback=exerciseImageUrl(ex,1,true);
+  const images=[
+    primary?'<img src="'+esc(primary)+'" data-fallback-src="'+esc(primaryFallback)+'" alt="'+esc(ex.name)+' starting position">':'',
+    secondary?'<img src="'+esc(secondary)+'" data-fallback-src="'+esc(secondaryFallback)+'" alt="'+esc(ex.name)+' finishing position">':''
+  ].join('');
+  return '<div class="exercise-modal-backdrop" data-action="close-details">'+
+    '<section class="exercise-modal" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise instructions" data-modal-panel>'+
+      '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise instructions">×</button>'+
+      '<div class="exercise-modal-media">'+images+'</div>'+
+      '<div class="exercise-modal-copy">'+
+        '<p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p>'+
+        '<h2>'+esc(ex.name)+'</h2>'+
+        '<p class="modal-muscles">'+(ex.muscles||[]).map(esc).join(' · ')+'</p>'+
+        '<div class="coach-cue"><span>COACHING CUE</span><strong>'+esc(guide.cue)+'</strong></div>'+
+        '<div class="instruction-block"><h3>Set up</h3><p>'+esc(guide.setup)+'</p></div>'+
+        '<div class="instruction-block"><h3>How to move</h3><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></div>'+
+        '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
+        '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
+      '</div>'+
+    '</section>'+
+  '</div>';
+}
+
 
 function goalSettings(goal,movement,experience){
   const accessory = ['biceps','triceps','calves','core','shoulder-accessory','quad-accessory','hamstring-accessory'].includes(movement);
@@ -332,7 +482,6 @@ function startWorkout(dayId){
   if(!day) return;
   store.activeWorkout=createWorkout(day);
   saveStore(); currentTab='workout'; render();
-  document.querySelector('#set-weight')?.focus();
 }
 
 function getActivePosition(){
@@ -415,7 +564,7 @@ function completeTimedStagePhase(w){
     w.timedPhaseStartedAt=null;
     w.timedPhaseSkippedSeconds=0;
     w.exerciseStartedAt=new Date().toISOString();
-    saveStore();render();document.querySelector('#set-weight')?.focus();return;
+    saveStore();render();return;
   }
   w.timedPhaseStartedAt=null;
   w.timedPhaseSkippedSeconds=0;
@@ -496,7 +645,7 @@ function advanceAfterRest(){
     w.exerciseStartedAt=new Date().toISOString();
   }
   w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
-  saveStore();render();document.querySelector('#set-weight')?.focus();
+  saveStore();render();
 }
 function adjustRest(delta){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
@@ -637,7 +786,7 @@ function renderHome(){
         <article class="routine-card">
           <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN</span></div>
           <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
-          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed"><div><strong>${esc(ex.name)}</strong><small>Start: ${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)} × ${esc(ex.startReps||recommendedRepCount(ex.reps))}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
+          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small>Start: ${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)} × ${esc(ex.startReps||recommendedRepCount(ex.reps))}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
           <div class="routine-footer"><span class="routine-meta">${day.exercises.length} exercises · ${day.warmupMinutes} min stretch · ${day.cooldownMinutes} min cooldown</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
         </article>`).join('')}</div>
     </section>`;
@@ -649,7 +798,7 @@ function renderCatalog(){
   return `
     <div class="page-head"><div><p class="eyebrow">EXERCISE LIBRARY</p><h2 class="page-title">${catalog.length} movements.</h2><p class="page-copy">This catalog powers plan generation, equipment matching, starting-load estimates and progression.</p></div></div>
     <div class="catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="${esc(catalogQuery)}"><span>${items.length} shown</span></div>
-    <div class="catalog-grid">${items.map(e=>`<article class="catalog-card"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div></article>`).join('')}</div>`;
+    <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
 }
 
 function renderWorkout(){
@@ -709,7 +858,7 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="initial-prescription"><span>STARTING PRESCRIPTION</span><strong>${esc(suggestedLabel(pos.exercise))} × ${esc(pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))} reps</strong></div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div>
+    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><div class="initial-prescription"><span>STARTING PRESCRIPTION</span><strong>${esc(suggestedLabel(pos.exercise))} × ${esc(pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))} reps</strong></div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
@@ -776,6 +925,8 @@ function render(){
   else if(currentTab==='progress')app.innerHTML=renderProgress();
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
+  if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId));
   syncNav();syncLiveBadge();
 }
 
@@ -816,6 +967,14 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const detail=event.target.closest('[data-exercise-detail]');
+  if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
+  const close=event.target.closest('[data-action="close-details"]');
+  if(close){
+    const insidePanel=event.target.closest('[data-modal-panel]');
+    const explicitClose=event.target.closest('.modal-close');
+    if(!insidePanel||explicitClose){exerciseDetailId=null;render();return;}
+  }
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
@@ -835,9 +994,24 @@ function handleClick(event){
   else if(a==='discard')discardWorkout();
 }
 document.addEventListener('click',handleClick);
+document.addEventListener('error',event=>{
+  const img=event.target.closest?.('img[data-fallback-src]');
+  if(!img)return;
+  const fallback=img.dataset.fallbackSrc;
+  if(fallback&&img.src!==fallback&&!img.dataset.fallbackAttempted){
+    img.dataset.fallbackAttempted='1';
+    img.src=fallback;
+  }else{
+    img.closest('.exercise-media, .exercise-modal-media')?.classList.add('image-unavailable');
+    img.remove();
+  }
+},true);
 document.addEventListener('submit',event=>{if(event.target.id==='profile-form'){event.preventDefault();saveProfileFromForm(event.target);}});
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
-document.addEventListener('keydown',event=>{if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
+  if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
+});
 tickHandle=window.setInterval(updateTimers,500);
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible') updateTimers();
