@@ -346,6 +346,69 @@ function progressionLabel(ex,weight,reps,labelOverride){
   if(ex.loadMode==='dumbbell-pair')return String(weight||0)+' lb each × '+String(reps||recommendedRepCount(ex.reps));
   return weight?String(weight)+' lb × '+String(reps||recommendedRepCount(ex.reps)):String(reps||recommendedRepCount(ex.reps))+' reps';
 }
+function computeProgression(ex,feedback){
+  const stats=completedExerciseStats(ex);
+  const previous=store.progression?.[ex.id]||{};
+  const increment=Math.max(1,num(ex.increment)||5);
+  const baseWeight=stats.lastWeight||num(ex.suggestedWeight);
+  let nextWeight=baseWeight;
+  let nextReps=String(ex.suggestedReps||recommendedRepCount(ex.reps)||stats.high||stats.lastReps||'');
+  let nextRest=Math.max(30,Math.min(60,num(ex.rest)||45));
+  let labelOverride='';
+  let reason='';
+  const hardStreak=feedback==='hard'?(num(previous.hardStreak)+1):0;
+
+  if(stats.repDrop>=3&&nextRest<60)nextRest=Math.min(60,nextRest+15);
+
+  if(ex.loadMode==='timed'){
+    const seconds=Math.max(5,stats.lastReps||num(nextReps)||30);
+    if(feedback==='too-easy'){nextReps=String(seconds+10);reason='You rated the timed set too easy, so the next target adds 10 seconds.';}
+    else if(feedback==='good'&&stats.allAtTop){nextReps=String(seconds+5);reason='You owned the target, so the next timed effort adds 5 seconds.';}
+    else if(feedback==='too-hard'){nextReps=String(Math.max(5,seconds-10));reason='You rated it too hard, so the next timed target is shorter.';}
+    else{nextReps=String(seconds);reason=feedback==='form-off'?'Keeping the same time while you clean up technique.':'Keeping the same time and building consistency.';}
+  }else if(ex.loadMode==='bodyweight'){
+    const current=Math.max(1,stats.lastReps||num(nextReps)||stats.high||8);
+    if(feedback==='too-easy'||(feedback==='good'&&stats.allAtTop)){
+      nextReps=String(current+2);
+      reason=feedback==='too-easy'?'Bodyweight work felt too easy, so the next target adds 2 reps.':'You reached the top of the rep range across the exercise, so the next target adds 2 reps.';
+    }else if(feedback==='too-hard'){
+      nextReps=String(Math.max(1,current-2));
+      reason='You rated it too hard, so the next bodyweight target drops by 2 reps.';
+    }else{
+      nextReps=String(current);
+      reason=feedback==='form-off'?'Keeping the same rep target while you clean up technique.':'Keeping the same bodyweight target until it is clearly ready to progress.';
+    }
+  }else if(ex.loadMode==='band'){
+    if(feedback==='too-easy'||(feedback==='good'&&stats.allAtTop)){labelOverride='Use the next stronger band';reason='The current band is ready to progress.';}
+    else if(feedback==='too-hard'){labelOverride='Use a lighter band';reason='You rated the current resistance too hard.';}
+    else{labelOverride='Use the same band';reason=feedback==='form-off'?'Keep the band the same while you clean up technique.':'Keep the same resistance and build consistency.';}
+  }else if(ex.loadMode==='assisted'){
+    if(baseWeight>0){
+      if(feedback==='too-easy'||(feedback==='good'&&stats.allAtTop)){nextWeight=Math.max(0,roundTo(Math.max(0,baseWeight-increment),increment));reason='You are ready for less assistance next time.';}
+      else if(feedback==='too-hard'){nextWeight=roundTo(baseWeight+increment,increment);reason='You rated it too hard, so the next session uses more assistance.';}
+      else{reason=feedback==='form-off'?'Keeping assistance steady while you clean up technique.':'Keeping the same assistance and building reps.';}
+    }else{
+      labelOverride=feedback==='too-easy'?'Use slightly less assistance':feedback==='too-hard'?'Use slightly more assistance':'Use the same assistance';
+      reason='Assistance changes are directional until you enter a numeric assistance amount.';
+    }
+  }else{
+    const minLoad=minimumLoad(ex);
+    if(feedback==='too-easy'){nextWeight=roundTo(baseWeight+increment,increment);reason='You rated the exercise too easy, so the next session moves up one load increment.';}
+    else if(feedback==='good'&&stats.allAtTop){nextWeight=roundTo(baseWeight+increment,increment);reason='You reached the top of the rep range on every completed set, so the next session moves up one increment.';}
+    else if(feedback==='too-hard'){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));reason='You rated the exercise too hard, so the next session drops one load increment.';}
+    else if(feedback==='hard'&&hardStreak>=2&&stats.missedLow>=2){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));reason='This has been hard across repeated sessions and reps fell below target, so the next session backs off one increment.';}
+    else if(feedback==='form-off'){reason='Keeping the same load while you clean up technique before progressing.';}
+    else if(feedback==='hard'){reason='Hard but completed is not a failure. Keep the same load and try to make the reps cleaner next time.';}
+    else{reason=stats.allAtLeastLow?'You completed the target range. Keep this load until every set reaches the top of the range.':'Keep the same load and build the reps into the target range.';}
+  }
+
+  if(stats.repDrop>=3&&nextRest>num(ex.rest||45))reason+=' Rest moves to '+String(nextRest)+'s because reps dropped across sets.';
+  return {
+    exerciseId:ex.id,name:ex.name,feedback:feedback,weight:nextWeight,reps:nextReps,rest:nextRest,
+    label:progressionLabel(ex,nextWeight,nextReps,labelOverride),reason:reason,hardStreak:hardStreak,
+    updatedAt:new Date().toISOString(),session:{reps:stats.reps,weights:stats.weights}
+  };
+}
 
 function buildWarmup(exercises){
   const moves=new Set(exercises.map(e=>e.movement));
