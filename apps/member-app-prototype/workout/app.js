@@ -3,6 +3,10 @@ const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
 const ACTIVE_WORKOUT_SCHEMA = 3;
 const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
+const exerciseMedia = window.EXERCISE_MEDIA || {};
+const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
+const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
+let exerciseDetailId = null;
 
 const defaultStore = {
   profile: null,
@@ -79,6 +83,152 @@ function weeklyHistory(){ const start=startOfWeek(); return store.history.filter
 function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
+const MOVEMENT_GUIDANCE = {
+  'squat': {
+    cue:'Keep your chest tall and let your knees track with your toes.',
+    setup:'Set your feet in a stable stance and brace before you descend.',
+    steps:['Brace your trunk and keep your whole foot planted.','Lower under control to a comfortable depth.','Drive through the floor and finish tall.'],
+    mistake:'Avoid letting the knees collapse inward or rushing the bottom position.'
+  },
+  'hinge': {
+    cue:'Push your hips back and keep the load close to your body.',
+    setup:'Stand tall, brace your trunk, and begin with soft knees.',
+    steps:['Send the hips backward while keeping a long spine.','Lower only as far as you can maintain control.','Squeeze the glutes and bring the hips forward to stand.'],
+    mistake:'Avoid turning the hinge into a squat or rounding through the lower back.'
+  },
+  'single-leg': {
+    cue:'Stay balanced over the working leg and control the descent.',
+    setup:'Plant the working foot securely before beginning the rep.',
+    steps:['Brace and lower with control.','Keep the front foot planted and knee tracking naturally.','Drive through the working leg to return.'],
+    mistake:'Avoid bouncing or allowing the working knee to cave inward.'
+  },
+  'horizontal-push': {
+    cue:'Set your shoulders, lower with control, then press smoothly.',
+    setup:'Create a stable base and keep the shoulder blades supported.',
+    steps:['Start with wrists stacked and shoulders set.','Lower under control without losing your upper-back position.','Press back to the start without slamming into lockout.'],
+    mistake:'Avoid excessive elbow flare or shrugging the shoulders forward.'
+  },
+  'horizontal-pull': {
+    cue:'Lead with your elbows and squeeze your shoulder blades back.',
+    setup:'Brace your torso and begin with the shoulders relaxed, not shrugged.',
+    steps:['Reach to a controlled starting stretch.','Pull the elbows toward your ribs.','Pause briefly, then return without losing posture.'],
+    mistake:'Avoid yanking with momentum or turning the rep into a shrug.'
+  },
+  'vertical-pull': {
+    cue:'Think elbows down toward your ribs instead of pulling with your hands.',
+    setup:'Set your grip, keep the chest tall, and brace your trunk.',
+    steps:['Begin from a controlled overhead stretch.','Drive the elbows down while keeping the torso stable.','Return slowly until the arms are long again.'],
+    mistake:'Avoid swinging backward or jerking the weight.'
+  },
+  'vertical-push': {
+    cue:'Brace your ribs down and press overhead without over-arching.',
+    setup:'Start from a stable stance or seat with the weights under control.',
+    steps:['Brace before the press.','Press upward through a comfortable path.','Lower slowly back to the starting position.'],
+    mistake:'Avoid leaning back excessively to turn the press into an incline press.'
+  },
+  'hamstring-accessory': {
+    cue:'Move slowly and squeeze the hamstrings through the working range.',
+    setup:'Adjust the machine or position so your joints line up comfortably.',
+    steps:['Begin from a controlled stretch.','Curl through the available range.','Return slowly without dropping the resistance.'],
+    mistake:'Avoid using momentum to finish the rep.'
+  },
+  'quad-accessory': {
+    cue:'Extend with control and squeeze the quads without kicking the weight.',
+    setup:'Adjust the pad and seat so the knee moves comfortably.',
+    steps:['Start from a controlled bent-knee position.','Extend smoothly and squeeze the quads.','Lower slowly to the start.'],
+    mistake:'Avoid swinging the weight or snapping into lockout.'
+  },
+  'shoulder-accessory': {
+    cue:'Lead with the elbows and keep the shoulders away from your ears.',
+    setup:'Use a light load you can move without momentum.',
+    steps:['Start with relaxed shoulders and soft elbows.','Raise through a comfortable shoulder range.','Lower slowly and stay in control.'],
+    mistake:'Avoid shrugging or swinging the weight.'
+  },
+  'biceps': {
+    cue:'Keep the upper arm quiet and curl without swinging.',
+    setup:'Stand or sit tall with the elbows close to your sides.',
+    steps:['Begin with the arm long but controlled.','Curl while keeping the elbow stable.','Squeeze briefly, then lower slowly.'],
+    mistake:'Avoid using your hips or shoulders to throw the weight upward.'
+  },
+  'triceps': {
+    cue:'Keep the upper arm stable and finish by straightening the elbow.',
+    setup:'Brace your torso and choose a position that keeps the shoulders comfortable.',
+    steps:['Start with tension on the triceps.','Extend the elbow through a controlled range.','Return slowly without letting the upper arm drift.'],
+    mistake:'Avoid turning the movement into a shoulder swing.'
+  },
+  'calves': {
+    cue:'Use a full controlled range instead of bouncing.',
+    setup:'Place the ball of the foot securely and keep the ankle aligned.',
+    steps:['Lower the heel into a comfortable stretch.','Rise onto the ball of the foot.','Pause briefly and lower under control.'],
+    mistake:'Avoid short, bouncing repetitions.'
+  },
+  'core': {
+    cue:'Brace first and move without losing trunk control.',
+    setup:'Set your body position so you can breathe while staying braced.',
+    steps:['Create tension through the trunk.','Perform the movement without letting the low back lose control.','Reset your brace before the next rep.'],
+    mistake:'Avoid holding your breath or rushing through a position you cannot control.'
+  }
+};
+
+function exerciseGuidance(ex){
+  const base=MOVEMENT_GUIDANCE[ex?.movement]||{
+    cue:'Move through a controlled, comfortable range.',
+    setup:'Set up securely before beginning the set.',
+    steps:['Brace before the movement.','Complete the rep under control.','Return to the starting position smoothly.'],
+    mistake:'Avoid using momentum to force the movement.'
+  };
+  const loadNote=ex?.loadMode==='dumbbell-pair'?'Use the same dumbbell weight in each hand.':
+    ex?.loadMode==='barbell'?'Secure the bar and plates before the set.':
+    ex?.loadMode==='machine'?'Adjust the seat, pad, and starting position before loading the machine.':
+    ex?.loadMode==='band'?'Anchor the band securely and check it before pulling.':
+    ex?.loadMode==='assisted'?'Choose enough assistance to keep every rep controlled.':'';
+  return {...base,setup:loadNote?base.setup+' '+loadNote:base.setup};
+}
+
+function exerciseImageUrl(ex,index=0,useFallback=false){
+  if(!ex)return '';
+  const sourceId=useFallback?exerciseMediaFallbacks[ex.movement]:(exerciseMedia[ex.id]?.sourceId||exerciseMediaFallbacks[ex.movement]);
+  return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
+}
+
+function exerciseImageButton(ex,className='exercise-media',index=0){
+  const src=exerciseImageUrl(ex,index,false);
+  const fallback=exerciseImageUrl(ex,index,true);
+  if(!src)return '<button class="'+className+' exercise-media missing" type="button" data-exercise-detail="'+esc(ex.id)+'"><span>VIEW FORM</span></button>';
+  return '<button class="'+className+' exercise-media" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
+    '<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">'+
+    '<span class="media-hint">VIEW FORM</span></button>';
+}
+
+function renderExerciseModal(){
+  if(!exerciseDetailId)return '';
+  const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
+  if(!ex)return '';
+  const guide=exerciseGuidance(ex);
+  const primary=exerciseImageUrl(ex,0,false),secondary=exerciseImageUrl(ex,1,false);
+  const primaryFallback=exerciseImageUrl(ex,0,true),secondaryFallback=exerciseImageUrl(ex,1,true);
+  const images=[
+    primary?'<img src="'+esc(primary)+'" data-fallback-src="'+esc(primaryFallback)+'" alt="'+esc(ex.name)+' starting position">':'',
+    secondary?'<img src="'+esc(secondary)+'" data-fallback-src="'+esc(secondaryFallback)+'" alt="'+esc(ex.name)+' finishing position">':''
+  ].join('');
+  return '<div class="exercise-modal-backdrop" data-action="close-details">'+
+    '<section class="exercise-modal" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise instructions" data-modal-panel>'+
+      '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise instructions">×</button>'+
+      '<div class="exercise-modal-media">'+images+'</div>'+
+      '<div class="exercise-modal-copy">'+
+        '<p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p>'+
+        '<h2>'+esc(ex.name)+'</h2>'+
+        '<p class="modal-muscles">'+(ex.muscles||[]).map(esc).join(' · ')+'</p>'+
+        '<div class="coach-cue"><span>COACHING CUE</span><strong>'+esc(guide.cue)+'</strong></div>'+
+        '<div class="instruction-block"><h3>Set up</h3><p>'+esc(guide.setup)+'</p></div>'+
+        '<div class="instruction-block"><h3>How to move</h3><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></div>'+
+        '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
+        '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
+      '</div>'+
+    '</section>'+
+  '</div>';
+}
+
 
 function goalSettings(goal,movement,experience){
   const accessory = ['biceps','triceps','calves','core','shoulder-accessory','quad-accessory','hamstring-accessory'].includes(movement);
