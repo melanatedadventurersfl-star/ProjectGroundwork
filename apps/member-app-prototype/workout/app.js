@@ -1298,8 +1298,8 @@ function renderWorkout(){
   if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
   const w=pos.workout;
   const done=completedSets(w.exercises),total=totalSets(w.exercises),pct=Math.round(done/Math.max(1,total)*100);
-  const inExercise=['work','rest','calibrate','feedback'].includes(w.phase);
-  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':'CURRENT EXERCISE';
+  const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase);
+  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
   return `<div class="guided-shell">
     <div class="session-status workout-status">
       <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
@@ -1308,10 +1308,46 @@ function renderWorkout(){
         <div class="clock-card"><span>EXERCISE</span><strong id="exercise-clock">${inExercise?formatClock(exerciseElapsedSeconds(w)):'--:--'}</strong></div>
       </div>
     </div>
+    ${renderCueControls()}
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     <div class="step-strip">${w.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei&&inExercise?'current':''}"></span>`).join('')}</div>
-    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
+    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
     <div class="session-controls"><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
+  </div>`;
+}
+
+function renderPreSet(pos){
+  const snap=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
+  const setup=snap.mode==='setup';
+  const target=pos.exercise.loadMode==='timed'?(pos.set.reps||pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))+' sec':pos.exercise.reps;
+  return `<div class="pre-set-stage" data-preset-mode="${esc(snap.mode)}">
+    <div class="pre-set-media">${exerciseImageButton(pos.exercise,'pre-set-exercise-media')}</div>
+    <div class="pre-set-copy">
+      <p class="eyebrow">${setup?'GET IN POSITION':'SET STARTING'}</p>
+      <div class="stage-count">SET ${pos.si+1} OF ${pos.exercise.sets.length} · ${esc(pos.exercise.name)}</div>
+      <div class="pre-set-number" id="preset-count">${snap.remaining}</div>
+      <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
+      <p>${setup?'You have a few seconds to get into position before the start countdown.':'The set begins automatically after 3 · 2 · 1.'}</p>
+      <div class="pre-set-target"><span>TARGET</span><strong>${esc(target)}</strong></div>
+      <button class="button secondary" type="button" data-action="start-set-now">START NOW</button>
+    </div>
+  </div>`;
+}
+
+function renderTimedWorkSet(pos){
+  const snap=timedSetSnapshot(pos.workout)||{remaining:num(pos.set.reps)||30,total:num(pos.set.reps)||30};
+  const pct=Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100));
+  return `<div class="timed-work-stage">
+    <div class="timed-work-media">${exerciseImageButton(pos.exercise,'timed-work-exercise-media')}</div>
+    <div class="timed-work-copy">
+      <p class="eyebrow">TIMED SET · SET ${pos.si+1} OF ${pos.exercise.sets.length}</p>
+      <h3>${esc(pos.exercise.name)}</h3>
+      <p class="timed-work-cue">${esc(exerciseGuidance(pos.exercise).cue)}</p>
+      <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
+      <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
+      <div class="timed-finish-note" id="timed-finish-note">${snap.remaining<=3&&snap.remaining>0?'${snap.remaining}…':'Stay controlled. You’ll get a finish cue at zero.'}</div>
+      <button class="button secondary" type="button" data-action="end-timed-set">END SET EARLY</button>
+    </div>
   </div>`;
 }
 
