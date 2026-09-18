@@ -68,6 +68,18 @@ jobs:
           cp -R apps/member-app-prototype/. _site/
           cp -R apps/mobile/dist-web/. _site/app/
           cp apps/mobile/dist-web/index.html _site/404.html
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          page = Path('_site/workout/index.html')
+          html = page.read_text(encoding='utf-8')
+          build = os.environ['GITHUB_SHA']
+          for asset in ('styles.css', 'catalog.js', 'app.js'):
+              html = html.replace(f'./{asset}', f'./{asset}?v={build}')
+          page.write_text(html, encoding='utf-8')
+          print(f'Workout assets versioned with {build}')
+          PY
           touch _site/.nojekyll
 
       - name: Configure GitHub Pages
