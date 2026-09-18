@@ -522,6 +522,25 @@ function nextPlanDay(){
   return store.plan.days[completed % store.plan.days.length];
 }
 
+function plannedWarmup(day){
+  return day?.warmup?.length?day.warmup:buildWarmup(day?.exercises||[]);
+}
+function plannedCooldown(day){
+  return day?.cooldown?.length?day.cooldown:buildCooldown(day?.exercises||[]);
+}
+function renderPlanTimedRow(item,type,index){
+  const image=timedStageImageUrl(item,0);
+  return `<div class="plan-prep-row ${type}">
+    <div class="plan-prep-media">${image?`<img src="${esc(image)}" loading="lazy" decoding="async" alt="${esc(item.name)} demonstration">`:''}</div>
+    <div class="plan-prep-copy">
+      <span>${type==='warmup'?'WARM-UP':'COOLDOWN'} ${index+1}</span>
+      <strong>${esc(item.name)}</strong>
+      <small>${esc(item.cue||'Move through a comfortable range.')}</small>
+    </div>
+    <em>${Number(item.seconds)||30}s</em>
+  </div>`;
+}
+
 function saveProfileFromForm(form){
   if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
   let data;
@@ -608,7 +627,7 @@ function createWorkout(day){
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,
     phase:'warmup',timedPhaseStartedAt:now,timedPhaseSkippedSeconds:0,
-    warmup:day.warmup||[],cooldown:day.cooldown||[],
+    warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
     exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
@@ -941,8 +960,15 @@ function renderHome(){
         <article class="routine-card">
           <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN</span></div>
           <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
-          <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small>Start: ${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)} × ${esc(ex.startReps||recommendedRepCount(ex.reps))}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
-          <div class="routine-footer"><span class="routine-meta">${day.exercises.length} exercises · ${day.warmupMinutes} min stretch · ${day.cooldownMinutes} min cooldown</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
+          <div class="routine-sequence">
+            <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
+            <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
+            <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
+            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small>Start: ${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)} × ${esc(ex.startReps||recommendedRepCount(ex.reps))}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
+            <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
+            <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
+          </div>
+          <div class="routine-footer"><span class="routine-meta">${plannedWarmup(day).length} warm-up movements · ${day.exercises.length} exercises · ${plannedCooldown(day).length} cooldown stretches</span><button class="button" data-start="${day.id}" ${store.activeWorkout?'disabled':''}>START</button></div>
         </article>`).join('')}</div>
     </section>`;
 }
