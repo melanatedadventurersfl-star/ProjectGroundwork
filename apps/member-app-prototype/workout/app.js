@@ -746,12 +746,16 @@ function createWorkout(day){
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
-      const suggestedWeight=calibrated?.weight ?? ex.startWeight ?? 0;
-      const suggestedReps=ex.startReps||recommendedRepCount(ex.reps);
-      const weightValue=['bodyweight','timed','band','assisted'].includes(ex.loadMode)?'':String(suggestedWeight||'');
+      const adaptive=adaptivePrescription(ex);
+      const suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
+      const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
+      const suggestedRest=Math.max(30,Math.min(60,adaptive?.rest || ex.rest || 45));
+      const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
+      const weightValue=noWeight?'':(ex.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
       return {
-        ...ex,suggestedWeight,suggestedReps,
-        calibrationRequired:ex.calibrationRequired && !calibrated,
+        ...ex,suggestedWeight,suggestedReps,rest:suggestedRest,
+        adaptiveLabel:adaptive?.label||'',adaptiveReason:adaptive?.reason||'',
+        calibrationRequired:ex.calibrationRequired && !calibrated && !adaptive,
         sets:Array.from({length:ex.sets},()=>({id:uid('set'),weight:weightValue,reps:String(suggestedReps||''),completed:false,completedAt:null}))
       };
     })
@@ -888,6 +892,29 @@ function beginRest(next,seconds){
   w.restPausedRemaining=null;w.pendingPosition=next;saveStore();render();
 }
 
+function startExerciseFeedback(next){
+  const w=store.activeWorkout;
+  if(!w)return;
+  w.phase='feedback';
+  w.pendingPosition=next;
+  saveStore();
+  render();
+}
+
+function applyExerciseFeedback(feedback){
+  const pos=getActivePosition();
+  if(!pos||pos.workout.phase!=='feedback')return;
+  const result=computeProgression(pos.exercise,feedback);
+  store.progression=store.progression||{};
+  store.progression[pos.exercise.id]=result;
+  pos.exercise.feedback=feedback;
+  pos.exercise.nextRecommendation=result;
+  pos.workout.lastProgressionResult=result;
+  const next=pos.workout.pendingPosition;
+  saveStore();
+  beginRest(next,pos.exercise.rest||45);
+}
+
 function completeCurrentSet(){
   const pos=getActivePosition(); if(!pos||pos.workout.phase!=='work')return;
   const weight=(document.querySelector('#set-weight')?.value||'').trim().replace(/[^0-9.]/g,'');
@@ -905,6 +932,7 @@ function completeCurrentSet(){
   if(pos.si===0 && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
     pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
   }
+  if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
 
@@ -922,6 +950,7 @@ function applyCalibration(rir){
     nextSet.reps=pos.exercise.sets[0].reps||pos.exercise.suggestedReps||'';
   }
   saveStore();
+  if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
 
@@ -932,7 +961,7 @@ function advanceAfterRest(){
     recordExerciseDuration(w,w.currentExerciseIndex);
     w.exerciseStartedAt=new Date().toISOString();
   }
-  w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
+  w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;w.lastProgressionResult=null;
   saveStore();render();
 }
 function adjustRest(delta){
