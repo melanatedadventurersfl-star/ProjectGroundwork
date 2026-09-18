@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'workout-web-store-v3';
 const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
+const ACTIVE_WORKOUT_SCHEMA = 2;
 const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
 
@@ -13,7 +14,12 @@ const defaultStore = {
 };
 
 let store = loadStore();
-if (normalizeActiveWorkoutTimerState(store.activeWorkout)) {
+let clearedLegacyActiveWorkout = false;
+if (store.activeWorkout && store.activeWorkout.schemaVersion !== ACTIVE_WORKOUT_SCHEMA) {
+  store.activeWorkout = null;
+  clearedLegacyActiveWorkout = true;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+} else if (normalizeActiveWorkoutTimerState(store.activeWorkout)) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 let currentTab = store.profile && store.plan ? (store.activeWorkout ? 'workout' : 'home') : 'profile';
@@ -295,6 +301,7 @@ function regeneratePlan(){
 function createWorkout(day){
   const now=new Date().toISOString();
   const workout={
+    schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,
     phase:'warmup',timedStageIndex:0,timedStageStartedAt:null,timedStageEndsAt:null,
@@ -858,6 +865,14 @@ document.addEventListener('visibilitychange',()=>{
     updateTimers();
   }
 });
+window.addEventListener('pageshow',event=>{
+  if(event.persisted){
+    window.location.reload();
+  }
+});
 window.addEventListener('beforeunload',()=>tickHandle&&clearInterval(tickHandle));
 if(store.activeWorkout&&['warmup','cooldown'].includes(store.activeWorkout.phase)) reconcileTimedStage();
 render();
+if(clearedLegacyActiveWorkout){
+  setTimeout(()=>toast('Previous test session cleared so this build can start with clean timer state.'),100);
+}
