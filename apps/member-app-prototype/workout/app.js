@@ -455,6 +455,196 @@ function swapReasonLabel(reason){
   return ({equipment:'Equipment unavailable',dislike:"Don't like this exercise",pain:'Pain or discomfort',difficulty:'Too difficult',easy:'Too easy',other:'Other'})[reason]||'Other';
 }
 
+function planSlotFromCandidate(candidate,template){
+  const profile=store.profile||{};
+  const start=estimateStartingLoad(candidate,profile);
+  const settings=goalSettings(profile.goal||'muscle',candidate.movement,profile.experience||'beginner');
+  const adaptive=adaptivePrescription(candidate);
+  const calibrated=store.calibration?.[candidate.id]?.weight;
+  const reps=adaptive?.reps||settings.reps;
+  return {
+    id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
+    sets:template.sets,reps:reps,startReps:recommendedRepCount(reps),rest:Math.max(30,Math.min(60,adaptive?.rest||template.rest||settings.rest)),
+    setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
+    startWeight:adaptive?.weight??calibrated??start.weight,startLabel:adaptive?.label||start.label,startSource:adaptive?'learned progression':start.source||'',
+    calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
+    swappedFrom:{id:template.id,name:template.name},
+    swapUndo:clone({...template,swapUndo:undefined})
+  };
+}
+function workoutExerciseFromCandidate(candidate,template,setCount){
+  const profile=store.profile||{};
+  const start=estimateStartingLoad(candidate,profile);
+  const adaptive=adaptivePrescription(candidate);
+  const calibrated=store.calibration?.[candidate.id];
+  const settings=goalSettings(profile.goal||'muscle',candidate.movement,profile.experience||'beginner');
+  const suggestedWeight=adaptive?.weight??calibrated?.weight??start.weight??0;
+  const suggestedReps=adaptive?.reps||recommendedRepCount(settings.reps);
+  const rest=Math.max(30,Math.min(60,adaptive?.rest||template.rest||settings.rest||45));
+  const noWeight=['bodyweight','timed','band'].includes(candidate.loadMode);
+  const weightValue=noWeight?'':(candidate.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
+  return {
+    id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
+    reps:settings.reps,rest,setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
+    suggestedWeight,suggestedReps,
+    adaptiveLabel:adaptive?.label||'',adaptiveReason:adaptive?.reason||'',
+    calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
+    swappedFrom:{id:template.id,name:template.name},
+    swapUndo:clone({...template,swapUndo:undefined}),
+    sets:Array.from({length:Math.max(1,setCount)},()=>({
+      id:uid('set'),weight:weightValue,reps:String(suggestedReps||''),completed:false,completedAt:null
+    }))
+  };
+}
+function estimatePlanExerciseSeconds(ex){
+  const setSeconds=goalSettings(store.profile?.goal||'muscle',ex.movement,store.profile?.experience||'beginner').setSeconds||40;
+  return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*(ex.rest||45)+35;
+}
+function recalculatePlanDay(day){
+  if(!day)return;
+  day.warmup=buildWarmup(day.exercises||[]);
+  day.cooldown=buildCooldown(day.exercises||[]);
+  const prep=[...(day.warmup||[]),...(day.cooldown||[])].reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const work=(day.exercises||[]).reduce((sum,ex)=>sum+estimatePlanExerciseSeconds(ex),0);
+  day.warmupMinutes=Math.ceil((day.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
+  day.cooldownMinutes=Math.ceil((day.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
+  day.estimatedMinutes=Math.max(10,Math.ceil((prep+work)/60));
+}
+function swapTarget(){
+  if(!swapContext)return null;
+  if(swapContext.mode==='plan'){
+    const day=store.plan?.days?.find(item=>item.id===swapContext.dayId);
+    const exercise=day?.exercises?.[swapContext.index];
+    return exercise?{exercise,day,index:swapContext.index}:null;
+  }
+  const workout=store.activeWorkout;
+  const exercise=workout?.exercises?.[swapContext.index];
+  return exercise?{exercise,workout,index:swapContext.index}:null;
+}
+function openSwap(context){
+  swapContext=context;
+  exerciseDetailId=null;
+  render();
+}
+function closeSwap(){
+  swapContext=null;
+  render();
+}
+function rememberSwap(original,replacement,reason,mode){
+  store.exercisePreferences=store.exercisePreferences||{excluded:[],swapHistory:[]};
+  store.exercisePreferences.swapHistory=Array.isArray(store.exercisePreferences.swapHistory)?store.exercisePreferences.swapHistory:[];
+  store.exercisePreferences.swapHistory.unshift({
+    fromId:original.id,fromName:original.name,toId:replacement.id,toName:replacement.name,
+    reason,reasonLabel:swapReasonLabel(reason),mode,at:new Date().toISOString()
+  });
+  store.exercisePreferences.swapHistory=store.exercisePreferences.swapHistory.slice(0,100);
+}
+function applyExerciseSwap(candidateId,reason='other',neverShow=false){
+  const target=swapTarget();
+  const candidate=catalog.find(item=>item.id===candidateId);
+  if(!target||!candidate)return;
+  const original=target.exercise;
+  if(neverShow){
+    store.exercisePreferences=store.exercisePreferences||{excluded:[],swapHistory:[]};
+    const set=new Set(store.exercisePreferences.excluded||[]);
+    set.add(original.id);
+    store.exercisePreferences.excluded=[...set];
+  }
+  if(swapContext.mode==='plan'){
+    const replacement=planSlotFromCandidate(candidate,original);
+    target.day.exercises[target.index]=replacement;
+    recalculatePlanDay(target.day);
+    rememberSwap(original,replacement,reason,'plan');
+    swapContext=null;
+    saveStore();render();
+    toast(original.name+' swapped for '+replacement.name+'.');
+    return;
+  }
+
+  const w=target.workout;
+  const completed=(original.sets||[]).filter(set=>set.completed);
+  const remaining=Math.max(1,(original.sets?.length||1)-completed.length);
+  const replacement=workoutExerciseFromCandidate(candidate,original,remaining);
+  rememberSwap(original,replacement,reason,'workout');
+
+  if(target.index>w.currentExerciseIndex){
+    w.exercises[target.index]=replacement;
+    swapContext=null;
+    saveStore();render();
+    toast(original.name+' swapped for '+replacement.name+'.');
+    return;
+  }
+
+  if(completed.length===0){
+    w.exercises[target.index]=replacement;
+    w.currentExerciseIndex=target.index;
+    w.currentSetIndex=0;
+    delete w.timedSetStartedAt;delete w.timedSetDuration;delete w.timedSetEndsAt;
+    swapContext=null;
+    saveStore();
+    beginPreSetPosition(target.index,0,false);
+    toast(original.name+' swapped for '+replacement.name+'.');
+    return;
+  }
+
+  original.sets=completed;
+  delete original.swapUndo;
+  w.exercises.splice(target.index+1,0,replacement);
+  swapContext=null;
+  saveStore();
+  beginPreSetPosition(target.index+1,0,true);
+  toast('Completed '+original.name+' sets kept. Remaining work moved to '+replacement.name+'.');
+}
+function undoExerciseSwap(mode,index,dayId=''){
+  if(mode==='plan'){
+    const day=store.plan?.days?.find(item=>item.id===dayId);
+    const current=day?.exercises?.[index];
+    if(!day||!current?.swapUndo)return;
+    day.exercises[index]=clone({...current.swapUndo,swapUndo:undefined});
+    recalculatePlanDay(day);
+    saveStore();render();toast('Exercise swap undone.');
+    return;
+  }
+  const w=store.activeWorkout,current=w?.exercises?.[index];
+  if(!w||!current?.swapUndo||(current.sets||[]).some(set=>set.completed))return;
+  const restored=clone({...current.swapUndo,swapUndo:undefined});
+  w.exercises[index]=restored;
+  w.currentExerciseIndex=index;w.currentSetIndex=0;
+  saveStore();
+  beginPreSetPosition(index,0,false);
+  toast('Exercise swap undone.');
+}
+function renderSwapModal(){
+  const target=swapTarget();
+  if(!target)return '';
+  const source=exerciseSource(target.exercise);
+  const candidates=swapCandidates(source);
+  const available=candidates.filter(item=>item.available);
+  const other=candidates.filter(item=>!item.available);
+  const card=(item,index)=>{
+    const ex=item.exercise;
+    const src=exerciseImageUrl(ex,0,false),fallback=exerciseImageUrl(ex,0,true);
+    return '<article class="swap-option">'+
+      '<div class="swap-option-media">'+(src?'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" alt="'+esc(ex.name)+' demonstration">':'')+'</div>'+
+      '<div class="swap-option-copy"><div class="swap-option-top"><span>'+esc(item.tier)+'</span>'+(index===0&&item.available?'<em>BEST MATCH</em>':'')+'</div>'+
+      '<h3>'+esc(ex.name)+'</h3>'+
+      '<p>'+esc(exerciseDescription(ex))+'</p>'+
+      '<div class="swap-option-meta"><span>'+esc((ex.muscles||[]).join(' · '))+'</span><strong>'+esc(equipmentRequirement(ex))+'</strong></div>'+
+      '<button class="button secondary" type="button" data-action="choose-swap" data-candidate-id="'+esc(ex.id)+'">USE THIS EXERCISE</button></div>'+
+    '</article>';
+  };
+  return '<div class="exercise-modal-backdrop swap-modal-backdrop" data-action="close-swap">'+
+    '<section class="exercise-modal swap-modal" role="dialog" aria-modal="true" aria-label="Swap '+esc(source.name)+'" data-swap-panel>'+
+      '<button class="modal-close" type="button" data-action="close-swap" aria-label="Close exercise swap">×</button>'+
+      '<div class="swap-head"><p class="eyebrow">SWAP EXERCISE</p><h2>'+esc(source.name)+'</h2><p>Choose a comparable movement. Your completed work stays intact and replacement loads are recalculated for the new exercise.</p></div>'+
+      '<div class="swap-controls"><label>WHY ARE YOU SWAPPING?<select id="swap-reason"><option value="equipment">Equipment unavailable</option><option value="dislike">Don’t like this exercise</option><option value="pain">Pain or discomfort</option><option value="difficulty">Too difficult</option><option value="easy">Too easy</option><option value="other">Other</option></select></label>'+
+      '<label class="swap-exclude"><input id="swap-never-show" type="checkbox"> Don’t show me '+esc(source.name)+' again</label></div>'+
+      (available.length?'<div class="swap-section"><h3>AVAILABLE WITH YOUR SETUP</h3><div class="swap-options">'+available.map(card).join('')+'</div></div>':'')+
+      (other.length?'<div class="swap-section other-equipment"><h3>REQUIRES OTHER EQUIPMENT</h3><div class="swap-options">'+other.map((item,index)=>card(item,index+available.length)).join('')+'</div></div>':'')+
+      (!candidates.length?'<div class="empty-state"><strong>No close replacements found.</strong><span>Try changing your equipment profile or keeping this exercise.</span></div>':'')+
+    '</section></div>';
+}
+
 function exerciseImageUrl(ex,index=0,useFallback=false){
   if(!ex)return '';
   const sourceId=useFallback?exerciseMediaFallbacks[ex.movement]:(exerciseMedia[ex.id]?.sourceId||exerciseMediaFallbacks[ex.movement]);
