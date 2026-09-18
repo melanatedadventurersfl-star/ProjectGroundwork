@@ -1190,6 +1190,8 @@ function finishWorkout(auto=false){
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
   delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;delete entry.lastProgressionResult;
+  delete entry.preSetStartedAt;delete entry.preSetSetupSeconds;delete entry.preSetCountdownSeconds;delete entry.preSetIsNewExercise;
+  delete entry.timedSetStartedAt;delete entry.timedSetDuration;delete entry.timedSetEndsAt;
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;saveStore();currentTab='summary';render();
 }
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
@@ -1261,7 +1263,7 @@ function renderHome(){
   const week=weeklyHistory();const weeklyVolume=week.reduce((s,x)=>s+(x.totalVolume||0),0);const next=nextPlanDay();
   return `
     <div class="page-head"><div><p class="eyebrow">YOUR PERSONAL PLAN</p><h2 class="page-title">${esc(planGoalLabel(p.goal))}.</h2><p class="page-copy">${p.days} days/week · ${p.minutes}-minute sessions · ${esc(experienceLabel(p.experience))} · ${esc(equipmentLabel(p.equipment))}. Each workout is calculated from the actual sets, rest and setup time.</p></div><button class="button secondary" data-action="edit-profile">EDIT PROFILE</button></div>
-    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':store.activeWorkout.phase==='feedback'?'Exercise feedback':store.activeWorkout.phase==='warmup'?'Warm-up':store.activeWorkout.phase==='cooldown'?'Cooldown':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
+    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':store.activeWorkout.phase==='feedback'?'Exercise feedback':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='timed-set'?'Timed set':store.activeWorkout.phase==='warmup'?'Warm-up':store.activeWorkout.phase==='cooldown'?'Cooldown':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
     <div class="hero">
       <section class="hero-primary"><p class="eyebrow">THIS WEEK</p><div class="hero-metrics"><div class="hero-metric"><span class="hero-number">${week.length}/${p.days}</span><span class="hero-label">workouts</span></div><div class="hero-divider"></div><div class="hero-metric"><span class="hero-number">${formatVolume(weeklyVolume)}</span><span class="hero-label">volume</span></div></div></section>
       <section class="hero-secondary"><div><p class="eyebrow">NEXT SESSION</p><h3>${esc(next?.name||'Plan ready')}</h3><p>${esc(next?.focus||'')} · estimated ${next?.estimatedMinutes||p.minutes} min</p></div><button class="button" data-start="${next?.id||''}" ${store.activeWorkout?'disabled':''}>START GUIDED WORKOUT</button></section>
@@ -1581,7 +1583,7 @@ function handleClick(event){
   const a=node.dataset.action;
   if(a==='go-home'||a==='home')setTab('home');
   else if(a==='history')setTab('history');
-  else if(a==='resume')setTab('workout');
+  else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='regenerate')regeneratePlan();
