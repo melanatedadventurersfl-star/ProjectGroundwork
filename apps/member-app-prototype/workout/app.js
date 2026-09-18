@@ -16,6 +16,7 @@ const defaultStore = {
   calibration: {},
   progression: {},
   progressionLog: [],
+  cueSettings: {sound:true,haptics:true},
   lastSummaryId: null
 };
 
@@ -94,6 +95,72 @@ function weeklyHistory(){ const start=startOfWeek(); return store.history.filter
 function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
+let workoutAudioContext=null;
+const cueRuntime={lastToken:''};
+
+function workoutCueSettings(){
+  const saved=store.cueSettings||{};
+  return {sound:saved.sound!==false,haptics:saved.haptics!==false};
+}
+function ensureWorkoutAudio(){
+  if(!workoutCueSettings().sound)return null;
+  try{
+    const AudioCtor=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtor)return null;
+    if(!workoutAudioContext)workoutAudioContext=new AudioCtor();
+    if(workoutAudioContext.state==='suspended')workoutAudioContext.resume?.();
+    return workoutAudioContext;
+  }catch{return null;}
+}
+function unlockWorkoutCues(){
+  ensureWorkoutAudio();
+}
+function vibrateCue(type){
+  if(!workoutCueSettings().haptics||typeof navigator==='undefined'||typeof navigator.vibrate!=='function')return;
+  try{
+    const pattern=type==='go'?[70,35,110]:type==='complete'?[90,45,90]:type==='transition'?[55,30,55]:[35];
+    navigator.vibrate(pattern);
+  }catch{}
+}
+function playWorkoutCue(type,token=''){
+  if(token&&cueRuntime.lastToken===token)return;
+  if(token)cueRuntime.lastToken=token;
+  vibrateCue(type);
+  const ctx=ensureWorkoutAudio();
+  if(!ctx)return;
+  try{
+    const oscillator=ctx.createOscillator();
+    const gain=ctx.createGain();
+    const now=ctx.currentTime;
+    const config={
+      tick:{frequency:660,duration:.07,volume:.045},
+      go:{frequency:980,duration:.16,volume:.075},
+      complete:{frequency:520,duration:.14,volume:.065},
+      transition:{frequency:760,duration:.11,volume:.05}
+    }[type]||{frequency:660,duration:.08,volume:.04};
+    oscillator.type=type==='go'?'sine':'triangle';
+    oscillator.frequency.setValueAtTime(config.frequency,now);
+    gain.gain.setValueAtTime(config.volume,now);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+config.duration);
+    oscillator.connect(gain);gain.connect(ctx.destination);
+    oscillator.start(now);oscillator.stop(now+config.duration);
+  }catch{}
+}
+function toggleCueSetting(key){
+  if(!['sound','haptics'].includes(key))return;
+  store.cueSettings={...workoutCueSettings(),[key]:!workoutCueSettings()[key]};
+  saveStore();
+  if(key==='sound'&&store.cueSettings.sound)unlockWorkoutCues();
+  render();
+}
+function renderCueControls(){
+  const settings=workoutCueSettings();
+  const hapticsAvailable=typeof navigator!=='undefined'&&typeof navigator.vibrate==='function';
+  return '<div class="cue-controls" aria-label="Workout cue settings">'+
+    '<button type="button" data-action="toggle-sound" aria-pressed="'+String(settings.sound)+'"><span>♪</span> Sound '+(settings.sound?'ON':'OFF')+'</button>'+
+    '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
+  '</div>';
+}
 const MOVEMENT_GUIDANCE = {
   'squat': {
     cue:'Keep your chest tall and let your knees track with your toes.',
