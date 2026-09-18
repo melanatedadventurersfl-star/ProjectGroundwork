@@ -1664,3 +1664,41 @@ button:focus-visible, input:focus-visible {
   }
 }
 
+/* Whole-workout pause state */
+.workout-pause-banner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 12px;
+  padding:12px 14px;
+  border:1px solid rgba(216,180,92,.35);
+  border-radius:12px;
+  background:rgba(216,180,92,.08);
+}
+.workout-pause-banner strong{
+  color:var(--accent-2);
+  font-size:10px;
+  letter-spacing:.12em;
+}
+.workout-pause-banner span{
+  color:var(--muted);
+  font-size:10px;
+  text-align:right;
+}
+.pause-workout-button{
+  border-color:rgba(216,180,92,.35);
+}
+@media(max-width:560px){
+  .workout-pause-banner{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .workout-pause-banner span{
+    text-align:left;
+  }
+  .pause-workout-button{
+    flex:1 1 100%;
+  }
+}
+
