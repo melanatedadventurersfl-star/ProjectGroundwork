@@ -128,6 +128,7 @@ function speakWorkoutCue(text,token=''){
   if(token&&cueRuntime.lastVoiceToken===token)return;
   if(token)cueRuntime.lastVoiceToken=token;
   try{
+    window.speechSynthesis.cancel?.();
     const utterance=new window.SpeechSynthesisUtterance(String(text));
     utterance.rate=1.18;
     utterance.pitch=1.02;
@@ -1007,7 +1008,10 @@ function beginPreSetPosition(ei,si,isNewExercise=true){
   w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
   if(isNewExercise)w.exerciseStartedAt=null;
   w.lastProgressionResult=null;
-  playWorkoutCue(isNewExercise?'transition':'tick','preset-start-'+w.id+'-'+ei+'-'+si);
+  fireWorkoutSignal(isNewExercise?'transition':'tick','preset-start-'+w.id+'-'+ei+'-'+si,{
+    voice:isNewExercise?'Next exercise':'',
+    label:isNewExercise?'NEXT':''
+  });
   saveStore();render();
 }
 function preSetSnapshot(w,nowMs=Date.now()){
@@ -1041,7 +1045,7 @@ function finishPreSet(){
   }else{
     w.phase='work';
   }
-  playWorkoutCue('go','go-'+w.id+'-'+pos.ei+'-'+pos.si);
+  fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'});
   saveStore();render();
 }
 function timedSetSnapshot(w,nowMs=Date.now()){
@@ -1064,7 +1068,7 @@ function completeTimedSet(early=false){
   }
   pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
   delete w.timedSetStartedAt;delete w.timedSetDuration;delete w.timedSetEndsAt;
-  playWorkoutCue('complete','complete-'+w.id+'-'+pos.ei+'-'+pos.si);
+  fireWorkoutSignal('complete','complete-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Done',label:'DONE'});
   const next=nextPosition(w,pos.ei,pos.si);
   if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
@@ -1091,7 +1095,7 @@ function completeTimedStagePhase(w){
   }
   w.timedPhaseStartedAt=null;
   w.timedPhaseSkippedSeconds=0;
-  playWorkoutCue('complete','cooldown-complete-'+w.id);
+  fireWorkoutSignal('complete','cooldown-complete-'+w.id,{voice:'Workout complete',label:'DONE'});
   finishWorkout(true);
 }
 
@@ -1156,7 +1160,7 @@ function completeCurrentSet(){
   const reps=(document.querySelector('#set-reps')?.value||'').trim().replace(/[^0-9.]/g,'');
   if(num(reps)<=0){toast(pos.exercise.loadMode==='timed'?'Enter the seconds completed.':'Enter the reps completed.');return;}
   pos.set.weight=weight;pos.set.reps=reps;pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
-  playWorkoutCue('complete','complete-'+pos.workout.id+'-'+pos.ei+'-'+pos.si);
+  fireWorkoutSignal('complete','complete-'+pos.workout.id+'-'+pos.ei+'-'+pos.si,{voice:'Set complete',label:'DONE'});
   const next=nextPosition(pos.workout,pos.ei,pos.si);
 
   if(next && next.ei===pos.ei){
@@ -1367,6 +1371,7 @@ function renderWorkout(){
   const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase);
   const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
   return `<div class="guided-shell">
+    <div id="workout-cue-flash" class="workout-cue-flash" aria-live="polite" aria-atomic="true"></div>
     <div class="session-status workout-status">
       <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
       <div class="clock-pair">
@@ -1583,10 +1588,10 @@ function updateTimers(){
     const stage=document.querySelector('.timed-stage');
     const renderedIndex=Number(stage?.dataset.stageIndex);
     if(Number.isFinite(renderedIndex)&&renderedIndex!==snap.index){
-      playWorkoutCue('transition','stage-'+w.id+'-'+w.phase+'-'+snap.index);
+      fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+snap.index,{voice:'Next',label:'NEXT'});
       render();return;
     }
-    if(snap.remaining>0&&snap.remaining<=3)playWorkoutCue('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.remaining);
+    if(snap.remaining>0&&snap.remaining<=3)fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const stageClock=document.querySelector('#stage-clock');
     const fill=document.querySelector('#stage-progress-fill');
     if(stageClock)stageClock.textContent=formatClock(snap.remaining);
@@ -1600,7 +1605,7 @@ function updateTimers(){
     if(snap.complete){finishPreSet();return;}
     const stage=document.querySelector('.pre-set-stage');
     if(stage?.dataset.presetMode!==snap.mode){render();return;}
-    if(snap.mode==='countdown'&&snap.remaining<=3)playWorkoutCue('tick','preset-tick-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining);
+    if(snap.mode==='countdown'&&snap.remaining<=3)fireWorkoutSignal('tick','preset-tick-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const count=document.querySelector('#preset-count');
     const label=document.querySelector('#preset-label');
     if(count)count.textContent=String(snap.remaining);
@@ -1612,7 +1617,7 @@ function updateTimers(){
     const snap=timedSetSnapshot(w);
     if(!snap)return;
     if(snap.complete){completeTimedSet(false);return;}
-    if(snap.remaining<=3&&snap.remaining>0)playWorkoutCue('warning','timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining);
+    if(snap.remaining<=3&&snap.remaining>0)fireWorkoutSignal('warning','timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const clock=document.querySelector('#timed-set-clock');
     const fill=document.querySelector('#timed-set-progress');
     const note=document.querySelector('#timed-finish-note');
@@ -1626,7 +1631,7 @@ function updateTimers(){
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
   if(clock)clock.textContent=formatClock(remaining);
   if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
-  if(remaining>0&&remaining<=3&&!Number.isFinite(w.restPausedRemaining))playWorkoutCue('warning','rest-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining);
+  if(remaining>0&&remaining<=3&&!Number.isFinite(w.restPausedRemaining))fireWorkoutSignal('warning','rest-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining))advanceAfterRest();
 }
 
@@ -1655,6 +1660,8 @@ function handleClick(event){
   else if(a==='start-set-now')finishPreSet();
   else if(a==='end-timed-set')completeTimedSet(true);
   else if(a==='toggle-sound')toggleCueSetting('sound');
+  else if(a==='toggle-voice')toggleCueSetting('voice');
+  else if(a==='toggle-flash')toggleCueSetting('flash');
   else if(a==='toggle-haptics')toggleCueSetting('haptics');
   else if(a==='add-rest')adjustRest(15);
   else if(a==='pause-rest')toggleRestPause();
