@@ -1390,3 +1390,164 @@ button:focus-visible, input:focus-visible {
   }
 }
 
+/* Guided set countdown and workout cue engine */
+.cue-controls{
+  display:flex;
+  justify-content:flex-end;
+  gap:7px;
+  flex-wrap:wrap;
+  margin:-4px 0 12px;
+}
+.cue-controls button{
+  min-height:34px;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--panel-2);
+  color:var(--muted);
+  font-size:9px;
+  font-weight:800;
+  cursor:pointer;
+}
+.cue-controls button[aria-pressed="true"]{
+  border-color:rgba(216,180,92,.35);
+  color:var(--accent-2);
+  background:rgba(216,180,92,.07);
+}
+.cue-controls button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.cue-controls span{
+  margin-right:4px;
+}
+.pre-set-stage,
+.timed-work-stage{
+  display:grid;
+  grid-template-columns:minmax(220px,.9fr) minmax(0,1.1fr);
+  min-height:430px;
+}
+.pre-set-media,
+.timed-work-media{
+  display:grid;
+  align-items:stretch;
+  border-right:1px solid var(--line);
+  background:#f4f2ec;
+}
+.pre-set-media .exercise-media,
+.timed-work-media .exercise-media{
+  height:100%;
+  min-height:430px;
+  border:0;
+  border-radius:0;
+  cursor:pointer;
+}
+.pre-set-media img,
+.timed-work-media img{
+  width:100%;
+  height:100%;
+  min-height:430px;
+  object-fit:contain;
+  background:#f4f2ec;
+}
+.pre-set-copy,
+.timed-work-copy{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  padding:clamp(24px,6vw,44px);
+  text-align:center;
+}
+.pre-set-number{
+  margin:14px 0 2px;
+  font-size:clamp(76px,20vw,122px);
+  font-weight:900;
+  line-height:.9;
+  letter-spacing:-.08em;
+  font-variant-numeric:tabular-nums;
+}
+.pre-set-copy h3,
+.timed-work-copy h3{
+  margin:10px 0 7px;
+  font-size:clamp(28px,6vw,44px);
+  line-height:1;
+  letter-spacing:-.04em;
+}
+.pre-set-copy>p:not(.eyebrow),
+.timed-work-cue{
+  max-width:500px;
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.55;
+}
+.pre-set-target{
+  display:grid;
+  gap:4px;
+  margin:18px 0;
+  padding:10px 14px;
+  border:1px solid rgba(216,180,92,.3);
+  border-radius:12px;
+  background:rgba(216,180,92,.07);
+}
+.pre-set-target span{
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.pre-set-target strong{
+  font-size:14px;
+}
+.pre-set-stage[data-preset-mode="countdown"] .pre-set-number{
+  color:var(--accent-2);
+}
+.timed-work-clock{
+  margin:26px 0 10px;
+  font-size:clamp(68px,19vw,106px);
+  font-weight:900;
+  line-height:.9;
+  letter-spacing:-.07em;
+  font-variant-numeric:tabular-nums;
+}
+.timed-work-copy .stage-progress{
+  width:min(430px,100%);
+  margin-bottom:14px;
+}
+.timed-finish-note{
+  min-height:22px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+}
+.timed-work-copy .button,
+.pre-set-copy .button{
+  margin-top:18px;
+}
+@media(max-width:700px){
+  .cue-controls{
+    justify-content:flex-start;
+  }
+  .pre-set-stage,
+  .timed-work-stage{
+    grid-template-columns:1fr;
+  }
+  .pre-set-media,
+  .timed-work-media{
+    border-right:0;
+    border-bottom:1px solid var(--line);
+  }
+  .pre-set-media .exercise-media,
+  .timed-work-media .exercise-media,
+  .pre-set-media img,
+  .timed-work-media img{
+    min-height:0;
+    aspect-ratio:16/10;
+  }
+  .pre-set-copy,
+  .timed-work-copy{
+    padding:24px 18px 28px;
+  }
+}
+
