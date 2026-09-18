@@ -1130,8 +1130,8 @@ function renderWorkout(){
   if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
   const w=pos.workout;
   const done=completedSets(w.exercises),total=totalSets(w.exercises),pct=Math.round(done/Math.max(1,total)*100);
-  const inExercise=['work','rest','calibrate'].includes(w.phase);
-  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':'CURRENT EXERCISE';
+  const inExercise=['work','rest','calibrate','feedback'].includes(w.phase);
+  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':'CURRENT EXERCISE';
   return `<div class="guided-shell">
     <div class="session-status workout-status">
       <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
@@ -1142,7 +1142,7 @@ function renderWorkout(){
     </div>
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     <div class="step-strip">${w.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei&&inExercise?'current':''}"></span>`).join('')}</div>
-    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):renderWorkSet(pos)}</section>
+    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
     <div class="session-controls"><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
   </div>`;
 }
@@ -1210,9 +1210,35 @@ function renderCalibration(pos){
     </div><small class="calibration-note">This is a training estimate, not a strength test. Stop if a movement causes pain or feels unsafe.</small></div>`;
 }
 
+function renderExerciseFeedback(pos){
+  const stats=completedExerciseStats(pos.exercise);
+  const setSummary=stats.sets.map((set,index)=>{
+    const weight=num(set.weight);
+    const value=pos.exercise.loadMode==='timed'?esc(set.reps)+' sec':weight?esc(weight)+' lb × '+esc(set.reps):esc(set.reps)+' reps';
+    return '<span><strong>Set '+String(index+1)+'</strong>'+value+'</span>';
+  }).join('');
+  return '<div class="exercise-feedback-stage">'+
+    '<p class="eyebrow">EXERCISE COMPLETE</p>'+
+    '<h3>How did '+esc(pos.exercise.name)+' feel?</h3>'+
+    '<p class="feedback-copy">One tap helps set your next-session target. Hard is okay if you completed the work with solid form.</p>'+
+    '<div class="feedback-set-summary">'+setSummary+'</div>'+
+    '<div class="feedback-target">Target: <strong>'+esc(pos.exercise.reps)+'</strong> · Rest: <strong>'+esc(pos.exercise.rest)+'s</strong></div>'+
+    '<div class="exercise-feedback-grid">'+
+      '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase the challenge</span></button>'+
+      '<button data-feedback="good"><strong>Good</strong><span>Right where it should be</span></button>'+
+      '<button data-feedback="hard"><strong>Hard, completed</strong><span>Keep building here</span></button>'+
+      '<button data-feedback="too-hard"><strong>Too hard</strong><span>Back off next time</span></button>'+
+      '<button data-feedback="form-off"><strong>Form felt off</strong><span>Hold progression</span></button>'+
+    '</div>'+
+    '<small class="feedback-note">If a movement causes pain rather than normal training effort, stop that movement and choose a comfortable alternative.</small>'+
+  '</div>';
+}
+
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div><div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  const result=pos.workout.lastProgressionResult;
+  const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
+  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
 }
 
 function renderHistory(){
@@ -1286,7 +1312,7 @@ function updateTimers(){
   const elapsed=document.querySelector('#elapsed-clock');
   const exerciseClock=document.querySelector('#exercise-clock');
   if(elapsed) elapsed.textContent=formatClock(workoutElapsedSeconds(w));
-  if(exerciseClock&&['work','rest','calibrate'].includes(w.phase)) exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
+  if(exerciseClock&&['work','rest','calibrate','feedback'].includes(w.phase)) exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
 
   if(w.phase!=='rest')return;
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
@@ -1307,6 +1333,7 @@ function handleClick(event){
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
+  const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
   if(a==='go-home'||a==='home')setTab('home');
