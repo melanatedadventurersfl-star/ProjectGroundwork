@@ -1776,7 +1776,7 @@ function renderHome(){
             <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
             <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
-            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small>${planPrescriptionHtml(ex)}</div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
+            <div class="routine-plan">${day.exercises.map((ex,exIndex)=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small><small class="plan-equipment">Equipment: ${esc(equipmentRequirement(exerciseSource(ex)))}</small>${planPrescriptionHtml(ex)}<div class="plan-swap-actions"><button class="text-button" type="button" data-action="swap-plan" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Swap exercise</button>${ex.swapUndo?`<button class="text-button muted" type="button" data-action="undo-plan-swap" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Undo swap</button>`:''}</div></div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
             <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
           </div>
@@ -1829,6 +1829,8 @@ function renderPreSet(pos){
       <p class="eyebrow">${setup?'GET IN POSITION':'SET STARTING'}</p>
       <div class="stage-count">SET ${pos.si+1} OF ${pos.exercise.sets.length} · ${esc(pos.exercise.name)}</div>
       <p class="exercise-description pre-set-description">${esc(exerciseDescription(pos.exercise))}</p>
+      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
+      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div>
       <div class="pre-set-number" id="preset-count">${snap.remaining}</div>
       <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
       <p>${setup?'You have a few seconds to get into position before the start countdown.':'The set begins automatically after 3 · 2 · 1.'}</p>
@@ -1847,6 +1849,8 @@ function renderTimedWorkSet(pos){
       <p class="eyebrow">TIMED SET · SET ${pos.si+1} OF ${pos.exercise.sets.length}</p>
       <h3>${esc(pos.exercise.name)}</h3>
       <p class="exercise-description timed-work-description">${esc(exerciseDescription(pos.exercise))}</p>
+      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
+      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button></div>
       <p class="timed-work-cue">${esc(exerciseGuidance(pos.exercise).cue)}</p>
       <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
       <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
@@ -1897,7 +1901,7 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
+    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
@@ -1944,11 +1948,31 @@ function renderExerciseFeedback(pos){
   '</div>';
 }
 
+function renderNextExerciseCard(nextEx,next){
+  if(!nextEx||!next)return '';
+  const src=exerciseImageUrl(nextEx,0,false),fallback=exerciseImageUrl(nextEx,0,true);
+  const guide=exerciseGuidance(nextEx);
+  return '<section class="next-exercise-card">'+
+    '<div class="next-exercise-media">'+(src?'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" alt="'+esc(nextEx.name)+' demonstration">':'')+'</div>'+
+    '<div class="next-exercise-copy"><p class="eyebrow">UP NEXT · EXERCISE '+String(next.ei+1)+'/'+String(store.activeWorkout?.exercises?.length||'')+'</p>'+
+    '<h3>'+esc(nextEx.name)+'</h3><p>'+esc(exerciseDescription(nextEx))+'</p>'+
+    '<div class="next-exercise-facts"><div><span>EQUIPMENT</span><strong>'+esc(equipmentRequirement(exerciseSource(nextEx)))+'</strong></div>'+
+    '<div><span>TARGET</span><strong>'+String(nextEx.sets?.length||0)+' sets · '+esc(nextEx.reps)+'</strong></div>'+
+    '<div><span>REST</span><strong>'+esc(nextEx.rest)+' sec</strong></div>'+
+    '<div><span>WORKS</span><strong>'+esc((nextEx.muscles||[]).join(' · '))+'</strong></div></div>'+
+    '<div class="next-setup-cue"><span>SETUP CUE</span><strong>'+esc(guide.setup)+'</strong></div>'+
+    '<div class="next-exercise-actions"><button class="button secondary" type="button" data-exercise-detail="'+esc(nextEx.id)+'">VIEW FORM</button>'+
+    '<button class="button secondary" type="button" data-action="swap-active" data-swap-index="'+next.ei+'">SWAP EXERCISE</button>'+
+    (nextEx.swapUndo&&!nextEx.sets.some(set=>set.completed)?'<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="'+next.ei+'">Undo swap</button>':'')+
+    '</div></div></section>';
+}
+
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
+  const changingExercise=Boolean(next&&next.ei!==pos.ei);
   const result=pos.workout.lastProgressionResult;
   const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>When rest ends, the get-ready countdown starts automatically.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  return `<div class="rest-stage"><div class="rest-label">${changingExercise?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':changingExercise?'GET READY FOR NEXT EXERCISE':'UNTIL NEXT SET'}</div></div></div><h3>${changingExercise?'Move to your next station':'Recover, then go again'}</h3><p>${changingExercise?'Use this time to grab the equipment and review the next movement. The 3 · 2 · 1 start countdown follows automatically.':'When rest ends, the get-ready countdown starts automatically.'}</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${changingExercise?renderNextExerciseCard(nextEx,next):(nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>Set ${next.si+1} · ${esc(nextEx.name)}</strong></div><em>${esc(nextEx.reps)}</em></div>`:'')}</div>`;
 }
 
 function renderHistory(){
@@ -2003,7 +2027,8 @@ function render(){
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId));
+  if(swapContext) app.insertAdjacentHTML('beforeend',renderSwapModal());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext));
   syncNav();syncLiveBadge();
 }
 
