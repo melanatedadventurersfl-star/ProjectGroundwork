@@ -212,6 +212,9 @@ function toggleCueSetting(key){
   store.cueSettings={...workoutCueSettings(),[key]:!workoutCueSettings()[key]};
   saveStore();
   if((key==='sound'||key==='voice')&&store.cueSettings[key])unlockWorkoutCues();
+  if(key==='voice'&&!store.cueSettings.voice&&'speechSynthesis' in window){
+    try{window.speechSynthesis.cancel?.();}catch{}
+  }
   render();
 }
 function renderCueControls(){
@@ -223,6 +226,7 @@ function renderCueControls(){
     '<button type="button" data-action="toggle-voice" aria-pressed="'+String(settings.voice)+'" '+(!voiceAvailable?'disabled title="Voice cues are not supported by this browser"':'')+'><span>◖</span> Voice '+(voiceAvailable?(settings.voice?'ON':'OFF'):'N/A')+'</button>'+
     '<button type="button" data-action="toggle-flash" aria-pressed="'+String(settings.flash)+'"><span>✦</span> Flash '+(settings.flash?'ON':'OFF')+'</button>'+
     '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'disabled title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
+    '<button type="button" class="cue-test" data-action="test-cues"><span>▶</span> TEST CUES</button>'+
   '</div>';
 }
 const MOVEMENT_GUIDANCE = {
@@ -928,7 +932,6 @@ function startWorkout(dayId){
   const day=store.plan?.days?.find(d=>d.id===dayId);
   if(!day) return;
   store.activeWorkout=createWorkout(day);
-  if(store.activeWorkout.phase==='pre-set')playWorkoutCue('transition','preset-start-'+store.activeWorkout.id+'-0-0');
   saveStore(); currentTab='workout'; render();
 }
 
@@ -1371,7 +1374,7 @@ function renderWorkout(){
   const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase);
   const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
   return `<div class="guided-shell">
-    <div id="workout-cue-flash" class="workout-cue-flash" aria-live="polite" aria-atomic="true"></div>
+    <div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>
     <div class="session-status workout-status">
       <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
       <div class="clock-pair">
@@ -1663,6 +1666,10 @@ function handleClick(event){
   else if(a==='toggle-voice')toggleCueSetting('voice');
   else if(a==='toggle-flash')toggleCueSetting('flash');
   else if(a==='toggle-haptics')toggleCueSetting('haptics');
+  else if(a==='test-cues'){
+    unlockWorkoutCues();
+    fireWorkoutSignal('go','cue-test-'+Date.now(),{voice:'Cue test. Ready.',label:'READY'});
+  }
   else if(a==='add-rest')adjustRest(15);
   else if(a==='pause-rest')toggleRestPause();
   else if(a==='skip-rest')skipRest();
