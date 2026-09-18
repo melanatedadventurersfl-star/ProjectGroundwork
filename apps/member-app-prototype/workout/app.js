@@ -725,10 +725,11 @@ function exerciseScore(exercise,profile,used){
 }
 
 function pickExercise(pattern,profile,used){
-  let candidates=catalog.filter(e=>e.movement===pattern && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
-  if (!candidates.length && pattern === 'quad-accessory') candidates=catalog.filter(e=>e.movement==='squat' && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
-  if (!candidates.length && pattern === 'hamstring-accessory') candidates=catalog.filter(e=>e.movement==='hinge' && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
-  if (!candidates.length && pattern === 'shoulder-accessory') candidates=catalog.filter(e=>e.movement==='vertical-push' && equipmentAllows(e,profile.equipment) && !avoided(e,profile));
+  const allowed=e=>equipmentAllows(e,profile.equipment)&&!avoided(e,profile)&&!used.has(e.id);
+  let candidates=catalog.filter(e=>e.movement===pattern&&allowed(e));
+  if (!candidates.length && pattern === 'quad-accessory') candidates=catalog.filter(e=>e.movement==='squat'&&allowed(e));
+  if (!candidates.length && pattern === 'hamstring-accessory') candidates=catalog.filter(e=>e.movement==='hinge'&&allowed(e));
+  if (!candidates.length && pattern === 'shoulder-accessory') candidates=catalog.filter(e=>e.movement==='vertical-push'&&allowed(e));
   candidates.sort((a,b)=>exerciseScore(b,profile,used)-exerciseScore(a,profile,used));
   return candidates[0] || null;
 }
@@ -762,40 +763,74 @@ function estimateExerciseSeconds(item){
 
 function buildDay(blueprint,profile,index){
   const used=new Set();
-  const maxByTime=profile.minutes<=20?3:profile.minutes<=30?4:profile.minutes<=45?5:profile.minutes<=60?6:7;
   const selected=[];
-  for (const pattern of blueprint.patterns) {
-    if (selected.length>=maxByTime) break;
-    const exercise=pickExercise(pattern,profile,used);
-    if (!exercise) continue;
-    used.add(exercise.id);
-    const settings=goalSettings(profile.goal,exercise.movement,profile.experience);
-    selected.push({...exercise,settings,start:estimateStartingLoad(exercise,profile)});
-  }
+  const budget=Math.max(20,num(profile.minutes)||45)*60;
+  const targetFloor=budget*.88;
+  const targetCeiling=budget*1.03;
+  const maxExercises=profile.minutes<=20?3:profile.minutes<=30?5:profile.minutes<=45?8:profile.minutes<=60?10:12;
 
   const prepForSelected=()=>{
     const warmup=buildWarmup(selected);
     const cooldown=buildCooldown(selected);
-    return {warmup,cooldown,seconds:[...warmup,...cooldown].reduce((sum,item)=>sum+item.seconds,0)};
+    return {warmup,cooldown,seconds:[...warmup,...cooldown].reduce((sum,item)=>sum+(Number(item.seconds)||0),0)};
   };
-  const budget=profile.minutes*60;
   const total=()=>prepForSelected().seconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0);
+  const addMovement=pattern=>{
+    const exercise=pickExercise(pattern,profile,used);
+    if(!exercise)return false;
+    used.add(exercise.id);
+    const settings=goalSettings(profile.goal,exercise.movement,profile.experience);
+    selected.push({...exercise,settings:{...settings},start:estimateStartingLoad(exercise,profile)});
+    return true;
+  };
 
-  for (let i=selected.length-1;i>=0 && total()>budget;i--) {
-    if (selected[i].settings.sets>2) selected[i].settings.sets=2;
+  // Cycle the workout's intended movement patterns so longer sessions gain
+  // additional non-duplicate exercises instead of simply stopping early.
+  const patternQueue=[];
+  for(let round=0;round<3;round++) for(const pattern of blueprint.patterns) patternQueue.push(pattern);
+  for(const pattern of patternQueue){
+    if(selected.length>=maxExercises)break;
+    addMovement(pattern);
+    if(selected.length>=2&&total()>=targetFloor)break;
   }
-  while (selected.length>2 && total()>budget) selected.pop();
+
+  // If equipment limits prevent more exercise variety, use a little more
+  // volume before accepting a session that is substantially shorter than requested.
+  let changed=true;
+  while(total()<targetFloor&&changed){
+    changed=false;
+    for(const exercise of selected){
+      if(total()>=targetFloor)break;
+      const current=exercise.settings.sets||2;
+      if(current>=4)continue;
+      exercise.settings.sets=current+1;
+      if(total()>targetCeiling){
+        exercise.settings.sets=current;
+        continue;
+      }
+      changed=true;
+    }
+  }
+
+  // Hard cap: trim set volume first, then the last exercise if the estimate
+  // exceeds the user's selected session length.
+  for(let i=selected.length-1;i>=0&&total()>targetCeiling;i--){
+    while(selected[i]?.settings?.sets>2&&total()>targetCeiling)selected[i].settings.sets-=1;
+  }
+  while(selected.length>2&&total()>targetCeiling)selected.pop();
 
   const prep=prepForSelected();
+  const estimatedSeconds=prep.seconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0);
   return {
     id:`day-${index+1}`,
     name:blueprint.name,
     focus:blueprint.focus,
+    targetMinutes:profile.minutes,
     warmup:prep.warmup,
     cooldown:prep.cooldown,
-    warmupMinutes:Math.ceil(prep.warmup.reduce((sum,item)=>sum+item.seconds,0)/60),
-    cooldownMinutes:Math.ceil(prep.cooldown.reduce((sum,item)=>sum+item.seconds,0)/60),
-    estimatedMinutes:Math.max(10,Math.ceil((prep.seconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0))/60)),
+    warmupMinutes:Math.ceil(prep.warmup.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60),
+    cooldownMinutes:Math.ceil(prep.cooldown.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60),
+    estimatedMinutes:Math.max(10,Math.ceil(estimatedSeconds/60)),
     exercises:selected.map(e=>({
       id:e.id,name:e.name,movement:e.movement,muscles:e.muscles,loadMode:e.loadMode,
       sets:e.settings.sets,reps:e.settings.reps,startReps:recommendedRepCount(e.settings.reps),rest:Math.max(30,Math.min(60,e.settings.rest)),
