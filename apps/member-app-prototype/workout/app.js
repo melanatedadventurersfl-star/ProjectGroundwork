@@ -14,6 +14,8 @@ const defaultStore = {
   history: [],
   activeWorkout: null,
   calibration: {},
+  progression: {},
+  progressionLog: [],
   lastSummaryId: null
 };
 
@@ -294,6 +296,137 @@ function recommendedRepCount(reps){
   if(String(reps).toLowerCase().includes('sec')) return String(nums[0]);
   if(nums.length===1) return String(nums[0]);
   return String(Math.max(nums[0],Math.round((nums[0]+nums[1])/2)));
+}
+function repBounds(reps){
+  const nums=String(reps||'').match(/\d+/g)?.map(Number)||[];
+  if(!nums.length)return {low:0,high:0};
+  if(nums.length===1)return {low:nums[0],high:nums[0]};
+  return {low:Math.min(nums[0],nums[1]),high:Math.max(nums[0],nums[1])};
+}
+function isWeightedMode(mode){
+  return ['barbell','dumbbell','dumbbell-pair','machine'].includes(mode);
+}
+function completedExerciseStats(ex){
+  const sets=(ex?.sets||[]).filter(set=>set.completed);
+  const reps=sets.map(set=>num(set.reps));
+  const weights=sets.map(set=>num(set.weight));
+  const bounds=repBounds(ex?.reps);
+  const lastWeight=weights.length?weights[weights.length-1]:num(ex?.suggestedWeight);
+  const firstReps=reps[0]||0,lastReps=reps[reps.length-1]||0;
+  return {
+    sets:sets,reps:reps,weights:weights,low:bounds.low,high:bounds.high,lastWeight:lastWeight,firstReps:firstReps,lastReps:lastReps,
+    allAtTop:Boolean(sets.length&&bounds.high&&reps.every(value=>value>=bounds.high)),
+    allAtLeastLow:Boolean(sets.length&&bounds.low&&reps.every(value=>value>=bounds.low)),
+    missedLow:bounds.low?reps.filter(value=>value<bounds.low).length:0,
+    repDrop:Math.max(0,firstReps-lastReps)
+  };
+}
+function minimumLoad(ex){
+  if(ex?.loadMode==='barbell')return 45;
+  if(ex?.loadMode?.includes('dumbbell'))return 5;
+  return Math.max(0,ex?.increment||5);
+}
+function adaptivePrescription(ex){
+  const saved=store.progression?.[ex.id];
+  if(!saved)return null;
+  return {
+    weight:Number.isFinite(saved.weight)?saved.weight:num(saved.weight),
+    reps:saved.reps||'',
+    rest:saved.rest||ex.rest,
+    label:saved.label||'',
+    reason:saved.reason||'',
+    feedback:saved.feedback||''
+  };
+}
+
+function planPrescriptionHtml(ex){
+  const adaptive=adaptivePrescription(ex);
+  if(adaptive){
+    return '<small class="adaptive-plan-note"><strong>NEXT: '+esc(adaptive.label)+'</strong><em>'+esc(adaptive.reason)+'</em></small>';
+  }
+  const calibrated=store.calibration[ex.id]?.weight;
+  const start=calibrated?((ex.loadMode==='dumbbell-pair'?calibrated+' lb each':calibrated+' lb')+' · calibrated'):ex.startLabel;
+  return '<small>Start: '+esc(start)+' × '+esc(ex.startReps||recommendedRepCount(ex.reps))+'</small>';
+}
+
+function currentPrescriptionLabel(ex){
+  if(ex.adaptiveLabel)return ex.adaptiveLabel;
+  return suggestedLabel(ex)+' × '+String(ex.suggestedReps||recommendedRepCount(ex.reps))+' reps';
+}
+function progressionLabel(ex,weight,reps,labelOverride){
+  if(labelOverride)return labelOverride;
+  if(ex.loadMode==='timed')return String(reps||recommendedRepCount(ex.reps))+' sec';
+  if(ex.loadMode==='bodyweight')return 'Bodyweight × '+String(reps||recommendedRepCount(ex.reps));
+  if(ex.loadMode==='band')return 'Band resistance';
+  if(ex.loadMode==='assisted')return weight?String(weight)+' lb assistance':'Choose assistance';
+  if(ex.loadMode==='dumbbell-pair')return String(weight||0)+' lb each × '+String(reps||recommendedRepCount(ex.reps));
+  return weight?String(weight)+' lb × '+String(reps||recommendedRepCount(ex.reps)):String(reps||recommendedRepCount(ex.reps))+' reps';
+}
+function feedbackLabel(value){
+  return ({'too-easy':'Too easy',good:'Good',hard:'Hard, completed','too-hard':'Too hard','form-off':'Form felt off'})[value]||value||'Feedback';
+}
+function computeProgression(ex,feedback){
+  const stats=completedExerciseStats(ex);
+  const previous=store.progression?.[ex.id]||{};
+  const increment=Math.max(1,num(ex.increment)||5);
+  const baseWeight=stats.lastWeight||num(ex.suggestedWeight);
+  let nextWeight=baseWeight;
+  let nextReps=String(ex.suggestedReps||recommendedRepCount(ex.reps)||stats.high||stats.lastReps||'');
+  let nextRest=Math.max(30,Math.min(60,num(ex.rest)||45));
+  let labelOverride='';
+  let reason='';
+  const hardStreak=feedback==='hard'?(num(previous.hardStreak)+1):0;
+
+  if(stats.repDrop>=3&&nextRest<60)nextRest=Math.min(60,nextRest+15);
+
+  if(ex.loadMode==='timed'){
+    const seconds=Math.max(5,stats.lastReps||num(nextReps)||30);
+    if(feedback==='too-easy'){nextReps=String(seconds+10);reason='You rated the timed set too easy, so the next target adds 10 seconds.';}
+    else if(feedback==='good'&&stats.allAtTop){nextReps=String(seconds+5);reason='You owned the target, so the next timed effort adds 5 seconds.';}
+    else if(feedback==='too-hard'){nextReps=String(Math.max(5,seconds-10));reason='You rated it too hard, so the next timed target is shorter.';}
+    else{nextReps=String(seconds);reason=feedback==='form-off'?'Keeping the same time while you clean up technique.':'Keeping the same time and building consistency.';}
+  }else if(ex.loadMode==='bodyweight'){
+    const current=Math.max(1,stats.lastReps||num(nextReps)||stats.high||8);
+    if(feedback==='too-easy'||(feedback==='good'&&stats.allAtTop)){
+      nextReps=String(current+2);
+      reason=feedback==='too-easy'?'Bodyweight work felt too easy, so the next target adds 2 reps.':'You reached the top of the rep range across the exercise, so the next target adds 2 reps.';
+    }else if(feedback==='too-hard'){
+      nextReps=String(Math.max(1,current-2));
+      reason='You rated it too hard, so the next bodyweight target drops by 2 reps.';
+    }else{
+      nextReps=String(current);
+      reason=feedback==='form-off'?'Keeping the same rep target while you clean up technique.':'Keeping the same bodyweight target until it is clearly ready to progress.';
+    }
+  }else if(ex.loadMode==='band'){
+    if(feedback==='too-easy'||(feedback==='good'&&stats.allAtTop)){labelOverride='Use the next stronger band';reason='The current band is ready to progress.';}
+    else if(feedback==='too-hard'){labelOverride='Use a lighter band';reason='You rated the current resistance too hard.';}
+    else{labelOverride='Use the same band';reason=feedback==='form-off'?'Keep the band the same while you clean up technique.':'Keep the same resistance and build consistency.';}
+  }else if(ex.loadMode==='assisted'){
+    if(baseWeight>0){
+      if(feedback==='too-easy'||(feedback==='good'&&stats.allAtTop)){nextWeight=Math.max(0,roundTo(Math.max(0,baseWeight-increment),increment));reason='You are ready for less assistance next time.';}
+      else if(feedback==='too-hard'){nextWeight=roundTo(baseWeight+increment,increment);reason='You rated it too hard, so the next session uses more assistance.';}
+      else{reason=feedback==='form-off'?'Keeping assistance steady while you clean up technique.':'Keeping the same assistance and building reps.';}
+    }else{
+      labelOverride=feedback==='too-easy'?'Use slightly less assistance':feedback==='too-hard'?'Use slightly more assistance':'Use the same assistance';
+      reason='Assistance changes are directional until you enter a numeric assistance amount.';
+    }
+  }else{
+    const minLoad=minimumLoad(ex);
+    if(feedback==='too-easy'){nextWeight=roundTo(baseWeight+increment,increment);nextReps=String(stats.low||num(nextReps)||1);reason='You rated the exercise too easy, so the next session moves up one load increment and resets to the bottom of the rep range.';}
+    else if(feedback==='good'&&stats.allAtTop){nextWeight=roundTo(baseWeight+increment,increment);nextReps=String(stats.low||num(nextReps)||1);reason='You reached the top of the rep range on every completed set, so the next session moves up one increment and resets to the bottom of the range.';}
+    else if(feedback==='too-hard'){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));nextReps=String(stats.low||num(nextReps)||1);reason='You rated the exercise too hard, so the next session drops one load increment and targets the bottom of the rep range.';}
+    else if(feedback==='hard'&&hardStreak>=2&&stats.missedLow>=2){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));nextReps=String(stats.low||num(nextReps)||1);reason='This has been hard across repeated sessions and reps fell below target, so the next session backs off one increment and resets to the bottom of the range.';}
+    else if(feedback==='form-off'){reason='Keeping the same load while you clean up technique before progressing.';}
+    else if(feedback==='hard'){reason='Hard but completed is not a failure. Keep the same load and try to make the reps cleaner next time.';}
+    else{reason=stats.allAtLeastLow?'You completed the target range. Keep this load until every set reaches the top of the range.':'Keep the same load and build the reps into the target range.';}
+  }
+
+  if(stats.repDrop>=3&&nextRest>num(ex.rest||45))reason+=' Rest moves to '+String(nextRest)+'s because reps dropped across sets.';
+  return {
+    exerciseId:ex.id,name:ex.name,feedback:feedback,weight:nextWeight,reps:nextReps,rest:nextRest,
+    label:progressionLabel(ex,nextWeight,nextReps,labelOverride),reason:reason,hardStreak:hardStreak,
+    updatedAt:new Date().toISOString(),session:{reps:stats.reps,weights:stats.weights}
+  };
 }
 
 function buildWarmup(exercises){
@@ -632,12 +765,16 @@ function createWorkout(day){
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
-      const suggestedWeight=calibrated?.weight ?? ex.startWeight ?? 0;
-      const suggestedReps=ex.startReps||recommendedRepCount(ex.reps);
-      const weightValue=['bodyweight','timed','band','assisted'].includes(ex.loadMode)?'':String(suggestedWeight||'');
+      const adaptive=adaptivePrescription(ex);
+      const suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
+      const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
+      const suggestedRest=Math.max(30,Math.min(60,adaptive?.rest || ex.rest || 45));
+      const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
+      const weightValue=noWeight?'':(ex.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
       return {
-        ...ex,suggestedWeight,suggestedReps,
-        calibrationRequired:ex.calibrationRequired && !calibrated,
+        ...ex,suggestedWeight,suggestedReps,rest:suggestedRest,
+        adaptiveLabel:adaptive?.label||'',adaptiveReason:adaptive?.reason||'',
+        calibrationRequired:ex.calibrationRequired && !calibrated && !adaptive,
         sets:Array.from({length:ex.sets},()=>({id:uid('set'),weight:weightValue,reps:String(suggestedReps||''),completed:false,completedAt:null}))
       };
     })
@@ -774,6 +911,32 @@ function beginRest(next,seconds){
   w.restPausedRemaining=null;w.pendingPosition=next;saveStore();render();
 }
 
+function startExerciseFeedback(next){
+  const w=store.activeWorkout;
+  if(!w)return;
+  w.phase='feedback';
+  w.pendingPosition=next;
+  saveStore();
+  render();
+}
+
+function applyExerciseFeedback(feedback){
+  const pos=getActivePosition();
+  if(!pos||pos.workout.phase!=='feedback')return;
+  const result=computeProgression(pos.exercise,feedback);
+  store.progression=store.progression||{};
+  store.progression[pos.exercise.id]=result;
+  store.progressionLog=Array.isArray(store.progressionLog)?store.progressionLog:[];
+  store.progressionLog.unshift({...result,workoutId:pos.workout.id,routineName:pos.workout.routineName,loggedAt:new Date().toISOString()});
+  store.progressionLog=store.progressionLog.slice(0,200);
+  pos.exercise.feedback=feedback;
+  pos.exercise.nextRecommendation=result;
+  pos.workout.lastProgressionResult=result;
+  const next=pos.workout.pendingPosition;
+  saveStore();
+  beginRest(next,pos.exercise.rest||45);
+}
+
 function completeCurrentSet(){
   const pos=getActivePosition(); if(!pos||pos.workout.phase!=='work')return;
   const weight=(document.querySelector('#set-weight')?.value||'').trim().replace(/[^0-9.]/g,'');
@@ -791,6 +954,7 @@ function completeCurrentSet(){
   if(pos.si===0 && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
     pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
   }
+  if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
 
@@ -808,6 +972,7 @@ function applyCalibration(rir){
     nextSet.reps=pos.exercise.sets[0].reps||pos.exercise.suggestedReps||'';
   }
   saveStore();
+  if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
 
@@ -818,7 +983,7 @@ function advanceAfterRest(){
     recordExerciseDuration(w,w.currentExerciseIndex);
     w.exerciseStartedAt=new Date().toISOString();
   }
-  w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
+  w.currentExerciseIndex=next.ei;w.currentSetIndex=next.si;w.phase='work';w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;w.lastProgressionResult=null;
   saveStore();render();
 }
 function adjustRest(delta){
@@ -877,7 +1042,7 @@ function finishWorkout(auto=false){
     const before=old.get(ex.id);
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
-  delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;
+  delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;delete entry.lastProgressionResult;
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;saveStore();currentTab='summary';render();
 }
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
@@ -949,7 +1114,7 @@ function renderHome(){
   const week=weeklyHistory();const weeklyVolume=week.reduce((s,x)=>s+(x.totalVolume||0),0);const next=nextPlanDay();
   return `
     <div class="page-head"><div><p class="eyebrow">YOUR PERSONAL PLAN</p><h2 class="page-title">${esc(planGoalLabel(p.goal))}.</h2><p class="page-copy">${p.days} days/week · ${p.minutes}-minute sessions · ${esc(experienceLabel(p.experience))} · ${esc(equipmentLabel(p.equipment))}. Each workout is calculated from the actual sets, rest and setup time.</p></div><button class="button secondary" data-action="edit-profile">EDIT PROFILE</button></div>
-    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
+    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':store.activeWorkout.phase==='feedback'?'Exercise feedback':store.activeWorkout.phase==='warmup'?'Warm-up':store.activeWorkout.phase==='cooldown'?'Cooldown':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
     <div class="hero">
       <section class="hero-primary"><p class="eyebrow">THIS WEEK</p><div class="hero-metrics"><div class="hero-metric"><span class="hero-number">${week.length}/${p.days}</span><span class="hero-label">workouts</span></div><div class="hero-divider"></div><div class="hero-metric"><span class="hero-number">${formatVolume(weeklyVolume)}</span><span class="hero-label">volume</span></div></div></section>
       <section class="hero-secondary"><div><p class="eyebrow">NEXT SESSION</p><h3>${esc(next?.name||'Plan ready')}</h3><p>${esc(next?.focus||'')} · estimated ${next?.estimatedMinutes||p.minutes} min</p></div><button class="button" data-start="${next?.id||''}" ${store.activeWorkout?'disabled':''}>START GUIDED WORKOUT</button></section>
@@ -964,7 +1129,7 @@ function renderHome(){
             <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
             <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
-            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small>Start: ${esc(store.calibration[ex.id]?.weight ? ((ex.loadMode==='dumbbell-pair'?store.calibration[ex.id].weight+' lb each':store.calibration[ex.id].weight+' lb')+' · calibrated') : ex.startLabel)} × ${esc(ex.startReps||recommendedRepCount(ex.reps))}</small></div><span>${ex.sets} × ${esc(ex.reps)}<small>${ex.rest}s rest</small></span></div>`).join('')}</div>
+            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong>${planPrescriptionHtml(ex)}</div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
             <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
           </div>
@@ -987,8 +1152,8 @@ function renderWorkout(){
   if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
   const w=pos.workout;
   const done=completedSets(w.exercises),total=totalSets(w.exercises),pct=Math.round(done/Math.max(1,total)*100);
-  const inExercise=['work','rest','calibrate'].includes(w.phase);
-  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':'CURRENT EXERCISE';
+  const inExercise=['work','rest','calibrate','feedback'].includes(w.phase);
+  const stageLabel=w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':'CURRENT EXERCISE';
   return `<div class="guided-shell">
     <div class="session-status workout-status">
       <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
@@ -999,7 +1164,7 @@ function renderWorkout(){
     </div>
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     <div class="step-strip">${w.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei&&inExercise?'current':''}"></span>`).join('')}</div>
-    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):renderWorkSet(pos)}</section>
+    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
     <div class="session-controls"><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
   </div>`;
 }
@@ -1044,7 +1209,7 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><div class="initial-prescription"><span>STARTING PRESCRIPTION</span><strong>${esc(suggestedLabel(pos.exercise))} × ${esc(pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))} reps</strong></div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
+    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
@@ -1067,13 +1232,39 @@ function renderCalibration(pos){
     </div><small class="calibration-note">This is a training estimate, not a strength test. Stop if a movement causes pain or feels unsafe.</small></div>`;
 }
 
+function renderExerciseFeedback(pos){
+  const stats=completedExerciseStats(pos.exercise);
+  const setSummary=stats.sets.map((set,index)=>{
+    const weight=num(set.weight);
+    const value=pos.exercise.loadMode==='timed'?esc(set.reps)+' sec':weight?esc(weight)+' lb × '+esc(set.reps):esc(set.reps)+' reps';
+    return '<span><strong>Set '+String(index+1)+'</strong>'+value+'</span>';
+  }).join('');
+  return '<div class="exercise-feedback-stage">'+
+    '<p class="eyebrow">EXERCISE COMPLETE</p>'+
+    '<h3>How did '+esc(pos.exercise.name)+' feel?</h3>'+
+    '<p class="feedback-copy">One tap helps set your next-session target. Hard is okay if you completed the work with solid form.</p>'+
+    '<div class="feedback-set-summary">'+setSummary+'</div>'+
+    '<div class="feedback-target">Target: <strong>'+esc(pos.exercise.reps)+'</strong> · Rest: <strong>'+esc(pos.exercise.rest)+'s</strong></div>'+
+    '<div class="exercise-feedback-grid">'+
+      '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase the challenge</span></button>'+
+      '<button data-feedback="good"><strong>Good</strong><span>Right where it should be</span></button>'+
+      '<button data-feedback="hard"><strong>Hard, completed</strong><span>Keep building here</span></button>'+
+      '<button data-feedback="too-hard"><strong>Too hard</strong><span>Back off next time</span></button>'+
+      '<button data-feedback="form-off"><strong>Form felt off</strong><span>Hold progression</span></button>'+
+    '</div>'+
+    '<small class="feedback-note">If a movement causes pain rather than normal training effort, stop that movement and choose a comfortable alternative.</small>'+
+  '</div>';
+}
+
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div><div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  const result=pos.workout.lastProgressionResult;
+  const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
+  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
 }
 
 function renderHistory(){
-  return `<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts, duration, volume and PRs.</p></div></div><div class="history-list">${store.history.length?store.history.map(x=>`<article class="history-card"><div class="history-top"><div><h3>${esc(x.routineName)}</h3><div class="history-date">${formatDate(x.completedAt)}</div></div><div class="history-volume">${formatVolume(x.totalVolume||0)}</div></div><div class="history-stats"><span>${x.completedSets} sets</span><span>•</span><span>${x.durationMinutes} min</span>${x.newPRs?.length?`<span>•</span><span>${x.newPRs.length} PR${x.newPRs.length===1?'':'s'}</span>`:''}</div></article>`).join(''):renderEmpty('No workout history','Complete your first generated workout and it will appear here.')}</div>`;
+  return `<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts, duration, volume, PRs, and adaptive decisions.</p></div></div><div class="history-list">${store.history.length?store.history.map(x=>{const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;return `<article class="history-card"><div class="history-top"><div><h3>${esc(x.routineName)}</h3><div class="history-date">${formatDate(x.completedAt)}</div></div><div class="history-volume">${formatVolume(x.totalVolume||0)}</div></div><div class="history-stats"><span>${x.completedSets} sets</span><span>•</span><span>${x.durationMinutes} min</span>${learned?`<span>•</span><span>${learned} learned target${learned===1?'':'s'}</span>`:''}${x.newPRs?.length?`<span>•</span><span>${x.newPRs.length} PR${x.newPRs.length===1?'':'s'}</span>`:''}</div></article>`;}).join(''):renderEmpty('No workout history','Complete your first generated workout and it will appear here.')}</div>`;
 }
 function personalRecords(){
   const map=new Map();
@@ -1081,12 +1272,24 @@ function personalRecords(){
   return [...map.values()].sort((a,b)=>b.weight-a.weight);
 }
 function renderProgress(){
-  const week=weeklyHistory(),allVolume=store.history.reduce((s,x)=>s+(x.totalVolume||0),0),prs=personalRecords().slice(0,12),calibrated=Object.keys(store.calibration).length;
-  return `<div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">The app learns from completed workouts and calibration sets.</p></div></div><div class="progress-grid"><section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/${store.profile?.days||0}</div><div class="stat-label">workouts completed</div></section><section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section><section class="panel"><h3>Calibrated movements</h3><div class="big-stat">${calibrated}</div><div class="stat-label">starting loads learned</div></section><section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section></div>`;
+  const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),prs=personalRecords().slice(0,12),calibrated=Object.keys(store.calibration).length;
+  const learnedAll=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
+  const learned=learnedAll.slice(0,10);
+  const decisions=(Array.isArray(store.progressionLog)?store.progressionLog:[]).slice(0,12);
+  return `<div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">The app learns from completed sets, exercise feedback, and calibration.</p></div></div>
+    <div class="progress-grid">
+      <section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/${store.profile?.days||0}</div><div class="stat-label">workouts completed</div></section>
+      <section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section>
+      <section class="panel"><h3>Learned movements</h3><div class="big-stat">${learnedAll.length}</div><div class="stat-label">${calibrated} initially calibrated</div></section>
+      <section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section>
+    </div>
+    ${learned.length?`<section class="panel learned-panel"><p class="eyebrow">NEXT-SESSION TARGETS</p><div class="learned-list">${learned.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}
+    ${decisions.length?`<section class="panel decision-panel"><p class="eyebrow">RECENT ADAPTIVE DECISIONS</p><div class="decision-list">${decisions.map(item=>`<div class="decision-row"><div><strong>${esc(item.name)}</strong><span>${esc(feedbackLabel(item.feedback))} · ${esc(item.routineName||'Workout')} · ${esc(formatDate(item.loggedAt||item.updatedAt))}</span><small>${esc(item.reason)}</small></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}`;
 }
 function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
-  return `<div class="summary-hero"><div class="summary-check">✓</div><p class="eyebrow">WORKOUT COMPLETE</p><h2>${esc(x.routineName)} done.</h2><p>Your history, calibration data and progress are updated.</p><div class="summary-grid"><div class="summary-card"><strong>${x.durationMinutes}</strong><span>Minutes</span></div><div class="summary-card"><strong>${x.completedSets}</strong><span>Sets</span></div><div class="summary-card"><strong>${formatVolume(x.totalVolume||0)}</strong><span>Volume</span></div></div>${x.newPRs?.length?`<section class="panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">${x.newPRs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div></section>`:''}<div class="summary-actions"><button class="button" data-action="home">BACK TO PLAN</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>`;
+  const recommendations=(x.exercises||[]).filter(ex=>ex.nextRecommendation).map(ex=>ex.nextRecommendation);
+  return `<div class="summary-hero"><div class="summary-check">✓</div><p class="eyebrow">WORKOUT COMPLETE</p><h2>${esc(x.routineName)} done.</h2><p>Your history and next-session targets are updated from what you actually did.</p><div class="summary-grid"><div class="summary-card"><strong>${x.durationMinutes}</strong><span>Minutes</span></div><div class="summary-card"><strong>${x.completedSets}</strong><span>Sets</span></div><div class="summary-card"><strong>${formatVolume(x.totalVolume||0)}</strong><span>Volume</span></div></div>${recommendations.length?`<section class="panel adaptive-summary"><p class="eyebrow">NEXT TIME</p><div class="learned-list">${recommendations.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}${x.newPRs?.length?`<section class="panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">${x.newPRs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div></section>`:''}<div class="summary-actions"><button class="button" data-action="home">BACK TO PLAN</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>`;
 }
 function renderEmpty(title,copy){return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;}
 
@@ -1143,7 +1346,7 @@ function updateTimers(){
   const elapsed=document.querySelector('#elapsed-clock');
   const exerciseClock=document.querySelector('#exercise-clock');
   if(elapsed) elapsed.textContent=formatClock(workoutElapsedSeconds(w));
-  if(exerciseClock&&['work','rest','calibrate'].includes(w.phase)) exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
+  if(exerciseClock&&['work','rest','calibrate','feedback'].includes(w.phase)) exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
 
   if(w.phase!=='rest')return;
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
@@ -1164,6 +1367,7 @@ function handleClick(event){
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
+  const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
   if(a==='go-home'||a==='home')setTab('home');
