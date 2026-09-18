@@ -1551,3 +1551,65 @@ button:focus-visible, input:focus-visible {
   }
 }
 
+/* Voice + visual workout cue layer */
+.workout-cue-flash{
+  position:fixed;
+  inset:0;
+  z-index:9998;
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  opacity:0;
+  font-size:clamp(86px,32vw,220px);
+  font-weight:950;
+  line-height:1;
+  letter-spacing:-.08em;
+  color:#fff;
+  text-shadow:0 4px 30px rgba(0,0,0,.42);
+}
+.workout-cue-flash.show{
+  opacity:1;
+}
+.guided-shell.cue-flash-warning .workout-cue-flash.show{
+  background:rgba(202,126,22,.34);
+  animation:workoutCueWarning .44s ease-out both;
+}
+.guided-shell.cue-flash-go .workout-cue-flash.show{
+  background:rgba(44,133,80,.38);
+  animation:workoutCueGo .70s ease-out both;
+}
+.guided-shell.cue-flash-complete .workout-cue-flash.show{
+  background:rgba(181,143,49,.36);
+  animation:workoutCueComplete .70s ease-out both;
+}
+.guided-shell.cue-flash-transition .workout-cue-flash.show{
+  background:rgba(49,81,75,.28);
+  animation:workoutCueTransition .44s ease-out both;
+}
+@keyframes workoutCueWarning{
+  0%{opacity:.98;transform:scale(.93)}
+  55%{opacity:.92;transform:scale(1.04)}
+  100%{opacity:0;transform:scale(1.08)}
+}
+@keyframes workoutCueGo{
+  0%{opacity:1;transform:scale(.86)}
+  45%{opacity:.98;transform:scale(1.08)}
+  100%{opacity:0;transform:scale(1.15)}
+}
+@keyframes workoutCueComplete{
+  0%{opacity:1;transform:scale(.9)}
+  42%{opacity:.95;transform:scale(1.05)}
+  100%{opacity:0;transform:scale(1.11)}
+}
+@keyframes workoutCueTransition{
+  0%{opacity:.88}
+  100%{opacity:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .guided-shell .workout-cue-flash.show{
+    animation:none !important;
+    transform:none !important;
+    opacity:.72;
+  }
+}
+
