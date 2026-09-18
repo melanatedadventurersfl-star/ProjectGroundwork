@@ -1551,3 +1551,154 @@ button:focus-visible, input:focus-visible {
   }
 }
 
+/* Voice + visual workout cue layer */
+.workout-cue-flash{
+  position:fixed;
+  inset:0;
+  z-index:9998;
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  opacity:0;
+  font-size:clamp(86px,32vw,220px);
+  font-weight:950;
+  line-height:1;
+  letter-spacing:-.08em;
+  color:#fff;
+  text-shadow:0 4px 30px rgba(0,0,0,.42);
+}
+.workout-cue-flash.show{
+  opacity:1;
+}
+.guided-shell.cue-flash-warning .workout-cue-flash.show{
+  background:rgba(202,126,22,.34);
+  animation:workoutCueWarning .44s ease-out both;
+}
+.guided-shell.cue-flash-go .workout-cue-flash.show{
+  background:rgba(44,133,80,.38);
+  animation:workoutCueGo .70s ease-out both;
+}
+.guided-shell.cue-flash-complete .workout-cue-flash.show{
+  background:rgba(181,143,49,.36);
+  animation:workoutCueComplete .70s ease-out both;
+}
+.guided-shell.cue-flash-transition .workout-cue-flash.show{
+  background:rgba(49,81,75,.28);
+  animation:workoutCueTransition .44s ease-out both;
+}
+@keyframes workoutCueWarning{
+  0%{opacity:.98;transform:scale(.93)}
+  55%{opacity:.92;transform:scale(1.04)}
+  100%{opacity:0;transform:scale(1.08)}
+}
+@keyframes workoutCueGo{
+  0%{opacity:1;transform:scale(.86)}
+  45%{opacity:.98;transform:scale(1.08)}
+  100%{opacity:0;transform:scale(1.15)}
+}
+@keyframes workoutCueComplete{
+  0%{opacity:1;transform:scale(.9)}
+  42%{opacity:.95;transform:scale(1.05)}
+  100%{opacity:0;transform:scale(1.11)}
+}
+@keyframes workoutCueTransition{
+  0%{opacity:.88}
+  100%{opacity:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .guided-shell .workout-cue-flash.show{
+    animation:none !important;
+    transform:none !important;
+    opacity:.72;
+  }
+}
+
+/* Movement descriptions + timer reset polish */
+.exercise-description,
+.stretch-description,
+.catalog-description,
+.plan-description{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.5;
+}
+.exercise-description{
+  margin:7px 0 10px;
+  max-width:620px;
+}
+.modal-description{
+  margin:8px 0 14px;
+}
+.pre-set-description,
+.timed-work-description{
+  max-width:520px;
+  margin:8px auto 2px;
+}
+.stretch-description{
+  max-width:560px;
+  margin:8px auto 8px;
+}
+.plan-description{
+  display:block;
+  margin:5px 0 6px;
+  font-style:normal;
+}
+.catalog-description{
+  margin-top:7px;
+}
+.compact-timer-actions{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.compact-timer-actions .button{
+  margin-top:18px;
+}
+@media(max-width:560px){
+  .compact-timer-actions{
+    width:100%;
+  }
+  .compact-timer-actions .button{
+    flex:1 1 140px;
+  }
+}
+
+/* Whole-workout pause state */
+.workout-pause-banner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 12px;
+  padding:12px 14px;
+  border:1px solid rgba(216,180,92,.35);
+  border-radius:12px;
+  background:rgba(216,180,92,.08);
+}
+.workout-pause-banner strong{
+  color:var(--accent-2);
+  font-size:10px;
+  letter-spacing:.12em;
+}
+.workout-pause-banner span{
+  color:var(--muted);
+  font-size:10px;
+  text-align:right;
+}
+.pause-workout-button{
+  border-color:rgba(216,180,92,.35);
+}
+@media(max-width:560px){
+  .workout-pause-banner{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .workout-pause-banner span{
+    text-align:left;
+  }
+  .pause-workout-button{
+    flex:1 1 100%;
+  }
+}
+
