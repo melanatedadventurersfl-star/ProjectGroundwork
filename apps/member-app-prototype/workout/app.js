@@ -70,7 +70,16 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
-function saveStore(){ localStorage.setItem(STORAGE_KEY,JSON.stringify(store)); syncLiveBadge(); }
+function saveStore(){
+  let persisted=true;
+  try{
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
+  }catch{
+    persisted=false;
+  }
+  syncLiveBadge();
+  return persisted;
+}
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
 function num(value){ const n=Number.parseFloat(value); return Number.isFinite(n)?n:0; }
 function esc(value){ return String(value ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
@@ -191,6 +200,45 @@ function exerciseImageUrl(ex,index=0,useFallback=false){
   return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
 }
 
+const TIMED_STAGE_MEDIA = {
+  'Easy march + arm swing':'Arm_Circles',
+  'Bodyweight squat stretch':'Bodyweight_Squat',
+  'Dynamic hip hinge reach':'Romanian_Deadlift_from_Deficit',
+  'Arm circles + shoulder sweep':'Arm_Circles',
+  'Alternating reverse lunge reach':'Crossover_Reverse_Lunge',
+  'Chest + shoulder stretch':'Chest_And_Front_Of_Shoulder_Stretch',
+  'Lat + upper-back stretch':'Overhead_Lat',
+  'Standing quad stretch':'Standing_Elevated_Quad_Stretch',
+  'Hamstring stretch':'Hamstring_Stretch',
+  'Glute stretch':'IT_Band_and_Glute_Stretch',
+  'Calf stretch':'Standing_Gastrocnemius_Calf_Stretch',
+  'Full-body reach + breathing':'Upward_Stretch'
+};
+
+const TIMED_STAGE_WHY = {
+  'Easy march + arm swing':'Gets your whole body moving before the first loaded set.',
+  'Bodyweight squat stretch':'Prepares the hips, knees, and ankles for lower-body work.',
+  'Dynamic hip hinge reach':'Primes the hamstrings and hinge pattern before loaded pulls.',
+  'Arm circles + shoulder sweep':'Warms the shoulders before pressing and pulling.',
+  'Alternating reverse lunge reach':'Opens the hips and adds single-leg movement before training.',
+  'Chest + shoulder stretch':'Lets the chest and front of the shoulders relax after pressing.',
+  'Lat + upper-back stretch':'Lengthens the lats and upper back after rows and pulldowns.',
+  'Standing quad stretch':'Gives the quads a gentle post-workout stretch.',
+  'Hamstring stretch':'Helps the hamstrings relax after hinges and leg work.',
+  'Glute stretch':'Releases the glutes after squats, hinges, and lunges.',
+  'Calf stretch':'Lets the calf settle after standing and lower-body work.',
+  'Full-body reach + breathing':'Brings your breathing down and finishes the session gradually.'
+};
+
+function timedStageImageUrl(item,index=0){
+  const mediaId=item?.mediaId||TIMED_STAGE_MEDIA[item?.name];
+  return mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(mediaId)+'/'+index+'.jpg':'';
+}
+
+function timedStageWhy(item){
+  return item?.why||TIMED_STAGE_WHY[item?.name]||'This step prepares or recovers the muscles used in today’s session.';
+}
+
 function exerciseImageButton(ex,className='exercise-media',index=0){
   const src=exerciseImageUrl(ex,index,false);
   const fallback=exerciseImageUrl(ex,index,true);
@@ -250,24 +298,96 @@ function recommendedRepCount(reps){
 
 function buildWarmup(exercises){
   const moves=new Set(exercises.map(e=>e.movement));
-  const items=[{name:'Easy march + arm swing',seconds:30,cue:'Raise your temperature and breathe easily.'}];
-  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({name:'Bodyweight squat stretch',seconds:30,cue:'Controlled depth, knees tracking comfortably.'});
-  if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({name:'Dynamic hip hinge reach',seconds:30,cue:'Soft knees, reach hips back, stand tall.'});
-  if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({name:'Arm circles + shoulder sweep',seconds:30,cue:'Small circles into larger comfortable circles.'});
-  if(items.length<4) items.push({name:'Alternating reverse lunge reach',seconds:30,cue:'Move slowly through a comfortable range.'});
+  const items=[{
+    name:'Easy march + arm swing',
+    seconds:30,
+    cue:'Raise your temperature and breathe easily.',
+    why:'Gets your whole body moving before the first loaded set.',
+    mediaId:'Arm_Circles'
+  }];
+  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({
+    name:'Bodyweight squat stretch',
+    seconds:30,
+    cue:'Controlled depth, knees tracking comfortably.',
+    why:'Prepares the hips, knees, and ankles for lower-body work.',
+    mediaId:'Bodyweight_Squat'
+  });
+  if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({
+    name:'Dynamic hip hinge reach',
+    seconds:30,
+    cue:'Soft knees, reach hips back, stand tall.',
+    why:'Primes the hamstrings and hinge pattern before loaded pulls.',
+    mediaId:'Romanian_Deadlift_from_Deficit'
+  });
+  if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({
+    name:'Arm circles + shoulder sweep',
+    seconds:30,
+    cue:'Small circles into larger comfortable circles.',
+    why:'Warms the shoulders before pressing and pulling.',
+    mediaId:'Arm_Circles'
+  });
+  if(items.length<4) items.push({
+    name:'Alternating reverse lunge reach',
+    seconds:30,
+    cue:'Move slowly through a comfortable range.',
+    why:'Opens the hips and adds single-leg movement before training.',
+    mediaId:'Crossover_Reverse_Lunge'
+  });
   return items.slice(0,4);
 }
 
 function buildCooldown(exercises){
   const muscles=new Set(exercises.flatMap(e=>e.muscles||[]));
   const items=[];
-  if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({name:'Chest + shoulder stretch',seconds:30,cue:'Gentle stretch only, no forcing the range.'});
-  if(muscles.has('Back')||muscles.has('Lats')) items.push({name:'Lat + upper-back stretch',seconds:30,cue:'Breathe slowly and let the shoulders relax.'});
-  if(muscles.has('Quads')) items.push({name:'Standing quad stretch',seconds:30,cue:'Keep knees close and posture tall.'});
-  if(muscles.has('Hamstrings')) items.push({name:'Hamstring stretch',seconds:30,cue:'Hinge gently until you feel light tension.'});
-  if(muscles.has('Glutes')) items.push({name:'Glute stretch',seconds:30,cue:'Stay relaxed and avoid forcing the hip.'});
-  if(muscles.has('Calves')) items.push({name:'Calf stretch',seconds:30,cue:'Keep the heel down and breathe steadily.'});
-  if(items.length<3) items.push({name:'Full-body reach + breathing',seconds:30,cue:'Slow inhale, longer exhale, relax the shoulders.'});
+  if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({
+    name:'Chest + shoulder stretch',
+    seconds:30,
+    cue:'Gentle stretch only, no forcing the range.',
+    why:'Lets the chest and front of the shoulders relax after pressing.',
+    mediaId:'Chest_And_Front_Of_Shoulder_Stretch'
+  });
+  if(muscles.has('Back')||muscles.has('Lats')) items.push({
+    name:'Lat + upper-back stretch',
+    seconds:30,
+    cue:'Breathe slowly and let the shoulders relax.',
+    why:'Lengthens the lats and upper back after rows and pulldowns.',
+    mediaId:'Overhead_Lat'
+  });
+  if(muscles.has('Quads')) items.push({
+    name:'Standing quad stretch',
+    seconds:30,
+    cue:'Keep knees close and posture tall.',
+    why:'Gives the quads a gentle post-workout stretch.',
+    mediaId:'Standing_Elevated_Quad_Stretch'
+  });
+  if(muscles.has('Hamstrings')) items.push({
+    name:'Hamstring stretch',
+    seconds:30,
+    cue:'Hinge gently until you feel light tension.',
+    why:'Helps the hamstrings relax after hinges and leg work.',
+    mediaId:'Hamstring_Stretch'
+  });
+  if(muscles.has('Glutes')) items.push({
+    name:'Glute stretch',
+    seconds:30,
+    cue:'Stay relaxed and avoid forcing the hip.',
+    why:'Releases the glutes after squats, hinges, and lunges.',
+    mediaId:'IT_Band_and_Glute_Stretch'
+  });
+  if(muscles.has('Calves')) items.push({
+    name:'Calf stretch',
+    seconds:30,
+    cue:'Keep the heel down and breathe steadily.',
+    why:'Lets the calf settle after standing and lower-body work.',
+    mediaId:'Standing_Gastrocnemius_Calf_Stretch'
+  });
+  if(items.length<3) items.push({
+    name:'Full-body reach + breathing',
+    seconds:30,
+    cue:'Slow inhale, longer exhale, relax the shoulders.',
+    why:'Brings your breathing down and finishes the session gradually.',
+    mediaId:'Upward_Stretch'
+  });
   return items.slice(0,4);
 }
 
@@ -403,7 +523,14 @@ function nextPlanDay(){
 }
 
 function saveProfileFromForm(form){
-  const data=new FormData(form);
+  if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
+  let data;
+  try{
+    data=new FormData(form);
+  }catch{
+    toast('Chrome could not read the plan form. Reload this page and try again.');
+    return false;
+  }
   const profile={
     goal:data.get('goal')||'muscle',
     weight:num(data.get('weight')),
@@ -424,12 +551,40 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
-  if (profile.weight<=0) { toast('Enter your current body weight.'); return; }
+  if(profile.weight<50||profile.weight>700){
+    toast('Enter a body weight between 50 and 700 lb.');
+    form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){
+    toast('Enter height feet between 3 and 8, or leave height blank.');
+    return false;
+  }
+  if(profile.heightInches<0||profile.heightInches>11){
+    toast('Enter height inches between 0 and 11.');
+    return false;
+  }
+  let plan;
+  try{
+    plan=generatePlan(profile);
+  }catch(error){
+    console.error('Workout plan generation failed',error);
+    toast('Could not build the plan. Please reload and try again.');
+    return false;
+  }
+  if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){
+    toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');
+    return false;
+  }
   store.profile=profile;
-  store.plan=generatePlan(profile);
-  saveStore();
+  store.plan=plan;
+  const persisted=saveStore();
   currentTab='home';
   render();
+  if(!persisted){
+    setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
+  }
+  return true;
 }
 
 function editProfile(){
@@ -716,7 +871,7 @@ function renderProfile(){
   return `
   <div class="onboard-shell">
     <div class="page-head"><div><p class="eyebrow">BUILD YOUR PLAN</p><h2 class="page-title">Tell us how you train.</h2><p class="page-copy">We’ll use your goal, experience, body weight, equipment and real session length to build a starting plan. Weight suggestions are conservative estimates and get refined during your first workout.</p></div></div>
-    <form id="profile-form" class="intake-form">
+    <form id="profile-form" class="intake-form" novalidate>
       <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
         <div class="choice-grid">
           ${[['muscle','Build muscle','Moderate reps + progressive overload'],['strength','Get stronger','Heavier work + longer recovery'],['fat-loss','Fat loss + conditioning','Higher reps + shorter recovery'],['general','General fitness','Balanced strength and work capacity']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="goal" value="${v}" ${checked('goal',v)||(!p.goal&&v==='muscle'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
@@ -764,7 +919,7 @@ function renderProfile(){
           ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
         </div>
       </section>
-      <div class="form-actions"><button type="submit" class="button large">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
+      <div class="form-actions"><button type="button" class="button large" data-action="build-plan">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
     </form>
   </div>`;
 }
@@ -831,15 +986,20 @@ function renderTimedStage(w){
   const remaining=snap.remaining||0;
   const isWarmup=w.phase==='warmup';
   const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
-  return `<div class="timed-stage" data-stage-index="${index}">
-    <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
-    <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
-    <h3>${esc(item?.name||'Get ready')}</h3>
-    <p>${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
-    <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
-    <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
-    <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
-    <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
+  const image=timedStageImageUrl(item,0);
+  return `<div class="timed-stage visual-timed-stage" data-stage-index="${index}">
+    <div class="timed-stage-media">${image?`<img src="${esc(image)}" loading="eager" decoding="async" alt="${esc(item?.name||'Stretch')} demonstration">`:''}</div>
+    <div class="timed-stage-copy">
+      <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
+      <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
+      <h3>${esc(item?.name||'Get ready')}</h3>
+      <p class="stage-cue">${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
+      <div class="stage-why"><span>WHY THIS STEP</span><strong>${esc(timedStageWhy(item))}</strong></div>
+      <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
+      <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
+      <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
+      <button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button>
+    </div>
   </div>`;
 }
 
@@ -984,6 +1144,7 @@ function handleClick(event){
   else if(a==='history')setTab('history');
   else if(a==='resume')setTab('workout');
   else if(a==='edit-profile')editProfile();
+  else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='regenerate')regeneratePlan();
   else if(a==='complete-set')completeCurrentSet();
   else if(a==='add-rest')adjustRest(15);
@@ -1006,7 +1167,12 @@ document.addEventListener('error',event=>{
     img.remove();
   }
 },true);
-document.addEventListener('submit',event=>{if(event.target.id==='profile-form'){event.preventDefault();saveProfileFromForm(event.target);}});
+document.addEventListener('submit',event=>{
+  if(event.target.id==='profile-form'){
+    event.preventDefault();
+    saveProfileFromForm(event.target);
+  }
+});
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
