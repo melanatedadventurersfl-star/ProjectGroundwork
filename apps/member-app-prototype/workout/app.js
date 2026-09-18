@@ -996,6 +996,7 @@ function equipmentAllows(exercise,equipment){
 }
 
 function avoided(exercise,profile){
+  if(excludedExerciseIds().has(exercise.id))return true;
   const avoid = profile.avoid || [];
   if (avoid.includes('overhead') && exercise.movement === 'vertical-push') return true;
   if (avoid.includes('knee') && ['squat','single-leg','quad-accessory'].includes(exercise.movement)) return true;
@@ -2097,6 +2098,12 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const swapClose=event.target.closest('[data-action="close-swap"]');
+  if(swapClose){
+    const insideSwap=event.target.closest('[data-swap-panel]');
+    const explicitClose=event.target.closest('.modal-close');
+    if(!insideSwap||explicitClose){closeSwap();return;}
+  }
   const detail=event.target.closest('[data-exercise-detail]');
   if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
@@ -2122,6 +2129,15 @@ function handleClick(event){
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='regenerate')regeneratePlan();
+  else if(a==='swap-plan')openSwap({mode:'plan',dayId:node.dataset.dayId,index:Number(node.dataset.swapIndex)});
+  else if(a==='swap-active')openSwap({mode:'active',index:Number(node.dataset.swapIndex)});
+  else if(a==='choose-swap'){
+    const reason=document.querySelector('#swap-reason')?.value||'other';
+    const neverShow=Boolean(document.querySelector('#swap-never-show')?.checked);
+    applyExerciseSwap(node.dataset.candidateId,reason,neverShow);
+  }
+  else if(a==='undo-plan-swap')undoExerciseSwap('plan',Number(node.dataset.swapIndex),node.dataset.dayId||'');
+  else if(a==='undo-active-swap')undoExerciseSwap('active',Number(node.dataset.swapIndex));
   else if(a==='toggle-workout-pause')toggleWorkoutPause();
   else if(a==='complete-set')completeCurrentSet();
   else if(a==='start-set-now')finishPreSet();
@@ -2163,6 +2179,7 @@ document.addEventListener('submit',event=>{
 });
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&swapContext){swapContext=null;render();return;}
   if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
   if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
 });
