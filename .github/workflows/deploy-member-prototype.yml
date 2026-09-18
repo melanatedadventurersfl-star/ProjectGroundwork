@@ -70,15 +70,36 @@ jobs:
           cp apps/mobile/dist-web/index.html _site/404.html
           python - <<'PY'
           import os
+          import shutil
           from pathlib import Path
 
-          page = Path('_site/workout/index.html')
-          html = page.read_text(encoding='utf-8')
           build = os.environ['GITHUB_SHA']
+          short = build[:8]
+          workout = Path('_site/workout')
+          source_html = (workout / 'index.html').read_text(encoding='utf-8')
+          source_html = source_html.replace('__WORKOUT_BUILD__', short)
+
+          fingerprints = {}
           for asset in ('styles.css', 'catalog.js', 'app.js'):
-              html = html.replace(f'./{asset}', f'./{asset}?v={build}')
-          page.write_text(html, encoding='utf-8')
-          print(f'Workout assets versioned with {build}')
+              src = workout / asset
+              stem, suffix = src.stem, src.suffix
+              fingerprinted = f'{stem}.{build}{suffix}'
+              shutil.copy2(src, workout / fingerprinted)
+              fingerprints[asset] = fingerprinted
+
+          root_html = source_html
+          for asset, fingerprinted in fingerprints.items():
+              root_html = root_html.replace(f'./{asset}', f'./{fingerprinted}')
+          (workout / 'index.html').write_text(root_html, encoding='utf-8')
+
+          release = workout / 'releases' / build
+          release.mkdir(parents=True, exist_ok=True)
+          release_html = source_html
+          for asset in ('styles.css', 'catalog.js', 'app.js'):
+              shutil.copy2(workout / asset, release / asset)
+          (release / 'index.html').write_text(release_html, encoding='utf-8')
+
+          print(f'Workout build {build}: fingerprinted root assets + unique release path')
           PY
           touch _site/.nojekyll
 
