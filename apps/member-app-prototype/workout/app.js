@@ -118,7 +118,7 @@ function unlockWorkoutCues(){
 function vibrateCue(type){
   if(!workoutCueSettings().haptics||typeof navigator==='undefined'||typeof navigator.vibrate!=='function')return;
   try{
-    const pattern=type==='go'?[70,35,110]:type==='complete'?[90,45,90]:type==='transition'?[55,30,55]:[35];
+    const pattern=type==='go'?[90,35,140]:type==='complete'?[110,45,110]:type==='transition'?[70,30,70]:type==='warning'?[65]:[45];
     navigator.vibrate(pattern);
   }catch{}
 }
@@ -129,21 +129,34 @@ function playWorkoutCue(type,token=''){
   const ctx=ensureWorkoutAudio();
   if(!ctx)return;
   try{
-    const oscillator=ctx.createOscillator();
-    const gain=ctx.createGain();
     const now=ctx.currentTime;
     const config={
-      tick:{frequency:660,duration:.07,volume:.045},
-      go:{frequency:980,duration:.16,volume:.075},
-      complete:{frequency:520,duration:.14,volume:.065},
-      transition:{frequency:760,duration:.11,volume:.05}
-    }[type]||{frequency:660,duration:.08,volume:.04};
-    oscillator.type=type==='go'?'sine':'triangle';
-    oscillator.frequency.setValueAtTime(config.frequency,now);
-    gain.gain.setValueAtTime(config.volume,now);
-    gain.gain.exponentialRampToValueAtTime(.0001,now+config.duration);
-    oscillator.connect(gain);gain.connect(ctx.destination);
-    oscillator.start(now);oscillator.stop(now+config.duration);
+      tick:{frequency:760,duration:.11,volume:.16,harmonic:1.5},
+      warning:{frequency:880,duration:.16,volume:.22,harmonic:1.33},
+      go:{frequency:1080,duration:.24,volume:.25,harmonic:1.5},
+      complete:{frequency:600,duration:.22,volume:.22,harmonic:1.5},
+      transition:{frequency:820,duration:.17,volume:.18,harmonic:1.4}
+    }[type]||{frequency:760,duration:.12,volume:.15,harmonic:1.5};
+    const master=ctx.createGain();
+    master.gain.setValueAtTime(.95,now);
+    master.gain.exponentialRampToValueAtTime(.0001,now+config.duration);
+    master.connect(ctx.destination);
+
+    const primary=ctx.createOscillator();
+    const primaryGain=ctx.createGain();
+    primary.type=type==='go'?'square':'triangle';
+    primary.frequency.setValueAtTime(config.frequency,now);
+    primaryGain.gain.setValueAtTime(config.volume,now);
+    primary.connect(primaryGain);primaryGain.connect(master);
+    primary.start(now);primary.stop(now+config.duration);
+
+    const harmonic=ctx.createOscillator();
+    const harmonicGain=ctx.createGain();
+    harmonic.type='sine';
+    harmonic.frequency.setValueAtTime(config.frequency*config.harmonic,now);
+    harmonicGain.gain.setValueAtTime(config.volume*.48,now);
+    harmonic.connect(harmonicGain);harmonicGain.connect(master);
+    harmonic.start(now);harmonic.stop(now+config.duration);
   }catch{}
 }
 function toggleCueSetting(key){
@@ -1523,7 +1536,7 @@ function updateTimers(){
       playWorkoutCue('transition','stage-'+w.id+'-'+w.phase+'-'+snap.index);
       render();return;
     }
-    if(snap.remaining>0&&snap.remaining<=3)playWorkoutCue('tick','stage-tick-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.remaining);
+    if(snap.remaining>0&&snap.remaining<=3)playWorkoutCue('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.remaining);
     const stageClock=document.querySelector('#stage-clock');
     const fill=document.querySelector('#stage-progress-fill');
     if(stageClock)stageClock.textContent=formatClock(snap.remaining);
@@ -1549,7 +1562,7 @@ function updateTimers(){
     const snap=timedSetSnapshot(w);
     if(!snap)return;
     if(snap.complete){completeTimedSet(false);return;}
-    if(snap.remaining<=3&&snap.remaining>0)playWorkoutCue('tick','timed-set-tick-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining);
+    if(snap.remaining<=3&&snap.remaining>0)playWorkoutCue('warning','timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining);
     const clock=document.querySelector('#timed-set-clock');
     const fill=document.querySelector('#timed-set-progress');
     const note=document.querySelector('#timed-finish-note');
@@ -1563,6 +1576,7 @@ function updateTimers(){
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
   if(clock)clock.textContent=formatClock(remaining);
   if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
+  if(remaining>0&&remaining<=3&&!Number.isFinite(w.restPausedRemaining))playWorkoutCue('warning','rest-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining);
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining))advanceAfterRest();
 }
 
