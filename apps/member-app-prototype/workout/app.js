@@ -7,6 +7,7 @@ const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 let exerciseDetailId = null;
+let swapContext = null;
 
 const defaultStore = {
   profile: null,
@@ -16,6 +17,7 @@ const defaultStore = {
   calibration: {},
   progression: {},
   progressionLog: [],
+  exercisePreferences: {excluded:[],swapHistory:[]},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   lastSummaryId: null
 };
@@ -352,6 +354,308 @@ function exerciseDescription(ex){
     'core':'A trunk-stability exercise that trains the core to resist unwanted movement and maintain position.'
   };
   return descriptions[ex.movement]||('A controlled '+String(movements[ex.movement]||ex.movement||'strength').toLowerCase()+' exercise focused on '+target+'.');
+}
+
+
+const EXERCISE_EQUIPMENT = {
+  'goblet-squat':'1 dumbbell or kettlebell',
+  'back-squat':'Barbell · squat rack · weight plates',
+  'leg-press':'Leg press machine',
+  'bodyweight-squat':'No equipment',
+  'romanian-deadlift':'Barbell · weight plates',
+  'db-rdl':'Pair of dumbbells',
+  'hip-thrust':'Barbell · weight plates · bench or hip-thrust station',
+  'glute-bridge':'Exercise mat · optional dumbbell',
+  'split-squat':'Pair of dumbbells · bench',
+  'reverse-lunge':'Optional pair of dumbbells',
+  'step-up':'Stable bench or box · optional dumbbells',
+  'bench-press':'Flat bench · barbell · rack · weight plates',
+  'db-bench':'Flat bench · pair of dumbbells',
+  'db-floor-press':'Pair of dumbbells · floor space or mat',
+  'chest-press-machine':'Chest press machine',
+  'push-up':'Floor space or exercise mat',
+  'cable-row':'Seated cable row station · row handle',
+  'chest-row':'Incline bench · pair of dumbbells',
+  'one-arm-row':'Dumbbell · bench or stable support',
+  'band-row':'Resistance band · secure anchor',
+  'lat-pulldown':'Lat pulldown machine · pulldown bar',
+  'assisted-pullup':'Assisted pull-up machine',
+  'pull-up':'Pull-up bar',
+  'band-pulldown':'Resistance band · high secure anchor',
+  'shoulder-press-machine':'Shoulder press machine',
+  'db-shoulder-press':'Pair of dumbbells · bench optional',
+  'overhead-press':'Barbell · rack · weight plates',
+  'pike-pushup':'Floor space or exercise mat',
+  'leg-curl':'Leg curl machine',
+  'leg-extension':'Leg extension machine',
+  'lateral-raise':'Pair of dumbbells',
+  'band-lateral-raise':'Resistance band',
+  'biceps-curl':'Pair of dumbbells',
+  'cable-curl':'Cable station · curl attachment',
+  'triceps-pushdown':'Cable station · rope or bar attachment',
+  'db-triceps-extension':'1 dumbbell',
+  'calf-raise':'Stable floor · optional pair of dumbbells',
+  'plank':'Exercise mat or floor space',
+  'dead-bug':'Exercise mat or floor space',
+  'cable-crunch':'Cable station · rope attachment',
+  'prone-w-raise':'Exercise mat · optional light band',
+  'prone-lat-pull':'Exercise mat · optional resistance band',
+  'band-overhead-press':'Resistance band'
+};
+
+function equipmentRequirement(ex){
+  if(!ex)return 'Check the exercise setup.';
+  return EXERCISE_EQUIPMENT[ex.id]||
+    (ex.loadMode==='barbell'?'Barbell · rack or platform · weight plates':
+    ex.loadMode==='dumbbell-pair'?'Pair of dumbbells':
+    ex.loadMode==='dumbbell'?'Dumbbell':
+    ex.loadMode==='machine'?'Matching resistance machine':
+    ex.loadMode==='band'?'Resistance band · secure anchor if needed':
+    ex.loadMode==='assisted'?'Assisted exercise machine':
+    ex.loadMode==='bodyweight'||ex.loadMode==='timed'?'No special equipment':'Check the exercise setup.');
+}
+function exerciseSource(ex){
+  return catalog.find(item=>item.id===ex?.id)||ex;
+}
+function exerciseDifficultyRank(value){
+  return ({beginner:0,intermediate:1,advanced:2})[value]??1;
+}
+function muscleOverlap(a,b){
+  const left=new Set(a?.muscles||[]);
+  return (b?.muscles||[]).reduce((n,m)=>n+(left.has(m)?1:0),0);
+}
+function excludedExerciseIds(){
+  return new Set(store.exercisePreferences?.excluded||[]);
+}
+function swapCandidates(ex,{includeOtherEquipment=true,limit=7}={}){
+  const source=exerciseSource(ex);
+  if(!source)return [];
+  const profile=store.profile||{};
+  const excluded=excludedExerciseIds();
+  const activeIds=new Set((store.activeWorkout?.exercises||[]).map(item=>item.id));
+  const planIds=new Set((store.plan?.days||[]).flatMap(day=>(day.exercises||[]).map(item=>item.id)));
+  const scored=catalog
+    .filter(candidate=>candidate.id!==source.id&&!excluded.has(candidate.id))
+    .map(candidate=>{
+      const sameMovement=candidate.movement===source.movement;
+      const overlap=muscleOverlap(source,candidate);
+      const available=equipmentAllows(candidate,profile.equipment||'full-gym');
+      const difficultyGap=Math.abs(exerciseDifficultyRank(source.difficulty)-exerciseDifficultyRank(candidate.difficulty));
+      const setupGap=Math.abs((candidate.setup||25)-(source.setup||25));
+      const duplicatePenalty=(activeIds.has(candidate.id)||planIds.has(candidate.id))?6:0;
+      const score=(sameMovement?60:0)+(overlap*12)+(available?24:0)+(candidate.style===source.style?4:0)-difficultyGap*5-Math.min(8,setupGap/10)-duplicatePenalty;
+      const tier=sameMovement&&overlap?'Same movement + muscles':sameMovement?'Same movement':'Similar training purpose';
+      return {exercise:candidate,available,score,tier,setupGap};
+    })
+    .filter(item=>item.score>18&&(includeOtherEquipment||item.available))
+    .sort((a,b)=>(Number(b.available)-Number(a.available))||(b.score-a.score));
+  return scored.slice(0,limit);
+}
+function swapReasonLabel(reason){
+  return ({equipment:'Equipment unavailable',dislike:"Don't like this exercise",pain:'Pain or discomfort',difficulty:'Too difficult',easy:'Too easy',other:'Other'})[reason]||'Other';
+}
+
+function planSlotFromCandidate(candidate,template){
+  const profile=store.profile||{};
+  const start=estimateStartingLoad(candidate,profile);
+  const settings=goalSettings(profile.goal||'muscle',candidate.movement,profile.experience||'beginner');
+  const adaptive=adaptivePrescription(candidate);
+  const calibrated=store.calibration?.[candidate.id]?.weight;
+  const reps=adaptive?.reps||settings.reps;
+  return {
+    id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
+    sets:template.sets,reps:reps,startReps:recommendedRepCount(reps),rest:Math.max(30,Math.min(60,template.rest||settings.rest)),
+    setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
+    startWeight:adaptive?.weight??calibrated??start.weight,startLabel:adaptive?.label||start.label,startSource:adaptive?'learned progression':start.source||'',
+    calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
+    swappedFrom:{id:template.id,name:template.name},
+    swapUndo:clone({...template,swapUndo:undefined})
+  };
+}
+function workoutExerciseFromCandidate(candidate,template,setCount){
+  const profile=store.profile||{};
+  const start=estimateStartingLoad(candidate,profile);
+  const adaptive=adaptivePrescription(candidate);
+  const calibrated=store.calibration?.[candidate.id];
+  const settings=goalSettings(profile.goal||'muscle',candidate.movement,profile.experience||'beginner');
+  const suggestedWeight=adaptive?.weight??calibrated?.weight??start.weight??0;
+  const suggestedReps=adaptive?.reps||recommendedRepCount(settings.reps);
+  const rest=Math.max(30,Math.min(60,template.rest||settings.rest||45));
+  const noWeight=['bodyweight','timed','band'].includes(candidate.loadMode);
+  const weightValue=noWeight?'':(candidate.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
+  return {
+    id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
+    reps:settings.reps,rest,setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
+    suggestedWeight,suggestedReps,
+    adaptiveLabel:adaptive?.label||'',adaptiveReason:adaptive?.reason||'',
+    calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
+    swappedFrom:{id:template.id,name:template.name},
+    swapUndo:clone({...template,swapUndo:undefined}),
+    sets:Array.from({length:Math.max(1,setCount)},()=>({
+      id:uid('set'),weight:weightValue,reps:String(suggestedReps||''),completed:false,completedAt:null
+    }))
+  };
+}
+function estimatePlanExerciseSeconds(ex){
+  const setSeconds=goalSettings(store.profile?.goal||'muscle',ex.movement,store.profile?.experience||'beginner').setSeconds||40;
+  return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*(ex.rest||45)+35;
+}
+function recalculatePlanDay(day){
+  if(!day)return;
+  day.warmup=buildWarmup(day.exercises||[]);
+  day.cooldown=buildCooldown(day.exercises||[]);
+  const prep=[...(day.warmup||[]),...(day.cooldown||[])].reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const work=(day.exercises||[]).reduce((sum,ex)=>sum+estimatePlanExerciseSeconds(ex),0);
+  day.warmupMinutes=Math.ceil((day.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
+  day.cooldownMinutes=Math.ceil((day.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
+  day.estimatedMinutes=Math.max(10,Math.ceil((prep+work)/60));
+}
+function swapTarget(){
+  if(!swapContext)return null;
+  if(swapContext.mode==='plan'){
+    const day=store.plan?.days?.find(item=>item.id===swapContext.dayId);
+    const exercise=day?.exercises?.[swapContext.index];
+    return exercise?{exercise,day,index:swapContext.index}:null;
+  }
+  const workout=store.activeWorkout;
+  const exercise=workout?.exercises?.[swapContext.index];
+  return exercise?{exercise,workout,index:swapContext.index}:null;
+}
+function openSwap(context){
+  swapContext=context;
+  exerciseDetailId=null;
+  render();
+}
+function closeSwap(){
+  swapContext=null;
+  render();
+}
+function rememberSwap(original,replacement,reason,mode){
+  store.exercisePreferences=store.exercisePreferences||{excluded:[],swapHistory:[]};
+  store.exercisePreferences.swapHistory=Array.isArray(store.exercisePreferences.swapHistory)?store.exercisePreferences.swapHistory:[];
+  store.exercisePreferences.swapHistory.unshift({
+    fromId:original.id,fromName:original.name,toId:replacement.id,toName:replacement.name,
+    reason,reasonLabel:swapReasonLabel(reason),mode,at:new Date().toISOString()
+  });
+  store.exercisePreferences.swapHistory=store.exercisePreferences.swapHistory.slice(0,100);
+}
+function applyExerciseSwap(candidateId,reason='other',neverShow=false){
+  const target=swapTarget();
+  const candidate=catalog.find(item=>item.id===candidateId);
+  if(!target||!candidate)return;
+  const original=target.exercise;
+  if(neverShow){
+    store.exercisePreferences=store.exercisePreferences||{excluded:[],swapHistory:[]};
+    const set=new Set(store.exercisePreferences.excluded||[]);
+    set.add(original.id);
+    store.exercisePreferences.excluded=[...set];
+  }
+  if(swapContext.mode==='plan'){
+    const replacement=planSlotFromCandidate(candidate,original);
+    target.day.exercises[target.index]=replacement;
+    recalculatePlanDay(target.day);
+    rememberSwap(original,replacement,reason,'plan');
+    swapContext=null;
+    saveStore();render();
+    toast(original.name+' swapped for '+replacement.name+'.');
+    return;
+  }
+
+  const w=target.workout;
+  const completed=(original.sets||[]).filter(set=>set.completed);
+  const remaining=Math.max(1,(original.sets?.length||1)-completed.length);
+  const replacement=workoutExerciseFromCandidate(candidate,original,remaining);
+  rememberSwap(original,replacement,reason,'workout');
+
+  if(target.index>w.currentExerciseIndex){
+    w.exercises[target.index]=replacement;
+    swapContext=null;
+    saveStore();render();
+    toast(original.name+' swapped for '+replacement.name+'.');
+    return;
+  }
+
+  if(completed.length===0){
+    w.exercises[target.index]=replacement;
+    w.currentExerciseIndex=target.index;
+    w.currentSetIndex=0;
+    delete w.timedSetStartedAt;delete w.timedSetDuration;delete w.timedSetEndsAt;
+    swapContext=null;
+    saveStore();
+    beginPreSetPosition(target.index,0,false);
+    toast(original.name+' swapped for '+replacement.name+'.');
+    return;
+  }
+
+  original.sets=completed;
+  delete original.swapUndo;
+  replacement.swapSplitFromIndex=target.index;
+  w.exercises.splice(target.index+1,0,replacement);
+  swapContext=null;
+  saveStore();
+  beginPreSetPosition(target.index+1,0,true);
+  toast('Completed '+original.name+' sets kept. Remaining work moved to '+replacement.name+'.');
+}
+function undoExerciseSwap(mode,index,dayId=''){
+  if(mode==='plan'){
+    const day=store.plan?.days?.find(item=>item.id===dayId);
+    const current=day?.exercises?.[index];
+    if(!day||!current?.swapUndo)return;
+    day.exercises[index]=clone({...current.swapUndo,swapUndo:undefined});
+    recalculatePlanDay(day);
+    saveStore();render();toast('Exercise swap undone.');
+    return;
+  }
+  const w=store.activeWorkout,current=w?.exercises?.[index];
+  if(!w||!current?.swapUndo||(current.sets||[]).some(set=>set.completed))return;
+  const restored=clone({...current.swapUndo,swapUndo:undefined,swapSplitFromIndex:undefined});
+  if(Number.isInteger(current.swapSplitFromIndex)){
+    const originalIndex=current.swapSplitFromIndex;
+    const completedCount=(w.exercises[originalIndex]?.sets||[]).filter(set=>set.completed).length;
+    w.exercises[originalIndex]=restored;
+    w.exercises.splice(index,1);
+    w.currentExerciseIndex=originalIndex;
+    w.currentSetIndex=Math.min(completedCount,Math.max(0,restored.sets.length-1));
+    saveStore();
+    beginPreSetPosition(originalIndex,w.currentSetIndex,false);
+    toast('Exercise swap undone. Completed sets were restored to the original exercise.');
+    return;
+  }
+  w.exercises[index]=restored;
+  w.currentExerciseIndex=index;w.currentSetIndex=0;
+  saveStore();
+  beginPreSetPosition(index,0,false);
+  toast('Exercise swap undone.');
+}
+function renderSwapModal(){
+  const target=swapTarget();
+  if(!target)return '';
+  const source=exerciseSource(target.exercise);
+  const candidates=swapCandidates(source);
+  const available=candidates.filter(item=>item.available);
+  const other=candidates.filter(item=>!item.available);
+  const card=(item,index)=>{
+    const ex=item.exercise;
+    const src=exerciseImageUrl(ex,0,false),fallback=exerciseImageUrl(ex,0,true);
+    return '<article class="swap-option">'+
+      '<div class="swap-option-media">'+(src?'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" alt="'+esc(ex.name)+' demonstration">':'')+'</div>'+
+      '<div class="swap-option-copy"><div class="swap-option-top"><span>'+esc(item.tier)+'</span>'+(index===0&&item.available?'<em>BEST MATCH</em>':'')+'</div>'+
+      '<h3>'+esc(ex.name)+'</h3>'+
+      '<p>'+esc(exerciseDescription(ex))+'</p>'+
+      '<div class="swap-option-meta"><span>'+esc((ex.muscles||[]).join(' · '))+'</span><strong>'+esc(equipmentRequirement(ex))+'</strong></div>'+
+      '<button class="button secondary" type="button" data-action="choose-swap" data-candidate-id="'+esc(ex.id)+'">USE THIS EXERCISE</button></div>'+
+    '</article>';
+  };
+  return '<div class="exercise-modal-backdrop swap-modal-backdrop" data-action="close-swap">'+
+    '<section class="exercise-modal swap-modal" role="dialog" aria-modal="true" aria-label="Swap '+esc(source.name)+'" data-swap-panel>'+
+      '<button class="modal-close" type="button" data-action="close-swap" aria-label="Close exercise swap">×</button>'+
+      '<div class="swap-head"><p class="eyebrow">SWAP EXERCISE</p><h2>'+esc(source.name)+'</h2><p>Choose a comparable movement. Your completed work stays intact and replacement loads are recalculated for the new exercise.</p></div>'+
+      '<div class="swap-controls"><label>WHY ARE YOU SWAPPING?<select id="swap-reason"><option value="equipment">Equipment unavailable</option><option value="dislike">Don’t like this exercise</option><option value="pain">Pain or discomfort</option><option value="difficulty">Too difficult</option><option value="easy">Too easy</option><option value="other">Other</option></select></label>'+
+      '<label class="swap-exclude"><input id="swap-never-show" type="checkbox"> Don’t show me '+esc(source.name)+' again</label></div>'+
+      (available.length?'<div class="swap-section"><h3>AVAILABLE WITH YOUR SETUP</h3><div class="swap-options">'+available.map(card).join('')+'</div></div>':'')+
+      (other.length?'<div class="swap-section other-equipment"><h3>REQUIRES OTHER EQUIPMENT</h3><div class="swap-options">'+other.map((item,index)=>card(item,index+available.length)).join('')+'</div></div>':'')+
+      (!candidates.length?'<div class="empty-state"><strong>No close replacements found.</strong><span>Try changing your equipment profile or keeping this exercise.</span></div>':'')+
+    '</section></div>';
 }
 
 function exerciseImageUrl(ex,index=0,useFallback=false){
@@ -705,6 +1009,7 @@ function equipmentAllows(exercise,equipment){
 }
 
 function avoided(exercise,profile){
+  if(excludedExerciseIds().has(exercise.id))return true;
   const avoid = profile.avoid || [];
   if (avoid.includes('overhead') && exercise.movement === 'vertical-push') return true;
   if (avoid.includes('knee') && ['squat','single-leg','quad-accessory'].includes(exercise.movement)) return true;
@@ -1485,7 +1790,7 @@ function renderHome(){
             <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
             <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
-            <div class="routine-plan">${day.exercises.map(ex=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small>${planPrescriptionHtml(ex)}</div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
+            <div class="routine-plan">${day.exercises.map((ex,exIndex)=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small><small class="plan-equipment">Equipment: ${esc(equipmentRequirement(exerciseSource(ex)))}</small>${planPrescriptionHtml(ex)}<div class="plan-swap-actions"><button class="text-button" type="button" data-action="swap-plan" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Swap exercise</button>${ex.swapUndo?`<button class="text-button muted" type="button" data-action="undo-plan-swap" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Undo swap</button>`:''}</div></div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
             <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
             <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
           </div>
@@ -1538,6 +1843,8 @@ function renderPreSet(pos){
       <p class="eyebrow">${setup?'GET IN POSITION':'SET STARTING'}</p>
       <div class="stage-count">SET ${pos.si+1} OF ${pos.exercise.sets.length} · ${esc(pos.exercise.name)}</div>
       <p class="exercise-description pre-set-description">${esc(exerciseDescription(pos.exercise))}</p>
+      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
+      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div>
       <div class="pre-set-number" id="preset-count">${snap.remaining}</div>
       <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
       <p>${setup?'You have a few seconds to get into position before the start countdown.':'The set begins automatically after 3 · 2 · 1.'}</p>
@@ -1556,6 +1863,8 @@ function renderTimedWorkSet(pos){
       <p class="eyebrow">TIMED SET · SET ${pos.si+1} OF ${pos.exercise.sets.length}</p>
       <h3>${esc(pos.exercise.name)}</h3>
       <p class="exercise-description timed-work-description">${esc(exerciseDescription(pos.exercise))}</p>
+      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
+      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button></div>
       <p class="timed-work-cue">${esc(exerciseGuidance(pos.exercise).cue)}</p>
       <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
       <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
@@ -1606,7 +1915,7 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
+    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-equipment-line"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
@@ -1653,11 +1962,31 @@ function renderExerciseFeedback(pos){
   '</div>';
 }
 
+function renderNextExerciseCard(nextEx,next){
+  if(!nextEx||!next)return '';
+  const src=exerciseImageUrl(nextEx,0,false),fallback=exerciseImageUrl(nextEx,0,true);
+  const guide=exerciseGuidance(nextEx);
+  return '<section class="next-exercise-card">'+
+    '<div class="next-exercise-media">'+(src?'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" alt="'+esc(nextEx.name)+' demonstration">':'')+'</div>'+
+    '<div class="next-exercise-copy"><p class="eyebrow">UP NEXT · EXERCISE '+String(next.ei+1)+'/'+String(store.activeWorkout?.exercises?.length||'')+'</p>'+
+    '<h3>'+esc(nextEx.name)+'</h3><p>'+esc(exerciseDescription(nextEx))+'</p>'+
+    '<div class="next-exercise-facts"><div><span>EQUIPMENT</span><strong>'+esc(equipmentRequirement(exerciseSource(nextEx)))+'</strong></div>'+
+    '<div><span>TARGET</span><strong>'+String(nextEx.sets?.length||0)+' sets · '+esc(nextEx.reps)+'</strong></div>'+
+    '<div><span>REST</span><strong>'+esc(nextEx.rest)+' sec</strong></div>'+
+    '<div><span>WORKS</span><strong>'+esc((nextEx.muscles||[]).join(' · '))+'</strong></div></div>'+
+    '<div class="next-setup-cue"><span>SETUP CUE</span><strong>'+esc(guide.setup)+'</strong></div>'+
+    '<div class="next-exercise-actions"><button class="button secondary" type="button" data-exercise-detail="'+esc(nextEx.id)+'">VIEW FORM</button>'+
+    '<button class="button secondary" type="button" data-action="swap-active" data-swap-index="'+next.ei+'">SWAP EXERCISE</button>'+
+    (nextEx.swapUndo&&!nextEx.sets.some(set=>set.completed)?'<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="'+next.ei+'">Undo swap</button>':'')+
+    '</div></div></section>';
+}
+
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
+  const changingExercise=Boolean(next&&next.ei!==pos.ei);
   const result=pos.workout.lastProgressionResult;
   const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>When rest ends, the get-ready countdown starts automatically.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  return `<div class="rest-stage"><div class="rest-label">${changingExercise?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':changingExercise?'GET READY FOR NEXT EXERCISE':'UNTIL NEXT SET'}</div></div></div><h3>${changingExercise?'Move to your next station':'Recover, then go again'}</h3><p>${changingExercise?'Use this time to grab the equipment and review the next movement. The 3 · 2 · 1 start countdown follows automatically.':'When rest ends, the get-ready countdown starts automatically.'}</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${changingExercise?renderNextExerciseCard(nextEx,next):(nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>Set ${next.si+1} · ${esc(nextEx.name)}</strong></div><em>${esc(nextEx.reps)}</em></div>`:'')}</div>`;
 }
 
 function renderHistory(){
@@ -1712,7 +2041,8 @@ function render(){
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId));
+  if(swapContext) app.insertAdjacentHTML('beforeend',renderSwapModal());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext));
   syncNav();syncLiveBadge();
 }
 
@@ -1781,6 +2111,12 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const swapClose=event.target.closest('[data-action="close-swap"]');
+  if(swapClose){
+    const insideSwap=event.target.closest('[data-swap-panel]');
+    const explicitClose=event.target.closest('.modal-close');
+    if(!insideSwap||explicitClose){closeSwap();return;}
+  }
   const detail=event.target.closest('[data-exercise-detail]');
   if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
@@ -1806,6 +2142,15 @@ function handleClick(event){
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='regenerate')regeneratePlan();
+  else if(a==='swap-plan')openSwap({mode:'plan',dayId:node.dataset.dayId,index:Number(node.dataset.swapIndex)});
+  else if(a==='swap-active')openSwap({mode:'active',index:Number(node.dataset.swapIndex)});
+  else if(a==='choose-swap'){
+    const reason=document.querySelector('#swap-reason')?.value||'other';
+    const neverShow=Boolean(document.querySelector('#swap-never-show')?.checked);
+    applyExerciseSwap(node.dataset.candidateId,reason,neverShow);
+  }
+  else if(a==='undo-plan-swap')undoExerciseSwap('plan',Number(node.dataset.swapIndex),node.dataset.dayId||'');
+  else if(a==='undo-active-swap')undoExerciseSwap('active',Number(node.dataset.swapIndex));
   else if(a==='toggle-workout-pause')toggleWorkoutPause();
   else if(a==='complete-set')completeCurrentSet();
   else if(a==='start-set-now')finishPreSet();
@@ -1847,6 +2192,7 @@ document.addEventListener('submit',event=>{
 });
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&swapContext){swapContext=null;render();return;}
   if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
   if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
 });
