@@ -158,7 +158,7 @@ function renderCueControls(){
   const hapticsAvailable=typeof navigator!=='undefined'&&typeof navigator.vibrate==='function';
   return '<div class="cue-controls" aria-label="Workout cue settings">'+
     '<button type="button" data-action="toggle-sound" aria-pressed="'+String(settings.sound)+'"><span>♪</span> Sound '+(settings.sound?'ON':'OFF')+'</button>'+
-    '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
+    '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'disabled title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
   '</div>';
 }
 const MOVEMENT_GUIDANCE = {
@@ -864,6 +864,7 @@ function startWorkout(dayId){
   const day=store.plan?.days?.find(d=>d.id===dayId);
   if(!day) return;
   store.activeWorkout=createWorkout(day);
+  if(store.activeWorkout.phase==='pre-set')playWorkoutCue('transition','preset-start-'+store.activeWorkout.id+'-0-0');
   saveStore(); currentTab='workout'; render();
 }
 
@@ -1345,7 +1346,7 @@ function renderTimedWorkSet(pos){
       <p class="timed-work-cue">${esc(exerciseGuidance(pos.exercise).cue)}</p>
       <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
       <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
-      <div class="timed-finish-note" id="timed-finish-note">${snap.remaining<=3&&snap.remaining>0?'${snap.remaining}…':'Stay controlled. You’ll get a finish cue at zero.'}</div>
+      <div class="timed-finish-note" id="timed-finish-note">${snap.remaining<=3&&snap.remaining>0?String(snap.remaining)+'…':'Stay controlled. You’ll get a finish cue at zero.'}</div>
       <button class="button secondary" type="button" data-action="end-timed-set">END SET EARLY</button>
     </div>
   </div>`;
@@ -1442,7 +1443,7 @@ function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const result=pos.workout.lastProgressionResult;
   const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
-  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>The next set opens automatically when the timer reaches zero.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
+  return `<div class="rest-stage"><div class="rest-label">${next&&next.ei!==pos.ei?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':'UNTIL NEXT SET'}</div></div></div><h3>${next&&next.ei!==pos.ei?'Reset for the next movement':'Recover, then go again'}</h3><p>When rest ends, the get-ready countdown starts automatically.</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>${esc(nextEx.name)}</strong></div><em>Set ${next.si+1}/${nextEx.sets.length}</em></div>`:''}</div>`;
 }
 
 function renderHistory(){
@@ -1505,30 +1506,56 @@ function updateTimers(){
   const w=store.activeWorkout;
   if(!w)return;
 
+  const elapsed=document.querySelector('#elapsed-clock');
+  const exerciseClock=document.querySelector('#exercise-clock');
+  if(elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  if(exerciseClock&&['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase))exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
+
   if(['warmup','cooldown'].includes(w.phase)){
     const snap=timedStageSnapshot(w);
     if(!snap)return;
-    if(snap.complete){ reconcileTimedStage();return; }
-
+    if(snap.complete){reconcileTimedStage();return;}
     const stage=document.querySelector('.timed-stage');
     const renderedIndex=Number(stage?.dataset.stageIndex);
     if(Number.isFinite(renderedIndex)&&renderedIndex!==snap.index){
+      playWorkoutCue('transition','stage-'+w.id+'-'+w.phase+'-'+snap.index);
       render();return;
     }
-
-    const elapsed=document.querySelector('#elapsed-clock');
+    if(snap.remaining>0&&snap.remaining<=3)playWorkoutCue('tick','stage-tick-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.remaining);
     const stageClock=document.querySelector('#stage-clock');
     const fill=document.querySelector('#stage-progress-fill');
-    if(elapsed) elapsed.textContent=formatClock(workoutElapsedSeconds(w));
-    if(stageClock) stageClock.textContent=formatClock(snap.remaining);
-    if(fill) fill.style.width=`${Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100))}%`;
+    if(stageClock)stageClock.textContent=formatClock(snap.remaining);
+    if(fill)fill.style.width=`${Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100))}%`;
     return;
   }
 
-  const elapsed=document.querySelector('#elapsed-clock');
-  const exerciseClock=document.querySelector('#exercise-clock');
-  if(elapsed) elapsed.textContent=formatClock(workoutElapsedSeconds(w));
-  if(exerciseClock&&['work','rest','calibrate','feedback'].includes(w.phase)) exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
+  if(w.phase==='pre-set'){
+    const snap=preSetSnapshot(w);
+    if(!snap)return;
+    if(snap.complete){finishPreSet();return;}
+    const stage=document.querySelector('.pre-set-stage');
+    if(stage?.dataset.presetMode!==snap.mode){render();return;}
+    if(snap.mode==='countdown'&&snap.remaining<=3)playWorkoutCue('tick','preset-tick-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining);
+    const count=document.querySelector('#preset-count');
+    const label=document.querySelector('#preset-label');
+    if(count)count.textContent=String(snap.remaining);
+    if(label)label.textContent=snap.mode==='setup'?'Set up your equipment':'Get ready';
+    return;
+  }
+
+  if(w.phase==='timed-set'){
+    const snap=timedSetSnapshot(w);
+    if(!snap)return;
+    if(snap.complete){completeTimedSet(false);return;}
+    if(snap.remaining<=3&&snap.remaining>0)playWorkoutCue('tick','timed-set-tick-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining);
+    const clock=document.querySelector('#timed-set-clock');
+    const fill=document.querySelector('#timed-set-progress');
+    const note=document.querySelector('#timed-finish-note');
+    if(clock)clock.textContent=formatClock(snap.remaining);
+    if(fill)fill.style.width=`${Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100))}%`;
+    if(note)note.textContent=snap.remaining<=3?String(snap.remaining)+'…':'Stay controlled. You’ll get a finish cue at zero.';
+    return;
+  }
 
   if(w.phase!=='rest')return;
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
@@ -1559,6 +1586,10 @@ function handleClick(event){
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='regenerate')regeneratePlan();
   else if(a==='complete-set')completeCurrentSet();
+  else if(a==='start-set-now')finishPreSet();
+  else if(a==='end-timed-set')completeTimedSet(true);
+  else if(a==='toggle-sound')toggleCueSetting('sound');
+  else if(a==='toggle-haptics')toggleCueSetting('haptics');
   else if(a==='add-rest')adjustRest(15);
   else if(a==='pause-rest')toggleRestPause();
   else if(a==='skip-rest')skipRest();
