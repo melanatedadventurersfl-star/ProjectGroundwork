@@ -149,13 +149,27 @@ function programOriginDate(){
 }
 function programContext(date=new Date()){
   const origin=programOriginDate(),weekStart=startOfWeek(date);
-  const weekNumber=Math.max(1,Math.floor((weekStart-origin)/(7*86400000))+1);
+  const calendarWeekNumber=Math.max(1,Math.floor((weekStart-origin)/(7*86400000))+1);
+  const plannedPerWeek=Math.max(1,num(store.profile?.days)||4);
+  const completedScheduledDates=new Set(
+    store.history
+      .filter(item=>item.planId===store.plan?.id&&item.scheduledDate)
+      .filter(item=>{
+        const scheduled=dateFromKey(item.scheduledDate);
+        return scheduled>=origin&&scheduled<weekStart;
+      })
+      .map(item=>item.scheduledDate)
+  );
+  const earnedWeekNumber=Math.floor(completedScheduledDates.size/plannedPerWeek)+1;
+  const weekNumber=Math.max(1,Math.min(calendarWeekNumber,earnedWeekNumber));
   return {
     weekStart,
     weekKey:dateKey(weekStart),
+    calendarWeekNumber,
     weekNumber,
     blockNumber:Math.floor((weekNumber-1)/4)+1,
-    blockWeek:((weekNumber-1)%4)+1
+    blockWeek:((weekNumber-1)%4)+1,
+    completedScheduledBeforeWeek:completedScheduledDates.size
   };
 }
 function blockPhaseLabel(blockWeek){
@@ -219,7 +233,7 @@ function weekReview(weekStartDate){
 }
 function ensurePriorWeekReview(date=new Date()){
   const context=programContext(date);
-  if(context.weekNumber<=1)return null;
+  if(context.calendarWeekNumber<=1)return null;
   const previousStart=addDays(context.weekStart,-7);
   const key=dateKey(previousStart);
   const program=ensureTrainingProgram();
@@ -2147,7 +2161,7 @@ function renderHome(){
     <div class="page-head"><div><p class="eyebrow">TRAINING BLOCK ${context.blockNumber} · WEEK ${context.blockWeek} OF 4</p><h2 class="page-title">${esc(planGoalLabel(p.goal))}.</h2><p class="page-copy">${esc(daysText)} · ${p.minutes}-minute sessions · ${esc(experienceLabel(p.experience))} · ${esc(equipmentLabel(p.equipment))}. Your calendar, performance, readiness, swaps, and feedback now shape the next week.</p></div><button class="button secondary" data-action="edit-profile">EDIT PROFILE</button></div>
     ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':store.activeWorkout.isPaused?'Paused':store.activeWorkout.phase==='feedback'?'Exercise feedback':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='timed-set'?'Timed set':store.activeWorkout.phase==='warmup'?'Warm-up':store.activeWorkout.phase==='cooldown'?'Cooldown':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
     <section class="program-block-card">
-      <div class="block-phase"><span>CURRENT PHASE</span><strong>${esc(blockPhaseLabel(context.blockWeek))}</strong><em>Block ${context.blockNumber} · Program week ${context.weekNumber}</em></div>
+      <div class="block-phase"><span>CURRENT PHASE</span><strong>${esc(blockPhaseLabel(context.blockWeek))}</strong><em>Block ${context.blockNumber} · Program week ${context.weekNumber}${context.calendarWeekNumber>context.weekNumber?' · calendar week '+context.calendarWeekNumber:''}</em></div>
       <div class="block-explainer"><span>THIS WEEK'S ADAPTATION</span><strong>${esc(decision.mode.toUpperCase())}</strong><p>${esc(decision.notes.join(' ')||'Keep building from the targets earned in your previous sessions.')}</p></div>
       ${prior?`<div class="prior-week-mini"><span>LAST WEEK</span><strong>${prior.completed}/${prior.scheduled} workouts · ${prior.averageMinutes||0} min avg</strong><small>${prior.prs||0} PRs · readiness ${prior.averageReadiness?prior.averageReadiness.toFixed(1):'—'}/5</small></div>`:''}
     </section>
