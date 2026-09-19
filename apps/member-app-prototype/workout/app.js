@@ -8,6 +8,7 @@ const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 let exerciseDetailId = null;
 let swapContext = null;
+let readinessContext = null;
 
 const defaultStore = {
   profile: null,
@@ -18,6 +19,7 @@ const defaultStore = {
   progression: {},
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
+  trainingProgram: {scheduleOverrides:{},weekReviews:{}},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   lastSummaryId: null
 };
@@ -92,8 +94,70 @@ function roundTo(value,step=5){ if(!value) return 0; return Math.max(step,Math.r
 function formatClock(seconds){ const s=Math.max(0,Math.floor(seconds)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 function formatDate(iso){ return new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric'}).format(new Date(iso)); }
 function formatVolume(v){ return v>=1000?`${(v/1000).toFixed(v>=10000?0:1)}k lb`:`${Math.round(v)} lb`; }
-function startOfWeek(){ const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-d.getDay()); return d; }
-function weeklyHistory(){ const start=startOfWeek(); return store.history.filter(x=>new Date(x.completedAt)>=start); }
+const TRAINING_DAYS=[
+  {id:'mon',label:'Mon',name:'Monday',jsDay:1},
+  {id:'tue',label:'Tue',name:'Tuesday',jsDay:2},
+  {id:'wed',label:'Wed',name:'Wednesday',jsDay:3},
+  {id:'thu',label:'Thu',name:'Thursday',jsDay:4},
+  {id:'fri',label:'Fri',name:'Friday',jsDay:5},
+  {id:'sat',label:'Sat',name:'Saturday',jsDay:6},
+  {id:'sun',label:'Sun',name:'Sunday',jsDay:0}
+];
+function defaultWorkoutDays(days){
+  return ({2:['mon','thu'],3:['mon','wed','fri'],4:['mon','tue','thu','sat'],5:['mon','tue','wed','fri','sat']})[num(days)||4]||['mon','tue','thu','sat'];
+}
+function preferredWorkoutDays(profile=store.profile){
+  const selected=Array.isArray(profile?.workoutDays)?profile.workoutDays.filter(id=>TRAINING_DAYS.some(day=>day.id===id)):[];
+  return selected.length===num(profile?.days)?selected:defaultWorkoutDays(profile?.days||4);
+}
+function startOfWeek(date=new Date()){
+  const d=new Date(date);d.setHours(0,0,0,0);
+  const offset=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-offset);
+  return d;
+}
+function addDays(date,days){const d=new Date(date);d.setDate(d.getDate()+days);return d;}
+function dateKey(date=new Date()){
+  const d=new Date(date);
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+}
+function dateFromKey(key){
+  const [y,m,d]=String(key||'').split('-').map(Number);
+  return y&&m&&d?new Date(y,m-1,d):new Date(NaN);
+}
+function dayOffsetFromMonday(dayId){
+  const day=TRAINING_DAYS.find(item=>item.id===dayId);
+  return day?((day.jsDay+6)%7):0;
+}
+function weekKey(date=new Date()){return dateKey(startOfWeek(date));}
+function weeklyHistory(date=new Date()){
+  const start=startOfWeek(date),end=addDays(start,7);
+  return store.history.filter(x=>{const completed=new Date(x.completedAt);return completed>=start&&completed<end;});
+}
+function ensureTrainingProgram(){
+  store.trainingProgram=store.trainingProgram||{};
+  store.trainingProgram.scheduleOverrides=store.trainingProgram.scheduleOverrides||{};
+  store.trainingProgram.weekReviews=store.trainingProgram.weekReviews||{};
+  return store.trainingProgram;
+}
+function programOriginDate(){
+  const created=store.plan?.createdAt?new Date(store.plan.createdAt):new Date();
+  return startOfWeek(Number.isFinite(created.getTime())?created:new Date());
+}
+function programContext(date=new Date()){
+  const origin=programOriginDate(),weekStart=startOfWeek(date);
+  const weekNumber=Math.max(1,Math.floor((weekStart-origin)/(7*86400000))+1);
+  return {
+    weekStart,
+    weekKey:dateKey(weekStart),
+    weekNumber,
+    blockNumber:Math.floor((weekNumber-1)/4)+1,
+    blockWeek:((weekNumber-1)%4)+1
+  };
+}
+function blockPhaseLabel(blockWeek){
+  return ({1:'ESTABLISH',2:'BUILD',3:'PUSH',4:'CONSOLIDATE'})[blockWeek]||'BUILD';
+}
 function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
