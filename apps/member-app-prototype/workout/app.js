@@ -2383,7 +2383,7 @@ function markScheduledWorkoutComplete(dayId,scheduledDate){
     routineName:day.name,focus:day.focus,scheduledDate,actualStartDate:scheduledDate,actualCompletedDate:scheduledDate,
     startedAt:now,completedAt:now,durationMinutes:0,completionStatus:'complete',manualWorkoutCompletion:true,
     readiness:null,programContext:programContext(dateFromKey(scheduledDate)),adaptationNotes:['Marked complete manually. No performance data was invented.'],
-    exercises:(day.exercises||[]).map(ex=>({...clone(ex),manualComplete:true,manualCompletedAt:now,skipped:false,skipReason:'',sets:(ex.sets||[]).map(()=>({id:uid('set'),weight:'',reps:'',completed:false,completedAt:null}))})),
+    exercises:(day.exercises||[]).map(ex=>({...clone(ex),manualComplete:true,manualCompletedAt:now,skipped:false,skipReason:'',sets:Array.from({length:Math.max(0,num(ex.sets)||0)},()=>({id:uid('set'),weight:'',reps:'',completed:false,completedAt:null}))})),
     completedSets:0,resolvedExercises:(day.exercises||[]).length,totalVolume:0,newPRs:[]
   };
   store.history.unshift(historyEntry);store.history=store.history.slice(0,100);
