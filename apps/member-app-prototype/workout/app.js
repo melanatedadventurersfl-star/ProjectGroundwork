@@ -1759,11 +1759,157 @@ function restRemaining(w){
 }
 function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(0,Math.min(100,(restRemaining(w)/d)*100)); }
 
+function navigateToExercise(index,{announce=true}={}){
+  const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
+  index=Math.max(0,Math.min(index,w.exercises.length-1));
+  pauseInteractiveTimers(w);
+  const previous=w.currentExerciseIndex||0;
+  if(w.exerciseStartedAt&&previous!==index)recordExerciseDuration(w,previous);
+  w.currentExerciseIndex=index;
+  w.furthestExerciseIndex=Math.max(num(w.furthestExerciseIndex),index);
+  const ex=w.exercises[index];
+  w.currentSetIndex=firstIncompleteSetIndex(ex);
+  w.pendingPosition=null;w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
+  delete w.timedSetStartedAt;delete w.timedSetEndsAt;delete w.timedSetDuration;delete w.timedSetPausedRemaining;
+  delete w.preSetStartedAt;delete w.preSetSetupSeconds;delete w.preSetCountdownSeconds;delete w.preSetIsNewExercise;
+  if(exerciseCountsAsResolved(ex)){
+    w.phase='exercise-review';
+    w.exerciseStartedAt=null;
+  }else{
+    w.phase='pre-set';
+    w.preSetStartedAt=new Date().toISOString();
+    w.preSetSetupSeconds=5;
+    w.preSetCountdownSeconds=3;
+    w.preSetIsNewExercise=true;
+    w.exerciseStartedAt=null;
+    if(announce)announceExercise(ex,index===0?'First exercise':'Next exercise');
+  }
+  workoutMapOpen=false;
+  saveStore();render();
+}
+function navigateExercise(delta){
+  const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
+  const target=Math.max(0,Math.min((w.currentExerciseIndex||0)+delta,w.exercises.length-1));
+  if(target===w.currentExerciseIndex){toast(delta<0?'You are at the first exercise.':'You are at the last exercise.');return;}
+  navigateToExercise(target);
+}
+function markExerciseManual(index){
+  const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
+  ex.manualComplete=true;ex.manualCompletedAt=new Date().toISOString();ex.skipped=false;ex.skipReason='';
+  if(index===w.currentExerciseIndex){
+    const next=nextUnresolvedExerciseIndex(w,index);
+    if(next>=0){navigateToExercise(next);}
+    else{w.phase='review';saveStore();render();}
+  }else{saveStore();render();}
+}
+function undoManualExercise(index){
+  const ex=store.activeWorkout?.exercises?.[index];if(!ex)return;
+  ex.manualComplete=false;ex.manualCompletedAt=null;saveStore();render();
+}
+function skipExercise(index,reason='Skipped by user'){
+  const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
+  ex.skipped=true;ex.skipReason=reason;ex.manualComplete=false;ex.manualCompletedAt=null;
+  if(index===w.currentExerciseIndex){
+    const next=nextUnresolvedExerciseIndex(w,index);
+    if(next>=0)navigateToExercise(next);
+    else{w.phase='review';saveStore();render();}
+  }else{saveStore();render();}
+}
+function restoreExercise(index){
+  const ex=store.activeWorkout?.exercises?.[index];if(!ex)return;
+  ex.skipped=false;ex.skipReason='';ex.manualComplete=false;ex.manualCompletedAt=null;saveStore();render();
+}
+function moveExerciseLater(index){
+  const w=store.activeWorkout;if(!w||index<0||index>=w.exercises.length-1)return;
+  const ex=w.exercises[index];if(exerciseCountsAsResolved(ex)){toast('Completed or skipped exercises stay in their logged position.');return;}
+  w.exercises.splice(index,1);w.exercises.push(ex);
+  if(w.currentExerciseIndex===index)w.currentExerciseIndex=Math.min(index,w.exercises.length-1);
+  else if(w.currentExerciseIndex>index)w.currentExerciseIndex-=1;
+  saveStore();render();toast(ex.name+' moved later in this workout.');
+}
+function addWorkingSet(index){
+  const ex=store.activeWorkout?.exercises?.[index];if(!ex)return;
+  const last=ex.sets?.[ex.sets.length-1]||{};
+  ex.sets.push({id:uid('set'),weight:String(last.weight??ex.suggestedWeight??''),reps:String(last.reps??ex.suggestedReps??''),completed:false,completedAt:null});
+  ex.manualComplete=false;
+  saveStore();render();toast('One set added to '+ex.name+'.');
+}
+function openSetEditor(ei,si){
+  const set=store.activeWorkout?.exercises?.[ei]?.sets?.[si];if(!set)return;
+  setEditContext={ei,si};render();
+}
+function closeSetEditor(){setEditContext=null;render();}
+function saveSetEdit(){
+  if(!setEditContext)return;
+  const ex=store.activeWorkout?.exercises?.[setEditContext.ei],set=ex?.sets?.[setEditContext.si];if(!set)return;
+  const weight=(document.querySelector('#edit-set-weight')?.value||'').trim().replace(/[^0-9.]/g,'');
+  const reps=(document.querySelector('#edit-set-reps')?.value||'').trim().replace(/[^0-9.]/g,'');
+  if(num(reps)<=0){toast('Enter reps or seconds greater than zero.');return;}
+  set.weight=weight;set.reps=reps;set.completed=true;set.completedAt=set.completedAt||new Date().toISOString();
+  if(ex.feedback){
+    const result=computeProgression(ex,ex.feedback);
+    ex.nextRecommendation=result;store.progression[ex.id]=result;
+  }
+  setEditContext=null;saveStore();render();toast('Set updated.');
+}
+function deleteSetFromExercise(){
+  if(!setEditContext)return;
+  const ex=store.activeWorkout?.exercises?.[setEditContext.ei];if(!ex||ex.sets.length<=1){toast('An exercise needs at least one set.');return;}
+  ex.sets.splice(setEditContext.si,1);
+  setEditContext=null;saveStore();render();toast('Set removed.');
+}
+function renderSetEditor(){
+  if(!setEditContext)return '';
+  const ex=store.activeWorkout?.exercises?.[setEditContext.ei],set=ex?.sets?.[setEditContext.si];if(!ex||!set)return '';
+  const noLoad=['bodyweight','timed','band'].includes(ex.loadMode);
+  return '<div class="exercise-modal-backdrop set-edit-backdrop" data-action="close-set-editor"><section class="exercise-modal set-edit-modal" data-set-edit-panel role="dialog" aria-modal="true">'+
+    '<button class="modal-close" data-action="close-set-editor" type="button">×</button><p class="eyebrow">EDIT SET '+(setEditContext.si+1)+'</p><h2>'+esc(ex.name)+'</h2>'+
+    '<div class="input-grid"><label class="field"><span>WEIGHT (LB)'+(noLoad?' · OPTIONAL':'')+'</span><input id="edit-set-weight" inputmode="decimal" value="'+esc(set.weight||'')+'"></label>'+
+    '<label class="field"><span>'+(ex.loadMode==='timed'?'SECONDS':'REPS')+'</span><input id="edit-set-reps" inputmode="numeric" value="'+esc(set.reps||'')+'"></label></div>'+
+    '<div class="modal-actions"><button class="button" data-action="save-set-edit">SAVE CHANGES</button><button class="button danger" data-action="delete-set">REMOVE SET</button></div></section></div>';
+}
+function renderLoggedSets(ex,ei){
+  const sets=(ex.sets||[]).map((set,si)=>{
+    const label=set.completed?setPerformanceLabel(ex,set):'Not completed';
+    return '<button type="button" class="logged-set '+(set.completed?'completed':'pending')+'" data-action="edit-set" data-exercise-index="'+ei+'" data-set-index="'+si+'"><span>SET '+(si+1)+'</span><strong>'+esc(label)+'</strong><em>'+(set.completed?'EDIT':'ENTER')+'</em></button>';
+  }).join('');
+  return '<div class="logged-sets"><div class="logged-sets-head"><span>SETS</span><button class="text-button" data-action="add-set" data-exercise-index="'+ei+'">+ ADD SET</button></div>'+sets+'</div>';
+}
+function renderExerciseReview(pos){
+  const ex=pos.exercise,state=exerciseState(ex);
+  return '<div class="exercise-review-stage">'+
+    '<div class="exercise-review-hero">'+exerciseImageButton(ex,'active-exercise-media')+'<div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><span class="exercise-state-badge state-'+state+'">'+esc(exerciseStateLabel(ex))+'</span><p>'+esc(exerciseDescription(ex))+'</p><strong>'+esc(equipmentRequirement(exerciseSource(ex)))+'</strong></div></div>'+
+    renderLoggedSets(ex,pos.ei)+
+    '<div class="review-exercise-actions">'+
+      (state==='completed-manually'?'<button class="button secondary" data-action="undo-manual-exercise" data-exercise-index="'+pos.ei+'">UNDO MANUAL COMPLETION</button>':'')+
+      (state==='skipped'?'<button class="button secondary" data-action="restore-exercise" data-exercise-index="'+pos.ei+'">RETURN TO THIS EXERCISE</button>':'')+
+      (state==='partial'||state==='not-started'?'<button class="button" data-action="continue-exercise" data-exercise-index="'+pos.ei+'">CONTINUE EXERCISE</button>':'')+
+      '<button class="button secondary" data-action="open-workout-map">WORKOUT MAP</button>'+
+    '</div></div>';
+}
+function renderWorkoutMap(){
+  if(!workoutMapOpen||!store.activeWorkout)return '';
+  const w=store.activeWorkout;
+  return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal" data-workout-map-panel role="dialog" aria-modal="true">'+
+    '<button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><p class="eyebrow">WORKOUT MAP</p><h2>'+esc(w.routineName)+'</h2><p>Jump around without losing completed work. Moving an exercise later changes order, not its training target.</p></div>'+
+    '<div class="workout-map-list">'+w.exercises.map((ex,index)=>{
+      const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
+      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><div class="map-number">'+String(index+1).padStart(2,'0')+'</div><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' logged sets</span></div><div class="map-actions">'+
+        (w.phase!=='intro'?'<button class="text-button" data-action="jump-exercise" data-exercise-index="'+index+'">OPEN</button>':'')+
+        (!exerciseCountsAsResolved(ex)?'<button class="text-button" data-action="mark-exercise-complete" data-exercise-index="'+index+'">MARK COMPLETE</button>':'')+
+        (state==='completed-manually'?'<button class="text-button muted" data-action="undo-manual-exercise" data-exercise-index="'+index+'">UNDO</button>':'')+
+        (state==='skipped'?'<button class="text-button muted" data-action="restore-exercise" data-exercise-index="'+index+'">RESTORE</button>':'<button class="text-button muted" data-action="skip-exercise" data-exercise-index="'+index+'">SKIP</button>')+
+        (index<w.exercises.length-1&&!exerciseCountsAsResolved(ex)?'<button class="text-button muted" data-action="move-exercise-later" data-exercise-index="'+index+'">MOVE LATER</button>':'')+
+      '</div></article>';
+    }).join('')+'</div></section></div>';
+}
+
 function beginPreSetPosition(ei,si,isNewExercise=true){
   const w=store.activeWorkout;if(!w)return;
   const previousIndex=w.currentExerciseIndex||0;
   if(isNewExercise&&w.exerciseStartedAt&&previousIndex!==ei)recordExerciseDuration(w,previousIndex);
   w.currentExerciseIndex=ei;
+  w.furthestExerciseIndex=Math.max(num(w.furthestExerciseIndex),ei);
   w.currentSetIndex=si;
   w.phase='pre-set';
   w.preSetStartedAt=new Date().toISOString();
@@ -1773,10 +1919,7 @@ function beginPreSetPosition(ei,si,isNewExercise=true){
   w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
   if(isNewExercise)w.exerciseStartedAt=null;
   w.lastProgressionResult=null;
-  fireWorkoutSignal(isNewExercise?'transition':'tick','preset-start-'+w.id+'-'+ei+'-'+si,{
-    voice:isNewExercise?'Next exercise':'',
-    label:isNewExercise?'NEXT':''
-  });
+  if(isNewExercise)announceExercise(w.exercises[ei],ei===0?'First exercise':'Next exercise');
   saveStore();render();
 }
 function preSetSnapshot(w,nowMs=Date.now()){
@@ -2463,6 +2606,8 @@ function renderWorkSet(pos){
         <div class="field"><label>${isTimed?'SECONDS':'REPS'}</label><input id="set-reps" inputmode="numeric" value="${esc(defaultReps)}" placeholder="${isTimed?'45':'0'}"></div>
       </div>
       <button class="button primary-action" data-action="complete-set">COMPLETE SET ${pos.si+1}</button>
+      ${renderLoggedSets(pos.exercise,pos.ei)}
+      <div class="active-exercise-controls"><button class="button secondary" data-action="mark-exercise-complete" data-exercise-index="${pos.ei}">MARK EXERCISE COMPLETE</button><button class="button secondary" data-action="move-exercise-later" data-exercise-index="${pos.ei}">EQUIPMENT BUSY · MOVE LATER</button><button class="button ghost" data-action="skip-exercise" data-exercise-index="${pos.ei}">SKIP EXERCISE</button></div>
       <div class="next-preview"><div><span>UP NEXT</span><strong>${next?(next.type==='set'?`Set ${next.si+1} · ${pos.exercise.name}`:pos.workout.exercises[next.ei].name):'Workout complete'}</strong></div><div class="next-arrow">→</div></div>
     </div>`;
 }
@@ -2599,7 +2744,9 @@ function render(){
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
   if(swapContext) app.insertAdjacentHTML('beforeend',renderSwapModal());
   if(readinessContext) app.insertAdjacentHTML('beforeend',renderReadinessModal());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext));
+  if(workoutMapOpen) app.insertAdjacentHTML('beforeend',renderWorkoutMap());
+  if(setEditContext) app.insertAdjacentHTML('beforeend',renderSetEditor());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext));
   syncNav();syncLiveBadge();
 }
 
