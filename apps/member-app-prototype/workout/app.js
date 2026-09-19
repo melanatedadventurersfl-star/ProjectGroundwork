@@ -1992,7 +1992,7 @@ function startCooldown(){
   w.exerciseStartedAt=null;
   w.timedPhaseStartedAt=now;
   w.timedPhaseSkippedSeconds=0;
-  if(!w.cooldown?.length){ finishWorkout(true); return; }
+  if(!w.cooldown?.length){ openWorkoutReview(); return; }
   saveStore();render();
 }
 
@@ -2005,8 +2005,8 @@ function completeTimedStagePhase(w){
   }
   w.timedPhaseStartedAt=null;
   w.timedPhaseSkippedSeconds=0;
-  fireWorkoutSignal('complete','cooldown-complete-'+w.id,{voice:'Workout complete',label:'DONE'});
-  finishWorkout(true);
+  fireWorkoutSignal('complete','cooldown-complete-'+w.id,{voice:'Cooldown complete. Review your workout before saving.',label:'DONE'});
+  openWorkoutReview();
 }
 
 function reconcileTimedStage(){
@@ -2108,7 +2108,13 @@ function advanceAfterRest(){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
   const next=w.pendingPosition;if(!next){startCooldown();return;}
   const isNewExercise=next.ei!==w.currentExerciseIndex;
-  beginPreSetPosition(next.ei,next.si,isNewExercise);
+  if(isNewExercise){
+    w.phase='exercise-transition';
+    w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
+    announceExercise(w.exercises[next.ei],'Next exercise');
+    saveStore();render();return;
+  }
+  beginPreSetPosition(next.ei,next.si,false);
 }
 function adjustRest(delta){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
@@ -2196,32 +2202,75 @@ function bestLabel(exerciseId){
   return `${b.weight} lb × ${b.reps}`;
 }
 
-function finishWorkout(auto=false){
+function renderWorkoutReview(w){
+  const actualSets=completedSets(w.exercises),resolved=workoutResolvedCount(w),fullyResolved=workoutIsFullyResolved(w);
+  const rows=w.exercises.map((ex,index)=>{
+    const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
+    return '<article class="final-review-row"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' logged sets</span>'+(ex.skipReason?'<small>'+esc(ex.skipReason)+'</small>':'')+'</div><button class="text-button" data-action="jump-from-review" data-exercise-index="'+index+'">REVIEW</button></article>';
+  }).join('');
+  return '<div class="workout-final-review"><p class="eyebrow">FINAL REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check the session before it becomes training history. Manual completions count for adherence but never invent weight, reps, volume, or PRs.</p>'+
+    '<div class="review-summary-grid"><div><span>EXERCISES RESOLVED</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>LOGGED SETS</span><strong>'+actualSets+'</strong></div><div><span>STATUS</span><strong>'+(fullyResolved?'READY TO SAVE':'INCOMPLETE')+'</strong></div></div>'+
+    '<div class="final-review-list">'+rows+'</div>'+
+    '<div class="final-review-actions">'+
+      (fullyResolved?'<button class="button primary-action" data-action="save-workout-complete">FINISH & SAVE</button>':'<button class="button primary-action" data-action="finish-workout-anyway">FINISH ANYWAY</button><button class="button secondary" data-action="save-workout-partial">SAVE AS PARTIAL</button>')+
+      '<button class="button secondary" data-action="continue-workout">CONTINUE WORKOUT</button><button class="button danger" data-action="discard">DISCARD WORKOUT</button></div>'+
+  '</div>';
+}
+function openWorkoutReview(){
   const w=store.activeWorkout;if(!w)return;
-  const count=completedSets(w.exercises);
-  if(!count){
-    if(auto) return;
-    if(!confirm('End this workout? No completed sets will be saved.'))return;
-    store.activeWorkout=null;saveStore();currentTab='home';render();return;
+  pauseInteractiveTimers(w);
+  w.returnPhase=w.phase;
+  w.phase='review';saveStore();render();
+}
+function continueWorkoutFromReview(){
+  const w=store.activeWorkout;if(!w||w.phase!=='review')return;
+  const index=nextUnresolvedExerciseIndex(w,-1);
+  if(index>=0){navigateToExercise(index);return;}
+  w.phase=w.returnPhase&&w.returnPhase!=='review'?w.returnPhase:'exercise-review';
+  delete w.returnPhase;saveStore();render();
+}
+function rebuildDerivedTrainingState(){
+  const progression={};
+  const ordered=[...store.history].sort((a,b)=>new Date(b.completedAt)-new Date(a.completedAt));
+  for(const workout of ordered){
+    for(const ex of workout.exercises||[]){
+      if(ex.nextRecommendation&&!progression[ex.id])progression[ex.id]=ex.nextRecommendation;
+    }
   }
-  if(!auto&&!confirm('Finish this workout now? Completed sets will be saved.'))return;
+  store.progression=progression;
+  const valid=new Set(store.history.map(item=>item.id));
+  store.progressionLog=(store.progressionLog||[]).filter(item=>!item.workoutId||valid.has(item.workoutId));
+  ensureTrainingProgram().weekReviews={};
+}
+function finalizeWorkout(status='complete'){
+  const w=store.activeWorkout;if(!w)return;
+  if(status==='complete'&&!workoutIsFullyResolved(w)){
+    for(const ex of w.exercises){
+      if(!exerciseCountsAsResolved(ex)){ex.skipped=true;ex.skipReason='Finished without completing this exercise';}
+    }
+  }
+  const count=completedSets(w.exercises);
   const old=new Map(w.exercises.map(e=>[e.id,previousBest(e.id)]));
   const completedAt=new Date().toISOString();
-  const entry={...w,phase:'complete',completedAt,actualCompletedDate:dateKey(),durationMinutes:Math.max(1,Math.round((new Date(completedAt)-new Date(w.startedAt))/60000)),completedSets:count,totalVolume:volume(w.exercises),newPRs:[]};
+  const entry={...w,phase:'complete',completionStatus:status,completedAt,actualCompletedDate:dateKey(),durationMinutes:Math.max(1,Math.round((new Date(completedAt)-new Date(w.startedAt))/60000)),completedSets:count,resolvedExercises:workoutResolvedCount(w),totalVolume:volume(w.exercises),newPRs:[]};
   for(const ex of entry.exercises){
     let session=null;
-    for(const set of ex.sets){if(!set.completed)continue;const c={weight:num(set.weight),reps:num(set.reps)};
+    for(const set of ex.sets||[]){if(!set.completed)continue;const c={weight:num(set.weight),reps:num(set.reps)};
       if(!session||c.weight>session.weight||(c.weight===session.weight&&c.reps>session.reps))session=c;
     }
     const before=old.get(ex.id);
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
-  delete entry.pendingPosition;delete entry.restEndsAt;delete entry.restPausedRemaining;delete entry.lastProgressionResult;
-  delete entry.preSetStartedAt;delete entry.preSetSetupSeconds;delete entry.preSetCountdownSeconds;delete entry.preSetIsNewExercise;
-  delete entry.pausedAt;delete entry.isPaused;
-  delete entry.timedSetStartedAt;delete entry.timedSetDuration;delete entry.timedSetEndsAt;
-  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;saveStore();currentTab='summary';render();
+  ['pendingPosition','restEndsAt','restPausedRemaining','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
+  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;
+  rebuildDerivedTrainingState();saveStore();currentTab='summary';render();
 }
+function finishWorkout(auto=false){
+  const w=store.activeWorkout;if(!w)return;
+  if(auto){openWorkoutReview();return;}
+  openWorkoutReview();
+}
+
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
 
 function renderProfile(){
@@ -2427,8 +2476,8 @@ function renderWorkout(){
   if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
   const w=pos.workout;
   const done=completedSets(w.exercises),total=totalSets(w.exercises),resolved=workoutResolvedCount(w),pct=Math.round(resolved/Math.max(1,w.exercises.length)*100);
-  const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set','exercise-review'].includes(w.phase);
-  const stageLabel=w.isPaused?'PAUSED':w.phase==='intro'?'SESSION INTRO':w.phase==='review'?'SESSION REVIEW':w.phase==='exercise-review'?'EXERCISE REVIEW':w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
+  const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set','exercise-review','exercise-transition'].includes(w.phase);
+  const stageLabel=w.isPaused?'PAUSED':w.phase==='intro'?'SESSION INTRO':w.phase==='review'?'SESSION REVIEW':w.phase==='exercise-transition'?'NEXT EXERCISE':w.phase==='exercise-review'?'EXERCISE REVIEW':w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
   return `<div class="guided-shell">
     <div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>
     <div class="session-status workout-status">
@@ -2443,7 +2492,7 @@ function renderWorkout(){
     ${w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>All workout timers are frozen. Resume when you are ready.</span></div>':''}
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     <div class="step-strip">${w.exercises.map((ex,i)=>`<button type="button" class="step-pip ${exerciseCountsAsResolved(ex)?'done':''} ${i===pos.ei&&inExercise?'current':''} ${exerciseState(ex)==='partial'?'partial':''}" data-action="jump-exercise" data-exercise-index="${i}" aria-label="${esc(ex.name)} · ${esc(exerciseStateLabel(ex))}"></button>`).join('')}</div>
-    <section class="exercise-stage">${w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
+    <section class="exercise-stage">${w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
     <div class="session-controls"><button class="button secondary" data-action="previous-exercise">← PREVIOUS</button><button class="button secondary" data-action="open-workout-map">WORKOUT MAP</button><button class="button secondary" data-action="next-exercise">NEXT →</button><button class="button secondary pause-workout-button" data-action="toggle-workout-pause">${w.isPaused?'RESUME WORKOUT':'PAUSE WORKOUT'}</button><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
   </div>`;
 }
@@ -2665,6 +2714,16 @@ function renderNextExerciseCard(nextEx,next){
     '<button class="button secondary" type="button" data-action="swap-active" data-swap-index="'+next.ei+'">SWAP EXERCISE</button>'+
     (nextEx.swapUndo&&!nextEx.sets.some(set=>set.completed)?'<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="'+next.ei+'">Undo swap</button>':'')+
     '</div></div></section>';
+}
+
+function renderExerciseTransition(w){
+  const next=w.pendingPosition;
+  const ex=next?w.exercises[next.ei]:null;
+  if(!next||!ex)return '<div class="empty-state"><h2>No next exercise.</h2><button class="button" data-action="open-workout-review">REVIEW WORKOUT</button></div>';
+  return '<div class="exercise-transition-stage"><p class="eyebrow">NEXT EXERCISE</p>'+renderNextExerciseCard(ex,next)+
+    '<div class="transition-ready-actions"><button class="button primary-action" data-action="ready-next-exercise">I’M READY · START COUNTDOWN</button>'+
+    '<button class="button secondary" data-action="mark-exercise-complete" data-exercise-index="'+next.ei+'">ALREADY DONE · MARK COMPLETE</button>'+
+    '<button class="button secondary" data-action="move-exercise-later" data-exercise-index="'+next.ei+'">EQUIPMENT BUSY · MOVE LATER</button></div></div>';
 }
 
 function renderRest(pos){
