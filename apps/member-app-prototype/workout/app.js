@@ -1998,7 +1998,7 @@ function finishWorkout(auto=false){
   if(!auto&&!confirm('Finish this workout now? Completed sets will be saved.'))return;
   const old=new Map(w.exercises.map(e=>[e.id,previousBest(e.id)]));
   const completedAt=new Date().toISOString();
-  const entry={...w,phase:'complete',completedAt,durationMinutes:Math.max(1,Math.round((new Date(completedAt)-new Date(w.startedAt))/60000)),completedSets:count,totalVolume:volume(w.exercises),newPRs:[]};
+  const entry={...w,phase:'complete',completedAt,actualCompletedDate:dateKey(),durationMinutes:Math.max(1,Math.round((new Date(completedAt)-new Date(w.startedAt))/60000)),completedSets:count,totalVolume:volume(w.exercises),newPRs:[]};
   for(const ex of entry.exercises){
     let session=null;
     for(const set of ex.sets){if(!set.completed)continue;const c={weight:num(set.weight),reps:num(set.reps)};
@@ -2437,8 +2437,18 @@ function renderRest(pos){
 }
 
 function renderHistory(){
-  return `<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History</h2><p class="page-copy">Completed workouts, duration, volume, PRs, and adaptive decisions.</p></div></div><div class="history-list">${store.history.length?store.history.map(x=>{const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;return `<article class="history-card"><div class="history-top"><div><h3>${esc(x.routineName)}</h3><div class="history-date">${formatDate(x.completedAt)}</div></div><div class="history-volume">${formatVolume(x.totalVolume||0)}</div></div><div class="history-stats"><span>${x.completedSets} sets</span><span>•</span><span>${x.durationMinutes} min</span>${learned?`<span>•</span><span>${learned} learned target${learned===1?'':'s'}</span>`:''}${x.newPRs?.length?`<span>•</span><span>${x.newPRs.length} PR${x.newPRs.length===1?'':'s'}</span>`:''}</div></article>`;}).join(''):renderEmpty('No workout history','Complete your first generated workout and it will appear here.')}</div>`;
+  const rows=store.history.map(x=>{
+    const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;
+    const scheduled=x.scheduledDate||'';
+    const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
+    const timing=scheduled?(scheduled===actual?'Scheduled & completed '+formatDate(actual):'Scheduled '+formatDate(scheduled)+' · trained '+formatDate(actual)):'Completed '+formatDate(x.completedAt);
+    const readiness=x.readiness?.score?'<span>•</span><span>readiness '+esc(x.readiness.score)+'/5</span>':'';
+    const block=x.programContext?'<span>•</span><span>Block '+esc(x.programContext.blockNumber)+' · W'+esc(x.programContext.blockWeek)+'</span>':'';
+    return '<article class="history-card"><div class="history-top"><div><h3>'+esc(x.routineName)+'</h3><div class="history-date">'+esc(timing)+'</div></div><div class="history-volume">'+formatVolume(x.totalVolume||0)+'</div></div><div class="history-stats"><span>'+x.completedSets+' sets</span><span>•</span><span>'+x.durationMinutes+' min</span>'+block+readiness+(learned?'<span>•</span><span>'+learned+' learned target'+(learned===1?'':'s')+'</span>':'')+(x.newPRs?.length?'<span>•</span><span>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</span>':'')+'</div></article>';
+  }).join('');
+  return '<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History by day.</h2><p class="page-copy">Scheduled date, actual training date, readiness, training block, duration, volume, PRs, and adaptive decisions all stay attached to the session.</p></div></div><div class="history-list">'+(rows||renderEmpty('No workout history','Complete your first scheduled workout and it will appear here.'))+'</div>';
 }
+
 function personalRecords(){
   const map=new Map();
   for(const w of store.history)for(const ex of w.exercises)for(const s of ex.sets){if(!s.completed)continue;const c={id:ex.id,name:ex.name,weight:num(s.weight),reps:num(s.reps)};const old=map.get(ex.id);if(!old||c.weight>old.weight||(c.weight===old.weight&&c.reps>old.reps))map.set(ex.id,c);}
