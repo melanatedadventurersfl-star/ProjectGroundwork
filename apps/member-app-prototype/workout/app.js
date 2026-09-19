@@ -1801,12 +1801,21 @@ function markExerciseManual(index){
   const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
   ex.manualComplete=true;ex.manualCompletedAt=new Date().toISOString();ex.skipped=false;ex.skipReason='';
   if(w.phase==='intro'){saveStore();render();return;}
+  if(w.phase==='exercise-transition'&&w.pendingPosition?.ei===index){
+    const next=nextUnresolvedExerciseIndex(w,index);
+    if(next>=0){
+      w.pendingPosition={ei:next,si:firstIncompleteSetIndex(w.exercises[next]),type:'exercise'};
+      announceExercise(w.exercises[next],'Next exercise');saveStore();render();
+    }else startCooldown();
+    return;
+  }
   if(index===w.currentExerciseIndex){
     const next=nextUnresolvedExerciseIndex(w,index);
     if(next>=0){navigateToExercise(next);}
     else{startCooldown();}
   }else{saveStore();render();}
 }
+
 function undoManualExercise(index){
   const ex=store.activeWorkout?.exercises?.[index];if(!ex)return;
   ex.manualComplete=false;ex.manualCompletedAt=null;saveStore();render();
@@ -1815,12 +1824,21 @@ function skipExercise(index,reason='Skipped by user'){
   const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
   ex.skipped=true;ex.skipReason=reason;ex.manualComplete=false;ex.manualCompletedAt=null;
   if(w.phase==='intro'){saveStore();render();return;}
+  if(w.phase==='exercise-transition'&&w.pendingPosition?.ei===index){
+    const next=nextUnresolvedExerciseIndex(w,index);
+    if(next>=0){
+      w.pendingPosition={ei:next,si:firstIncompleteSetIndex(w.exercises[next]),type:'exercise'};
+      announceExercise(w.exercises[next],'Next exercise');saveStore();render();
+    }else startCooldown();
+    return;
+  }
   if(index===w.currentExerciseIndex){
     const next=nextUnresolvedExerciseIndex(w,index);
     if(next>=0)navigateToExercise(next);
     else startCooldown();
   }else{saveStore();render();}
 }
+
 function restoreExercise(index){
   const ex=store.activeWorkout?.exercises?.[index];if(!ex)return;
   ex.skipped=false;ex.skipReason='';ex.manualComplete=false;ex.manualCompletedAt=null;saveStore();render();
@@ -1828,11 +1846,25 @@ function restoreExercise(index){
 function moveExerciseLater(index){
   const w=store.activeWorkout;if(!w||index<0||index>=w.exercises.length-1)return;
   const ex=w.exercises[index];if(exerciseCountsAsResolved(ex)){toast('Completed or skipped exercises stay in their logged position.');return;}
+  const wasCurrent=w.currentExerciseIndex===index;
+  const wasPending=w.phase==='exercise-transition'&&w.pendingPosition?.ei===index;
   w.exercises.splice(index,1);w.exercises.push(ex);
-  if(w.currentExerciseIndex===index)w.currentExerciseIndex=Math.min(index,w.exercises.length-1);
-  else if(w.currentExerciseIndex>index)w.currentExerciseIndex-=1;
+  if(w.currentExerciseIndex>index)w.currentExerciseIndex-=1;
+  if(wasCurrent){
+    w.currentExerciseIndex=Math.min(index,w.exercises.length-1);
+    saveStore();
+    navigateToExercise(w.currentExerciseIndex);
+    toast(ex.name+' moved later in this workout.');
+    return;
+  }
+  if(wasPending){
+    const newNext=w.exercises[index];
+    w.pendingPosition={ei:index,si:firstIncompleteSetIndex(newNext),type:'exercise'};
+    announceExercise(newNext,'Next exercise');
+  }
   saveStore();render();toast(ex.name+' moved later in this workout.');
 }
+
 function addWorkingSet(index){
   const ex=store.activeWorkout?.exercises?.[index];if(!ex)return;
   const last=ex.sets?.[ex.sets.length-1]||{};
