@@ -223,7 +223,7 @@ function ensurePriorWeekReview(date=new Date()){
   const previousStart=addDays(context.weekStart,-7);
   const key=dateKey(previousStart);
   const program=ensureTrainingProgram();
-  if(!program.weekReviews[key])program.weekReviews[key]=weekReview(previousStart);
+  program.weekReviews[key]=weekReview(previousStart);
   return program.weekReviews[key];
 }
 function adaptationDecision(date=new Date()){
@@ -1368,6 +1368,7 @@ function generatePlan(profile){
     createdAt:new Date().toISOString(),
     goal:profile.goal,
     daysPerWeek:profile.days,
+    workoutDays:preferredWorkoutDays(profile),
     minutes:profile.minutes,
     days:blueprints.map((b,i)=>buildDay(b,profile,i))
   };
@@ -1465,6 +1466,7 @@ function saveProfileFromForm(form){
   }
   store.profile=profile;
   store.plan=plan;
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
   const persisted=saveStore();
   currentTab='home';
   render();
@@ -1483,6 +1485,7 @@ function editProfile(){
 function regeneratePlan(){
   if (!store.profile || store.activeWorkout) return;
   store.plan=generatePlan(store.profile);
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
   saveStore();
   toast('Plan rebuilt from your profile.');
   render();
@@ -2203,6 +2206,7 @@ function renderWorkout(){
       </div>
     </div>
     ${renderCueControls()}
+    <div class="training-context-strip"><span>BLOCK ${w.programContext?.blockNumber||1} · WEEK ${w.programContext?.blockWeek||1}</span><strong>${esc(blockPhaseLabel(w.programContext?.blockWeek||1))}</strong>${w.readiness?.score?'<em>Readiness '+esc(w.readiness.score)+'/5 · '+esc(w.readiness.timeAvailable)+' min available</em>':''}</div>
     ${w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>All workout timers are frozen. Resume when you are ready.</span></div>':''}
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     <div class="step-strip">${w.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei&&inExercise?'current':''}"></span>`).join('')}</div>
@@ -2663,6 +2667,20 @@ document.addEventListener('submit',event=>{
   }
 });
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
+document.addEventListener('change',event=>{
+  if(event.target.id==='training-days-count'){
+    const desired=num(event.target.value)||4;
+    const defaults=defaultWorkoutDays(desired);
+    document.querySelectorAll('input[name="workoutDays"]').forEach(input=>{input.checked=defaults.includes(input.value);});
+    const note=document.querySelector('.schedule-day-head small');
+    if(note)note.textContent='Select exactly '+desired+' days. Default days were updated for this schedule.';
+  }else if(event.target.name==='workoutDays'){
+    const desired=num(document.querySelector('#training-days-count')?.value)||4;
+    const selected=document.querySelectorAll('input[name="workoutDays"]:checked').length;
+    const note=document.querySelector('.schedule-day-head small');
+    if(note)note.textContent=selected+' of '+desired+' days selected.';
+  }
+});
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&readinessContext){readinessContext=null;render();return;}
   if(event.key==='Escape'&&swapContext){swapContext=null;render();return;}
