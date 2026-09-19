@@ -155,7 +155,7 @@ function programContext(date=new Date()){
   const plannedPerWeek=Math.max(1,num(store.profile?.days)||4);
   const completedScheduledDates=new Set(
     store.history
-      .filter(item=>item.planId===store.plan?.id&&item.scheduledDate)
+      .filter(item=>item.planId===store.plan?.id&&item.scheduledDate&&item.completionStatus!=='partial')
       .filter(item=>{
         const scheduled=dateFromKey(item.scheduledDate);
         return scheduled>=origin&&scheduled<weekStart;
@@ -199,7 +199,7 @@ function scheduledEntriesForWeek(date=new Date()){
     const entry={dayId,date:scheduledDate,dateKey:key,day,index,override:overrides[key]||null};
     const history=scheduleHistoryMatch(entry);
     const todayKey=dateKey();
-    let status=history?'complete':entry.override?.status==='skipped'?'skipped':key===todayKey?'today':scheduledDate<new Date(new Date().setHours(0,0,0,0))?'missed':'upcoming';
+    let status=history?(history.completionStatus==='partial'?'partial':'complete'):entry.override?.status==='skipped'?'skipped':key===todayKey?'today':scheduledDate<new Date(new Date().setHours(0,0,0,0))?'missed':'upcoming';
     return {...entry,dayName:dayDef?.name||dayId,status,history};
   });
 }
@@ -210,10 +210,11 @@ function weekReview(weekStartDate){
     const scheduled=item.scheduledDate?dateFromKey(item.scheduledDate):new Date(item.completedAt);
     return scheduled>=start&&scheduled<end;
   });
+  const completedSessions=sessions.filter(item=>item.completionStatus!=='partial');
   const feedback=[];
   for(const session of sessions)for(const ex of session.exercises||[])if(ex.feedback)feedback.push(ex.feedback);
   const readiness=sessions.map(item=>num(item.readiness?.score)).filter(Boolean);
-  const completionRate=entries.length?sessions.filter(item=>entries.some(entry=>entry.dateKey===(item.scheduledDate||dateKey(new Date(item.completedAt))))).length/entries.length:0;
+  const completionRate=entries.length?completedSessions.filter(item=>entries.some(entry=>entry.dateKey===(item.scheduledDate||dateKey(new Date(item.completedAt))))).length/entries.length:0;
   const tooHard=feedback.filter(value=>value==='too-hard'||value==='form-off').length;
   const hard=feedback.filter(value=>value==='hard').length;
   const swapHistory=store.exercisePreferences?.swapHistory||[];
@@ -221,7 +222,7 @@ function weekReview(weekStartDate){
   return {
     weekKey:dateKey(start),
     scheduled:entries.length,
-    completed:sessions.length,
+    completed:completedSessions.length,
     completionRate:Math.min(1,completionRate),
     totalVolume:sessions.reduce((sum,item)=>sum+(item.totalVolume||0),0),
     minutes:sessions.reduce((sum,item)=>sum+(item.durationMinutes||0),0),
@@ -2351,11 +2352,46 @@ function undoSkipScheduledSession(key){
   delete program.scheduleOverrides[key];
   saveStore();render();
 }
+function markScheduledWorkoutComplete(dayId,scheduledDate){
+  const entry=scheduledEntryFor(dayId,scheduledDate);if(!entry)return;
+  const existing=scheduleHistoryMatch(entry);
+  if(existing){
+    if(existing.completionStatus!=='partial'){toast('That scheduled workout is already marked complete.');return;}
+    existing.completionStatus='complete';
+    existing.manualWorkoutCompletion=true;
+    existing.manuallyCompletedSchedule=true;
+    existing.actualCompletedDate=existing.actualCompletedDate||scheduledDate;
+    existing.completedAt=existing.completedAt||new Date().toISOString();
+    rebuildDerivedTrainingState();saveStore();render();toast('Partial workout marked complete.');
+    return;
+  }
+  const day=entry.adaptedDay||entry.day;
+  const now=new Date().toISOString();
+  const historyEntry={
+    schemaVersion:ACTIVE_WORKOUT_SCHEMA,id:uid('manual-workout'),planId:store.plan.id,planDayId:entry.day.id,
+    routineName:day.name,focus:day.focus,scheduledDate,actualStartDate:scheduledDate,actualCompletedDate:scheduledDate,
+    startedAt:now,completedAt:now,durationMinutes:0,completionStatus:'complete',manualWorkoutCompletion:true,
+    readiness:null,programContext:programContext(dateFromKey(scheduledDate)),adaptationNotes:['Marked complete manually. No performance data was invented.'],
+    exercises:(day.exercises||[]).map(ex=>({...clone(ex),manualComplete:true,manualCompletedAt:now,skipped:false,skipReason:'',sets:(ex.sets||[]).map(()=>({id:uid('set'),weight:'',reps:'',completed:false,completedAt:null}))})),
+    completedSets:0,resolvedExercises:(day.exercises||[]).length,totalVolume:0,newPRs:[]
+  };
+  store.history.unshift(historyEntry);store.history=store.history.slice(0,100);
+  rebuildDerivedTrainingState();saveStore();render();toast(day.name+' marked complete.');
+}
+function removeHistoryWorkout(id){
+  const workout=store.history.find(item=>item.id===id);if(!workout)return;
+  if(!confirm('Remove '+workout.routineName+' from history? Weekly status, PR context, and adaptive recommendations will recalculate from the remaining workouts.'))return;
+  store.history=store.history.filter(item=>item.id!==id);
+  if(store.lastSummaryId===id)store.lastSummaryId=null;
+  rebuildDerivedTrainingState();saveStore();render();toast('Workout removed from history.');
+}
+
 function scheduleStatusLabel(entry){
   if(entry.status==='complete')return 'COMPLETED';
   if(entry.status==='today')return 'TODAY';
   if(entry.status==='missed')return 'MISSED';
   if(entry.status==='skipped')return 'SKIPPED';
+  if(entry.status==='partial')return 'PARTIAL';
   return 'UPCOMING';
 }
 function scheduleCompletionNote(entry){
@@ -2368,12 +2404,16 @@ function renderWeekScheduleEntry(entry){
   const day=entry.adaptedDay;
   const status=scheduleStatusLabel(entry);
   const canStart=!store.activeWorkout&&!['complete','skipped'].includes(entry.status);
+  const completeButton='<button class="text-button" data-action="mark-scheduled-complete" data-day-id="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">MARK COMPLETE</button>';
   const button=entry.status==='complete'?
     '<span class="schedule-done">✓ DONE</span>':
     entry.status==='skipped'?
       '<button class="text-button muted" data-action="undo-skip-scheduled" data-scheduled-date="'+esc(entry.dateKey)+'">UNDO SKIP</button>':
+      entry.status==='partial'?
+        '<div class="schedule-actions"><span class="schedule-partial">PARTIAL</span>'+completeButton+'</div>':
       '<div class="schedule-actions">'+
-        (canStart?'<button class="button secondary" data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">'+(entry.status==='missed'?'DO TODAY':entry.status==='today'?'START TODAY':'START EARLY')+'</button>':'')+
+        (canStart?'<button class="button secondary" data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">'+(entry.status==='missed'?'MAKE UP':entry.status==='today'?'START TODAY':'START EARLY')+'</button>':'')+
+        completeButton+
         (entry.status==='missed'?'<button class="text-button muted" data-action="skip-scheduled" data-scheduled-date="'+esc(entry.dateKey)+'">SKIP</button>':'')+
       '</div>';
   return '<article class="schedule-card status-'+entry.status+'">'+
@@ -2381,7 +2421,7 @@ function renderWeekScheduleEntry(entry){
     '<div class="schedule-main"><div class="schedule-top"><span>'+status+'</span><em>~'+esc(day.estimatedMinutes)+' min</em></div>'+
     '<h3>'+esc(day.name)+'</h3><p>'+esc(day.focus)+'</p>'+
     '<div class="schedule-meta"><span>'+day.exercises.length+' exercises</span><span>'+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</span></div>'+
-    (entry.history?'<small class="schedule-completion">'+esc(scheduleCompletionNote(entry))+'</small>':'')+
+    (entry.history?'<small class="schedule-completion">'+esc(entry.history.manualWorkoutCompletion?'Marked complete manually. No set data assumed.':scheduleCompletionNote(entry))+'</small>':'')+
     '</div><div class="schedule-cta">'+button+'</div></article>';
 }
 
@@ -2739,12 +2779,15 @@ function renderHistory(){
     const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;
     const scheduled=x.scheduledDate||'';
     const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
-    const timing=scheduled?(scheduled===actual?'Scheduled & completed '+formatDate(actual):'Scheduled '+formatDate(scheduled)+' · trained '+formatDate(actual)):'Completed '+formatDate(x.completedAt);
+    const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?'Scheduled & completed '+formatDate(actual):'Scheduled '+formatDate(scheduled)+' · trained '+formatDate(actual)):'Completed '+formatDate(x.completedAt);
     const readiness=x.readiness?.score?'<span>•</span><span>readiness '+esc(x.readiness.score)+'/5</span>':'';
     const block=x.programContext?'<span>•</span><span>Block '+esc(x.programContext.blockNumber)+' · W'+esc(x.programContext.blockWeek)+'</span>':'';
-    return '<article class="history-card"><div class="history-top"><div><h3>'+esc(x.routineName)+'</h3><div class="history-date">'+esc(timing)+'</div></div><div class="history-volume">'+formatVolume(x.totalVolume||0)+'</div></div><div class="history-stats"><span>'+x.completedSets+' sets</span><span>•</span><span>'+x.durationMinutes+' min</span>'+block+readiness+(learned?'<span>•</span><span>'+learned+' learned target'+(learned===1?'':'s')+'</span>':'')+(x.newPRs?.length?'<span>•</span><span>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</span>':'')+'</div></article>';
+    const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL COMPLETION':'COMPLETED';
+    return '<article class="history-card"><div class="history-top"><div><div class="history-status">'+status+'</div><h3>'+esc(x.routineName)+'</h3><div class="history-date">'+esc(timing)+'</div></div><div class="history-volume">'+formatVolume(x.totalVolume||0)+'</div></div>'+
+      '<div class="history-stats"><span>'+x.completedSets+' logged sets</span>'+(x.durationMinutes?'<span>•</span><span>'+x.durationMinutes+' min</span>':'')+block+readiness+(learned?'<span>•</span><span>'+learned+' learned target'+(learned===1?'':'s')+'</span>':'')+(x.newPRs?.length?'<span>•</span><span>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</span>':'')+'</div>'+
+      '<div class="history-actions"><button class="text-button danger-text" data-action="remove-history" data-history-id="'+esc(x.id)+'">REMOVE FROM HISTORY</button></div></article>';
   }).join('');
-  return '<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History by day.</h2><p class="page-copy">Scheduled date, actual training date, readiness, training block, duration, volume, PRs, and adaptive decisions all stay attached to the session.</p></div></div><div class="history-list">'+(rows||renderEmpty('No workout history','Complete your first scheduled workout and it will appear here.'))+'</div>';
+  return '<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History by day.</h2><p class="page-copy">Scheduled date, actual training date, readiness, status, volume, and adaptive decisions remain attached to the session. Removing a workout recalculates dependent training data.</p></div></div><div class="history-list">'+(rows||renderEmpty('No workout history','Complete your first scheduled workout and it will appear here.'))+'</div>';
 }
 
 function personalRecords(){
