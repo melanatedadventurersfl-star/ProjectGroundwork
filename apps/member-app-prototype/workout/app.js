@@ -158,6 +158,153 @@ function programContext(date=new Date()){
 function blockPhaseLabel(blockWeek){
   return ({1:'ESTABLISH',2:'BUILD',3:'PUSH',4:'CONSOLIDATE'})[blockWeek]||'BUILD';
 }
+
+const ACCESSORY_MOVEMENTS=new Set(['biceps','triceps','calves','core','shoulder-accessory','quad-accessory','hamstring-accessory']);
+
+function scheduleHistoryMatch(entry){
+  return store.history.find(item=>{
+    if(item.scheduledDate)return item.scheduledDate===entry.dateKey;
+    return item.planDayId===entry.day.id&&dateKey(new Date(item.completedAt))===entry.dateKey;
+  })||null;
+}
+function scheduledEntriesForWeek(date=new Date()){
+  if(!store.plan?.days?.length||!store.profile)return [];
+  const context=programContext(date);
+  const overrides=ensureTrainingProgram().scheduleOverrides;
+  const preferred=preferredWorkoutDays();
+  return preferred.map((dayId,index)=>{
+    const dayDef=TRAINING_DAYS.find(item=>item.id===dayId)||TRAINING_DAYS[index];
+    const scheduledDate=addDays(context.weekStart,dayOffsetFromMonday(dayId));
+    const key=dateKey(scheduledDate);
+    const day=store.plan.days[index%store.plan.days.length];
+    const entry={dayId,date:scheduledDate,dateKey:key,day,index,override:overrides[key]||null};
+    const history=scheduleHistoryMatch(entry);
+    const todayKey=dateKey();
+    let status=history?'complete':entry.override?.status==='skipped'?'skipped':key===todayKey?'today':scheduledDate<new Date(new Date().setHours(0,0,0,0))?'missed':'upcoming';
+    return {...entry,dayName:dayDef?.name||dayId,status,history};
+  });
+}
+function weekReview(weekStartDate){
+  const start=startOfWeek(weekStartDate),end=addDays(start,7);
+  const entries=scheduledEntriesForWeek(start);
+  const sessions=store.history.filter(item=>{
+    const scheduled=item.scheduledDate?dateFromKey(item.scheduledDate):new Date(item.completedAt);
+    return scheduled>=start&&scheduled<end;
+  });
+  const feedback=[];
+  for(const session of sessions)for(const ex of session.exercises||[])if(ex.feedback)feedback.push(ex.feedback);
+  const readiness=sessions.map(item=>num(item.readiness?.score)).filter(Boolean);
+  const completionRate=entries.length?sessions.filter(item=>entries.some(entry=>entry.dateKey===(item.scheduledDate||dateKey(new Date(item.completedAt))))).length/entries.length:0;
+  const tooHard=feedback.filter(value=>value==='too-hard'||value==='form-off').length;
+  const hard=feedback.filter(value=>value==='hard').length;
+  const swapHistory=store.exercisePreferences?.swapHistory||[];
+  const swaps=swapHistory.filter(item=>{const at=new Date(item.at);return at>=start&&at<end;}).length;
+  return {
+    weekKey:dateKey(start),
+    scheduled:entries.length,
+    completed:sessions.length,
+    completionRate:Math.min(1,completionRate),
+    totalVolume:sessions.reduce((sum,item)=>sum+(item.totalVolume||0),0),
+    minutes:sessions.reduce((sum,item)=>sum+(item.durationMinutes||0),0),
+    averageMinutes:sessions.length?Math.round(sessions.reduce((sum,item)=>sum+(item.durationMinutes||0),0)/sessions.length):0,
+    averageReadiness:readiness.length?readiness.reduce((a,b)=>a+b,0)/readiness.length:0,
+    tooHardRate:feedback.length?tooHard/feedback.length:0,
+    hardRate:feedback.length?hard/feedback.length:0,
+    swaps,
+    prs:sessions.reduce((sum,item)=>sum+(item.newPRs?.length||0),0)
+  };
+}
+function ensurePriorWeekReview(date=new Date()){
+  const context=programContext(date);
+  if(context.weekNumber<=1)return null;
+  const previousStart=addDays(context.weekStart,-7);
+  const key=dateKey(previousStart);
+  const program=ensureTrainingProgram();
+  if(!program.weekReviews[key])program.weekReviews[key]=weekReview(previousStart);
+  return program.weekReviews[key];
+}
+function adaptationDecision(date=new Date()){
+  const context=programContext(date);
+  const previous=ensurePriorWeekReview(date);
+  const decision={mode:'steady',addSets:0,reduceAccessories:false,notes:[]};
+  if(context.blockWeek===1){
+    decision.notes.push(context.blockNumber===1?'Establish working loads and clean reps.':'New 4-week block: keep anchor lifts and refresh selected accessory work.');
+  }
+  if(previous){
+    if(previous.completionRate<.6){
+      decision.mode='repeat';
+      decision.reduceAccessories=true;
+      decision.notes.push('Last week was incomplete, so volume stays conservative instead of automatically progressing.');
+    }else if((previous.averageReadiness&&previous.averageReadiness<2.7)||previous.tooHardRate>.25){
+      decision.mode='recover';
+      decision.reduceAccessories=true;
+      decision.notes.push('Readiness or difficulty feedback was low, so this week trims accessory volume.');
+    }else if(context.blockWeek===2&&previous.completionRate>=.75){
+      decision.mode='build';
+      decision.addSets=1;
+      decision.notes.push('Completion was solid, so one primary movement gets an additional working set.');
+    }else if(context.blockWeek===3&&previous.completionRate>=.75){
+      decision.mode='push';
+      decision.addSets=2;
+      decision.notes.push('This is the push week: up to two primary movements gain one working set.');
+    }
+  }
+  if(context.blockWeek===4){
+    decision.mode='consolidate';
+    decision.addSets=0;
+    decision.reduceAccessories=true;
+    decision.notes.push('Consolidation week reduces accessory volume while preserving productive anchor work.');
+  }
+  return {...decision,previous,context};
+}
+function rotateAccessoriesForBlock(day,blockNumber){
+  if(blockNumber<=1)return day;
+  const used=new Set((day.exercises||[]).map(ex=>ex.id));
+  day.exercises=(day.exercises||[]).map(ex=>{
+    if(!ACCESSORY_MOVEMENTS.has(ex.movement))return ex;
+    const candidates=catalog.filter(candidate=>
+      candidate.id!==ex.id&&candidate.movement===ex.movement&&
+      equipmentAllows(candidate,store.profile?.equipment||'full-gym')&&!avoided(candidate,store.profile||{})&&!used.has(candidate.id)
+    ).sort((a,b)=>a.id.localeCompare(b.id));
+    if(!candidates.length)return ex;
+    const chosen=candidates[(blockNumber-2)%candidates.length];
+    const replacement=planSlotFromCandidate(chosen,ex);
+    delete replacement.swappedFrom;delete replacement.swapUndo;
+    used.delete(ex.id);used.add(replacement.id);
+    return replacement;
+  });
+  return day;
+}
+function adaptDayForProgramWeek(baseDay,date=new Date()){
+  const decision=adaptationDecision(date);
+  const day=rotateAccessoriesForBlock(clone(baseDay),decision.context.blockNumber);
+  const compounds=day.exercises.filter(ex=>!ACCESSORY_MOVEMENTS.has(ex.movement));
+  for(let i=0;i<Math.min(decision.addSets,compounds.length);i++)compounds[i].sets=Math.min(4,(compounds[i].sets||2)+1);
+  if(decision.reduceAccessories){
+    for(const ex of day.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
+  }
+  recalculatePlanDay(day);
+  const cap=Math.max(20,num(store.profile?.minutes)||45)*1.03;
+  for(let i=day.exercises.length-1;i>=0&&day.estimatedMinutes>cap;i--){
+    while(day.exercises[i]?.sets>2&&day.estimatedMinutes>cap){
+      day.exercises[i].sets-=1;
+      recalculatePlanDay(day);
+    }
+  }
+  day.programContext=decision.context;
+  day.adaptationMode=decision.mode;
+  day.adaptationNotes=decision.notes;
+  return day;
+}
+function currentWeekSchedule(date=new Date()){
+  return scheduledEntriesForWeek(date).map(entry=>({...entry,adaptedDay:adaptDayForProgramWeek(entry.day,entry.date)}));
+}
+function nextScheduledSession(date=new Date()){
+  const schedule=currentWeekSchedule(date);
+  return schedule.find(entry=>entry.status==='today')||
+    schedule.find(entry=>entry.status==='missed')||
+    schedule.find(entry=>entry.status==='upcoming')||null;
+}
 function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
