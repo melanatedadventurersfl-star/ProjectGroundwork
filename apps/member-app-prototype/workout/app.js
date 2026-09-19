@@ -954,6 +954,7 @@ function renderExerciseModal(){
         '<div class="instruction-block"><h3>Set up</h3><p>'+esc(guide.setup)+'</p></div>'+
         '<div class="instruction-block"><h3>How to move</h3><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></div>'+
         '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
+        renderExerciseHistoryPanel(ex)+
         '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
       '</div>'+
     '</section>'+
@@ -2221,6 +2222,7 @@ function renderPreSet(pos){
       <div class="stage-count">SET ${pos.si+1} OF ${pos.exercise.sets.length} · ${esc(pos.exercise.name)}</div>
       <p class="exercise-description pre-set-description">${esc(exerciseDescription(pos.exercise))}</p>
       <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
+      ${renderExerciseHistoryPanel(pos.exercise)}
       <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div>
       <div class="pre-set-number" id="preset-count">${snap.remaining}</div>
       <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
@@ -2277,6 +2279,74 @@ function renderTimedStage(w){
   </div>`;
 }
 
+function exerciseSessionHistory(exerciseId,limit=4){
+  const rows=[];
+  for(const workout of store.history){
+    const ex=(workout.exercises||[]).find(item=>item.id===exerciseId);
+    if(!ex)continue;
+    const sets=(ex.sets||[]).filter(set=>set.completed);
+    if(!sets.length)continue;
+    let best=null;
+    for(const set of sets){
+      const current={weight:num(set.weight),reps:num(set.reps)};
+      if(!best||current.weight>best.weight||(current.weight===best.weight&&current.reps>best.reps))best=current;
+    }
+    rows.push({
+      workoutId:workout.id,
+      date:workout.completedAt,
+      scheduledDate:workout.scheduledDate||'',
+      routineName:workout.routineName,
+      sets:sets.map(set=>({weight:num(set.weight),reps:num(set.reps)})),
+      best,
+      feedback:ex.feedback||'',
+      volume:sets.reduce((sum,set)=>sum+num(set.weight)*num(set.reps),0)
+    });
+    if(rows.length>=limit)break;
+  }
+  return rows;
+}
+function exerciseTrend(ex){
+  const history=exerciseSessionHistory(ex.id,2);
+  if(!history.length)return {label:'FIRST SESSION',detail:'This workout will establish your baseline.'};
+  if(history.length===1)return {label:'BASELINE SET',detail:'One completed session is logged for this movement.'};
+  const latest=history[0].best,previous=history[1].best;
+  if(!latest||!previous)return {label:'BUILDING HISTORY',detail:'Keep logging clean sets to establish a trend.'};
+  if(latest.weight>previous.weight)return {label:'TRENDING UP',detail:'Best working weight increased by '+Math.round(latest.weight-previous.weight)+' lb.'};
+  if(latest.weight===previous.weight&&latest.reps>previous.reps)return {label:'TRENDING UP',detail:'Same load with '+Math.round(latest.reps-previous.reps)+' more rep'+(latest.reps-previous.reps===1?'':'s')+' at your best set.'};
+  if(latest.weight<previous.weight)return {label:'REBUILDING',detail:'The latest session used a lighter best working load.'};
+  if(latest.reps<previous.reps)return {label:'HOLDING LOAD',detail:'Load stayed the same while reps were lower last session.'};
+  return {label:'STEADY',detail:'Your latest best set matched the previous session.'};
+}
+function setPerformanceLabel(ex,set){
+  if(ex.loadMode==='timed')return String(set.reps)+' sec';
+  if(!set.weight)return String(set.reps)+' reps';
+  return String(set.weight)+' lb × '+String(set.reps);
+}
+function renderExerciseHistoryPanel(ex){
+  const history=exerciseSessionHistory(ex.id,3);
+  const trend=exerciseTrend(ex);
+  const latest=history[0];
+  const target=adaptivePrescription(ex);
+  if(!latest)return '<div class="exercise-history-card first-session"><div><span>PROGRESSION</span><strong>'+esc(trend.label)+'</strong><p>'+esc(trend.detail)+'</p></div><em>Baseline today</em></div>';
+  return '<div class="exercise-history-card">'+
+    '<div class="exercise-history-head"><div><span>LAST TIME · '+esc(formatDate(latest.date))+'</span><strong>'+esc(trend.label)+'</strong></div><em>'+esc(trend.detail)+'</em></div>'+
+    '<div class="last-set-strip">'+latest.sets.map((set,index)=>'<span><small>S'+(index+1)+'</small><strong>'+esc(setPerformanceLabel(ex,set))+'</strong></span>').join('')+'</div>'+
+    '<div class="exercise-history-foot"><div><span>ALL-TIME BEST</span><strong>'+esc(bestLabel(ex.id))+'</strong></div><div><span>NEXT TARGET</span><strong>'+esc(target?.label||currentPrescriptionLabel(ex))+'</strong></div></div>'+
+  '</div>';
+}
+function recentExerciseTrendCards(limit=6){
+  const seen=new Set(),cards=[];
+  for(const workout of store.history){
+    for(const ex of workout.exercises||[]){
+      if(seen.has(ex.id)||(ex.sets||[]).every(set=>!set.completed))continue;
+      seen.add(ex.id);
+      cards.push({ex,trend:exerciseTrend(ex),history:exerciseSessionHistory(ex.id,2)});
+      if(cards.length>=limit)return cards;
+    }
+  }
+  return cards;
+}
+
 function suggestedLabel(ex){
   if(ex.loadMode==='bodyweight'||ex.loadMode==='timed')return 'Bodyweight';
   if(ex.loadMode==='band')return 'Band resistance';
@@ -2292,7 +2362,7 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
   return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-equipment-line"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div></div></div></div>
+    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-equipment-line"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div>${renderExerciseHistoryPanel(pos.exercise)}</div></div></div>
     <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
       <div class="input-grid">
         <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
@@ -2379,16 +2449,21 @@ function renderProgress(){
   const learnedAll=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
   const learned=learnedAll.slice(0,10);
   const decisions=(Array.isArray(store.progressionLog)?store.progressionLog:[]).slice(0,12);
-  return `<div class="page-head"><div><p class="eyebrow">PROGRESS</p><h2 class="page-title">Your numbers</h2><p class="page-copy">The app learns from completed sets, exercise feedback, and calibration.</p></div></div>
+  const trends=recentExerciseTrendCards(8);
+  const context=programContext();
+  const schedule=currentWeekSchedule();
+  return `<div class="page-head"><div><p class="eyebrow">PROGRESS · BLOCK ${context.blockNumber} WEEK ${context.blockWeek}</p><h2 class="page-title">Your training story.</h2><p class="page-copy">Progress includes stronger sets, more reps, consistency, readiness, adherence, and the adaptive choices your program makes next.</p></div></div>
     <div class="progress-grid">
-      <section class="panel"><h3>This week</h3><div class="big-stat">${week.length}/${store.profile?.days||0}</div><div class="stat-label">workouts completed</div></section>
+      <section class="panel"><h3>This week</h3><div class="big-stat">${schedule.filter(entry=>entry.status==='complete').length}/${schedule.length}</div><div class="stat-label">scheduled workouts completed</div></section>
       <section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section>
       <section class="panel"><h3>Learned movements</h3><div class="big-stat">${learnedAll.length}</div><div class="stat-label">${calibrated} initially calibrated</div></section>
       <section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section>
     </div>
+    ${trends.length?`<section class="panel trend-panel"><div class="section-head"><div><p class="eyebrow">EXERCISE TRENDS</p><h3>More than PRs.</h3></div></div><div class="trend-grid">${trends.map(item=>`<article class="trend-card"><span>${esc(item.trend.label)}</span><strong>${esc(item.ex.name)}</strong><p>${esc(item.trend.detail)}</p><small>${item.history.length} recent session${item.history.length===1?'':'s'} analyzed</small></article>`).join('')}</div></section>`:''}
     ${learned.length?`<section class="panel learned-panel"><p class="eyebrow">NEXT-SESSION TARGETS</p><div class="learned-list">${learned.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}
     ${decisions.length?`<section class="panel decision-panel"><p class="eyebrow">RECENT ADAPTIVE DECISIONS</p><div class="decision-list">${decisions.map(item=>`<div class="decision-row"><div><strong>${esc(item.name)}</strong><span>${esc(feedbackLabel(item.feedback))} · ${esc(item.routineName||'Workout')} · ${esc(formatDate(item.loggedAt||item.updatedAt))}</span><small>${esc(item.reason)}</small></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}`;
 }
+
 function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
   const recommendations=(x.exercises||[]).filter(ex=>ex.nextRecommendation).map(ex=>ex.nextRecommendation);
