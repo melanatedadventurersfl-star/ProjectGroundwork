@@ -1486,11 +1486,104 @@ function regeneratePlan(){
   render();
 }
 
-function createWorkout(day){
+function readinessScore(readiness){
+  const values=[num(readiness?.energy),num(readiness?.sleep),6-num(readiness?.soreness)].filter(v=>v>0);
+  return values.length?Math.round((values.reduce((a,b)=>a+b,0)/values.length)*10)/10:3;
+}
+function applyReadinessToDay(day,readiness){
+  const adjusted=clone(day);
+  const score=readinessScore(readiness);
+  const available=Math.max(15,num(readiness?.timeAvailable)||num(store.profile?.minutes)||45);
+  const notes=[];
+  if(score<2.7){
+    for(const ex of adjusted.exercises){
+      if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
+    }
+    notes.push('Today’s readiness is lower, so accessory volume was trimmed.');
+  }
+  recalculatePlanDay(adjusted);
+  while(adjusted.estimatedMinutes>available&&adjusted.exercises.length>2){
+    const index=[...adjusted.exercises].reverse().findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));
+    if(index<0)break;
+    adjusted.exercises.splice(adjusted.exercises.length-1-index,1);
+    recalculatePlanDay(adjusted);
+  }
+  for(let i=adjusted.exercises.length-1;i>=0&&adjusted.estimatedMinutes>available;i--){
+    while(adjusted.exercises[i]?.sets>2&&adjusted.estimatedMinutes>available){
+      adjusted.exercises[i].sets-=1;
+      recalculatePlanDay(adjusted);
+    }
+  }
+  if(adjusted.estimatedMinutes>available)notes.push('This session is already at its minimum useful structure, so the estimate may run slightly past your available time.');
+  else if(available<num(store.profile?.minutes)||45)notes.push('The session was shortened to fit the time you have today.');
+  adjusted.readinessNotes=notes;
+  adjusted.readinessScore=score;
+  adjusted.availableMinutes=available;
+  return adjusted;
+}
+function scheduledEntryFor(dayId,scheduledDate=''){
+  const key=scheduledDate||dateKey();
+  return currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId&&entry.dateKey===key)||
+    currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId)||null;
+}
+function openReadiness(dayId,scheduledDate=''){
+  if(store.activeWorkout){currentTab='workout';render();toast('Resume or finish your current workout first.');return;}
+  const entry=scheduledEntryFor(dayId,scheduledDate);
+  const baseDay=entry?.adaptedDay||adaptDayForProgramWeek(store.plan?.days?.find(day=>day.id===dayId),scheduledDate?dateFromKey(scheduledDate):new Date());
+  if(!baseDay)return;
+  readinessContext={dayId,scheduledDate:scheduledDate||entry?.dateKey||dateKey(),day:baseDay};
+  render();
+}
+function closeReadiness(){readinessContext=null;render();}
+function renderReadinessModal(){
+  if(!readinessContext)return '';
+  const day=readinessContext.day;
+  const selectedMinutes=num(store.profile?.minutes)||45;
+  const timeOptions=[20,30,45,60,75].filter(v=>v<=Math.max(75,selectedMinutes));
+  if(!timeOptions.includes(selectedMinutes))timeOptions.push(selectedMinutes);
+  timeOptions.sort((a,b)=>a-b);
+  const scale=(name,left,right,selected=3)=>'<div class="readiness-scale"><div class="readiness-scale-head"><span>'+left+'</span><span>'+right+'</span></div><div class="readiness-buttons">'+[1,2,3,4,5].map(value=>'<label><input type="radio" name="'+name+'" value="'+value+'" '+(value===selected?'checked':'')+'><span>'+value+'</span></label>').join('')+'</div></div>';
+  return '<div class="exercise-modal-backdrop readiness-backdrop" data-action="close-readiness">'+
+    '<section class="exercise-modal readiness-modal" role="dialog" aria-modal="true" aria-label="Pre-workout readiness" data-readiness-panel>'+
+      '<button class="modal-close" type="button" data-action="close-readiness" aria-label="Close readiness check">×</button>'+
+      '<div class="readiness-head"><p class="eyebrow">TODAY · '+esc(formatDate(readinessContext.scheduledDate))+'</p><h2>'+esc(day.name)+'</h2><p>A quick check lets this session fit how you actually feel and how much time you have today.</p></div>'+
+      '<form id="readiness-form" class="readiness-form">'+
+        '<label class="readiness-question"><strong>Energy</strong><small>How much training energy do you have?</small>'+scale('energy','Low','High',3)+'</label>'+
+        '<label class="readiness-question"><strong>Muscle soreness</strong><small>How sore do you feel overall?</small>'+scale('soreness','None','Very sore',2)+'</label>'+
+        '<label class="readiness-question"><strong>Sleep</strong><small>How rested do you feel from last night?</small>'+scale('sleep','Poor','Great',3)+'</label>'+
+        '<label class="field readiness-time"><span>TIME AVAILABLE TODAY</span><select name="timeAvailable">'+timeOptions.map(value=>'<option value="'+value+'" '+(value===selectedMinutes?'selected':'')+'>'+value+' minutes</option>').join('')+'</select></label>'+
+        '<div class="readiness-preview"><span>PLANNED SESSION</span><strong>~'+esc(day.estimatedMinutes)+' min · '+day.exercises.length+' exercises</strong></div>'+
+        '<button class="button primary-action" type="button" data-action="begin-workout">START TODAY’S WORKOUT</button>'+
+      '</form>'+
+    '</section></div>';
+}
+function startPreparedWorkout(){
+  if(!readinessContext)return;
+  const form=document.querySelector('#readiness-form');
+  const data=new FormData(form);
+  const readiness={
+    energy:num(data.get('energy'))||3,
+    soreness:num(data.get('soreness'))||2,
+    sleep:num(data.get('sleep'))||3,
+    timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
+  };
+  readiness.score=readinessScore(readiness);
+  const day=applyReadinessToDay(readinessContext.day,readiness);
+  const scheduledDate=readinessContext.scheduledDate;
+  const context=programContext(dateFromKey(scheduledDate));
+  readinessContext=null;
+  unlockWorkoutCues();
+  store.activeWorkout=createWorkout(day,{scheduledDate,readiness,programContext:context,adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]});
+  saveStore();currentTab='workout';render();
+}
+
+function createWorkout(day,meta={}){
   const now=new Date().toISOString();
   const workout={
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
+    scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
+    readiness:meta.readiness||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,
     isPaused:false,pausedAt:null,
     phase:'warmup',timedPhaseStartedAt:now,timedPhaseSkippedSeconds:0,
@@ -1525,13 +1618,8 @@ function createWorkout(day){
   return workout;
 }
 
-function startWorkout(dayId){
-  unlockWorkoutCues();
-  if (store.activeWorkout) { currentTab='workout'; render(); toast('Resume or finish your current workout first.'); return; }
-  const day=store.plan?.days?.find(d=>d.id===dayId);
-  if(!day) return;
-  store.activeWorkout=createWorkout(day);
-  saveStore(); currentTab='workout'; render();
+function startWorkout(dayId,scheduledDate=''){
+  openReadiness(dayId,scheduledDate);
 }
 
 function getActivePosition(){
@@ -2266,7 +2354,8 @@ function render(){
   else app.innerHTML=renderHome();
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
   if(swapContext) app.insertAdjacentHTML('beforeend',renderSwapModal());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext));
+  if(readinessContext) app.insertAdjacentHTML('beforeend',renderReadinessModal());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext));
   syncNav();syncLiveBadge();
 }
 
@@ -2335,6 +2424,12 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const readinessClose=event.target.closest('[data-action="close-readiness"]');
+  if(readinessClose){
+    const inside=event.target.closest('[data-readiness-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){closeReadiness();return;}
+  }
   const swapClose=event.target.closest('[data-action="close-swap"]');
   if(swapClose){
     const insideSwap=event.target.closest('[data-swap-panel]');
@@ -2350,7 +2445,7 @@ function handleClick(event){
     if(!insidePanel||explicitClose){exerciseDetailId=null;render();return;}
   }
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
-  const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start);return;}
+  const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start,start.dataset.scheduledDate||'');return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
@@ -2365,6 +2460,7 @@ function handleClick(event){
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
+  else if(a==='begin-workout')startPreparedWorkout();
   else if(a==='regenerate')regeneratePlan();
   else if(a==='swap-plan')openSwap({mode:'plan',dayId:node.dataset.dayId,index:Number(node.dataset.swapIndex)});
   else if(a==='swap-active')openSwap({mode:'active',index:Number(node.dataset.swapIndex)});
@@ -2416,6 +2512,7 @@ document.addEventListener('submit',event=>{
 });
 document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&readinessContext){readinessContext=null;render();return;}
   if(event.key==='Escape'&&swapContext){swapContext=null;render();return;}
   if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
   if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
