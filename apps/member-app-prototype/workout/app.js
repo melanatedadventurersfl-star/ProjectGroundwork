@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'workout-web-store-v3';
 const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
-const ACTIVE_WORKOUT_SCHEMA = 3;
+const ACTIVE_WORKOUT_SCHEMA = 4;
 const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
@@ -9,6 +9,8 @@ const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exer
 let exerciseDetailId = null;
 let swapContext = null;
 let readinessContext = null;
+let workoutMapOpen = false;
+let setEditContext = null;
 
 const defaultStore = {
   profile: null,
@@ -325,6 +327,61 @@ function nextScheduledSession(date=new Date()){
 function totalSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.length,0); }
 function completedSets(exercises){ return exercises.reduce((n,e)=>n+e.sets.filter(s=>s.completed).length,0); }
 function volume(exercises){ return exercises.reduce((t,e)=>t+e.sets.reduce((s,x)=>s+(x.completed?num(x.weight)*num(x.reps):0),0),0); }
+function exerciseState(ex){
+  if(!ex)return 'not-started';
+  if(ex.manualComplete)return 'completed-manually';
+  if(ex.skipped)return 'skipped';
+  const done=(ex.sets||[]).filter(set=>set.completed).length;
+  if(done&&done===(ex.sets||[]).length)return 'complete';
+  if(done)return 'partial';
+  return 'not-started';
+}
+function exerciseStateLabel(ex){
+  return ({
+    'complete':'Completed',
+    'completed-manually':'Completed manually',
+    'skipped':'Skipped',
+    'partial':'Partial',
+    'not-started':'Not started'
+  })[exerciseState(ex)]||'Not started';
+}
+function exerciseCountsAsResolved(ex){
+  return ['complete','completed-manually','skipped'].includes(exerciseState(ex));
+}
+function workoutResolvedCount(w){
+  return (w?.exercises||[]).filter(exerciseCountsAsResolved).length;
+}
+function workoutIsFullyResolved(w){
+  return Boolean(w?.exercises?.length)&&w.exercises.every(exerciseCountsAsResolved);
+}
+function firstIncompleteSetIndex(ex){
+  const index=(ex?.sets||[]).findIndex(set=>!set.completed);
+  return index<0?Math.max(0,(ex?.sets?.length||1)-1):index;
+}
+function nextUnresolvedExerciseIndex(w,from=-1){
+  for(let i=Math.max(0,from+1);i<(w?.exercises?.length||0);i++)if(!exerciseCountsAsResolved(w.exercises[i]))return i;
+  for(let i=0;i<=from&&i<(w?.exercises?.length||0);i++)if(!exerciseCountsAsResolved(w.exercises[i]))return i;
+  return -1;
+}
+function pauseInteractiveTimers(w){
+  if(!w)return;
+  if(w.phase==='rest'&&!Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=restRemaining(w);
+  if(w.phase==='timed-set'){
+    const snap=timedSetSnapshot(w);
+    if(snap)w.timedSetPausedRemaining=snap.remaining;
+    w.timedSetEndsAt=null;
+  }
+  delete w.preSetStartedAt;
+}
+function announceExercise(ex,prefix='Next exercise'){
+  if(!ex)return;
+  const target=(ex.sets?.length||0)+' sets of '+String(ex.reps||ex.suggestedReps||'your target');
+  const equipment=equipmentRequirement(exerciseSource(ex));
+  fireWorkoutSignal('transition','exercise-announce-'+(store.activeWorkout?.id||'')+'-'+ex.id+'-'+Date.now(),{
+    voice:prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.',
+    label:'NEXT'
+  });
+}
 let workoutAudioContext=null;
 const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null};
 
@@ -1603,9 +1660,9 @@ function createWorkout(day,meta={}){
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
     readiness:meta.readiness||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
-    startedAt:now,currentExerciseIndex:0,currentSetIndex:0,
+    startedAt:now,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,
-    phase:'warmup',timedPhaseStartedAt:now,timedPhaseSkippedSeconds:0,
+    phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,
     warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
     exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
@@ -1621,19 +1678,11 @@ function createWorkout(day,meta={}){
         ...ex,suggestedWeight,suggestedReps,rest:suggestedRest,
         adaptiveLabel:adaptive?.label||'',adaptiveReason:adaptive?.reason||'',
         calibrationRequired:ex.calibrationRequired && !calibrated && !adaptive,
+        manualComplete:false,manualCompletedAt:null,skipped:false,skipReason:'',
         sets:Array.from({length:ex.sets},()=>({id:uid('set'),weight:weightValue,reps:String(suggestedReps||''),completed:false,completedAt:null}))
       };
     })
   };
-  if(!workout.warmup.length){
-    workout.phase='pre-set';
-    workout.timedPhaseStartedAt=null;
-    workout.preSetStartedAt=now;
-    workout.preSetSetupSeconds=5;
-    workout.preSetCountdownSeconds=3;
-    workout.preSetIsNewExercise=true;
-    workout.exerciseStartedAt=null;
-  }
   return workout;
 }
 
@@ -2203,17 +2252,44 @@ function renderCatalog(){
     <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><p class="catalog-description">${esc(exerciseDescription(e))}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
 }
 
+function renderWorkoutIntro(w){
+  const first=w.exercises?.[0];
+  const equipment=[...new Set((w.exercises||[]).map(ex=>equipmentRequirement(exerciseSource(ex))))];
+  const notes=(w.adaptationNotes||[]).filter(Boolean);
+  return '<div class="workout-intro-stage">'+
+    '<p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p class="intro-focus">'+esc(w.focus||'')+'</p>'+
+    '<div class="intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>WORKING SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
+    (notes.length?'<div class="intro-adjustments"><span>TODAY’S ADJUSTMENTS</span>'+notes.map(note=>'<p>'+esc(note)+'</p>').join('')+'</div>':'')+
+    (first?'<section class="intro-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(exerciseDescription(first))+'</p><strong>'+esc(equipmentRequirement(exerciseSource(first)))+'</strong></div></section>':'')+
+    '<div class="intro-equipment"><span>EQUIPMENT YOU’LL USE</span><p>'+equipment.map(esc).join(' · ')+'</p></div>'+
+    '<div class="intro-actions"><button class="button primary-action" data-action="begin-session">BEGIN WORKOUT</button><button class="button secondary" data-action="open-workout-map">REVIEW / REORDER SESSION</button></div>'+
+  '</div>';
+}
+function beginWorkoutSession(){
+  const w=store.activeWorkout;if(!w||w.phase!=='intro')return;
+  unlockWorkoutCues();
+  fireWorkoutSignal('go','session-intro-'+w.id,{voice:w.routineName+'. '+w.exercises.length+' exercises today. We will start with '+(w.warmup?.length?'your warm-up.':' '+(w.exercises[0]?.name||'your first exercise')+'.'),label:'READY'});
+  if(w.warmup?.length){
+    w.phase='warmup';
+    w.timedPhaseStartedAt=new Date().toISOString();
+    w.timedPhaseSkippedSeconds=0;
+    saveStore();render();
+  }else{
+    beginPreSetPosition(0,0,true);
+  }
+}
+
 function renderWorkout(){
   const pos=getActivePosition();
   if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
   const w=pos.workout;
-  const done=completedSets(w.exercises),total=totalSets(w.exercises),pct=Math.round(done/Math.max(1,total)*100);
-  const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase);
-  const stageLabel=w.isPaused?'PAUSED':w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
+  const done=completedSets(w.exercises),total=totalSets(w.exercises),resolved=workoutResolvedCount(w),pct=Math.round(resolved/Math.max(1,w.exercises.length)*100);
+  const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set','exercise-review'].includes(w.phase);
+  const stageLabel=w.isPaused?'PAUSED':w.phase==='intro'?'SESSION INTRO':w.phase==='review'?'SESSION REVIEW':w.phase==='exercise-review'?'EXERCISE REVIEW':w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
   return `<div class="guided-shell">
     <div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>
     <div class="session-status workout-status">
-      <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${done}/${total} sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
+      <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${resolved}/${w.exercises.length} exercises</span><span>${done}/${total} logged sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
       <div class="clock-pair">
         <div class="clock-card"><span>TOTAL</span><strong id="elapsed-clock">${formatClock(workoutElapsedSeconds(w))}</strong></div>
         <div class="clock-card"><span>EXERCISE</span><strong id="exercise-clock">${inExercise?formatClock(exerciseElapsedSeconds(w)):'--:--'}</strong></div>
@@ -2223,9 +2299,9 @@ function renderWorkout(){
     <div class="training-context-strip"><span>BLOCK ${w.programContext?.blockNumber||1} · WEEK ${w.programContext?.blockWeek||1}</span><strong>${esc(blockPhaseLabel(w.programContext?.blockWeek||1))}</strong>${w.readiness?.score?'<em>Readiness '+esc(w.readiness.score)+'/5 · '+esc(w.readiness.timeAvailable)+' min available</em>':''}</div>
     ${w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>All workout timers are frozen. Resume when you are ready.</span></div>':''}
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-    <div class="step-strip">${w.exercises.map((_,i)=>`<span class="step-pip ${i<pos.ei?'done':i===pos.ei&&inExercise?'current':''}"></span>`).join('')}</div>
-    <section class="exercise-stage">${w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
-    <div class="session-controls"><button class="button secondary pause-workout-button" data-action="toggle-workout-pause">${w.isPaused?'RESUME WORKOUT':'PAUSE WORKOUT'}</button><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
+    <div class="step-strip">${w.exercises.map((ex,i)=>`<button type="button" class="step-pip ${exerciseCountsAsResolved(ex)?'done':''} ${i===pos.ei&&inExercise?'current':''} ${exerciseState(ex)==='partial'?'partial':''}" data-action="jump-exercise" data-exercise-index="${i}" aria-label="${esc(ex.name)} · ${esc(exerciseStateLabel(ex))}"></button>`).join('')}</div>
+    <section class="exercise-stage">${w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
+    <div class="session-controls"><button class="button secondary" data-action="previous-exercise">← PREVIOUS</button><button class="button secondary" data-action="open-workout-map">WORKOUT MAP</button><button class="button secondary" data-action="next-exercise">NEXT →</button><button class="button secondary pause-workout-button" data-action="toggle-workout-pause">${w.isPaused?'RESUME WORKOUT':'PAUSE WORKOUT'}</button><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
   </div>`;
 }
 
