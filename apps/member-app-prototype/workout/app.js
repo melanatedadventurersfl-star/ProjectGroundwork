@@ -1271,6 +1271,7 @@ function saveProfileFromForm(form){
     ageRange:data.get('ageRange')||'25-34',
     experience:data.get('experience')||'new',
     days:num(data.get('days'))||4,
+    workoutDays:data.getAll('workoutDays'),
     minutes:num(data.get('minutes'))||45,
     equipment:data.get('equipment')||'full-gym',
     style:data.get('style')||'mixed',
@@ -1283,7 +1284,12 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
-  if(profile.weight<50||profile.weight>700){
+  if(profile.workoutDays.length!==profile.days){
+    toast('Choose exactly '+profile.days+' training days for your weekly schedule.');
+    form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+    if(profile.weight<50||profile.weight>700){
     toast('Enter a body weight between 50 and 700 lb.');
     form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});
     return false;
@@ -1777,6 +1783,7 @@ function renderProfile(){
   const lifts=p.lifts||{};
   const checked=(field,value)=>p[field]===value?'checked':'';
   const av=v=>(p.avoid||[]).includes(v)?'checked':'';
+  const scheduledDays=preferredWorkoutDays(p);
   return `
   <div class="onboard-shell">
     <div class="page-head"><div><p class="eyebrow">BUILD YOUR PLAN</p><h2 class="page-title">Tell us how you train.</h2><p class="page-copy">We’ll use your goal, experience, body weight, equipment and real session length to build a starting plan. Weight suggestions are conservative estimates and get refined during your first workout.</p></div></div>
@@ -1801,10 +1808,16 @@ function renderProfile(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Your real schedule</h3><p>The time you choose is treated as a planning limit.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Your real schedule</h3><p>Choose how many days you train, which days they actually are, and how long you normally have.</p></div></div>
         <div class="form-grid two">
-          <label class="field"><span>DAYS PER WEEK</span><select name="days">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
+          <label class="field"><span>DAYS PER WEEK</span><select name="days" id="training-days-count">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
           <label class="field"><span>MINUTES PER WORKOUT</span><select name="minutes">${[20,30,45,60,75].map(v=>`<option value="${v}" ${num(p.minutes||45)===v?'selected':''}>${v} minutes</option>`).join('')}</select></label>
+        </div>
+        <div class="schedule-day-picker">
+          <div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days. You can change them later.</small></div>
+          <div class="weekday-pills">
+            ${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}
+          </div>
         </div>
       </section>
 
