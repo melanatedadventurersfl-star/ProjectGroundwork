@@ -198,8 +198,9 @@ function scheduledEntriesForWeek(date=new Date()){
     const day=store.plan.days[index%store.plan.days.length];
     const entry={dayId,date:scheduledDate,dateKey:key,day,index,override:overrides[key]||null};
     const history=scheduleHistoryMatch(entry);
-    const todayKey=dateKey();
-    let status=history?(history.completionStatus==='partial'?'partial':'complete'):entry.override?.status==='skipped'?'skipped':key===todayKey?'today':scheduledDate<new Date(new Date().setHours(0,0,0,0))?'missed':'upcoming';
+    const referenceDate=new Date(date);referenceDate.setHours(0,0,0,0);
+    const todayKey=dateKey(referenceDate);
+    let status=history?(history.completionStatus==='partial'?'partial':'complete'):entry.override?.status==='skipped'?'skipped':key===todayKey?'today':scheduledDate<referenceDate?'missed':'upcoming';
     return {...entry,dayName:dayDef?.name||dayId,status,history};
   });
 }
