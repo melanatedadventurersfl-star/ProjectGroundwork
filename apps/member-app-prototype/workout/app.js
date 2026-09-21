@@ -3231,7 +3231,7 @@ async function launchTogetherPlan(draft,readiness){
   return true;
 }
 
-async function saveTogetherSettings(){
+async function saveTogetherSettings({silent=false}={}){
   const draft=sharedTrainingState().draft;
   if(!draft?.backendId||draft.role!=='host'||!workoutSupabase)return;
   const mode=document.querySelector('#together-mode')?.value||draft.mode||'same-gym';
@@ -3243,13 +3243,13 @@ async function saveTogetherSettings(){
   if(error){toast(error.message||'Could not update Together settings.');return;}
   draft.mode=mode;draft.pace=pace;draft.setFlow=setFlow;saveSharedBackendDraft(draft);
   try{await sharedRuntime.channel?.send({type:'broadcast',event:'session-settings',payload:{mode,pace,setFlow}});}catch{}
-  toast('Together settings updated.');
+  if(!silent)toast('Together settings updated.');
   render();
 }
 async function confirmTogetherPlan(){
   const draft=sharedTrainingState().draft;
   if(!draft?.backendId||!draft.sharedPlan?.slots?.length||!workoutSupabase)return;
-  if(draft.role==='host')await saveTogetherSettings();
+  if(draft.role==='host')await saveTogetherSettings({silent:true});
   const {data,error}=await workoutSupabase.rpc('confirm_workout_shared_plan',{p_session_id:draft.backendId});
   if(error){toast(error.message||'Could not confirm the Together plan.');return;}
   draft.userConfirmed=true;draft.userStatus='confirmed';
@@ -3471,10 +3471,10 @@ function renderTogether(){
     '<section class="together-lobby-top"><div><p class="eyebrow">TOGETHER LOBBY</p><h2>'+esc(stageCopy)+'</h2></div><button class="text-button danger-text" data-action="cancel-shared-draft">'+(role==='host'?'CANCEL':'LEAVE')+'</button></section>'+
     (role==='host'?'<section class="together-code-hero"><div><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong><small>Share this code with one workout partner.</small></div><button class="button secondary" data-action="copy-shared-code">COPY CODE</button></section>':'')+
     '<section class="together-stage-track">'+
-      '<div class="done"><span>1</span><strong>Connect</strong></div>'+
-      '<i></i><div class="'+(connected?'done':'active')+'"><span>2</span><strong>Check in</strong></div>'+
+      '<div class="'+(connected?'done':'active')+'"><span>1</span><strong>Connect</strong></div>'+
+      '<i></i><div class="'+(userReady&&partnerReady?'done':connected?'active':'')+'"><span>2</span><strong>Check in</strong></div>'+
       '<i></i><div class="'+(hasPlan?'done':userReady&&partnerReady?'active':'')+'"><span>3</span><strong>Build</strong></div>'+
-      '<i></i><div class="'+(hasPlan?'active':'')+'"><span>4</span><strong>Confirm</strong></div>'+
+      '<i></i><div class="'+(userConfirmed&&partnerConfirmed?'done':hasPlan?'active':'')+'"><span>4</span><strong>Confirm</strong></div>'+
     '</section>'+
     '<section class="together-people">'+
       '<article class="together-person '+(userReady?'complete':'')+'"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU</span><strong>'+esc(displayName())+'</strong><small>'+(!connected?'Connected':userConfirmed?'Plan confirmed':userReady?'Check-in complete':'Check-in needed')+'</small></div><em>'+(userConfirmed?'✓':userReady?'✓':connected?'YOUR TURN':'●')+'</em></article>'+
