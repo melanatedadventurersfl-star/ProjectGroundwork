@@ -3111,6 +3111,24 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const cueClose=event.target.closest('[data-action="close-cue-settings"]');
+  if(cueClose){
+    const inside=event.target.closest('[data-cue-settings-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){cueSettingsOpen=false;render();return;}
+  }
+  const exerciseActionsClose=event.target.closest('[data-action="close-exercise-actions"]');
+  if(exerciseActionsClose){
+    const inside=event.target.closest('[data-exercise-actions-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){exerciseActionsIndex=null;render();return;}
+  }
+  const historyClose=event.target.closest('[data-action="close-history-menu"]');
+  if(historyClose){
+    const inside=event.target.closest('[data-history-menu-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){historyMenuId=null;render();return;}
+  }
   const setClose=event.target.closest('[data-action="close-set-editor"]');
   if(setClose){
     const inside=event.target.closest('[data-set-edit-panel]');
@@ -3136,7 +3154,7 @@ function handleClick(event){
     if(!insideSwap||explicitClose){closeSwap();return;}
   }
   const detail=event.target.closest('[data-exercise-detail]');
-  if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
+  if(detail){exerciseActionsIndex=null;exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
   if(close){
     const insidePanel=event.target.closest('[data-modal-panel]');
@@ -3149,20 +3167,35 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='train')setTab('train');
+  else if(a==='together')setTab('together');
+  else if(a==='progress')setTab('progress');
+  else if(a==='profile')setTab('profile');
+  else if(a==='catalog'||a==='open-routine-details')setTab('catalog');
   else if(a==='history')setTab('history');
+  else if(a==='share-next-workout')setTab('together');
+  else if(a==='create-shared-draft')createSharedDraft();
+  else if(a==='cancel-shared-draft')cancelSharedDraft();
+  else if(a==='simulate-partner-ready')markSharedPartnerReady();
+  else if(a==='start-shared-workout')startSharedWorkout();
+  else if(a==='copy-shared-code')copySharedCode();
+  else if(a==='account-info')toast('Account UI is prepared for the project’s shared authentication backend. This workout prototype still stores training data locally.');
+  else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
+  else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
+  else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='skip-scheduled')skipScheduledSession(node.dataset.scheduledDate);
   else if(a==='undo-skip-scheduled')undoSkipScheduledSession(node.dataset.scheduledDate);
   else if(a==='mark-scheduled-complete')markScheduledWorkoutComplete(node.dataset.dayId,node.dataset.scheduledDate);
-  else if(a==='remove-history')removeHistoryWorkout(node.dataset.historyId);
+  else if(a==='remove-history'){historyMenuId=null;removeHistoryWorkout(node.dataset.historyId);}
   else if(a==='begin-workout')startPreparedWorkout();
   else if(a==='begin-session')beginWorkoutSession();
   else if(a==='open-workout-map'){workoutMapOpen=true;render();}
@@ -3171,11 +3204,11 @@ function handleClick(event){
   else if(a==='jump-exercise')navigateToExercise(Number(node.dataset.exerciseIndex));
   else if(a==='jump-from-review')jumpFromReview(Number(node.dataset.exerciseIndex));
   else if(a==='continue-exercise')navigateToExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='mark-exercise-complete')markExerciseManual(Number(node.dataset.exerciseIndex));
+  else if(a==='mark-exercise-complete'){exerciseActionsIndex=null;markExerciseManual(Number(node.dataset.exerciseIndex));}
   else if(a==='undo-manual-exercise')undoManualExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='skip-exercise')skipExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='restore-exercise')restoreExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='move-exercise-later')moveExerciseLater(Number(node.dataset.exerciseIndex));
+  else if(a==='skip-exercise'){exerciseActionsIndex=null;skipExercise(Number(node.dataset.exerciseIndex));}
+  else if(a==='restore-exercise'){exerciseActionsIndex=null;restoreExercise(Number(node.dataset.exerciseIndex));}
+  else if(a==='move-exercise-later'){exerciseActionsIndex=null;moveExerciseLater(Number(node.dataset.exerciseIndex));}
   else if(a==='add-set')addWorkingSet(Number(node.dataset.exerciseIndex));
   else if(a==='edit-set')openSetEditor(Number(node.dataset.exerciseIndex),Number(node.dataset.setIndex));
   else if(a==='save-set-edit')saveSetEdit();
@@ -3191,7 +3224,7 @@ function handleClick(event){
   else if(a==='save-workout-partial')finalizeWorkout('partial');
   else if(a==='regenerate')regeneratePlan();
   else if(a==='swap-plan')openSwap({mode:'plan',dayId:node.dataset.dayId,index:Number(node.dataset.swapIndex)});
-  else if(a==='swap-active')openSwap({mode:'active',index:Number(node.dataset.swapIndex)});
+  else if(a==='swap-active'){exerciseActionsIndex=null;openSwap({mode:'active',index:Number(node.dataset.swapIndex)});}
   else if(a==='choose-swap'){
     const reason=document.querySelector('#swap-reason')?.value||'other';
     const neverShow=Boolean(document.querySelector('#swap-never-show')?.checked);
@@ -3254,6 +3287,9 @@ document.addEventListener('change',event=>{
   }
 });
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
+  if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
+  if(event.key==='Escape'&&cueSettingsOpen){cueSettingsOpen=false;render();return;}
   if(event.key==='Escape'&&setEditContext){setEditContext=null;render();return;}
   if(event.key==='Escape'&&workoutMapOpen){workoutMapOpen=false;render();return;}
   if(event.key==='Escape'&&readinessContext){readinessContext=null;render();return;}
