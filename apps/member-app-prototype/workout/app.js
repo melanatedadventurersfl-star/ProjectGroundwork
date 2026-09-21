@@ -3610,6 +3610,7 @@ function renderTogether(){
     (hasPlan?'<section class="together-confirm-card"><div><span>'+((userConfirmed&&partnerConfirmed)?'BOTH CONFIRMED':userConfirmed?'YOU’RE CONFIRMED':partnerConfirmed?'PARTNER CONFIRMED':'READY WHEN YOU ARE')+'</span><strong>'+((userConfirmed&&partnerConfirmed)?'Starting Together…':userConfirmed?'Waiting for '+esc(draft.partnerName):'Review your matched workout, then lock it in.')+'</strong></div>'+
       (!userConfirmed?'<button class="button primary-action" data-action="confirm-together-plan">CONFIRM MY PLAN</button>':'<button class="button secondary" disabled>CONFIRMED ✓</button>')+
     '</section>':'')+
+    (draft.sessionStatus==='active'?'<section class="together-building-card"><div class="together-building-orbit">✓</div><div><span>STARTING TOGETHER</span><strong>Both plans are locked in.</strong><p>Each phone is loading its own weights, reps, warm-up and readiness adjustments now.</p></div></section>':'')+
 
     '<section class="together-privacy-line"><span>WHAT YOUR PARTNER CAN SEE</span><p>Connection, check-in completion, shared movement stations and live workout position. Your private performance data stays yours.</p></section>'+
   '</div>';
