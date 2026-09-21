@@ -2660,6 +2660,19 @@ async function createWorkoutAccount(){
   }
   render();
 }
+async function resendWorkoutConfirmation(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const email=(store.account?.email||document.querySelector('#account-email')?.value||'').trim().toLowerCase();
+  if(!email){toast('Enter the email used for this account.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {error}=await workoutSupabase.auth.resend({
+    type:'signup',
+    email,
+    options:{emailRedirectTo:redirectTo}
+  });
+  if(error){toast(error.message||'Could not resend the confirmation email.');return;}
+  toast('Confirmation email sent again.');
+}
 async function signOutWorkoutAccount(){
   if(!workoutSupabase){toast('Account service is not available in this build.');return;}
   await unsubscribeSharedSession();
@@ -3171,6 +3184,18 @@ async function completeSharedParticipant(sharedSession,completionStatus){
   }
   setTimeout(()=>unsubscribeSharedSession(),500);
 }
+function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
+  const remote=draft?.remoteState;
+  if(!remote)return draft?.partnerStatus==='ready'?'Partner ready':'Waiting for partner';
+  if(remote.connectionState==='offline')return 'Partner reconnecting';
+  if(remote.phase==='complete')return 'Partner finished';
+  if(remote.isPaused)return 'Partner paused';
+  if(remote.phase==='lobby')return 'Partner ready';
+  const day=sharedDraftDay(draft);
+  const ex=day?.exercises?.[remote.exerciseIndex];
+  if(!ex)return 'Partner connected';
+  return ex.name+' · Set '+(num(remote.setIndex)+1);
+}
 function renderSharedMatches(draft){
   const day=sharedDraftDay(draft);if(!day)return '';
   return '<div class="shared-match-list">'+day.exercises.map((ex,index)=>'<article class="shared-match-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ex.name)+'</strong><small>'+esc(movements[ex.movement]||ex.movement)+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</small></div><em>SHARED</em></article>').join('')+'</div>';
@@ -3231,11 +3256,11 @@ function renderAccountSheet(){
   const account=store.account||{},connected=account.status==='connected';
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-account-sheet"><section class="bottom-sheet account-sheet" data-account-sheet-panel>'+
     '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">ACCOUNT</p><h2>'+(connected?'Your account':'Sign in to sync & share')+'</h2></div><button class="modal-close" data-action="close-account-sheet">×</button></div>'+
-    '<div class="account-status-card"><span>STATUS</span><strong>'+(connected?'CONNECTED':account.status==='pending'?'EMAIL CONFIRMATION PENDING':'LOCAL ONLY')+'</strong><p>'+(connected?'Your Supabase session is active. Workout syncing can be layered onto this identity next.':'Your workouts remain stored locally until the account layer is connected.')+'</p></div>'+
+    '<div class="account-status-card"><span>STATUS</span><strong>'+(connected?'CONNECTED':account.status==='pending'?'EMAIL CONFIRMATION PENDING':'LOCAL ONLY')+'</strong><p>'+(connected?'Your Supabase session is active and shared-workout identity can restore on this browser.':account.status==='pending'?'Confirm your email, then return here and sign in. Your local workouts stay intact while confirmation is pending.':'Your workouts remain stored locally until the account layer is connected.')+'</p></div>'+
     (connected?
       '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName())+'</strong><span>'+esc(account.email||'Connected account')+'</span></div></div><button class="button secondary account-signout" data-action="account-sign-out">SIGN OUT</button>'
       :
-      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="current-password" placeholder="••••••••"></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>')+
+      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="'+(account.status==='pending'?'new-password':'current-password')+'" placeholder="••••••••"></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>'+(account.status==='pending'?'<button class="text-button account-resend" data-action="account-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':''))+
     '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full training history</strong></div><div><span>SHARED SESSION</span><strong>Partner sees session state and only the data required to train together</strong></div></div>'+
   '</section></div>';
 }
@@ -3339,7 +3364,7 @@ function renderWorkout(){
   return '<div class="guided-shell cleaned-workout">'+
     '<div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
     '<header class="clean-workout-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><span>'+esc(w.routineName)+'</span><strong id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</strong></div><div class="workout-header-actions"><button class="circle-action" data-action="open-cue-settings" aria-label="Workout settings">◉</button><button class="circle-action" data-action="toggle-workout-pause" aria-label="'+(w.isPaused?'Resume':'Pause')+' workout">'+(w.isPaused?'▶':'Ⅱ')+'</button></div></header>'+
-    (w.sharedSession?'<button class="shared-session-strip" data-action="together"><div class="shared-avatar-stack tiny"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((w.sharedSession.partnerName?.[0]||'P').toUpperCase())+'</div></div><div><span>SHARED SESSION</span><strong>With '+esc(w.sharedSession.partnerName||'Partner')+'</strong></div><em>'+esc(w.sharedSession.partnerStatus==='ready'?'Together':'Connected')+'</em></button>':'')+
+    (w.sharedSession?(()=>{const live=sharedTrainingState().draft?.backendId===w.sharedSession.backendId?sharedTrainingState().draft:w.sharedSession;return '<button class="shared-session-strip" data-action="together"><div class="shared-avatar-stack tiny"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((live.partnerName?.[0]||'P').toUpperCase())+'</div></div><div><span>SHARED SESSION</span><strong>With '+esc(live.partnerName||'Partner')+'</strong><small>'+esc(sharedRemotePositionLabel(live))+'</small></div><em>'+esc(live.remoteState?.connectionState==='offline'?'Reconnecting':'Live')+'</em></button>'})():'')+
     '<div class="clean-progress-head"><span>'+esc(stageLabel)+'</span><strong>'+current+' of '+w.exercises.length+'</strong></div>'+
     '<div class="step-strip clean-step-strip">'+w.exercises.map((ex,i)=>'<button type="button" class="step-pip '+(exerciseCountsAsResolved(ex)?'done':'')+' '+(i===pos.ei&&inExercise?'current':'')+' '+(exerciseState(ex)==='partial'?'partial':'')+'" data-action="jump-exercise" data-exercise-index="'+i+'" aria-label="'+esc(ex.name)+' · '+esc(exerciseStateLabel(ex))+'"></button>').join('')+'</div>'+
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
@@ -3831,6 +3856,7 @@ function handleClick(event){
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='account-sign-in')signInWorkoutAccount();
   else if(a==='account-create')createWorkoutAccount();
+  else if(a==='account-resend-confirmation')resendWorkoutConfirmation();
   else if(a==='account-sign-out')signOutWorkoutAccount();
   else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
