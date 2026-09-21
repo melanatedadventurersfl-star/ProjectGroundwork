@@ -7,8 +7,8 @@ const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
-const WORKOUT_SUPABASE_URL = 'https://hqndxityqrdiiwqyjagu.supabase.co';
-const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K';
+const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
+const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
 let workoutSupabase = null;
 let authReady=false;
 const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
@@ -3785,7 +3785,7 @@ function toast(message){const r=document.querySelector('#toast-region')||documen
 function renderAccountEntry(){
   const pending=store.account?.status==='pending';
   return '<div class="onboard-shell account-entry-shell">'+
-    '<section class="account-entry-hero"><p class="eyebrow">GO MELANATED TRAINING</p><h1>Training that learns you.</h1><p>Sign in to continue your program on this device, or create an account before building your first plan.</p></section>'+
+    '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>Sign in to continue your program on this device, or create an account before building your first plan.</p></section>'+
     (pending?'<div class="account-status-card"><span>EMAIL CONFIRMATION PENDING</span><strong>Check your inbox, then sign in here.</strong><p>Your setup on this browser stays intact while confirmation is pending.</p></div>':'')+
     '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>Account</h3><p>Your profile, program, progress, history and active workout sync through your account.</p></div></div>'+
       '<div class="form-grid two">'+
@@ -3802,7 +3802,7 @@ function renderAccountEntry(){
 
 function render(){
   const app=document.querySelector('#app');if(!app)return;
-  if(!authReady){app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">GO MELANATED TRAINING</p><h2>Loading your training account…</h2></div>';return;}
+  if(!authReady){app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">WORKOUT</p><h2>Loading your training account…</h2></div>';return;}
   if(store.account?.status!=='connected'){app.innerHTML=renderAccountEntry();document.body.classList.remove('modal-open','workout-mode');return;}
   if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
   else if(currentTab==='profile')app.innerHTML=renderProfileHub();
