@@ -1120,7 +1120,8 @@ function goalSettings(goal,movement,experience){
   const newLifter = experience === 'new';
   if (goal === 'strength') return {sets:accessory?2:(newLifter?2:3),reps:accessory?'8–12':'6–8',rest:accessory?30:(compound?60:45),setSeconds:40};
   if (goal === 'fat-loss') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?30:45,setSeconds:42};
-  if (goal === 'general') return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?45:30),setSeconds:40};
+  if (['general','mobility','athletic','consistency','sport','partner','energy'].includes(goal)) return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?45:30),setSeconds:40};
+  if (goal === 'endurance') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?25:40,setSeconds:42};
   return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?60:45),setSeconds:42};
 }
 
@@ -1388,6 +1389,17 @@ function avoided(exercise,profile){
   if (avoid.includes('knee') && ['squat','single-leg','quad-accessory'].includes(exercise.movement)) return true;
   if (avoid.includes('hinge') && ['hinge','hamstring-accessory'].includes(exercise.movement)) return true;
   if (avoid.includes('floor') && ['plank','dead-bug','glute-bridge','db-floor-press','push-up'].includes(exercise.id)) return true;
+  if (avoid.includes('running') && /run|treadmill/i.test(exercise.name||'')) return true;
+  if (avoid.includes('jumping') && /jump|plyo|box/i.test(exercise.name||'')) return true;
+  if (avoid.includes('squat') && /barbell.*squat|back squat|front squat/i.test(exercise.name||'')) return true;
+  if (avoid.includes('deadlift') && /conventional deadlift|barbell deadlift/i.test(exercise.name||'')) return true;
+  if (avoid.includes('pullup') && /pull.?up|chin.?up/i.test(exercise.name||'')) return true;
+  if (avoid.includes('dip') && /dip/i.test(exercise.name||'')) return true;
+  if (avoid.includes('lunge') && /lunge|split squat/i.test(exercise.name||'')) return true;
+  if (avoid.includes('burpee') && /burpee/i.test(exercise.name||'')) return true;
+  if (avoid.includes('timed') && exercise.loadMode==='timed') return true;
+  const custom=(profile.customAvoid||[]).map(value=>String(value).toLowerCase());
+  if(custom.some(value=>value&&String(exercise.name||'').toLowerCase().includes(value)))return true;
   return false;
 }
 
@@ -1396,10 +1408,21 @@ function exerciseScore(exercise,profile,used){
   if (!used.has(exercise.id)) score+=8;
   const priorityMap={chest:['horizontal-push'],back:['horizontal-pull','vertical-pull'],shoulders:['vertical-push','shoulder-accessory'],arms:['biceps','triceps'],legs:['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'],glutes:['hinge','single-leg'],core:['core']};
   if((profile.priorities||[]).some(p=>(priorityMap[p]||[]).includes(exercise.movement)))score+=10;
+  const secondaryGoals=(profile.goals||[]).filter(goal=>goal!==(profile.primaryGoal||profile.goal));
+  if(secondaryGoals.includes('mobility')&&['single-leg','core','shoulder-accessory'].includes(exercise.movement))score+=2;
+  if(secondaryGoals.includes('athletic')&&['squat','hinge','single-leg','core'].includes(exercise.movement))score+=2;
+  if(secondaryGoals.includes('endurance')&&['core','single-leg','horizontal-pull'].includes(exercise.movement))score+=1;
   if (profile.experience === 'new' && exercise.difficulty === 'beginner') score+=7;
   if (profile.style === 'machines' && exercise.style === 'machine') score+=6;
   if (profile.style === 'free' && exercise.style === 'free') score+=6;
   if (profile.style === 'mixed') score+=2;
+  const prefer=profile.preferAvoid||[];
+  if(prefer.includes('overhead')&&exercise.movement==='vertical-push')score-=12;
+  if(prefer.includes('knee')&&['squat','single-leg','quad-accessory'].includes(exercise.movement))score-=12;
+  if(prefer.includes('hinge')&&['hinge','hamstring-accessory'].includes(exercise.movement))score-=12;
+  if(prefer.includes('floor')&&['plank','dead-bug','glute-bridge','db-floor-press','push-up'].includes(exercise.id))score-=12;
+  if(prefer.includes('running')&&/run|treadmill/i.test(exercise.name||''))score-=12;
+  if(prefer.includes('jumping')&&/jump|plyo|box/i.test(exercise.name||''))score-=12;
   if (exercise.style === 'bodyweight' && profile.equipment === 'bodyweight') score+=8;
   return score;
 }
@@ -1535,7 +1558,7 @@ function generatePlan(profile){
 }
 
 function planGoalLabel(goal){
-  return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Fat loss + conditioning',general:'General fitness'})[goal] || goal;
+  return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Lose body fat',endurance:'Improve endurance',mobility:'Improve mobility / flexibility',athletic:'Athletic performance',general:'Overall fitness',consistency:'Rebuild consistency',sport:'Support another sport / activity',partner:'Train with a partner',energy:'Feel better / more energy'})[goal] || goal;
 }
 function experienceLabel(v){ return ({new:'New to lifting',beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'})[v]||v; }
 function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home mix'})[v]||v; }
@@ -1573,8 +1596,15 @@ function saveProfileFromForm(form){
     toast('Chrome could not read the plan form. Reload this page and try again.');
     return false;
   }
+  const goals=data.getAll('goals');
+  const primaryGoal=data.get('primaryGoal')||goals[0]||'muscle';
+  if(!goals.includes(primaryGoal))goals.unshift(primaryGoal);
+  const csv=name=>String(data.get(name)||'').split(',').map(value=>value.trim()).filter(Boolean);
   const profile={
-    goal:data.get('goal')||'muscle',
+    goal:primaryGoal,
+    primaryGoal,
+    goals:[...new Set(goals)],
+    customGoal:String(data.get('customGoal')||'').trim(),
     displayName:String(data.get('displayName')||'').trim(),
     email:String(data.get('email')||'').trim(),
     gender:data.get('gender')||'',
@@ -1590,6 +1620,12 @@ function saveProfileFromForm(form){
     equipment:data.get('equipment')||'full-gym',
     style:data.get('style')||'mixed',
     avoid:data.getAll('avoid'),
+    preferAvoid:data.getAll('preferAvoid'),
+    customAvoid:csv('customAvoid'),
+    customPreferAvoid:csv('customPreferAvoid'),
+    cautionAreas:csv('cautionAreas'),
+    formatAvoid:csv('formatAvoid'),
+    fitnessConnections:Array.isArray(store.profile?.fitnessConnections)?store.profile.fitnessConnections:[],
     priorities:data.getAll('priorities').slice(0,2),
     lifts:{
       bench:num(data.get('bench')),
@@ -1599,6 +1635,11 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
+  if(!profile.goals.length&&!profile.customGoal){
+    toast('Choose at least one training goal or add your own.');
+    form.querySelector('[name="goals"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
   if(!profile.displayName){
     toast('Enter the display name you want to use in training and shared workouts.');
     form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -3535,7 +3576,8 @@ function renderProfileHub(){
   return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large">'+esc((name[0]||'Y').toUpperCase())+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
-      '<button data-action="edit-profile"><div><span>TRAINING PROFILE</span><strong>Goals, schedule, gender, equipment, preferences</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><div><span>TRAINING PROFILE</span><strong>Goals, schedule, equipment, preferences & limitations</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><div><span>CONNECTED FITNESS</span><strong>'+((p.fitnessConnections||[]).length?((p.fitnessConnections||[]).length+' connection'+((p.fitnessConnections||[]).length===1?'':'s')):'Apple Health, Health Connect, Fitbit, Garmin, Strava')+'</strong></div><em>›</em></button>'+
       '<button data-action="train"><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -4187,6 +4229,14 @@ function handleClick(event){
   else if(a==='copy-shared-code')copySharedCode();
   else if(a==='save-together-settings')saveTogetherSettings();
   else if(a==='confirm-together-plan')confirmTogetherPlan();
+  else if(a==='fitness-connection'){
+    const provider=node.dataset.provider;
+    const names={'apple-health':'Apple Health','health-connect':'Health Connect',fitbit:'Fitbit',garmin:'Garmin',strava:'Strava'};
+    const connections=new Set(store.profile?.fitnessConnections||[]);
+    if(connections.has(provider)){connections.delete(provider);toast((names[provider]||provider)+' preference removed.');}
+    else{connections.add(provider);toast((names[provider]||provider)+' saved. Connection activation will use its supported native/provider flow.');}
+    store.profile={...(store.profile||{}),fitnessConnections:[...connections]};saveStore();render();
+  }
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
