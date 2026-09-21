@@ -133,7 +133,13 @@ async function hydrateCloudState(userId){
   if(!workoutSupabase||!userId)return false;
   const {data,error}=await workoutSupabase.from('workout_user_state').select('*').eq('user_id',userId).maybeSingle();
   if(error)throw error;
-  if(!data){await syncCloudState();cloudHydrating=false;return false;}
+  if(!data){
+    cloudHydrating=false;
+    await syncCloudState();
+    if(!store.profile||!store.plan)currentTab='profile-edit';
+    render();
+    return false;
+  }
   cloudHydrating=true;
   for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['active_workout','activeWorkout'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
   localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
@@ -2646,6 +2652,10 @@ async function signInEntryAccount(){
   const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
   if(error){toast(error.message||'Could not sign in.');return;}
   if(!data?.session){toast('Sign-in did not create a session. Try again.');return;}
+  authMode='entry';
+  if(!store.profile||!store.plan)currentTab='profile-edit';
+  applyWorkoutSession(data.session);
+  persistUiState();
   toast('Signed in.');
 }
 async function createConfirmedWorkoutAccount(email,password,display){
@@ -2658,6 +2668,10 @@ async function createConfirmedWorkoutAccount(email,password,display){
   if(!response.ok)throw new Error(payload.error||'Could not create the account.');
   const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
   if(error||!data?.session)throw new Error(error?.message||'Account was created, but sign-in failed. Use Sign In to continue.');
+  authMode='entry';
+  if(!store.profile||!store.plan)currentTab='profile-edit';
+  applyWorkoutSession(data.session);
+  persistUiState();
   return data;
 }
 async function createEntryAccount(){
@@ -2713,9 +2727,11 @@ async function signInWorkoutAccount(){
   }
   if(!data?.session){toast('Sign-in did not create a browser session. Try again.');return;}
   accountSheetOpen=false;
+  authMode='entry';
+  if(!store.profile||!store.plan)currentTab='profile-edit';
+  applyWorkoutSession(data.session);
   persistUiState();
   toast('Signed in.');
-  render();
 }
 async function createOnboardingAccount(){
   if(!workoutSupabase){toast('Account service is not available.');return;}
