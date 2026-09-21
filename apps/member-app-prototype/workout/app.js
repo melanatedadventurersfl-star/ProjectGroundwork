@@ -12,7 +12,7 @@ const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw_
 let workoutSupabase = null;
 let authReady=false;
 let authMode='entry';
-const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
+const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,reconcileTimer:null,reconcileBusy:false,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
 let cloudSyncTimer=null;
 let cloudHydrating=false;
 let exerciseDetailId = null;
@@ -3034,7 +3034,29 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   if(renderNow&&currentTab==='together')render();
   return draft;
 }
+function stopSharedReconciliation(){
+  if(sharedRuntime.reconcileTimer){clearInterval(sharedRuntime.reconcileTimer);sharedRuntime.reconcileTimer=null;}
+  sharedRuntime.reconcileBusy=false;
+}
+function startSharedReconciliation(sessionId){
+  stopSharedReconciliation();
+  if(!sessionId)return;
+  sharedRuntime.reconcileTimer=setInterval(async()=>{
+    if(document.visibilityState==='hidden'||sharedRuntime.reconcileBusy||sharedRuntime.sessionId!==sessionId)return;
+    sharedRuntime.reconcileBusy=true;
+    try{await fetchSharedSessionState(sessionId,{renderNow:currentTab==='together'});}
+    catch(error){console.warn('Together reconciliation failed',error);}
+    finally{sharedRuntime.reconcileBusy=false;}
+  },4000);
+}
+async function refreshTogetherFromSource(){
+  const draft=sharedTrainingState().draft;
+  if(!draft?.backendId||!workoutSupabase)return;
+  try{await fetchSharedSessionState(draft.backendId,{renderNow:currentTab==='together'});}
+  catch(error){console.warn('Together foreground refresh failed',error);}
+}
 async function unsubscribeSharedSession(){
+  stopSharedReconciliation();
   if(sharedRuntime.syncTimer){clearTimeout(sharedRuntime.syncTimer);sharedRuntime.syncTimer=null;}
   const channel=sharedRuntime.channel;
   sharedRuntime.channel=null;
@@ -3066,6 +3088,7 @@ function updateSharedFromPresence(){
   }
   saveSharedBackendDraft(draft);
   if(currentTab==='together')render();
+  fetchSharedSessionState(draft.backendId,{renderNow:currentTab==='together'}).catch(error=>console.warn('Together presence reconcile failed',error));
 }
 async function subscribeSharedSession(draft){
   if(!workoutSupabase||!draft?.backendId||store.account?.status!=='connected')return;
@@ -3081,6 +3104,7 @@ async function subscribeSharedSession(draft){
   });
   sharedRuntime.channel=channel;
   sharedRuntime.sessionId=draft.backendId;
+  startSharedReconciliation(draft.backendId);
   channel
     .on('presence',{event:'sync'},()=>updateSharedFromPresence())
     .on('presence',{event:'join'},()=>updateSharedFromPresence())
@@ -4365,16 +4389,21 @@ document.addEventListener('keydown',event=>{
 });
 tickHandle=window.setInterval(updateTimers,500);
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible') updateTimers();
+  if(document.visibilityState==='visible'){
+    updateTimers();
+    refreshTogetherFromSource();
+    const draft=sharedTrainingState().draft;
+    if(draft?.backendId&&!sharedRuntime.reconcileTimer)startSharedReconciliation(draft.backendId);
+  }
 });
 window.addEventListener('pageshow',event=>{
-  if(event.persisted){
-    window.location.reload();
-  }
+  if(event.persisted){window.location.reload();return;}
+  refreshTogetherFromSource();
 });
 window.addEventListener('beforeunload',()=>{
   persistUiState();
   if(tickHandle)clearInterval(tickHandle);
+  stopSharedReconciliation();
   try{sharedRuntime.channel?.untrack();}catch{}
 });
 render();
