@@ -1722,7 +1722,7 @@ function renderReadinessModal(){
       '</form>'+
     '</section></div>';
 }
-function startPreparedWorkout(){
+async function startPreparedWorkout(){
   if(!readinessContext)return;
   const form=document.querySelector('#readiness-form');
   const data=new FormData(form);
@@ -3092,7 +3092,7 @@ async function cancelSharedDraft(){
   await unsubscribeSharedSession();
   render();
 }
-async async function startSharedWorkout(){
+async function startSharedWorkout(){
   const draft=sharedTrainingState().draft;if(!draft)return;
   if(draft.mode!=='share-plan'&&draft.partnerStatus!=='ready'){toast('Your workout partner has not joined the lobby yet.');return;}
   if(draft.role==='partner'&&draft.mode!=='share-plan'&&draft.sessionStatus!=='active'){
