@@ -2983,6 +2983,10 @@ async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
       await subscribeSharedSession(refreshed);
       return;
     }
+    sharedTrainingState().draft=null;
+    sharedRuntime.syncMuted=true;
+    saveStore();
+    sharedRuntime.syncMuted=false;
   }
   const {data,error}=await workoutSupabase
     .from('workout_shared_sessions')
@@ -3565,7 +3569,7 @@ function renderRest(pos){
   const immediateName=changingExercise?(nextEx?.name||'Next exercise'):next?('Set '+(next.si+1)+' · '+(nextEx?.name||pos.exercise.name)):'Cooldown';
   return '<div class="rest-stage clean-rest-stage"><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><div class="timer-wrap clean-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':changingExercise?'NEXT EXERCISE':'RECOVER')+'</div></div></div>'+
     '<div class="rest-next-copy"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><p>'+(changingExercise?'Set up the next station. The app will wait until you are ready.':next?'Recover for the next set. Your next exercise is previewed below.':'Finish strong, then move into cooldown.')+'</p></div>'+
-    (previewEx?'<button class="rest-next-exercise-card" type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<div><span>NEXT EXERCISE · '+(preview.index+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+' · '+esc(currentPrescriptionLabel(previewEx))+'</small></div><em>›</em></button>':'<div class="rest-next-exercise-card cooldown-preview"><div><span>UP NEXT</span><strong>Cooldown</strong><small>Finish the session with guided recovery.</small></div></div>')+
+    (previewEx?'<div class="rest-next-exercise-card">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button class="rest-next-exercise-copy" type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'"><span>NEXT EXERCISE · '+(preview.index+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+' · '+esc(currentPrescriptionLabel(previewEx))+'</small></button><em>›</em></div>':'<div class="rest-next-exercise-card cooldown-preview"><div><span>UP NEXT</span><strong>Cooldown</strong><small>Finish the session with guided recovery.</small></div></div>')+
     '<div class="clean-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">SKIP</button></div>'+
     '<div class="rest-tertiary"><button class="text-button" data-action="pause-rest">'+(paused?'Resume timer':'Pause timer')+'</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
   '</div>';
@@ -3896,8 +3900,9 @@ document.addEventListener('error',event=>{
     img.dataset.fallbackAttempted='1';
     img.src=fallback;
   }else{
-    img.closest('.exercise-media, .exercise-modal-media')?.classList.add('image-unavailable');
+    const media=img.closest('.exercise-media, .exercise-modal-media');
     img.remove();
+    if(media&&!media.querySelector('img'))media.classList.add('image-unavailable');
   }
 },true);
 document.addEventListener('submit',event=>{
