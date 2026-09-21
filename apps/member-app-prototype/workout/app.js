@@ -3318,8 +3318,28 @@ async function launchTogetherPlan(draft,readiness){
   if(error){toast(error.message||'Could not load your private Together prescription.');return false;}
   const localized=localTogetherDay(prescription);
   if(!localized?.exercises?.length){toast('Your Together prescription could not be loaded.');return false;}
-  const adjusted=applyReadinessToDay(localized,readiness||prescription?.readiness||{});
-  startWorkout(adjusted,draft.scheduledDate||dateKey(),readiness||prescription?.readiness||{},draft);
+  const finalReadiness=readiness||prescription?.readiness||{};
+  const adjusted=applyReadinessToDay(localized,finalReadiness);
+  const context=programContext(dateFromKey(draft.scheduledDate||dateKey()));
+  unlockWorkoutCues();
+  store.activeWorkout=createWorkout(adjusted,{
+    scheduledDate:draft.scheduledDate||dateKey(),
+    readiness:finalReadiness,
+    programContext:context,
+    adaptationNotes:[...(adjusted.adaptationNotes||[]),...(adjusted.readinessNotes||[])]
+  });
+  store.activeWorkout.sharedSession={
+    backendId:draft.backendId,
+    partnerId:draft.partnerId,
+    partnerName:draft.partnerName,
+    mode:draft.mode,
+    pace:draft.pace,
+    setFlow:draft.setFlow,
+    role:draft.role
+  };
+  saveStore();
+  currentTab='workout';
+  render();
   const live=sharedTrainingState().draft;
   if(live){live.userStatus='training';live.sessionStatus='active';saveSharedBackendDraft(live);}
   scheduleSharedStateSync();
