@@ -11,6 +11,9 @@ let swapContext = null;
 let readinessContext = null;
 let workoutMapOpen = false;
 let setEditContext = null;
+let cueSettingsOpen = false;
+let exerciseActionsIndex = null;
+let historyMenuId = null;
 
 const defaultStore = {
   profile: null,
@@ -23,6 +26,8 @@ const defaultStore = {
   exercisePreferences: {excluded:[],swapHistory:[]},
   trainingProgram: {scheduleOverrides:{},weekReviews:{}},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
+  account: {displayName:'',email:'',authProvider:'',status:'local'},
+  sharedTraining: {partners:[],draft:null,history:[]},
   lastSummaryId: null
 };
 
@@ -33,7 +38,7 @@ if (store.activeWorkout && store.activeWorkout.schemaVersion !== ACTIVE_WORKOUT_
   clearedLegacyActiveWorkout = true;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
-let currentTab = store.profile && store.plan ? (store.activeWorkout ? 'workout' : 'home') : 'profile';
+let currentTab = store.profile && store.plan ? (store.activeWorkout ? 'workout' : 'home') : 'profile-edit';
 let catalogQuery = '';
 let tickHandle = null;
 
