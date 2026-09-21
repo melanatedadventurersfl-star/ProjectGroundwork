@@ -1493,6 +1493,10 @@ function saveProfileFromForm(form){
   }
   const profile={
     goal:data.get('goal')||'muscle',
+    displayName:String(data.get('displayName')||'').trim(),
+    email:String(data.get('email')||'').trim(),
+    gender:data.get('gender')||'',
+    pronouns:String(data.get('pronouns')||'').trim(),
     weight:num(data.get('weight')),
     heightFeet:num(data.get('heightFeet')),
     heightInches:num(data.get('heightInches')),
@@ -1543,6 +1547,7 @@ function saveProfileFromForm(form){
     return false;
   }
   store.profile=profile;
+  store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
   store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
   const persisted=saveStore();
@@ -2331,7 +2336,7 @@ function renderProfileEditor(){
   const scheduledDays=preferredWorkoutDays(p);
   return `
   <div class="onboard-shell">
-    <div class="page-head"><div><p class="eyebrow">BUILD YOUR PLAN</p><h2 class="page-title">Tell us how you train.</h2><p class="page-copy">We’ll use your goal, experience, body weight, equipment and real session length to build a starting plan. Weight suggestions are conservative estimates and get refined during your first workout.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Your actual performance drives progression. Profile details help personalize scheduling, presentation, exercise selection, and future shared workouts without assuming strength from identity.</p></div></div>
     <form id="profile-form" class="intake-form" novalidate>
       <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
         <div class="choice-grid">
@@ -2339,12 +2344,19 @@ function renderProfileEditor(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Body weight helps create a conservative first estimate. It does not determine your strength.</p></div></div>
-        <div class="form-grid three">
+      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Identity and body information stay separate from performance. Gender is stored for profile personalization and future relevant context, not used to guess your strength.</p></div></div>
+        <div class="form-grid two identity-grid">
+          <label class="field"><span>DISPLAY NAME</span><input name="displayName" autocomplete="name" value="${esc(store.account?.displayName||p.displayName||'')}" placeholder="How you want to appear"></label>
+          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for future account sign-in"></label>
+          <label class="field"><span>GENDER</span><select name="gender">${[['','Choose'],['woman','Woman'],['man','Man'],['nonbinary','Nonbinary'],['another','Another identity'],['prefer-not','Prefer not to say']].map(([v,label])=>`<option value="${v}" ${p.gender===v?'selected':''}>${label}</option>`).join('')}</select></label>
+          <label class="field"><span>PRONOUNS <em>OPTIONAL</em></span><input name="pronouns" value="${esc(p.pronouns||'')}" placeholder="e.g. he/him"></label>
+        </div>
+        <div class="form-grid three body-grid">
           <label class="field"><span>BODY WEIGHT (LB)</span><input name="weight" type="number" min="50" max="700" value="${esc(p.weight||'')}" required placeholder="180"></label>
           <label class="field"><span>HEIGHT</span><div class="inline-inputs"><input name="heightFeet" type="number" min="3" max="8" value="${esc(p.heightFeet||'')}" placeholder="5"><input name="heightInches" type="number" min="0" max="11" value="${esc(p.heightInches||'')}" placeholder="10"></div></label>
           <label class="field"><span>AGE RANGE</span><select name="ageRange">${['18-24','25-34','35-44','45-54','55-64','65+'].map(v=>`<option ${p.ageRange===v?'selected':''}>${v}</option>`).join('')}</select></label>
         </div>
+        <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
       </section>
 
       <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
