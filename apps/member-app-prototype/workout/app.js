@@ -14,6 +14,7 @@ let setEditContext = null;
 let cueSettingsOpen = false;
 let exerciseActionsIndex = null;
 let historyMenuId = null;
+let accountSheetOpen = false;
 let historyFilter = 'all';
 
 const defaultStore = {
@@ -2621,6 +2622,18 @@ function renderProfileHub(){
     '<section class="prototype-note"><strong>Account model prepared for shared authentication.</strong><span>Detailed workout data remains browser-local in this prototype. The parent project already has Supabase infrastructure for the later account-backed migration.</span></section>'+
   '</div>';
 }
+function renderAccountSheet(){
+  const account=store.account||{};
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-account-sheet"><section class="bottom-sheet account-sheet" data-account-sheet-panel>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">ACCOUNT</p><h2>'+(account.status==='connected'?'Your account':'Connect your training')+'</h2></div><button class="modal-close" data-action="close-account-sheet">×</button></div>'+
+    '<div class="account-status-card"><span>STATUS</span><strong>'+(account.status==='connected'?'CONNECTED':'LOCAL PROTOTYPE')+'</strong><p>'+(account.status==='connected'?'Workout history and partner features can sync across devices.':'Training data is currently stored in this browser. No password is stored locally.')+'</p></div>'+
+    '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName()==='there'?'Training profile':displayName())+'</strong><span>'+esc(account.email||store.profile?.email||'No account email connected')+'</span></div></div>'+
+    '<div class="auth-choice-grid"><button class="button" data-action="account-auth-not-connected">SIGN IN</button><button class="button secondary" data-action="account-auth-not-connected">CREATE ACCOUNT</button></div>'+
+    '<section class="prototype-note compact"><strong>Authentication is intentionally not faked here.</strong><span>The parent project already uses Supabase auth. This prototype is prepared for that connection, but no credentials are collected or stored until the real backend is wired.</span></section>'+
+    '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full history</strong></div><div><span>SHARED SESSION</span><strong>Status and session data you choose to expose</strong></div></div>'+
+  '</section></div>';
+}
+
 function renderCueSettingsSheet(){
   const settings=workoutCueSettings();
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Audio & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
@@ -2765,27 +2778,20 @@ function renderTimedStage(w){
   const snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30};
   const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1)));
   const item=items[index]||items[0];
-  const remaining=snap.remaining||0;
-  const isWarmup=w.phase==='warmup';
-  const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
+  const remaining=snap.remaining||0,isWarmup=w.phase==='warmup';
+  const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout review');
   const image=timedStageImageUrl(item,0);
-  return `<div class="timed-stage visual-timed-stage" data-stage-index="${index}">
-    <div class="timed-stage-media">${image?`<img src="${esc(image)}" loading="eager" decoding="async" alt="${esc(item?.name||'Stretch')} demonstration">`:''}</div>
-    <div class="timed-stage-copy">
-      <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
-      <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
-      <h3>${esc(item?.name||'Get ready')}</h3>
-      <p class="stretch-description">${esc(timedStageDescription(item))}</p>
-      <p class="stage-cue">${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
-      <div class="stage-why"><span>WHY THIS STEP</span><strong>${esc(timedStageWhy(item))}</strong></div>
-      <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
-      <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
-      <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
-      <div class="timer-actions compact-timer-actions"><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button></div>
-    </div>
-  </div>`;
+  return '<div class="clean-timed-stage">'+
+    '<p class="eyebrow">'+(isWarmup?'WARM-UP':'COOLDOWN')+' · '+(index+1)+' OF '+items.length+'</p>'+
+    '<h2>'+esc(item?.name||'Get ready')+'</h2>'+
+    (image?'<div class="clean-timed-media"><img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Stretch')+' demonstration"></div>':'')+
+    '<div class="stage-timer clean-stage-clock" id="stage-clock">'+formatClock(remaining)+'</div>'+
+    '<div class="stage-progress"><span id="stage-progress-fill" style="width:'+Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))+'%"></span></div>'+
+    '<p class="preset-cue">'+esc(item?.cue||'Move through a comfortable range and breathe steadily.')+'</p>'+
+    '<div class="rest-next-copy"><span>UP NEXT</span><h3>'+esc(nextLabel||'Begin workout')+'</h3></div>'+
+    '<div class="clean-rest-actions"><button class="button secondary" data-action="reset-timer">RESET</button><button class="button" data-action="skip-stage">SKIP</button></div>'+
+  '</div>';
 }
-
 function exerciseSessionHistory(exerciseId,limit=4){
   const rows=[];
   for(const workout of store.history){
@@ -3053,7 +3059,8 @@ function render(){
   if(cueSettingsOpen) app.insertAdjacentHTML('beforeend',renderCueSettingsSheet());
   if(exerciseActionsIndex!==null) app.insertAdjacentHTML('beforeend',renderExerciseActionsSheet());
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId));
+  if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId||accountSheetOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();
 }
@@ -3123,6 +3130,12 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const accountClose=event.target.closest('[data-action="close-account-sheet"]');
+  if(accountClose){
+    const inside=event.target.closest('[data-account-sheet-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){accountSheetOpen=false;render();return;}
+  }
   const cueClose=event.target.closest('[data-action="close-cue-settings"]');
   if(cueClose){
     const inside=event.target.closest('[data-cue-settings-panel]');
@@ -3197,7 +3210,8 @@ function handleClick(event){
   else if(a==='simulate-partner-ready')markSharedPartnerReady();
   else if(a==='start-shared-workout')startSharedWorkout();
   else if(a==='copy-shared-code')copySharedCode();
-  else if(a==='account-info')toast('Account UI is prepared for the project’s shared authentication backend. This workout prototype still stores training data locally.');
+  else if(a==='account-info'){accountSheetOpen=true;render();}
+  else if(a==='account-auth-not-connected')toast('Authentication will connect to the project’s Supabase account system. No local password is being collected in this prototype.');
   else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
@@ -3300,6 +3314,7 @@ document.addEventListener('change',event=>{
   }
 });
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
   if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
   if(event.key==='Escape'&&cueSettingsOpen){cueSettingsOpen=false;render();return;}
