@@ -1752,12 +1752,19 @@ async function startPreparedWorkout(){
     }).eq('session_id',sharedDraft.backendId).eq('user_id',store.account.userId);
     if(readyError){toast(readyError.message||'Could not complete your check-in.');return;}
     const live=sharedTrainingState().draft;
-    if(live?.backendId===sharedDraft.backendId){live.userStatus='ready';saveSharedBackendDraft(live);}
+    if(live?.backendId===sharedDraft.backendId){live.userStatus='ready';live.userConfirmed=false;saveSharedBackendDraft(live);}
+    try{
+      await sharedRuntime.channel?.send({
+        type:'broadcast',event:'participant-state',
+        payload:{...currentSharedCoordinationState(),ready:true,planConfirmed:false,phase:'ready'}
+      });
+    }catch{}
     readinessContext=null;
     const plan=await tryBuildTogetherPlan(live||sharedDraft);
-    if(plan?.slots?.length){await launchTogetherPlan(live||sharedDraft,readiness);return;}
-    toast('Check-in complete. Waiting for your partner.');
-    currentTab='together';render();return;
+    currentTab='together';
+    if(plan?.slots?.length)toast('Your Together plan is ready to review.');
+    else toast('Check-in complete. Waiting for your partner.');
+    render();return;
   }
   const day=applyReadinessToDay(readinessContext.day,readiness);
   const scheduledDate=readinessContext.scheduledDate;
@@ -2901,7 +2908,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   if(!workoutSupabase||!sessionId||store.account?.status!=='connected')return null;
   const [{data:session,error},{data:participants, error:participantError}]=await Promise.all([
     workoutSupabase.from('workout_shared_sessions').select('*').eq('id',sessionId).maybeSingle(),
-    workoutSupabase.from('workout_shared_participant_state').select('session_id,user_id,display_name,ready,connection_state,exercise_index,set_index,phase,is_paused,updated_at').eq('session_id',sessionId)
+    workoutSupabase.from('workout_shared_participant_state').select('session_id,user_id,display_name,ready,plan_confirmed,connection_state,exercise_index,set_index,phase,is_paused,updated_at').eq('session_id',sessionId)
   ]);
   if(error){console.warn('Shared session refresh failed',error);return null;}
   if(participantError)console.warn('Shared participant refresh failed',participantError);
@@ -2915,7 +2922,8 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   draft={
     ...draft,
     ...sharedDraftFromRow(session,role),
-    userStatus:own?.ready?'ready':(draft.userStatus||'joined'),
+    userStatus:own?.plan_confirmed?'confirmed':own?.ready?'ready':(draft.userStatus||'joined'),
+    userConfirmed:Boolean(own?.plan_confirmed),
     partnerName:remote?.display_name||draft.partnerName||'Workout partner',
     partnerId:remote?.user_id||draft.partnerId||'',
     partnerStatus:remote?(remote.ready?'ready':'joined'):(session.partner_user_id?'joined':'invited'),
@@ -2923,6 +2931,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
       userId:remote.user_id,
       displayName:remote.display_name,
       ready:Boolean(remote.ready),
+      planConfirmed:Boolean(remote.plan_confirmed),
       connectionState:remote.connection_state,
       exerciseIndex:num(remote.exercise_index),
       setIndex:num(remote.set_index),
@@ -2936,14 +2945,24 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
     const existing=shared.partners.find(item=>item.userId===remote.user_id);
     if(!existing)shared.partners.push({id:uid('partner'),userId:remote.user_id,name:remote.display_name,contact:'',status:'connected'});
   }
-  if(own?.ready)draft.userStatus='ready';
-  if(remote?.ready&&draft.userStatus==='ready'&&!store.activeWorkout&&(draft.role==='host'||draft.sessionStatus==='active')){
+  if(own?.plan_confirmed){draft.userStatus='confirmed';draft.userConfirmed=true;}
+  else if(own?.ready)draft.userStatus='ready';
+
+  if(remote?.ready&&own?.ready&&!draft.sharedPlan?.slots?.length){
+    try{
+      const plan=await tryBuildTogetherPlan(draft);
+      if(plan?.slots?.length)draft.sharedPlan=plan;
+    }catch(error){console.warn('Together plan build refresh failed',error);}
+  }
+
+  if(draft.sessionStatus==='active'&&draft.userConfirmed&&!store.activeWorkout){
     try{
       const {data:privateOwn}=await workoutSupabase.from('workout_shared_private_state').select('readiness').eq('session_id',sessionId).eq('user_id',ownId).maybeSingle();
-      let plan=draft.sharedPlan;
-      if(!plan?.slots?.length)plan=await tryBuildTogetherPlan(draft);
-      if(plan?.slots?.length&&privateOwn?.readiness){await launchTogetherPlan(draft,privateOwn.readiness);return draft;}
-    }catch(error){console.warn('Together plan launch failed',error);}
+      if(privateOwn?.readiness){
+        await launchTogetherPlan(draft,privateOwn.readiness);
+        return draft;
+      }
+    }catch(error){console.warn('Together active launch failed',error);}
   }
   if(renderNow&&currentTab==='together')render();
   return draft;
@@ -2974,7 +2993,7 @@ function updateSharedFromPresence(){
     draft.partnerName=remote.displayName||draft.partnerName||'Workout partner';
     draft.partnerId=remote.userId||draft.partnerId||'';
     draft.partnerStatus=remote.ready?'ready':'joined';
-    draft.remoteState={...(draft.remoteState||{}),userId:remote.userId,displayName:remote.displayName||draft.partnerName,ready:Boolean(remote.ready),connectionState:'online'};
+    draft.remoteState={...(draft.remoteState||{}),userId:remote.userId,displayName:remote.displayName||draft.partnerName,ready:Boolean(remote.ready),planConfirmed:Boolean(remote.planConfirmed),connectionState:'online'};
   }else if(draft.remoteState){
     draft.remoteState={...draft.remoteState,connectionState:'offline'};
   }
@@ -3010,6 +3029,7 @@ async function subscribeSharedSession(draft){
         userId:payload.userId,
         displayName:payload.displayName||current.partnerName,
         ready:Boolean(payload.ready),
+        planConfirmed:Boolean(payload.planConfirmed),
         connectionState:'online',
         exerciseIndex:num(payload.exerciseIndex),
         setIndex:num(payload.setIndex),
@@ -3017,6 +3037,17 @@ async function subscribeSharedSession(draft){
         isPaused:Boolean(payload.isPaused),
         updatedAt:payload.updatedAt||new Date().toISOString()
       };
+      saveSharedBackendDraft(current);
+      if(payload.ready||payload.planConfirmed){
+        fetchSharedSessionState(current.backendId,{renderNow:true}).catch(error=>console.warn('Together participant refresh failed',error));
+      }else if(currentTab==='together')render();
+    })
+    .on('broadcast',{event:'session-settings'},({payload})=>{
+      const current=sharedTrainingState().draft;
+      if(!current||current.backendId!==draft.backendId||!payload)return;
+      current.mode=payload.mode||current.mode;
+      current.pace=payload.pace||current.pace;
+      current.setFlow=payload.setFlow||current.setFlow;
       saveSharedBackendDraft(current);
       if(currentTab==='together')render();
     })
@@ -3027,8 +3058,8 @@ async function subscribeSharedSession(draft){
       if(payload.startedAt)current.startedAt=payload.startedAt;
       saveSharedBackendDraft(current);
       if(currentTab==='together')render();
-      if(current.role==='partner'&&payload.status==='active'){
-        toast('Together plan is ready. Starting your matched workout.');
+      if(payload.status==='active'){
+        toast('Both confirmed. Starting your Together workout.');
         fetchSharedSessionState(current.backendId,{renderNow:true}).catch(error=>console.warn('Together launch refresh failed',error));
       }
     })
@@ -3039,7 +3070,8 @@ async function subscribeSharedSession(draft){
           userId:store.account.userId,
           displayName:displayName(),
           role:draft.role||'partner',
-          ready:Boolean(sharedTrainingState().draft?.userStatus==='ready'||store.activeWorkout?.sharedSession),
+          ready:Boolean(['ready','confirmed','training'].includes(sharedTrainingState().draft?.userStatus)||store.activeWorkout?.sharedSession),
+          planConfirmed:Boolean(sharedTrainingState().draft?.userConfirmed),
           onlineAt:new Date().toISOString()
         });
       }catch(error){console.warn('Shared presence track failed',error);}
@@ -3055,7 +3087,8 @@ function currentSharedCoordinationState(){
     sessionId:draft.backendId,
     userId:store.account.userId,
     displayName:displayName(),
-    ready:Boolean(draft.userStatus==='ready'||w),
+    ready:Boolean(['ready','confirmed','training'].includes(draft.userStatus)||w),
+    planConfirmed:Boolean(draft.userConfirmed),
     connectionState:'online',
     exerciseIndex:w?num(w.currentExerciseIndex):0,
     setIndex:w?num(w.currentSetIndex):0,
@@ -3176,7 +3209,7 @@ async function tryBuildTogetherPlan(draft){
     if(/Both check-ins|Waiting for partner/i.test(error.message||''))return null;
     toast(error.message||'Could not build the Together workout.');return null;
   }
-  draft.sharedPlan=data||{};draft.userStatus='ready';saveSharedBackendDraft(draft);
+  draft.sharedPlan=data||{};if(draft.userStatus!=='confirmed')draft.userStatus='ready';saveSharedBackendDraft(draft);
   return data||null;
 }
 async function launchTogetherPlan(draft,readiness){
@@ -3198,6 +3231,51 @@ async function launchTogetherPlan(draft,readiness){
   return true;
 }
 
+async function saveTogetherSettings(){
+  const draft=sharedTrainingState().draft;
+  if(!draft?.backendId||draft.role!=='host'||!workoutSupabase)return;
+  const mode=document.querySelector('#together-mode')?.value||draft.mode||'same-gym';
+  const pace=document.querySelector('#together-pace')?.value||draft.pace||'stay-together';
+  const setFlow=document.querySelector('#together-set-flow')?.value||draft.setFlow||'alternating';
+  const {error}=await workoutSupabase.from('workout_shared_sessions').update({
+    mode,pace,set_flow:setFlow,updated_at:new Date().toISOString()
+  }).eq('id',draft.backendId);
+  if(error){toast(error.message||'Could not update Together settings.');return;}
+  draft.mode=mode;draft.pace=pace;draft.setFlow=setFlow;saveSharedBackendDraft(draft);
+  try{await sharedRuntime.channel?.send({type:'broadcast',event:'session-settings',payload:{mode,pace,setFlow}});}catch{}
+  toast('Together settings updated.');
+  render();
+}
+async function confirmTogetherPlan(){
+  const draft=sharedTrainingState().draft;
+  if(!draft?.backendId||!draft.sharedPlan?.slots?.length||!workoutSupabase)return;
+  if(draft.role==='host')await saveTogetherSettings();
+  const {data,error}=await workoutSupabase.rpc('confirm_workout_shared_plan',{p_session_id:draft.backendId});
+  if(error){toast(error.message||'Could not confirm the Together plan.');return;}
+  draft.userConfirmed=true;draft.userStatus='confirmed';
+  if(data?.status)draft.sessionStatus=data.status;
+  if(data?.startedAt)draft.startedAt=data.startedAt;
+  saveSharedBackendDraft(draft);
+  try{
+    await sharedRuntime.channel?.send({
+      type:'broadcast',event:'participant-state',
+      payload:{...currentSharedCoordinationState(),ready:true,planConfirmed:true,phase:'confirmed'}
+    });
+    if(data?.bothConfirmed){
+      await sharedRuntime.channel?.send({
+        type:'broadcast',event:'session-state',
+        payload:{status:'active',startedAt:data.startedAt||new Date().toISOString()}
+      });
+    }
+  }catch{}
+  if(data?.bothConfirmed){
+    toast('Both confirmed. Starting Together.');
+    await fetchSharedSessionState(draft.backendId,{renderNow:true});
+  }else{
+    toast('Plan confirmed. Waiting for your partner.');
+    render();
+  }
+}
 function copySharedCode(){
   const code=sharedTrainingState().draft?.code;if(!code)return;
   if(navigator?.clipboard?.writeText){
@@ -3205,16 +3283,10 @@ function copySharedCode(){
   }else toast('Join code: '+code);
 }
 async function createSharedDraft(){
-  if(store.account?.status!=='connected'){accountSheetOpen=true;render();toast('Sign in before creating a shared workout.');return;}
-  if(!workoutSupabase){toast('Shared workout service is unavailable.');return;}
+  if(store.account?.status!=='connected'){accountSheetOpen=true;render();toast('Sign in before creating a Together workout.');return;}
+  if(!workoutSupabase){toast('Together service is unavailable.');return;}
   const next=nextScheduledSession();
-  if(!next){toast('No scheduled workout is available to share right now.');return;}
-  const name=(document.querySelector('#shared-partner-name')?.value||'').trim();
-  const contact=(document.querySelector('#shared-partner-contact')?.value||'').trim();
-  const mode=document.querySelector('#shared-mode')?.value||'same-gym';
-  const pace=document.querySelector('#shared-pace')?.value||'stay-together';
-  const setFlow=document.querySelector('#shared-set-flow')?.value||'alternating';
-  if(!name){toast('Enter your workout partner’s name.');return;}
+  if(!next){toast('You need a scheduled workout before creating Together.');return;}
   const shared=sharedTrainingState();
   const day=next.adaptedDay||next.day;
   const snapshot=safeSharedPlanSnapshot(day);
@@ -3225,22 +3297,22 @@ async function createSharedDraft(){
       join_code:code,
       host_user_id:store.account.userId,
       host_name:displayName(),
-      routine_name:day.name,
+      routine_name:'Together Workout',
       scheduled_date:next.dateKey,
       plan_day_id:day.id,
       plan_snapshot:snapshot,
-      mode,
-      pace,
-      set_flow:setFlow,
+      mode:'same-gym',
+      pace:'stay-together',
+      set_flow:'alternating',
       lead_audio_user_id:store.account.userId,
       status:'lobby'
     }).select('*').single();
     if(error){lastError=error;continue;}
     created=data;
   }
-  if(!created){toast(lastError?.message||'Could not create the shared lobby.');return;}
+  if(!created){toast(lastError?.message||'Could not create the Together lobby.');return;}
   const {error:participantError}=await workoutSupabase.from('workout_shared_participant_state').insert({
-    session_id:created.id,user_id:store.account.userId,display_name:displayName(),ready:false,connection_state:'online',phase:'planning'
+    session_id:created.id,user_id:store.account.userId,display_name:displayName(),ready:false,plan_confirmed:false,connection_state:'online',phase:'planning'
   });
   if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
   const {error:privateError}=await workoutSupabase.from('workout_shared_private_state').upsert({
@@ -3249,12 +3321,10 @@ async function createSharedDraft(){
     planned_day:snapshot,updated_at:new Date().toISOString()
   });
   if(privateError){toast(privateError.message||'Could not save your private Together profile.');return;}
-  const partner={id:uid('partner'),name,contact,status:'invited'};
-  const existing=shared.partners.find(item=>item.contact&&contact&&item.contact.toLowerCase()===contact.toLowerCase());
-  if(!existing)shared.partners.push(partner);
-  const draft={...sharedDraftFromRow(created,'host'),partnerId:(existing||partner).id,partnerName:name,partnerContact:contact,partnerStatus:'invited',planSnapshot:snapshot};
+  const draft={...sharedDraftFromRow(created,'host'),partnerName:'Workout partner',partnerStatus:'invited',userStatus:'joined',userConfirmed:false,planSnapshot:snapshot};
   saveSharedBackendDraft(draft);
   await subscribeSharedSession(draft);
+  toast('Lobby created. Share the code with your workout partner.');
   render();
 }
 async function joinSharedSession(){
@@ -3267,7 +3337,7 @@ async function joinSharedSession(){
   const row=Array.isArray(data)?data[0]:data;
   if(!row){toast('Could not load that shared workout.');return;}
   const draft=sharedDraftFromRow(row,'partner');
-  draft.partnerStatus='joined';draft.userStatus='joined';
+  draft.partnerStatus='joined';draft.userStatus='joined';draft.userConfirmed=false;
   const next=nextScheduledSession();
   const day=next?.adaptedDay||next?.day||store.plan?.days?.[0];
   if(!day){toast('Build your training plan before joining Together.');return;}
@@ -3363,39 +3433,75 @@ function renderSharedMatches(draft){
 function renderTogether(){
   if(!store.profile||!store.plan)return renderProfileEditor();
   if(store.account?.status!=='connected'){
-    return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Shared workouts use account identity so each person keeps their own readiness, weights, reps, progression, and history.</p></div></div>'+
-      '<section class="account-required-card"><div class="together-icon">◎</div><div><span>ACCOUNT REQUIRED</span><h3>Sign in before starting a shared workout.</h3><p>Your training stays private by default. Partners only receive the session information needed to train together.</p></div><button class="button" data-action="account-info">SIGN IN / CREATE ACCOUNT</button></section>'+
-      '<section class="clean-panel shared-preview-card"><div><span>REALTIME SHARED TRAINING</span><strong>Same Gym · Remote Together · Share Plan</strong><p>Join codes, participant presence, session starts, and workout position now synchronize through your account.</p></div></section>'+
-    '</div>';
+    return '<div class="clean-page together-page together-v2"><section class="together-v2-intro"><div class="together-v2-mark">◎</div><p class="eyebrow">TOGETHER</p><h2>One workout. Built for both of you.</h2><p>Sign in so both people can keep their own plan, readiness, weights and progression while training in sync.</p><button class="button primary-action" data-action="account-info">SIGN IN / CREATE ACCOUNT</button></section></div>';
   }
+
   const shared=sharedTrainingState(),draft=shared.draft,next=nextScheduledSession();
-  if(draft){
-    const partnerReady=draft.partnerStatus==='ready';
-    const remoteOnline=draft.remoteState?.connectionState!=='offline'&&Boolean(draft.remoteState);
-    const role=draft.role||'host';
-    const userReady=draft.userStatus==='ready';
-    const canStart=Boolean(draft.partnerId)&&!userReady;
-    const statusCopy=draft.sessionStatus==='active'?'Workout in progress':draft.sessionStatus==='completed'?'Session completed':userReady&&!partnerReady?'Your check-in is complete · waiting for partner':partnerReady&&!userReady?'Partner checked in · your turn':draft.partnerId?'Both connected · complete private check-ins':'Waiting for partner';
-    const partnerPhase=draft.remoteState?.phase&&draft.remoteState.phase!=='lobby'?draft.remoteState.phase.replace(/-/g,' '):'Lobby';
-    return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Shared session lobby.</h2><p>'+esc(statusCopy)+'. Each person keeps their own weights, reps, readiness, history, and progression.</p></div><button class="text-button danger-text" data-action="cancel-shared-draft">'+(role==='host'?'CANCEL':'LEAVE')+'</button></div>'+
-      '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</p>'+(role==='host'?'<div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div>':'')+'</section>'+
-      '<div class="participant-grid"><article class="participant-card '+(userReady?'ready':'pending')+'"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU · '+esc(role.toUpperCase())+'</span><strong>'+esc(displayName())+'</strong><small>'+(store.activeWorkout?.sharedSession?'Training':userReady?'Check-in complete':'Check-in needed')+'</small></div><em>'+(userReady?'✓':'…')+'</em></article><article class="participant-card '+(partnerReady?'ready':'pending')+'"><div class="participant-avatar">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div><div><span>PARTNER</span><strong>'+esc(draft.partnerName||'Workout partner')+'</strong><small>'+(partnerReady?(remoteOnline?'Online · '+esc(partnerPhase):'Joined · reconnecting'):'Invite pending')+'</small></div><em>'+(partnerReady?'✓':'…')+'</em></article></div>'+
-      '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
-      (draft.sharedPlan?.slots?.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">COMPATIBLE PLAN</p><h3>'+draft.sharedPlan.slots.length+' shared movement stations</h3></div></div>'+renderSharedMatches(draft)+'</section>':'<section class="clean-panel"><div><span>PLANNER</span><strong>Plan builds after both private check-ins</strong><p>We compare each person’s scheduled training, equipment, movement patterns, time and readiness. Your weights and reps stay individual.</p></div></section>')+
-      '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">QUICK CHECK-IN</button>':userReady?'<button class="button secondary" disabled>CHECK-IN COMPLETE · WAITING</button>':'<button class="button secondary" disabled>WAITING FOR PARTNER</button>')+(role==='host'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
-      '<section class="prototype-note compact"><strong>Realtime connected.</strong><span>Only check-in completion, online status, workout phase, and exercise/set position are shared. Raw readiness answers, body data, weights, reps, notes, PRs, and history stay private.</span></section>'+
+
+  if(!draft){
+    return '<div class="clean-page together-page together-v2">'+
+      '<section class="together-v2-intro"><div class="together-v2-mark">◎</div><p class="eyebrow">TOGETHER</p><h2>Train together. Built for both of you.</h2><p>Create a lobby or join one. We wait until both people are connected and checked in before building the workout.</p></section>'+
+      '<section class="together-choice-grid">'+
+        '<article class="together-choice-card create"><span class="together-choice-number">01</span><div><p class="eyebrow">START A SESSION</p><h3>Create a workout</h3><p>Open a private lobby and get a 6-character code to share.</p></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE WORKOUT</button></article>'+
+        '<article class="together-choice-card join"><span class="together-choice-number">02</span><div><p class="eyebrow">HAVE A CODE?</p><h3>Join a workout</h3><p>Enter the code from your workout partner.</p></div><div class="together-code-row"><input id="shared-join-code" inputmode="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"><button class="button secondary" data-action="join-shared-session">JOIN</button></div></article>'+
+      '</section>'+
+      (next?'<section class="together-source-strip"><div><span>YOUR NEXT TRAINING</span><strong>'+esc(next.adaptedDay?.name||next.day?.name||'Workout')+'</strong></div><small>'+esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min</small></section>':'<section class="prototype-note"><strong>No workout scheduled.</strong><span>Build or schedule your individual program first. Together uses both people’s real training plans as its starting point.</span></section>')+
+      '<section class="together-privacy-line"><span>PRIVATE BY DEFAULT</span><p>Your raw readiness, body data, weights, reps, notes, PRs and history are never shown to your partner.</p></section>'+
     '</div>';
   }
-  return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
-    '<section class="together-hero"><div class="together-icon">◎</div><div><span>NEXT AVAILABLE WORKOUT</span><h3>'+esc(next?.adaptedDay?.name||next?.day?.name||'No session scheduled')+'</h3><p>'+(next?esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min':'Schedule a workout first.')+'</p></div></section>'+
-    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Invite one workout partner</h3></div></div><div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="For your own saved partner list"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label><label class="field"><span>SET FLOW</span><select id="shared-set-flow"><option value="alternating">Alternating Sets</option><option value="parallel">Parallel Sets</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
-    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">JOIN A SESSION</p><h3>Enter the code from your workout partner</h3></div></div><label class="field shared-code-input"><span>6-CHARACTER JOIN CODE</span><input id="shared-join-code" inputmode="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"></label><button class="button secondary" data-action="join-shared-session">JOIN WORKOUT</button></section>'+
-    (shared.partners.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT PARTNERS</p><h3>Recent partners</h3></div></div><div class="partner-list">'+shared.partners.slice(-5).reverse().map(item=>'<div class="partner-row"><div class="participant-avatar">'+esc((item.name[0]||'P').toUpperCase())+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(item.contact||'Shared workout partner')+'</small></div></div>').join('')+'</div></section>':'')+
-    (shared.history.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT SHARED SESSIONS</p><h3>Trained together</h3></div></div><div class="partner-list">'+shared.history.slice(0,5).map(item=>'<div class="partner-row"><div class="participant-avatar">✓</div><div><strong>'+esc(item.routineName)+'</strong><small>With '+esc(item.partnerName)+' · '+esc(formatDate(item.completedAt))+'</small></div></div>').join('')+'</div></section>':'')+
-    '<section class="prototype-note"><strong>Realtime shared training is live.</strong><span>Create or join from another signed-in browser or phone. Detailed workout performance remains on each person’s own device.</span></section>'+
+
+  const role=draft.role||'host';
+  const connected=Boolean(draft.partnerId);
+  const userReady=['ready','confirmed','training'].includes(draft.userStatus);
+  const partnerReady=Boolean(draft.remoteState?.ready)||draft.partnerStatus==='ready';
+  const userConfirmed=Boolean(draft.userConfirmed);
+  const partnerConfirmed=Boolean(draft.remoteState?.planConfirmed);
+  const hasPlan=Boolean(draft.sharedPlan?.slots?.length);
+  const remoteOnline=draft.remoteState?.connectionState!=='offline'&&Boolean(draft.remoteState);
+  const stage=draft.sessionStatus==='active'?'starting':hasPlan?'review':userReady&&partnerReady?'building':connected?'checkin':'connect';
+  const stageCopy={
+    connect:'Share your code to connect your workout partner.',
+    checkin:'Both connected. Each person completes a private Quick Check-In.',
+    building:'Both check-ins are complete. Building your compatible workout.',
+    review:'Your compatible workout is ready. Review it, then both confirm.',
+    starting:'Both confirmed. Starting your Together workout.'
+  }[stage];
+
+  return '<div class="clean-page together-page together-v2">'+
+    '<section class="together-lobby-top"><div><p class="eyebrow">TOGETHER LOBBY</p><h2>'+esc(stageCopy)+'</h2></div><button class="text-button danger-text" data-action="cancel-shared-draft">'+(role==='host'?'CANCEL':'LEAVE')+'</button></section>'+
+    (role==='host'?'<section class="together-code-hero"><div><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong><small>Share this code with one workout partner.</small></div><button class="button secondary" data-action="copy-shared-code">COPY CODE</button></section>':'')+
+    '<section class="together-stage-track">'+
+      '<div class="done"><span>1</span><strong>Connect</strong></div>'+
+      '<i></i><div class="'+(connected?'done':'active')+'"><span>2</span><strong>Check in</strong></div>'+
+      '<i></i><div class="'+(hasPlan?'done':userReady&&partnerReady?'active':'')+'"><span>3</span><strong>Build</strong></div>'+
+      '<i></i><div class="'+(hasPlan?'active':'')+'"><span>4</span><strong>Confirm</strong></div>'+
+    '</section>'+
+    '<section class="together-people">'+
+      '<article class="together-person '+(userReady?'complete':'')+'"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU</span><strong>'+esc(displayName())+'</strong><small>'+(!connected?'Connected':userConfirmed?'Plan confirmed':userReady?'Check-in complete':'Check-in needed')+'</small></div><em>'+(userConfirmed?'✓':userReady?'✓':connected?'YOUR TURN':'●')+'</em></article>'+
+      '<article class="together-person '+(partnerReady?'complete':'')+'"><div class="participant-avatar">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div><div><span>PARTNER</span><strong>'+esc(connected?draft.partnerName:'Waiting for partner')+'</strong><small>'+(!connected?'Not connected':partnerConfirmed?'Plan confirmed':partnerReady?'Check-in complete':remoteOnline?'Connected · check-in needed':'Connected')+'</small></div><em>'+(partnerConfirmed?'✓':partnerReady?'✓':connected?'…':'○')+'</em></article>'+
+    '</section>'+
+
+    (!connected?'<section class="together-wait-card"><div class="together-wait-pulse"></div><div><span>WAITING FOR PARTNER</span><strong>They join with your 6-character code.</strong><p>No workout is generated until both profiles are here.</p></div></section>':'')+
+
+    (connected&&!userReady?'<section class="together-next-action"><div><p class="eyebrow">YOUR TURN</p><h3>Quick Check-In</h3><p>Energy, soreness, sleep and available time stay private. They help shape only your side of the shared workout.</p></div><button class="button primary-action" data-action="start-shared-workout">START MY CHECK-IN</button></section>':'')+
+
+    (connected&&userReady&&!partnerReady?'<section class="together-wait-card"><div class="together-wait-pulse"></div><div><span>YOUR CHECK-IN IS DONE</span><strong>Waiting for '+esc(draft.partnerName)+'.</strong><p>We’ll build the workout as soon as their private check-in is complete.</p></div></section>':'')+
+
+    (connected&&userReady&&partnerReady&&!hasPlan?'<section class="together-building-card"><div class="together-building-orbit">◎</div><div><span>BUILDING TOGETHER</span><strong>Finding the overlap without flattening either plan.</strong><p>Matching movement patterns, equipment, session time and today’s readiness.</p></div></section>':'')+
+
+    (hasPlan?'<section class="together-plan-card"><div class="clean-section-head"><div><p class="eyebrow">YOUR TOGETHER PLAN</p><h3>'+draft.sharedPlan.slots.length+' shared movement stations · ~'+esc(draft.sharedPlan.minutes||store.profile.minutes)+' min</h3><p>Same structure, individualized exercise prescriptions.</p></div></div>'+renderSharedMatches(draft)+'</section>':'')+
+
+    (hasPlan?'<section class="together-session-style"><div><p class="eyebrow">SESSION STYLE</p><h3>How do you want to move through it?</h3></div>'+
+      (role==='host'&&!userConfirmed?'<div class="together-style-grid"><label><span>LOCATION</span><select id="together-mode"><option value="same-gym" '+(draft.mode==='same-gym'?'selected':'')+'>Same Gym</option><option value="remote" '+(draft.mode==='remote'?'selected':'')+'>Remote Together</option></select></label><label><span>PACE</span><select id="together-pace"><option value="stay-together" '+(draft.pace==='stay-together'?'selected':'')+'>Stay Together</option><option value="flexible" '+(draft.pace==='flexible'?'selected':'')+'>Flexible Pace</option></select></label><label><span>SETS</span><select id="together-set-flow"><option value="alternating" '+(draft.setFlow==='alternating'?'selected':'')+'>Alternating Sets</option><option value="parallel" '+(draft.setFlow==='parallel'?'selected':'')+'>Parallel Sets</option></select></label></div><button class="text-button" data-action="save-together-settings">SAVE SESSION STYLE</button>':'<div class="together-style-summary"><span>'+esc(draft.mode==='remote'?'Remote Together':'Same Gym')+'</span><span>'+esc(draft.pace==='flexible'?'Flexible Pace':'Stay Together')+'</span><span>'+esc(draft.setFlow==='parallel'?'Parallel Sets':'Alternating Sets')+'</span></div>')+
+    '</section>':'')+
+
+    (hasPlan?'<section class="together-confirm-card"><div><span>'+((userConfirmed&&partnerConfirmed)?'BOTH CONFIRMED':userConfirmed?'YOU’RE CONFIRMED':partnerConfirmed?'PARTNER CONFIRMED':'READY WHEN YOU ARE')+'</span><strong>'+((userConfirmed&&partnerConfirmed)?'Starting Together…':userConfirmed?'Waiting for '+esc(draft.partnerName):'Review your matched workout, then lock it in.')+'</strong></div>'+
+      (!userConfirmed?'<button class="button primary-action" data-action="confirm-together-plan">CONFIRM MY PLAN</button>':'<button class="button secondary" disabled>CONFIRMED ✓</button>')+
+    '</section>':'')+
+
+    '<section class="together-privacy-line"><span>WHAT YOUR PARTNER CAN SEE</span><p>Connection, check-in completion, shared movement stations and live workout position. Your private performance data stays yours.</p></section>'+
   '</div>';
 }
-
 function renderProfileHub(){
   const p=store.profile;if(!p)return renderProfileEditor();
   const context=programContext(),shared=sharedTrainingState();
@@ -4053,6 +4159,8 @@ function handleClick(event){
   else if(a==='cancel-shared-draft')cancelSharedDraft();
   else if(a==='start-shared-workout')startSharedWorkout();
   else if(a==='copy-shared-code')copySharedCode();
+  else if(a==='save-together-settings')saveTogetherSettings();
+  else if(a==='confirm-together-plan')confirmTogetherPlan();
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
