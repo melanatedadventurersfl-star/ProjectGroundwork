@@ -3666,3 +3666,139 @@ button.clean-set-row{cursor:pointer}
   .account-auth-form{grid-template-columns:1fr}
 }
 
+
+
+/* Shared training, stable countdowns, and motion exercise media */
+.shared-code-input input{
+  text-transform:uppercase;
+  letter-spacing:.16em;
+  font-weight:900;
+}
+.exercise-motion-frames{
+  position:relative;
+  display:block;
+  width:100%;
+  height:100%;
+  min-height:inherit;
+  overflow:hidden;
+  background:#f4f2ec;
+}
+.exercise-motion-frames .motion-frame{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  background:#f4f2ec;
+}
+.exercise-motion-frames .motion-frame-b{
+  position:absolute;
+  inset:0;
+  opacity:0;
+}
+.motion-enabled .motion-frame-a{
+  animation:exerciseFrameA 1.8s ease-in-out infinite alternate;
+}
+.motion-enabled .motion-frame-b{
+  animation:exerciseFrameB 1.8s ease-in-out infinite alternate;
+}
+@keyframes exerciseFrameA{
+  0%,35%{opacity:1}
+  65%,100%{opacity:0}
+}
+@keyframes exerciseFrameB{
+  0%,35%{opacity:0}
+  65%,100%{opacity:1}
+}
+
+.clean-countdown,
+#rest-clock,
+#timed-set-clock,
+#stage-clock{
+  font-variant-numeric:tabular-nums;
+  contain:layout paint;
+}
+.clean-countdown{
+  min-width:110px;
+  min-height:110px;
+  line-height:1;
+}
+#rest-clock,
+#timed-set-clock,
+#stage-clock{
+  min-width:5ch;
+}
+.countdown-pulse{
+  animation:countdownPulse .18s ease-out both !important;
+}
+@keyframes countdownPulse{
+  0%{transform:scale(1)}
+  45%{transform:scale(1.055)}
+  100%{transform:scale(1)}
+}
+
+.rest-next-exercise-card{
+  width:100%;
+  display:grid;
+  grid-template-columns:74px minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  padding:9px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--panel);
+  color:var(--text);
+  text-align:left;
+  cursor:pointer;
+}
+.rest-next-exercise-media{
+  width:74px;
+  height:74px;
+  min-height:74px;
+  border-radius:10px;
+}
+.rest-next-exercise-card>div{
+  min-width:0;
+}
+.rest-next-exercise-card span,
+.rest-next-exercise-card strong,
+.rest-next-exercise-card small{
+  display:block;
+}
+.rest-next-exercise-card span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.rest-next-exercise-card strong{
+  margin-top:4px;
+  font-size:13px;
+}
+.rest-next-exercise-card small{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.4;
+}
+.rest-next-exercise-card>em{
+  color:var(--muted);
+  font-size:22px;
+  font-style:normal;
+}
+.cooldown-preview{
+  grid-template-columns:1fr;
+  cursor:default;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .motion-enabled .motion-frame-a{
+    animation:none !important;
+    opacity:1 !important;
+  }
+  .motion-enabled .motion-frame-b{
+    display:none !important;
+  }
+  .countdown-pulse{
+    animation:none !important;
+  }
+}
