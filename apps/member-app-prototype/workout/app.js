@@ -1556,7 +1556,7 @@ function saveProfileFromForm(form){
 
 function editProfile(){
   if (store.activeWorkout) { toast('Finish or discard the active workout before rebuilding the plan.'); return; }
-  currentTab='profile';
+  currentTab='profile-edit';
   render();
 }
 
@@ -2323,7 +2323,7 @@ function finishWorkout(auto=false){
 
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
 
-function renderProfile(){
+function renderProfileEditor(){
   const p=store.profile||{};
   const lifts=p.lifts||{};
   const checked=(field,value)=>p[field]===value?'checked':'';
@@ -2878,20 +2878,33 @@ function renderSummary(){
 function renderEmpty(title,copy){return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;}
 
 function setTab(tab){
-  if(!store.profile&&tab!=='profile'){currentTab='profile';}else currentTab=tab;
+  if(!store.profile&&!['profile','profile-edit'].includes(tab)){currentTab='profile-edit';}
+  else currentTab=tab;
   render();updateTimers();window.scrollTo({top:0,behavior:'smooth'});
 }
 function syncNav(){
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===currentTab||(currentTab==='summary'&&b.dataset.tab==='history')));
+  const navTab=currentTab==='workout'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===navTab));
   const nav=document.querySelector('.bottom-nav');if(nav)nav.classList.toggle('nav-disabled',!store.profile);
+}
+function syncShellIdentity(){
+  const avatar=document.querySelector('.avatar');
+  if(avatar){
+    const name=store.account?.displayName||store.profile?.displayName||'Me';
+    const initials=String(name).split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase();
+    avatar.textContent=initials||'ME';
+  }
 }
 function syncLiveBadge(){const b=document.querySelector('.nav-live');if(b)b.hidden=!store.activeWorkout;}
 function toast(message){const r=document.querySelector('#toast-region')||document.body;r.querySelector('.toast')?.remove();const n=document.createElement('div');n.className='toast';n.textContent=message;r.append(n);setTimeout(()=>n.remove(),2300);}
 
 function render(){
   const app=document.querySelector('#app');if(!app)return;
-  if(currentTab==='profile')app.innerHTML=renderProfile();
+  if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
+  else if(currentTab==='profile')app.innerHTML=renderProfileHub();
   else if(currentTab==='home')app.innerHTML=renderHome();
+  else if(currentTab==='train')app.innerHTML=renderTrain();
+  else if(currentTab==='together')app.innerHTML=renderTogether();
   else if(currentTab==='catalog')app.innerHTML=renderCatalog();
   else if(currentTab==='workout')app.innerHTML=renderWorkout();
   else if(currentTab==='history')app.innerHTML=renderHistory();
@@ -2903,8 +2916,11 @@ function render(){
   if(readinessContext) app.insertAdjacentHTML('beforeend',renderReadinessModal());
   if(workoutMapOpen) app.insertAdjacentHTML('beforeend',renderWorkoutMap());
   if(setEditContext) app.insertAdjacentHTML('beforeend',renderSetEditor());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext));
-  syncNav();syncLiveBadge();
+  if(cueSettingsOpen) app.insertAdjacentHTML('beforeend',renderCueSettingsSheet());
+  if(exerciseActionsIndex!==null) app.insertAdjacentHTML('beforeend',renderExerciseActionsSheet());
+  if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId));
+  syncNav();syncLiveBadge();syncShellIdentity();
 }
 
 function updateTimers(){
