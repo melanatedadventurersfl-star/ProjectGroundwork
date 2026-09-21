@@ -22,3 +22,13 @@ Browser storage is a cache/offline layer for Workout only. After a Workout accou
 ## Schema
 
 Workout-owned migrations live in `supabase/migrations/` under this app directory. They must not be added to the repository-level Go Melanated Supabase migration folder.
+
+
+## Authentication behavior
+
+Workout owns its authentication independently.
+
+- New accounts are created through the Workout-only `workout-signup` Edge Function.
+- Signup accounts are immediately usable and do not require a confirmation-email step.
+- The browser never receives the backend secret key.
+- Password recovery uses Supabase Auth reset emails and returns users to the Workout web app to choose a new password.
