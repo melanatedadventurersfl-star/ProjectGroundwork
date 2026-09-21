@@ -132,7 +132,7 @@ async function hydrateCloudState(userId){
   if(!workoutSupabase||!userId)return false;
   const {data,error}=await workoutSupabase.from('workout_user_state').select('*').eq('user_id',userId).maybeSingle();
   if(error)throw error;
-  if(!data){await syncCloudState();return false;}
+  if(!data){await syncCloudState();cloudHydrating=false;return false;}
   cloudHydrating=true;
   for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['active_workout','activeWorkout'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
   localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
@@ -2450,9 +2450,8 @@ function renderProfileEditor(){
         <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
       </section>
 
-      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account</h3><p>Create or sign in to sync this setup, your program, progress and active workout across browsers.</p></div></div>
-        <div class="form-grid two"><label class="field"><span>ACCOUNT EMAIL</span><input id="onboard-account-email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="onboard-account-password" type="password" autocomplete="new-password" placeholder="At least 6 characters"></label></div>
-        <div class="inline-actions"><button class="button secondary" type="button" data-action="onboard-create-account">CREATE / CONNECT ACCOUNT</button><button class="text-button" type="button" data-action="account-info">SIGN IN</button></div>
+      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account connected</h3><p>${esc(store.account?.email||'Signed in')} · Your setup and training state sync through this account.</p></div></div>
+        <div class="profile-privacy-note"><strong>CONNECTED</strong><span>You can manage or sign out from your profile account controls after setup.</span></div>
       </section>
       <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
         <div class="choice-grid four">
@@ -2589,7 +2588,7 @@ function displayName(){
 }
 async function initWorkoutAuth(){
   try{
-    if(!window.supabase?.createClient)return;
+    if(!window.supabase?.createClient){authReady=true;render();return;}
     workoutSupabase=window.supabase.createClient(WORKOUT_SUPABASE_URL,WORKOUT_SUPABASE_PUBLISHABLE_KEY,{
       auth:{
         storage:window.localStorage,
@@ -2611,6 +2610,7 @@ async function initWorkoutAuth(){
 }
 function applyWorkoutSession(session){
   authReady=true;
+  cloudHydrating=Boolean(session?.user);
   const previousUserId=store.account?.userId||'';
   if(session?.user){
     const user=session.user;
@@ -2630,7 +2630,7 @@ function applyWorkoutSession(session){
   sharedRuntime.syncMuted=false;
   render();
   if(session?.user?.id){
-    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await restoreSharedWorkoutSession(session.user.id);}catch(error){console.warn('Workout account restore failed',error);}});
+    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await restoreSharedWorkoutSession(session.user.id);}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
   }else if(previousUserId){
     unsubscribeSharedSession();
   }
