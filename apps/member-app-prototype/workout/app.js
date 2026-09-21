@@ -3349,8 +3349,16 @@ function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
   return ex.name+' · Set '+(num(remote.setIndex)+1);
 }
 function renderSharedMatches(draft){
-  const day=sharedDraftDay(draft);if(!day)return '';
-  return '<div class="shared-match-list">'+day.exercises.map((ex,index)=>'<article class="shared-match-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ex.name)+'</strong><small>'+esc(movements[ex.movement]||ex.movement)+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</small></div><em>SHARED</em></article>').join('')+'</div>';
+  const slots=draft?.sharedPlan?.slots||[];
+  if(slots.length){
+    const isHost=draft.role==='host';
+    return '<div class="shared-match-list">'+slots.map((slot,index)=>{
+      const own=isHost?slot.hostExercise:slot.partnerExercise;
+      const partner=isHost?slot.partnerExercise:slot.hostExercise;
+      return '<article class="shared-match-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(own?.name||movements[slot.movement]||slot.movement)+'</strong><small>'+esc(movements[slot.movement]||slot.movement)+' · Partner: '+esc(partner?.name||'matched variation')+'</small></div><em>SHARED</em></article>';
+    }).join('')+'</div>';
+  }
+  return '';
 }
 function renderTogether(){
   if(!store.profile||!store.plan)return renderProfileEditor();
