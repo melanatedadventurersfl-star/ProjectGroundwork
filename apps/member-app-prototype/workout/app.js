@@ -1741,6 +1741,8 @@ async function startPreparedWorkout(){
   readiness.score=readinessScore(readiness);
   const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
   if(sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
+    const latestDay=readinessContext.day;
+    await workoutSupabase.from('workout_shared_private_state').update({planned_day:safeSharedPlanSnapshot(latestDay),updated_at:new Date().toISOString()}).eq('session_id',sharedDraft.backendId).eq('user_id',store.account.userId);
     const {error:privateError}=await workoutSupabase.from('workout_shared_private_state').update({
       readiness,updated_at:new Date().toISOString()
     }).eq('session_id',sharedDraft.backendId).eq('user_id',store.account.userId);
