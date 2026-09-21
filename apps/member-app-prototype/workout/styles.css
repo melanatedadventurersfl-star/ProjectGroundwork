@@ -3756,8 +3756,17 @@ button.clean-set-row{cursor:pointer}
   min-height:74px;
   border-radius:10px;
 }
+.rest-next-exercise-copy,
 .rest-next-exercise-card>div{
   min-width:0;
+}
+.rest-next-exercise-copy{
+  border:0;
+  background:transparent;
+  color:var(--text);
+  padding:0;
+  text-align:left;
+  cursor:pointer;
 }
 .rest-next-exercise-card span,
 .rest-next-exercise-card strong,
