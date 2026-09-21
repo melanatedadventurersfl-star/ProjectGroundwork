@@ -1653,9 +1653,11 @@ function startPreparedWorkout(){
   const day=applyReadinessToDay(readinessContext.day,readiness);
   const scheduledDate=readinessContext.scheduledDate;
   const context=programContext(dateFromKey(scheduledDate));
+  const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
   readinessContext=null;
   unlockWorkoutCues();
   store.activeWorkout=createWorkout(day,{scheduledDate,readiness,programContext:context,adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]});
+  if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString()};
   saveStore();currentTab='workout';render();
 }
 
@@ -2309,7 +2311,14 @@ function finalizeWorkout(status='complete'){
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
   ['pendingPosition','restEndsAt','restPausedRemaining','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
-  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;
+  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
+  if(entry.sharedSession){
+    const shared=sharedTrainingState();
+    shared.history.unshift({id:entry.sharedSession.id,workoutId:entry.id,partnerName:entry.sharedSession.partnerName,routineName:entry.routineName,completedAt,completionStatus:status});
+    shared.history=shared.history.slice(0,50);
+    if(shared.draft?.id===entry.sharedSession.id)shared.draft=null;
+  }
+  store.activeWorkout=null;
   rebuildDerivedTrainingState();saveStore();currentTab='summary';render();
 }
 function finishWorkout(auto=false){
@@ -2513,6 +2522,26 @@ function sharedTrainingState(){
   store.sharedTraining.partners=Array.isArray(store.sharedTraining.partners)?store.sharedTraining.partners:[];
   store.sharedTraining.history=Array.isArray(store.sharedTraining.history)?store.sharedTraining.history:[];
   return store.sharedTraining;
+}
+function cancelSharedDraft(){
+  const shared=sharedTrainingState();shared.draft=null;saveStore();render();
+}
+function markSharedPartnerReady(){
+  const draft=sharedTrainingState().draft;if(!draft)return;
+  draft.partnerStatus='ready';saveStore();render();toast(draft.partnerName+' is ready.');
+}
+function startSharedWorkout(){
+  const draft=sharedTrainingState().draft;if(!draft)return;
+  if(draft.mode!=='share-plan'&&draft.partnerStatus!=='ready'){toast('Your workout partner has not joined the lobby yet.');return;}
+  openReadiness(draft.dayId,draft.scheduledDate);
+  if(readinessContext)readinessContext.sharedDraft=clone(draft);
+  render();
+}
+function copySharedCode(){
+  const code=sharedTrainingState().draft?.code;if(!code)return;
+  if(navigator?.clipboard?.writeText){
+    navigator.clipboard.writeText(code).then(()=>toast('Join code copied.')).catch(()=>toast('Join code: '+code));
+  }else toast('Join code: '+code);
 }
 function createSharedDraft(){
   const next=nextScheduledSession();
