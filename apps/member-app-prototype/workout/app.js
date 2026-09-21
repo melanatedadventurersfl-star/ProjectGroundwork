@@ -2593,55 +2593,30 @@ function renderHistoryMenuSheet(){
 }
 
 function renderHome(){
-  const p=store.profile,plan=store.plan;
-  if(!p||!plan)return renderProfile();
-  const context=programContext();
-  const decision=adaptationDecision();
-  const schedule=currentWeekSchedule();
-  const week=weeklyHistory();
+  const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
+  const context=programContext(),decision=adaptationDecision(),schedule=currentWeekSchedule();
   const completed=schedule.filter(entry=>entry.status==='complete').length;
-  const weeklyVolume=week.reduce((sum,item)=>sum+(item.totalVolume||0),0);
-  const next=nextScheduledSession();
-  const nextDay=next?.adaptedDay||null;
-  const prior=decision.previous;
-  const daysText=preferredWorkoutDays().map(id=>TRAINING_DAYS.find(day=>day.id===id)?.label).filter(Boolean).join(' · ');
-  return `
-    <div class="page-head"><div><p class="eyebrow">TRAINING BLOCK ${context.blockNumber} · WEEK ${context.blockWeek} OF 4</p><h2 class="page-title">${esc(planGoalLabel(p.goal))}.</h2><p class="page-copy">${esc(daysText)} · ${p.minutes}-minute sessions · ${esc(experienceLabel(p.experience))} · ${esc(equipmentLabel(p.equipment))}. Your calendar, performance, readiness, swaps, and feedback now shape the next week.</p></div><button class="button secondary" data-action="edit-profile">EDIT PROFILE</button></div>
-    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':store.activeWorkout.isPaused?'Paused':store.activeWorkout.phase==='feedback'?'Exercise feedback':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='timed-set'?'Timed set':store.activeWorkout.phase==='warmup'?'Warm-up':store.activeWorkout.phase==='cooldown'?'Cooldown':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
-    <section class="program-block-card">
-      <div class="block-phase"><span>CURRENT PHASE</span><strong>${esc(blockPhaseLabel(context.blockWeek))}</strong><em>Block ${context.blockNumber} · Program week ${context.weekNumber}${context.calendarWeekNumber>context.weekNumber?' · calendar week '+context.calendarWeekNumber:''}</em></div>
-      <div class="block-explainer"><span>THIS WEEK'S ADAPTATION</span><strong>${esc(decision.mode.toUpperCase())}</strong><p>${esc(decision.notes.join(' ')||'Keep building from the targets earned in your previous sessions.')}</p></div>
-      ${prior?`<div class="prior-week-mini"><span>LAST WEEK</span><strong>${prior.completed}/${prior.scheduled} workouts · ${prior.averageMinutes||0} min avg</strong><small>${prior.prs||0} PRs · readiness ${prior.averageReadiness?prior.averageReadiness.toFixed(1):'—'}/5</small></div>`:''}
-    </section>
-    <div class="hero">
-      <section class="hero-primary"><p class="eyebrow">THIS WEEK</p><div class="hero-metrics"><div class="hero-metric"><span class="hero-number">${completed}/${schedule.length}</span><span class="hero-label">scheduled workouts</span></div><div class="hero-divider"></div><div class="hero-metric"><span class="hero-number">${formatVolume(weeklyVolume)}</span><span class="hero-label">volume</span></div></div></section>
-      <section class="hero-secondary"><div><p class="eyebrow">${next?.status==='missed'?'MISSED SESSION':'NEXT SESSION'}</p><h3>${esc(nextDay?.name||'Week complete')}</h3><p>${next?`${esc(next.dayName)} · ${esc(formatDate(next.dateKey))} · ~${nextDay?.estimatedMinutes||p.minutes} min`:'Your next training week will adapt from this one.'}</p></div>${next&&!store.activeWorkout?`<button class="button" data-start="${esc(next.day.id)}" data-scheduled-date="${esc(next.dateKey)}">${next.status==='missed'?'DO IT TODAY':next.status==='today'?'START TODAY':'START NEXT SESSION'}</button>`:''}</section>
-    </div>
-    <section class="section weekly-calendar"><div class="section-head"><div><p class="eyebrow">WEEK OF ${esc(formatDate(context.weekKey))}</p><h2>Your training days</h2></div><span class="calendar-phase">${esc(blockPhaseLabel(context.blockWeek))}</span></div>
-      <div class="schedule-list">${schedule.map(renderWeekScheduleEntry).join('')}</div>
-    </section>
-    <section class="profile-strip"><div><span>GOAL</span><strong>${esc(planGoalLabel(p.goal))}</strong></div><div><span>TRAINING DAYS</span><strong>${esc(daysText)}</strong></div><div><span>SETUP</span><strong>${esc(equipmentLabel(p.equipment))}</strong></div><div><span>SESSION TARGET</span><strong>${p.minutes} min</strong></div></section>
-    <section class="section"><div class="section-head"><div><p class="eyebrow">PROGRAM TEMPLATE</p><h2>${plan.days.length}-day rotation</h2><p class="section-copy">Anchor movements stay recognizable inside a block. Weekly volume adapts, and selected accessory movements can rotate when a new block begins.</p></div><button class="text-button" data-action="regenerate">Regenerate</button></div>
-      <div class="routine-grid">${plan.days.map((day,i)=>{
-        const scheduled=schedule.find(entry=>entry.day.id===day.id);
-        return `
-        <article class="routine-card">
-          <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN BASE</span></div>
-          <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
-          <div class="routine-sequence">
-            <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
-            <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
-            <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
-            <div class="routine-plan">${day.exercises.map((ex,exIndex)=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small><small class="plan-equipment">Equipment: ${esc(equipmentRequirement(exerciseSource(ex)))}</small>${planPrescriptionHtml(ex)}<div class="plan-swap-actions"><button class="text-button" type="button" data-action="swap-plan" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Swap exercise</button>${ex.swapUndo?`<button class="text-button muted" type="button" data-action="undo-plan-swap" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Undo swap</button>`:''}</div></div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
-            <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
-            <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
-          </div>
-          <div class="routine-footer"><span class="routine-meta">Base template · ${day.exercises.length} exercises</span>${scheduled&&!store.activeWorkout?`<button class="button secondary" data-start="${esc(day.id)}" data-scheduled-date="${esc(scheduled.dateKey)}">PREPARE ${esc(scheduled.dayName.toUpperCase())}</button>`:''}</div>
-        </article>`;
-      }).join('')}</div>
-    </section>`;
+  const next=nextScheduledSession(),day=next?.adaptedDay||next?.day||null;
+  const missed=schedule.filter(entry=>entry.status==='missed');
+  const volume=weeklyVolumeValue();
+  const name=displayName()==='there'?'':displayName();
+  const shared=sharedTrainingState();
+  return '<div class="clean-page home-clean">'+
+    '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div><button class="shell-icon-button" data-action="open-cue-settings" aria-label="Workout settings">◉</button></section>'+
+    (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button>':'')+
+    '<section class="today-card '+(next?.status==='missed'?'missed':'')+'"><div class="today-card-top"><div><span>'+(next?.status==='missed'?'MISSED WORKOUT':next?.status==='today'?'TODAY’S WORKOUT':'NEXT WORKOUT')+'</span><em>'+esc(blockPhaseLabel(context.blockWeek))+'</em></div><strong>~'+esc(day?.estimatedMinutes||p.minutes)+' min</strong></div>'+
+      '<div class="today-card-body"><div><h3>'+esc(day?.name||'Week complete')+'</h3><p>'+esc(day?.focus||'Your next training week will adapt from this one.')+'</p>'+(day?'<small>'+day.exercises.length+' exercises · '+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</small>':'')+'</div></div>'+
+      (next&&!store.activeWorkout?'<button class="button primary-action today-start" data-start="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">'+(next.status==='missed'?'MAKE UP WORKOUT':next.status==='today'?'START WORKOUT':'PREPARE WORKOUT')+'</button>':'')+
+      (next?'<div class="today-secondary-actions"><button class="text-button" data-action="mark-scheduled-complete" data-day-id="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">✓ MARK COMPLETE</button><button class="text-button" data-action="share-next-workout">◎ WORK OUT TOGETHER</button></div>':'')+
+    '</section>'+
+    '<section class="clean-section week-overview"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+'/'+schedule.length+' workouts</h3></div><button class="text-button" data-action="train">SEE PROGRAM</button></div>'+renderCompactWeek(schedule)+
+      (missed.length?'<div class="missed-summary"><strong>'+missed.length+' missed session'+(missed.length===1?'':'s')+'</strong><span>They stay available to make up, complete manually, or skip.</span></div>':'')+
+    '</section>'+
+    '<section class="home-progress-grid"><button class="mini-metric-card" data-action="progress"><span>WORKOUTS</span><strong>'+completed+'/'+schedule.length+'</strong><small>This week</small></button><button class="mini-metric-card" data-action="progress"><span>VOLUME</span><strong>'+formatVolume(volume)+'</strong><small>This week</small></button></section>'+
+    '<section class="clean-panel adaptation-card"><div><span>THIS WEEK’S ADAPTATION</span><strong>'+esc(decision.mode.toUpperCase())+'</strong><p>'+esc(decision.notes.join(' ')||'Keep building from the targets earned in your previous sessions.')+'</p></div><button class="text-button" data-action="progress">WHY?</button></section>'+
+    (shared.draft?'<button class="shared-home-card" data-action="together"><div class="shared-avatar-stack small"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((shared.draft.partnerName[0]||'P').toUpperCase())+'</div></div><div><span>SHARED WORKOUT</span><strong>'+esc(shared.draft.routineName)+' with '+esc(shared.draft.partnerName)+'</strong><small>'+esc(shared.draft.partnerStatus==='ready'?'Both ready':'Invite pending')+'</small></div><em>→</em></button>':'')+
+  '</div>';
 }
-
 function renderCatalog(){
   const q=catalogQuery.trim().toLowerCase();
   const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty].join(' ').toLowerCase().includes(q));
