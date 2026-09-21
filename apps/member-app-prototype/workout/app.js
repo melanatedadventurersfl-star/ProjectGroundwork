@@ -3113,6 +3113,8 @@ async function subscribeSharedSession(draft){
   sharedRuntime.sessionId=draft.backendId;
   startSharedReconciliation(draft.backendId);
   channel
+    .on('postgres_changes',{event:'*',schema:'public',table:'workout_shared_sessions',filter:'id=eq.'+draft.backendId},()=>fetchSharedSessionState(draft.backendId,{renderNow:currentTab==='together'}).catch(error=>console.warn('Together session change refresh failed',error)))
+    .on('postgres_changes',{event:'*',schema:'public',table:'workout_shared_participant_state',filter:'session_id=eq.'+draft.backendId},()=>fetchSharedSessionState(draft.backendId,{renderNow:currentTab==='together'}).catch(error=>console.warn('Together participant change refresh failed',error)))
     .on('presence',{event:'sync'},()=>updateSharedFromPresence())
     .on('presence',{event:'join'},()=>updateSharedFromPresence())
     .on('presence',{event:'leave'},()=>updateSharedFromPresence())
@@ -3212,6 +3214,7 @@ async function syncSharedParticipantState(){
     .update({
       display_name:state.displayName,
       ready:state.ready,
+      plan_confirmed:state.planConfirmed,
       connection_state:state.connectionState,
       exercise_index:state.exerciseIndex,
       set_index:state.setIndex,
@@ -3237,7 +3240,7 @@ async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
   const existing=sharedTrainingState().draft;
   if(existing?.backendId){
     const refreshed=await fetchSharedSessionState(existing.backendId,{renderNow:false});
-    if(refreshed&&['lobby','active'].includes(refreshed.sessionStatus)){
+    if(refreshed&&['lobby','review','active'].includes(refreshed.sessionStatus)){
       await subscribeSharedSession(refreshed);
       return;
     }
@@ -3249,7 +3252,7 @@ async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
   const {data,error}=await workoutSupabase
     .from('workout_shared_sessions')
     .select('*')
-    .in('status',['lobby','active'])
+    .in('status',['lobby','review','active'])
     .gt('expires_at',new Date().toISOString())
     .order('created_at',{ascending:false})
     .limit(1);
@@ -3278,24 +3281,23 @@ async function cancelSharedDraft(){
 async function startSharedWorkout(){
   const draft=sharedTrainingState().draft;if(!draft)return;
   if(!draft.partnerId){toast('Your workout partner has not joined yet.');return;}
-  if(draft.userStatus==='ready'){toast('Your check-in is complete. Waiting for your partner.');return;}
+  if(['ready','confirmed','training'].includes(draft.userStatus)){toast(draft.userStatus==='confirmed'?'Your plan is confirmed. Waiting for your partner.':'Your check-in is already complete.');return;}
   let day=sharedDraftDay(draft);
   if(!day){toast('Your planned workout could not be loaded.');return;}
   openReadiness(day.id,draft.scheduledDate);
   if(readinessContext){readinessContext.sharedDraft=clone(draft);readinessContext.day=day;}
   render();
 }
-function localTogetherDay(sharedPlan,userId){
-  const slots=sharedPlan?.slots||[];
-  if(!slots.length)return null;
-  const isHost=sharedTrainingState().draft?.role==='host';
-  const exercises=slots.map(slot=>clone(isHost?slot.hostExercise:slot.partnerExercise)).filter(Boolean);
+function localTogetherDay(prescription){
+  if(!prescription?.exercises?.length)return null;
   const day={
-    id:'together-'+(sharedTrainingState().draft?.backendId||dateKey()),
-    name:'Together Workout',
-    focus:'Compatible shared training',
-    estimatedMinutes:num(sharedPlan.minutes)||num(store.profile?.minutes)||45,
-    exercises
+    id:prescription.id||'together-'+(sharedTrainingState().draft?.backendId||dateKey()),
+    name:prescription.name||'Together Workout',
+    focus:prescription.focus||'Compatible shared training',
+    estimatedMinutes:num(prescription.estimatedMinutes)||num(store.profile?.minutes)||45,
+    warmup:clone(prescription.warmup||[]),
+    cooldown:clone(prescription.cooldown||[]),
+    exercises:clone(prescription.exercises||[])
   };
   recalculatePlanDay(day);
   return localizeSharedPlan(safeSharedPlanSnapshot(day));
@@ -3307,28 +3309,22 @@ async function tryBuildTogetherPlan(draft){
     if(/Both check-ins|Waiting for partner/i.test(error.message||''))return null;
     toast(error.message||'Could not build the Together workout.');return null;
   }
-  draft.sharedPlan=data||{};if(draft.userStatus!=='confirmed')draft.userStatus='ready';saveSharedBackendDraft(draft);
+  draft.sharedPlan=data||{};draft.sessionStatus='review';draft.userConfirmed=false;if(draft.userStatus!=='confirmed')draft.userStatus='ready';saveSharedBackendDraft(draft);
   return data||null;
 }
 async function launchTogetherPlan(draft,readiness){
-  let sharedPlan=draft.sharedPlan;
-  if(!sharedPlan?.slots?.length){
-    const {data}=await workoutSupabase.rpc('get_workout_shared_plan',{p_session_id:draft.backendId});
-    sharedPlan=data||{};
-  }
-  if(!sharedPlan?.slots?.length)return false;
-  const day=localTogetherDay(sharedPlan,store.account.userId);
-  if(!day)return false;
-  const adjusted=applyReadinessToDay(day,readiness);
-  const context=programContext(dateFromKey(draft.scheduledDate));
-  unlockWorkoutCues();
-  store.activeWorkout=createWorkout(adjusted,{scheduledDate:draft.scheduledDate,readiness,programContext:context,adaptationNotes:[...(adjusted.adaptationNotes||[]),...(adjusted.readinessNotes||[])]});
-  store.activeWorkout.sharedSession={...clone(draft),sharedPlan,startedTogetherAt:new Date().toISOString()};
-  saveStore();currentTab='workout';render();
-  activateSharedWorkout(draft).catch(error=>console.warn('Shared workout activation failed',error));
+  if(!draft?.backendId||!workoutSupabase)return false;
+  const {data:prescription,error}=await workoutSupabase.rpc('get_workout_shared_prescription',{p_session_id:draft.backendId});
+  if(error){toast(error.message||'Could not load your private Together prescription.');return false;}
+  const localized=localTogetherDay(prescription);
+  if(!localized?.exercises?.length){toast('Your Together prescription could not be loaded.');return false;}
+  const adjusted=applyReadinessToDay(localized,readiness||prescription?.readiness||{});
+  startWorkout(adjusted,draft.scheduledDate||dateKey(),readiness||prescription?.readiness||{},draft);
+  const live=sharedTrainingState().draft;
+  if(live){live.userStatus='training';live.sessionStatus='active';saveSharedBackendDraft(live);}
+  scheduleSharedStateSync();
   return true;
 }
-
 async function saveTogetherSettings({silent=false}={}){
   const draft=sharedTrainingState().draft;
   if(!draft?.backendId||draft.role!=='host'||!workoutSupabase)return;
@@ -3397,8 +3393,8 @@ async function createSharedDraft(){
       host_name:displayName(),
       routine_name:'Together Workout',
       scheduled_date:next.dateKey,
-      plan_day_id:day.id,
-      plan_snapshot:snapshot,
+      plan_day_id:null,
+      plan_snapshot:{},
       mode:'same-gym',
       pace:'stay-together',
       set_flow:'alternating',
@@ -3415,7 +3411,7 @@ async function createSharedDraft(){
   if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
   const {error:privateError}=await workoutSupabase.from('workout_shared_private_state').upsert({
     session_id:created.id,user_id:store.account.userId,
-    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
+    planning_profile:{goal:store.profile?.goal,goals:store.profile?.goals||[],experience:store.profile?.experience,equipment:store.profile?.equipment,style:store.profile?.style,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],preferAvoid:store.profile?.preferAvoid||[],customAvoid:store.profile?.customAvoid||[],cautionAreas:store.profile?.cautionAreas||[],formatAvoid:store.profile?.formatAvoid||[],day_name:day.name,day_focus:day.focus},
     planned_day:snapshot,updated_at:new Date().toISOString()
   });
   if(privateError){toast(privateError.message||'Could not save your private Together profile.');return;}
@@ -3442,7 +3438,7 @@ async function joinSharedSession(){
   const snapshot=safeSharedPlanSnapshot(day);
   const {error:privateError}=await workoutSupabase.from('workout_shared_private_state').upsert({
     session_id:draft.backendId,user_id:store.account.userId,
-    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
+    planning_profile:{goal:store.profile?.goal,goals:store.profile?.goals||[],experience:store.profile?.experience,equipment:store.profile?.equipment,style:store.profile?.style,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],preferAvoid:store.profile?.preferAvoid||[],customAvoid:store.profile?.customAvoid||[],cautionAreas:store.profile?.cautionAreas||[],formatAvoid:store.profile?.formatAvoid||[],day_name:day.name,day_focus:day.focus},
     planned_day:snapshot,updated_at:new Date().toISOString()
   });
   if(privateError){toast(privateError.message||'Could not save your private Together profile.');return;}
@@ -3518,15 +3514,13 @@ function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
 }
 function renderSharedMatches(draft){
   const slots=draft?.sharedPlan?.slots||[];
-  if(slots.length){
-    const isHost=draft.role==='host';
-    return '<div class="shared-match-list">'+slots.map((slot,index)=>{
-      const own=isHost?slot.hostExercise:slot.partnerExercise;
-      const partner=isHost?slot.partnerExercise:slot.hostExercise;
-      return '<article class="shared-match-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(own?.name||movements[slot.movement]||slot.movement)+'</strong><small>'+esc(movements[slot.movement]||slot.movement)+' · Partner: '+esc(partner?.name||'matched variation')+'</small></div><em>SHARED</em></article>';
-    }).join('')+'</div>';
-  }
-  return '';
+  if(!slots.length)return '';
+  const isHost=draft.role==='host';
+  return '<div class="shared-match-list">'+slots.map((slot,index)=>{
+    const ownName=isHost?slot.hostExerciseName:slot.partnerExerciseName;
+    const partnerName=isHost?slot.partnerExerciseName:slot.hostExerciseName;
+    return '<article class="shared-match-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ownName||movements[slot.movement]||slot.movement)+'</strong><small>'+esc(movements[slot.movement]||slot.movement)+' · Partner: '+esc(partnerName||'matched variation')+'</small></div><em>SHARED</em></article>';
+  }).join('')+'</div>';
 }
 function renderTogether(){
   if(!store.profile||!store.plan)return renderProfileEditor();
