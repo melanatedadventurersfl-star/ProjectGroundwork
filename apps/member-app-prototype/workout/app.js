@@ -2935,7 +2935,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
     if(!existing)shared.partners.push({id:uid('partner'),userId:remote.user_id,name:remote.display_name,contact:'',status:'connected'});
   }
   if(own?.ready)draft.userStatus='ready';
-  if(remote?.ready&&draft.userStatus==='ready'&&!store.activeWorkout){
+  if(remote?.ready&&draft.userStatus==='ready'&&!store.activeWorkout&&(draft.role==='host'||draft.sessionStatus==='active')){
     try{
       const {data:privateOwn}=await workoutSupabase.from('workout_shared_private_state').select('readiness').eq('session_id',sessionId).eq('user_id',ownId).maybeSingle();
       let plan=draft.sharedPlan;
@@ -3025,7 +3025,10 @@ async function subscribeSharedSession(draft){
       if(payload.startedAt)current.startedAt=payload.startedAt;
       saveSharedBackendDraft(current);
       if(currentTab==='together')render();
-      if(current.role==='partner'&&payload.status==='active')toast('Your partner started the shared workout. You can begin when ready.');
+      if(current.role==='partner'&&payload.status==='active'){
+        toast('Together plan is ready. Starting your matched workout.');
+        fetchSharedSessionState(current.backendId,{renderNow:true}).catch(error=>console.warn('Together launch refresh failed',error));
+      }
     })
     .subscribe(async status=>{
       if(status!=='SUBSCRIBED')return;
@@ -3291,18 +3294,14 @@ async function activateSharedWorkout(draft){
     shared.draft.userStatus='training';
     saveSharedBackendDraft(shared.draft);
   }
+  const startedAt=new Date().toISOString();
   if(draft.role==='host'){
-    const startedAt=new Date().toISOString();
     const {error}=await workoutSupabase.from('workout_shared_sessions').update({
-      status:'active',
-      started_at:startedAt,
-      updated_at:startedAt
+      status:'active',started_at:startedAt,updated_at:startedAt
     }).eq('id',draft.backendId);
     if(!error){
       if(shared.draft?.backendId===draft.backendId){
-        shared.draft.sessionStatus='active';
-        shared.draft.startedAt=startedAt;
-        saveSharedBackendDraft(shared.draft);
+        shared.draft.sessionStatus='active';shared.draft.startedAt=startedAt;saveSharedBackendDraft(shared.draft);
       }
       try{await sharedRuntime.channel?.send({type:'broadcast',event:'session-state',payload:{status:'active',startedAt}});}catch{}
     }
