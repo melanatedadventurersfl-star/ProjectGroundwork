@@ -1932,16 +1932,15 @@ function renderLoggedSets(ex,ei){
   return '<div class="logged-sets"><div class="logged-sets-head"><span>SETS</span><button class="text-button" data-action="add-set" data-exercise-index="'+ei+'">+ ADD SET</button></div>'+sets+'</div>';
 }
 function renderExerciseReview(pos){
-  const ex=pos.exercise,state=exerciseState(ex);
-  return '<div class="exercise-review-stage">'+
-    '<div class="exercise-review-hero">'+exerciseImageButton(ex,'active-exercise-media')+'<div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><span class="exercise-state-badge state-'+state+'">'+esc(exerciseStateLabel(ex))+'</span><p>'+esc(exerciseDescription(ex))+'</p><strong>'+esc(equipmentRequirement(exerciseSource(ex)))+'</strong></div></div>'+
+  const ex=pos.exercise,state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
+  return '<div class="clean-exercise-review">'+
+    '<div class="clean-exercise-heading"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' sets logged</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
     renderLoggedSets(ex,pos.ei)+
-    '<div class="review-exercise-actions">'+
-      (state==='completed-manually'?'<button class="button secondary" data-action="undo-manual-exercise" data-exercise-index="'+pos.ei+'">UNDO MANUAL COMPLETION</button>':'')+
-      (state==='skipped'?'<button class="button secondary" data-action="restore-exercise" data-exercise-index="'+pos.ei+'">RETURN TO THIS EXERCISE</button>':'')+
-      (state==='partial'||state==='not-started'?'<button class="button" data-action="continue-exercise" data-exercise-index="'+pos.ei+'">CONTINUE EXERCISE</button>':'')+
-      '<button class="button secondary" data-action="open-workout-map">WORKOUT MAP</button>'+
-    '</div></div>';
+    (state==='partial'||state==='not-started'?'<button class="button primary-action" data-action="continue-exercise" data-exercise-index="'+pos.ei+'">CONTINUE EXERCISE</button>':'')+
+    (state==='skipped'?'<button class="button secondary" data-action="restore-exercise" data-exercise-index="'+pos.ei+'">RETURN TO EXERCISE</button>':'')+
+    '<button class="text-button" data-action="open-workout-map">BACK TO WORKOUT MAP</button>'+
+  '</div>';
 }
 function renderWorkoutMap(){
   if(!workoutMapOpen||!store.activeWorkout)return '';
@@ -2686,15 +2685,15 @@ function renderCatalog(){
 
 function renderWorkoutIntro(w){
   const first=w.exercises?.[0];
-  const equipment=[...new Set((w.exercises||[]).map(ex=>equipmentRequirement(exerciseSource(ex))))];
   const notes=(w.adaptationNotes||[]).filter(Boolean);
-  return '<div class="workout-intro-stage">'+
-    '<p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p class="intro-focus">'+esc(w.focus||'')+'</p>'+
-    '<div class="intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>WORKING SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
-    (notes.length?'<div class="intro-adjustments"><span>TODAY’S ADJUSTMENTS</span>'+notes.map(note=>'<p>'+esc(note)+'</p>').join('')+'</div>':'')+
-    (first?'<section class="intro-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(exerciseDescription(first))+'</p><strong>'+esc(equipmentRequirement(exerciseSource(first)))+'</strong></div></section>':'')+
-    '<div class="intro-equipment"><span>EQUIPMENT YOU’LL USE</span><p>'+equipment.map(esc).join(' · ')+'</p></div>'+
-    '<div class="intro-actions"><button class="button primary-action" data-action="begin-session">BEGIN WORKOUT</button><button class="button secondary" data-action="open-workout-map">REVIEW / REORDER SESSION</button></div>'+
+  const topNote=notes[0]||'Targets are based on your recent training and readiness.';
+  return '<div class="clean-session-intro">'+
+    '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
+    '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
+    (first?'<section class="clean-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(first.sets.length+' × '+first.reps)+' · '+esc(equipmentRequirement(exerciseSource(first)))+'</p></div></section>':'')+
+    '<section class="clean-panel intro-update-card"><span>TODAY’S UPDATE</span><strong>'+esc(topNote)+'</strong>'+(notes.length>1?'<button class="text-button" data-action="open-workout-map">Review session</button>':'')+'</section>'+
+    '<button class="button primary-action intro-begin" data-action="begin-session">BEGIN WORKOUT</button>'+
+    '<button class="text-button intro-review" data-action="open-workout-map">REVIEW / REORDER SESSION</button>'+
   '</div>';
 }
 function beginWorkoutSession(){
@@ -2735,45 +2734,32 @@ function renderWorkout(){
 function renderPreSet(pos){
   const snap=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
   const setup=snap.mode==='setup';
-  const target=pos.exercise.loadMode==='timed'?(pos.set.reps||pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))+' sec':pos.exercise.reps;
-  return `<div class="pre-set-stage" data-preset-mode="${esc(snap.mode)}">
-    <div class="pre-set-media">${exerciseImageButton(pos.exercise,'pre-set-exercise-media')}</div>
-    <div class="pre-set-copy">
-      <p class="eyebrow">${setup?'GET IN POSITION':'SET STARTING'}</p>
-      <div class="stage-count">SET ${pos.si+1} OF ${pos.exercise.sets.length} · ${esc(pos.exercise.name)}</div>
-      <p class="exercise-description pre-set-description">${esc(exerciseDescription(pos.exercise))}</p>
-      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
-      ${renderExerciseHistoryPanel(pos.exercise)}
-      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div>
-      <div class="pre-set-number" id="preset-count">${snap.remaining}</div>
-      <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
-      <p>${setup?'You have a few seconds to get into position before the start countdown.':'The set begins automatically after 3 · 2 · 1.'}</p>
-      <div class="pre-set-target"><span>TARGET</span><strong>${esc(target)}</strong></div>
-      <div class="timer-actions compact-timer-actions"><button class="button secondary" type="button" data-action="reset-timer">RESET TIMER</button><button class="button secondary" type="button" data-action="start-set-now">START NOW</button></div>
-    </div>
-  </div>`;
+  const target=pos.exercise.loadMode==='timed'?(pos.set.reps||pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))+' sec':currentPrescriptionLabel(pos.exercise);
+  return '<div class="clean-preset-stage">'+
+    '<p class="eyebrow">'+(setup?'GET IN POSITION':'SET STARTING')+'</p>'+
+    '<h2>'+esc(pos.exercise.name)+'</h2>'+
+    '<div class="clean-preset-media">'+exerciseImageButton(pos.exercise,'pre-set-exercise-media')+'</div>'+
+    '<div class="clean-preset-target"><span>SET '+(pos.si+1)+' OF '+pos.exercise.sets.length+'</span><strong>'+esc(target)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(pos.exercise)))+'</small></div>'+
+    '<div class="pre-set-number clean-countdown" id="preset-count">'+snap.remaining+'</div>'+
+    '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
+    '<button class="button secondary" type="button" data-action="start-set-now">START NOW</button>'+
+    '<div class="preset-tertiary"><button class="text-button" data-exercise-detail="'+esc(pos.exercise.id)+'">Form</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">Options</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  '</div>';
 }
-
 function renderTimedWorkSet(pos){
   const snap=timedSetSnapshot(pos.workout)||{remaining:num(pos.set.reps)||30,total:num(pos.set.reps)||30};
   const pct=Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100));
-  return `<div class="timed-work-stage">
-    <div class="timed-work-media">${exerciseImageButton(pos.exercise,'timed-work-exercise-media')}</div>
-    <div class="timed-work-copy">
-      <p class="eyebrow">TIMED SET · SET ${pos.si+1} OF ${pos.exercise.sets.length}</p>
-      <h3>${esc(pos.exercise.name)}</h3>
-      <p class="exercise-description timed-work-description">${esc(exerciseDescription(pos.exercise))}</p>
-      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
-      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button></div>
-      <p class="timed-work-cue">${esc(exerciseGuidance(pos.exercise).cue)}</p>
-      <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
-      <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
-      <div class="timed-finish-note" id="timed-finish-note">${snap.remaining<=3&&snap.remaining>0?String(snap.remaining)+'…':'Stay controlled. You’ll get a finish cue at zero.'}</div>
-      <div class="timer-actions compact-timer-actions"><button class="button secondary" type="button" data-action="reset-timer">RESET TIMER</button><button class="button secondary" type="button" data-action="end-timed-set">END SET EARLY</button></div>
-    </div>
-  </div>`;
+  return '<div class="clean-timed-set">'+
+    '<p class="eyebrow">TIMED SET · '+(pos.si+1)+' OF '+pos.exercise.sets.length+'</p>'+
+    '<h2>'+esc(pos.exercise.name)+'</h2>'+
+    '<div class="clean-timed-media">'+exerciseImageButton(pos.exercise,'timed-work-exercise-media')+'</div>'+
+    '<div class="timed-work-clock clean-timed-clock" id="timed-set-clock">'+formatClock(snap.remaining)+'</div>'+
+    '<div class="stage-progress"><span id="timed-set-progress" style="width:'+pct+'%"></span></div>'+
+    '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
+    '<button class="button secondary" data-action="end-timed-set">END SET EARLY</button>'+
+    '<div class="preset-tertiary"><button class="text-button" data-exercise-detail="'+esc(pos.exercise.id)+'">Form</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">Options</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  '</div>';
 }
-
 function renderTimedStage(w){
   const items=timedStageItems(w);
   const snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30};
@@ -2919,28 +2905,21 @@ function renderCalibration(pos){
 
 function renderExerciseFeedback(pos){
   const stats=completedExerciseStats(pos.exercise);
-  const setSummary=stats.sets.map((set,index)=>{
-    const weight=num(set.weight);
-    const value=pos.exercise.loadMode==='timed'?esc(set.reps)+' sec':weight?esc(weight)+' lb × '+esc(set.reps):esc(set.reps)+' reps';
-    return '<span><strong>Set '+String(index+1)+'</strong>'+value+'</span>';
-  }).join('');
-  return '<div class="exercise-feedback-stage">'+
-    '<p class="eyebrow">EXERCISE COMPLETE</p>'+
-    '<h3>How did '+esc(pos.exercise.name)+' feel?</h3>'+
-    '<p class="feedback-copy">One tap helps set your next-session target. Hard is okay if you completed the work with solid form.</p>'+
-    '<div class="feedback-set-summary">'+setSummary+'</div>'+
-    '<div class="feedback-target">Target: <strong>'+esc(pos.exercise.reps)+'</strong> · Rest: <strong>'+esc(pos.exercise.rest)+'s</strong></div>'+
-    '<div class="exercise-feedback-grid">'+
-      '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase the challenge</span></button>'+
-      '<button data-feedback="good"><strong>Good</strong><span>Right where it should be</span></button>'+
-      '<button data-feedback="hard"><strong>Hard, completed</strong><span>Keep building here</span></button>'+
-      '<button data-feedback="too-hard"><strong>Too hard</strong><span>Back off next time</span></button>'+
-      '<button data-feedback="form-off"><strong>Form felt off</strong><span>Hold progression</span></button>'+
+  const total=stats.sets.length;
+  return '<div class="clean-feedback-stage">'+
+    '<div class="summary-check small-check">✓</div><p class="eyebrow">EXERCISE COMPLETE</p><h2>'+esc(pos.exercise.name)+'</h2>'+
+    '<p>How did that movement feel? One tap updates the next-session recommendation.</p>'+
+    '<div class="feedback-mini-summary"><span>'+total+' set'+(total===1?'':'s')+' completed</span><strong>'+esc(currentPrescriptionLabel(pos.exercise))+'</strong></div>'+
+    '<div class="exercise-feedback-grid clean-feedback-grid">'+
+      '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase next time</span></button>'+
+      '<button data-feedback="good"><strong>Good</strong><span>Right on target</span></button>'+
+      '<button data-feedback="hard"><strong>Hard</strong><span>Completed with form</span></button>'+
+      '<button data-feedback="too-hard"><strong>Too hard</strong><span>Reduce next time</span></button>'+
+      '<button data-feedback="form-off"><strong>Form off</strong><span>Hold progression</span></button>'+
     '</div>'+
-    '<small class="feedback-note">If a movement causes pain rather than normal training effort, stop that movement and choose a comfortable alternative.</small>'+
+    '<small class="feedback-note">Pain is different from normal training effort. Stop or change a movement that causes pain.</small>'+
   '</div>';
 }
-
 function renderNextExerciseCard(nextEx,next){
   if(!nextEx||!next)return '';
   const src=exerciseImageUrl(nextEx,0,false),fallback=exerciseImageUrl(nextEx,0,true);
