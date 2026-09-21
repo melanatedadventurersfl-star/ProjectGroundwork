@@ -3977,3 +3977,24 @@ button.clean-set-row{cursor:pointer}
   .together-style-grid{grid-template-columns:1fr}
   .together-privacy-line{grid-template-columns:1fr}
 }
+
+/* Consistent bottom navigation icon system */
+.bottom-nav .nav-icon{
+  width:24px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  line-height:1;
+}
+.bottom-nav .nav-svg{
+  width:24px;
+  height:24px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  vector-effect:non-scaling-stroke;
+}
+.bottom-nav .nav-item.active .nav-svg{stroke-width:2}
