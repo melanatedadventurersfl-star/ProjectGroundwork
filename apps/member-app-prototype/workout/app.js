@@ -1726,6 +1726,9 @@ function startPreparedWorkout(){
     timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
   };
   readiness.score=readinessScore(readiness);
+  if(readinessContext.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
+    await workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',readinessContext.sharedDraft.backendId).eq('user_id',store.account.userId);
+  }
   const day=applyReadinessToDay(readinessContext.day,readiness);
   const scheduledDate=readinessContext.scheduledDate;
   const context=programContext(dateFromKey(scheduledDate));
@@ -3082,19 +3085,25 @@ async function cancelSharedDraft(){
   await unsubscribeSharedSession();
   render();
 }
-async function startSharedWorkout(){
+async async function startSharedWorkout(){
   const draft=sharedTrainingState().draft;if(!draft)return;
   if(draft.mode!=='share-plan'&&draft.partnerStatus!=='ready'){toast('Your workout partner has not joined the lobby yet.');return;}
   if(draft.role==='partner'&&draft.mode!=='share-plan'&&draft.sessionStatus!=='active'){
     toast('Your partner has not started the shared workout yet.');
     return;
   }
-  openReadiness(draft.dayId,draft.scheduledDate);
-  if(readinessContext){
-    readinessContext.sharedDraft=clone(draft);
-    const sharedDay=sharedDraftDay(draft);
-    if(sharedDay)readinessContext.day=sharedDay;
+  let sharedDay=sharedDraftDay(draft);
+  if(draft.backendId&&workoutSupabase){
+    const {data:participants}=await workoutSupabase.from('workout_shared_participant_state').select('user_id,planning_profile,planned_day,readiness').eq('session_id',draft.backendId);
+    const partner=(participants||[]).find(p=>p.user_id!==store.account?.userId);
+    if(partner?.planned_day?.exercises?.length){
+      const partnerIds=new Set(partner.planned_day.exercises.map(ex=>ex.id));
+      const common=(sharedDay?.exercises||[]).filter(ex=>partnerIds.has(ex.id));
+      if(common.length>=2){sharedDay=clone(sharedDay);sharedDay.exercises=common;sharedDay.name='Shared '+sharedDay.name;recalculatePlanDay(sharedDay);}
+    }
   }
+  openReadiness(draft.dayId,draft.scheduledDate);
+  if(readinessContext){readinessContext.sharedDraft=clone(draft);if(sharedDay)readinessContext.day=sharedDay;}
   render();
 }
 function copySharedCode(){
@@ -3142,9 +3151,11 @@ async function createSharedDraft(){
     session_id:created.id,
     user_id:store.account.userId,
     display_name:displayName(),
-    ready:true,
+    ready:false,
     connection_state:'online',
-    phase:'lobby'
+    phase:'planning',
+    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
+    planned_day:snapshot
   });
   if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
   const partner={id:uid('partner'),name,contact,status:'invited'};
