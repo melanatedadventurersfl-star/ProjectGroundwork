@@ -2909,9 +2909,11 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   const ownId=store.account?.userId||'';
   const role=session.host_user_id===ownId?'host':'partner';
   const remote=(participants||[]).find(item=>item.user_id!==ownId)||null;
+  const own=(participants||[]).find(item=>item.user_id===ownId)||null;
   draft={
     ...draft,
     ...sharedDraftFromRow(session,role),
+    userStatus:own?.ready?'ready':(draft.userStatus||'joined'),
     partnerName:remote?.display_name||draft.partnerName||'Workout partner',
     partnerId:remote?.user_id||draft.partnerId||'',
     partnerStatus:remote?(remote.ready?'ready':'joined'):(session.partner_user_id?'joined':'invited'),
@@ -2932,10 +2934,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
     const existing=shared.partners.find(item=>item.userId===remote.user_id);
     if(!existing)shared.partners.push({id:uid('partner'),userId:remote.user_id,name:remote.display_name,contact:'',status:'connected'});
   }
-  if(draft.userStatus!=='ready'){
-    const own=(participants||[]).find(item=>item.user_id===ownId);
-    if(own?.ready)draft.userStatus='ready';
-  }
+  if(own?.ready)draft.userStatus='ready';
   if(remote?.ready&&draft.userStatus==='ready'&&!store.activeWorkout){
     try{
       const {data:privateOwn}=await workoutSupabase.from('workout_shared_private_state').select('readiness').eq('session_id',sessionId).eq('user_id',ownId).maybeSingle();
