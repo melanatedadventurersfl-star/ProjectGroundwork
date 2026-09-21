@@ -2439,6 +2439,10 @@ function renderProfileEditor(){
         <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
       </section>
 
+      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account</h3><p>Create or sign in to sync this setup, your program, progress and active workout across browsers.</p></div></div>
+        <div class="form-grid two"><label class="field"><span>ACCOUNT EMAIL</span><input id="onboard-account-email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="onboard-account-password" type="password" autocomplete="new-password" placeholder="At least 6 characters"></label></div>
+        <div class="inline-actions"><button class="button secondary" type="button" data-action="onboard-create-account">CREATE / CONNECT ACCOUNT</button><button class="text-button" type="button" data-action="account-info">SIGN IN</button></div>
+      </section>
       <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
         <div class="choice-grid four">
           ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
@@ -2467,7 +2471,10 @@ function renderProfileEditor(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+        <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
+      </section>
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
         <div class="form-grid five">
           ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
         </div>
@@ -2631,6 +2638,20 @@ async function signInWorkoutAccount(){
   persistUiState();
   toast('Signed in.');
   render();
+}
+async function createOnboardingAccount(){
+  if(!workoutSupabase){toast('Account service is not available.');return;}
+  const email=(document.querySelector('#onboard-account-email')?.value||document.querySelector('[name="email"]')?.value||'').trim().toLowerCase();
+  const password=document.querySelector('#onboard-account-password')?.value||'';
+  const display=(document.querySelector('[name="displayName"]')?.value||'').trim();
+  if(!display){toast('Enter your display name first.');return;}
+  if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {data,error}=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
+  if(error){toast(error.message||'Could not create the account.');return;}
+  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){toast('That email already has an account. Sign in instead.');accountSheetOpen=true;render();return;}
+  store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};saveStore();
+  toast(data?.session?'Account created. Finish your training setup.':'Account created. Confirm your email, then sign in to sync this setup.');render();
 }
 async function createWorkoutAccount(){
   if(!workoutSupabase){toast('Account service is not available in this build.');return;}
@@ -3879,6 +3900,7 @@ function handleClick(event){
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='account-sign-in')signInWorkoutAccount();
   else if(a==='account-create')createWorkoutAccount();
+  else if(a==='onboard-create-account')createOnboardingAccount();
   else if(a==='account-resend-confirmation')resendWorkoutConfirmation();
   else if(a==='account-sign-out')signOutWorkoutAccount();
   else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
