@@ -1603,6 +1603,7 @@ function saveProfileFromForm(form){
   const primaryGoal=data.get('primaryGoal')||goals[0]||'muscle';
   if(!goals.includes(primaryGoal))goals.unshift(primaryGoal);
   const csv=name=>String(data.get(name)||'').split(',').map(value=>value.trim()).filter(Boolean);
+  const connectionInputs=[...form.querySelectorAll('[data-fitness-provider]')].filter(input=>input.checked).map(input=>input.dataset.fitnessProvider);
   const profile={
     goal:primaryGoal,
     primaryGoal,
@@ -1628,7 +1629,7 @@ function saveProfileFromForm(form){
     customPreferAvoid:csv('customPreferAvoid'),
     cautionAreas:csv('cautionAreas'),
     formatAvoid:csv('formatAvoid'),
-    fitnessConnections:Array.isArray(store.profile?.fitnessConnections)?store.profile.fitnessConnections:[],
+    fitnessConnections:connectionInputs,
     priorities:data.getAll('priorities').slice(0,2),
     lifts:{
       bench:num(data.get('bench')),
@@ -2590,7 +2591,7 @@ function renderProfileEditor(){
             ['fitbit','Fitbit','iPhone + Android','Provider connection planned'],
             ['garmin','Garmin','iPhone + Android','Provider connection planned'],
             ['strava','Strava','iPhone + Android','Provider connection planned']
-          ].map(([id,name,platform,status])=>`<article class="fitness-connection-card"><div><span>${platform}</span><strong>${name}</strong><small>${status}</small></div><button type="button" class="button secondary" data-action="fitness-connection" data-provider="${id}">${(p.fitnessConnections||[]).includes(id)?'CONNECTED':'CONNECT'}</button></article>`).join('')}
+          ].map(([id,name,platform,status])=>`<label class="fitness-connection-card"><div><span>${platform}</span><strong>${name}</strong><small>${status}</small></div><input class="fitness-provider-toggle" type="checkbox" data-fitness-provider="${id}" ${(p.fitnessConnections||[]).includes(id)?'checked':''}><b>${(p.fitnessConnections||[]).includes(id)?'SELECTED':'ADD'}</b></label>`).join('')}
         </div>
         <div class="profile-privacy-note"><strong>Web prototype note</strong><span>Apple Health and Android Health Connect require a native app bridge. This build stores connection preferences and prepares the account model without pretending browser access exists.</span></div>
       </section>
@@ -4259,14 +4260,7 @@ function handleClick(event){
   else if(a==='copy-shared-code')copySharedCode();
   else if(a==='save-together-settings')saveTogetherSettings();
   else if(a==='confirm-together-plan')confirmTogetherPlan();
-  else if(a==='fitness-connection'){
-    const provider=node.dataset.provider;
-    const names={'apple-health':'Apple Health','health-connect':'Health Connect',fitbit:'Fitbit',garmin:'Garmin',strava:'Strava'};
-    const connections=new Set(store.profile?.fitnessConnections||[]);
-    if(connections.has(provider)){connections.delete(provider);toast((names[provider]||provider)+' preference removed.');}
-    else{connections.add(provider);toast((names[provider]||provider)+' saved. Connection activation will use its supported native/provider flow.');}
-    store.profile={...(store.profile||{}),fitnessConnections:[...connections]};saveStore();render();
-  }
+
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
