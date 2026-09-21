@@ -2825,23 +2825,32 @@ function suggestedLabel(ex){
 }
 
 function renderWorkSet(pos){
-  const next=nextPosition(pos.workout,pos.ei,pos.si);
-  const isTimed=pos.exercise.loadMode==='timed';
-  const noLoad=['bodyweight','timed','band'].includes(pos.exercise.loadMode);
-  const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
-  const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
-  return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-equipment-line"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div>${renderExerciseHistoryPanel(pos.exercise)}</div></div></div>
-    <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
-      <div class="input-grid">
-        <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
-        <div class="field"><label>${isTimed?'SECONDS':'REPS'}</label><input id="set-reps" inputmode="numeric" value="${esc(defaultReps)}" placeholder="${isTimed?'45':'0'}"></div>
-      </div>
-      <button class="button primary-action" data-action="complete-set">COMPLETE SET ${pos.si+1}</button>
-      ${renderLoggedSets(pos.exercise,pos.ei)}
-      <div class="active-exercise-controls"><button class="button secondary" data-action="mark-exercise-complete" data-exercise-index="${pos.ei}">MARK EXERCISE COMPLETE</button><button class="button secondary" data-action="move-exercise-later" data-exercise-index="${pos.ei}">EQUIPMENT BUSY · MOVE LATER</button><button class="button ghost" data-action="skip-exercise" data-exercise-index="${pos.ei}">SKIP EXERCISE</button></div>
-      <div class="next-preview"><div><span>UP NEXT</span><strong>${next?(next.type==='set'?`Set ${next.si+1} · ${pos.exercise.name}`:pos.workout.exercises[next.ei].name):'Workout complete'}</strong></div><div class="next-arrow">→</div></div>
-    </div>`;
+  const ex=pos.exercise;
+  const isTimed=ex.loadMode==='timed';
+  const noLoad=['bodyweight','timed','band'].includes(ex.loadMode);
+  const defaultWeight=pos.set.weight ?? (ex.suggestedWeight||'');
+  const defaultReps=pos.set.reps ?? ex.suggestedReps ?? '';
+  const previous=exerciseSessionHistory(ex.id,1)[0];
+  const lastLabel=previous?.sets?.length?previous.sets.map(set=>set.weight?set.weight+' × '+set.reps:set.reps+' reps').join(' · '):bestLabel(ex.id);
+  const setRows=ex.sets.map((set,index)=>{
+    const active=index===pos.si&&!set.completed;
+    if(active){
+      return '<div class="clean-set-row current"><span>SET '+(index+1)+'</span><label><input id="set-weight" inputmode="decimal" value="'+esc(defaultWeight)+'" placeholder="'+(noLoad?'—':'0')+'"><small>lb</small></label><label><input id="set-reps" inputmode="numeric" value="'+esc(defaultReps)+'" placeholder="'+(isTimed?'45':'0')+'"><small>'+(isTimed?'sec':'reps')+'</small></label><em>CURRENT</em></div>';
+    }
+    if(set.completed){
+      return '<button class="clean-set-row completed" data-action="edit-set" data-exercise-index="'+pos.ei+'" data-set-index="'+index+'"><span>SET '+(index+1)+'</span><strong>'+esc(setPerformanceLabel(ex,set))+'</strong><em>✓</em></button>';
+    }
+    return '<div class="clean-set-row pending"><span>SET '+(index+1)+'</span><strong>'+esc(set.weight||ex.suggestedWeight||'')+(set.weight||ex.suggestedWeight?' lb · ':'')+esc(set.reps||ex.suggestedReps||'')+' '+(isTimed?'sec':'reps')+'</strong><em>UP NEXT</em></div>';
+  }).join('');
+  return '<div class="clean-active-exercise">'+
+    '<div class="clean-exercise-heading"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
+    '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="clean-target-strip"><div><span>TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
+    '<div class="clean-set-list">'+setRows+'</div>'+
+    '<button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button>'+
+    '<div class="clean-performance-note"><div><span>LAST TIME</span><strong>'+esc(lastLabel||'First session')+'</strong></div><div><span>TODAY</span><strong>'+esc(ex.adaptiveReason||'Hit the target with solid form.')+'</strong></div></div>'+
+    '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>More options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
+  '</div>';
 }
 
 function renderCalibration(pos){
