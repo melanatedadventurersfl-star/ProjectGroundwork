@@ -11,6 +11,7 @@ const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
 const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
 let workoutSupabase = null;
 let authReady=false;
+let authMode='entry';
 const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
 let cloudSyncTimer=null;
 let cloudHydrating=false;
@@ -1641,7 +1642,7 @@ function saveProfileFromForm(form){
     accountSheetOpen=true;
     currentTab='profile-edit';
     render();
-    setTimeout(()=>toast(store.account?.status==='pending'?'Confirm your email and sign in so this plan can follow you between browsers.':'Create or sign in to your account to finish setup and sync your plan.'),100);
+    setTimeout(()=>toast('Create or sign in to your Workout account to finish setup and sync your plan.'),100);
     return true;
   }
   currentTab='home';
@@ -2588,6 +2589,7 @@ function displayName(){
 }
 async function initWorkoutAuth(){
   try{
+    if(/(?:[?#&])type=recovery(?:[&#]|$)|[?&]recovery=1/.test(window.location.href))authMode='reset';
     if(!window.supabase?.createClient){authReady=true;render();return;}
     workoutSupabase=window.supabase.createClient(WORKOUT_SUPABASE_URL,WORKOUT_SUPABASE_PUBLISHABLE_KEY,{
       auth:{
@@ -2600,7 +2602,8 @@ async function initWorkoutAuth(){
     const {data,error}=await workoutSupabase.auth.getSession();
     if(error)console.warn('Workout session restore warning',error);
     applyWorkoutSession(data?.session||null);
-    workoutSupabase.auth.onAuthStateChange((_event,session)=>{
+    workoutSupabase.auth.onAuthStateChange((event,session)=>{
+      if(event==='PASSWORD_RECOVERY')authMode='reset';
       applyWorkoutSession(session||null);
     });
   }catch(error){
@@ -2623,7 +2626,7 @@ function applyWorkoutSession(session){
       status:'connected'
     };
   }else{
-    store.account={...(store.account||{}),userId:'',authProvider:'',status:store.account?.status==='pending'?'pending':'local'};
+    store.account={...(store.account||{}),userId:'',authProvider:'',status:'local'};
   }
   sharedRuntime.syncMuted=true;
   saveStore();
@@ -2641,9 +2644,21 @@ async function signInEntryAccount(){
   const password=document.querySelector('#entry-password')?.value||'';
   if(!email||!password){toast('Enter your email and password.');return;}
   const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
-  if(error){toast(error.code==='email_not_confirmed'?'Confirm your email first, then sign in.':(error.message||'Could not sign in.'));return;}
+  if(error){toast(error.message||'Could not sign in.');return;}
   if(!data?.session){toast('Sign-in did not create a session. Try again.');return;}
   toast('Signed in.');
+}
+async function createConfirmedWorkoutAccount(email,password,display){
+  const response=await fetch(WORKOUT_SUPABASE_URL+'/functions/v1/workout-signup',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':WORKOUT_SUPABASE_PUBLISHABLE_KEY},
+    body:JSON.stringify({email,password,displayName:display})
+  });
+  let payload={};try{payload=await response.json();}catch{}
+  if(!response.ok)throw new Error(payload.error||'Could not create the account.');
+  const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
+  if(error||!data?.session)throw new Error(error?.message||'Account was created, but sign-in failed. Use Sign In to continue.');
+  return data;
 }
 async function createEntryAccount(){
   if(!workoutSupabase){toast('Account service is unavailable. Reload and try again.');return;}
@@ -2652,25 +2667,40 @@ async function createEntryAccount(){
   const password=document.querySelector('#entry-password')?.value||'';
   if(!display){toast('Enter your display name.');return;}
   if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
-  let result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
-  if(result.error&&/redirect/i.test(result.error.message||''))result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display}}});
-  const {data,error}=result;
-  if(error){toast(error.message||'Could not create the account.');return;}
-  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){toast('That email already has an account. Sign in instead.');return;}
-  store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};
-  saveStore();
-  if(data?.session){toast('Account created. Now build your training profile.');}
-  else{toast('Account created. Check your email to confirm it, then sign in here.');render();}
+  try{
+    await createConfirmedWorkoutAccount(email,password,display);
+    store.account={...(store.account||{}),email,displayName:display,status:'connected'};saveStore();
+    toast('Workout account created and signed in.');
+  }catch(error){toast(error.message||'Could not create the account.');}
 }
-async function resendEntryConfirmation(){
+function beginForgotPassword(){
+  authMode='forgot';render();
+}
+function cancelForgotPassword(){
+  authMode='entry';render();
+}
+async function sendWorkoutPasswordReset(){
   if(!workoutSupabase){toast('Account service is unavailable.');return;}
-  const email=(store.account?.email||document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
-  if(!email){toast('Enter the email used for this account.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
-  const {error}=await workoutSupabase.auth.resend({type:'signup',email,options:{emailRedirectTo:redirectTo}});
-  if(error){toast(error.message||'Could not resend the confirmation email.');return;}
-  toast('Confirmation email sent again.');
+  const email=(document.querySelector('#forgot-email')?.value||'').trim().toLowerCase();
+  if(!email){toast('Enter the email for your Workout account.');return;}
+  const redirectTo=window.location.origin+window.location.pathname+'?recovery=1';
+  const {error}=await workoutSupabase.auth.resetPasswordForEmail(email,{redirectTo});
+  if(error){toast(error.message||'Could not send the reset email.');return;}
+  store.account={...(store.account||{}),email};saveStore();
+  toast('Password reset email sent. Check your inbox.');
+}
+async function saveRecoveredPassword(){
+  if(!workoutSupabase){toast('Account service is unavailable.');return;}
+  const password=document.querySelector('#reset-password')?.value||'';
+  const confirm=document.querySelector('#reset-password-confirm')?.value||'';
+  if(password.length<6){toast('Use a password with at least 6 characters.');return;}
+  if(password!==confirm){toast('The passwords do not match.');return;}
+  const {error}=await workoutSupabase.auth.updateUser({password});
+  if(error){toast(error.message||'Could not update the password.');return;}
+  authMode='entry';
+  try{history.replaceState({},'',window.location.pathname);}catch{}
+  toast('Password updated.');
+  render();
 }
 async function signInWorkoutAccount(){
   if(!workoutSupabase){toast('Account service is not available in this build.');return;}
@@ -2679,8 +2709,7 @@ async function signInWorkoutAccount(){
   if(!email||!password){toast('Enter your email and password.');return;}
   const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
   if(error){
-    const message=error.code==='email_not_confirmed'?'Confirm your email first, then sign in.':(error.message||'Could not sign in.');
-    toast(message);return;
+    toast(error.message||'Could not sign in.');return;
   }
   if(!data?.session){toast('Sign-in did not create a browser session. Try again.');return;}
   accountSheetOpen=false;
@@ -2695,76 +2724,17 @@ async function createOnboardingAccount(){
   const display=(document.querySelector('[name="displayName"]')?.value||'').trim();
   if(!display){toast('Enter your display name first.');return;}
   if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
-  const {data,error}=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
-  if(error){toast(error.message||'Could not create the account.');return;}
-  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){toast('That email already has an account. Sign in instead.');accountSheetOpen=true;render();return;}
-  store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};saveStore();
-  toast(data?.session?'Account created. Finish your training setup.':'Account created. Confirm your email, then sign in to sync this setup.');render();
+  try{await createConfirmedWorkoutAccount(email,password,display);toast('Account created. Finish your training setup.');render();}
+  catch(error){toast(error.message||'Could not create the account.');}
 }
 async function createWorkoutAccount(){
   if(!workoutSupabase){toast('Account service is not available in this build.');return;}
   const email=(document.querySelector('#account-email')?.value||'').trim().toLowerCase();
   const password=document.querySelector('#account-password')?.value||'';
-  const display=(store.profile?.displayName||store.account?.displayName||'').trim();
-  if(!email||!password){toast('Enter an email and password.');return;}
-  if(password.length<6){toast('Use a password with at least 6 characters.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
-  let signUpResult=await workoutSupabase.auth.signUp({
-    email,
-    password,
-    options:{
-      data:{display_name:display},
-      emailRedirectTo:redirectTo
-    }
-  });
-  if(signUpResult.error&&/redirect/i.test(signUpResult.error.message||'')){
-    signUpResult=await workoutSupabase.auth.signUp({
-      email,
-      password,
-      options:{data:{display_name:display}}
-    });
-  }
-  const {data,error}=signUpResult;
-  if(error){toast(error.message||'Could not create the account.');return;}
-  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
-    store.account={...(store.account||{}),email,status:'local'};
-    saveStore();
-    toast('That email already has an account. Use Sign In instead.');
-    render();
-    return;
-  }
-  store.account={
-    ...(store.account||{}),
-    email,
-    userId:data?.user?.id||store.account?.userId||'',
-    displayName:display||store.account?.displayName||'',
-    status:data?.session?'connected':'pending'
-  };
-  saveStore();
-  if(data?.session){
-    accountSheetOpen=false;
-    persistUiState();
-    toast('Account created and signed in.');
-  }else{
-    accountSheetOpen=true;
-    persistUiState();
-    toast('Account created. Check your email to confirm it, then return here.');
-  }
-  render();
-}
-async function resendWorkoutConfirmation(){
-  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
-  const email=(store.account?.email||document.querySelector('#account-email')?.value||'').trim().toLowerCase();
-  if(!email){toast('Enter the email used for this account.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
-  const {error}=await workoutSupabase.auth.resend({
-    type:'signup',
-    email,
-    options:{emailRedirectTo:redirectTo}
-  });
-  if(error){toast(error.message||'Could not resend the confirmation email.');return;}
-  toast('Confirmation email sent again.');
+  const display=(store.profile?.displayName||store.account?.displayName||'Workout member').trim();
+  if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
+  try{await createConfirmedWorkoutAccount(email,password,display);accountSheetOpen=false;persistUiState();toast('Account created and signed in.');render();}
+  catch(error){toast(error.message||'Could not create the account.');}
 }
 async function signOutWorkoutAccount(){
   if(!workoutSupabase){toast('Account service is not available in this build.');return;}
@@ -3357,14 +3327,15 @@ function renderAccountSheet(){
   const account=store.account||{},connected=account.status==='connected';
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-account-sheet"><section class="bottom-sheet account-sheet" data-account-sheet-panel>'+
     '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">ACCOUNT</p><h2>'+(connected?'Your account':'Sign in to sync & share')+'</h2></div><button class="modal-close" data-action="close-account-sheet">×</button></div>'+
-    '<div class="account-status-card"><span>STATUS</span><strong>'+(connected?'CONNECTED':account.status==='pending'?'EMAIL CONFIRMATION PENDING':'LOCAL ONLY')+'</strong><p>'+(connected?'Your Supabase session is active and shared-workout identity can restore on this browser.':account.status==='pending'?'Confirm your email, then return here and sign in. Your local workouts stay intact while confirmation is pending.':'Your workouts remain stored locally until the account layer is connected.')+'</p></div>'+
+    '<div class="account-status-card"><span>STATUS</span><strong>'+(connected?'CONNECTED':'SIGNED OUT')+'</strong><p>'+(connected?'Your Workout account is connected on this browser.':'Sign in or create a Workout account. New accounts do not require email confirmation.')+'</p></div>'+
     (connected?
       '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName())+'</strong><span>'+esc(account.email||'Connected account')+'</span></div></div><button class="button secondary account-signout" data-action="account-sign-out">SIGN OUT</button>'
       :
-      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="'+(account.status==='pending'?'new-password':'current-password')+'" placeholder="••••••••"></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>'+(account.status==='pending'?'<button class="text-button account-resend" data-action="account-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':''))+
+      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="current-password" placeholder="••••••••"></label></div><button class="text-button account-forgot" data-action="account-forgot-password">FORGOT PASSWORD?</button><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>')+
     '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full training history</strong></div><div><span>SHARED SESSION</span><strong>Partner sees session state and only the data required to train together</strong></div></div>'+
   '</section></div>';
 }
+
 function renderCueSettingsSheet(){
   const settings=workoutCueSettings();
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Audio & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
@@ -3783,26 +3754,44 @@ function syncLiveBadge(){const b=document.querySelector('.nav-live');if(b)b.hidd
 function toast(message){const r=document.querySelector('#toast-region')||document.body;r.querySelector('.toast')?.remove();const n=document.createElement('div');n.className='toast';n.textContent=message;r.append(n);setTimeout(()=>n.remove(),2300);}
 
 function renderAccountEntry(){
-  const pending=store.account?.status==='pending';
+  const email=esc(store.account?.email||store.profile?.email||'');
+  if(authMode==='forgot'){
+    return '<div class="onboard-shell account-entry-shell">'+
+      '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Reset your password.</h1><p>Enter the email for your Workout account. We’ll send a secure password-reset link.</p></section>'+
+      '<section class="form-section account-entry-card"><div class="form-section-head"><span>RESET</span><div><h3>Forgot password</h3><p>The reset email is only for this Workout app.</p></div></div>'+
+        '<label class="field"><span>EMAIL</span><input id="forgot-email" type="email" autocomplete="email" value="'+email+'" placeholder="you@example.com"></label>'+
+        '<button class="button" data-action="auth-send-reset">SEND RESET LINK</button>'+
+        '<button class="text-button" data-action="auth-back-to-sign-in">BACK TO SIGN IN</button>'+
+      '</section></div>';
+  }
+  if(authMode==='reset'){
+    return '<div class="onboard-shell account-entry-shell">'+
+      '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Choose a new password.</h1><p>Set the new password for your Workout account.</p></section>'+
+      '<section class="form-section account-entry-card"><div class="form-section-head"><span>RESET</span><div><h3>New password</h3><p>Use at least 6 characters.</p></div></div>'+
+        '<label class="field"><span>NEW PASSWORD</span><input id="reset-password" type="password" autocomplete="new-password" placeholder="At least 6 characters"></label>'+
+        '<label class="field"><span>CONFIRM PASSWORD</span><input id="reset-password-confirm" type="password" autocomplete="new-password" placeholder="Enter it again"></label>'+
+        '<button class="button" data-action="auth-save-password">SAVE NEW PASSWORD</button>'+
+      '</section></div>';
+  }
   return '<div class="onboard-shell account-entry-shell">'+
-    '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>Sign in to continue your program on this device, or create an account before building your first plan.</p></section>'+
-    (pending?'<div class="account-status-card"><span>EMAIL CONFIRMATION PENDING</span><strong>Check your inbox, then sign in here.</strong><p>Your setup on this browser stays intact while confirmation is pending.</p></div>':'')+
-    '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>Account</h3><p>Your profile, program, progress, history and active workout sync through your account.</p></div></div>'+
+    '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>Sign in to continue your program on this device, or create a Workout account before building your first plan.</p></section>'+
+    '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>Account</h3><p>Your profile, program, progress, history and active workout sync through your Workout account.</p></div></div>'+
       '<div class="form-grid two">'+
-        '<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>'+
-        '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(store.account?.email||store.profile?.email||'')+'" placeholder="you@example.com"></label>'+
+        '<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="Needed when creating an account"></label>'+
+        '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+email+'" placeholder="you@example.com"></label>'+
       '</div>'+
       '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>'+
+      '<button class="text-button account-forgot" data-action="entry-forgot-password">FORGOT PASSWORD?</button>'+
       '<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in">SIGN IN</button><button class="button secondary" data-action="entry-create-account">CREATE ACCOUNT</button></div>'+
-      (pending?'<button class="text-button account-resend" data-action="entry-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':'')+
     '</section>'+
-    '<div class="profile-privacy-note"><strong>Private by default.</strong><span>Your readiness, body data, notes and full training history are not exposed to workout partners.</span></div>'+
+    '<div class="profile-privacy-note"><strong>No email verification step.</strong><span>New Workout accounts are ready to use immediately after creation.</span></div>'+
   '</div>';
 }
 
 function render(){
   const app=document.querySelector('#app');if(!app)return;
   if(!authReady){app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">WORKOUT</p><h2>Loading your training account…</h2></div>';return;}
+  if(authMode==='reset'){app.innerHTML=renderAccountEntry();document.body.classList.remove('modal-open','workout-mode');return;}
   if(store.account?.status!=='connected'){app.innerHTML=renderAccountEntry();document.body.classList.remove('modal-open','workout-mode');return;}
   if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
   else if(currentTab==='profile')app.innerHTML=renderProfileHub();
@@ -3977,11 +3966,14 @@ function handleClick(event){
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
-  else if(a==='entry-resend-confirmation')resendEntryConfirmation();
+  else if(a==='entry-forgot-password')beginForgotPassword();
+  else if(a==='account-forgot-password'){accountSheetOpen=false;beginForgotPassword();}
+  else if(a==='auth-back-to-sign-in')cancelForgotPassword();
+  else if(a==='auth-send-reset')sendWorkoutPasswordReset();
+  else if(a==='auth-save-password')saveRecoveredPassword();
   else if(a==='account-sign-in')signInWorkoutAccount();
   else if(a==='account-create')createWorkoutAccount();
   else if(a==='onboard-create-account')createOnboardingAccount();
-  else if(a==='account-resend-confirmation')resendWorkoutConfirmation();
   else if(a==='account-sign-out')signOutWorkoutAccount();
   else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
