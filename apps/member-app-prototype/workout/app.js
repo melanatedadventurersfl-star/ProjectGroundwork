@@ -1636,6 +1636,13 @@ function saveProfileFromForm(form){
   store.plan=plan;
   store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
   const persisted=saveStore();
+  if(store.account?.status!=='connected'){
+    accountSheetOpen=true;
+    currentTab='profile-edit';
+    render();
+    setTimeout(()=>toast(store.account?.status==='pending'?'Confirm your email and sign in so this plan can follow you between browsers.':'Create or sign in to your account to finish setup and sync your plan.'),100);
+    return true;
+  }
   currentTab='home';
   render();
   if(!persisted){
