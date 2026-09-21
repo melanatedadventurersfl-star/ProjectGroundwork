@@ -2617,7 +2617,7 @@ async function createWorkoutAccount(){
   if(!email||!password){toast('Enter an email and password.');return;}
   if(password.length<6){toast('Use a password with at least 6 characters.');return;}
   const redirectTo=window.location.origin+window.location.pathname;
-  const {data,error}=await workoutSupabase.auth.signUp({
+  let signUpResult=await workoutSupabase.auth.signUp({
     email,
     password,
     options:{
@@ -2625,6 +2625,14 @@ async function createWorkoutAccount(){
       emailRedirectTo:redirectTo
     }
   });
+  if(signUpResult.error&&/redirect/i.test(signUpResult.error.message||'')){
+    signUpResult=await workoutSupabase.auth.signUp({
+      email,
+      password,
+      options:{data:{display_name:display}}
+    });
+  }
+  const {data,error}=signUpResult;
   if(error){toast(error.message||'Could not create the account.');return;}
   if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
     store.account={...(store.account||{}),email,status:'local'};
