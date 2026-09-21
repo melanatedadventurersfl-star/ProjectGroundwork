@@ -2930,18 +2930,13 @@ function renderRest(pos){
 
 function renderHistory(){
   const rows=store.history.map(x=>{
-    const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;
     const scheduled=x.scheduledDate||'';
     const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
-    const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?'Scheduled & completed '+formatDate(actual):'Scheduled '+formatDate(scheduled)+' · trained '+formatDate(actual)):'Completed '+formatDate(x.completedAt);
-    const readiness=x.readiness?.score?'<span>•</span><span>readiness '+esc(x.readiness.score)+'/5</span>':'';
-    const block=x.programContext?'<span>•</span><span>Block '+esc(x.programContext.blockNumber)+' · W'+esc(x.programContext.blockWeek)+'</span>':'';
-    const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL COMPLETION':'COMPLETED';
-    return '<article class="history-card"><div class="history-top"><div><div class="history-status">'+status+'</div><h3>'+esc(x.routineName)+'</h3><div class="history-date">'+esc(timing)+'</div></div><div class="history-volume">'+formatVolume(x.totalVolume||0)+'</div></div>'+
-      '<div class="history-stats"><span>'+x.completedSets+' logged sets</span>'+(x.durationMinutes?'<span>•</span><span>'+x.durationMinutes+' min</span>':'')+block+readiness+(learned?'<span>•</span><span>'+learned+' learned target'+(learned===1?'':'s')+'</span>':'')+(x.newPRs?.length?'<span>•</span><span>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</span>':'')+'</div>'+
-      '<div class="history-actions"><button class="text-button danger-text" data-action="remove-history" data-history-id="'+esc(x.id)+'">REMOVE FROM HISTORY</button></div></article>';
+    const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?formatDate(actual):formatDate(scheduled)+' · trained '+formatDate(actual)):formatDate(x.completedAt);
+    const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL':'';
+    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
   }).join('');
-  return '<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History by day.</h2><p class="page-copy">Scheduled date, actual training date, readiness, status, volume, and adaptive decisions remain attached to the session. Removing a workout recalculates dependent training data.</p></div></div><div class="history-list">'+(rows||renderEmpty('No workout history','Complete your first scheduled workout and it will appear here.'))+'</div>';
+  return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div><div class="history-list clean-history-list">'+(rows||renderEmpty('No workout history','Complete your first workout and it will appear here.'))+'</div></div>';
 }
 
 function personalRecords(){
@@ -2950,34 +2945,27 @@ function personalRecords(){
   return [...map.values()].sort((a,b)=>b.weight-a.weight);
 }
 function renderProgress(){
-  const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),prs=personalRecords().slice(0,12),calibrated=Object.keys(store.calibration).length;
+  const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),prs=personalRecords().slice(0,6),calibrated=Object.keys(store.calibration).length;
   const learnedAll=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
-  const learned=learnedAll.slice(0,10);
-  const decisions=(Array.isArray(store.progressionLog)?store.progressionLog:[]).slice(0,12);
-  const trends=recentExerciseTrendCards(8);
-  const context=programContext();
-  const schedule=currentWeekSchedule();
-  return `<div class="page-head"><div><p class="eyebrow">PROGRESS · BLOCK ${context.blockNumber} WEEK ${context.blockWeek}</p><h2 class="page-title">Your training story.</h2><p class="page-copy">Progress includes stronger sets, more reps, consistency, readiness, adherence, and the adaptive choices your program makes next.</p></div></div>
-    <div class="progress-grid">
-      <section class="panel"><h3>This week</h3><div class="big-stat">${schedule.filter(entry=>entry.status==='complete').length}/${schedule.length}</div><div class="stat-label">scheduled workouts completed</div></section>
-      <section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section>
-      <section class="panel"><h3>Learned movements</h3><div class="big-stat">${learnedAll.length}</div><div class="stat-label">${calibrated} initially calibrated</div></section>
-      <section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section>
-    </div>
-    ${trends.length?`<section class="panel trend-panel"><div class="section-head"><div><p class="eyebrow">EXERCISE TRENDS</p><h3>More than PRs.</h3></div></div><div class="trend-grid">${trends.map(item=>`<article class="trend-card"><span>${esc(item.trend.label)}</span><strong>${esc(item.ex.name)}</strong><p>${esc(item.trend.detail)}</p><small>${item.history.length} recent session${item.history.length===1?'':'s'} analyzed</small></article>`).join('')}</div></section>`:''}
-    ${learned.length?`<section class="panel learned-panel"><p class="eyebrow">NEXT-SESSION TARGETS</p><div class="learned-list">${learned.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}
-    ${decisions.length?`<section class="panel decision-panel"><p class="eyebrow">RECENT ADAPTIVE DECISIONS</p><div class="decision-list">${decisions.map(item=>`<div class="decision-row"><div><strong>${esc(item.name)}</strong><span>${esc(feedbackLabel(item.feedback))} · ${esc(item.routineName||'Workout')} · ${esc(formatDate(item.loggedAt||item.updatedAt))}</span><small>${esc(item.reason)}</small></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}`;
+  const trends=recentExerciseTrendCards(5);
+  const context=programContext(),schedule=currentWeekSchedule();
+  const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const thisWeekVolume=week.reduce((sum,item)=>sum+(item.totalVolume||0),0);
+  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>Consistency, strength trends, volume, PRs, and what the adaptive engine is learning.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+    '<div class="progress-overview-grid"><section class="clean-panel metric-panel"><span>TRAINING CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>scheduled workouts this week</small></section><section class="clean-panel metric-panel"><span>WEEKLY VOLUME</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' all time</small></section><section class="clean-panel metric-panel"><span>LEARNED MOVEMENTS</span><strong>'+learnedAll.length+'</strong><small>'+calibrated+' initially calibrated</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></section></div>'+
+    (trends.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">STRENGTH TREND</p><h3>Recent movements</h3></div></div><div class="clean-trend-list">'+trends.map(item=>'<button class="clean-trend-row" data-exercise-detail="'+esc(item.ex.id)+'"><div><strong>'+esc(item.ex.name)+'</strong><span>'+esc(item.trend.detail)+'</span></div><em>'+esc(item.trend.label)+'</em></button>').join('')+'</div></section>':'')+
+    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT PRS</p><h3>Personal records</h3></div></div>'+(prs.length?'<div class="pr-list clean-pr-list">'+prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div>':'<div class="clean-empty-inline">Complete workouts to establish PRs.</div>')+'</section>'+
+    '<section class="clean-panel progress-engine-card"><div><span>ADAPTIVE ENGINE</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><p>'+esc(adaptationDecision().notes.join(' ')||'The next training week updates from your completed work and feedback.')+'</p></div></section>'+
+  '</div>';
 }
 
 function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
-  const recommendations=(x.exercises||[]).filter(ex=>ex.nextRecommendation).map(ex=>ex.nextRecommendation);
   const partial=x.completionStatus==='partial';
-  return '<div class="summary-hero"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+(partial?' saved.':' done.')+'</h2><p>'+(partial?'Your completed work is preserved, but this scheduled session does not count as fully completed.':'Your calendar, history, and next-session targets are updated from what you actually did.')+'</p>'+
-    '<div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Logged sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
-    (recommendations.length?'<section class="panel adaptive-summary"><p class="eyebrow">NEXT TIME</p><div class="learned-list">'+recommendations.map(item=>'<div class="learned-row"><div><strong>'+esc(item.name)+'</strong><span>'+esc(item.reason)+'</span></div><em>'+esc(item.label)+'</em></div>').join('')+'</div></section>':'')+
-    (x.newPRs?.length?'<section class="panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
-    '<div class="summary-actions"><button class="button" data-action="home">BACK TO PLAN</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
+  return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2><p>'+(partial?'Your completed work is preserved. This scheduled session remains partial.':'History and progression were updated from what you actually logged.')+'</p><div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
+    (x.newPRs?.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
+    (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
+    '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
 
 function renderEmpty(title,copy){return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;}
