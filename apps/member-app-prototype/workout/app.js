@@ -1589,6 +1589,9 @@ function renderPlanTimedRow(item,type,index){
 
 function saveProfileFromForm(form){
   if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
+  const previousProfile=clone(store.profile||{});
+  const previousPlan=clone(store.plan||null);
+  const previousProgram=clone(store.trainingProgram||{scheduleOverrides:{},weekReviews:{}});
   let data;
   try{
     data=new FormData(form);
@@ -1683,7 +1686,7 @@ function saveProfileFromForm(form){
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
+  store.trainingProgram=previousPlan?previousProgram:{scheduleOverrides:{},weekReviews:{}};
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
     accountSheetOpen=true;
@@ -1694,6 +1697,9 @@ function saveProfileFromForm(form){
   }
   currentTab='home';
   render();
+  if(previousPlan){
+    setTimeout(()=>toast('Profile updated. Future workouts were rebuilt; history and progression were preserved.'),100);
+  }
   if(!persisted){
     setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
   }
