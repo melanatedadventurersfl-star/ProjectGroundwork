@@ -1511,6 +1511,16 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
+  if(!profile.displayName){
+    toast('Enter the display name you want to use in training and shared workouts.');
+    form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  if(!profile.gender){
+    toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');
+    form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
   if(profile.workoutDays.length!==profile.days){
     toast('Choose exactly '+profile.days+' training days for your weekly schedule.');
     form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -2518,7 +2528,7 @@ function renderTrain(){
       const scheduled=schedule.find(entry=>entry.day.id===day.id);
       const first=day.exercises[0];
       return '<article class="clean-routine-card"><div class="routine-card-main"><span class="routine-index">'+String(index+1).padStart(2,'0')+'</span><div><h3>'+esc(day.name)+'</h3><p>'+esc(day.focus)+'</p><small>'+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></div>'+
-        '<div class="routine-card-actions">'+(scheduled&&!store.activeWorkout?'<button class="button secondary" data-start="'+esc(day.id)+'" data-scheduled-date="'+esc(scheduled.dateKey)+'">'+(scheduled.status==='today'?'START TODAY':'PREPARE')+'</button>':'')+'<button class="text-button" data-action="open-routine-details" data-day-id="'+esc(day.id)+'">DETAILS</button></div></article>';
+        '<div class="routine-card-actions">'+(scheduled&&!store.activeWorkout?'<button class="button secondary" data-start="'+esc(day.id)+'" data-scheduled-date="'+esc(scheduled.dateKey)+'">'+(scheduled.status==='today'?'START TODAY':'PREPARE')+'</button>':'')+'<button class="text-button" data-action="catalog">LIBRARY</button></div></article>';
     }).join('')+'</div></section>'+
     '<section class="clean-panel train-library-card"><div><p class="eyebrow">EXERCISE LIBRARY</p><h3>'+catalog.length+' movements</h3><p>Form cues, equipment requirements, muscle groups, and exercise history.</p></div><button class="button secondary" data-action="catalog">BROWSE</button></section>'+
   '</div>';
@@ -2973,14 +2983,22 @@ function renderRest(pos){
 }
 
 function renderHistory(){
-  const rows=store.history.map(x=>{
+  const context=programContext();
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
+  let items=[...store.history];
+  if(historyFilter==='block')items=items.filter(item=>item.programContext?.blockNumber===context.blockNumber);
+  if(historyFilter==='30')items=items.filter(item=>new Date(item.completedAt)>=cutoff);
+  const rows=items.map(x=>{
     const scheduled=x.scheduledDate||'';
     const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
     const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?formatDate(actual):formatDate(scheduled)+' · trained '+formatDate(actual)):formatDate(x.completedAt);
     const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL':'';
     return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
   }).join('');
-  return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div><div class="history-list clean-history-list">'+(rows||renderEmpty('No workout history','Complete your first workout and it will appear here.'))+'</div></div>';
+  const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
+  return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
+    '<div class="history-filter-row">'+filters.map(([value,label])=>'<button class="'+(historyFilter===value?'active':'')+'" data-action="set-history-filter" data-history-filter="'+value+'">'+label+'</button>').join('')+'</div>'+
+    '<div class="history-list clean-history-list">'+(rows||renderEmpty('No workouts here','Try another filter or complete a workout.'))+'</div></div>';
 }
 
 function personalRecords(){
@@ -3204,6 +3222,7 @@ function handleClick(event){
   else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
+  else if(a==='set-history-filter'){historyFilter=node.dataset.historyFilter||'all';render();}
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
