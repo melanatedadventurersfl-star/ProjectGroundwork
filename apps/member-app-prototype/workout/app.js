@@ -2912,18 +2912,22 @@ function renderExerciseTransition(w){
   const next=w.pendingPosition;
   const ex=next?w.exercises[next.ei]:null;
   if(!next||!ex)return '<div class="empty-state"><h2>No next exercise.</h2><button class="button" data-action="open-workout-review">REVIEW WORKOUT</button></div>';
-  return '<div class="exercise-transition-stage"><p class="eyebrow">NEXT EXERCISE</p>'+renderNextExerciseCard(ex,next)+
-    '<div class="transition-ready-actions"><button class="button primary-action" data-action="ready-next-exercise">I’M READY · START COUNTDOWN</button>'+
-    '<button class="button secondary" data-action="mark-exercise-complete" data-exercise-index="'+next.ei+'">ALREADY DONE · MARK COMPLETE</button>'+
-    '<button class="button secondary" data-action="move-exercise-later" data-exercise-index="'+next.ei+'">EQUIPMENT BUSY · MOVE LATER</button></div></div>';
+  return '<div class="exercise-transition-stage clean-transition-stage"><p class="eyebrow">UP NEXT · EXERCISE '+(next.ei+1)+' OF '+w.exercises.length+'</p>'+
+    '<div class="transition-hero">'+exerciseImageButton(ex,'next-exercise-media')+'<div><h2>'+esc(ex.name)+'</h2><p>'+esc(exerciseDescription(ex))+'</p><div class="transition-facts"><span>'+ex.sets.length+' sets · '+esc(ex.reps)+'</span><span>'+esc(equipmentRequirement(exerciseSource(ex)))+'</span></div></div></div>'+
+    '<div class="transition-target"><span>TODAY’S TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div>'+
+    '<button class="button primary-action" data-action="ready-next-exercise">I’M READY</button>'+
+    '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+next.ei+'"><span>•••</span><div><strong>Exercise options</strong><small>Swap · move later · already completed</small></div><em>›</em></button>'+
+  '</div>';
 }
 
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
-  const result=pos.workout.lastProgressionResult;
-  const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
-  return `<div class="rest-stage"><div class="rest-label">${changingExercise?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':changingExercise?'GET READY FOR NEXT EXERCISE':'UNTIL NEXT SET'}</div></div></div><h3>${changingExercise?'Move to your next station':'Recover, then go again'}</h3><p>${changingExercise?'Use this time to grab the equipment and review the next movement. The 3 · 2 · 1 start countdown follows automatically.':'When rest ends, the get-ready countdown starts automatically.'}</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${changingExercise?renderNextExerciseCard(nextEx,next):(nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>Set ${next.si+1} · ${esc(nextEx.name)}</strong></div><em>${esc(nextEx.reps)}</em></div>`:'')}</div>`;
+  return '<div class="rest-stage clean-rest-stage"><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><div class="timer-wrap clean-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':changingExercise?'NEXT EXERCISE':'RECOVER')+'</div></div></div>'+
+    '<div class="rest-next-copy"><span>NEXT</span><h3>'+(nextEx?esc(nextEx.name):'Cooldown')+'</h3><p>'+(changingExercise?'Set up the next station. The app will wait until you are ready.':next?'Set '+(next.si+1)+' of '+esc(nextEx?.name||pos.exercise.name):'Finish strong, then review the session.')+'</p></div>'+
+    '<div class="clean-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">SKIP</button></div>'+
+    '<div class="rest-tertiary"><button class="text-button" data-action="pause-rest">'+(paused?'Resume timer':'Pause timer')+'</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  '</div>';
 }
 
 function renderHistory(){
