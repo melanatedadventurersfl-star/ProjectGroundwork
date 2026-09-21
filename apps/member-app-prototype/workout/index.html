@@ -8,7 +8,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Workout</title>
+  <title>Training</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -18,18 +18,18 @@
   <div class="app-shell">
     <header class="topbar">
       <button class="brand-wrap" type="button" data-action="go-home" aria-label="Go to workout home">
-        <div class="brand-mark">W/</div>
-        <div class="brand-copy"><h1>WORKOUT</h1><p>Personal training engine</p></div>
+        <div class="brand-mark">T/</div>
+        <div class="brand-copy"><h1>TRAINING</h1><p>Adaptive workout coach</p></div>
       </button>
-      <div class="top-actions"><span class="storage-badge">Build __WORKOUT_BUILD__</span><span class="storage-badge">Saved on this device</span><div class="avatar" aria-hidden="true">JC</div></div>
+      <div class="top-actions"><span class="storage-badge build-badge">Build __WORKOUT_BUILD__</span><button class="shell-icon-button" type="button" data-action="open-cue-settings" aria-label="Workout settings">◉</button><button class="avatar" type="button" data-tab="profile" aria-label="Open profile">ME</button></div>
     </header>
     <main id="app" class="main" aria-live="polite"></main>
-    <nav class="bottom-nav" aria-label="Workout navigation">
-      <button class="nav-item active" type="button" data-tab="home"><span class="nav-icon">⌂</span><span>Plan</span></button>
-      <button class="nav-item" type="button" data-tab="workout"><span class="nav-icon">▶</span><span>Workout</span><span class="nav-live" hidden></span></button>
-      <button class="nav-item" type="button" data-tab="catalog"><span class="nav-icon">▦</span><span>Catalog</span></button>
-      <button class="nav-item" type="button" data-tab="history"><span class="nav-icon">↺</span><span>History</span></button>
-      <button class="nav-item" type="button" data-tab="progress"><span class="nav-icon">↗</span><span>Progress</span></button>
+    <nav class="bottom-nav" aria-label="Training navigation">
+      <button class="nav-item active" type="button" data-tab="home"><span class="nav-icon">⌂</span><span>Home</span></button>
+      <button class="nav-item" type="button" data-tab="train"><span class="nav-icon">◇</span><span>Train</span><span class="nav-live" hidden></span></button>
+      <button class="nav-item" type="button" data-tab="together"><span class="nav-icon">◎</span><span>Together</span></button>
+      <button class="nav-item" type="button" data-tab="progress"><span class="nav-icon">▥</span><span>Progress</span></button>
+      <button class="nav-item" type="button" data-tab="profile"><span class="nav-icon">○</span><span>Profile</span></button>
     </nav>
   </div>
   <div id="toast-region" aria-live="assertive" aria-atomic="true"></div>
