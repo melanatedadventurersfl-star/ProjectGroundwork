@@ -1,0 +1,13 @@
+project_id = "iftnwzqlofhujzulmofu"
+
+[auth]
+site_url = "https://melanatedadventurersfl-star.github.io/ProjectGroundwork/workout/"
+additional_redirect_urls = [
+  "https://melanatedadventurersfl-star.github.io/ProjectGroundwork/workout/",
+  "https://melanatedadventurersfl-star.github.io/ProjectGroundwork/workout/**"
+]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+double_confirm_changes = true
