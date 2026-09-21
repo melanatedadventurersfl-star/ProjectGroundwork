@@ -6,6 +6,9 @@ const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
+const WORKOUT_SUPABASE_URL = 'https://hqndxityqrdiiwqyjagu.supabase.co';
+const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K';
+let workoutSupabase = null;
 let exerciseDetailId = null;
 let swapContext = null;
 let readinessContext = null;
@@ -28,7 +31,7 @@ const defaultStore = {
   exercisePreferences: {excluded:[],swapHistory:[]},
   trainingProgram: {scheduleOverrides:{},weekReviews:{}},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
-  account: {displayName:'',email:'',authProvider:'',status:'local'},
+  account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
   lastSummaryId: null
 };
@@ -2501,6 +2504,65 @@ function renderWeekScheduleEntry(entry){
 function displayName(){
   return store.account?.displayName||store.profile?.displayName||'there';
 }
+async function initWorkoutAuth(){
+  try{
+    if(!window.supabase?.createClient)return;
+    workoutSupabase=window.supabase.createClient(WORKOUT_SUPABASE_URL,WORKOUT_SUPABASE_PUBLISHABLE_KEY,{
+      auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
+    });
+    const {data}=await workoutSupabase.auth.getSession();
+    applyWorkoutSession(data?.session||null);
+    workoutSupabase.auth.onAuthStateChange((_event,session)=>applyWorkoutSession(session||null));
+  }catch(error){
+    console.error('Workout auth initialization failed',error);
+  }
+}
+function applyWorkoutSession(session){
+  if(session?.user){
+    const user=session.user;
+    store.account={
+      ...(store.account||{}),
+      userId:user.id||'',
+      email:user.email||store.account?.email||'',
+      displayName:user.user_metadata?.display_name||store.account?.displayName||store.profile?.displayName||'',
+      authProvider:user.app_metadata?.provider||'email',
+      status:'connected'
+    };
+  }else{
+    store.account={...(store.account||{}),userId:'',authProvider:'',status:'local'};
+  }
+  saveStore();render();
+}
+async function signInWorkoutAccount(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const email=(document.querySelector('#account-email')?.value||'').trim();
+  const password=document.querySelector('#account-password')?.value||'';
+  if(!email||!password){toast('Enter your email and password.');return;}
+  const {error}=await workoutSupabase.auth.signInWithPassword({email,password});
+  if(error){toast(error.message||'Could not sign in.');return;}
+  accountSheetOpen=false;toast('Signed in.');render();
+}
+async function createWorkoutAccount(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const email=(document.querySelector('#account-email')?.value||'').trim();
+  const password=document.querySelector('#account-password')?.value||'';
+  const display=store.profile?.displayName||store.account?.displayName||'';
+  if(!email||!password){toast('Enter an email and password.');return;}
+  if(password.length<6){toast('Use a password with at least 6 characters.');return;}
+  const {data,error}=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display}}});
+  if(error){toast(error.message||'Could not create the account.');return;}
+  store.account={...(store.account||{}),email,status:data?.session?'connected':'pending'};
+  saveStore();
+  if(data?.session){accountSheetOpen=false;toast('Account created and signed in.');}
+  else toast('Account created. Check your email if confirmation is required.');
+  render();
+}
+async function signOutWorkoutAccount(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const {error}=await workoutSupabase.auth.signOut();
+  if(error){toast(error.message||'Could not sign out.');return;}
+  accountSheetOpen=false;toast('Signed out.');render();
+}
 function weeklyVolumeValue(){
   return weeklyHistory().reduce((sum,item)=>sum+(item.totalVolume||0),0);
 }
@@ -2560,6 +2622,7 @@ function copySharedCode(){
   }else toast('Join code: '+code);
 }
 function createSharedDraft(){
+  if(store.account?.status!=='connected'){accountSheetOpen=true;render();toast('Sign in before creating a shared workout.');return;}
   const next=nextScheduledSession();
   if(!next){toast('No scheduled workout is available to share right now.');return;}
   const name=(document.querySelector('#shared-partner-name')?.value||'').trim();
@@ -2623,17 +2686,17 @@ function renderProfileHub(){
   '</div>';
 }
 function renderAccountSheet(){
-  const account=store.account||{};
+  const account=store.account||{},connected=account.status==='connected';
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-account-sheet"><section class="bottom-sheet account-sheet" data-account-sheet-panel>'+
-    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">ACCOUNT</p><h2>'+(account.status==='connected'?'Your account':'Connect your training')+'</h2></div><button class="modal-close" data-action="close-account-sheet">×</button></div>'+
-    '<div class="account-status-card"><span>STATUS</span><strong>'+(account.status==='connected'?'CONNECTED':'LOCAL PROTOTYPE')+'</strong><p>'+(account.status==='connected'?'Workout history and partner features can sync across devices.':'Training data is currently stored in this browser. No password is stored locally.')+'</p></div>'+
-    '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName()==='there'?'Training profile':displayName())+'</strong><span>'+esc(account.email||store.profile?.email||'No account email connected')+'</span></div></div>'+
-    '<div class="auth-choice-grid"><button class="button" data-action="account-auth-not-connected">SIGN IN</button><button class="button secondary" data-action="account-auth-not-connected">CREATE ACCOUNT</button></div>'+
-    '<section class="prototype-note compact"><strong>Authentication is intentionally not faked here.</strong><span>The parent project already uses Supabase auth. This prototype is prepared for that connection, but no credentials are collected or stored until the real backend is wired.</span></section>'+
-    '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full history</strong></div><div><span>SHARED SESSION</span><strong>Status and session data you choose to expose</strong></div></div>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">ACCOUNT</p><h2>'+(connected?'Your account':'Sign in to sync & share')+'</h2></div><button class="modal-close" data-action="close-account-sheet">×</button></div>'+
+    '<div class="account-status-card"><span>STATUS</span><strong>'+(connected?'CONNECTED':account.status==='pending'?'EMAIL CONFIRMATION PENDING':'LOCAL ONLY')+'</strong><p>'+(connected?'Your Supabase session is active. Workout syncing can be layered onto this identity next.':'Your workouts remain stored locally until the account layer is connected.')+'</p></div>'+
+    (connected?
+      '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName())+'</strong><span>'+esc(account.email||'Connected account')+'</span></div></div><button class="button secondary account-signout" data-action="account-sign-out">SIGN OUT</button>'
+      :
+      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="current-password" placeholder="••••••••"></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>')+
+    '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full training history</strong></div><div><span>SHARED SESSION</span><strong>Partner sees session state and only the data required to train together</strong></div></div>'+
   '</section></div>';
 }
-
 function renderCueSettingsSheet(){
   const settings=workoutCueSettings();
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Audio & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
@@ -3211,7 +3274,9 @@ function handleClick(event){
   else if(a==='start-shared-workout')startSharedWorkout();
   else if(a==='copy-shared-code')copySharedCode();
   else if(a==='account-info'){accountSheetOpen=true;render();}
-  else if(a==='account-auth-not-connected')toast('Authentication will connect to the project’s Supabase account system. No local password is being collected in this prototype.');
+  else if(a==='account-sign-in')signInWorkoutAccount();
+  else if(a==='account-create')createWorkoutAccount();
+  else if(a==='account-sign-out')signOutWorkoutAccount();
   else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
@@ -3337,6 +3402,7 @@ window.addEventListener('pageshow',event=>{
 window.addEventListener('beforeunload',()=>tickHandle&&clearInterval(tickHandle));
 render();
 updateTimers();
+initWorkoutAuth();
 if(clearedLegacyActiveWorkout){
   setTimeout(()=>toast('Previous test session cleared so this build can start with clean timer state.'),100);
 }
