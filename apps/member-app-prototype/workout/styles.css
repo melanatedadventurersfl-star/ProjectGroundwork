@@ -3998,3 +3998,34 @@ button.clean-set-row{cursor:pointer}
   vector-effect:non-scaling-stroke;
 }
 .bottom-nav .nav-item.active .nav-svg{stroke-width:2}
+
+/* Editable onboarding V2 */
+.goal-multi-grid .choice-card input[type="checkbox"]+span{min-height:82px}
+.field-group-label{margin:18px 0 8px;color:var(--muted);font-size:8px;font-weight:900;letter-spacing:.13em}
+.custom-preference-field{margin-top:12px}
+.check-pill.soft span{border-style:dashed}
+.fitness-connection-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fitness-connection-card{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:14px;border:1px solid var(--line);border-radius:15px;background:var(--panel-2)
+}
+.fitness-connection-card span{display:block;color:var(--muted);font-size:7px;letter-spacing:.1em;text-transform:uppercase}
+.fitness-connection-card strong{display:block;margin:3px 0;font-size:12px}
+.fitness-connection-card small{display:block;color:var(--muted);font-size:8px}
+.fitness-connection-card .button{flex:0 0 auto;padding:9px 11px;font-size:8px}
+@media(max-width:640px){
+  .fitness-connection-grid{grid-template-columns:1fr}
+  .fitness-connection-card{align-items:flex-start}
+}
+
+.fitness-provider-toggle{position:absolute;opacity:0;pointer-events:none}
+.fitness-connection-card{position:relative;cursor:pointer}
+.fitness-connection-card b{
+  flex:0 0 auto;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+  color:var(--muted);font-size:8px;letter-spacing:.05em
+}
+.fitness-connection-card:has(.fitness-provider-toggle:checked){
+  border-color:rgba(134,185,141,.42);
+  background:linear-gradient(145deg,rgba(134,185,141,.07),transparent 60%),var(--panel-2)
+}
+.fitness-connection-card:has(.fitness-provider-toggle:checked) b{color:var(--green);border-color:rgba(134,185,141,.32)}

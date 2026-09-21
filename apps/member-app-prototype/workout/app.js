@@ -12,7 +12,7 @@ const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw_
 let workoutSupabase = null;
 let authReady=false;
 let authMode='entry';
-const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
+const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,reconcileTimer:null,reconcileBusy:false,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
 let cloudSyncTimer=null;
 let cloudHydrating=false;
 let exerciseDetailId = null;
@@ -1120,7 +1120,8 @@ function goalSettings(goal,movement,experience){
   const newLifter = experience === 'new';
   if (goal === 'strength') return {sets:accessory?2:(newLifter?2:3),reps:accessory?'8–12':'6–8',rest:accessory?30:(compound?60:45),setSeconds:40};
   if (goal === 'fat-loss') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?30:45,setSeconds:42};
-  if (goal === 'general') return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?45:30),setSeconds:40};
+  if (['general','mobility','athletic','consistency','sport','partner','energy'].includes(goal)) return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?45:30),setSeconds:40};
+  if (goal === 'endurance') return {sets:newLifter?2:3,reps:accessory?'12–15':'10–15',rest:accessory?25:40,setSeconds:42};
   return {sets:newLifter?2:3,reps:accessory?'10–15':'8–12',rest:accessory?30:(compound?60:45),setSeconds:42};
 }
 
@@ -1388,6 +1389,17 @@ function avoided(exercise,profile){
   if (avoid.includes('knee') && ['squat','single-leg','quad-accessory'].includes(exercise.movement)) return true;
   if (avoid.includes('hinge') && ['hinge','hamstring-accessory'].includes(exercise.movement)) return true;
   if (avoid.includes('floor') && ['plank','dead-bug','glute-bridge','db-floor-press','push-up'].includes(exercise.id)) return true;
+  if (avoid.includes('running') && /run|treadmill/i.test(exercise.name||'')) return true;
+  if (avoid.includes('jumping') && /jump|plyo|box/i.test(exercise.name||'')) return true;
+  if (avoid.includes('squat') && /barbell.*squat|back squat|front squat/i.test(exercise.name||'')) return true;
+  if (avoid.includes('deadlift') && /conventional deadlift|barbell deadlift/i.test(exercise.name||'')) return true;
+  if (avoid.includes('pullup') && /pull.?up|chin.?up/i.test(exercise.name||'')) return true;
+  if (avoid.includes('dip') && /dip/i.test(exercise.name||'')) return true;
+  if (avoid.includes('lunge') && /lunge|split squat/i.test(exercise.name||'')) return true;
+  if (avoid.includes('burpee') && /burpee/i.test(exercise.name||'')) return true;
+  if (avoid.includes('timed') && exercise.loadMode==='timed') return true;
+  const custom=(profile.customAvoid||[]).map(value=>String(value).toLowerCase());
+  if(custom.some(value=>value&&String(exercise.name||'').toLowerCase().includes(value)))return true;
   return false;
 }
 
@@ -1396,10 +1408,21 @@ function exerciseScore(exercise,profile,used){
   if (!used.has(exercise.id)) score+=8;
   const priorityMap={chest:['horizontal-push'],back:['horizontal-pull','vertical-pull'],shoulders:['vertical-push','shoulder-accessory'],arms:['biceps','triceps'],legs:['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'],glutes:['hinge','single-leg'],core:['core']};
   if((profile.priorities||[]).some(p=>(priorityMap[p]||[]).includes(exercise.movement)))score+=10;
+  const secondaryGoals=(profile.goals||[]).filter(goal=>goal!==(profile.primaryGoal||profile.goal));
+  if(secondaryGoals.includes('mobility')&&['single-leg','core','shoulder-accessory'].includes(exercise.movement))score+=2;
+  if(secondaryGoals.includes('athletic')&&['squat','hinge','single-leg','core'].includes(exercise.movement))score+=2;
+  if(secondaryGoals.includes('endurance')&&['core','single-leg','horizontal-pull'].includes(exercise.movement))score+=1;
   if (profile.experience === 'new' && exercise.difficulty === 'beginner') score+=7;
   if (profile.style === 'machines' && exercise.style === 'machine') score+=6;
   if (profile.style === 'free' && exercise.style === 'free') score+=6;
   if (profile.style === 'mixed') score+=2;
+  const prefer=profile.preferAvoid||[];
+  if(prefer.includes('overhead')&&exercise.movement==='vertical-push')score-=12;
+  if(prefer.includes('knee')&&['squat','single-leg','quad-accessory'].includes(exercise.movement))score-=12;
+  if(prefer.includes('hinge')&&['hinge','hamstring-accessory'].includes(exercise.movement))score-=12;
+  if(prefer.includes('floor')&&['plank','dead-bug','glute-bridge','db-floor-press','push-up'].includes(exercise.id))score-=12;
+  if(prefer.includes('running')&&/run|treadmill/i.test(exercise.name||''))score-=12;
+  if(prefer.includes('jumping')&&/jump|plyo|box/i.test(exercise.name||''))score-=12;
   if (exercise.style === 'bodyweight' && profile.equipment === 'bodyweight') score+=8;
   return score;
 }
@@ -1535,7 +1558,7 @@ function generatePlan(profile){
 }
 
 function planGoalLabel(goal){
-  return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Fat loss + conditioning',general:'General fitness'})[goal] || goal;
+  return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Lose body fat',endurance:'Improve endurance',mobility:'Improve mobility / flexibility',athletic:'Athletic performance',general:'Overall fitness',consistency:'Rebuild consistency',sport:'Support another sport / activity',partner:'Train with a partner',energy:'Feel better / more energy'})[goal] || goal;
 }
 function experienceLabel(v){ return ({new:'New to lifting',beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'})[v]||v; }
 function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home mix'})[v]||v; }
@@ -1566,6 +1589,9 @@ function renderPlanTimedRow(item,type,index){
 
 function saveProfileFromForm(form){
   if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
+  const previousProfile=clone(store.profile||{});
+  const previousPlan=clone(store.plan||null);
+  const previousProgram=clone(store.trainingProgram||{scheduleOverrides:{},weekReviews:{}});
   let data;
   try{
     data=new FormData(form);
@@ -1573,8 +1599,16 @@ function saveProfileFromForm(form){
     toast('Chrome could not read the plan form. Reload this page and try again.');
     return false;
   }
+  const goals=data.getAll('goals');
+  const primaryGoal=data.get('primaryGoal')||goals[0]||'muscle';
+  if(!goals.includes(primaryGoal))goals.unshift(primaryGoal);
+  const csv=name=>String(data.get(name)||'').split(',').map(value=>value.trim()).filter(Boolean);
+  const connectionInputs=[...form.querySelectorAll('[data-fitness-provider]')].filter(input=>input.checked).map(input=>input.dataset.fitnessProvider);
   const profile={
-    goal:data.get('goal')||'muscle',
+    goal:primaryGoal,
+    primaryGoal,
+    goals:[...new Set(goals)],
+    customGoal:String(data.get('customGoal')||'').trim(),
     displayName:String(data.get('displayName')||'').trim(),
     email:String(data.get('email')||'').trim(),
     gender:data.get('gender')||'',
@@ -1590,6 +1624,12 @@ function saveProfileFromForm(form){
     equipment:data.get('equipment')||'full-gym',
     style:data.get('style')||'mixed',
     avoid:data.getAll('avoid'),
+    preferAvoid:data.getAll('preferAvoid'),
+    customAvoid:csv('customAvoid'),
+    customPreferAvoid:csv('customPreferAvoid'),
+    cautionAreas:csv('cautionAreas'),
+    formatAvoid:csv('formatAvoid'),
+    fitnessConnections:connectionInputs,
     priorities:data.getAll('priorities').slice(0,2),
     lifts:{
       bench:num(data.get('bench')),
@@ -1599,6 +1639,11 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
+  if(!profile.goals.length&&!profile.customGoal){
+    toast('Choose at least one training goal or add your own.');
+    form.querySelector('[name="goals"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
   if(!profile.displayName){
     toast('Enter the display name you want to use in training and shared workouts.');
     form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -1642,7 +1687,7 @@ function saveProfileFromForm(form){
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
+  store.trainingProgram=previousPlan?previousProgram:{scheduleOverrides:{},weekReviews:{}};
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
     accountSheetOpen=true;
@@ -1653,6 +1698,9 @@ function saveProfileFromForm(form){
   }
   currentTab='home';
   render();
+  if(previousPlan){
+    setTimeout(()=>toast('Profile updated. Future workouts were rebuilt; history and progression were preserved.'),100);
+  }
   if(!persisted){
     setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
   }
@@ -2448,23 +2496,47 @@ function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard th
 function renderProfileEditor(){
   const p=store.profile||{};
   const lifts=p.lifts||{};
-  const checked=(field,value)=>p[field]===value?'checked':'';
+  const goals=Array.isArray(p.goals)&&p.goals.length?p.goals:[p.goal||'muscle'];
+  const primaryGoal=p.primaryGoal||p.goal||goals[0]||'muscle';
   const av=v=>(p.avoid||[]).includes(v)?'checked':'';
+  const pref=v=>(p.preferAvoid||[]).includes(v)?'checked':'';
   const scheduledDays=preferredWorkoutDays(p);
+  const goalOptions=[
+    ['muscle','Build muscle','Progressive overload + hypertrophy'],
+    ['strength','Get stronger','Heavier work + longer recovery'],
+    ['fat-loss','Lose body fat','Strength plus conditioning support'],
+    ['endurance','Improve endurance','More work capacity and conditioning'],
+    ['mobility','Improve mobility / flexibility','More movement preparation and mobility'],
+    ['athletic','Athletic performance','Strength, power and movement quality'],
+    ['general','Overall fitness','Balanced strength and work capacity'],
+    ['consistency','Rebuild consistency','Approachable sessions and repeatability'],
+    ['sport','Support another sport / activity','Training that complements another activity'],
+    ['partner','Train with a partner','Keep Together training in the mix'],
+    ['energy','Feel better / more energy','Sustainable movement and fitness']
+  ];
+  const avoidOptions=[
+    ['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises'],
+    ['running','Running'],['jumping','Jumping / high impact'],['squat','Barbell squats'],['deadlift','Conventional deadlifts'],
+    ['pullup','Pull-ups'],['dip','Dips'],['lunge','Lunges / split squats'],['burpee','Burpees'],['timed','Timed exercises']
+  ];
   return `
   <div class="onboard-shell">
-    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Your actual performance drives progression. Profile details help personalize scheduling, presentation, exercise selection, and future shared workouts without assuming strength from identity.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">${store.profile?'EDIT TRAINING PROFILE':'GET STARTED'}</p><h2 class="page-title">${store.profile?'Update how Workout trains you.':'Build your training profile.'}</h2><p class="page-copy">Everything here stays editable later. Changes rebuild future programming without deleting your workout history, PRs or progression.</p></div></div>
     <form id="profile-form" class="intake-form" novalidate>
-      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
-        <div class="choice-grid">
-          ${[['muscle','Build muscle','Moderate reps + progressive overload'],['strength','Get stronger','Heavier work + longer recovery'],['fat-loss','Fat loss + conditioning','Higher reps + shorter recovery'],['general','General fitness','Balanced strength and work capacity']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="goal" value="${v}" ${checked('goal',v)||(!p.goal&&v==='muscle'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want from your training?</h3><p>Select everything that matters. Then choose the primary goal that should drive your programming.</p></div></div>
+        <div class="choice-grid goal-multi-grid">
+          ${goalOptions.map(([v,t,d])=>`<label class="choice-card"><input type="checkbox" name="goals" value="${v}" ${goals.includes(v)?'checked':''}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        </div>
+        <div class="form-grid two sub-choice">
+          <label class="field"><span>PRIMARY GOAL</span><select name="primaryGoal">${goalOptions.map(([v,t])=>`<option value="${v}" ${primaryGoal===v?'selected':''}>${t}</option>`).join('')}</select></label>
+          <label class="field"><span>SOMETHING ELSE <em>OPTIONAL</em></span><input name="customGoal" value="${esc(p.customGoal||'')}" placeholder="e.g. prepare for hiking season"></label>
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Identity and body information stay separate from performance. Gender is stored for profile personalization and future relevant context, not used to guess your strength.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Identity stays separate from performance. Gender and pronouns are presentation data and never used to guess strength.</p></div></div>
         <div class="form-grid two identity-grid">
           <label class="field"><span>DISPLAY NAME</span><input name="displayName" autocomplete="name" value="${esc(store.account?.displayName||p.displayName||'')}" placeholder="How you want to appear"></label>
-          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for future account sign-in"></label>
+          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" readonly></label>
           <label class="field"><span>GENDER</span><select name="gender">${[['','Choose'],['woman','Woman'],['man','Man'],['nonbinary','Nonbinary'],['another','Another identity'],['prefer-not','Prefer not to say']].map(([v,label])=>`<option value="${v}" ${p.gender===v?'selected':''}>${label}</option>`).join('')}</select></label>
           <label class="field"><span>PRONOUNS <em>OPTIONAL</em></span><input name="pronouns" value="${esc(p.pronouns||'')}" placeholder="e.g. he/him"></label>
         </div>
@@ -2473,59 +2545,61 @@ function renderProfileEditor(){
           <label class="field"><span>HEIGHT</span><div class="inline-inputs"><input name="heightFeet" type="number" min="3" max="8" value="${esc(p.heightFeet||'')}" placeholder="5"><input name="heightInches" type="number" min="0" max="11" value="${esc(p.heightInches||'')}" placeholder="10"></div></label>
           <label class="field"><span>AGE RANGE</span><select name="ageRange">${['18-24','25-34','35-44','45-54','55-64','65+'].map(v=>`<option ${p.ageRange===v?'selected':''}>${v}</option>`).join('')}</select></label>
         </div>
-        <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
       </section>
 
-      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account connected</h3><p>${esc(store.account?.email||'Signed in')} · Your setup and training state sync through this account.</p></div></div>
-        <div class="profile-privacy-note"><strong>CONNECTED</strong><span>You can manage or sign out from your profile account controls after setup.</span></div>
-      </section>
       <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
-        <div class="choice-grid four">
-          ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
-        </div>
+        <div class="choice-grid four">${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${p.experience===v||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}</div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Your real schedule</h3><p>Choose how many days you train, which days they actually are, and how long you normally have.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Your real schedule</h3><p>Choose how often you train and the days that actually fit your week.</p></div></div>
         <div class="form-grid two">
           <label class="field"><span>DAYS PER WEEK</span><select name="days" id="training-days-count">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
           <label class="field"><span>MINUTES PER WORKOUT</span><select name="minutes">${[20,30,45,60,75].map(v=>`<option value="${v}" ${num(p.minutes||45)===v?'selected':''}>${v} minutes</option>`).join('')}</select></label>
         </div>
-        <div class="schedule-day-picker">
-          <div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days. You can change them later.</small></div>
-          <div class="weekday-pills">
-            ${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}
-          </div>
-        </div>
+        <div class="schedule-day-picker"><div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days.</small></div><div class="weekday-pills">${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}</div></div>
       </section>
 
       <section class="form-section"><div class="form-section-head"><span>05</span><div><h3>Where are you training?</h3><p>We only choose exercises your setup supports.</p></div></div>
-        <div class="choice-grid">
-          ${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
-        </div>
-        <div class="choice-grid three sub-choice">
-          ${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
-        </div>
+        <div class="choice-grid">${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${p.equipment===v||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
+        <div class="choice-grid three sub-choice">${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${p.style===v||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Training priorities</h3><p>Choose up to two body areas to emphasize.</p></div></div>
         <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
       </section>
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
-        <div class="form-grid five">
-          ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
+
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Recent working weights <em>optional</em></h3><p>These improve starting estimates. Leave blank if you do not know them.</p></div></div>
+        <div class="form-grid five">${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}</div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Exercise preferences & limitations</h3><p>Use <strong>Leave out</strong> for hard exclusions and <strong>Prefer alternatives</strong> when an exercise is okay but not your first choice.</p></div></div>
+        <p class="field-group-label">LEAVE OUT</p><div class="check-row">${avoidOptions.map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}</div>
+        <label class="field custom-preference-field"><span>CUSTOM LEAVE-OUTS</span><input name="customAvoid" value="${esc((p.customAvoid||[]).join(', '))}" placeholder="Comma-separated, e.g. box jumps, skull crushers"></label>
+        <p class="field-group-label">PREFER ALTERNATIVES</p><div class="check-row">${avoidOptions.map(([v,t])=>`<label class="check-pill soft"><input type="checkbox" name="preferAvoid" value="${v}" ${pref(v)}><span>${t}</span></label>`).join('')}</div>
+        <label class="field custom-preference-field"><span>CUSTOM PREFERENCES</span><input name="customPreferAvoid" value="${esc((p.customPreferAvoid||[]).join(', '))}" placeholder="Comma-separated exercises you would rather replace"></label>
+        <div class="form-grid two sub-choice">
+          <label class="field"><span>BODY AREAS TO BE CAREFUL WITH</span><input name="cautionAreas" value="${esc((p.cautionAreas||[]).join(', '))}" placeholder="e.g. knees, lower back, wrists"></label>
+          <label class="field"><span>TRAINING FORMAT TO AVOID</span><input name="formatAvoid" value="${esc((p.formatAvoid||[]).join(', '))}" placeholder="e.g. circuits, supersets, high impact"></label>
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
-        <div class="check-row">
-          ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
+      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Connected health & fitness</h3><p>Optional. Workout is designed for both iPhone and Android. Connections enhance training but are never required.</p></div></div>
+        <div class="fitness-connection-grid">
+          ${[
+            ['apple-health','Apple Health','iPhone','Native app bridge required'],
+            ['health-connect','Health Connect','Android','Native app bridge required'],
+            ['fitbit','Fitbit','iPhone + Android','Provider connection planned'],
+            ['garmin','Garmin','iPhone + Android','Provider connection planned'],
+            ['strava','Strava','iPhone + Android','Provider connection planned']
+          ].map(([id,name,platform,status])=>`<label class="fitness-connection-card"><div><span>${platform}</span><strong>${name}</strong><small>${status}</small></div><input class="fitness-provider-toggle" type="checkbox" data-fitness-provider="${id}" ${(p.fitnessConnections||[]).includes(id)?'checked':''}><b>${(p.fitnessConnections||[]).includes(id)?'SELECTED':'ADD'}</b></label>`).join('')}
         </div>
+        <div class="profile-privacy-note"><strong>Web prototype note</strong><span>Apple Health and Android Health Connect require a native app bridge. This build stores connection preferences and prepares the account model without pretending browser access exists.</span></div>
       </section>
-      <div class="form-actions"><button type="button" class="button large" data-action="build-plan">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
+
+      <div class="form-actions"><button type="button" class="button large" data-action="build-plan">${store.profile?'SAVE & REBUILD FUTURE PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
     </form>
   </div>`;
 }
-
 function skipScheduledSession(key){
   const program=ensureTrainingProgram();
   program.scheduleOverrides[key]={status:'skipped',updatedAt:new Date().toISOString()};
@@ -2967,7 +3041,29 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   if(renderNow&&currentTab==='together')render();
   return draft;
 }
+function stopSharedReconciliation(){
+  if(sharedRuntime.reconcileTimer){clearInterval(sharedRuntime.reconcileTimer);sharedRuntime.reconcileTimer=null;}
+  sharedRuntime.reconcileBusy=false;
+}
+function startSharedReconciliation(sessionId){
+  stopSharedReconciliation();
+  if(!sessionId)return;
+  sharedRuntime.reconcileTimer=setInterval(async()=>{
+    if(document.visibilityState==='hidden'||sharedRuntime.reconcileBusy||sharedRuntime.sessionId!==sessionId)return;
+    sharedRuntime.reconcileBusy=true;
+    try{await fetchSharedSessionState(sessionId,{renderNow:currentTab==='together'});}
+    catch(error){console.warn('Together reconciliation failed',error);}
+    finally{sharedRuntime.reconcileBusy=false;}
+  },4000);
+}
+async function refreshTogetherFromSource(){
+  const draft=sharedTrainingState().draft;
+  if(!draft?.backendId||!workoutSupabase)return;
+  try{await fetchSharedSessionState(draft.backendId,{renderNow:currentTab==='together'});}
+  catch(error){console.warn('Together foreground refresh failed',error);}
+}
 async function unsubscribeSharedSession(){
+  stopSharedReconciliation();
   if(sharedRuntime.syncTimer){clearTimeout(sharedRuntime.syncTimer);sharedRuntime.syncTimer=null;}
   const channel=sharedRuntime.channel;
   sharedRuntime.channel=null;
@@ -2999,6 +3095,7 @@ function updateSharedFromPresence(){
   }
   saveSharedBackendDraft(draft);
   if(currentTab==='together')render();
+  fetchSharedSessionState(draft.backendId,{renderNow:currentTab==='together'}).catch(error=>console.warn('Together presence reconcile failed',error));
 }
 async function subscribeSharedSession(draft){
   if(!workoutSupabase||!draft?.backendId||store.account?.status!=='connected')return;
@@ -3014,6 +3111,7 @@ async function subscribeSharedSession(draft){
   });
   sharedRuntime.channel=channel;
   sharedRuntime.sessionId=draft.backendId;
+  startSharedReconciliation(draft.backendId);
   channel
     .on('presence',{event:'sync'},()=>updateSharedFromPresence())
     .on('presence',{event:'join'},()=>updateSharedFromPresence())
@@ -3509,7 +3607,8 @@ function renderProfileHub(){
   return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large">'+esc((name[0]||'Y').toUpperCase())+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
-      '<button data-action="edit-profile"><div><span>TRAINING PROFILE</span><strong>Goals, schedule, gender, equipment, preferences</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><div><span>TRAINING PROFILE</span><strong>Goals, schedule, equipment, preferences & limitations</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><div><span>CONNECTED FITNESS</span><strong>'+((p.fitnessConnections||[]).length?((p.fitnessConnections||[]).length+' connection'+((p.fitnessConnections||[]).length===1?'':'s')):'Apple Health, Health Connect, Fitbit, Garmin, Strava')+'</strong></div><em>›</em></button>'+
       '<button data-action="train"><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -4161,6 +4260,7 @@ function handleClick(event){
   else if(a==='copy-shared-code')copySharedCode();
   else if(a==='save-together-settings')saveTogetherSettings();
   else if(a==='confirm-together-plan')confirmTogetherPlan();
+
   else if(a==='account-info'){accountSheetOpen=true;render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
@@ -4289,16 +4389,21 @@ document.addEventListener('keydown',event=>{
 });
 tickHandle=window.setInterval(updateTimers,500);
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible') updateTimers();
+  if(document.visibilityState==='visible'){
+    updateTimers();
+    refreshTogetherFromSource();
+    const draft=sharedTrainingState().draft;
+    if(draft?.backendId&&!sharedRuntime.reconcileTimer)startSharedReconciliation(draft.backendId);
+  }
 });
 window.addEventListener('pageshow',event=>{
-  if(event.persisted){
-    window.location.reload();
-  }
+  if(event.persisted){window.location.reload();return;}
+  refreshTogetherFromSource();
 });
 window.addEventListener('beforeunload',()=>{
   persistUiState();
   if(tickHandle)clearInterval(tickHandle);
+  stopSharedReconciliation();
   try{sharedRuntime.channel?.untrack();}catch{}
 });
 render();
