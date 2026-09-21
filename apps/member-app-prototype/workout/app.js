@@ -1933,17 +1933,12 @@ function renderExerciseReview(pos){
 function renderWorkoutMap(){
   if(!workoutMapOpen||!store.activeWorkout)return '';
   const w=store.activeWorkout;
-  return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal" data-workout-map-panel role="dialog" aria-modal="true">'+
-    '<button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><p class="eyebrow">WORKOUT MAP</p><h2>'+esc(w.routineName)+'</h2><p>Jump around without losing completed work. Moving an exercise later changes order, not its training target.</p></div>'+
+  return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal clean-workout-map" data-workout-map-panel role="dialog" aria-modal="true">'+
+    '<button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><p class="eyebrow">WORKOUT MAP</p><h2>'+esc(w.routineName)+'</h2><p>Tap an exercise to open it. Use ••• for swap, move, complete, or skip.</p></div>'+
     '<div class="workout-map-list">'+w.exercises.map((ex,index)=>{
       const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
-      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><div class="map-number">'+String(index+1).padStart(2,'0')+'</div><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' logged sets</span></div><div class="map-actions">'+
-        (w.phase!=='intro'?'<button class="text-button" data-action="jump-exercise" data-exercise-index="'+index+'">OPEN</button>':'')+
-        (!exerciseCountsAsResolved(ex)?'<button class="text-button" data-action="mark-exercise-complete" data-exercise-index="'+index+'">MARK COMPLETE</button>':'')+
-        (state==='completed-manually'?'<button class="text-button muted" data-action="undo-manual-exercise" data-exercise-index="'+index+'">UNDO</button>':'')+
-        (state==='skipped'?'<button class="text-button muted" data-action="restore-exercise" data-exercise-index="'+index+'">RESTORE</button>':(!exerciseCountsAsResolved(ex)?'<button class="text-button muted" data-action="skip-exercise" data-exercise-index="'+index+'">SKIP</button>':''))+
-        (index<w.exercises.length-1&&!exerciseCountsAsResolved(ex)?'<button class="text-button muted" data-action="move-exercise-later" data-exercise-index="'+index+'">MOVE LATER</button>':'')+
-      '</div></article>';
+      const status=state==='complete'?'✓':state==='completed-manually'?'✓ MANUAL':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIPPED':'';
+      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(w.phase!=='intro'?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1).padStart(2,'0')+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'" aria-label="Options for '+esc(ex.name)+'">•••</button></article>';
     }).join('')+'</div></section></div>';
 }
 
@@ -2247,18 +2242,21 @@ function bestLabel(exerciseId){
 
 function renderWorkoutReview(w){
   const actualSets=completedSets(w.exercises),resolved=workoutResolvedCount(w),fullyResolved=workoutIsFullyResolved(w);
+  const skipped=w.exercises.filter(ex=>exerciseState(ex)==='skipped').length;
   const rows=w.exercises.map((ex,index)=>{
     const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
-    return '<article class="final-review-row"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' logged sets</span>'+(ex.skipReason?'<small>'+esc(ex.skipReason)+'</small>':'')+'</div><button class="text-button" data-action="jump-from-review" data-exercise-index="'+index+'">REVIEW</button></article>';
+    const status=state==='complete'?'✓':state==='completed-manually'?'✓ Manual':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'Skipped':'Not finished';
+    return '<button class="final-review-row clean-review-row" data-action="jump-from-review" data-exercise-index="'+index+'"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(status)+'</span></div><em>›</em></button>';
   }).join('');
-  return '<div class="workout-final-review"><p class="eyebrow">FINAL REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check the session before it becomes training history. Manual completions count for adherence but never invent weight, reps, volume, or PRs.</p>'+
-    '<div class="review-summary-grid"><div><span>EXERCISES RESOLVED</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>LOGGED SETS</span><strong>'+actualSets+'</strong></div><div><span>STATUS</span><strong>'+(fullyResolved?'READY TO SAVE':'INCOMPLETE')+'</strong></div></div>'+
+  return '<div class="workout-final-review clean-final-review"><div class="summary-check">'+(fullyResolved?'✓':'◐')+'</div><p class="eyebrow">WORKOUT REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check anything that needs correcting before this session becomes training history.</p>'+
+    '<div class="review-summary-grid clean-review-summary"><div><span>EXERCISES</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>SETS LOGGED</span><strong>'+actualSets+'/'+totalSets(w.exercises)+'</strong></div><div><span>SKIPPED</span><strong>'+skipped+'</strong></div></div>'+
     '<div class="final-review-list">'+rows+'</div>'+
     '<div class="final-review-actions">'+
       (fullyResolved?'<button class="button primary-action" data-action="save-workout-complete">FINISH & SAVE</button>':'<button class="button primary-action" data-action="finish-workout-anyway">FINISH ANYWAY</button><button class="button secondary" data-action="save-workout-partial">SAVE AS PARTIAL</button>')+
-      '<button class="button secondary" data-action="continue-workout">CONTINUE WORKOUT</button><button class="button danger" data-action="discard">DISCARD WORKOUT</button></div>'+
+      '<button class="text-button" data-action="continue-workout">CONTINUE WORKOUT</button><button class="text-button danger-text" data-action="discard">DISCARD WORKOUT</button></div>'+
   '</div>';
 }
+
 function openWorkoutReview(){
   const w=store.activeWorkout;if(!w)return;
   pauseInteractiveTimers(w);
