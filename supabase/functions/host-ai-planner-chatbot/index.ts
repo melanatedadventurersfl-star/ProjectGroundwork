@@ -1,7 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.55.0";
 
-const MODEL = Deno.env.get("HOST_AI_PLANNER_MODEL") || "gpt-4.1";
+const CONFIGURED_MODEL = (Deno.env.get("HOST_AI_PLANNER_MODEL") || "").trim();
+const DEFAULT_MODEL = "gpt-4.1-mini";
+const MODEL_CANDIDATES = [...new Set([CONFIGURED_MODEL, DEFAULT_MODEL, "gpt-4.1"].filter(Boolean))];
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const plannerSections = [
@@ -153,10 +155,15 @@ function outputText(payload: any) {
   return "";
 }
 
-function fallback(message: string, section: string, reason: string) {
+function failureCode(payload: any, status: number) {
+  const code = clean(payload?.error?.code || payload?.error?.type, 80);
+  return code ? `HTTP ${status} ${code}` : `HTTP ${status}`;
+}
+
+function fallback(message: string, section: string, reason: string, attemptedModels = MODEL_CANDIDATES) {
   return {
     engine: "fallback",
-    model: MODEL,
+    model: attemptedModels.at(-1) || DEFAULT_MODEL,
     message: message
       ? "The AI planner did not answer this turn. I kept your event plan unchanged instead of guessing. Try that message again."
       : "Tell me what you want to plan.",
@@ -175,7 +182,70 @@ function fallback(message: string, section: string, reason: string) {
     sectionUpdates: [],
     affectedSections: [],
     debugReason: reason,
+    attemptedModels,
   };
+}
+
+async function callPlannerModel(openAiKey: string, instructions: string, source: string) {
+  const failures: string[] = [];
+
+  for (const model of MODEL_CANDIDATES) {
+    try {
+      const upstream = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          instructions,
+          input: [{ role: "user", content: [{ type: "input_text", text: source }] }],
+          text: {
+            format: {
+              type: "json_schema",
+              name: "event_planner_chatbot_turn",
+              strict: true,
+              schema: responseSchema(),
+            },
+          },
+        }),
+      });
+
+      let payload: any = null;
+      try {
+        payload = await upstream.json();
+      } catch (parseError) {
+        console.error("host-ai-planner-chatbot upstream json", model, parseError);
+      }
+
+      if (!upstream.ok) {
+        const reason = failureCode(payload, upstream.status);
+        failures.push(`${model}: ${reason}`);
+        console.error("host-ai-planner-chatbot upstream", model, reason, payload);
+        continue;
+      }
+
+      const text = outputText(payload);
+      if (!text) {
+        failures.push(`${model}: no output text`);
+        console.error("host-ai-planner-chatbot no output", model, payload);
+        continue;
+      }
+
+      try {
+        return { parsed: JSON.parse(text), model, failures };
+      } catch (parseError) {
+        failures.push(`${model}: output parse failure`);
+        console.error("host-ai-planner-chatbot parse", model, parseError);
+      }
+    } catch (requestError) {
+      failures.push(`${model}: request failure`);
+      console.error("host-ai-planner-chatbot request", model, requestError);
+    }
+  }
+
+  return { parsed: null, model: "", failures };
 }
 
 async function canUsePlanner(userClient: any, userId: string, tenant: any) {
@@ -311,43 +381,18 @@ Stay tenant-neutral. Never assume this organization is Go Melanated, an outdoor 
 QUALITY BAR
 Behave like an experienced event coordinator in a chat conversation. Understand implications rather than matching phrases. Preserve prior confirmed facts unless the host changes them. If the user corrects something, replace the old decision and clear conflicting state when necessary. If you are uncertain whether a statement is a decision, keep it tentative instead of pretending it is confirmed.`;
 
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openAiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        instructions,
-        input: [{ role: "user", content: [{ type: "input_text", text: source }] }],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "event_planner_chatbot_turn",
-            strict: true,
-            schema: responseSchema(),
-          },
-        },
-      }),
+    const result = await callPlannerModel(openAiKey, instructions, source);
+    if (!result.parsed) {
+      return json(fallback(message, section, result.failures.join(" | ") || "All model attempts failed"));
+    }
+
+    return json({
+      ...result.parsed,
+      engine: "ai",
+      model: result.model,
+      attemptedModels: MODEL_CANDIDATES,
+      priorModelFailures: result.failures,
     });
-
-    const payload = await upstream.json();
-    if (!upstream.ok) {
-      console.error("host-ai-planner-chatbot upstream", payload);
-      return json(fallback(message, section, `OpenAI response ${upstream.status}`));
-    }
-
-    const text = outputText(payload);
-    if (!text) return json(fallback(message, section, "No model output text"));
-
-    try {
-      const parsed = JSON.parse(text);
-      return json({ ...parsed, engine: "ai", model: MODEL });
-    } catch (parseError) {
-      console.error("host-ai-planner-chatbot parse", parseError);
-      return json(fallback(message, section, "Model output could not be parsed"));
-    }
   } catch (error) {
     console.error("host-ai-planner-chatbot", error);
     return json(fallback(message, section, "Unhandled chatbot error"));
