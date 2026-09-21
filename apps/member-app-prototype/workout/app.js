@@ -11,6 +11,8 @@ const WORKOUT_SUPABASE_URL = 'https://hqndxityqrdiiwqyjagu.supabase.co';
 const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_wO8rsulmxmOlZCve3z-DIw_wkJrXn4K';
 let workoutSupabase = null;
 const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
+let cloudSyncTimer=null;
+let cloudHydrating=false;
 let exerciseDetailId = null;
 let swapContext = null;
 let readinessContext = null;
@@ -112,6 +114,30 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
+function cloudStatePayload(){
+  return {user_id:store.account?.userId,profile:store.profile,plan:store.plan,calibration:store.calibration||{},progression:store.progression||{},progression_log:store.progressionLog||[],exercise_preferences:store.exercisePreferences||{},training_program:store.trainingProgram||{},cue_settings:store.cueSettings||{},history:store.history||[],active_workout:store.activeWorkout||null,last_summary_id:store.lastSummaryId||null,onboarding_complete:Boolean(store.profile&&store.plan),onboarding_step:store.profile&&store.plan?'complete':'profile',updated_at:new Date().toISOString()};
+}
+function scheduleCloudStateSync(){
+  if(cloudHydrating||!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer=setTimeout(()=>syncCloudState().catch(error=>console.warn('Workout cloud sync failed',error)),350);
+}
+async function syncCloudState(){
+  if(!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  const {error}=await workoutSupabase.from('workout_user_state').upsert(cloudStatePayload(),{onConflict:'user_id'});
+  if(error)throw error;
+}
+async function hydrateCloudState(userId){
+  if(!workoutSupabase||!userId)return false;
+  const {data,error}=await workoutSupabase.from('workout_user_state').select('*').eq('user_id',userId).maybeSingle();
+  if(error)throw error;
+  if(!data){await syncCloudState();return false;}
+  cloudHydrating=true;
+  for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['active_workout','activeWorkout'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
+  if(store.profile&&store.plan&&currentTab==='profile-edit')currentTab=store.activeWorkout?'workout':'home';
+  render();return true;
+}
 function saveStore(){
   let persisted=true;
   try{
@@ -121,6 +147,7 @@ function saveStore(){
   }
   syncLiveBadge();
   if(!sharedRuntime.syncMuted)scheduleSharedStateSync();
+  scheduleCloudStateSync();
   return persisted;
 }
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
@@ -1228,6 +1255,12 @@ function computeProgression(ex,feedback){
   };
 }
 
+function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
+  if(!items.length)return items;
+  const target=Math.max(minSeconds,Math.min(maxSeconds,targetSeconds));
+  const each=Math.max(20,Math.round(target/items.length/5)*5);
+  return items.map(item=>({...item,seconds:each}));
+}
 function buildWarmup(exercises){
   const moves=new Set(exercises.map(e=>e.movement));
   const items=[{
@@ -1270,7 +1303,7 @@ function buildWarmup(exercises){
     why:'Opens the hips and adds single-leg movement before training.',
     mediaId:'Crossover_Reverse_Lunge'
   });
-  return items.slice(0,4);
+  return normalizeTimedStage(items.slice(0,5),exercises.length<=3?180:exercises.length>=7?300:240,180,300);
 }
 
 function buildCooldown(exercises){
@@ -1332,7 +1365,7 @@ function buildCooldown(exercises){
     why:'Brings your breathing down and finishes the session gradually.',
     mediaId:'Upward_Stretch'
   });
-  return items.slice(0,4);
+  return normalizeTimedStage(items.slice(0,4),exercises.length<=3?60:exercises.length>=7?180:120,60,180);
 }
 
 function equipmentAllows(exercise,equipment){
@@ -1353,6 +1386,8 @@ function avoided(exercise,profile){
 function exerciseScore(exercise,profile,used){
   let score=0;
   if (!used.has(exercise.id)) score+=8;
+  const priorityMap={chest:['horizontal-push'],back:['horizontal-pull','vertical-pull'],shoulders:['vertical-push','shoulder-accessory'],arms:['biceps','triceps'],legs:['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'],glutes:['hinge','single-leg'],core:['core']};
+  if((profile.priorities||[]).some(p=>(priorityMap[p]||[]).includes(exercise.movement)))score+=10;
   if (profile.experience === 'new' && exercise.difficulty === 'beginner') score+=7;
   if (profile.style === 'machines' && exercise.style === 'machine') score+=6;
   if (profile.style === 'free' && exercise.style === 'free') score+=6;
@@ -1547,6 +1582,7 @@ function saveProfileFromForm(form){
     equipment:data.get('equipment')||'full-gym',
     style:data.get('style')||'mixed',
     avoid:data.getAll('avoid'),
+    priorities:data.getAll('priorities').slice(0,2),
     lifts:{
       bench:num(data.get('bench')),
       squat:num(data.get('squat')),
@@ -1628,35 +1664,20 @@ function readinessScore(readiness){
   return values.length?Math.round((values.reduce((a,b)=>a+b,0)/values.length)*10)/10:3;
 }
 function applyReadinessToDay(day,readiness){
-  const adjusted=clone(day);
-  const score=readinessScore(readiness);
+  const adjusted=clone(day),score=readinessScore(readiness);
   const available=Math.max(15,num(readiness?.timeAvailable)||num(store.profile?.minutes)||45);
-  const notes=[];
-  if(score<2.7){
-    for(const ex of adjusted.exercises){
-      if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
-    }
-    notes.push('Today’s readiness is lower, so accessory volume was trimmed.');
-  }
+  const energy=num(readiness?.energy)||3,sleep=num(readiness?.sleep)||3,soreness=num(readiness?.soreness)||2,notes=[];
+  adjusted.readinessLoadFactor=1;adjusted.readinessRestBonus=0;adjusted.holdProgression=false;
+  if(energy<=2){adjusted.readinessLoadFactor=.95;for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;adjusted.readinessRestBonus=15;notes.push('Low energy: accessory volume reduced and rest extended.');}
+  if(sleep<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);adjusted.holdProgression=true;adjusted.readinessRestBonus=Math.max(adjusted.readinessRestBonus,15);notes.push('Poor sleep: today holds load progression and uses a conservative prescription.');}
+  if(soreness>=4){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.9);adjusted.holdProgression=true;for(const ex of adjusted.exercises)if(ex.sets>2)ex.sets-=1;notes.push('High soreness: working volume and loading were reduced for recovery.');}
+  else if(soreness===3){for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;notes.push('Moderate soreness: optional accessory volume was trimmed.');}
   recalculatePlanDay(adjusted);
-  while(adjusted.estimatedMinutes>available&&adjusted.exercises.length>2){
-    const index=[...adjusted.exercises].reverse().findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));
-    if(index<0)break;
-    adjusted.exercises.splice(adjusted.exercises.length-1-index,1);
-    recalculatePlanDay(adjusted);
-  }
-  for(let i=adjusted.exercises.length-1;i>=0&&adjusted.estimatedMinutes>available;i--){
-    while(adjusted.exercises[i]?.sets>2&&adjusted.estimatedMinutes>available){
-      adjusted.exercises[i].sets-=1;
-      recalculatePlanDay(adjusted);
-    }
-  }
-  if(adjusted.estimatedMinutes>available)notes.push('This session is already at its minimum useful structure, so the estimate may run slightly past your available time.');
-  else if(available<num(store.profile?.minutes)||45)notes.push('The session was shortened to fit the time you have today.');
-  adjusted.readinessNotes=notes;
-  adjusted.readinessScore=score;
-  adjusted.availableMinutes=available;
-  return adjusted;
+  while(adjusted.estimatedMinutes>available&&adjusted.exercises.length>2){const index=[...adjusted.exercises].reverse().findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));if(index<0)break;adjusted.exercises.splice(adjusted.exercises.length-1-index,1);recalculatePlanDay(adjusted);}
+  for(let i=adjusted.exercises.length-1;i>=0&&adjusted.estimatedMinutes>available;i--)while(adjusted.exercises[i]?.sets>2&&adjusted.estimatedMinutes>available){adjusted.exercises[i].sets-=1;recalculatePlanDay(adjusted);}
+  if(adjusted.estimatedMinutes>available)notes.push('The minimum useful session may run slightly past your available time.');
+  else if(available<(num(store.profile?.minutes)||45))notes.push('Time available: the session was shortened while protecting priority work.');
+  adjusted.readinessNotes=notes;adjusted.readinessScore=score;adjusted.availableMinutes=available;return adjusted;
 }
 function scheduledEntryFor(dayId,scheduledDate=''){
   const key=scheduledDate||dateKey();
@@ -1733,9 +1754,11 @@ function createWorkout(day,meta={}){
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
       const adaptive=adaptivePrescription(ex);
-      const suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
+      let suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
       const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
-      const suggestedRest=Math.max(30,Math.min(60,adaptive?.rest || ex.rest || 45));
+      if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
+      if(day.readinessLoadFactor<1&&isWeightedMode(ex.loadMode)&&suggestedWeight)suggestedWeight=roundTo(suggestedWeight*day.readinessLoadFactor,ex.increment||5);
+      const suggestedRest=Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
       const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
       const weightValue=noWeight?'':(ex.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
       return {
@@ -2588,7 +2611,7 @@ function applyWorkoutSession(session){
   sharedRuntime.syncMuted=false;
   render();
   if(session?.user?.id){
-    queueMicrotask(()=>restoreSharedWorkoutSession(session.user.id).catch(error=>console.warn('Shared workout restore failed',error)));
+    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await restoreSharedWorkoutSession(session.user.id);}catch(error){console.warn('Workout account restore failed',error);}});
   }else if(previousUserId){
     unsubscribeSharedSession();
   }
@@ -3333,7 +3356,7 @@ function renderWorkoutIntro(w){
   return '<div class="clean-session-intro">'+
     '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
     '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
-    (first?'<section class="clean-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(first.sets.length+' × '+first.reps)+' · '+esc(equipmentRequirement(exerciseSource(first)))+'</p></div></section>':'')+
+    (w.warmup?.length?'<section class="clean-panel intro-warmup-card"><span>STARTS WITH</span><h3>Dynamic Warm-Up · '+Math.ceil(w.warmup.reduce((sum,item)=>sum+(item.seconds||0),0)/60)+' min</h3><p>Your workout begins with movement prep selected for today’s exercises.</p></section>':'')+(first?'<section class="clean-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST WORKING EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(first.sets.length+' × '+first.reps)+' · '+esc(equipmentRequirement(exerciseSource(first)))+'</p></div></section>':'')+
     '<section class="clean-panel intro-update-card"><span>TODAY’S UPDATE</span><strong>'+esc(topNote)+'</strong>'+(notes.length>1?'<button class="text-button" data-action="open-workout-map">Review session</button>':'')+'</section>'+
     '<button class="button primary-action intro-begin" data-action="begin-session">BEGIN WORKOUT</button>'+
     '<button class="text-button intro-review" data-action="open-workout-map">REVIEW / REORDER SESSION</button>'+
