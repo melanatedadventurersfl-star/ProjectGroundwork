@@ -1642,7 +1642,7 @@ function saveProfileFromForm(form){
     accountSheetOpen=true;
     currentTab='profile-edit';
     render();
-    setTimeout(()=>toast(store.account?.status==='pending'?'Confirm your email and sign in so this plan can follow you between browsers.':'Create or sign in to your account to finish setup and sync your plan.'),100);
+    setTimeout(()=>toast('Create or sign in to your Workout account to finish setup and sync your plan.'),100);
     return true;
   }
   currentTab='home';
@@ -2589,6 +2589,7 @@ function displayName(){
 }
 async function initWorkoutAuth(){
   try{
+    if(/(?:[?#&])type=recovery(?:[&#]|$)|[?&]recovery=1/.test(window.location.href))authMode='reset';
     if(!window.supabase?.createClient){authReady=true;render();return;}
     workoutSupabase=window.supabase.createClient(WORKOUT_SUPABASE_URL,WORKOUT_SUPABASE_PUBLISHABLE_KEY,{
       auth:{
@@ -2682,7 +2683,7 @@ async function sendWorkoutPasswordReset(){
   if(!workoutSupabase){toast('Account service is unavailable.');return;}
   const email=(document.querySelector('#forgot-email')?.value||'').trim().toLowerCase();
   if(!email){toast('Enter the email for your Workout account.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
+  const redirectTo=window.location.origin+window.location.pathname+'?recovery=1';
   const {error}=await workoutSupabase.auth.resetPasswordForEmail(email,{redirectTo});
   if(error){toast(error.message||'Could not send the reset email.');return;}
   store.account={...(store.account||{}),email};saveStore();
@@ -2697,6 +2698,7 @@ async function saveRecoveredPassword(){
   const {error}=await workoutSupabase.auth.updateUser({password});
   if(error){toast(error.message||'Could not update the password.');return;}
   authMode='entry';
+  try{history.replaceState({},'',window.location.pathname);}catch{}
   toast('Password updated.');
   render();
 }
