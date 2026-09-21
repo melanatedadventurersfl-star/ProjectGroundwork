@@ -14,6 +14,7 @@ let setEditContext = null;
 let cueSettingsOpen = false;
 let exerciseActionsIndex = null;
 let historyMenuId = null;
+let historyFilter = 'all';
 
 const defaultStore = {
   profile: null,
@@ -2494,11 +2495,16 @@ function weeklyVolumeValue(){
   return weeklyHistory().reduce((sum,item)=>sum+(item.totalVolume||0),0);
 }
 function renderCompactWeek(schedule){
-  return '<div class="compact-week">'+schedule.map(entry=>{
-    const marker=entry.status==='complete'?'✓':entry.status==='partial'?'½':entry.status==='missed'?'!':entry.status==='today'?'TODAY':'';
-    return '<button class="compact-day status-'+entry.status+'" type="button" '+(!store.activeWorkout&&!['complete','skipped'].includes(entry.status)?'data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'"':'')+'><span>'+esc(entry.dayName.slice(0,3))+'</span><strong>'+entry.date.getDate()+'</strong><em>'+marker+'</em></button>';
+  const context=programContext();
+  return '<div class="compact-week">'+TRAINING_DAYS.map(dayDef=>{
+    const entry=schedule.find(item=>item.dayId===dayDef.id);
+    const date=addDays(context.weekStart,dayOffsetFromMonday(dayDef.id));
+    const status=entry?.status||'rest';
+    const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'TODAY':'';
+    return '<button class="compact-day status-'+status+'" type="button" '+(entry&&!store.activeWorkout&&!['complete','skipped'].includes(status)?'data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'"':'')+'><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><em>'+marker+'</em></button>';
   }).join('')+'</div>';
 }
+
 function renderTrain(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
   const schedule=currentWeekSchedule();
@@ -2550,13 +2556,14 @@ function createSharedDraft(){
   const contact=(document.querySelector('#shared-partner-contact')?.value||'').trim();
   const mode=document.querySelector('#shared-mode')?.value||'same-gym';
   const pace=document.querySelector('#shared-pace')?.value||'stay-together';
+  const setFlow=document.querySelector('#shared-set-flow')?.value||'alternating';
   if(!name){toast('Enter your workout partner’s name.');return;}
   const shared=sharedTrainingState();
   const partner={id:uid('partner'),name,contact,status:'invited'};
   const existing=shared.partners.find(item=>item.contact&&contact&&item.contact.toLowerCase()===contact.toLowerCase());
   if(!existing)shared.partners.push(partner);
   const code=String(Math.floor(100000+Math.random()*900000));
-  shared.draft={id:uid('shared'),createdAt:new Date().toISOString(),dayId:next.day.id,scheduledDate:next.dateKey,routineName:next.adaptedDay?.name||next.day.name,partnerId:(existing||partner).id,partnerName:name,partnerContact:contact,partnerStatus:'invited',mode,pace,leadAudio:'you',code};
+  shared.draft={id:uid('shared'),createdAt:new Date().toISOString(),dayId:next.day.id,scheduledDate:next.dateKey,routineName:next.adaptedDay?.name||next.day.name,partnerId:(existing||partner).id,partnerName:name,partnerContact:contact,partnerStatus:'invited',userStatus:'ready',mode,pace,setFlow,leadAudio:'you',code};
   saveStore();render();
 }
 function sharedDraftDay(draft){
@@ -2576,14 +2583,14 @@ function renderTogether(){
     return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Shared session lobby.</h2><p>The session is shared. Each person keeps their own weights, reps, readiness, history, and progression.</p></div><button class="text-button danger-text" data-action="cancel-shared-draft">CANCEL</button></div>'+
       '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</p><div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div></section>'+
       '<div class="participant-grid"><article class="participant-card ready"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU</span><strong>'+esc(displayName())+'</strong><small>Ready</small></div><em>✓</em></article><article class="participant-card '+(partnerReady?'ready':'pending')+'"><div class="participant-avatar">'+esc((draft.partnerName[0]||'P').toUpperCase())+'</div><div><span>PARTNER</span><strong>'+esc(draft.partnerName)+'</strong><small>'+(partnerReady?'Ready':'Invite pending')+'</small></div><em>'+(partnerReady?'✓':'…')+'</em></article></div>'+
-      '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>LEAD AUDIO</span><strong>Your phone</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
+      '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>Your phone</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
       '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
       '<div class="shared-lobby-actions">'+(!partnerReady?'<button class="button secondary" data-action="simulate-partner-ready">MARK PARTNER JOINED</button>':'<button class="button primary-action" data-action="start-shared-workout">START TOGETHER</button>')+'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button></div>'+
     '</div>';
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. V1 keeps each person’s performance record separate.</p></div></div>'+
     '<section class="together-hero"><div class="together-icon">◎</div><div><span>NEXT AVAILABLE WORKOUT</span><h3>'+esc(next?.adaptedDay?.name||next?.day?.name||'No session scheduled')+'</h3><p>'+(next?esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min':'Schedule a workout first.')+'</p></div></section>'+
-    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Invite one workout partner</h3></div></div><div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE</span><input id="shared-partner-contact" placeholder="Optional for prototype"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
+    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Invite one workout partner</h3></div></div><div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE</span><input id="shared-partner-contact" placeholder="Optional for prototype"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label><label class="field"><span>SET FLOW</span><select id="shared-set-flow"><option value="alternating">Alternating Sets</option><option value="parallel">Parallel Sets</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
     (shared.partners.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT PARTNERS</p><h3>Recent partners</h3></div></div><div class="partner-list">'+shared.partners.slice(-5).reverse().map(item=>'<div class="partner-row"><div class="participant-avatar">'+esc((item.name[0]||'P').toUpperCase())+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(item.contact||'Saved locally')+'</small></div></div>').join('')+'</div></section>':'')+
     '<section class="prototype-note"><strong>Account-backed sync is the next infrastructure step.</strong><span>This prototype models the lobby and privacy boundaries without pretending local browser state is real authentication or remote presence.</span></section>'+
   '</div>';
@@ -2617,12 +2624,20 @@ function renderExerciseActionsSheet(){
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-exercise-actions"><section class="bottom-sheet" data-exercise-actions-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">EXERCISE OPTIONS</p><h2>'+esc(ex.name)+'</h2></div><button class="modal-close" data-action="close-exercise-actions">×</button></div><div class="sheet-action-list">'+
     '<button data-exercise-detail="'+esc(ex.id)+'"><span>ⓘ</span><div><strong>View exercise details</strong><small>Form, setup, cues, history</small></div></button>'+
     (!exerciseCountsAsResolved(ex)?'<button data-action="swap-active" data-swap-index="'+index+'"><span>⇄</span><div><strong>Swap exercise</strong><small>Choose a compatible alternative</small></div></button><button data-action="move-exercise-later" data-exercise-index="'+index+'"><span>↓</span><div><strong>Move to later</strong><small>Keep it in the workout, change the order</small></div></button><button data-action="mark-exercise-complete" data-exercise-index="'+index+'"><span>✓</span><div><strong>Mark as complete</strong><small>No fake weight or rep data</small></div></button><button data-action="skip-exercise" data-exercise-index="'+index+'"><span>⊘</span><div><strong>Skip exercise</strong><small>Leave it unresolved for performance data</small></div></button>':'')+
+    (state==='completed-manually'?'<button data-action="undo-manual-exercise" data-exercise-index="'+index+'"><span>↺</span><div><strong>Undo manual completion</strong><small>Return the exercise to an unfinished state</small></div></button>':'')+
     (state==='skipped'?'<button data-action="restore-exercise" data-exercise-index="'+index+'"><span>↺</span><div><strong>Restore exercise</strong><small>Return it to the workout</small></div></button>':'')+
     '</div></section></div>';
 }
 function renderHistoryMenuSheet(){
   const item=store.history.find(entry=>entry.id===historyMenuId);if(!item)return '';
-  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-history-menu"><section class="bottom-sheet" data-history-menu-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT OPTIONS</p><h2>'+esc(item.routineName)+'</h2><p>'+esc(formatDate(item.completedAt))+'</p></div><button class="modal-close" data-action="close-history-menu">×</button></div><div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
+  const rows=(item.exercises||[]).map(ex=>{
+    const done=(ex.sets||[]).filter(set=>set.completed).length;
+    return '<div class="history-detail-row"><strong>'+esc(ex.name)+'</strong><span>'+done+'/'+(ex.sets?.length||0)+' sets'+(ex.feedback?' · '+esc(feedbackLabel(ex.feedback)):'')+'</span></div>';
+  }).join('');
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-history-menu"><section class="bottom-sheet history-detail-sheet" data-history-menu-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT DETAILS</p><h2>'+esc(item.routineName)+'</h2><p>'+esc(formatDate(item.completedAt))+'</p></div><button class="modal-close" data-action="close-history-menu">×</button></div>'+
+    '<div class="history-detail-summary"><div><span>TIME</span><strong>'+item.durationMinutes+' min</strong></div><div><span>SETS</span><strong>'+item.completedSets+'</strong></div><div><span>VOLUME</span><strong>'+formatVolume(item.totalVolume||0)+'</strong></div></div>'+
+    '<div class="history-detail-list">'+rows+'</div>'+
+    '<div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
 }
 
 function renderHome(){
