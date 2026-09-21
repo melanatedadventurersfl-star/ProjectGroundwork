@@ -513,16 +513,10 @@ function toggleCueSetting(key){
 }
 function renderCueControls(){
   const settings=workoutCueSettings();
-  const hapticsAvailable=typeof navigator!=='undefined'&&typeof navigator.vibrate==='function';
-  const voiceAvailable='speechSynthesis' in window&&typeof window.SpeechSynthesisUtterance==='function';
-  return '<div class="cue-controls" aria-label="Workout cue settings">'+
-    '<button type="button" data-action="toggle-sound" aria-pressed="'+String(settings.sound)+'"><span>♪</span> Sound '+(settings.sound?'ON':'OFF')+'</button>'+
-    '<button type="button" data-action="toggle-voice" aria-pressed="'+String(settings.voice)+'" '+(!voiceAvailable?'disabled title="Voice cues are not supported by this browser"':'')+'><span>◖</span> Voice '+(voiceAvailable?(settings.voice?'ON':'OFF'):'N/A')+'</button>'+
-    '<button type="button" data-action="toggle-flash" aria-pressed="'+String(settings.flash)+'"><span>✦</span> Flash '+(settings.flash?'ON':'OFF')+'</button>'+
-    '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'disabled title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
-    '<button type="button" class="cue-test" data-action="test-cues"><span>▶</span> TEST CUES</button>'+
-  '</div>';
+  const active=[settings.voice?'Voice':'',settings.sound?'Sound':'',settings.haptics?'Haptics':'',settings.flash?'Flash':''].filter(Boolean);
+  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>Workout cues</strong><small>'+esc(active.join(' · ')||'All cues off')+'</small></div><em>›</em></button>';
 }
+
 const MOVEMENT_GUIDANCE = {
   'squat': {
     cue:'Keep your chest tall and let your knees track with your toes.',
@@ -3025,6 +3019,7 @@ function render(){
   if(exerciseActionsIndex!==null) app.insertAdjacentHTML('beforeend',renderExerciseActionsSheet());
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
   document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId));
+  document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();
 }
 
