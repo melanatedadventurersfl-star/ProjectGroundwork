@@ -187,7 +187,11 @@ async function hydrateCloudState(userId){
   if(error)throw error;
   if(!data)return {found:false,needsPush:true};
   const remoteHistory=Array.isArray(data.history)?data.history:[];
-  const reconciled=reconcileActiveWorkout(localActive,data.active_workout||null,remoteHistory);
+  const resetWorkoutId=String(data.training_program?.activeWorkoutResetId||'');
+  const serverReset=Boolean(localActive&&!data.active_workout&&resetWorkoutId&&localActive.id===resetWorkoutId);
+  const reconciled=serverReset
+    ?{workout:null,source:'server-reset',needsPush:false}
+    :reconcileActiveWorkout(localActive,data.active_workout||null,remoteHistory);
   for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['last_summary_id','lastSummaryId']]){
     if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
   }
