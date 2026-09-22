@@ -14,6 +14,7 @@ let authReady=false;
 let authMode='entry';
 const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,reconcileTimer:null,reconcileBusy:false,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
 let cloudSyncTimer=null;
+let cloudSyncPending=false;
 let cloudHydrating=false;
 let hydratedUserId='';
 let hydrationRun=0;
@@ -149,7 +150,9 @@ function cloudStatePayload(){
   return {user_id:store.account?.userId,profile:store.profile,plan:store.plan,calibration:store.calibration||{},progression:store.progression||{},progression_log:store.progressionLog||[],exercise_preferences:store.exercisePreferences||{},training_program:store.trainingProgram||{},cue_settings:store.cueSettings||{},history:store.history||[],active_workout:store.activeWorkout||null,last_summary_id:store.lastSummaryId||null,onboarding_complete:Boolean(store.profile&&store.plan),onboarding_step:store.profile&&store.plan?'complete':'profile',updated_at:new Date().toISOString()};
 }
 function scheduleCloudStateSync(){
-  if(cloudHydrating||!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  if(!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  if(cloudHydrating){cloudSyncPending=true;return;}
+  cloudSyncPending=false;
   clearTimeout(cloudSyncTimer);
   cloudSyncTimer=setTimeout(()=>syncCloudState().catch(error=>console.warn('Workout cloud sync failed',error)),350);
 }
@@ -196,14 +199,17 @@ function reconcileActiveWorkout(localWorkout,remoteWorkout,remoteHistory=[]){
 }
 async function hydrateCloudState(userId){
   if(!workoutSupabase||!userId)return {found:false,needsPush:false};
-  const localActive=store.activeWorkout?clone(store.activeWorkout):null;
+  const activeSnapshotAtStart=JSON.stringify(store.activeWorkout||null);
+  const localActiveAtStart=store.activeWorkout?clone(store.activeWorkout):null;
   const {data,error}=await workoutSupabase.from('workout_user_state').select('*').eq('user_id',userId).maybeSingle();
   if(error)throw error;
   if(!data)return {found:false,needsPush:true};
+  const activeChangedDuringFetch=JSON.stringify(store.activeWorkout||null)!==activeSnapshotAtStart;
+  const localActive=activeChangedDuringFetch?(store.activeWorkout?clone(store.activeWorkout):null):localActiveAtStart;
   const remoteHistory=Array.isArray(data.history)?data.history:[];
   const resetWorkoutId=String(data.training_program?.activeWorkoutResetId||'');
   const serverReset=Boolean(localActive&&!data.active_workout&&resetWorkoutId&&localActive.id===resetWorkoutId);
-  const requestedReset=Boolean(forceActiveResetRequested);
+  const requestedReset=Boolean(forceActiveResetRequested&&!activeChangedDuringFetch);
   const reconciled=requestedReset
     ?{workout:null,source:'url-reset',needsPush:Boolean(data.active_workout)}
     :serverReset
@@ -213,9 +219,9 @@ async function hydrateCloudState(userId){
     if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
   }
   store.activeWorkout=reconciled.workout;
-  if(requestedReset)forceActiveResetRequested=false;
+  if(forceActiveResetRequested&&(requestedReset||activeChangedDuringFetch))forceActiveResetRequested=false;
   localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
-  return {found:true,needsPush:reconciled.needsPush,activeSource:reconciled.source};
+  return {found:true,needsPush:reconciled.needsPush||activeChangedDuringFetch,activeSource:activeChangedDuringFetch?'local-changed-during-hydration':reconciled.source};
 }
 function saveStore(){
   let persisted=true;
@@ -255,7 +261,10 @@ async function refreshAccountStateFromCloud({force=false}={}){
     cloudHydrating=false;
     if(!store.activeWorkout&&currentTab==='workout')currentTab='home';
     render();
-    if(result?.needsPush)await syncCloudState();
+    if(result?.needsPush||cloudSyncPending){
+      cloudSyncPending=false;
+      await syncCloudState();
+    }
     const nextActiveId=store.activeWorkout?.id||'';
     if(previousActiveId&&!nextActiveId)traceWorkoutInteraction('foreground-sync','cleared-stale-active',previousActiveId);
     return true;
@@ -1900,7 +1909,15 @@ async function startPreparedWorkout(){
   readinessContext=null;
   unlockWorkoutCues();
   store.activeWorkout=createWorkout(day,{scheduledDate,readiness,programContext:context,adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]});
-  saveStore();currentTab='workout';render();
+  currentTab='workout';
+  persistUiState();
+  saveStore();
+  traceWorkoutInteraction('begin-workout','created',store.activeWorkout.id);
+  render();
+  if(store.account?.status==='connected'){
+    if(cloudHydrating)cloudSyncPending=true;
+    else syncCloudState().catch(error=>console.warn('Could not immediately sync new workout',error));
+  }
 }
 
 function createWorkout(day,meta={}){
@@ -2858,7 +2875,10 @@ async function applyWorkoutSession(session,{forceHydrate=false}={}){
     else if(currentTab==='workout'&&!store.activeWorkout)currentTab='home';
     localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
     render();
-    if(result.needsPush)await syncCloudState();
+    if(result.needsPush||cloudSyncPending){
+      cloudSyncPending=false;
+      await syncCloudState();
+    }
     await restoreSharedWorkoutSession(userId);
   }catch(error){
     if(run!==hydrationRun)return;
