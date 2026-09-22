@@ -1893,10 +1893,11 @@ function startWorkout(dayId,scheduledDate=''){
 }
 
 function getActivePosition(){
-  const w=store.activeWorkout;if(!w)return null;
-  const ei=Math.min(Math.max(0,w.currentExerciseIndex||0),w.exercises.length-1);
+  const w=store.activeWorkout;if(!w||!Array.isArray(w.exercises)||!w.exercises.length)return null;
+  const ei=Math.min(Math.max(0,num(w.currentExerciseIndex)),w.exercises.length-1);
   const ex=w.exercises[ei];
-  const si=Math.min(Math.max(0,w.currentSetIndex||0),ex.sets.length-1);
+  if(!ex||!Array.isArray(ex.sets)||!ex.sets.length)return null;
+  const si=Math.min(Math.max(0,num(w.currentSetIndex)),ex.sets.length-1);
   return {workout:w,ei,si,exercise:ex,set:ex.sets[si]};
 }
 function nextPosition(w,ei,si){
@@ -4824,6 +4825,127 @@ function renderSummary(){
 
 function renderEmpty(title,copy){return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;}
 
+function repairActiveWorkoutForResume(workout){
+  if(!workout||!Array.isArray(workout.exercises)||!workout.exercises.length)return {ok:false,reason:'missing-exercises',changed:false};
+  let changed=false;
+  const now=new Date().toISOString();
+  workout.schemaVersion=ACTIVE_WORKOUT_SCHEMA;
+  if(!workout.id){workout.id=uid('workout');changed=true;}
+  if(!workout.startedAt){workout.startedAt=now;changed=true;}
+  if(!workout.routineName)workout.routineName='Workout';
+  if(!Array.isArray(workout.warmup)){workout.warmup=[];changed=true;}
+  if(!Array.isArray(workout.cooldown)){workout.cooldown=[];changed=true;}
+  workout.exercises=workout.exercises.filter(Boolean);
+  if(!workout.exercises.length)return {ok:false,reason:'missing-exercises',changed};
+  workout.exercises.forEach((ex,index)=>{
+    if(!ex.id){ex.id='recovered-exercise-'+index;changed=true;}
+    if(!ex.name){ex.name='Exercise '+(index+1);changed=true;}
+    if(!Array.isArray(ex.sets)){
+      const count=Math.max(1,num(ex.setCount)||num(ex.workingSets)||3);
+      ex.sets=Array.from({length:count},()=>({id:uid('set'),weight:ex.startWeight?String(ex.startWeight):'',reps:String(ex.startReps||recommendedRepCount(ex.reps)||''),completed:false,completedAt:null}));
+      changed=true;
+    }
+    if(!ex.sets.length){
+      ex.sets=[{id:uid('set'),weight:ex.suggestedWeight?String(ex.suggestedWeight):'',reps:String(ex.suggestedReps||recommendedRepCount(ex.reps)||''),completed:false,completedAt:null}];
+      changed=true;
+    }
+    ex.sets=ex.sets.filter(Boolean).map(set=>{
+      if(!set.id){set.id=uid('set');changed=true;}
+      if(set.completed!==true&&set.completed!==false){set.completed=Boolean(set.completedAt);changed=true;}
+      return set;
+    });
+  });
+  const maxExercise=workout.exercises.length-1;
+  const oldEi=num(workout.currentExerciseIndex);
+  workout.currentExerciseIndex=Math.max(0,Math.min(maxExercise,oldEi));
+  if(workout.currentExerciseIndex!==oldEi)changed=true;
+  let ex=workout.exercises[workout.currentExerciseIndex];
+  const unresolved=nextUnresolvedExerciseIndex(workout,workout.currentExerciseIndex-1);
+  const interactivePhases=new Set(['work','rest','calibrate','feedback','pre-set','timed-set','exercise-review','exercise-transition']);
+  if(interactivePhases.has(workout.phase)&&exerciseCountsAsResolved(ex)&&unresolved>=0){
+    workout.currentExerciseIndex=unresolved;ex=workout.exercises[unresolved];changed=true;
+  }
+  const targetSet=firstIncompleteSetIndex(ex);
+  const oldSi=num(workout.currentSetIndex);
+  workout.currentSetIndex=Math.max(0,Math.min(ex.sets.length-1,oldSi));
+  if(workout.currentSetIndex!==oldSi)changed=true;
+  if(exerciseCountsAsResolved(ex)&&unresolved<0&&interactivePhases.has(workout.phase)){
+    workout.phase=workout.cooldown?.length&&!workout.cooldownCompleted&&!workout.cooldownSkipped?'cooldown':'review';
+    changed=true;
+  }
+  const validPhases=new Set(['intro','warmup','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
+  if(!validPhases.has(workout.phase)){workout.phase='exercise-review';changed=true;}
+  if(workout.phase==='warmup'){
+    if(!workout.warmup.length){workout.phase='pre-set';workout.currentExerciseIndex=0;workout.currentSetIndex=firstIncompleteSetIndex(workout.exercises[0]);changed=true;}
+    else if(!Number.isInteger(workout.timedStageIndex)||workout.timedStageIndex<0||workout.timedStageIndex>=workout.warmup.length){workout.timedStageIndex=0;workout.timedStageStartedAt=now;changed=true;}
+  }
+  if(workout.phase==='cooldown'){
+    if(!workout.cooldown.length){workout.phase='review';changed=true;}
+    else if(!Number.isInteger(workout.timedStageIndex)||workout.timedStageIndex<0||workout.timedStageIndex>=workout.cooldown.length){workout.timedStageIndex=0;workout.timedStageStartedAt=now;changed=true;}
+  }
+  if(workout.phase==='pre-set'&&!workout.preSetStartedAt){workout.preSetStartedAt=now;workout.preSetSetupSeconds=0;workout.preSetCountdownSeconds=3;changed=true;}
+  if(workout.phase==='work'){
+    const active=workout.exercises[workout.currentExerciseIndex];
+    if(active.sets.every(set=>set.completed)){
+      workout.phase='feedback';changed=true;
+    }else{
+      workout.currentSetIndex=firstIncompleteSetIndex(active);
+    }
+  }
+  if(workout.phase==='timed-set'){
+    const active=workout.exercises[workout.currentExerciseIndex],set=active.sets[workout.currentSetIndex];
+    const seconds=Math.max(1,num(workout.timedSetDuration)||num(set?.reps)||num(active.suggestedReps)||recommendedRepCount(active.reps)||30);
+    workout.timedSetDuration=seconds;
+    if(!workout.timedSetStartedAt)workout.timedSetStartedAt=now;
+    if(!workout.isPaused&&!workout.timedSetEndsAt)workout.timedSetEndsAt=new Date(Date.now()+seconds*1000).toISOString();
+  }
+  if(workout.phase==='rest'){
+    const next=workout.pendingPosition;
+    const validNext=next&&Number.isInteger(next.ei)&&Number.isInteger(next.si)&&workout.exercises[next.ei]?.sets?.[next.si];
+    if(!validNext){
+      const current=workout.exercises[workout.currentExerciseIndex];
+      const nextPos=nextPosition(workout,workout.currentExerciseIndex,Math.max(-1,workout.currentSetIndex-1));
+      if(nextPos){workout.pendingPosition=nextPos;changed=true;}
+      else{workout.phase='feedback';workout.pendingPosition=null;changed=true;}
+    }
+    if(workout.phase==='rest'&&!Number.isFinite(workout.restPausedRemaining)&&!workout.restEndsAt){
+      workout.restDuration=Math.max(30,num(workout.restDuration)||num(workout.exercises[workout.currentExerciseIndex]?.rest)||45);
+      workout.restEndsAt=new Date(Date.now()+workout.restDuration*1000).toISOString();changed=true;
+    }
+  }
+  if(workout.phase==='exercise-transition'){
+    const next=workout.pendingPosition;
+    const valid=next&&workout.exercises[next.ei]?.sets?.[next.si];
+    if(!valid){
+      const nextIndex=nextUnresolvedExerciseIndex(workout,workout.currentExerciseIndex);
+      if(nextIndex>=0)workout.pendingPosition={ei:nextIndex,si:firstIncompleteSetIndex(workout.exercises[nextIndex]),type:'exercise'};
+      else workout.phase='review';
+      changed=true;
+    }
+  }
+  workout.updatedAt=now;
+  return {ok:true,changed,reason:''};
+}
+function forceRecoverActiveWorkout(){
+  const w=store.activeWorkout;
+  if(!w||!Array.isArray(w.exercises)||!w.exercises.length)return false;
+  const index=nextUnresolvedExerciseIndex(w,-1);
+  if(index<0){
+    w.phase=w.cooldown?.length&&!w.cooldownCompleted&&!w.cooldownSkipped?'cooldown':'review';
+    if(w.phase==='cooldown'){w.timedStageIndex=0;w.timedStageStartedAt=new Date().toISOString();}
+  }else{
+    w.currentExerciseIndex=index;
+    w.currentSetIndex=firstIncompleteSetIndex(w.exercises[index]);
+    w.phase='exercise-review';
+    w.pendingPosition=null;w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
+    delete w.preSetStartedAt;delete w.timedSetStartedAt;delete w.timedSetEndsAt;delete w.timedSetDuration;
+  }
+  w.updatedAt=new Date().toISOString();
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}catch{}
+  return true;
+}
+
+
 function setTab(tab){
   if(!store.profile&&!['profile','profile-edit'].includes(tab)){currentTab='profile-edit';}
   else currentTab=tab;
@@ -4833,45 +4955,55 @@ function setTab(tab){
 function resumeWorkout(){
   traceWorkoutInteraction('resume','handler-received',store.activeWorkout?.id||'no-active-workout');
   if(cloudHydrating){traceWorkoutInteraction('resume','blocked-hydrating');toast('Finishing your workout sync…');return;}
-  const workout=store.activeWorkout;
-  if(!workout||!Array.isArray(workout.exercises)||!workout.exercises.length){
-    traceWorkoutInteraction('resume','failed-no-workout');
-    toast('That workout could not be resumed. Refreshing your training screen.');
-    currentTab='home';render();return;
+  const repaired=repairActiveWorkoutForResume(store.activeWorkout);
+  if(!repaired.ok){
+    traceWorkoutInteraction('resume','failed-'+repaired.reason);
+    toast('That saved session is incomplete and could not be resumed.');
+    return;
   }
+  workoutPreviewIndex=null;workoutFormMode=false;
   exerciseDetailId=null;swapContext=null;readinessContext=null;workoutMapOpen=false;setEditContext=null;cueSettingsOpen=false;exerciseActionsIndex=null;historyMenuId=null;accountSheetOpen=false;
   unlockWorkoutCues();
   currentTab='workout';
   persistUiState();
-  render();updateTimers();
-  try{window.scrollTo({top:0,behavior:'auto'});}catch{window.scrollTo(0,0);}
-  requestAnimationFrame(()=>{
-    const rendered=currentTab==='workout'&&Boolean(store.activeWorkout)&&Boolean(document.querySelector('.guided-shell'));
-    traceWorkoutInteraction('resume',rendered?'rendered':'render-retry',store.activeWorkout?.phase||'');
-    if(rendered)return;
-    currentTab='workout';render();updateTimers();
-    requestAnimationFrame(()=>{
-      const recovered=Boolean(document.querySelector('.guided-shell'));
-      traceWorkoutInteraction('resume',recovered?'rendered-after-retry':'render-failed');
-      if(!recovered)toast('Resume did not open correctly. Please reload once and try again.');
-    });
-  });
-}
-function syncNav(){
-  const navTab=currentTab==='workout'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===navTab));
-  const nav=document.querySelector('.bottom-nav');if(nav)nav.classList.toggle('nav-disabled',!store.profile);
-}
-function syncShellIdentity(){
-  const avatar=document.querySelector('.avatar');
-  if(avatar){
-    const name=store.account?.displayName||store.profile?.displayName||'Me';
-    const initials=String(name).split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase();
-    avatar.textContent=initials||'ME';
+  try{
+    saveStore();
+    render();updateTimers();
+    if(!document.querySelector('.guided-shell'))throw new Error('Workout shell did not render');
+    traceWorkoutInteraction('resume','rendered',store.activeWorkout?.phase||'');
+    try{window.scrollTo({top:0,behavior:'auto'});}catch{window.scrollTo(0,0);}
+    return;
+  }catch(error){
+    console.error('Workout resume render failed',error);
+    traceWorkoutInteraction('resume','render-error',error?.message||'unknown');
   }
+  const recovered=forceRecoverActiveWorkout();
+  if(recovered){
+    try{
+      currentTab='workout';persistUiState();render();updateTimers();
+      if(document.querySelector('.guided-shell')){
+        traceWorkoutInteraction('resume','recovered-rendered',store.activeWorkout?.phase||'');
+        toast('Recovered your saved workout.');
+        return;
+      }
+    }catch(error){
+      console.error('Workout forced recovery render failed',error);
+      traceWorkoutInteraction('resume','forced-recovery-error',error?.message||'unknown');
+    }
+  }
+  currentTab='home';
+  persistUiState();
+  const app=document.querySelector('#app');
+  if(app)app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">SESSION RECOVERY</p><h2>Your saved workout is stuck.</h2><p>Your logged sets are still stored. Use Recover Session to reopen it at the next safe exercise checkpoint.</p><button class="button" data-action="force-recover-session">RECOVER SESSION</button><button class="text-button muted" data-action="home">BACK HOME</button></div>';
+  document.body.classList.remove('workout-mode');
 }
-function syncLiveBadge(){const b=document.querySelector('.nav-live');if(b)b.hidden=!store.activeWorkout;}
-function toast(message){const r=document.querySelector('#toast-region')||document.body;r.querySelector('.toast')?.remove();const n=document.createElement('div');n.className='toast';n.textContent=message;r.append(n);setTimeout(()=>n.remove(),2300);}
+function recoverStuckSession(){
+  const repaired=repairActiveWorkoutForResume(store.activeWorkout);
+  if(!repaired.ok||!forceRecoverActiveWorkout()){toast('This session cannot be repaired automatically.');return;}
+  saveStore();currentTab='workout';persistUiState();
+  try{render();updateTimers();toast('Session recovered.');}
+  catch(error){console.error('Manual workout recovery failed',error);toast('Recovery failed. Your saved workout was not deleted.');}
+}
 
 function renderAccountEntry(){
   const email=esc(store.account?.email||store.profile?.email||'');
@@ -5042,7 +5174,7 @@ function handleClick(event){
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
   traceWorkoutInteraction(a,'click-received',node.tagName||'');
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','preview-exercise','previous-exercise','next-exercise','back-to-workout','toggle-form-mode','set-exercise-detail-metric','set-exercise-detail-range','save-exercise-memory','set-prep-length','toggle-prefer-reps','toggle-skip-static','toggle-always-mobility','resume'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','preview-exercise','previous-exercise','next-exercise','back-to-workout','toggle-form-mode','set-exercise-detail-metric','set-exercise-detail-range','save-exercise-memory','set-prep-length','toggle-prefer-reps','toggle-skip-static','toggle-always-mobility','resume','force-recover-session'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
@@ -5093,6 +5225,7 @@ function handleClick(event){
   else if(a==='open-custom-exercise'){customExerciseOpen=true;render();}
   else if(a==='save-custom-exercise')saveCustomExercise();
   else if(a==='resume')resumeWorkout();
+  else if(a==='force-recover-session')recoverStuckSession();
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='skip-scheduled')skipScheduledSession(node.dataset.scheduledDate);
