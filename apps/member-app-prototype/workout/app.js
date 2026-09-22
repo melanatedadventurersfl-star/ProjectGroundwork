@@ -2153,7 +2153,7 @@ function renderWorkoutMap(){
     '<div class="workout-map-list">'+w.exercises.map((ex,index)=>{
       const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
       const status=state==='complete'?'✓':state==='completed-manually'?'✓ MANUAL':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIPPED':'';
-      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(w.phase!=='intro'?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1).padStart(2,'0')+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'" aria-label="Options for '+esc(ex.name)+'">•••</button></article>';
+      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(w.phase!=='intro'?'data-action="preview-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1).padStart(2,'0')+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'" aria-label="Options for '+esc(ex.name)+'">•••</button></article>';
     }).join('')+'</div></section></div>';
 }
 
@@ -4818,6 +4818,18 @@ function handleClick(event){
     const explicitClose=event.target.closest('.modal-close');
     if(!insideSwap||explicitClose){closeSwap();return;}
   }
+  const importClose=event.target.closest('[data-action="close-plan-import"]');
+  if(importClose){
+    const inside=event.target.closest('[data-plan-import-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){planImportOpen=false;planImportDraft=null;render();return;}
+  }
+  const customClose=event.target.closest('[data-action="close-custom-exercise"]');
+  if(customClose){
+    const inside=event.target.closest('[data-custom-exercise-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){customExerciseOpen=false;render();return;}
+  }
   const detail=event.target.closest('[data-exercise-detail]');
   if(detail){exerciseActionsIndex=null;exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
@@ -4832,7 +4844,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','preview-exercise','previous-exercise','next-exercise','back-to-workout','toggle-form-mode'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
@@ -4870,6 +4882,15 @@ function handleClick(event){
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
   else if(a==='set-history-filter'){historyFilter=node.dataset.historyFilter||'all';render();}
   else if(a==='set-analytics-range'){analyticsRange=node.dataset.analyticsRange||'3m';persistUiState();render();}
+  else if(a==='open-plan-import'){planImportOpen=true;planImportDraft=null;render();}
+  else if(a==='parse-plan-import'){
+    const parsed=parseImportedPlanText(document.querySelector('#plan-import-text')?.value||'');
+    if(!parsed){toast('I could not find workout days and set/rep lines in that text.');return;}
+    parsed.source='paste';planImportDraft=parsed;render();
+  }
+  else if(a==='apply-imported-plan')applyImportedPlan(node.dataset.importStrategy||'follow');
+  else if(a==='open-custom-exercise'){customExerciseOpen=true;render();}
+  else if(a==='save-custom-exercise')saveCustomExercise();
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
@@ -4882,7 +4903,11 @@ function handleClick(event){
   else if(a==='open-workout-map'){workoutMapOpen=true;render();}
   else if(a==='previous-exercise')navigateExercise(-1);
   else if(a==='next-exercise')navigateExercise(1);
-  else if(a==='jump-exercise')navigateToExercise(Number(node.dataset.exerciseIndex));
+  else if(a==='preview-exercise')previewExercise(Number(node.dataset.exerciseIndex));
+  else if(a==='back-to-workout')backToWorkout();
+  else if(a==='start-previewed-exercise')startPreviewedExercise();
+  else if(a==='toggle-form-mode'){workoutFormMode=!workoutFormMode;render();}
+  else if(a==='jump-exercise')previewExercise(Number(node.dataset.exerciseIndex));
   else if(a==='jump-from-review')jumpFromReview(Number(node.dataset.exerciseIndex));
   else if(a==='continue-exercise')navigateToExercise(Number(node.dataset.exerciseIndex));
   else if(a==='mark-exercise-complete'){exerciseActionsIndex=null;markExerciseManual(Number(node.dataset.exerciseIndex));}
@@ -4953,8 +4978,40 @@ document.addEventListener('submit',event=>{
     saveProfileFromForm(event.target);
   }
 });
-document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
+document.addEventListener('input',event=>{
+  if(event.target.id==='catalog-search'){
+    catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}return;
+  }
+  if(event.target.id==='set-weight'||event.target.id==='set-reps'){autosaveCurrentSetDraft();return;}
+  if(event.target.dataset.importDayName!==undefined&&planImportDraft){
+    const di=num(event.target.dataset.importDayName);if(planImportDraft.days?.[di])planImportDraft.days[di].name=event.target.value;return;
+  }
+  if(event.target.dataset.importExerciseName!==undefined&&planImportDraft){
+    const [di,ei]=String(event.target.dataset.importExerciseName).split(':').map(Number);
+    const row=planImportDraft.days?.[di]?.exercises?.[ei];if(!row)return;
+    row.name=event.target.value;
+    const match=matchImportedExercise(row.name);
+    if(match){Object.assign(row,{sourceId:match.id,id:match.id,movement:match.movement,muscles:clone(match.muscles||[]),equipment:clone(match.equipment||[]),style:match.style,difficulty:match.difficulty,loadMode:match.loadMode,increment:match.increment,setup:match.setup,custom:false});}
+    else row.custom=true;
+    return;
+  }
+  if(event.target.dataset.importField&&planImportDraft){
+    const [di,ei]=String(event.target.dataset.importIndex||'').split(':').map(Number);
+    const row=planImportDraft.days?.[di]?.exercises?.[ei];if(!row)return;
+    const field=event.target.dataset.importField;
+    row[field]=field==='reps'?event.target.value:num(event.target.value);
+  }
+});
 document.addEventListener('change',event=>{
+  if(event.target.id==='plan-import-file'){
+    const file=event.target.files?.[0];if(!file)return;
+    const name=String(file.name||'').toLowerCase();
+    if(!/\.(txt|csv|json)$/.test(name)){toast('This build can safely parse TXT, CSV, and JSON. PDF/photo recognition needs the document import service.');event.target.value='';return;}
+    const reader=new FileReader();
+    reader.onload=()=>{const text=String(reader.result||'');const area=document.querySelector('#plan-import-text');if(area)area.value=text;const parsed=parseImportedPlanText(text);if(parsed){parsed.source=name.endsWith('.csv')?'csv':name.endsWith('.json')?'json':'text';planImportDraft=parsed;render();}else toast('I could not interpret that file as a workout plan.');};
+    reader.onerror=()=>toast('That file could not be read.');
+    reader.readAsText(file);return;
+  }
   if(event.target.id==='training-days-count'){
     const desired=num(event.target.value)||4;
     const defaults=defaultWorkoutDays(desired);
@@ -4969,6 +5026,8 @@ document.addEventListener('change',event=>{
   }
 });
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&planImportOpen){planImportOpen=false;planImportDraft=null;render();return;}
+  if(event.key==='Escape'&&customExerciseOpen){customExerciseOpen=false;render();return;}
   if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
   if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
