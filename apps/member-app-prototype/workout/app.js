@@ -18,6 +18,9 @@ let cloudHydrating=false;
 let hydratedUserId='';
 let hydrationRun=0;
 let authSubscription=null;
+let forceActiveResetRequested=false;
+let foregroundRefreshBusy=false;
+let lastForegroundRefreshAt=0;
 const interactionTrace=[];
 let exerciseDetailId = null;
 let swapContext = null;
@@ -56,6 +59,17 @@ const defaultStore = {
 };
 
 let store = loadStore();
+try{
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('resetActive')==='1'){
+    forceActiveResetRequested=true;
+    store.activeWorkout=null;
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
+    params.delete('resetActive');
+    const query=params.toString();
+    history.replaceState({},'',window.location.pathname+(query?'?'+query:'')+window.location.hash);
+  }
+}catch(error){console.warn('Active workout reset URL could not be processed',error);}
 let clearedLegacyActiveWorkout = false;
 if (store.activeWorkout && store.activeWorkout.schemaVersion !== ACTIVE_WORKOUT_SCHEMA) {
   store.activeWorkout = null;
@@ -189,13 +203,17 @@ async function hydrateCloudState(userId){
   const remoteHistory=Array.isArray(data.history)?data.history:[];
   const resetWorkoutId=String(data.training_program?.activeWorkoutResetId||'');
   const serverReset=Boolean(localActive&&!data.active_workout&&resetWorkoutId&&localActive.id===resetWorkoutId);
-  const reconciled=serverReset
-    ?{workout:null,source:'server-reset',needsPush:false}
-    :reconcileActiveWorkout(localActive,data.active_workout||null,remoteHistory);
+  const requestedReset=Boolean(forceActiveResetRequested);
+  const reconciled=requestedReset
+    ?{workout:null,source:'url-reset',needsPush:Boolean(data.active_workout)}
+    :serverReset
+      ?{workout:null,source:'server-reset',needsPush:false}
+      :reconcileActiveWorkout(localActive,data.active_workout||null,remoteHistory);
   for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['last_summary_id','lastSummaryId']]){
     if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
   }
   store.activeWorkout=reconciled.workout;
+  if(requestedReset)forceActiveResetRequested=false;
   localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
   return {found:true,needsPush:reconciled.needsPush,activeSource:reconciled.source};
 }
@@ -222,6 +240,34 @@ function renderHydrationShell(){
   return '<div class="workout-loading-shell" aria-live="polite"><div class="loading-brand"><span>W/</span><div><strong>WORKOUT</strong><small>Syncing your training session</small></div></div><div class="loading-skeleton loading-title"></div><div class="loading-skeleton loading-card"></div><div class="loading-skeleton loading-card short"></div><div class="loading-skeleton loading-row"></div></div>';
 }
 
+
+async function refreshAccountStateFromCloud({force=false}={}){
+  if(!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return false;
+  if(cloudHydrating||foregroundRefreshBusy)return false;
+  const now=Date.now();
+  if(!force&&now-lastForegroundRefreshAt<3000)return false;
+  foregroundRefreshBusy=true;
+  lastForegroundRefreshAt=now;
+  const previousActiveId=store.activeWorkout?.id||'';
+  try{
+    cloudHydrating=true;
+    const result=await hydrateCloudState(store.account.userId);
+    cloudHydrating=false;
+    if(!store.activeWorkout&&currentTab==='workout')currentTab='home';
+    render();
+    if(result?.needsPush)await syncCloudState();
+    const nextActiveId=store.activeWorkout?.id||'';
+    if(previousActiveId&&!nextActiveId)traceWorkoutInteraction('foreground-sync','cleared-stale-active',previousActiveId);
+    return true;
+  }catch(error){
+    cloudHydrating=false;
+    console.warn('Workout foreground account refresh failed',error);
+    render();
+    return false;
+  }finally{
+    foregroundRefreshBusy=false;
+  }
+}
 
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
 function num(value){ const n=Number.parseFloat(value); return Number.isFinite(n)?n:0; }
@@ -5560,6 +5606,7 @@ tickHandle=window.setInterval(updateTimers,500);
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     updateTimers();
+    refreshAccountStateFromCloud().catch(error=>console.warn('Foreground workout refresh failed',error));
     refreshTogetherFromSource();
     const draft=sharedTrainingState().draft;
     if(draft?.backendId&&!sharedRuntime.reconcileTimer)startSharedReconciliation(draft.backendId);
@@ -5567,6 +5614,7 @@ document.addEventListener('visibilitychange',()=>{
 });
 window.addEventListener('pageshow',event=>{
   if(event.persisted){window.location.reload();return;}
+  refreshAccountStateFromCloud({force:true}).catch(error=>console.warn('Pageshow workout refresh failed',error));
   refreshTogetherFromSource();
 });
 window.addEventListener('beforeunload',()=>{
