@@ -26,6 +26,12 @@ let historyMenuId = null;
 let accountSheetOpen = false;
 let historyFilter = 'all';
 let analyticsRange = '3m';
+let workoutPreviewIndex = null;
+let workoutFormMode = false;
+let planImportOpen = false;
+let planImportDraft = null;
+let customExerciseOpen = false;
+let draftAutosaveTimer = null;
 
 const defaultStore = {
   profile: null,
@@ -36,7 +42,7 @@ const defaultStore = {
   progression: {},
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
-  trainingProgram: {scheduleOverrides:{},weekReviews:{}},
+  trainingProgram: {scheduleOverrides:{},weekReviews:{},customExercises:[],importHistory:[]},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
@@ -215,6 +221,8 @@ function ensureTrainingProgram(){
   store.trainingProgram=store.trainingProgram||{};
   store.trainingProgram.scheduleOverrides=store.trainingProgram.scheduleOverrides||{};
   store.trainingProgram.weekReviews=store.trainingProgram.weekReviews||{};
+  store.trainingProgram.customExercises=Array.isArray(store.trainingProgram.customExercises)?store.trainingProgram.customExercises:[];
+  store.trainingProgram.importHistory=Array.isArray(store.trainingProgram.importHistory)?store.trainingProgram.importHistory:[];
   return store.trainingProgram;
 }
 function programOriginDate(){
@@ -2873,6 +2881,232 @@ function renderCompactWeek(schedule){
   }).join('')+'</div>';
 }
 
+
+function customExercises(){return ensureTrainingProgram().customExercises||[];}
+function allExerciseCatalog(){return [...catalog,...customExercises()];}
+function findExercise(id){return allExerciseCatalog().find(item=>item.id===id)||null;}
+function normalizeExerciseName(value){
+  return String(value||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,' ').trim();
+}
+const IMPORT_ALIASES={
+  'bench press':'bench-press','barbell bench press':'bench-press','dumbbell bench press':'db-bench','db bench press':'db-bench',
+  'incline dumbbell press':'db-bench','goblet squat':'goblet-squat','back squat':'back-squat','barbell squat':'back-squat',
+  'romanian deadlift':'romanian-deadlift','rdl':'romanian-deadlift','dumbbell rdl':'db-rdl','db rdl':'db-rdl',
+  'seated cable row':'cable-row','cable row':'cable-row','one arm dumbbell row':'one-arm-row','one arm row':'one-arm-row',
+  'lat pulldown':'lat-pulldown','pull up':'pull-up','pullup':'pull-up','shoulder press':'db-shoulder-press',
+  'dumbbell shoulder press':'db-shoulder-press','overhead press':'overhead-press','lateral raise':'lateral-raise',
+  'dumbbell lateral raise':'lateral-raise','bicep curl':'biceps-curl','biceps curl':'biceps-curl','dumbbell curl':'biceps-curl',
+  'tricep pushdown':'triceps-pushdown','triceps pushdown':'triceps-pushdown','leg press':'leg-press','leg curl':'leg-curl',
+  'leg extension':'leg-extension','calf raise':'calf-raise','plank':'plank','dead bug':'dead-bug','hip thrust':'hip-thrust',
+  'glute bridge':'glute-bridge','bulgarian split squat':'split-squat','reverse lunge':'reverse-lunge','step up':'step-up',
+  'push up':'push-up','pushup':'push-up'
+};
+function guessMovementFromName(name){
+  const n=normalizeExerciseName(name);
+  if(/squat|leg press/.test(n))return 'squat';
+  if(/deadlift|rdl|hip thrust|bridge/.test(n))return 'hinge';
+  if(/lunge|split squat|step up/.test(n))return 'single-leg';
+  if(/bench|chest press|push up|pushup/.test(n))return 'horizontal-push';
+  if(/row/.test(n))return 'horizontal-pull';
+  if(/pulldown|pull up|pullup/.test(n))return 'vertical-pull';
+  if(/shoulder press|overhead press|pike/.test(n))return 'vertical-push';
+  if(/lateral raise/.test(n))return 'shoulder-accessory';
+  if(/curl/.test(n))return 'biceps';
+  if(/tricep/.test(n))return 'triceps';
+  if(/calf/.test(n))return 'calves';
+  if(/plank|crunch|dead bug|core|ab/.test(n))return 'core';
+  if(/leg curl|hamstring/.test(n))return 'hamstring-accessory';
+  if(/leg extension|quad/.test(n))return 'quad-accessory';
+  return 'custom';
+}
+function matchImportedExercise(name){
+  const normalized=normalizeExerciseName(name);
+  const aliasId=IMPORT_ALIASES[normalized];
+  if(aliasId)return findExercise(aliasId);
+  let exact=allExerciseCatalog().find(ex=>normalizeExerciseName(ex.name)===normalized);
+  if(exact)return exact;
+  const words=new Set(normalized.split(' ').filter(Boolean));
+  let best=null,bestScore=0;
+  for(const ex of allExerciseCatalog()){
+    const candidate=normalizeExerciseName(ex.name).split(' ').filter(Boolean);
+    const score=candidate.reduce((sum,word)=>sum+(words.has(word)?1:0),0)/Math.max(words.size,candidate.length,1);
+    if(score>bestScore){best=ex;bestScore=score;}
+  }
+  return bestScore>=.67?best:null;
+}
+function customExerciseFromImport(name){
+  const movement=guessMovementFromName(name);
+  return {
+    id:'custom-'+uid('ex').replace(/[^a-z0-9-]/gi,'').toLowerCase(),
+    name:String(name||'Custom Exercise').trim(),
+    movement,
+    muscles:[movement==='custom'?'Custom':(movements[movement]||movement)],
+    equipment:[store.profile?.equipment||'full-gym'],
+    style:'custom',difficulty:'custom',loadMode:'dumbbell',increment:5,setup:25,custom:true
+  };
+}
+function parseSetsReps(value){
+  const text=String(value||'').trim();
+  const match=text.match(/(\d+)\s*[x×]\s*(\d+(?:\s*[-–]\s*\d+)?)/i);
+  if(match)return {sets:num(match[1])||3,reps:String(match[2]).replace(/\s+/g,'')};
+  const reps=text.match(/(\d+(?:\s*[-–]\s*\d+)?)\s*(?:reps?)?/i);
+  return {sets:3,reps:reps?String(reps[1]).replace(/\s+/g,''):'8–12'};
+}
+function importedExerciseRow(name,sets=3,reps='8–12',weight='',rest=45){
+  const match=matchImportedExercise(name);
+  const source=match||customExerciseFromImport(name);
+  return {
+    sourceId:match?.id||'',
+    custom:!match,
+    id:source.id,
+    name:source.name,
+    movement:source.movement,
+    muscles:clone(source.muscles||[]),
+    equipment:clone(source.equipment||[]),
+    style:source.style||'custom',
+    difficulty:source.difficulty||'custom',
+    loadMode:source.loadMode||'dumbbell',
+    increment:num(source.increment)||5,
+    setup:num(source.setup)||25,
+    sets:Math.max(1,num(sets)||3),
+    reps:String(reps||'8–12'),
+    startWeight:num(weight)||0,
+    rest:Math.max(20,Math.min(180,num(rest)||45))
+  };
+}
+function parseImportedPlanText(text){
+  const raw=String(text||'').trim();
+  if(!raw)return null;
+  if(raw.startsWith('{')||raw.startsWith('[')){
+    try{
+      const parsed=JSON.parse(raw),days=Array.isArray(parsed)?parsed:(parsed.days||[]);
+      if(days.length)return {name:parsed.name||'Imported Workout Plan',days:days.map((day,index)=>({
+        name:day.name||'Day '+(index+1),focus:day.focus||'Imported training',
+        exercises:(day.exercises||[]).map(ex=>importedExerciseRow(ex.name||ex.exercise,ex.sets,ex.reps,ex.weight||ex.startWeight,ex.rest))
+      }))};
+    }catch{}
+  }
+  const lines=raw.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  if(!lines.length)return null;
+  const csvLike=lines.filter(line=>line.includes(',')).length>=Math.max(2,Math.floor(lines.length*.6));
+  if(csvLike){
+    const rows=lines.map(line=>line.split(',').map(cell=>cell.trim()));
+    const header=rows[0].map(normalizeExerciseName);
+    const hasHeader=header.some(cell=>['day','exercise','sets','reps','weight','rest'].includes(cell));
+    const start=hasHeader?1:0;
+    const col=name=>hasHeader?header.indexOf(name):-1;
+    const dayMap=new Map();
+    for(let i=start;i<rows.length;i++){
+      const row=rows[i];if(!row.length)continue;
+      const dayName=(col('day')>=0?row[col('day')]:row[0])||'Day 1';
+      const exName=(col('exercise')>=0?row[col('exercise')]:row[hasHeader?0:1])||'';
+      if(!exName)continue;
+      const sets=col('sets')>=0?row[col('sets')]:row[2];
+      const reps=col('reps')>=0?row[col('reps')]:row[3];
+      const weight=col('weight')>=0?row[col('weight')]:row[4];
+      const rest=col('rest')>=0?row[col('rest')]:row[5];
+      if(!dayMap.has(dayName))dayMap.set(dayName,{name:dayName,focus:'Imported training',exercises:[]});
+      dayMap.get(dayName).exercises.push(importedExerciseRow(exName,sets,reps,weight,rest));
+    }
+    if(dayMap.size)return {name:'Imported Workout Plan',days:[...dayMap.values()]};
+  }
+  const days=[];let current=null;
+  const looksLikeDay=line=>/^(day\s*\d+|monday|tuesday|wednesday|thursday|friday|saturday|sunday|push|pull|legs|upper|lower|full body|workout\s*\d+)/i.test(line.replace(/[:\-]+$/,''));
+  for(const line of lines){
+    const clean=line.replace(/^[-•*]\s*/,'').trim();
+    if(looksLikeDay(clean)&&!/(\d+\s*[x×]\s*\d+)/i.test(clean)){
+      current={name:clean.replace(/[:\-]+$/,'').trim(),focus:'Imported training',exercises:[]};days.push(current);continue;
+    }
+    if(!current){current={name:'Day 1',focus:'Imported training',exercises:[]};days.push(current);}
+    const match=clean.match(/^(.*?)\s*[-:·]?\s*(\d+)\s*[x×]\s*(\d+(?:\s*[-–]\s*\d+)?)(?:\s*(?:@|at)?\s*(\d+(?:\.\d+)?)\s*(?:lb|lbs)?)?/i);
+    if(match){
+      current.exercises.push(importedExerciseRow(match[1].trim(),match[2],match[3],match[4]||'',45));continue;
+    }
+    if(clean.length>2&&!/^(sets?|reps?|rest|notes?)[:\s]/i.test(clean)){
+      const parsed=parseSetsReps(clean);
+      const name=clean.replace(/\s+\d+\s*[x×]\s*\d+(?:\s*[-–]\s*\d+)?.*$/i,'').trim();
+      if(name&&name!==clean)current.exercises.push(importedExerciseRow(name,parsed.sets,parsed.reps,'',45));
+    }
+  }
+  const useful=days.filter(day=>day.exercises.length);
+  return useful.length?{name:'Imported Workout Plan',days:useful}:null;
+}
+function importedPlanToNative(draft,strategy='follow'){
+  const customToSave=[];
+  const days=(draft.days||[]).map((day,index)=>{
+    const exercises=(day.exercises||[]).map(row=>{
+      let source=findExercise(row.sourceId||row.id);
+      if(!source&&row.custom){
+        source={...row,custom:true};
+        if(!customExercises().some(ex=>normalizeExerciseName(ex.name)===normalizeExerciseName(source.name)))customToSave.push(source);
+      }
+      source=source||row;
+      const settings={sets:row.sets,reps:row.reps,rest:row.rest,setSeconds:40};
+      return {
+        ...clone(source),
+        sets:Math.max(1,num(settings.sets)||3),
+        reps:String(settings.reps||'8–12'),
+        rest:Math.max(20,Math.min(180,num(settings.rest)||45)),
+        setup:num(source.setup)||25,
+        startWeight:num(row.startWeight)||0,
+        startLabel:num(row.startWeight)?String(num(row.startWeight))+' lb':'Choose a comfortable starting load',
+        startSource:'imported plan',
+        startReps:recommendedRepCount(row.reps),
+        calibrationRequired:!num(row.startWeight)&&isWeightedMode(source.loadMode)
+      };
+    });
+    const native={id:'imported-day-'+(index+1)+'-'+Date.now(),name:day.name||'Day '+(index+1),focus:day.focus||'Imported training',exercises,warmup:[],cooldown:[]};
+    recalculatePlanDay(native);return native;
+  }).filter(day=>day.exercises.length);
+  const program=ensureTrainingProgram();
+  for(const ex of customToSave)program.customExercises.push(ex);
+  const plan={id:uid('plan'),createdAt:new Date().toISOString(),name:draft.name||'Imported Workout Plan',days,imported:true,importStrategy:strategy,importSource:draft.source||'paste'};
+  program.importHistory.unshift({id:uid('import'),name:plan.name,source:plan.importSource,strategy,importedAt:new Date().toISOString(),dayCount:days.length});
+  program.importHistory=program.importHistory.slice(0,20);
+  return plan;
+}
+function applyImportedPlan(strategy='follow'){
+  if(!planImportDraft?.days?.length){toast('Import a workout plan first.');return;}
+  const previousPlan=store.plan;
+  store.plan=importedPlanToNative(planImportDraft,strategy);
+  if(!store.plan.days.length){store.plan=previousPlan;toast('No usable workout days were found.');return;}
+  planImportOpen=false;planImportDraft=null;saveStore();render();toast('Workout plan imported. Your existing history and PRs were preserved.');
+}
+function renderPlanImportModal(){
+  if(!planImportOpen)return '';
+  const draft=planImportDraft;
+  const review=draft?.days?.length?'<div class="import-review">'+
+    '<div class="import-review-head"><div><span>REVIEW BEFORE IMPORT</span><strong>'+esc(draft.name||'Imported Workout Plan')+'</strong></div><em>'+draft.days.length+' day'+(draft.days.length===1?'':'s')+'</em></div>'+
+    draft.days.map((day,di)=>'<section class="import-day"><div><span>DAY '+(di+1)+'</span><input data-import-day-name="'+di+'" value="'+esc(day.name)+'" aria-label="Imported day name"></div><div class="import-exercises">'+day.exercises.map((ex,ei)=>'<article class="'+(ex.custom?'custom':'matched')+'"><div><input data-import-exercise-name="'+di+':'+ei+'" value="'+esc(ex.name)+'" aria-label="Exercise name"><small>'+(ex.custom?'CUSTOM EXERCISE · review match':'MATCHED · '+esc(findExercise(ex.sourceId)?.name||ex.name))+'</small></div><label>Sets<input data-import-field="sets" data-import-index="'+di+':'+ei+'" inputmode="numeric" value="'+esc(ex.sets)+'"></label><label>Reps<input data-import-field="reps" data-import-index="'+di+':'+ei+'" value="'+esc(ex.reps)+'"></label><label>Rest<input data-import-field="rest" data-import-index="'+di+':'+ei+'" inputmode="numeric" value="'+esc(ex.rest)+'"></label></article>').join('')+'</div></section>').join('')+
+    '<div class="import-strategy"><p class="eyebrow">HOW SHOULD WORKOUT HANDLE IT?</p><button class="button primary-action" data-action="apply-imported-plan" data-import-strategy="follow">FOLLOW AS WRITTEN</button><button class="button secondary" data-action="apply-imported-plan" data-import-strategy="adapt">ADAPT IT FOR ME</button><button class="button secondary" data-action="apply-imported-plan" data-import-strategy="starting">USE AS A STARTING POINT</button><small>Follow as written preserves the imported structure. Adapt keeps the structure but allows readiness/progression changes. Starting point allows broader future program changes.</small></div>'+
+  '</div>':'';
+  return '<div class="exercise-modal-backdrop import-backdrop" data-action="close-plan-import"><section class="exercise-modal import-modal" data-plan-import-panel role="dialog" aria-modal="true">'+
+    '<button class="modal-close" data-action="close-plan-import">×</button><div class="import-head"><p class="eyebrow">IMPORT WORKOUT PLAN</p><h2>Bring your program with you.</h2><p>Paste a plan or import TXT, CSV, or JSON. Nothing replaces your current program until you review and approve it.</p></div>'+
+    '<label class="import-drop"><span>FILE</span><input id="plan-import-file" type="file" accept=".txt,.csv,.json,text/plain,text/csv,application/json"><strong>Choose TXT, CSV or JSON</strong><small>PDF, spreadsheet and photo extraction need the document-recognition service before they can be interpreted safely.</small></label>'+
+    '<div class="import-or"><span>OR PASTE IT</span></div>'+
+    '<textarea id="plan-import-text" class="import-textarea" rows="10" placeholder="Monday Push&#10;Bench Press 4x8&#10;Dumbbell Shoulder Press 3x10&#10;Triceps Pushdown 3x12"></textarea>'+
+    '<button class="button secondary" data-action="parse-plan-import">REVIEW IMPORT</button>'+review+
+  '</section></div>';
+}
+function renderCustomExerciseModal(){
+  if(!customExerciseOpen)return '';
+  return '<div class="exercise-modal-backdrop" data-action="close-custom-exercise"><section class="exercise-modal custom-exercise-modal" data-custom-exercise-panel role="dialog" aria-modal="true">'+
+    '<button class="modal-close" data-action="close-custom-exercise">×</button><p class="eyebrow">CUSTOM EXERCISE</p><h2>Add a movement.</h2><div class="form-grid two">'+
+    '<label class="field"><span>NAME</span><input id="custom-ex-name" placeholder="e.g. Landmine Press"></label>'+
+    '<label class="field"><span>MOVEMENT</span><select id="custom-ex-movement">'+Object.entries({...movements,custom:'Custom / other'}).map(([value,label])=>'<option value="'+esc(value)+'">'+esc(label)+'</option>').join('')+'</select></label>'+
+    '<label class="field"><span>PRIMARY MUSCLE</span><input id="custom-ex-muscle" placeholder="e.g. Shoulders"></label>'+
+    '<label class="field"><span>EQUIPMENT</span><input id="custom-ex-equipment" placeholder="e.g. landmine"></label></div>'+
+    '<button class="button primary-action" data-action="save-custom-exercise">SAVE EXERCISE</button></section></div>';
+}
+function saveCustomExercise(){
+  const name=(document.querySelector('#custom-ex-name')?.value||'').trim();
+  if(!name){toast('Enter an exercise name.');return;}
+  const movement=document.querySelector('#custom-ex-movement')?.value||'custom';
+  const muscle=(document.querySelector('#custom-ex-muscle')?.value||movements[movement]||'Custom').trim();
+  const equipment=(document.querySelector('#custom-ex-equipment')?.value||store.profile?.equipment||'custom').trim();
+  const ex={id:'custom-'+uid('ex').replace(/[^a-z0-9-]/gi,'').toLowerCase(),name,movement,muscles:[muscle],equipment:[equipment,store.profile?.equipment||'full-gym'],style:'custom',difficulty:'custom',loadMode:'dumbbell',increment:5,setup:25,custom:true};
+  ensureTrainingProgram().customExercises.push(ex);customExerciseOpen=false;saveStore();render();toast(name+' added to your exercise library.');
+}
 function renderTrain(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
   const schedule=currentWeekSchedule();
