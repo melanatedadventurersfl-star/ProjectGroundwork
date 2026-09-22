@@ -377,6 +377,9 @@ function rotateAccessoriesForBlock(day,blockNumber){
   return day;
 }
 function adaptDayForProgramWeek(baseDay,date=new Date()){
+  if(store.plan?.imported&&store.plan?.importStrategy==='follow'){
+    const day=clone(baseDay);recalculatePlanDay(day);day.programContext=programContext(date);day.adaptationMode='follow-import';day.adaptationNotes=['Following the imported program as written.'];return day;
+  }
   const decision=adaptationDecision(date);
   const day=rotateAccessoriesForBlock(clone(baseDay),decision.context.blockNumber);
   const compounds=day.exercises.filter(ex=>!ACCESSORY_MOVEMENTS.has(ex.movement));
@@ -787,7 +790,7 @@ function equipmentRequirement(ex){
     ex.loadMode==='bodyweight'||ex.loadMode==='timed'?'No special equipment':'Check the exercise setup.');
 }
 function exerciseSource(ex){
-  return catalog.find(item=>item.id===ex?.id)||ex;
+  return findExercise(ex?.id)||ex;
 }
 function exerciseDifficultyRank(value){
   return ({beginner:0,intermediate:1,advanced:2})[value]??1;
@@ -1095,7 +1098,7 @@ function exerciseImageButton(ex,className='exercise-media',index=0){
 
 function renderExerciseModal(){
   if(!exerciseDetailId)return '';
-  const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
+  const ex=findExercise(exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
   if(!ex)return '';
   const guide=exerciseGuidance(ex);
   const primary=exerciseImageUrl(ex,0,false),secondary=exerciseImageUrl(ex,1,false);
@@ -3069,6 +3072,7 @@ function applyImportedPlan(strategy='follow'){
   if(!planImportDraft?.days?.length){toast('Import a workout plan first.');return;}
   const previousPlan=store.plan;
   store.plan=importedPlanToNative(planImportDraft,strategy);
+  if(store.plan.days.length>=2&&store.plan.days.length<=5){store.profile.days=store.plan.days.length;store.profile.workoutDays=defaultWorkoutDays(store.profile.days);}
   if(!store.plan.days.length){store.plan=previousPlan;toast('No usable workout days were found.');return;}
   planImportOpen=false;planImportDraft=null;saveStore();render();toast('Workout plan imported. Your existing history and PRs were preserved.');
 }
@@ -3112,7 +3116,7 @@ function renderTrain(){
   const schedule=currentWeekSchedule();
   const context=programContext();
   return '<div class="clean-page">'+
-    '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Start a scheduled session, review the rotation, or browse exercises without cluttering Home.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
+    '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Start a scheduled session, import a program, review the rotation, or browse exercises without cluttering Home.</p></div><div class="train-head-actions"><button class="button secondary" data-action="open-plan-import">IMPORT PLAN</button><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div></div>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW WEEK</button></section>'+
     '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM</p><h3>'+plan.days.length+'-day rotation</h3></div><button class="text-button" data-action="regenerate">Regenerate</button></div>'+
@@ -3122,7 +3126,7 @@ function renderTrain(){
       return '<article class="clean-routine-card"><div class="routine-card-main"><span class="routine-index">'+String(index+1).padStart(2,'0')+'</span><div><h3>'+esc(day.name)+'</h3><p>'+esc(day.focus)+'</p><small>'+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></div>'+
         '<div class="routine-card-actions">'+(scheduled&&!store.activeWorkout?'<button class="button secondary" data-start="'+esc(day.id)+'" data-scheduled-date="'+esc(scheduled.dateKey)+'">'+(scheduled.status==='today'?'START TODAY':'PREPARE')+'</button>':'')+'<button class="text-button" data-action="catalog">LIBRARY</button></div></article>';
     }).join('')+'</div></section>'+
-    '<section class="clean-panel train-library-card"><div><p class="eyebrow">EXERCISE LIBRARY</p><h3>'+catalog.length+' movements</h3><p>Form cues, equipment requirements, muscle groups, and exercise history.</p></div><button class="button secondary" data-action="catalog">BROWSE</button></section>'+
+    '<section class="clean-panel train-library-card"><div><p class="eyebrow">EXERCISE LIBRARY</p><h3>'+allExerciseCatalog().length+' movements</h3><p>Verified demonstrations where available, custom movements, form cues, equipment requirements, muscle groups, and exercise history.</p></div><div class="train-library-actions"><button class="button secondary" data-action="catalog">BROWSE</button><button class="text-button" data-action="open-custom-exercise">+ CUSTOM</button></div></section>'+
   '</div>';
 }
 function sharedTrainingState(){
@@ -3938,9 +3942,9 @@ function renderHome(){
 }
 function renderCatalog(){
   const q=catalogQuery.trim().toLowerCase();
-  const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty].join(' ').toLowerCase().includes(q));
+  const items=allExerciseCatalog().filter(e=>!q||[e.name,e.movement,...(e.muscles||[]),e.style,e.difficulty].join(' ').toLowerCase().includes(q));
   return `
-    <div class="page-head"><div><p class="eyebrow">EXERCISE LIBRARY</p><h2 class="page-title">${catalog.length} movements.</h2><p class="page-copy">This catalog powers plan generation, equipment matching, starting-load estimates and progression.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">EXERCISE LIBRARY</p><h2 class="page-title">${allExerciseCatalog().length} movements.</h2><p class="page-copy">Verified movement references, your custom exercises, form cues, equipment matching and progression history.</p></div><button class="button secondary" data-action="open-custom-exercise">+ CUSTOM EXERCISE</button></div>
     <div class="catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="${esc(catalogQuery)}"><span>${items.length} shown</span></div>
     <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><p class="catalog-description">${esc(exerciseDescription(e))}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
 }
@@ -4628,8 +4632,10 @@ function render(){
   if(cueSettingsOpen) app.insertAdjacentHTML('beforeend',renderCueSettingsSheet());
   if(exerciseActionsIndex!==null) app.insertAdjacentHTML('beforeend',renderExerciseActionsSheet());
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
+  if(planImportOpen) app.insertAdjacentHTML('beforeend',renderPlanImportModal());
+  if(customExerciseOpen) app.insertAdjacentHTML('beforeend',renderCustomExerciseModal());
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId||accountSheetOpen));
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId||planImportOpen||customExerciseOpen||accountSheetOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
 }
