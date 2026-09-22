@@ -1950,6 +1950,7 @@ function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(
 
 function navigateToExercise(index,{announce=true}={}){
   const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
+  workoutPreviewIndex=null;workoutFormMode=false;
   index=Math.max(0,Math.min(index,w.exercises.length-1));
   pauseInteractiveTimers(w);
   const previous=w.currentExerciseIndex||0;
@@ -1976,12 +1977,47 @@ function navigateToExercise(index,{announce=true}={}){
   workoutMapOpen=false;
   saveStore();render();
 }
+function previewExercise(index){
+  const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
+  const safe=Math.max(0,Math.min(num(index),w.exercises.length-1));
+  persistActiveSetDraft();
+  workoutPreviewIndex=safe;
+  workoutFormMode=false;
+  workoutMapOpen=false;
+  render();
+}
 function navigateExercise(delta){
   const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
-  const target=Math.max(0,Math.min((w.currentExerciseIndex||0)+delta,w.exercises.length-1));
-  if(target===w.currentExerciseIndex){toast(delta<0?'You are at the first exercise.':'You are at the last exercise.');return;}
+  const base=workoutPreviewIndex===null?(w.currentExerciseIndex||0):workoutPreviewIndex;
+  const target=Math.max(0,Math.min(base+delta,w.exercises.length-1));
+  if(target===base){toast(delta<0?'You are at the first exercise.':'You are at the last exercise.');return;}
+  previewExercise(target);
+}
+function backToWorkout(){
+  persistActiveSetDraft();
+  workoutPreviewIndex=null;workoutFormMode=false;render();
+}
+function startPreviewedExercise(){
+  if(workoutPreviewIndex===null)return;
+  const target=workoutPreviewIndex;
+  persistActiveSetDraft();
+  workoutPreviewIndex=null;workoutFormMode=false;
   navigateToExercise(target);
 }
+function persistActiveSetDraft(){
+  const pos=getActivePosition();if(!pos||!store.activeWorkout)return;
+  const weightInput=document.querySelector('#set-weight');
+  const repsInput=document.querySelector('#set-reps');
+  if(weightInput)pos.set.weight=String(weightInput.value||'').trim().replace(/[^0-9.]/g,'');
+  if(repsInput)pos.set.reps=String(repsInput.value||'').trim().replace(/[^0-9.]/g,'');
+}
+function autosaveCurrentSetDraft(){
+  const pos=getActivePosition();if(!pos||pos.workout.phase!=='work')return;
+  persistActiveSetDraft();
+  clearTimeout(draftAutosaveTimer);
+  draftAutosaveTimer=setTimeout(()=>saveStore(),180);
+}
+
 function markExerciseManual(index){
   const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
   ex.manualComplete=true;ex.manualCompletedAt=new Date().toISOString();ex.skipped=false;ex.skipReason='';
@@ -3976,24 +4012,50 @@ function beginWorkoutSession(){
   }
 }
 
+function renderWorkoutPreview(w,index){
+  const ex=w.exercises[index];if(!ex)return '';
+  const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
+  const guide=exerciseGuidance(ex);
+  return '<div class="workout-preview-stage">'+
+    '<div class="preview-banner"><div><span>PREVIEW · EXERCISE '+(index+1)+' OF '+w.exercises.length+'</span><strong>Viewing only. Your workout position has not changed.</strong></div><button class="text-button" data-action="back-to-workout">BACK TO WORKOUT</button></div>'+
+    '<div class="clean-exercise-heading"><div><p class="eyebrow">'+esc(exerciseStateLabel(ex))+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div></div>'+
+    '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="preview-facts"><div><span>TARGET</span><strong>'+esc(ex.sets.length+' × '+ex.reps)+'</strong></div><div><span>REST</span><strong>'+esc(ex.rest||45)+' sec</strong></div><div><span>LOGGED</span><strong>'+done+'/'+ex.sets.length+' sets</strong></div></div>'+
+    '<section class="preview-cues"><span>FORM CUE</span><strong>'+esc(guide.cue)+'</strong><p>'+esc(guide.setup)+'</p></section>'+
+    renderLoggedSets(ex,index)+
+    '<div class="preview-actions"><button class="button secondary" data-exercise-detail="'+esc(ex.id)+'">VIEW FULL FORM</button>'+
+    (index!==(w.currentExerciseIndex||0)&&!exerciseCountsAsResolved(ex)?'<button class="button primary-action" data-action="start-previewed-exercise">START THIS EXERCISE NOW</button>':'')+
+    '<button class="text-button" data-action="back-to-workout">BACK TO CURRENT EXERCISE</button></div>'+
+  '</div>';
+}
+function renderFormMode(pos){
+  const ex=pos.exercise,guide=exerciseGuidance(ex);
+  return '<div class="form-mode-stage"><div class="form-mode-head"><div><p class="eyebrow">FORM MODE · SET '+(pos.si+1)+' OF '+ex.sets.length+'</p><h2>'+esc(ex.name)+'</h2></div><button class="text-button" data-action="toggle-form-mode">EXIT FORM MODE</button></div>'+
+    '<div class="form-mode-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="form-mode-target"><span>CURRENT TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div>'+
+    '<div class="form-mode-cues"><article><span>SETUP</span><p>'+esc(guide.setup)+'</p></article><article><span>MOVE</span><p>'+esc(guide.steps?.[0]||guide.cue)+'</p></article><article><span>WATCH FOR</span><p>'+esc(guide.mistake)+'</p></article></div>'+
+    '<button class="button primary-action" data-action="toggle-form-mode">BACK TO SET</button></div>';
+}
 function renderWorkout(){
   const pos=getActivePosition();
   if(!pos)return '<div class="clean-page empty-workout-page"><p class="eyebrow">TRAIN</p><h2>No active session.</h2><p>Start today’s workout from Home or Train.</p><button class="button" data-action="home">GO HOME</button></div>';
   const w=pos.workout;
+  const previewing=workoutPreviewIndex!==null;
+  const viewIndex=previewing?workoutPreviewIndex:pos.ei;
   const done=completedSets(w.exercises),total=totalSets(w.exercises),resolved=workoutResolvedCount(w);
   const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set','exercise-review','exercise-transition'].includes(w.phase);
-  const stageLabel=w.isPaused?'Paused':w.phase==='intro'?'Session intro':w.phase==='review'?'Review':w.phase==='exercise-transition'?'Next exercise':w.phase==='exercise-review'?'Exercise review':w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.phase==='feedback'?'Feedback':w.phase==='pre-set'?'Get ready':w.phase==='timed-set'?'Timed set':'Working';
+  const stageLabel=previewing?'Previewing exercise':w.isPaused?'Paused':w.phase==='intro'?'Session intro':w.phase==='review'?'Review':w.phase==='exercise-transition'?'Next exercise':w.phase==='exercise-review'?'Exercise review':w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.phase==='feedback'?'Feedback':w.phase==='pre-set'?'Get ready':w.phase==='timed-set'?'Timed set':'Working';
   const current=Math.min(w.exercises.length,Math.max(1,(w.currentExerciseIndex||0)+1));
   return '<div class="guided-shell cleaned-workout">'+
     '<div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
-    '<header class="clean-workout-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><span>'+esc(w.routineName)+'</span><strong id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</strong></div><div class="workout-header-actions"><button class="circle-action" data-action="open-cue-settings" aria-label="Workout settings">◉</button><button class="circle-action" data-action="toggle-workout-pause" aria-label="'+(w.isPaused?'Resume':'Pause')+' workout">'+(w.isPaused?'▶':'Ⅱ')+'</button></div></header>'+
+    '<header class="clean-workout-header"><button class="workout-back" data-action="'+(previewing?'back-to-workout':'home')+'" aria-label="'+(previewing?'Back to current workout':'Leave workout and resume later')+'">‹</button><div><span>'+esc(w.routineName)+'</span><strong id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</strong></div><div class="workout-header-actions"><button class="circle-action" data-action="open-cue-settings" aria-label="Workout settings">◉</button><button class="circle-action" data-action="toggle-workout-pause" aria-label="'+(w.isPaused?'Resume':'Pause')+' workout">'+(w.isPaused?'▶':'Ⅱ')+'</button></div></header>'+
     (w.sharedSession?(()=>{const live=sharedTrainingState().draft?.backendId===w.sharedSession.backendId?sharedTrainingState().draft:w.sharedSession;return '<button class="shared-session-strip" data-action="together"><div class="shared-avatar-stack tiny"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((live.partnerName?.[0]||'P').toUpperCase())+'</div></div><div><span>SHARED SESSION</span><strong>With '+esc(live.partnerName||'Partner')+'</strong><small>'+esc(sharedRemotePositionLabel(live))+'</small></div><em>'+esc(live.remoteState?.connectionState==='offline'?'Reconnecting':'Live')+'</em></button>'})():'')+
-    '<div class="clean-progress-head"><span>'+esc(stageLabel)+'</span><strong>'+current+' of '+w.exercises.length+'</strong></div>'+
-    '<div class="step-strip clean-step-strip">'+w.exercises.map((ex,i)=>'<button type="button" class="step-pip '+(exerciseCountsAsResolved(ex)?'done':'')+' '+(i===pos.ei&&inExercise?'current':'')+' '+(exerciseState(ex)==='partial'?'partial':'')+'" data-action="jump-exercise" data-exercise-index="'+i+'" aria-label="'+esc(ex.name)+' · '+esc(exerciseStateLabel(ex))+'"></button>').join('')+'</div>'+
+    '<div class="clean-progress-head"><span>'+esc(stageLabel)+'</span><strong>Current '+current+' of '+w.exercises.length+'</strong></div>'+
+    '<div class="step-strip clean-step-strip">'+w.exercises.map((ex,i)=>'<button type="button" class="step-pip '+(exerciseCountsAsResolved(ex)?'done':'')+' '+(i===pos.ei&&inExercise?'current':'')+' '+(i===viewIndex&&previewing?'viewing':'')+' '+(exerciseState(ex)==='partial'?'partial':'')+'" data-action="preview-exercise" data-exercise-index="'+i+'" aria-label="Preview '+esc(ex.name)+' · '+esc(exerciseStateLabel(ex))+'"></button>').join('')+'</div>'+
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
-    '<section class="exercise-stage clean-exercise-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
-    '<nav class="workout-bottom-nav"><button data-action="previous-exercise" '+(current<=1?'disabled':'')+'>‹ <span>Previous</span></button><button class="workout-map-trigger" data-action="open-workout-map"><span>'+current+' / '+w.exercises.length+'</span><strong>Workout Map</strong></button><button data-action="next-exercise" '+(current>=w.exercises.length?'disabled':'')+'><span>Next</span> ›</button></nav>'+
-    '<div class="workout-quiet-actions"><button class="text-button" data-action="finish">END SESSION</button><button class="text-button muted" data-action="home">LEAVE & RESUME LATER</button></div>'+
+    '<section class="exercise-stage clean-exercise-stage">'+(previewing?renderWorkoutPreview(w,viewIndex):workoutFormMode?renderFormMode(pos):w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
+    '<nav class="workout-bottom-nav"><button data-action="previous-exercise" '+(viewIndex<=0?'disabled':'')+'>‹ <span>Preview previous</span></button><button class="workout-map-trigger" data-action="open-workout-map"><span>'+current+' / '+w.exercises.length+'</span><strong>Workout Map</strong></button><button data-action="next-exercise" '+(viewIndex>=w.exercises.length-1?'disabled':'')+'><span>Preview next</span> ›</button></nav>'+
+    '<div class="workout-quiet-actions">'+(previewing?'<button class="text-button" data-action="back-to-workout">BACK TO WORKOUT</button>':'<button class="text-button" data-action="finish">END SESSION</button><button class="text-button muted" data-action="home">LEAVE & RESUME LATER</button>')+'</div>'+
   '</div>';
 }
 
@@ -4128,6 +4190,8 @@ function renderWorkSet(pos){
   const defaultWeight=pos.set.weight ?? (ex.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? ex.suggestedReps ?? '';
   const previous=exerciseSessionHistory(ex.id,1)[0];
+  const finalSet=pos.si===Math.max(0,ex.sets.length-1);
+  const nextPreview=finalSet?nextExercisePreview(pos.workout,pos.ei):null;
   const lastLabel=previous?.sets?.length?previous.sets.map(set=>set.weight?set.weight+' × '+set.reps:set.reps+' reps').join(' · '):bestLabel(ex.id);
   const setRows=ex.sets.map((set,index)=>{
     const active=index===pos.si&&!set.completed;
@@ -4142,10 +4206,11 @@ function renderWorkSet(pos){
   return '<div class="clean-active-exercise">'+
     '<div class="clean-exercise-heading"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
     '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
-    '<div class="clean-target-strip"><div><span>TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
+    '<div class="clean-target-strip"><div><span>TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><div class="target-actions"><button class="text-button" data-action="toggle-form-mode">FORM MODE</button><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">DETAILS</button></div></div>'+
     '<div class="clean-set-list">'+setRows+'</div>'+
     '<button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button>'+
     '<div class="clean-performance-note"><div><span>LAST TIME</span><strong>'+esc(lastLabel||'First session')+'</strong></div><div><span>TODAY</span><strong>'+esc(ex.adaptiveReason||'Hit the target with solid form.')+'</strong></div></div>'+
+    (nextPreview?'<button class="last-set-next-card" type="button" data-action="preview-exercise" data-exercise-index="'+nextPreview.index+'"><span>UP NEXT · AFTER THIS FINAL SET</span><strong>'+esc(nextPreview.exercise.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(nextPreview.exercise)))+' · tap to preview without advancing</small></button>':'')+
     '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>More options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
   '</div>';
 }
@@ -4219,13 +4284,13 @@ function nextExercisePreview(w,currentExerciseIndex){
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
-  const preview=changingExercise&&nextEx?{index:next.ei,exercise:nextEx}:nextExercisePreview(pos.workout,pos.ei);
+  const preview=changingExercise&&nextEx?{index:next.ei,exercise:nextEx}:null;
   const previewEx=preview?.exercise||null;
   const immediateLabel=changingExercise?'NEXT EXERCISE':next?'NEXT SET':'AFTER REST';
   const immediateName=changingExercise?(nextEx?.name||'Next exercise'):next?('Set '+(next.si+1)+' · '+(nextEx?.name||pos.exercise.name)):'Cooldown';
   return '<div class="rest-stage clean-rest-stage"><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><div class="timer-wrap clean-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':changingExercise?'NEXT EXERCISE':'RECOVER')+'</div></div></div>'+
-    '<div class="rest-next-copy"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><p>'+(changingExercise?'Set up the next station. The app will wait until you are ready.':next?'Recover for the next set. Your next exercise is previewed below.':'Finish strong, then move into cooldown.')+'</p></div>'+
-    (previewEx?'<div class="rest-next-exercise-card">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button class="rest-next-exercise-copy" type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'"><span>NEXT EXERCISE · '+(preview.index+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+' · '+esc(currentPrescriptionLabel(previewEx))+'</small></button><em>›</em></div>':'<div class="rest-next-exercise-card cooldown-preview"><div><span>UP NEXT</span><strong>Cooldown</strong><small>Finish the session with guided recovery.</small></div></div>')+
+    '<div class="rest-next-copy"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><p>'+(changingExercise?'Set up the next station. The app will wait until you are ready.':next?'Recover for the next set. The next exercise stays hidden until your final set.':'Finish strong, then move into cooldown.')+'</p></div>'+
+    (previewEx?'<div class="rest-next-exercise-card">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button class="rest-next-exercise-copy" type="button" data-action="preview-exercise" data-exercise-index="'+preview.index+'"><span>NEXT EXERCISE · '+(preview.index+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+' · '+esc(currentPrescriptionLabel(previewEx))+'</small></button><em>›</em></div>':'<div class="rest-next-exercise-card cooldown-preview"><div><span>UP NEXT</span><strong>Cooldown</strong><small>Finish the session with guided recovery.</small></div></div>')+
     '<div class="clean-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">SKIP</button></div>'+
     '<div class="rest-tertiary"><button class="text-button" data-action="pause-rest">'+(paused?'Resume timer':'Pause timer')+'</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
   '</div>';
