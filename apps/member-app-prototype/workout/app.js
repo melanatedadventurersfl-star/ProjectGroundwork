@@ -5173,6 +5173,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
+  if((a==='resume'||a==='force-recover-session')&&a===lastCriticalTapAction&&Date.now()-lastCriticalTapAt<700){traceWorkoutInteraction(a,'click-suppressed-after-pointerup');return;}
   traceWorkoutInteraction(a,'click-received',node.tagName||'');
   const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','preview-exercise','previous-exercise','next-exercise','back-to-workout','toggle-form-mode','set-exercise-detail-metric','set-exercise-detail-range','save-exercise-memory','set-prep-length','toggle-prefer-reps','toggle-skip-static','toggle-always-mobility','resume','force-recover-session'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
@@ -5301,6 +5302,20 @@ function handleClick(event){
   else if(a==='discard')discardWorkout();
 }
 document.addEventListener('pointerdown',event=>{const target=event.target.closest?.('[data-action],[data-tab],[data-start],[data-exercise-detail]');if(!target)return;traceWorkoutInteraction(target.dataset.action||target.dataset.tab||target.dataset.start||target.dataset.exerciseDetail||'unknown','pointerdown',target.tagName||'');},{passive:true});
+let lastCriticalTapAction='',lastCriticalTapAt=0;
+document.addEventListener('pointerup',event=>{
+  const node=event.target.closest?.('[data-action="resume"],[data-action="force-recover-session"]');
+  if(!node)return;
+  const action=node.dataset.action||'';
+  const now=Date.now();
+  if(action===lastCriticalTapAction&&now-lastCriticalTapAt<700)return;
+  lastCriticalTapAction=action;
+  lastCriticalTapAt=now;
+  try{event.preventDefault();}catch{}
+  traceWorkoutInteraction(action,'pointerup-fast-path',node.tagName||'');
+  if(action==='resume')resumeWorkout();
+  else recoverStuckSession();
+},{passive:false});
 document.addEventListener('click',handleClick);
 document.addEventListener('error',event=>{
   const img=event.target.closest?.('img[data-fallback-src]');
