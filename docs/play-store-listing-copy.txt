@@ -1,0 +1,40 @@
+APP NAME
+Go Melanated
+
+SHORT DESCRIPTION
+Find outdoor adventures, community, trails and places to explore together.
+
+FULL DESCRIPTION
+Go Melanated is an outdoor adventure and community app built to make it easier to discover places, plan experiences, connect with other explorers, and keep your outdoor life organized in one place.
+
+Discover Adventures and outdoor destinations, explore local trail and place recommendations, and find inspiration for your next trip through the Trail Guide. Join conversations in Outpost, connect with people who share your interests, and build a profile that reflects the places you have been and the experiences you are building.
+
+Go Melanated also helps members keep up with the practical side of adventure. Depending on the experience, you can view event details, manage participation, access reservations or tickets, see local information, and keep important adventure details close at hand.
+
+Core experiences include:
+
+• Discovering Adventures and outdoor places
+• Exploring trails, local destinations, guides, tips, and outdoor resources
+• Joining community conversations and curated groups
+• Connecting with other members and viewing member profiles
+• Saving favorites and tracking experiences through your Passport
+• Viewing reservations, tickets, and participation details for supported Adventures
+• Using location-aware nearby discovery and local weather when permission is granted
+• Adding photos to your Passport memories
+• Receiving relevant app notifications when enabled
+
+Go Melanated is designed to bring discovery, community, and practical trip information together without turning outdoor exploration into another pile of tabs.
+
+Location, camera, photo-library, and notification permissions are optional and are requested only when a feature needs them.
+
+PRIVACY POLICY URL
+https://melanatedadventurersfl-star.github.io/ProjectGroundwork/privacy/
+
+ACCOUNT DELETION URL
+https://melanatedadventurersfl-star.github.io/ProjectGroundwork/account-deletion/
+
+PACKAGE ID
+com.melanatedadventurers.app
+
+SUGGESTED CATEGORY
+Travel & Local
