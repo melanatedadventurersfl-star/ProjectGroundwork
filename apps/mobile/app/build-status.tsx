@@ -119,14 +119,19 @@ export default function BuildStatusScreen() {
         <View style={styles.card}>
           <View style={styles.notesHeader}>
             <Text style={styles.notesTitle}>{currentReleaseNotes.title}</Text>
+            <Text style={styles.notesSubtitle}>{currentReleaseNotes.subtitle}</Text>
             <Text style={styles.notesIntro}>{currentReleaseNotes.intro}</Text>
           </View>
-          {currentReleaseNotes.items.map((item, index) => (
-            <View key={`${index}-${item}`} style={styles.noteRow}>
+          {currentReleaseNotes.features.map((feature) => (
+            <View key={feature.id} style={styles.noteRow}>
               <Text style={styles.bullet}>•</Text>
-              <Text style={styles.noteText}>{item}</Text>
+              <View style={styles.noteCopy}>
+                <Text style={styles.noteTitle}>{feature.title}</Text>
+                <Text style={styles.noteText}>{feature.body}</Text>
+              </View>
             </View>
           ))}
+          {currentReleaseNotes.footer ? <Text style={styles.notesFooter}>{currentReleaseNotes.footer}</Text> : null}
         </View>
 
         <Text style={styles.footer}>Use the version, native build, CI build, and commit together when reporting a screen that looks out of date.</Text>
@@ -174,9 +179,13 @@ const styles = StyleSheet.create({
   infoValue: { flex: 1, color: '#FFF8E8', fontSize: 12, fontWeight: '800', textAlign: 'right' },
   notesHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#26332C', gap: 5 },
   notesTitle: { color: '#FFF8E8', fontSize: 18, fontWeight: '900' },
+  notesSubtitle: { color: '#D7B45A', fontSize: 13, lineHeight: 18, fontWeight: '800' },
   notesIntro: { color: '#8F9A93', fontSize: 12, lineHeight: 18 },
   noteRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
   bullet: { color: '#D7B45A', fontSize: 17, lineHeight: 19 },
-  noteText: { flex: 1, color: '#C6D0CA', fontSize: 12, lineHeight: 18 },
+  noteCopy: { flex: 1, gap: 2 },
+  noteTitle: { color: '#FFF8E8', fontSize: 12, lineHeight: 17, fontWeight: '900' },
+  noteText: { color: '#C6D0CA', fontSize: 12, lineHeight: 18 },
+  notesFooter: { color: '#8F9A93', fontSize: 11, lineHeight: 17, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#26332C' },
   footer: { color: '#718078', fontSize: 11, lineHeight: 17, textAlign: 'center' },
 });
