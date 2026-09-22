@@ -1324,7 +1324,7 @@ function buildWarmup(exercises){
   const level=prepLevel('warmup'),preferReps=prepSettings().preferReps;
   const reps=[6,8,10],side=[4,5,6],march=[20,25,35];
   const items=[{name:'Easy march + arm swing',groupId:'easy-march-arm-swing',mode:'time',seconds:march[level],kind:'dynamic',description:'March in place at an easy pace while the arms swing naturally.',cue:'Stay relaxed, breathe easily, and let the arms swing naturally.',steps:['Stand tall with room to move.','March smoothly in place.','Let the arms swing forward and back without forcing the shoulders.'],why:'Raises your temperature before loaded work.',mediaId:'',mediaVerified:false}];
-  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m)))items.push({name:'Bodyweight squat warm-up',groupId:'bodyweight-squat-warmup',mode:preferReps?'reps':'time',reps:reps[level],repsLabel:reps[level]+' controlled reps',seconds:[20,25,30][level],kind:'dynamic',description:'Use easy bodyweight squats to warm the hips, knees, and ankles.',cue:'Controlled depth. Keep the knees tracking comfortably over the feet.',steps:['Stand around shoulder width.','Sit the hips down and back through a comfortable range.','Stand tall without rushing the rep.'],why:'Prepares the squat pattern and lower-body joints.',mediaId:'Bodyweight_Squat',mediaVerified:true});
+  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m)))items.push({name:'Bodyweight squat warm-up',groupId:'bodyweight-squat-warmup',mode:preferReps?'reps':'time',reps:reps[level],repsLabel:reps[level]+' controlled reps',seconds:[20,25,30][level],kind:'dynamic',description:'Use easy bodyweight squats to warm the hips, knees, and ankles.',cue:'Controlled depth. Keep the knees tracking comfortably over the feet.',steps:['Stand around shoulder width.','Sit the hips down and back through a comfortable range.','Stand tall without rushing the rep.'],why:'Prepares the squat pattern and lower-body joints.',mediaId:'Bodyweight_Squat',mediaVerified:false});
   if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m)))items.push({name:'Dynamic hip hinge reach',groupId:'dynamic-hip-hinge-reach',mode:preferReps?'reps':'time',reps:reps[level],repsLabel:reps[level]+' controlled reps',seconds:[20,25,30][level],kind:'dynamic',description:'Practice the hinge pattern unloaded by sending the hips back, reaching forward, and returning tall.',cue:'Soft knees. Hips travel back while the spine stays long.',steps:['Stand tall with soft knees.','Push the hips back as your hands reach forward.','Squeeze the glutes lightly to return to standing.'],why:'Primes the hamstrings and hinge pattern before loaded pulls.',mediaId:'',mediaVerified:false});
   if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m)))items.push({name:'Arm circles + shoulder sweep',groupId:'arm-circles-shoulder-sweep',mode:preferReps?'reps':'time',reps:reps[level],repsLabel:reps[level]+' forward + '+reps[level]+' backward',seconds:[20,25,30][level],kind:'dynamic',description:'Circle the arms through a comfortable range, then sweep them forward and overhead.',cue:'Start small and gradually make the circles larger without shrugging.',steps:['Make controlled forward arm circles.','Reverse the circles.','Finish with slow forward-to-overhead shoulder sweeps.'],why:'Warms the shoulders before pressing and pulling.',mediaId:'Arm_Circles',mediaVerified:true});
   if(items.length<4||prepSettings().alwaysMobility)items.push({name:'Alternating reverse lunge reach',groupId:'alternating-reverse-lunge-reach',mode:preferReps?'reps':'time',repsPerSide:side[level],repsLabel:side[level]+' each side',seconds:[20,25,30][level],kind:'dynamic',description:'Alternate a gentle step back with an overhead reach to open the hips.',cue:'Keep the motion smooth and use only a comfortable lunge depth.',steps:['Step one foot back into a shallow reverse lunge.','Reach overhead without leaning aggressively.','Return to standing and alternate sides.'],why:'Adds hip mobility and single-leg preparation.',mediaId:'',mediaVerified:false});
@@ -2240,8 +2240,8 @@ function advanceTimedStage(skipped=true){
 }
 function skipRemainingPrep(){
   const w=store.activeWorkout;if(!w)return;
-  if(w.phase==='warmup'){w.warmupSkipped=true;delete w.timedStageIndex;delete w.timedStageStartedAt;beginPreSetPosition(0,0,true);return;}
-  if(w.phase==='cooldown'){w.cooldownSkipped=true;delete w.timedStageIndex;delete w.timedStageStartedAt;openWorkoutReview();}
+  if(w.phase==='warmup'){w.warmupSkipped=true;delete w.timedStageIndex;delete w.timedStageStartedAt;w.timedPhaseStartedAt=null;w.timedPhaseSkippedSeconds=0;beginPreSetPosition(0,0,true);return;}
+  if(w.phase==='cooldown'){w.cooldownSkipped=true;delete w.timedStageIndex;delete w.timedStageStartedAt;w.timedPhaseStartedAt=null;w.timedPhaseSkippedSeconds=0;openWorkoutReview();}
 }
 function recordPrepFeedback(value){
   const w=store.activeWorkout;if(!w)return;
@@ -2430,7 +2430,7 @@ function renderWorkoutReview(w){
 function openWorkoutReview(){
   const w=store.activeWorkout;if(!w)return;
   pauseInteractiveTimers(w);
-  w.returnPhase=w.phase;
+  w.returnPhase=(w.phase==='cooldown'&&(w.cooldownCompleted||w.cooldownSkipped))?'exercise-review':w.phase;
   w.phase='review';saveStore();render();
 }
 function jumpFromReview(index){
