@@ -1338,7 +1338,7 @@ function buildWarmup(exercises){
     steps:['Step one foot back into a shallow reverse lunge.','Reach overhead without leaning aggressively.','Return to standing and alternate sides.'],
     why:'Adds hip mobility and single-leg preparation.',mediaId:'',mediaVerified:false
   });
-  return normalizeTimedStage(items.slice(0,5),exercises.length<=3?180:exercises.length>=7?300:240,180,300);
+  return normalizeTimedStage(items.slice(0,5),exercises.length<=3?180:exercises.length>=7?300:240,180,300).map(item=>({...item,coachingVersion:3}));
 }
 
 function buildCooldown(exercises){
@@ -1396,7 +1396,7 @@ function buildCooldown(exercises){
   const selected=movements.slice(0,4);
   const items=[];
   selected.forEach(item=>item.sided?addTimedSides(items,item):items.push(item));
-  return items;
+  return items.map(item=>({...item,coachingVersion:3}));
 }
 
 function equipmentAllows(exercise,equipment){
@@ -1590,10 +1590,18 @@ function nextPlanDay(){
 }
 
 function plannedWarmup(day){
-  return day?.warmup?.length?day.warmup:buildWarmup(day?.exercises||[]);
+  const current=Array.isArray(day?.warmup)?day.warmup:[];
+  if(current.length&&current.every(item=>num(item.coachingVersion)>=3))return current;
+  const upgraded=buildWarmup(day?.exercises||[]);
+  if(day)day.warmup=upgraded;
+  return upgraded;
 }
 function plannedCooldown(day){
-  return day?.cooldown?.length?day.cooldown:buildCooldown(day?.exercises||[]);
+  const current=Array.isArray(day?.cooldown)?day.cooldown:[];
+  if(current.length&&current.every(item=>num(item.coachingVersion)>=3))return current;
+  const upgraded=buildCooldown(day?.exercises||[]);
+  if(day)day.cooldown=upgraded;
+  return upgraded;
 }
 function renderPlanTimedRow(item,type,index){
   const image=timedStageImageUrl(item,0);
