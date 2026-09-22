@@ -25,6 +25,7 @@ let exerciseActionsIndex = null;
 let historyMenuId = null;
 let accountSheetOpen = false;
 let historyFilter = 'all';
+let analyticsRange = '3m';
 
 const defaultStore = {
   profile: null,
@@ -56,6 +57,7 @@ if(!store.profile||!store.plan)restoredTab='profile-edit';
 else if(restoredTab==='workout'&&!store.activeWorkout)restoredTab='home';
 let currentTab=restoredTab||(store.activeWorkout?'workout':'home');
 accountSheetOpen=Boolean(restoredUiState.accountSheetOpen);
+if(['4w','3m','6m','1y','all'].includes(restoredUiState.analyticsRange))analyticsRange=restoredUiState.analyticsRange;
 let catalogQuery = '';
 let tickHandle = null;
 
@@ -97,6 +99,7 @@ function persistUiState(){
     localStorage.setItem(UI_STATE_KEY,JSON.stringify({
       currentTab,
       accountSheetOpen:Boolean(accountSheetOpen),
+      analyticsRange,
       savedAt:new Date().toISOString()
     }));
   }catch{}
@@ -4015,18 +4018,287 @@ function personalRecords(){
   for(const w of store.history)for(const ex of w.exercises)for(const s of ex.sets){if(!s.completed)continue;const c={id:ex.id,name:ex.name,weight:num(s.weight),reps:num(s.reps)};const old=map.get(ex.id);if(!old||c.weight>old.weight||(c.weight===old.weight&&c.reps>old.reps))map.set(ex.id,c);}
   return [...map.values()].sort((a,b)=>b.weight-a.weight);
 }
+
+function analyticsRangeStart(range=analyticsRange){
+  const now=new Date();
+  if(range==='all'){
+    const dates=(store.history||[]).map(item=>new Date(item.completedAt)).filter(date=>Number.isFinite(date.getTime()));
+    const oldest=dates.length?new Date(Math.min(...dates.map(date=>date.getTime()))):programOriginDate();
+    return oldest<programOriginDate()?oldest:programOriginDate();
+  }
+  const days=range==='4w'?28:range==='3m'?90:range==='6m'?180:365;
+  const start=new Date(now);start.setDate(start.getDate()-days+1);start.setHours(0,0,0,0);return start;
+}
+function analyticsRangeLabel(range=analyticsRange){
+  return ({'4w':'4 Weeks','3m':'3 Months','6m':'6 Months','1y':'Year','all':'All Time'})[range]||'3 Months';
+}
+function analyticsHistory(range=analyticsRange){
+  const start=analyticsRangeStart(range);
+  return (store.history||[]).filter(item=>{const date=new Date(item.completedAt);return Number.isFinite(date.getTime())&&date>=start;});
+}
+function analyticsPlannedDates(range=analyticsRange){
+  if(!store.profile||!store.plan)return [];
+  const today=new Date();today.setHours(23,59,59,999);
+  let from=analyticsRangeStart(range);
+  const origin=programOriginDate();
+  if(from<origin)from=origin;
+  const preferred=preferredWorkoutDays();
+  const overrides=ensureTrainingProgram().scheduleOverrides||{};
+  const dates=[];
+  for(let cursor=startOfWeek(from);cursor<=today;cursor=addDays(cursor,7)){
+    for(const dayId of preferred){
+      const date=addDays(cursor,dayOffsetFromMonday(dayId));
+      if(date<from||date>today)continue;
+      const key=dateKey(date);
+      dates.push({date,key,status:overrides[key]?.status||'scheduled'});
+    }
+  }
+  return dates;
+}
+function analyticsAdherence(range=analyticsRange){
+  const planned=analyticsPlannedDates(range);
+  const plannedSet=new Set(planned.map(item=>item.key));
+  const completed=new Set();
+  const partial=new Set();
+  for(const item of analyticsHistory(range)){
+    const key=item.scheduledDate||dateKey(new Date(item.completedAt));
+    if(!plannedSet.has(key))continue;
+    if(item.completionStatus==='partial')partial.add(key);else completed.add(key);
+  }
+  const scheduled=planned.length;
+  return {
+    scheduled,
+    completed:completed.size,
+    partial:partial.size,
+    rate:scheduled?Math.min(1,completed.size/scheduled):0
+  };
+}
+function analyticsWeeklySeries(range=analyticsRange,limit=8){
+  const start=analyticsRangeStart(range),now=new Date(),rows=[];
+  let cursor=startOfWeek(now);
+  for(let i=0;i<limit;i++){
+    const weekStart=addDays(cursor,-7*(limit-1-i));
+    if(weekStart<start&&i<limit-1)continue;
+    const weekEnd=addDays(weekStart,7);
+    const sessions=(store.history||[]).filter(item=>{const d=new Date(item.completedAt);return d>=weekStart&&d<weekEnd;});
+    rows.push({
+      key:dateKey(weekStart),
+      label:weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'}),
+      workouts:sessions.filter(item=>item.completionStatus!=='partial').length,
+      sets:sessions.reduce((sum,item)=>sum+num(item.completedSets),0),
+      volume:sessions.reduce((sum,item)=>sum+num(item.totalVolume),0)
+    });
+  }
+  return rows;
+}
+function analyticsMuscleSets(range=analyticsRange){
+  const map=new Map();
+  for(const workout of analyticsHistory(range)){
+    for(const ex of workout.exercises||[]){
+      const primary=(ex.muscles||[])[0]||movements[ex.movement]||'Other';
+      const sets=(ex.sets||[]).filter(set=>set.completed).length;
+      if(!sets)continue;
+      map.set(primary,(map.get(primary)||0)+sets);
+    }
+  }
+  return [...map.entries()].map(([name,sets])=>({name,sets})).sort((a,b)=>b.sets-a.sets);
+}
+function analyticsExerciseRows(range=analyticsRange){
+  const map=new Map();
+  const history=[...analyticsHistory(range)].sort((a,b)=>new Date(a.completedAt)-new Date(b.completedAt));
+  for(const workout of history){
+    for(const ex of workout.exercises||[]){
+      const completed=(ex.sets||[]).filter(set=>set.completed);
+      if(!completed.length)continue;
+      let best=null;
+      for(const set of completed){
+        const point={weight:num(set.weight),reps:num(set.reps)};
+        if(!best||point.weight>best.weight||(point.weight===best.weight&&point.reps>best.reps))best=point;
+      }
+      let row=map.get(ex.id);
+      if(!row)row={id:ex.id,name:ex.name,loadMode:ex.loadMode||exerciseSource(ex)?.loadMode||'',sessions:0,first:null,latest:null,totalSets:0,totalVolume:0,feedback:[]};
+      row.sessions+=1;row.first=row.first||best;row.latest=best;row.totalSets+=completed.length;
+      row.totalVolume+=completed.reduce((sum,set)=>sum+num(set.weight)*num(set.reps),0);
+      if(ex.feedback)row.feedback.push(ex.feedback);
+      map.set(ex.id,row);
+    }
+  }
+  return [...map.values()].sort((a,b)=>b.sessions-a.sessions||b.totalSets-a.totalSets);
+}
+function analyticsStrengthLabel(row){
+  if(!row?.first||!row?.latest)return 'Building baseline';
+  if(row.latest.weight>0||row.first.weight>0){
+    const delta=row.latest.weight-row.first.weight;
+    if(delta>0)return '+'+Math.round(delta*10)/10+' lb working load';
+    if(delta<0)return Math.round(delta*10)/10+' lb working load';
+    const repDelta=row.latest.reps-row.first.reps;
+    if(repDelta>0)return '+'+repDelta+' reps at '+row.latest.weight+' lb';
+    if(repDelta<0)return repDelta+' reps at '+row.latest.weight+' lb';
+    return 'Holding steady';
+  }
+  const repDelta=row.latest.reps-row.first.reps;
+  if(repDelta>0)return '+'+repDelta+' reps';
+  if(repDelta<0)return repDelta+' reps';
+  return 'Holding steady';
+}
+function analyticsFriction(range=analyticsRange){
+  const map=new Map();
+  const touch=(id,name,kind,amount=1)=>{
+    if(!id)return;
+    const row=map.get(id)||{id,name:name||id,score:0,swaps:0,skips:0,hard:0,form:0};
+    row[kind]=(row[kind]||0)+amount;row.score+=amount;map.set(id,row);
+  };
+  for(const workout of analyticsHistory(range)){
+    for(const ex of workout.exercises||[]){
+      if(ex.skipped)touch(ex.id,ex.name,'skips',2);
+      if(ex.feedback==='too-hard')touch(ex.id,ex.name,'hard',2);
+      if(ex.feedback==='form-off')touch(ex.id,ex.name,'form',2);
+    }
+  }
+  const start=analyticsRangeStart(range);
+  for(const swap of store.exercisePreferences?.swapHistory||[]){
+    const at=new Date(swap.at);if(!Number.isFinite(at.getTime())||at<start)continue;
+    touch(swap.fromId,swap.fromName,'swaps',1);
+  }
+  return [...map.values()].sort((a,b)=>b.score-a.score).filter(row=>row.score>1);
+}
+function analyticsReadiness(range=analyticsRange){
+  const rows=analyticsHistory(range).filter(item=>num(item.readiness?.score)>0);
+  if(rows.length<5)return {count:rows.length,ready:false,message:'Log at least 5 workouts with Quick Check-In data to unlock readiness patterns.'};
+  const low=rows.filter(item=>num(item.readiness?.score)<3);
+  const high=rows.filter(item=>num(item.readiness?.score)>=3);
+  const avgSets=list=>list.length?list.reduce((sum,item)=>sum+num(item.completedSets),0)/list.length:0;
+  const avgMinutes=list=>list.length?list.reduce((sum,item)=>sum+num(item.durationMinutes),0)/list.length:0;
+  if(low.length<2||high.length<2)return {count:rows.length,ready:false,message:'You have '+rows.length+' readiness check-ins. More low- and high-readiness days are needed before comparing them.'};
+  const lowSets=avgSets(low),highSets=avgSets(high),delta=highSets-lowSets;
+  const message=Math.abs(delta)<1
+    ?'Completed set volume has stayed similar across lower- and higher-readiness days.'
+    :'Higher-readiness sessions have averaged '+Math.abs(delta).toFixed(1)+' '+(delta>0?'more':'fewer')+' completed sets than lower-readiness sessions.';
+  return {count:rows.length,ready:true,lowSets,highSets,lowMinutes:avgMinutes(low),highMinutes:avgMinutes(high),message};
+}
+function analyticsTogether(range=analyticsRange){
+  const sessions=analyticsHistory(range).filter(item=>item.sharedSession);
+  return {
+    sessions:sessions.length,
+    minutes:sessions.reduce((sum,item)=>sum+num(item.durationMinutes),0),
+    sets:sessions.reduce((sum,item)=>sum+num(item.completedSets),0),
+    prs:sessions.reduce((sum,item)=>sum+(item.newPRs?.length||0),0)
+  };
+}
+function analyticsProgram(range=analyticsRange){
+  const history=analyticsHistory(range);
+  const adherence=analyticsAdherence(range);
+  return {
+    adherence,
+    sessions:history.filter(item=>item.completionStatus!=='partial').length,
+    partial:history.filter(item=>item.completionStatus==='partial').length,
+    sets:history.reduce((sum,item)=>sum+num(item.completedSets),0),
+    minutes:history.reduce((sum,item)=>sum+num(item.durationMinutes),0),
+    prs:history.reduce((sum,item)=>sum+(item.newPRs?.length||0),0),
+    averageMinutes:history.length?Math.round(history.reduce((sum,item)=>sum+num(item.durationMinutes),0)/history.length):0
+  };
+}
+function analyticsRecentPRs(range=analyticsRange,limit=8){
+  const rows=[];
+  for(const workout of analyticsHistory(range)){
+    for(const pr of workout.newPRs||[])rows.push({...pr,date:workout.completedAt});
+  }
+  return rows.slice(0,limit);
+}
+function analyticsHeatmap(days=28){
+  const out=[],today=new Date();today.setHours(0,0,0,0);
+  const historyByDate=new Map();
+  for(const item of store.history||[]){
+    const key=item.actualCompletedDate||dateKey(new Date(item.completedAt));
+    const previous=historyByDate.get(key);
+    if(!previous||previous.completionStatus==='partial')historyByDate.set(key,item);
+  }
+  const planned=new Set(analyticsPlannedDates('4w').map(item=>item.key));
+  for(let i=days-1;i>=0;i--){
+    const date=addDays(today,-i),key=dateKey(date),history=historyByDate.get(key);
+    let state=history?(history.completionStatus==='partial'?'partial':'complete'):planned.has(key)&&date<today?'missed':planned.has(key)?'planned':'rest';
+    out.push({key,date,state,label:date.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})});
+  }
+  return out;
+}
+function analyticsInsights(range=analyticsRange){
+  const program=analyticsProgram(range),weekly=analyticsWeeklySeries(range,4),friction=analyticsFriction(range),readiness=analyticsReadiness(range);
+  const insights=[];
+  if(program.adherence.scheduled){
+    const pct=Math.round(program.adherence.rate*100);
+    insights.push({label:'CONSISTENCY',title:pct+'% scheduled-session adherence',copy:program.adherence.completed+' of '+program.adherence.scheduled+' planned sessions were completed in this view.'});
+  }
+  if(weekly.length>=4){
+    const recent=weekly.slice(-2).reduce((sum,row)=>sum+row.sets,0);
+    const prior=weekly.slice(-4,-2).reduce((sum,row)=>sum+row.sets,0);
+    if(prior>0){
+      const change=Math.round(((recent-prior)/prior)*100);
+      insights.push({label:'TRAINING LOAD',title:(change>=0?'+':'')+change+'% completed sets',copy:'Comparing the latest two weeks with the two weeks before them.'});
+    }
+  }
+  if(friction[0]){
+    const f=friction[0];
+    insights.push({label:'EXERCISE FIT',title:f.name+' needs attention',copy:[f.swaps?f.swaps+' swap'+(f.swaps===1?'':'s'):'',f.skips?f.skips+' skip'+(f.skips===1?'':'s'):'',f.hard?f.hard+' too-hard rating'+(f.hard===1?'':'s'):'',f.form?f.form+' form concern'+(f.form===1?'':'s'):''].filter(Boolean).join(' · ')});
+  }else if(readiness.ready){
+    insights.push({label:'READINESS',title:'Your check-ins are becoming useful',copy:readiness.message});
+  }
+  return insights.slice(0,3);
+}
+function workoutSummaryInsight(item){
+  if(!item)return '';
+  const previous=(store.history||[]).find(other=>other.id!==item.id&&other.routineName===item.routineName&&new Date(other.completedAt)<new Date(item.completedAt));
+  if(!previous)return 'This session establishes a comparison point for '+item.routineName+'.';
+  const setDelta=num(item.completedSets)-num(previous.completedSets);
+  const minuteDelta=num(item.durationMinutes)-num(previous.durationMinutes);
+  if(setDelta>0)return 'You completed '+setDelta+' more working set'+(setDelta===1?'':'s')+' than the previous '+item.routineName+' session.';
+  if(setDelta===0&&minuteDelta<0)return 'You completed the same number of sets '+Math.abs(minuteDelta)+' minute'+(Math.abs(minuteDelta)===1?'':'s')+' faster than last time.';
+  if(item.newPRs?.length)return 'You matched the session structure and added '+item.newPRs.length+' new personal record'+(item.newPRs.length===1?'':'s')+'.';
+  return 'This session is now part of your trend data for the next program decision.';
+}
+function renderAnalyticsBars(rows,key,labelKey,formatter=value=>String(value)){
+  if(!rows.length)return '<div class="analytics-empty">Complete workouts to populate this view.</div>';
+  const max=Math.max(1,...rows.map(row=>num(row[key])));
+  return '<div class="analytics-bars">'+rows.map(row=>'<div class="analytics-bar-row"><span>'+esc(row[labelKey])+'</span><div><i style="width:'+Math.max(2,Math.round(num(row[key])/max*100))+'%"></i></div><strong>'+esc(formatter(num(row[key])))+'</strong></div>').join('')+'</div>';
+}
 function renderProgress(){
-  const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),prs=personalRecords().slice(0,6),calibrated=Object.keys(store.calibration).length;
-  const learnedAll=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
-  const trends=recentExerciseTrendCards(5);
-  const context=programContext(),schedule=currentWeekSchedule();
-  const completed=schedule.filter(entry=>entry.status==='complete').length;
-  const thisWeekVolume=week.reduce((sum,item)=>sum+(item.totalVolume||0),0);
-  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>Consistency, strength trends, volume, PRs, and what the adaptive engine is learning.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
-    '<div class="progress-overview-grid"><section class="clean-panel metric-panel"><span>TRAINING CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>scheduled workouts this week</small></section><section class="clean-panel metric-panel"><span>WEEKLY VOLUME</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' all time</small></section><section class="clean-panel metric-panel"><span>LEARNED MOVEMENTS</span><strong>'+learnedAll.length+'</strong><small>'+calibrated+' initially calibrated</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></section></div>'+
-    (trends.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">STRENGTH TREND</p><h3>Recent movements</h3></div></div><div class="clean-trend-list">'+trends.map(item=>'<button class="clean-trend-row" data-exercise-detail="'+esc(item.ex.id)+'"><div><strong>'+esc(item.ex.name)+'</strong><span>'+esc(item.trend.detail)+'</span></div><em>'+esc(item.trend.label)+'</em></button>').join('')+'</div></section>':'')+
-    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT PRS</p><h3>Personal records</h3></div></div>'+(prs.length?'<div class="pr-list clean-pr-list">'+prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div>':'<div class="clean-empty-inline">Complete workouts to establish PRs.</div>')+'</section>'+
-    '<section class="clean-panel progress-engine-card"><div><span>ADAPTIVE ENGINE</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><p>'+esc(adaptationDecision().notes.join(' ')||'The next training week updates from your completed work and feedback.')+'</p></div></section>'+
+  const history=analyticsHistory(),program=analyticsProgram(),weekly=analyticsWeeklySeries(),muscles=analyticsMuscleSets(),exerciseRows=analyticsExerciseRows();
+  const prs=analyticsRecentPRs(),readiness=analyticsReadiness(),together=analyticsTogether(),friction=analyticsFriction(),insights=analyticsInsights();
+  const heatmap=analyticsHeatmap(),context=programContext();
+  const allVolume=history.reduce((sum,item)=>sum+num(item.totalVolume),0);
+  const periodOptions=[['4w','4 Weeks'],['3m','3 Months'],['6m','6 Months'],['1y','Year'],['all','All Time']];
+  const topExercises=exerciseRows.slice(0,6);
+  const topMuscles=muscles.slice(0,8);
+  return '<div class="clean-page progress-clean analytics-page">'+
+    '<div class="clean-page-head analytics-head"><div><p class="eyebrow">PROGRESS</p><h2>Are you actually improving?</h2><p>Training trends, consistency, strength, recovery patterns and what your program should learn next.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+    '<div class="analytics-range">'+periodOptions.map(([value,label])=>'<button class="'+(analyticsRange===value?'active':'')+'" data-action="set-analytics-range" data-analytics-range="'+value+'">'+label+'</button>').join('')+'</div>'+
+    '<div class="progress-overview-grid analytics-kpis">'+
+      '<section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+program.sessions+'</strong><small>'+analyticsRangeLabel()+'</small></section>'+
+      '<section class="clean-panel metric-panel"><span>ADHERENCE</span><strong>'+(program.adherence.scheduled?Math.round(program.adherence.rate*100)+'%':'—')+'</strong><small>'+program.adherence.completed+'/'+program.adherence.scheduled+' scheduled</small></section>'+
+      '<section class="clean-panel metric-panel"><span>WORKING SETS</span><strong>'+program.sets+'</strong><small>'+formatVolume(allVolume)+' volume</small></section>'+
+      '<section class="clean-panel metric-panel"><span>PERSONAL RECORDS</span><strong>'+program.prs+'</strong><small>'+program.minutes+' training minutes</small></section>'+
+    '</div>'+
+    (insights.length?'<section class="analytics-insight-grid">'+insights.map(item=>'<article class="clean-panel analytics-insight"><span>'+esc(item.label)+'</span><strong>'+esc(item.title)+'</strong><p>'+esc(item.copy)+'</p></article>').join('')+'</section>':'')+
+    '<section class="clean-section analytics-section"><div class="clean-section-head"><div><p class="eyebrow">CONSISTENCY</p><h3>Last 28 days</h3><p>Completed, partial and missed scheduled days. Rest days stay quiet.</p></div></div>'+
+      '<div class="analytics-heatmap">'+heatmap.map(day=>'<div class="analytics-day '+day.state+'" title="'+esc(day.label+' · '+day.state)+'"><span>'+day.date.getDate()+'</span></div>').join('')+'</div>'+
+      '<div class="analytics-legend"><span><i class="complete"></i>Completed</span><span><i class="partial"></i>Partial</span><span><i class="missed"></i>Missed</span><span><i class="rest"></i>Rest / upcoming</span></div>'+
+    '</section>'+
+    '<section class="analytics-two-col">'+
+      '<article class="clean-panel analytics-chart-card"><div><p class="eyebrow">TRAINING LOAD</p><h3>Completed sets by week</h3></div>'+renderAnalyticsBars(weekly,'sets','label',value=>String(Math.round(value)))+'</article>'+
+      '<article class="clean-panel analytics-chart-card"><div><p class="eyebrow">MUSCLE EMPHASIS</p><h3>Primary working sets</h3><p>Counts the primary muscle listed for each completed exercise set.</p></div>'+renderAnalyticsBars(topMuscles,'sets','name',value=>String(Math.round(value)))+'</article>'+
+    '</section>'+
+    '<section class="clean-section analytics-section"><div class="clean-section-head"><div><p class="eyebrow">STRENGTH & EXERCISES</p><h3>Movements you train most</h3><p>Change compares the first and latest best logged set inside this time range.</p></div></div>'+
+      (topExercises.length?'<div class="analytics-exercise-list">'+topExercises.map(row=>'<button data-exercise-detail="'+esc(row.id)+'"><div><strong>'+esc(row.name)+'</strong><span>'+row.sessions+' session'+(row.sessions===1?'':'s')+' · '+row.totalSets+' sets</span></div><em>'+esc(analyticsStrengthLabel(row))+'</em></button>').join('')+'</div>':'<div class="analytics-empty">Complete a few workouts to establish exercise trends.</div>')+
+    '</section>'+
+    '<section class="analytics-two-col">'+
+      '<article class="clean-panel analytics-readiness-card"><p class="eyebrow">READINESS × PERFORMANCE</p><h3>'+readiness.count+' check-in'+(readiness.count===1?'':'s')+'</h3><p>'+esc(readiness.message)+'</p>'+(readiness.ready?'<div class="readiness-compare"><div><span>LOWER READINESS</span><strong>'+readiness.lowSets.toFixed(1)+' sets</strong><small>average completed</small></div><div><span>3+ READINESS</span><strong>'+readiness.highSets.toFixed(1)+' sets</strong><small>average completed</small></div></div>':'')+'</article>'+
+      '<article class="clean-panel analytics-program-card"><p class="eyebrow">CURRENT PROGRAM</p><h3>Block '+context.blockNumber+' · Week '+context.blockWeek+'</h3><div class="analytics-program-grid"><div><span>AVG SESSION</span><strong>'+program.averageMinutes+' min</strong></div><div><span>PARTIAL</span><strong>'+program.partial+'</strong></div><div><span>PRS</span><strong>'+program.prs+'</strong></div><div><span>PHASE</span><strong>'+esc(blockPhaseLabel(context.blockWeek))+'</strong></div></div><p>'+esc(adaptationDecision().notes.join(' ')||'Keep building from your logged performance and feedback.')+'</p></article>'+
+    '</section>'+
+    (friction.length?'<section class="clean-section analytics-section"><div class="clean-section-head"><div><p class="eyebrow">EXERCISE FIT</p><h3>Patterns worth reviewing</h3><p>Repeated swaps, skips, difficulty ratings or form concerns can signal that a movement does not fit your program well.</p></div></div><div class="analytics-friction-list">'+friction.slice(0,5).map(row=>'<article><div><strong>'+esc(row.name)+'</strong><span>'+[row.swaps?row.swaps+' swaps':'',row.skips?row.skips+' skips':'',row.hard?row.hard+' too hard':'',row.form?row.form+' form concerns':''].filter(Boolean).join(' · ')+'</span></div><em>REVIEW</em></article>').join('')+'</div></section>':'')+
+    '<section class="analytics-two-col">'+
+      '<article class="clean-panel analytics-together-card"><p class="eyebrow">TOGETHER</p><h3>'+together.sessions+' shared workout'+(together.sessions===1?'':'s')+'</h3><div class="analytics-program-grid"><div><span>TIME</span><strong>'+together.minutes+' min</strong></div><div><span>SETS</span><strong>'+together.sets+'</strong></div><div><span>PRS</span><strong>'+together.prs+'</strong></div></div><p>Shared sessions stay collaborative. Each person’s detailed performance remains in their own history.</p></article>'+
+      '<article class="clean-panel analytics-pr-card"><p class="eyebrow">PR TROPHY ROOM</p><h3>Recent personal records</h3>'+(prs.length?'<div class="analytics-pr-list">'+prs.map(pr=>'<div><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?esc(pr.weight+' lb × '+pr.reps):esc(pr.reps+' reps'))+'</strong><small>'+esc(formatDate(pr.date))+'</small></div>').join('')+'</div>':'<p>No new PRs in this range yet.</p>')+'</article>'+
+    '</section>'+
+    '<section class="clean-panel analytics-engine-card"><div><span>PROGRAM INTELLIGENCE</span><strong>Track → understand → recommend → you approve.</strong><p>Analytics can inform future programming, but Workout should explain the pattern before changing your plan.</p></div></section>'+
   '</div>';
 }
 
@@ -4292,6 +4564,7 @@ function handleClick(event){
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
   else if(a==='set-history-filter'){historyFilter=node.dataset.historyFilter||'all';render();}
+  else if(a==='set-analytics-range'){analyticsRange=node.dataset.analyticsRange||'3m';persistUiState();render();}
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
