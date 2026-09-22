@@ -4991,18 +4991,173 @@ function resumeWorkout(){
       traceWorkoutInteraction('resume','forced-recovery-error',error?.message||'unknown');
     }
   }
-  currentTab='home';
-  persistUiState();
-  const app=document.querySelector('#app');
-  if(app)app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">SESSION RECOVERY</p><h2>Your saved workout is stuck.</h2><p>Your logged sets are still stored. Use Recover Session to reopen it at the next safe exercise checkpoint.</p><button class="button" data-action="force-recover-session">RECOVER SESSION</button><button class="text-button muted" data-action="home">BACK HOME</button></div>';
-  document.body.classList.remove('workout-mode');
+  traceWorkoutInteraction('resume','escalating-clean-rebuild');
+  recoverStuckSession();
 }
+
+function recoveryPlanDay(oldWorkout){
+  const days=Array.isArray(store.plan?.days)?store.plan.days:[];
+  let source=days.find(day=>day?.id&&day.id===oldWorkout?.planDayId);
+  if(!source&&oldWorkout?.routineName){
+    const wanted=normalizeExerciseName(oldWorkout.routineName);
+    source=days.find(day=>normalizeExerciseName(day?.name)===wanted);
+  }
+  const base=source?clone(source):{
+    id:oldWorkout?.planDayId||'recovered-day',
+    name:oldWorkout?.routineName||'Recovered Workout',
+    focus:oldWorkout?.focus||'Recovered training',
+    estimatedMinutes:num(store.profile?.minutes)||45,
+    warmup:[],
+    cooldown:[],
+    exercises:clone(oldWorkout?.exercises||[])
+  };
+  if(!Array.isArray(base.exercises)||!base.exercises.length)return null;
+  base.exercises=base.exercises.filter(Boolean).map((ex,index)=>{
+    const oldSets=Array.isArray(ex.sets)?ex.sets:[];
+    const sourceExercise=findExercise(ex.id)||{};
+    return {
+      ...sourceExercise,
+      ...ex,
+      id:ex.id||sourceExercise.id||('recovered-exercise-'+index),
+      name:ex.name||sourceExercise.name||('Exercise '+(index+1)),
+      movement:ex.movement||sourceExercise.movement||guessMovementFromName(ex.name||''),
+      muscles:Array.isArray(ex.muscles)?clone(ex.muscles):clone(sourceExercise.muscles||[]),
+      equipment:Array.isArray(ex.equipment)?clone(ex.equipment):clone(sourceExercise.equipment||[]),
+      loadMode:ex.loadMode||sourceExercise.loadMode||'dumbbell',
+      increment:num(ex.increment)||num(sourceExercise.increment)||5,
+      setup:num(ex.setup)||num(sourceExercise.setup)||25,
+      sets:Math.max(1,oldSets.length||num(ex.sets)||3),
+      reps:String(ex.reps||ex.suggestedReps||sourceExercise.reps||'8–12'),
+      rest:Math.max(30,num(ex.rest)||45),
+      startWeight:num(ex.suggestedWeight)||num(ex.startWeight)||0,
+      startReps:num(ex.suggestedReps)||recommendedRepCount(ex.reps||sourceExercise.reps||'8–12')
+    };
+  });
+  return base;
+}
+function copyRecoveryProgress(oldWorkout,freshWorkout){
+  const oldExercises=Array.isArray(oldWorkout?.exercises)?oldWorkout.exercises:[];
+  for(const fresh of freshWorkout.exercises||[]){
+    const old=oldExercises.find(ex=>ex?.id&&fresh?.id&&ex.id===fresh.id)||
+      oldExercises.find(ex=>normalizeExerciseName(ex?.name)===normalizeExerciseName(fresh?.name));
+    if(!old)continue;
+    const priorSets=Array.isArray(old.sets)?old.sets.filter(Boolean):[];
+    while(fresh.sets.length<priorSets.length){
+      fresh.sets.push({id:uid('set'),weight:'',reps:String(fresh.suggestedReps||recommendedRepCount(fresh.reps)||''),completed:false,completedAt:null});
+    }
+    fresh.sets=fresh.sets.map((set,index)=>{
+      const prior=priorSets[index];
+      if(!prior)return set;
+      return {
+        ...set,
+        weight:prior.weight??set.weight,
+        reps:prior.reps??set.reps,
+        completed:Boolean(prior.completed||prior.completedAt),
+        completedAt:prior.completedAt||null
+      };
+    });
+    fresh.manualComplete=Boolean(old.manualComplete);
+    fresh.manualCompletedAt=old.manualCompletedAt||null;
+    fresh.skipped=Boolean(old.skipped);
+    fresh.skipReason=old.skipReason||'';
+    if(old.feedback)fresh.feedback=old.feedback;
+  }
+}
+function rebuildCorruptedActiveWorkout(){
+  const old=store.activeWorkout?clone(store.activeWorkout):null;
+  if(!old||!store.plan)return {ok:false,reason:'missing-session-or-plan'};
+  const day=recoveryPlanDay(old);
+  if(!day)return {ok:false,reason:'missing-workout-source'};
+  store.calibration=store.calibration||{};
+  store.progression=store.progression||{};
+  let fresh;
+  try{
+    fresh=createWorkout(day,{
+      scheduledDate:old.scheduledDate||dateKey(),
+      readiness:old.readiness||null,
+      programContext:old.programContext||programContext(),
+      adaptationNotes:Array.isArray(old.adaptationNotes)?clone(old.adaptationNotes):[]
+    });
+  }catch(error){
+    console.error('Workout clean rebuild failed',error);
+    return {ok:false,reason:'create-workout-failed'};
+  }
+  fresh.id=old.id||fresh.id;
+  fresh.planId=old.planId||fresh.planId;
+  fresh.planDayId=old.planDayId||fresh.planDayId;
+  fresh.routineName=old.routineName||fresh.routineName;
+  fresh.focus=old.focus||fresh.focus;
+  fresh.startedAt=old.startedAt||fresh.startedAt;
+  fresh.actualStartDate=old.actualStartDate||fresh.actualStartDate;
+  fresh.exerciseDurations=old.exerciseDurations&&typeof old.exerciseDurations==='object'?clone(old.exerciseDurations):{};
+  if(old.sharedSession)fresh.sharedSession=clone(old.sharedSession);
+  fresh.warmupCompleted=Boolean(old.warmupCompleted);
+  fresh.warmupSkipped=Boolean(old.warmupSkipped);
+  fresh.cooldownCompleted=Boolean(old.cooldownCompleted);
+  fresh.cooldownSkipped=Boolean(old.cooldownSkipped);
+  copyRecoveryProgress(old,fresh);
+  const unresolved=nextUnresolvedExerciseIndex(fresh,-1);
+  if(unresolved>=0){
+    fresh.currentExerciseIndex=unresolved;
+    fresh.currentSetIndex=firstIncompleteSetIndex(fresh.exercises[unresolved]);
+    fresh.furthestExerciseIndex=Math.max(num(old.furthestExerciseIndex),unresolved);
+    fresh.phase='exercise-review';
+  }else if(fresh.cooldown?.length&&!fresh.cooldownCompleted&&!fresh.cooldownSkipped){
+    fresh.currentExerciseIndex=Math.max(0,Math.min(fresh.exercises.length-1,num(old.currentExerciseIndex)));
+    fresh.currentSetIndex=firstIncompleteSetIndex(fresh.exercises[fresh.currentExerciseIndex]);
+    fresh.phase='cooldown';
+    fresh.timedStageIndex=0;
+    fresh.timedStageStartedAt=new Date().toISOString();
+  }else{
+    fresh.currentExerciseIndex=Math.max(0,Math.min(fresh.exercises.length-1,num(old.currentExerciseIndex)));
+    fresh.currentSetIndex=firstIncompleteSetIndex(fresh.exercises[fresh.currentExerciseIndex]);
+    fresh.phase='review';
+  }
+  fresh.pendingPosition=null;
+  fresh.restEndsAt=null;
+  fresh.restDuration=0;
+  fresh.restPausedRemaining=null;
+  fresh.exerciseStartedAt=null;
+  fresh.isPaused=false;
+  fresh.pausedAt=null;
+  fresh.updatedAt=new Date().toISOString();
+  store.activeWorkout=fresh;
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}catch{}
+  return {ok:true};
+}
+function renderRecoveryWorking(){
+  const app=document.querySelector('#app');
+  if(!app)return;
+  app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">SESSION RECOVERY</p><h2>Rebuilding your workout…</h2><p>Keeping completed sets and rebuilding the session state.</p></div>';
+  document.body.classList.remove('modal-open','workout-mode');
+}
+
+
 function recoverStuckSession(){
-  const repaired=repairActiveWorkoutForResume(store.activeWorkout);
-  if(!repaired.ok||!forceRecoverActiveWorkout()){toast('This session cannot be repaired automatically.');return;}
-  saveStore();currentTab='workout';persistUiState();
-  try{render();updateTimers();toast('Session recovered.');}
-  catch(error){console.error('Manual workout recovery failed',error);toast('Recovery failed. Your saved workout was not deleted.');}
+  traceWorkoutInteraction('force-recover-session','handler-received',store.activeWorkout?.id||'no-active-workout');
+  renderRecoveryWorking();
+  try{
+    const rebuilt=rebuildCorruptedActiveWorkout();
+    if(!rebuilt.ok)throw new Error(rebuilt.reason||'rebuild-failed');
+    workoutPreviewIndex=null;workoutFormMode=false;
+    exerciseDetailId=null;swapContext=null;readinessContext=null;workoutMapOpen=false;setEditContext=null;cueSettingsOpen=false;exerciseActionsIndex=null;historyMenuId=null;accountSheetOpen=false;
+    currentTab='workout';
+    persistUiState();
+    saveStore();
+    render();
+    updateTimers();
+    if(!document.querySelector('.guided-shell'))throw new Error('rebuilt-workout-shell-missing');
+    traceWorkoutInteraction('force-recover-session','rebuild-rendered',store.activeWorkout?.phase||'');
+    toast('Recovered your workout and preserved completed sets.');
+  }catch(error){
+    console.error('Manual workout hard recovery failed',error);
+    traceWorkoutInteraction('force-recover-session','rebuild-failed',error?.message||'unknown');
+    currentTab='home';
+    persistUiState();
+    const app=document.querySelector('#app');
+    if(app)app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">SESSION RECOVERY</p><h2>The session could not be rebuilt.</h2><p>Your original saved workout was not intentionally discarded. Return Home and the session will remain available while we diagnose the renderer.</p><button class="button" data-action="home">BACK HOME</button></div>';
+    document.body.classList.remove('modal-open','workout-mode');
+  }
 }
 
 function renderAccountEntry(){
