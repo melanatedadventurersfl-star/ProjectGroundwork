@@ -4571,3 +4571,83 @@ button.clean-set-row{cursor:pointer}
   .workout-bottom-nav>button span{display:none}.workout-map-trigger{padding:5px 10px!important}
   .prep-primary-row{grid-template-columns:minmax(0,1fr) 92px}.prep-compact-media,.prep-compact-guide{min-height:100px}.prep-compact-media img{min-height:100px}.prep-main-metric{min-height:100px;padding:12px}
 }
+
+
+/* Resume reliability + iOS interaction hardening */
+html,body{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
+}
+body,.app-shell,.main,#app,.clean-page,.home-clean{
+  min-width:0;
+  max-width:100%;
+}
+img,svg,video,canvas{max-width:100%}
+button,
+[data-action],
+[data-tab],
+[data-start],
+[data-exercise-detail]{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:rgba(216,180,92,.16);
+}
+button:active,
+[data-action]:active,
+[data-tab]:active,
+[data-start]:active,
+[data-exercise-detail]:active{
+  filter:brightness(1.08);
+}
+.clean-resume-card{
+  position:relative;
+  z-index:1;
+  touch-action:manipulation;
+}
+.workout-loading-shell{
+  width:min(880px,100%);
+  margin:0 auto;
+  padding:clamp(28px,7vw,64px) clamp(16px,4vw,36px);
+  display:grid;
+  gap:14px;
+  overflow:hidden;
+}
+.loading-brand{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  margin-bottom:10px;
+}
+.loading-brand>span{
+  display:grid;
+  place-items:center;
+  width:42px;
+  height:42px;
+  border-radius:13px;
+  background:var(--accent);
+  color:#15130d;
+  font-weight:900;
+}
+.loading-brand strong{display:block;font-size:12px;letter-spacing:.14em}
+.loading-brand small{display:block;margin-top:3px;color:var(--muted);font-size:9px}
+.loading-skeleton{
+  position:relative;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:var(--panel);
+}
+.loading-skeleton::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.055),transparent);
+  animation:workout-skeleton 1.25s infinite;
+}
+.loading-title{width:min(360px,72%);height:38px}
+.loading-card{height:132px}
+.loading-card.short{height:88px}
+.loading-row{height:56px}
+@keyframes workout-skeleton{to{transform:translateX(100%)}}
