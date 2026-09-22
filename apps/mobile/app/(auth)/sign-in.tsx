@@ -135,14 +135,16 @@ export default function SignInScreen() {
               <View style={styles.fields}>
                 <TextInput
                   autoCapitalize="none"
-                  autoComplete="email"
+                  autoComplete="username"
                   autoCorrect={false}
+                  importantForAutofill="yes"
                   keyboardType="email-address"
                   onChangeText={setEmail}
                   placeholder="Email"
                   placeholderTextColor="#AEB8B2"
                   returnKeyType="next"
                   style={styles.input}
+                  textContentType="username"
                   value={email}
                 />
 
@@ -150,6 +152,7 @@ export default function SignInScreen() {
                   <TextInput
                     autoCapitalize="none"
                     autoComplete="current-password"
+                    importantForAutofill="yes"
                     onChangeText={setPassword}
                     onSubmitEditing={() => void handleSignIn()}
                     placeholder="Password"
@@ -157,6 +160,7 @@ export default function SignInScreen() {
                     returnKeyType="done"
                     secureTextEntry={!showPassword}
                     style={styles.passwordInput}
+                    textContentType="password"
                     value={password}
                   />
                   <Pressable
@@ -168,6 +172,10 @@ export default function SignInScreen() {
                   </Pressable>
                 </View>
               </View>
+
+              <Text style={styles.autofillHint}>
+                Saved sign-ins use your phone’s password manager and its device security when available.
+              </Text>
 
               <Pressable accessibilityRole="button" hitSlop={10} onPress={openPasswordRecovery} style={styles.forgotTap}>
                 <Text style={styles.forgotLink}>Forgot password?</Text>
@@ -195,6 +203,7 @@ export default function SignInScreen() {
                     placeholder="Email"
                     placeholderTextColor="#87938B"
                     style={styles.recoveryInput}
+                    textContentType="emailAddress"
                     value={recoveryEmail}
                   />
 
@@ -283,6 +292,7 @@ const styles = StyleSheet.create({
   },
   passwordInput: { flex: 1, minHeight: 52, paddingHorizontal: 16, color: '#FFF8E8', fontSize: 16 },
   visibilityText: { color: '#D7B45A', fontSize: 12, fontWeight: '800' },
+  autofillHint: { color: '#9DA9A2', fontSize: 11, lineHeight: 16 },
   forgotTap: { alignSelf: 'flex-end', minHeight: 34, justifyContent: 'center' },
   forgotLink: { color: '#E0C675', fontSize: 13, fontWeight: '800' },
   errorText: { color: '#FFB7AE', fontSize: 13, lineHeight: 18, fontWeight: '700' },
