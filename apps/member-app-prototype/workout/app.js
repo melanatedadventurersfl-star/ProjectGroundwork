@@ -1035,8 +1035,12 @@ function renderSwapModal(){
 
 function exerciseImageUrl(ex,index=0,useFallback=false){
   if(!ex)return '';
-  const sourceId=useFallback?exerciseMediaFallbacks[ex.movement]:(exerciseMedia[ex.id]?.sourceId||exerciseMediaFallbacks[ex.movement]);
-  return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
+  const media=exerciseMedia[ex.id]||{};
+  const curated=index===0?media.startUrl:media.finishUrl;
+  if(curated)return curated;
+  const sourceId=media.sourceId||'';
+  if(!sourceId)return '';
+  return EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg';
 }
 
 const TIMED_STAGE_MEDIA = {
@@ -1121,7 +1125,7 @@ function renderExerciseModal(){
         '<div class="instruction-block"><h3>How to move</h3><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></div>'+
         '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
         renderExerciseHistoryPanel(ex)+
-        '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
+        '<p class="media-credit">'+(exerciseMedia[ex.id]?.startUrl?'Curated Go Melanated exercise demonstration.':exerciseMedia[ex.id]?.sourceId?'Exercise reference: Free Exercise DB · public-domain dataset.':'No verified demonstration image is assigned yet.')+'</p>'+
       '</div>'+
     '</section>'+
   '</div>';
