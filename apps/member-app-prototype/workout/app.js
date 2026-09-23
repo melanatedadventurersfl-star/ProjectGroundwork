@@ -3637,9 +3637,16 @@ async function launchTogetherPlan(draft,readiness){
     setFlow:draft.setFlow,
     role:draft.role
   };
-  saveStore();
   currentTab='workout';
+  persistUiState();
+  saveStore();
   render();
+  traceWorkoutInteraction('begin-together-workout','created',store.activeWorkout.id);
+  if(store.account?.status==='connected'){
+    syncCloudState()
+      .then(()=>traceWorkoutInteraction('begin-together-workout','cloud-synced',store.activeWorkout?.id||''))
+      .catch(error=>console.warn('Could not immediately sync Together workout',error));
+  }
   const live=sharedTrainingState().draft;
   if(live){live.userStatus='training';live.sessionStatus='active';saveSharedBackendDraft(live);}
   scheduleSharedStateSync();
