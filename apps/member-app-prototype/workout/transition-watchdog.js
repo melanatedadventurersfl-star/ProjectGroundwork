@@ -1,7 +1,15 @@
 (function(){
-  const retryIfStillVisible=(selector,fn,delay=350)=>setTimeout(()=>{
+  const retryIfStillVisible=(selector,delay=350)=>setTimeout(()=>{
     try{
-      if(document.querySelector(selector))fn?.();
+      const target=document.querySelector(selector);
+      if(!target)return;
+      // Re-run the app's real delegated click handler. The previous watchdog
+      // called window-scoped helpers that are private to app.js, so the retry
+      // silently did nothing. Mark the synthetic retry so this capture-phase
+      // listener does not schedule itself again.
+      target.dataset.watchdogRetry='1';
+      target.click();
+      delete target.dataset.watchdogRetry;
     }catch(error){
       console.warn('Workout transition watchdog failed',error);
     }
@@ -9,18 +17,18 @@
 
   document.addEventListener('click',event=>{
     const target=event.target.closest?.('[data-action]');
-    if(!target)return;
+    if(!target||target.dataset.watchdogRetry==='1')return;
     const action=target.dataset.action;
 
     // If the normal delegated click handler throws or misses during the
     // warm-up -> first-exercise handoff, the visible control remains and we
-    // can safely retry only when it is still present.
+    // can safely replay the same user action once.
     if(action==='start-set-now'){
-      retryIfStillVisible('[data-action="start-set-now"]',()=>window.finishPreSet?.());
+      retryIfStillVisible('[data-action="start-set-now"]');
     }
 
     if(action==='stage-done'){
-      retryIfStillVisible('[data-action="stage-done"]',()=>window.advanceTimedStage?.(false));
+      retryIfStillVisible('[data-action="stage-done"]');
     }
   },true);
 
