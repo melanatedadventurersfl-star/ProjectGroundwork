@@ -25,8 +25,8 @@
     </header>
     <main id="app" class="main" aria-live="polite"></main>
     <nav class="bottom-nav" aria-label="Training navigation">
-      <button class="nav-item active" type="button" data-tab="home"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 3.8l8.5 6.7"/><path d="M5.5 9.5v10h13v-10"/><path d="M9.5 19.5v-6h5v6"/></svg></span><span>Home</span></button>
-      <button class="nav-item" type="button" data-tab="train"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3.5 9.5v5M18 8v8M20.5 9.5v5M6 12h12"/></svg></span><span>Train</span><span class="nav-live" hidden></span></button>
+      <button class="nav-item active" type="button" data-tab="home"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 3.8l8.5 6.7"/><path d="M5.5 9.5v10h13v-10"/><path d="M9.5 19.5v-6h5v6"/></svg></span><span>Home</span><span class="nav-live" hidden></span></button>
+      <button class="nav-item" type="button" data-tab="train"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M3.5 9.5v5M18 8v8M20.5 9.5v5M6 12h12"/></svg></span><span>Train</span></button>
       <button class="nav-item" type="button" data-tab="together"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><path d="M3.5 18c.4-3.1 2-4.7 4.5-4.7s4.1 1.6 4.5 4.7"/><path d="M11.5 18c.4-3.1 2-4.7 4.5-4.7s4.1 1.6 4.5 4.7"/><path d="M10.5 11.2h3"/></svg></span><span>Together</span></button>
       <button class="nav-item" type="button" data-tab="progress"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V13h4v6.5M10 19.5V9h4v10.5M16 19.5V5h4v14.5"/><path d="m4 9 5-4 4 2 6-4"/></svg></span><span>Progress</span></button>
       <button class="nav-item" type="button" data-tab="profile"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.5-4.1 2.7-6.2 6.5-6.2s6 2.1 6.5 6.2"/></svg></span><span>Profile</span></button>
@@ -36,5 +36,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4" defer></script>
   <script src="./catalog.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./transition-watchdog.js" defer></script>
 </body>
 </html>
