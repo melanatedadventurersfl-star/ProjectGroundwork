@@ -429,13 +429,27 @@ function nextUnresolvedExerciseIndex(w,from=-1){
 }
 function pauseInteractiveTimers(w){
   if(!w)return;
+  if(['warmup','cooldown'].includes(w.phase)){
+    const snap=timedStageSnapshot(w);
+    if(snap&&!snap.complete)w.reviewPausedTimedStage={phase:w.phase,index:snap.index,remainingExact:snap.remainingExact,total:snap.total};
+  }
+  if(w.phase==='pre-set'){
+    const snap=preSetSnapshot(w);
+    if(snap&&!snap.complete)w.reviewPausedPreSetRemaining=(
+      snap.mode==='setup'
+        ? Number(snap.remaining||0)+Math.max(0,num(w.preSetCountdownSeconds)||3)
+        : Number(snap.remaining||0)
+    );
+  }
   if(w.phase==='rest'&&!Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=restRemaining(w);
   if(w.phase==='timed-set'){
     const snap=timedSetSnapshot(w);
-    if(snap)w.timedSetPausedRemaining=snap.remaining;
-    w.timedSetEndsAt=null;
+    if(snap&&!snap.complete)w.reviewPausedTimedSetRemaining=snap.remainingExact;
   }
   delete w.preSetStartedAt;
+  delete w.timedSetStartedAt;
+  delete w.timedSetEndsAt;
+  delete w.timedPhaseStartedAt;
 }
 function announceExercise(ex,prefix='Next exercise'){
   if(!ex)return;
@@ -1726,6 +1740,7 @@ function renderReadinessModal(){
 async function startPreparedWorkout(){
   if(!readinessContext)return;
   const form=document.querySelector('#readiness-form');
+  if(!form){toast('The readiness check could not be loaded. Please close it and try again.');return;}
   const data=new FormData(form);
   const readiness={
     energy:num(data.get('energy'))||3,
@@ -1789,11 +1804,15 @@ function startWorkout(dayId,scheduledDate=''){
 }
 
 function getActivePosition(){
-  const w=store.activeWorkout;if(!w)return null;
-  const ei=Math.min(Math.max(0,w.currentExerciseIndex||0),w.exercises.length-1);
+  const w=store.activeWorkout;
+  if(!w||!Array.isArray(w.exercises)||!w.exercises.length)return null;
+  const ei=Math.min(Math.max(0,Number(w.currentExerciseIndex)||0),w.exercises.length-1);
   const ex=w.exercises[ei];
-  const si=Math.min(Math.max(0,w.currentSetIndex||0),ex.sets.length-1);
-  return {workout:w,ei,si,exercise:ex,set:ex.sets[si]};
+  if(!ex||!Array.isArray(ex.sets)||!ex.sets.length)return null;
+  const si=Math.min(Math.max(0,Number(w.currentSetIndex)||0),ex.sets.length-1);
+  const set=ex.sets[si];
+  if(!set)return null;
+  return {workout:w,ei,si,exercise:ex,set};
 }
 function nextPosition(w,ei,si){
   const ex=w.exercises[ei];
@@ -1820,9 +1839,13 @@ function timedStageItems(w){
 }
 function timedStageSnapshot(w,nowMs=Date.now()){
   if(!w||!['warmup','cooldown'].includes(w.phase)) return null;
-  nowMs=workoutNowMs(w,nowMs);
   const items=timedStageItems(w);
   if(!items.length) return {complete:true,index:0,remaining:0,remainingExact:0,total:0};
+  if(w.reviewPausedTimedStage&&w.reviewPausedTimedStage.phase===w.phase){
+    const paused=w.reviewPausedTimedStage;
+    return {complete:false,index:Math.max(0,Math.min(Number(paused.index)||0,items.length-1)),remaining:Math.max(0,Math.ceil(Number(paused.remainingExact)||0)),remainingExact:Math.max(0,Number(paused.remainingExact)||0),total:Number(paused.total)||Number(items[Math.max(0,Math.min(Number(paused.index)||0,items.length-1))]?.seconds)||30};
+  }
+  nowMs=workoutNowMs(w,nowMs);
   const startMs=Date.parse(w.timedPhaseStartedAt||'');
   if(!Number.isFinite(startMs)) return null;
   const skipped=Math.max(0,Number(w.timedPhaseSkippedSeconds)||0);
@@ -2053,6 +2076,15 @@ function beginPreSetPosition(ei,si,isNewExercise=true){
 }
 function preSetSnapshot(w,nowMs=Date.now()){
   if(!w||w.phase!=='pre-set')return null;
+  const setup=Math.max(0,num(w.preSetSetupSeconds));
+  const countdown=Math.max(1,num(w.preSetCountdownSeconds)||3);
+  const total=setup+countdown;
+  if(Number.isFinite(w.reviewPausedPreSetRemaining)){
+    const remainingExact=Math.max(0,Number(w.reviewPausedPreSetRemaining));
+    if(remainingExact<=0)return {complete:true,mode:'countdown',remaining:0,total};
+    if(remainingExact>countdown)return {complete:false,mode:'setup',remaining:Math.max(1,Math.ceil(remainingExact-countdown)),total};
+    return {complete:false,mode:'countdown',remaining:Math.max(1,Math.ceil(remainingExact)),total};
+  }
   nowMs=workoutNowMs(w,nowMs);
   const start=Date.parse(w.preSetStartedAt||'');
   if(!Number.isFinite(start))return null;
@@ -2088,9 +2120,13 @@ function finishPreSet(){
 }
 function timedSetSnapshot(w,nowMs=Date.now()){
   if(!w||w.phase!=='timed-set')return null;
+  const duration=Math.max(1,num(w.timedSetDuration)||1);
+  if(Number.isFinite(w.reviewPausedTimedSetRemaining)){
+    const remainingExact=Math.max(0,Number(w.reviewPausedTimedSetRemaining));
+    return {complete:remainingExact<=0,remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total:duration};
+  }
   nowMs=workoutNowMs(w,nowMs);
   const end=Date.parse(w.timedSetEndsAt||'');
-  const duration=Math.max(1,num(w.timedSetDuration)||1);
   if(!Number.isFinite(end))return null;
   const remainingExact=Math.max(0,(end-nowMs)/1000);
   return {complete:remainingExact<=0,remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total:duration};
@@ -2360,12 +2396,43 @@ function jumpFromReview(index){
   delete w.returnPhase;
   navigateToExercise(index);
 }
+function resumeReviewedPhase(w,phase){
+  if(!w)return;
+  const now=Date.now();
+  if(['warmup','cooldown'].includes(phase)&&w.reviewPausedTimedStage){
+    const items=phase==='warmup'?(w.warmup||[]):(w.cooldown||[]);
+    const index=Math.max(0,Math.min(Number(w.reviewPausedTimedStage.index)||0,Math.max(0,items.length-1)));
+    const before=items.slice(0,index).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+    const total=Number(items[index]?.seconds)||Number(w.reviewPausedTimedStage.total)||30;
+    const remaining=Math.max(0,Number(w.reviewPausedTimedStage.remainingExact)||0);
+    w.timedPhaseStartedAt=new Date(now-(before+total-remaining)*1000).toISOString();
+    delete w.reviewPausedTimedStage;
+  }
+  if(phase==='pre-set'&&Number.isFinite(w.reviewPausedPreSetRemaining)){
+    const setup=Math.max(0,num(w.preSetSetupSeconds)),countdown=Math.max(1,num(w.preSetCountdownSeconds)||3);
+    const total=setup+countdown,remaining=Math.max(0,Number(w.reviewPausedPreSetRemaining));
+    w.preSetStartedAt=new Date(now-(total-remaining)*1000).toISOString();
+    delete w.reviewPausedPreSetRemaining;
+  }
+  if(phase==='timed-set'&&Number.isFinite(w.reviewPausedTimedSetRemaining)){
+    const duration=Math.max(1,num(w.timedSetDuration)||1),remaining=Math.max(0,Number(w.reviewPausedTimedSetRemaining));
+    w.timedSetStartedAt=new Date(now-(duration-remaining)*1000).toISOString();
+    w.timedSetEndsAt=new Date(now+remaining*1000).toISOString();
+    delete w.reviewPausedTimedSetRemaining;
+  }
+  if(phase==='rest'&&Number.isFinite(w.restPausedRemaining)){
+    w.restEndsAt=new Date(now+Math.max(0,Number(w.restPausedRemaining))*1000).toISOString();
+    delete w.restPausedRemaining;
+  }
+}
 function continueWorkoutFromReview(){
   const w=store.activeWorkout;if(!w||w.phase!=='review')return;
   const index=nextUnresolvedExerciseIndex(w,-1);
   if(index>=0){navigateToExercise(index);return;}
-  w.phase=w.returnPhase&&w.returnPhase!=='review'?w.returnPhase:'exercise-review';
-  delete w.returnPhase;saveStore();render();
+  const phase=w.returnPhase&&w.returnPhase!=='review'?w.returnPhase:'exercise-review';
+  w.phase=phase;
+  resumeReviewedPhase(w,phase);
+  delete w.returnPhase;saveStore();render();updateTimers();
 }
 function rebuildDerivedTrainingState(){
   const progression={};
@@ -3848,6 +3915,7 @@ function render(){
 function updateTimers(){
   const w=store.activeWorkout;
   if(!w)return;
+  const nowMs=Date.now();
 
   const elapsed=document.querySelector('#elapsed-clock');
   const exerciseClock=document.querySelector('#exercise-clock');
