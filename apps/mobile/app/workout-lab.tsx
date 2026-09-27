@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -315,7 +316,10 @@ export default function WorkoutLabScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.shell}>
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerLeft}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Return to Go Melanated" onPress={() => router.replace('/(tabs)' as never)}>
+              <Text style={styles.headerBack}>‹ Go Melanated</Text>
+            </Pressable>
             <Text style={styles.brand}>WORKOUT</Text>
             <Text style={styles.headerSub}>Simple training. Clear progress.</Text>
           </View>
@@ -606,7 +610,9 @@ export default function WorkoutLabScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: BG },
   shell: { flex: 1, backgroundColor: BG },
-  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#252D28' },
+  header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#252D28' },
+  headerLeft: { flex: 1 },
+  headerBack: { color: ACCENT, fontSize: 11, fontWeight: '900', marginBottom: 8 },
   brand: { color: TEXT, fontSize: 20, fontWeight: '900', letterSpacing: 2 },
   headerSub: { color: MUTED, fontSize: 11, marginTop: 3 },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
