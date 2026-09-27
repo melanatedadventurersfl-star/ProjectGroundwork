@@ -23,6 +23,15 @@ export default function MemberBasecampScreen() {
         <Text style={styles.eyebrow}>ACCOUNT & SUPPORT</Text>
         <Text style={styles.title}>{data?.profile?.display_name ?? 'Your account'}</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Pressable style={styles.workoutCard} onPress={() => router.push('/workout' as never)}>
+          <View style={styles.workoutCardTop}>
+            <View style={styles.workoutBadge}><Text style={styles.workoutBadgeText}>W/</Text></View>
+            <Text style={styles.workoutEyebrow}>TRAINING</Text>
+          </View>
+          <Text style={styles.workoutTitle}>Workout</Text>
+          <Text style={styles.workoutDetail}>Train, track your sessions, and keep your progress in one place.</Text>
+          <Text style={styles.workoutLink}>Open Workout →</Text>
+        </Pressable>
         <Pressable style={styles.featureCard} onPress={() => router.push('/member/journey' as never)}>
           <Text style={styles.featureEyebrow}>YOUR OUTDOOR LIFE, REMEMBERED</Text>
           <Text style={styles.featureTitle}>Your Trail</Text>
@@ -43,6 +52,7 @@ export default function MemberBasecampScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0F1713' }, center: { flex: 1, backgroundColor: '#0F1713', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, paddingBottom: 48, gap: 12 }, back: { color: '#D7B45A', fontWeight: '800', fontSize: 16 }, eyebrow: { color: '#D7B45A', fontWeight: '900', letterSpacing: 1.1 }, title: { color: '#FFF8E8', fontSize: 34, fontWeight: '900', marginBottom: 6 },
+  workoutCard: { backgroundColor: '#D7B45A', borderRadius: 20, padding: 19, gap: 6, marginBottom: 2 }, workoutCardTop: { flexDirection: 'row', alignItems: 'center', gap: 9 }, workoutBadge: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#172017', alignItems: 'center', justifyContent: 'center' }, workoutBadgeText: { color: '#D7B45A', fontSize: 10, fontWeight: '900' }, workoutEyebrow: { color: '#172017', fontSize: 9, fontWeight: '900', letterSpacing: 1.3 }, workoutTitle: { color: '#172017', fontSize: 27, fontWeight: '900' }, workoutDetail: { color: '#384326', lineHeight: 20 }, workoutLink: { color: '#172017', fontWeight: '900', marginTop: 5 },
   featureCard: { backgroundColor: '#223128', borderRadius: 20, padding: 19, gap: 6, borderWidth: 1, borderColor: '#536A59', marginBottom: 2 }, featureEyebrow: { color: '#D7B45A', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, featureTitle: { color: '#FFF8E8', fontSize: 24, fontWeight: '900' }, featureDetail: { color: '#C7D0CA', lineHeight: 20 }, featureLink: { color: '#F0D083', fontWeight: '900', marginTop: 5 },
   card: { backgroundColor: '#17211C', borderRadius: 16, padding: 18, gap: 6 }, cardTitle: { color: '#FFF8E8', fontSize: 19, fontWeight: '900' }, detail: { color: '#AEB8B2', lineHeight: 21 }, link: { color: '#D7B45A', fontWeight: '800', marginTop: 4 }, error: { color: '#FFB4A9' },
 });
