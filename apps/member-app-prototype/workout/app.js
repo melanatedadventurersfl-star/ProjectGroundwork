@@ -3428,16 +3428,32 @@ function renderCatalog(){
 }
 
 function renderWorkoutIntro(w){
-  const first=w.exercises?.[0];
   const notes=(w.adaptationNotes||[]).filter(Boolean);
   const topNote=notes[0]||'Targets are based on your recent training and readiness.';
+  const warmupSeconds=(w.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const cooldownSeconds=(w.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
+    const loadLabel=ex.loadMode==='bodyweight'||ex.loadMode==='timed'||ex.loadMode==='band'
+      ? (ex.loadMode==='timed'?'Timed':'Bodyweight')
+      : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
+    return '<div class="preview-exercise-row">'+
+      '<div class="preview-exercise-index">'+String(index+1).padStart(2,'0')+'</div>'+
+      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span></div>'+
+      '<div class="preview-exercise-load">'+loadLabel+'</div>'+
+      '</div>';
+  }).join('');
   return '<div class="clean-session-intro">'+
     '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
     '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
-    (w.warmup?.length?'<section class="clean-panel intro-warmup-card"><span>STARTS WITH</span><h3>Dynamic Warm-Up · '+Math.ceil(w.warmup.reduce((sum,item)=>sum+(item.seconds||0),0)/60)+' min</h3><p>Your workout begins with movement prep selected for today’s exercises.</p></section>':'')+(first?'<section class="clean-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST WORKING EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(first.sets.length+' × '+first.reps)+' · '+esc(equipmentRequirement(exerciseSource(first)))+'</p></div></section>':'')+
-    '<section class="clean-panel intro-update-card"><span>TODAY’S UPDATE</span><strong>'+esc(topNote)+'</strong>'+(notes.length>1?'<button class="text-button" data-action="open-workout-map">Review session</button>':'')+'</section>'+
+    '<section class="preview-flow">'+
+      (w.warmup?.length?'<div class="preview-flow-card"><span>01 · WARM-UP</span><strong>Movement prep · '+Math.ceil(warmupSeconds/60)+' min</strong><small>Dynamic work selected for today’s training.</small></div>':'')+
+      '<div class="preview-flow-card preview-flow-main"><span>'+(w.warmup?.length?'02':'01')+' · STRENGTH WORK</span><strong>'+w.exercises.length+' exercises · '+totalSets(w.exercises)+' working sets</strong><small>Starting loads are pre-filled from your profile, calibration, and recent performance. Every value is editable.</small></div>'+
+      (w.cooldown?.length?'<div class="preview-flow-card"><span>'+(w.warmup?.length?'03':'02')+' · COOLDOWN</span><strong>Guided cooldown · '+Math.ceil(cooldownSeconds/60)+' min</strong><small>Finish with a short guided stretch and recovery sequence.</small></div>':'')+
+    '</section>'+
+    '<section class="preview-prescription"><div class="preview-section-head"><div><span>SESSION PLAN</span><strong>What you’ll do</strong></div><button class="text-button" data-action="open-workout-map">EDIT / SUBSTITUTE</button></div>'+exerciseRows+'</section>'+
+    '<section class="clean-panel intro-update-card"><span>TODAY’S UPDATE</span><strong>'+esc(topNote)+'</strong>'+(notes.length>1?'<button class="text-button" data-action="open-workout-map">Review session changes</button>':'')+'</section>'+
     '<button class="button primary-action intro-begin" data-action="begin-session">BEGIN WORKOUT</button>'+
-    '<button class="text-button intro-review" data-action="open-workout-map">REVIEW / REORDER SESSION</button>'+
+    '<button class="text-button intro-review" data-action="open-workout-map">REVIEW FULL SESSION</button>'+
   '</div>';
 }
 function beginWorkoutSession(){
