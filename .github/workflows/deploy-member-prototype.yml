@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/workout-mvp
+      - feature/workout-phase-3
     paths:
       - 'apps/member-app-prototype/**'
       - 'apps/mobile/**'
@@ -101,6 +102,9 @@ jobs:
 
           print(f'Workout build {build}: fingerprinted root assets + unique release path')
           PY
+          # Publish a dedicated workout route so the current build is not confused with older /workout deployments.
+          rm -rf _site/goworkout
+          cp -R _site/workout _site/goworkout
           touch _site/.nojekyll
 
       - name: Configure GitHub Pages

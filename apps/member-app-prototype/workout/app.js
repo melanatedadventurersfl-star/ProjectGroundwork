@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'workout-web-store-v3';
+const UI_STATE_KEY = 'workout-web-ui-v1';
 const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
 const ACTIVE_WORKOUT_SCHEMA = 4;
 const catalog = window.EXERCISE_CATALOG || [];
@@ -6,11 +7,23 @@ const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
+const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
+const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
+let workoutSupabase = null;
+let authReady=false;
+const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
+let cloudSyncTimer=null;
+let cloudHydrating=false;
 let exerciseDetailId = null;
 let swapContext = null;
 let readinessContext = null;
 let workoutMapOpen = false;
 let setEditContext = null;
+let cueSettingsOpen = false;
+let exerciseActionsIndex = null;
+let historyMenuId = null;
+let accountSheetOpen = false;
+let historyFilter = 'all';
 
 const defaultStore = {
   profile: null,
@@ -23,6 +36,8 @@ const defaultStore = {
   exercisePreferences: {excluded:[],swapHistory:[]},
   trainingProgram: {scheduleOverrides:{},weekReviews:{}},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
+  account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
+  sharedTraining: {partners:[],draft:null,history:[]},
   lastSummaryId: null
 };
 
@@ -33,7 +48,13 @@ if (store.activeWorkout && store.activeWorkout.schemaVersion !== ACTIVE_WORKOUT_
   clearedLegacyActiveWorkout = true;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
-let currentTab = store.profile && store.plan ? (store.activeWorkout ? 'workout' : 'home') : 'profile';
+const restoredUiState=loadUiState();
+const allowedTabs=new Set(['home','train','together','progress','profile','profile-edit','catalog','workout','history','summary']);
+let restoredTab=allowedTabs.has(restoredUiState.currentTab)?restoredUiState.currentTab:'';
+if(!store.profile||!store.plan)restoredTab='profile-edit';
+else if(restoredTab==='workout'&&!store.activeWorkout)restoredTab='home';
+let currentTab=restoredTab||(store.activeWorkout?'workout':'home');
+accountSheetOpen=Boolean(restoredUiState.accountSheetOpen);
 let catalogQuery = '';
 let tickHandle = null;
 
@@ -64,6 +85,21 @@ const BLUEPRINTS = {
 
 function clone(value){ return JSON.parse(JSON.stringify(value)); }
 
+function loadUiState(){
+  try{
+    const value=JSON.parse(localStorage.getItem(UI_STATE_KEY)||'{}');
+    return value&&typeof value==='object'?value:{};
+  }catch{return {};}
+}
+function persistUiState(){
+  try{
+    localStorage.setItem(UI_STATE_KEY,JSON.stringify({
+      currentTab,
+      accountSheetOpen:Boolean(accountSheetOpen),
+      savedAt:new Date().toISOString()
+    }));
+  }catch{}
+}
 function loadStore(){
   try {
     const direct = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -79,6 +115,30 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
+function cloudStatePayload(){
+  return {user_id:store.account?.userId,profile:store.profile,plan:store.plan,calibration:store.calibration||{},progression:store.progression||{},progression_log:store.progressionLog||[],exercise_preferences:store.exercisePreferences||{},training_program:store.trainingProgram||{},cue_settings:store.cueSettings||{},history:store.history||[],active_workout:store.activeWorkout||null,last_summary_id:store.lastSummaryId||null,onboarding_complete:Boolean(store.profile&&store.plan),onboarding_step:store.profile&&store.plan?'complete':'profile',updated_at:new Date().toISOString()};
+}
+function scheduleCloudStateSync(){
+  if(cloudHydrating||!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer=setTimeout(()=>syncCloudState().catch(error=>console.warn('Workout cloud sync failed',error)),350);
+}
+async function syncCloudState(){
+  if(!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  const {error}=await workoutSupabase.from('workout_user_state').upsert(cloudStatePayload(),{onConflict:'user_id'});
+  if(error)throw error;
+}
+async function hydrateCloudState(userId){
+  if(!workoutSupabase||!userId)return false;
+  const {data,error}=await workoutSupabase.from('workout_user_state').select('*').eq('user_id',userId).maybeSingle();
+  if(error)throw error;
+  if(!data){await syncCloudState();cloudHydrating=false;return false;}
+  cloudHydrating=true;
+  for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['active_workout','activeWorkout'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
+  if(store.profile&&store.plan&&currentTab==='profile-edit')currentTab=store.activeWorkout?'workout':'home';
+  render();return true;
+}
 function saveStore(){
   let persisted=true;
   try{
@@ -87,6 +147,8 @@ function saveStore(){
     persisted=false;
   }
   syncLiveBadge();
+  if(!sharedRuntime.syncMuted)scheduleSharedStateSync();
+  scheduleCloudStateSync();
   return persisted;
 }
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
@@ -425,6 +487,14 @@ function speakWorkoutCue(text,token=''){
     window.speechSynthesis.speak(utterance);
   }catch{}
 }
+function pulseLocalCountdown(label=''){
+  const target=document.querySelector('#preset-count, #timed-set-clock, #rest-clock, #stage-clock');
+  if(!target)return;
+  target.classList.remove('countdown-pulse');
+  requestAnimationFrame(()=>target.classList.add('countdown-pulse'));
+  setTimeout(()=>target.classList.remove('countdown-pulse'),180);
+  if(label&&target.id!=='preset-count'&&/^\d+$/.test(String(label)))target.dataset.lastCue=String(label);
+}
 function triggerVisualCue(type,label='',token=''){
   if(!workoutCueSettings().flash)return;
   if(token&&cueRuntime.lastVisualToken===token)return;
@@ -434,14 +504,15 @@ function triggerVisualCue(type,label='',token=''){
   const flash=document.querySelector('#workout-cue-flash');
   if(cueRuntime.visualTimer)clearTimeout(cueRuntime.visualTimer);
   root.classList.remove('cue-flash-warning','cue-flash-go','cue-flash-complete','cue-flash-transition');
-  void root.offsetWidth;
   const className=type==='go'?'cue-flash-go':type==='complete'?'cue-flash-complete':type==='transition'?'cue-flash-transition':'cue-flash-warning';
-  root.classList.add(className);
-  if(flash){
-    flash.textContent=label||'';
-    flash.dataset.cueType=type;
-    flash.classList.add('show');
-  }
+  requestAnimationFrame(()=>{
+    root.classList.add(className);
+    if(flash){
+      flash.textContent=label||'';
+      flash.dataset.cueType=type;
+      flash.classList.add('show');
+    }
+  });
   cueRuntime.visualTimer=setTimeout(()=>{
     root.classList.remove(className);
     flash?.classList.remove('show');
@@ -450,7 +521,9 @@ function triggerVisualCue(type,label='',token=''){
 function fireWorkoutSignal(type,token,{voice='',label=''}={}){
   playWorkoutCue(type,token);
   if(voice)speakWorkoutCue(voice,'voice-'+token);
-  triggerVisualCue(type,label,'visual-'+token);
+  const numericCue=/^\d+$/.test(String(label||''));
+  if(type==='tick'||(type==='warning'&&numericCue))pulseLocalCountdown(label);
+  else triggerVisualCue(type,label,'visual-'+token);
 }
 function vibrateCue(type){
   if(!workoutCueSettings().haptics||typeof navigator==='undefined'||typeof navigator.vibrate!=='function')return;
@@ -508,16 +581,10 @@ function toggleCueSetting(key){
 }
 function renderCueControls(){
   const settings=workoutCueSettings();
-  const hapticsAvailable=typeof navigator!=='undefined'&&typeof navigator.vibrate==='function';
-  const voiceAvailable='speechSynthesis' in window&&typeof window.SpeechSynthesisUtterance==='function';
-  return '<div class="cue-controls" aria-label="Workout cue settings">'+
-    '<button type="button" data-action="toggle-sound" aria-pressed="'+String(settings.sound)+'"><span>♪</span> Sound '+(settings.sound?'ON':'OFF')+'</button>'+
-    '<button type="button" data-action="toggle-voice" aria-pressed="'+String(settings.voice)+'" '+(!voiceAvailable?'disabled title="Voice cues are not supported by this browser"':'')+'><span>◖</span> Voice '+(voiceAvailable?(settings.voice?'ON':'OFF'):'N/A')+'</button>'+
-    '<button type="button" data-action="toggle-flash" aria-pressed="'+String(settings.flash)+'"><span>✦</span> Flash '+(settings.flash?'ON':'OFF')+'</button>'+
-    '<button type="button" data-action="toggle-haptics" aria-pressed="'+String(settings.haptics)+'" '+(!hapticsAvailable?'disabled title="Vibration is not supported by this browser"':'')+'><span>↯</span> Haptics '+(hapticsAvailable?(settings.haptics?'ON':'OFF'):'N/A')+'</button>'+
-    '<button type="button" class="cue-test" data-action="test-cues"><span>▶</span> TEST CUES</button>'+
-  '</div>';
+  const active=[settings.voice?'Voice':'',settings.sound?'Sound':'',settings.haptics?'Haptics':'',settings.flash?'Flash':''].filter(Boolean);
+  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>Workout cues</strong><small>'+esc(active.join(' · ')||'All cues off')+'</small></div><em>›</em></button>';
 }
+
 const MOVEMENT_GUIDANCE = {
   'squat': {
     cue:'Keep your chest tall and let your knees track with your toes.',
@@ -997,9 +1064,14 @@ function timedStageDescription(item){
 function exerciseImageButton(ex,className='exercise-media',index=0){
   const src=exerciseImageUrl(ex,index,false);
   const fallback=exerciseImageUrl(ex,index,true);
+  const animate=/active-exercise-media|pre-set-exercise-media|timed-work-exercise-media/.test(className);
+  const second=animate?exerciseImageUrl(ex,index===0?1:0,false):'';
+  const secondFallback=animate?exerciseImageUrl(ex,index===0?1:0,true):'';
   if(!src)return '<button class="'+className+' exercise-media missing" type="button" data-exercise-detail="'+esc(ex.id)+'"><span>VIEW FORM</span></button>';
-  return '<button class="'+className+' exercise-media" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
-    '<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">'+
+  const media=animate&&second
+    ?'<span class="exercise-motion-frames"><img class="motion-frame motion-frame-a" src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' starting position"><img class="motion-frame motion-frame-b" src="'+esc(second)+'" data-fallback-src="'+esc(secondFallback)+'" loading="eager" decoding="async" alt="" aria-hidden="true"></span>'
+    :'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
+  return '<button class="'+className+' exercise-media'+(animate?' motion-enabled':'')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+media+
     '<span class="media-hint">VIEW FORM</span></button>';
 }
 
@@ -1184,6 +1256,12 @@ function computeProgression(ex,feedback){
   };
 }
 
+function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
+  if(!items.length)return items;
+  const target=Math.max(minSeconds,Math.min(maxSeconds,targetSeconds));
+  const each=Math.max(20,Math.round(target/items.length/5)*5);
+  return items.map(item=>({...item,seconds:each}));
+}
 function buildWarmup(exercises){
   const moves=new Set(exercises.map(e=>e.movement));
   const items=[{
@@ -1226,7 +1304,7 @@ function buildWarmup(exercises){
     why:'Opens the hips and adds single-leg movement before training.',
     mediaId:'Crossover_Reverse_Lunge'
   });
-  return items.slice(0,4);
+  return normalizeTimedStage(items.slice(0,5),exercises.length<=3?180:exercises.length>=7?300:240,180,300);
 }
 
 function buildCooldown(exercises){
@@ -1288,7 +1366,7 @@ function buildCooldown(exercises){
     why:'Brings your breathing down and finishes the session gradually.',
     mediaId:'Upward_Stretch'
   });
-  return items.slice(0,4);
+  return normalizeTimedStage(items.slice(0,4),exercises.length<=3?60:exercises.length>=7?180:120,60,180);
 }
 
 function equipmentAllows(exercise,equipment){
@@ -1309,6 +1387,8 @@ function avoided(exercise,profile){
 function exerciseScore(exercise,profile,used){
   let score=0;
   if (!used.has(exercise.id)) score+=8;
+  const priorityMap={chest:['horizontal-push'],back:['horizontal-pull','vertical-pull'],shoulders:['vertical-push','shoulder-accessory'],arms:['biceps','triceps'],legs:['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'],glutes:['hinge','single-leg'],core:['core']};
+  if((profile.priorities||[]).some(p=>(priorityMap[p]||[]).includes(exercise.movement)))score+=10;
   if (profile.experience === 'new' && exercise.difficulty === 'beginner') score+=7;
   if (profile.style === 'machines' && exercise.style === 'machine') score+=6;
   if (profile.style === 'free' && exercise.style === 'free') score+=6;
@@ -1488,6 +1568,10 @@ function saveProfileFromForm(form){
   }
   const profile={
     goal:data.get('goal')||'muscle',
+    displayName:String(data.get('displayName')||'').trim(),
+    email:String(data.get('email')||'').trim(),
+    gender:data.get('gender')||'',
+    pronouns:String(data.get('pronouns')||'').trim(),
     weight:num(data.get('weight')),
     heightFeet:num(data.get('heightFeet')),
     heightInches:num(data.get('heightInches')),
@@ -1499,6 +1583,7 @@ function saveProfileFromForm(form){
     equipment:data.get('equipment')||'full-gym',
     style:data.get('style')||'mixed',
     avoid:data.getAll('avoid'),
+    priorities:data.getAll('priorities').slice(0,2),
     lifts:{
       bench:num(data.get('bench')),
       squat:num(data.get('squat')),
@@ -1507,6 +1592,16 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
+  if(!profile.displayName){
+    toast('Enter the display name you want to use in training and shared workouts.');
+    form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  if(!profile.gender){
+    toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');
+    form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
   if(profile.workoutDays.length!==profile.days){
     toast('Choose exactly '+profile.days+' training days for your weekly schedule.');
     form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -1538,9 +1633,17 @@ function saveProfileFromForm(form){
     return false;
   }
   store.profile=profile;
+  store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
   store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
   const persisted=saveStore();
+  if(store.account?.status!=='connected'){
+    accountSheetOpen=true;
+    currentTab='profile-edit';
+    render();
+    setTimeout(()=>toast(store.account?.status==='pending'?'Confirm your email and sign in so this plan can follow you between browsers.':'Create or sign in to your account to finish setup and sync your plan.'),100);
+    return true;
+  }
   currentTab='home';
   render();
   if(!persisted){
@@ -1551,7 +1654,7 @@ function saveProfileFromForm(form){
 
 function editProfile(){
   if (store.activeWorkout) { toast('Finish or discard the active workout before rebuilding the plan.'); return; }
-  currentTab='profile';
+  currentTab='profile-edit';
   render();
 }
 
@@ -1569,35 +1672,20 @@ function readinessScore(readiness){
   return values.length?Math.round((values.reduce((a,b)=>a+b,0)/values.length)*10)/10:3;
 }
 function applyReadinessToDay(day,readiness){
-  const adjusted=clone(day);
-  const score=readinessScore(readiness);
+  const adjusted=clone(day),score=readinessScore(readiness);
   const available=Math.max(15,num(readiness?.timeAvailable)||num(store.profile?.minutes)||45);
-  const notes=[];
-  if(score<2.7){
-    for(const ex of adjusted.exercises){
-      if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
-    }
-    notes.push('Today’s readiness is lower, so accessory volume was trimmed.');
-  }
+  const energy=num(readiness?.energy)||3,sleep=num(readiness?.sleep)||3,soreness=num(readiness?.soreness)||2,notes=[];
+  adjusted.readinessLoadFactor=1;adjusted.readinessRestBonus=0;adjusted.holdProgression=false;
+  if(energy<=2){adjusted.readinessLoadFactor=.95;for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;adjusted.readinessRestBonus=15;notes.push('Low energy: accessory volume reduced and rest extended.');}
+  if(sleep<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);adjusted.holdProgression=true;adjusted.readinessRestBonus=Math.max(adjusted.readinessRestBonus,15);notes.push('Poor sleep: today holds load progression and uses a conservative prescription.');}
+  if(soreness>=4){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.9);adjusted.holdProgression=true;for(const ex of adjusted.exercises)if(ex.sets>2)ex.sets-=1;notes.push('High soreness: working volume and loading were reduced for recovery.');}
+  else if(soreness===3){for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;notes.push('Moderate soreness: optional accessory volume was trimmed.');}
   recalculatePlanDay(adjusted);
-  while(adjusted.estimatedMinutes>available&&adjusted.exercises.length>2){
-    const index=[...adjusted.exercises].reverse().findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));
-    if(index<0)break;
-    adjusted.exercises.splice(adjusted.exercises.length-1-index,1);
-    recalculatePlanDay(adjusted);
-  }
-  for(let i=adjusted.exercises.length-1;i>=0&&adjusted.estimatedMinutes>available;i--){
-    while(adjusted.exercises[i]?.sets>2&&adjusted.estimatedMinutes>available){
-      adjusted.exercises[i].sets-=1;
-      recalculatePlanDay(adjusted);
-    }
-  }
-  if(adjusted.estimatedMinutes>available)notes.push('This session is already at its minimum useful structure, so the estimate may run slightly past your available time.');
-  else if(available<num(store.profile?.minutes)||45)notes.push('The session was shortened to fit the time you have today.');
-  adjusted.readinessNotes=notes;
-  adjusted.readinessScore=score;
-  adjusted.availableMinutes=available;
-  return adjusted;
+  while(adjusted.estimatedMinutes>available&&adjusted.exercises.length>2){const index=[...adjusted.exercises].reverse().findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));if(index<0)break;adjusted.exercises.splice(adjusted.exercises.length-1-index,1);recalculatePlanDay(adjusted);}
+  for(let i=adjusted.exercises.length-1;i>=0&&adjusted.estimatedMinutes>available;i--)while(adjusted.exercises[i]?.sets>2&&adjusted.estimatedMinutes>available){adjusted.exercises[i].sets-=1;recalculatePlanDay(adjusted);}
+  if(adjusted.estimatedMinutes>available)notes.push('The minimum useful session may run slightly past your available time.');
+  else if(available<(num(store.profile?.minutes)||45))notes.push('Time available: the session was shortened while protecting priority work.');
+  adjusted.readinessNotes=notes;adjusted.readinessScore=score;adjusted.availableMinutes=available;return adjusted;
 }
 function scheduledEntryFor(dayId,scheduledDate=''){
   const key=scheduledDate||dateKey();
@@ -1635,7 +1723,7 @@ function renderReadinessModal(){
       '</form>'+
     '</section></div>';
 }
-function startPreparedWorkout(){
+async function startPreparedWorkout(){
   if(!readinessContext)return;
   const form=document.querySelector('#readiness-form');
   const data=new FormData(form);
@@ -1646,13 +1734,19 @@ function startPreparedWorkout(){
     timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
   };
   readiness.score=readinessScore(readiness);
+  if(readinessContext.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
+    await workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',readinessContext.sharedDraft.backendId).eq('user_id',store.account.userId);
+  }
   const day=applyReadinessToDay(readinessContext.day,readiness);
   const scheduledDate=readinessContext.scheduledDate;
   const context=programContext(dateFromKey(scheduledDate));
+  const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
   readinessContext=null;
   unlockWorkoutCues();
   store.activeWorkout=createWorkout(day,{scheduledDate,readiness,programContext:context,adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]});
+  if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString()};
   saveStore();currentTab='workout';render();
+  if(sharedDraft?.backendId)activateSharedWorkout(sharedDraft).catch(error=>console.warn('Shared workout activation failed',error));
 }
 
 function createWorkout(day,meta={}){
@@ -1671,9 +1765,11 @@ function createWorkout(day,meta={}){
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
       const adaptive=adaptivePrescription(ex);
-      const suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
+      let suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
       const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
-      const suggestedRest=Math.max(30,Math.min(60,adaptive?.rest || ex.rest || 45));
+      if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
+      if(day.readinessLoadFactor<1&&isWeightedMode(ex.loadMode)&&suggestedWeight)suggestedWeight=roundTo(suggestedWeight*day.readinessLoadFactor,ex.increment||5);
+      const suggestedRest=Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
       const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
       const weightValue=noWeight?'':(ex.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
       return {
@@ -1915,31 +2011,25 @@ function renderLoggedSets(ex,ei){
   return '<div class="logged-sets"><div class="logged-sets-head"><span>SETS</span><button class="text-button" data-action="add-set" data-exercise-index="'+ei+'">+ ADD SET</button></div>'+sets+'</div>';
 }
 function renderExerciseReview(pos){
-  const ex=pos.exercise,state=exerciseState(ex);
-  return '<div class="exercise-review-stage">'+
-    '<div class="exercise-review-hero">'+exerciseImageButton(ex,'active-exercise-media')+'<div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><span class="exercise-state-badge state-'+state+'">'+esc(exerciseStateLabel(ex))+'</span><p>'+esc(exerciseDescription(ex))+'</p><strong>'+esc(equipmentRequirement(exerciseSource(ex)))+'</strong></div></div>'+
+  const ex=pos.exercise,state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
+  return '<div class="clean-exercise-review">'+
+    '<div class="clean-exercise-heading"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' sets logged</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
     renderLoggedSets(ex,pos.ei)+
-    '<div class="review-exercise-actions">'+
-      (state==='completed-manually'?'<button class="button secondary" data-action="undo-manual-exercise" data-exercise-index="'+pos.ei+'">UNDO MANUAL COMPLETION</button>':'')+
-      (state==='skipped'?'<button class="button secondary" data-action="restore-exercise" data-exercise-index="'+pos.ei+'">RETURN TO THIS EXERCISE</button>':'')+
-      (state==='partial'||state==='not-started'?'<button class="button" data-action="continue-exercise" data-exercise-index="'+pos.ei+'">CONTINUE EXERCISE</button>':'')+
-      '<button class="button secondary" data-action="open-workout-map">WORKOUT MAP</button>'+
-    '</div></div>';
+    (state==='partial'||state==='not-started'?'<button class="button primary-action" data-action="continue-exercise" data-exercise-index="'+pos.ei+'">CONTINUE EXERCISE</button>':'')+
+    (state==='skipped'?'<button class="button secondary" data-action="restore-exercise" data-exercise-index="'+pos.ei+'">RETURN TO EXERCISE</button>':'')+
+    '<button class="text-button" data-action="open-workout-map">BACK TO WORKOUT MAP</button>'+
+  '</div>';
 }
 function renderWorkoutMap(){
   if(!workoutMapOpen||!store.activeWorkout)return '';
   const w=store.activeWorkout;
-  return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal" data-workout-map-panel role="dialog" aria-modal="true">'+
-    '<button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><p class="eyebrow">WORKOUT MAP</p><h2>'+esc(w.routineName)+'</h2><p>Jump around without losing completed work. Moving an exercise later changes order, not its training target.</p></div>'+
+  return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal clean-workout-map" data-workout-map-panel role="dialog" aria-modal="true">'+
+    '<button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><p class="eyebrow">WORKOUT MAP</p><h2>'+esc(w.routineName)+'</h2><p>Tap an exercise to open it. Use ••• for swap, move, complete, or skip.</p></div>'+
     '<div class="workout-map-list">'+w.exercises.map((ex,index)=>{
       const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
-      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><div class="map-number">'+String(index+1).padStart(2,'0')+'</div><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' logged sets</span></div><div class="map-actions">'+
-        (w.phase!=='intro'?'<button class="text-button" data-action="jump-exercise" data-exercise-index="'+index+'">OPEN</button>':'')+
-        (!exerciseCountsAsResolved(ex)?'<button class="text-button" data-action="mark-exercise-complete" data-exercise-index="'+index+'">MARK COMPLETE</button>':'')+
-        (state==='completed-manually'?'<button class="text-button muted" data-action="undo-manual-exercise" data-exercise-index="'+index+'">UNDO</button>':'')+
-        (state==='skipped'?'<button class="text-button muted" data-action="restore-exercise" data-exercise-index="'+index+'">RESTORE</button>':(!exerciseCountsAsResolved(ex)?'<button class="text-button muted" data-action="skip-exercise" data-exercise-index="'+index+'">SKIP</button>':''))+
-        (index<w.exercises.length-1&&!exerciseCountsAsResolved(ex)?'<button class="text-button muted" data-action="move-exercise-later" data-exercise-index="'+index+'">MOVE LATER</button>':'')+
-      '</div></article>';
+      const status=state==='complete'?'✓':state==='completed-manually'?'✓ MANUAL':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIPPED':'';
+      return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(w.phase!=='intro'?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1).padStart(2,'0')+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'" aria-label="Options for '+esc(ex.name)+'">•••</button></article>';
     }).join('')+'</div></section></div>';
 }
 
@@ -2243,18 +2333,21 @@ function bestLabel(exerciseId){
 
 function renderWorkoutReview(w){
   const actualSets=completedSets(w.exercises),resolved=workoutResolvedCount(w),fullyResolved=workoutIsFullyResolved(w);
+  const skipped=w.exercises.filter(ex=>exerciseState(ex)==='skipped').length;
   const rows=w.exercises.map((ex,index)=>{
     const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
-    return '<article class="final-review-row"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(exerciseStateLabel(ex))+' · '+done+'/'+ex.sets.length+' logged sets</span>'+(ex.skipReason?'<small>'+esc(ex.skipReason)+'</small>':'')+'</div><button class="text-button" data-action="jump-from-review" data-exercise-index="'+index+'">REVIEW</button></article>';
+    const status=state==='complete'?'✓':state==='completed-manually'?'✓ Manual':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'Skipped':'Not finished';
+    return '<button class="final-review-row clean-review-row" data-action="jump-from-review" data-exercise-index="'+index+'"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(status)+'</span></div><em>›</em></button>';
   }).join('');
-  return '<div class="workout-final-review"><p class="eyebrow">FINAL REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check the session before it becomes training history. Manual completions count for adherence but never invent weight, reps, volume, or PRs.</p>'+
-    '<div class="review-summary-grid"><div><span>EXERCISES RESOLVED</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>LOGGED SETS</span><strong>'+actualSets+'</strong></div><div><span>STATUS</span><strong>'+(fullyResolved?'READY TO SAVE':'INCOMPLETE')+'</strong></div></div>'+
+  return '<div class="workout-final-review clean-final-review"><div class="summary-check">'+(fullyResolved?'✓':'◐')+'</div><p class="eyebrow">WORKOUT REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check anything that needs correcting before this session becomes training history.</p>'+
+    '<div class="review-summary-grid clean-review-summary"><div><span>EXERCISES</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>SETS LOGGED</span><strong>'+actualSets+'/'+totalSets(w.exercises)+'</strong></div><div><span>SKIPPED</span><strong>'+skipped+'</strong></div></div>'+
     '<div class="final-review-list">'+rows+'</div>'+
     '<div class="final-review-actions">'+
       (fullyResolved?'<button class="button primary-action" data-action="save-workout-complete">FINISH & SAVE</button>':'<button class="button primary-action" data-action="finish-workout-anyway">FINISH ANYWAY</button><button class="button secondary" data-action="save-workout-partial">SAVE AS PARTIAL</button>')+
-      '<button class="button secondary" data-action="continue-workout">CONTINUE WORKOUT</button><button class="button danger" data-action="discard">DISCARD WORKOUT</button></div>'+
+      '<button class="text-button" data-action="continue-workout">CONTINUE WORKOUT</button><button class="text-button danger-text" data-action="discard">DISCARD WORKOUT</button></div>'+
   '</div>';
 }
+
 function openWorkoutReview(){
   const w=store.activeWorkout;if(!w)return;
   pauseInteractiveTimers(w);
@@ -2307,7 +2400,15 @@ function finalizeWorkout(status='complete'){
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
   ['pendingPosition','restEndsAt','restPausedRemaining','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
-  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;store.activeWorkout=null;
+  store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
+  if(entry.sharedSession){
+    const shared=sharedTrainingState();
+    shared.history.unshift({id:entry.sharedSession.id,workoutId:entry.id,partnerName:entry.sharedSession.partnerName,routineName:entry.routineName,completedAt,completionStatus:status});
+    shared.history=shared.history.slice(0,50);
+    if(shared.draft?.id===entry.sharedSession.id)shared.draft=null;
+    if(entry.sharedSession.backendId)completeSharedParticipant(entry.sharedSession,status).catch(error=>console.warn('Shared completion sync failed',error));
+  }
+  store.activeWorkout=null;
   rebuildDerivedTrainingState();saveStore();currentTab='summary';render();
 }
 function finishWorkout(auto=false){
@@ -2318,7 +2419,7 @@ function finishWorkout(auto=false){
 
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
 
-function renderProfile(){
+function renderProfileEditor(){
   const p=store.profile||{};
   const lifts=p.lifts||{};
   const checked=(field,value)=>p[field]===value?'checked':'';
@@ -2326,7 +2427,7 @@ function renderProfile(){
   const scheduledDays=preferredWorkoutDays(p);
   return `
   <div class="onboard-shell">
-    <div class="page-head"><div><p class="eyebrow">BUILD YOUR PLAN</p><h2 class="page-title">Tell us how you train.</h2><p class="page-copy">We’ll use your goal, experience, body weight, equipment and real session length to build a starting plan. Weight suggestions are conservative estimates and get refined during your first workout.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Your actual performance drives progression. Profile details help personalize scheduling, presentation, exercise selection, and future shared workouts without assuming strength from identity.</p></div></div>
     <form id="profile-form" class="intake-form" novalidate>
       <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
         <div class="choice-grid">
@@ -2334,14 +2435,24 @@ function renderProfile(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Body weight helps create a conservative first estimate. It does not determine your strength.</p></div></div>
-        <div class="form-grid three">
+      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Identity and body information stay separate from performance. Gender is stored for profile personalization and future relevant context, not used to guess your strength.</p></div></div>
+        <div class="form-grid two identity-grid">
+          <label class="field"><span>DISPLAY NAME</span><input name="displayName" autocomplete="name" value="${esc(store.account?.displayName||p.displayName||'')}" placeholder="How you want to appear"></label>
+          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for future account sign-in"></label>
+          <label class="field"><span>GENDER</span><select name="gender">${[['','Choose'],['woman','Woman'],['man','Man'],['nonbinary','Nonbinary'],['another','Another identity'],['prefer-not','Prefer not to say']].map(([v,label])=>`<option value="${v}" ${p.gender===v?'selected':''}>${label}</option>`).join('')}</select></label>
+          <label class="field"><span>PRONOUNS <em>OPTIONAL</em></span><input name="pronouns" value="${esc(p.pronouns||'')}" placeholder="e.g. he/him"></label>
+        </div>
+        <div class="form-grid three body-grid">
           <label class="field"><span>BODY WEIGHT (LB)</span><input name="weight" type="number" min="50" max="700" value="${esc(p.weight||'')}" required placeholder="180"></label>
           <label class="field"><span>HEIGHT</span><div class="inline-inputs"><input name="heightFeet" type="number" min="3" max="8" value="${esc(p.heightFeet||'')}" placeholder="5"><input name="heightInches" type="number" min="0" max="11" value="${esc(p.heightInches||'')}" placeholder="10"></div></label>
           <label class="field"><span>AGE RANGE</span><select name="ageRange">${['18-24','25-34','35-44','45-54','55-64','65+'].map(v=>`<option ${p.ageRange===v?'selected':''}>${v}</option>`).join('')}</select></label>
         </div>
+        <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
       </section>
 
+      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account connected</h3><p>${esc(store.account?.email||'Signed in')} · Your setup and training state sync through this account.</p></div></div>
+        <div class="profile-privacy-note"><strong>CONNECTED</strong><span>You can manage or sign out from your profile account controls after setup.</span></div>
+      </section>
       <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
         <div class="choice-grid four">
           ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
@@ -2370,7 +2481,10 @@ function renderProfile(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+        <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
+      </section>
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
         <div class="form-grid five">
           ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
         </div>
@@ -2469,56 +2583,841 @@ function renderWeekScheduleEntry(entry){
     '</div><div class="schedule-cta">'+button+'</div></article>';
 }
 
-function renderHome(){
-  const p=store.profile,plan=store.plan;
-  if(!p||!plan)return renderProfile();
-  const context=programContext();
-  const decision=adaptationDecision();
-  const schedule=currentWeekSchedule();
-  const week=weeklyHistory();
-  const completed=schedule.filter(entry=>entry.status==='complete').length;
-  const weeklyVolume=week.reduce((sum,item)=>sum+(item.totalVolume||0),0);
-  const next=nextScheduledSession();
-  const nextDay=next?.adaptedDay||null;
-  const prior=decision.previous;
-  const daysText=preferredWorkoutDays().map(id=>TRAINING_DAYS.find(day=>day.id===id)?.label).filter(Boolean).join(' · ');
-  return `
-    <div class="page-head"><div><p class="eyebrow">TRAINING BLOCK ${context.blockNumber} · WEEK ${context.blockWeek} OF 4</p><h2 class="page-title">${esc(planGoalLabel(p.goal))}.</h2><p class="page-copy">${esc(daysText)} · ${p.minutes}-minute sessions · ${esc(experienceLabel(p.experience))} · ${esc(equipmentLabel(p.equipment))}. Your calendar, performance, readiness, swaps, and feedback now shape the next week.</p></div><button class="button secondary" data-action="edit-profile">EDIT PROFILE</button></div>
-    ${store.activeWorkout?`<button class="resume-card" data-action="resume"><div class="resume-dot"></div><div><span>WORKOUT IN PROGRESS</span><strong>${esc(store.activeWorkout.routineName)} · ${store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='calibrate'?'Calibrating':store.activeWorkout.isPaused?'Paused':store.activeWorkout.phase==='feedback'?'Exercise feedback':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='timed-set'?'Timed set':store.activeWorkout.phase==='warmup'?'Warm-up':store.activeWorkout.phase==='cooldown'?'Cooldown':'Set in progress'}</strong></div><div class="resume-arrow">→</div></button>`:''}
-    <section class="program-block-card">
-      <div class="block-phase"><span>CURRENT PHASE</span><strong>${esc(blockPhaseLabel(context.blockWeek))}</strong><em>Block ${context.blockNumber} · Program week ${context.weekNumber}${context.calendarWeekNumber>context.weekNumber?' · calendar week '+context.calendarWeekNumber:''}</em></div>
-      <div class="block-explainer"><span>THIS WEEK'S ADAPTATION</span><strong>${esc(decision.mode.toUpperCase())}</strong><p>${esc(decision.notes.join(' ')||'Keep building from the targets earned in your previous sessions.')}</p></div>
-      ${prior?`<div class="prior-week-mini"><span>LAST WEEK</span><strong>${prior.completed}/${prior.scheduled} workouts · ${prior.averageMinutes||0} min avg</strong><small>${prior.prs||0} PRs · readiness ${prior.averageReadiness?prior.averageReadiness.toFixed(1):'—'}/5</small></div>`:''}
-    </section>
-    <div class="hero">
-      <section class="hero-primary"><p class="eyebrow">THIS WEEK</p><div class="hero-metrics"><div class="hero-metric"><span class="hero-number">${completed}/${schedule.length}</span><span class="hero-label">scheduled workouts</span></div><div class="hero-divider"></div><div class="hero-metric"><span class="hero-number">${formatVolume(weeklyVolume)}</span><span class="hero-label">volume</span></div></div></section>
-      <section class="hero-secondary"><div><p class="eyebrow">${next?.status==='missed'?'MISSED SESSION':'NEXT SESSION'}</p><h3>${esc(nextDay?.name||'Week complete')}</h3><p>${next?`${esc(next.dayName)} · ${esc(formatDate(next.dateKey))} · ~${nextDay?.estimatedMinutes||p.minutes} min`:'Your next training week will adapt from this one.'}</p></div>${next&&!store.activeWorkout?`<button class="button" data-start="${esc(next.day.id)}" data-scheduled-date="${esc(next.dateKey)}">${next.status==='missed'?'DO IT TODAY':next.status==='today'?'START TODAY':'START NEXT SESSION'}</button>`:''}</section>
-    </div>
-    <section class="section weekly-calendar"><div class="section-head"><div><p class="eyebrow">WEEK OF ${esc(formatDate(context.weekKey))}</p><h2>Your training days</h2></div><span class="calendar-phase">${esc(blockPhaseLabel(context.blockWeek))}</span></div>
-      <div class="schedule-list">${schedule.map(renderWeekScheduleEntry).join('')}</div>
-    </section>
-    <section class="profile-strip"><div><span>GOAL</span><strong>${esc(planGoalLabel(p.goal))}</strong></div><div><span>TRAINING DAYS</span><strong>${esc(daysText)}</strong></div><div><span>SETUP</span><strong>${esc(equipmentLabel(p.equipment))}</strong></div><div><span>SESSION TARGET</span><strong>${p.minutes} min</strong></div></section>
-    <section class="section"><div class="section-head"><div><p class="eyebrow">PROGRAM TEMPLATE</p><h2>${plan.days.length}-day rotation</h2><p class="section-copy">Anchor movements stay recognizable inside a block. Weekly volume adapts, and selected accessory movements can rotate when a new block begins.</p></div><button class="text-button" data-action="regenerate">Regenerate</button></div>
-      <div class="routine-grid">${plan.days.map((day,i)=>{
-        const scheduled=schedule.find(entry=>entry.day.id===day.id);
-        return `
-        <article class="routine-card">
-          <div class="routine-top"><span class="routine-number">0${i+1}</span><span class="routine-time">~${day.estimatedMinutes} MIN BASE</span></div>
-          <h3>${esc(day.name)}</h3><div class="routine-focus">${esc(day.focus)}</div>
-          <div class="routine-sequence">
-            <div class="routine-phase-head"><span>01</span><strong>WARM-UP</strong><em>${plannedWarmup(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
-            <div class="plan-prep-list">${plannedWarmup(day).map((item,index)=>renderPlanTimedRow(item,'warmup',index)).join('')}</div>
-            <div class="routine-phase-head work"><span>02</span><strong>WORKOUT</strong><em>${day.exercises.length} exercises</em></div>
-            <div class="routine-plan">${day.exercises.map((ex,exIndex)=>`<div class="plan-row detailed visual-plan-row">${exerciseImageButton(ex,'plan-exercise-media')}<div class="plan-row-copy"><strong>${esc(ex.name)}</strong><small class="plan-description">${esc(exerciseDescription(ex))}</small><small class="plan-equipment">Equipment: ${esc(equipmentRequirement(exerciseSource(ex)))}</small>${planPrescriptionHtml(ex)}<div class="plan-swap-actions"><button class="text-button" type="button" data-action="swap-plan" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Swap exercise</button>${ex.swapUndo?`<button class="text-button muted" type="button" data-action="undo-plan-swap" data-day-id="${esc(day.id)}" data-swap-index="${exIndex}">Undo swap</button>`:''}</div></div><span>${ex.sets} × ${esc(ex.reps)}<small>${adaptivePrescription(ex)?.rest||ex.rest}s rest</small></span></div>`).join('')}</div>
-            <div class="routine-phase-head cooldown"><span>03</span><strong>COOLDOWN</strong><em>${plannedCooldown(day).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)} sec</em></div>
-            <div class="plan-prep-list">${plannedCooldown(day).map((item,index)=>renderPlanTimedRow(item,'cooldown',index)).join('')}</div>
-          </div>
-          <div class="routine-footer"><span class="routine-meta">Base template · ${day.exercises.length} exercises</span>${scheduled&&!store.activeWorkout?`<button class="button secondary" data-start="${esc(day.id)}" data-scheduled-date="${esc(scheduled.dateKey)}">PREPARE ${esc(scheduled.dayName.toUpperCase())}</button>`:''}</div>
-        </article>`;
-      }).join('')}</div>
-    </section>`;
+function displayName(){
+  return store.account?.displayName||store.profile?.displayName||'there';
+}
+async function initWorkoutAuth(){
+  try{
+    if(!window.supabase?.createClient){authReady=true;render();return;}
+    workoutSupabase=window.supabase.createClient(WORKOUT_SUPABASE_URL,WORKOUT_SUPABASE_PUBLISHABLE_KEY,{
+      auth:{
+        storage:window.localStorage,
+        persistSession:true,
+        autoRefreshToken:true,
+        detectSessionInUrl:true
+      }
+    });
+    const {data,error}=await workoutSupabase.auth.getSession();
+    if(error)console.warn('Workout session restore warning',error);
+    applyWorkoutSession(data?.session||null);
+    workoutSupabase.auth.onAuthStateChange((_event,session)=>{
+      applyWorkoutSession(session||null);
+    });
+  }catch(error){
+    console.error('Workout auth initialization failed',error);
+    toast('Account service could not start. Reload and try again.');
+  }
+}
+function applyWorkoutSession(session){
+  authReady=true;
+  cloudHydrating=Boolean(session?.user);
+  const previousUserId=store.account?.userId||'';
+  if(session?.user){
+    const user=session.user;
+    store.account={
+      ...(store.account||{}),
+      userId:user.id||'',
+      email:user.email||store.account?.email||'',
+      displayName:user.user_metadata?.display_name||store.account?.displayName||store.profile?.displayName||'',
+      authProvider:user.app_metadata?.provider||'email',
+      status:'connected'
+    };
+  }else{
+    store.account={...(store.account||{}),userId:'',authProvider:'',status:store.account?.status==='pending'?'pending':'local'};
+  }
+  sharedRuntime.syncMuted=true;
+  saveStore();
+  sharedRuntime.syncMuted=false;
+  render();
+  if(session?.user?.id){
+    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await restoreSharedWorkoutSession(session.user.id);}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
+  }else if(previousUserId){
+    unsubscribeSharedSession();
+  }
+}
+async function signInEntryAccount(){
+  if(!workoutSupabase){toast('Account service is unavailable. Reload and try again.');return;}
+  const email=(document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
+  const password=document.querySelector('#entry-password')?.value||'';
+  if(!email||!password){toast('Enter your email and password.');return;}
+  const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
+  if(error){toast(error.code==='email_not_confirmed'?'Confirm your email first, then sign in.':(error.message||'Could not sign in.'));return;}
+  if(!data?.session){toast('Sign-in did not create a session. Try again.');return;}
+  toast('Signed in.');
+}
+async function createEntryAccount(){
+  if(!workoutSupabase){toast('Account service is unavailable. Reload and try again.');return;}
+  const display=(document.querySelector('#entry-display-name')?.value||'').trim();
+  const email=(document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
+  const password=document.querySelector('#entry-password')?.value||'';
+  if(!display){toast('Enter your display name.');return;}
+  if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  let result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
+  if(result.error&&/redirect/i.test(result.error.message||''))result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display}}});
+  const {data,error}=result;
+  if(error){toast(error.message||'Could not create the account.');return;}
+  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){toast('That email already has an account. Sign in instead.');return;}
+  store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};
+  saveStore();
+  if(data?.session){toast('Account created. Now build your training profile.');}
+  else{toast('Account created. Check your email to confirm it, then sign in here.');render();}
+}
+async function resendEntryConfirmation(){
+  if(!workoutSupabase){toast('Account service is unavailable.');return;}
+  const email=(store.account?.email||document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
+  if(!email){toast('Enter the email used for this account.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {error}=await workoutSupabase.auth.resend({type:'signup',email,options:{emailRedirectTo:redirectTo}});
+  if(error){toast(error.message||'Could not resend the confirmation email.');return;}
+  toast('Confirmation email sent again.');
+}
+async function signInWorkoutAccount(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const email=(document.querySelector('#account-email')?.value||'').trim().toLowerCase();
+  const password=document.querySelector('#account-password')?.value||'';
+  if(!email||!password){toast('Enter your email and password.');return;}
+  const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
+  if(error){
+    const message=error.code==='email_not_confirmed'?'Confirm your email first, then sign in.':(error.message||'Could not sign in.');
+    toast(message);return;
+  }
+  if(!data?.session){toast('Sign-in did not create a browser session. Try again.');return;}
+  accountSheetOpen=false;
+  persistUiState();
+  toast('Signed in.');
+  render();
+}
+async function createOnboardingAccount(){
+  if(!workoutSupabase){toast('Account service is not available.');return;}
+  const email=(document.querySelector('#onboard-account-email')?.value||document.querySelector('[name="email"]')?.value||'').trim().toLowerCase();
+  const password=document.querySelector('#onboard-account-password')?.value||'';
+  const display=(document.querySelector('[name="displayName"]')?.value||'').trim();
+  if(!display){toast('Enter your display name first.');return;}
+  if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {data,error}=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
+  if(error){toast(error.message||'Could not create the account.');return;}
+  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){toast('That email already has an account. Sign in instead.');accountSheetOpen=true;render();return;}
+  store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};saveStore();
+  toast(data?.session?'Account created. Finish your training setup.':'Account created. Confirm your email, then sign in to sync this setup.');render();
+}
+async function createWorkoutAccount(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const email=(document.querySelector('#account-email')?.value||'').trim().toLowerCase();
+  const password=document.querySelector('#account-password')?.value||'';
+  const display=(store.profile?.displayName||store.account?.displayName||'').trim();
+  if(!email||!password){toast('Enter an email and password.');return;}
+  if(password.length<6){toast('Use a password with at least 6 characters.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  let signUpResult=await workoutSupabase.auth.signUp({
+    email,
+    password,
+    options:{
+      data:{display_name:display},
+      emailRedirectTo:redirectTo
+    }
+  });
+  if(signUpResult.error&&/redirect/i.test(signUpResult.error.message||'')){
+    signUpResult=await workoutSupabase.auth.signUp({
+      email,
+      password,
+      options:{data:{display_name:display}}
+    });
+  }
+  const {data,error}=signUpResult;
+  if(error){toast(error.message||'Could not create the account.');return;}
+  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){
+    store.account={...(store.account||{}),email,status:'local'};
+    saveStore();
+    toast('That email already has an account. Use Sign In instead.');
+    render();
+    return;
+  }
+  store.account={
+    ...(store.account||{}),
+    email,
+    userId:data?.user?.id||store.account?.userId||'',
+    displayName:display||store.account?.displayName||'',
+    status:data?.session?'connected':'pending'
+  };
+  saveStore();
+  if(data?.session){
+    accountSheetOpen=false;
+    persistUiState();
+    toast('Account created and signed in.');
+  }else{
+    accountSheetOpen=true;
+    persistUiState();
+    toast('Account created. Check your email to confirm it, then return here.');
+  }
+  render();
+}
+async function resendWorkoutConfirmation(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  const email=(store.account?.email||document.querySelector('#account-email')?.value||'').trim().toLowerCase();
+  if(!email){toast('Enter the email used for this account.');return;}
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {error}=await workoutSupabase.auth.resend({
+    type:'signup',
+    email,
+    options:{emailRedirectTo:redirectTo}
+  });
+  if(error){toast(error.message||'Could not resend the confirmation email.');return;}
+  toast('Confirmation email sent again.');
+}
+async function signOutWorkoutAccount(){
+  if(!workoutSupabase){toast('Account service is not available in this build.');return;}
+  await unsubscribeSharedSession();
+  const {error}=await workoutSupabase.auth.signOut({scope:'local'});
+  if(error){toast(error.message||'Could not sign out.');return;}
+  accountSheetOpen=false;
+  persistUiState();
+  toast('Signed out on this browser.');
+  render();
 }
 
+function weeklyVolumeValue(){
+  return weeklyHistory().reduce((sum,item)=>sum+(item.totalVolume||0),0);
+}
+function renderCompactWeek(schedule){
+  const context=programContext();
+  return '<div class="compact-week">'+TRAINING_DAYS.map(dayDef=>{
+    const entry=schedule.find(item=>item.dayId===dayDef.id);
+    const date=addDays(context.weekStart,dayOffsetFromMonday(dayDef.id));
+    const status=entry?.status||'rest';
+    const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'TODAY':'';
+    return '<button class="compact-day status-'+status+'" type="button" '+(entry&&!store.activeWorkout&&!['complete','skipped'].includes(status)?'data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'"':'')+'><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><em>'+marker+'</em></button>';
+  }).join('')+'</div>';
+}
+
+function renderTrain(){
+  const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
+  const schedule=currentWeekSchedule();
+  const context=programContext();
+  return '<div class="clean-page">'+
+    '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Start a scheduled session, review the rotation, or browse exercises without cluttering Home.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
+    (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
+    '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW WEEK</button></section>'+
+    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM</p><h3>'+plan.days.length+'-day rotation</h3></div><button class="text-button" data-action="regenerate">Regenerate</button></div>'+
+    '<div class="clean-routine-list">'+plan.days.map((day,index)=>{
+      const scheduled=schedule.find(entry=>entry.day.id===day.id);
+      const first=day.exercises[0];
+      return '<article class="clean-routine-card"><div class="routine-card-main"><span class="routine-index">'+String(index+1).padStart(2,'0')+'</span><div><h3>'+esc(day.name)+'</h3><p>'+esc(day.focus)+'</p><small>'+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></div>'+
+        '<div class="routine-card-actions">'+(scheduled&&!store.activeWorkout?'<button class="button secondary" data-start="'+esc(day.id)+'" data-scheduled-date="'+esc(scheduled.dateKey)+'">'+(scheduled.status==='today'?'START TODAY':'PREPARE')+'</button>':'')+'<button class="text-button" data-action="catalog">LIBRARY</button></div></article>';
+    }).join('')+'</div></section>'+
+    '<section class="clean-panel train-library-card"><div><p class="eyebrow">EXERCISE LIBRARY</p><h3>'+catalog.length+' movements</h3><p>Form cues, equipment requirements, muscle groups, and exercise history.</p></div><button class="button secondary" data-action="catalog">BROWSE</button></section>'+
+  '</div>';
+}
+function sharedTrainingState(){
+  store.sharedTraining=store.sharedTraining||{partners:[],draft:null,history:[]};
+  store.sharedTraining.partners=Array.isArray(store.sharedTraining.partners)?store.sharedTraining.partners:[];
+  store.sharedTraining.history=Array.isArray(store.sharedTraining.history)?store.sharedTraining.history:[];
+  return store.sharedTraining;
+}
+function sharedJoinCode(){
+  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code='';
+  for(let i=0;i<6;i++)code+=alphabet[Math.floor(Math.random()*alphabet.length)];
+  return code;
+}
+function safeSharedPlanSnapshot(day){
+  if(!day)return {};
+  return {
+    id:day.id||'shared-plan',
+    name:day.name||'Shared workout',
+    focus:day.focus||'Shared training',
+    estimatedMinutes:num(day.estimatedMinutes)||num(store.profile?.minutes)||45,
+    warmup:clone(day.warmup||[]),
+    cooldown:clone(day.cooldown||[]),
+    exercises:(day.exercises||[]).map(ex=>({
+      id:ex.id,
+      name:ex.name,
+      movement:ex.movement,
+      muscles:clone(ex.muscles||[]),
+      loadMode:ex.loadMode,
+      sets:num(ex.sets)||2,
+      reps:ex.reps||'8–12',
+      rest:Math.max(30,Math.min(60,num(ex.rest)||45)),
+      setup:num(ex.setup)||25,
+      increment:num(ex.increment)||5
+    }))
+  };
+}
+function localizeSharedPlan(snapshot){
+  if(!snapshot?.exercises?.length)return null;
+  const exercises=snapshot.exercises.map(sharedEx=>{
+    const source=catalog.find(item=>item.id===sharedEx.id)||sharedEx;
+    const adaptive=adaptivePrescription(source);
+    const calibrated=store.calibration?.[sharedEx.id]?.weight;
+    const estimated=catalog.find(item=>item.id===sharedEx.id)?estimateStartingLoad(source,store.profile||{}):{weight:0,label:'Choose a comfortable starting load',source:'shared plan',calibrate:true};
+    const startWeight=adaptive?.weight??calibrated??estimated.weight??0;
+    return {
+      ...source,
+      ...sharedEx,
+      startWeight,
+      startLabel:adaptive?.label||(startWeight?(sharedEx.loadMode==='dumbbell-pair'?startWeight+' lb each':startWeight+' lb'):(estimated.label||'Choose a comfortable starting load')),
+      startSource:adaptive?'your learned progression':(calibrated?'your calibration':estimated.source||'shared plan'),
+      startReps:adaptive?.reps||recommendedRepCount(sharedEx.reps),
+      calibrationRequired:Boolean(estimated.calibrate&&!calibrated&&!adaptive)
+    };
+  });
+  return {...snapshot,exercises,warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
+}
+function sharedDraftFromRow(row,role=''){
+  const userId=store.account?.userId||'';
+  const resolvedRole=role||(row.host_user_id===userId?'host':'partner');
+  const partnerName=resolvedRole==='host'?(row.partner_name||'Workout partner'):(row.host_name||'Workout partner');
+  return {
+    id:row.id,
+    backendId:row.id,
+    createdAt:row.created_at||new Date().toISOString(),
+    dayId:row.plan_day_id||row.plan_snapshot?.id||'shared-plan',
+    scheduledDate:row.scheduled_date||dateKey(),
+    routineName:row.routine_name||row.plan_snapshot?.name||'Shared workout',
+    partnerId:resolvedRole==='host'?(row.partner_user_id||''):(row.host_user_id||''),
+    partnerName,
+    partnerContact:'',
+    partnerStatus:row.partner_user_id?'ready':'invited',
+    userStatus:'ready',
+    mode:row.mode||'same-gym',
+    pace:row.pace||'stay-together',
+    setFlow:row.set_flow||'alternating',
+    leadAudio:row.lead_audio_user_id===userId?'you':'partner',
+    code:row.join_code||'',
+    role:resolvedRole,
+    sessionStatus:row.status||'lobby',
+    planSnapshot:row.plan_snapshot||{},
+    remoteState:null
+  };
+}
+function saveSharedBackendDraft(draft){
+  const shared=sharedTrainingState();
+  shared.draft=draft;
+  sharedRuntime.syncMuted=true;
+  saveStore();
+  sharedRuntime.syncMuted=false;
+}
+async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
+  if(!workoutSupabase||!sessionId||store.account?.status!=='connected')return null;
+  const [{data:session,error},{data:participants, error:participantError}]=await Promise.all([
+    workoutSupabase.from('workout_shared_sessions').select('*').eq('id',sessionId).maybeSingle(),
+    workoutSupabase.from('workout_shared_participant_state').select('session_id,user_id,display_name,ready,connection_state,exercise_index,set_index,phase,is_paused,updated_at').eq('session_id',sessionId)
+  ]);
+  if(error){console.warn('Shared session refresh failed',error);return null;}
+  if(participantError)console.warn('Shared participant refresh failed',participantError);
+  if(!session)return null;
+  const shared=sharedTrainingState();
+  let draft=shared.draft?.backendId===sessionId?shared.draft:sharedDraftFromRow(session);
+  const ownId=store.account?.userId||'';
+  const role=session.host_user_id===ownId?'host':'partner';
+  const remote=(participants||[]).find(item=>item.user_id!==ownId)||null;
+  draft={
+    ...draft,
+    ...sharedDraftFromRow(session,role),
+    partnerName:remote?.display_name||draft.partnerName||'Workout partner',
+    partnerId:remote?.user_id||draft.partnerId||'',
+    partnerStatus:remote?(remote.ready?'ready':'joined'):(session.partner_user_id?'joined':'invited'),
+    remoteState:remote?{
+      userId:remote.user_id,
+      displayName:remote.display_name,
+      ready:Boolean(remote.ready),
+      connectionState:remote.connection_state,
+      exerciseIndex:num(remote.exercise_index),
+      setIndex:num(remote.set_index),
+      phase:remote.phase||'lobby',
+      isPaused:Boolean(remote.is_paused),
+      updatedAt:remote.updated_at
+    }:draft.remoteState||null
+  };
+  saveSharedBackendDraft(draft);
+  if(remote?.display_name){
+    const existing=shared.partners.find(item=>item.userId===remote.user_id);
+    if(!existing)shared.partners.push({id:uid('partner'),userId:remote.user_id,name:remote.display_name,contact:'',status:'connected'});
+  }
+  if(renderNow&&currentTab==='together')render();
+  return draft;
+}
+async function unsubscribeSharedSession(){
+  if(sharedRuntime.syncTimer){clearTimeout(sharedRuntime.syncTimer);sharedRuntime.syncTimer=null;}
+  const channel=sharedRuntime.channel;
+  sharedRuntime.channel=null;
+  sharedRuntime.sessionId='';
+  sharedRuntime.lastPresenceSignature='';
+  if(channel&&workoutSupabase){
+    try{await channel.untrack();}catch{}
+    try{await workoutSupabase.removeChannel(channel);}catch{}
+  }
+}
+function updateSharedFromPresence(){
+  const channel=sharedRuntime.channel;
+  const draft=sharedTrainingState().draft;
+  if(!channel||!draft)return;
+  const state=channel.presenceState?.()||{};
+  const entries=Object.values(state).flat().filter(Boolean);
+  const ownId=store.account?.userId||'';
+  const remote=entries.find(item=>item.userId&&item.userId!==ownId);
+  const signature=JSON.stringify(remote||{});
+  if(signature===sharedRuntime.lastPresenceSignature)return;
+  sharedRuntime.lastPresenceSignature=signature;
+  if(remote){
+    draft.partnerName=remote.displayName||draft.partnerName||'Workout partner';
+    draft.partnerId=remote.userId||draft.partnerId||'';
+    draft.partnerStatus=remote.ready?'ready':'joined';
+    draft.remoteState={...(draft.remoteState||{}),userId:remote.userId,displayName:remote.displayName||draft.partnerName,ready:Boolean(remote.ready),connectionState:'online'};
+  }else if(draft.remoteState){
+    draft.remoteState={...draft.remoteState,connectionState:'offline'};
+  }
+  saveSharedBackendDraft(draft);
+  if(currentTab==='together')render();
+}
+async function subscribeSharedSession(draft){
+  if(!workoutSupabase||!draft?.backendId||store.account?.status!=='connected')return;
+  if(sharedRuntime.sessionId===draft.backendId&&sharedRuntime.channel)return;
+  await unsubscribeSharedSession();
+  try{await workoutSupabase.realtime.setAuth();}catch{}
+  const channel=workoutSupabase.channel('workout:'+draft.backendId,{
+    config:{
+      private:true,
+      presence:{key:store.account.userId},
+      broadcast:{self:false}
+    }
+  });
+  sharedRuntime.channel=channel;
+  sharedRuntime.sessionId=draft.backendId;
+  channel
+    .on('presence',{event:'sync'},()=>updateSharedFromPresence())
+    .on('presence',{event:'join'},()=>updateSharedFromPresence())
+    .on('presence',{event:'leave'},()=>updateSharedFromPresence())
+    .on('broadcast',{event:'participant-state'},({payload})=>{
+      if(!payload||payload.userId===store.account?.userId)return;
+      const current=sharedTrainingState().draft;
+      if(!current||current.backendId!==draft.backendId)return;
+      current.partnerName=payload.displayName||current.partnerName;
+      current.partnerId=payload.userId||current.partnerId;
+      current.partnerStatus=payload.ready?'ready':'joined';
+      current.remoteState={
+        userId:payload.userId,
+        displayName:payload.displayName||current.partnerName,
+        ready:Boolean(payload.ready),
+        connectionState:'online',
+        exerciseIndex:num(payload.exerciseIndex),
+        setIndex:num(payload.setIndex),
+        phase:payload.phase||'lobby',
+        isPaused:Boolean(payload.isPaused),
+        updatedAt:payload.updatedAt||new Date().toISOString()
+      };
+      saveSharedBackendDraft(current);
+      if(currentTab==='together')render();
+    })
+    .on('broadcast',{event:'session-state'},({payload})=>{
+      const current=sharedTrainingState().draft;
+      if(!current||current.backendId!==draft.backendId||!payload)return;
+      current.sessionStatus=payload.status||current.sessionStatus;
+      if(payload.startedAt)current.startedAt=payload.startedAt;
+      saveSharedBackendDraft(current);
+      if(currentTab==='together')render();
+      if(current.role==='partner'&&payload.status==='active')toast('Your partner started the shared workout. You can begin when ready.');
+    })
+    .subscribe(async status=>{
+      if(status!=='SUBSCRIBED')return;
+      try{
+        await channel.track({
+          userId:store.account.userId,
+          displayName:displayName(),
+          role:draft.role||'partner',
+          ready:true,
+          onlineAt:new Date().toISOString()
+        });
+      }catch(error){console.warn('Shared presence track failed',error);}
+      await fetchSharedSessionState(draft.backendId,{renderNow:true});
+      scheduleSharedStateSync();
+    });
+}
+function currentSharedCoordinationState(){
+  const draft=sharedTrainingState().draft;
+  if(!draft?.backendId||store.account?.status!=='connected')return null;
+  const w=store.activeWorkout?.sharedSession?.backendId===draft.backendId?store.activeWorkout:null;
+  return {
+    sessionId:draft.backendId,
+    userId:store.account.userId,
+    displayName:displayName(),
+    ready:true,
+    connectionState:'online',
+    exerciseIndex:w?num(w.currentExerciseIndex):0,
+    setIndex:w?num(w.currentSetIndex):0,
+    phase:w?(w.phase||'workout'):(draft.userStatus||'lobby'),
+    isPaused:Boolean(w?.isPaused),
+    updatedAt:new Date().toISOString()
+  };
+}
+function scheduleSharedStateSync(){
+  if(sharedRuntime.syncMuted||store.account?.status!=='connected')return;
+  const state=currentSharedCoordinationState();
+  if(!state)return;
+  if(sharedRuntime.syncTimer)clearTimeout(sharedRuntime.syncTimer);
+  sharedRuntime.syncTimer=setTimeout(()=>syncSharedParticipantState().catch(error=>console.warn('Shared state sync failed',error)),140);
+}
+async function syncSharedParticipantState(){
+  sharedRuntime.syncTimer=null;
+  if(!workoutSupabase)return;
+  const state=currentSharedCoordinationState();
+  if(!state)return;
+  const {error}=await workoutSupabase
+    .from('workout_shared_participant_state')
+    .update({
+      display_name:state.displayName,
+      ready:state.ready,
+      connection_state:state.connectionState,
+      exercise_index:state.exerciseIndex,
+      set_index:state.setIndex,
+      phase:state.phase,
+      is_paused:state.isPaused,
+      updated_at:state.updatedAt
+    })
+    .eq('session_id',state.sessionId)
+    .eq('user_id',state.userId);
+  if(error){console.warn('Participant state update failed',error);return;}
+  try{
+    await sharedRuntime.channel?.send({
+      type:'broadcast',
+      event:'participant-state',
+      payload:state
+    });
+  }catch{}
+}
+async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
+  if(!workoutSupabase||!userId||store.account?.status!=='connected')return;
+  if(sharedRuntime.restoreUserId===userId&&sharedRuntime.channel)return;
+  sharedRuntime.restoreUserId=userId;
+  const existing=sharedTrainingState().draft;
+  if(existing?.backendId){
+    const refreshed=await fetchSharedSessionState(existing.backendId,{renderNow:false});
+    if(refreshed&&['lobby','active'].includes(refreshed.sessionStatus)){
+      await subscribeSharedSession(refreshed);
+      return;
+    }
+    sharedTrainingState().draft=null;
+    sharedRuntime.syncMuted=true;
+    saveStore();
+    sharedRuntime.syncMuted=false;
+  }
+  const {data,error}=await workoutSupabase
+    .from('workout_shared_sessions')
+    .select('*')
+    .in('status',['lobby','active'])
+    .gt('expires_at',new Date().toISOString())
+    .order('created_at',{ascending:false})
+    .limit(1);
+  if(error){console.warn('Shared session restore query failed',error);return;}
+  const row=data?.[0];
+  if(!row)return;
+  const draft=sharedDraftFromRow(row);
+  saveSharedBackendDraft(draft);
+  await subscribeSharedSession(draft);
+  if(currentTab==='together')render();
+}
+async function cancelSharedDraft(){
+  const shared=sharedTrainingState();
+  const draft=shared.draft;
+  if(draft?.backendId&&workoutSupabase&&store.account?.status==='connected'){
+    const {error}=await workoutSupabase.rpc('leave_workout_shared_session',{p_session_id:draft.backendId});
+    if(error)console.warn('Shared session leave failed',error);
+  }
+  shared.draft=null;
+  sharedRuntime.syncMuted=true;
+  saveStore();
+  sharedRuntime.syncMuted=false;
+  await unsubscribeSharedSession();
+  render();
+}
+async function startSharedWorkout(){
+  const draft=sharedTrainingState().draft;if(!draft)return;
+  if(draft.mode!=='share-plan'&&draft.partnerStatus!=='ready'){toast('Your workout partner has not joined the lobby yet.');return;}
+  if(draft.role==='partner'&&draft.mode!=='share-plan'&&draft.sessionStatus!=='active'){
+    toast('Your partner has not started the shared workout yet.');
+    return;
+  }
+  let sharedDay=sharedDraftDay(draft);
+  if(draft.backendId&&workoutSupabase){
+    const {data:participants}=await workoutSupabase.from('workout_shared_participant_state').select('user_id,planning_profile,planned_day,readiness').eq('session_id',draft.backendId);
+    const partner=(participants||[]).find(p=>p.user_id!==store.account?.userId);
+    if(partner?.planned_day?.exercises?.length){
+      const partnerIds=new Set(partner.planned_day.exercises.map(ex=>ex.id));
+      const common=(sharedDay?.exercises||[]).filter(ex=>partnerIds.has(ex.id));
+      if(common.length>=2){sharedDay=clone(sharedDay);sharedDay.exercises=common;sharedDay.name='Shared '+sharedDay.name;recalculatePlanDay(sharedDay);}
+    }
+  }
+  openReadiness(draft.dayId,draft.scheduledDate);
+  if(readinessContext){readinessContext.sharedDraft=clone(draft);if(sharedDay)readinessContext.day=sharedDay;}
+  render();
+}
+function copySharedCode(){
+  const code=sharedTrainingState().draft?.code;if(!code)return;
+  if(navigator?.clipboard?.writeText){
+    navigator.clipboard.writeText(code).then(()=>toast('Join code copied.')).catch(()=>toast('Join code: '+code));
+  }else toast('Join code: '+code);
+}
+async function createSharedDraft(){
+  if(store.account?.status!=='connected'){accountSheetOpen=true;render();toast('Sign in before creating a shared workout.');return;}
+  if(!workoutSupabase){toast('Shared workout service is unavailable.');return;}
+  const next=nextScheduledSession();
+  if(!next){toast('No scheduled workout is available to share right now.');return;}
+  const name=(document.querySelector('#shared-partner-name')?.value||'').trim();
+  const contact=(document.querySelector('#shared-partner-contact')?.value||'').trim();
+  const mode=document.querySelector('#shared-mode')?.value||'same-gym';
+  const pace=document.querySelector('#shared-pace')?.value||'stay-together';
+  const setFlow=document.querySelector('#shared-set-flow')?.value||'alternating';
+  if(!name){toast('Enter your workout partner’s name.');return;}
+  const shared=sharedTrainingState();
+  const day=next.adaptedDay||next.day;
+  const snapshot=safeSharedPlanSnapshot(day);
+  let created=null,lastError=null;
+  for(let attempt=0;attempt<4&&!created;attempt++){
+    const code=sharedJoinCode();
+    const {data,error}=await workoutSupabase.from('workout_shared_sessions').insert({
+      join_code:code,
+      host_user_id:store.account.userId,
+      host_name:displayName(),
+      routine_name:day.name,
+      scheduled_date:next.dateKey,
+      plan_day_id:day.id,
+      plan_snapshot:snapshot,
+      mode,
+      pace,
+      set_flow:setFlow,
+      lead_audio_user_id:store.account.userId,
+      status:'lobby'
+    }).select('*').single();
+    if(error){lastError=error;continue;}
+    created=data;
+  }
+  if(!created){toast(lastError?.message||'Could not create the shared lobby.');return;}
+  const {error:participantError}=await workoutSupabase.from('workout_shared_participant_state').insert({
+    session_id:created.id,
+    user_id:store.account.userId,
+    display_name:displayName(),
+    ready:false,
+    connection_state:'online',
+    phase:'planning',
+    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
+    planned_day:snapshot
+  });
+  if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
+  const partner={id:uid('partner'),name,contact,status:'invited'};
+  const existing=shared.partners.find(item=>item.contact&&contact&&item.contact.toLowerCase()===contact.toLowerCase());
+  if(!existing)shared.partners.push(partner);
+  const draft={...sharedDraftFromRow(created,'host'),partnerId:(existing||partner).id,partnerName:name,partnerContact:contact,partnerStatus:'invited',planSnapshot:snapshot};
+  saveSharedBackendDraft(draft);
+  await subscribeSharedSession(draft);
+  render();
+}
+async function joinSharedSession(){
+  if(store.account?.status!=='connected'){accountSheetOpen=true;render();toast('Sign in before joining a shared workout.');return;}
+  if(!workoutSupabase){toast('Shared workout service is unavailable.');return;}
+  const code=(document.querySelector('#shared-join-code')?.value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length!==6){toast('Enter the 6-character join code.');return;}
+  const {data,error}=await workoutSupabase.rpc('join_workout_shared_session',{p_join_code:code,p_display_name:displayName()});
+  if(error){toast(error.message?.includes('unavailable')?'That shared workout is unavailable or already full.':(error.message||'Could not join the shared workout.'));return;}
+  const row=Array.isArray(data)?data[0]:data;
+  if(!row){toast('Could not load that shared workout.');return;}
+  const draft=sharedDraftFromRow(row,'partner');
+  draft.partnerStatus='ready';
+  saveSharedBackendDraft(draft);
+  await subscribeSharedSession(draft);
+  toast('Joined '+draft.partnerName+'’s workout.');
+  render();
+}
+function sharedDraftDay(draft){
+  if(!draft)return null;
+  if(draft.role==='partner'&&draft.planSnapshot?.exercises?.length)return localizeSharedPlan(draft.planSnapshot);
+  const entry=scheduledEntryFor(draft.dayId,draft.scheduledDate);
+  return entry?.adaptedDay||store.plan?.days?.find(day=>day.id===draft.dayId)||localizeSharedPlan(draft.planSnapshot)||null;
+}
+async function activateSharedWorkout(draft){
+  if(!draft?.backendId||!workoutSupabase)return;
+  const shared=sharedTrainingState();
+  if(shared.draft?.backendId===draft.backendId){
+    shared.draft.userStatus='training';
+    saveSharedBackendDraft(shared.draft);
+  }
+  if(draft.role==='host'){
+    const startedAt=new Date().toISOString();
+    const {error}=await workoutSupabase.from('workout_shared_sessions').update({
+      status:'active',
+      started_at:startedAt,
+      updated_at:startedAt
+    }).eq('id',draft.backendId);
+    if(!error){
+      if(shared.draft?.backendId===draft.backendId){
+        shared.draft.sessionStatus='active';
+        shared.draft.startedAt=startedAt;
+        saveSharedBackendDraft(shared.draft);
+      }
+      try{await sharedRuntime.channel?.send({type:'broadcast',event:'session-state',payload:{status:'active',startedAt}});}catch{}
+    }
+  }
+  scheduleSharedStateSync();
+}
+async function completeSharedParticipant(sharedSession,completionStatus){
+  if(!sharedSession?.backendId||!workoutSupabase||store.account?.status!=='connected')return;
+  const now=new Date().toISOString();
+  await workoutSupabase.from('workout_shared_participant_state').update({
+    ready:false,
+    phase:'complete',
+    is_paused:false,
+    updated_at:now
+  }).eq('session_id',sharedSession.backendId).eq('user_id',store.account.userId);
+  try{
+    await sharedRuntime.channel?.send({
+      type:'broadcast',
+      event:'participant-state',
+      payload:{userId:store.account.userId,displayName:displayName(),ready:false,connectionState:'online',exerciseIndex:999,setIndex:999,phase:'complete',isPaused:false,updatedAt:now}
+    });
+  }catch{}
+  if(sharedSession.role==='host'){
+    await workoutSupabase.from('workout_shared_sessions').update({
+      status:'completed',
+      completed_at:now,
+      updated_at:now
+    }).eq('id',sharedSession.backendId);
+    try{await sharedRuntime.channel?.send({type:'broadcast',event:'session-state',payload:{status:'completed',completedAt:now,completionStatus}});}catch{}
+  }
+  setTimeout(()=>unsubscribeSharedSession(),500);
+}
+function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
+  const remote=draft?.remoteState;
+  if(!remote)return draft?.partnerStatus==='ready'?'Partner ready':'Waiting for partner';
+  if(remote.connectionState==='offline')return 'Partner reconnecting';
+  if(remote.phase==='complete')return 'Partner finished';
+  if(remote.isPaused)return 'Partner paused';
+  if(remote.phase==='lobby')return 'Partner ready';
+  const day=sharedDraftDay(draft);
+  const ex=day?.exercises?.[remote.exerciseIndex];
+  if(!ex)return 'Partner connected';
+  return ex.name+' · Set '+(num(remote.setIndex)+1);
+}
+function renderSharedMatches(draft){
+  const day=sharedDraftDay(draft);if(!day)return '';
+  return '<div class="shared-match-list">'+day.exercises.map((ex,index)=>'<article class="shared-match-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ex.name)+'</strong><small>'+esc(movements[ex.movement]||ex.movement)+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</small></div><em>SHARED</em></article>').join('')+'</div>';
+}
+function renderTogether(){
+  if(!store.profile||!store.plan)return renderProfileEditor();
+  if(store.account?.status!=='connected'){
+    return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Shared workouts use account identity so each person keeps their own readiness, weights, reps, progression, and history.</p></div></div>'+
+      '<section class="account-required-card"><div class="together-icon">◎</div><div><span>ACCOUNT REQUIRED</span><h3>Sign in before starting a shared workout.</h3><p>Your training stays private by default. Partners only receive the session information needed to train together.</p></div><button class="button" data-action="account-info">SIGN IN / CREATE ACCOUNT</button></section>'+
+      '<section class="clean-panel shared-preview-card"><div><span>REALTIME SHARED TRAINING</span><strong>Same Gym · Remote Together · Share Plan</strong><p>Join codes, participant presence, session starts, and workout position now synchronize through your account.</p></div></section>'+
+    '</div>';
+  }
+  const shared=sharedTrainingState(),draft=shared.draft,next=nextScheduledSession();
+  if(draft){
+    const partnerReady=draft.partnerStatus==='ready';
+    const remoteOnline=draft.remoteState?.connectionState!=='offline'&&Boolean(draft.remoteState);
+    const role=draft.role||'host';
+    const canStart=draft.mode==='share-plan'||(role==='host'?partnerReady:draft.sessionStatus==='active');
+    const statusCopy=draft.sessionStatus==='active'?'Workout in progress':draft.sessionStatus==='completed'?'Session completed':partnerReady?'Both connected':'Waiting for partner';
+    const partnerPhase=draft.remoteState?.phase&&draft.remoteState.phase!=='lobby'?draft.remoteState.phase.replace(/-/g,' '):'Lobby';
+    return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Shared session lobby.</h2><p>'+esc(statusCopy)+'. Each person keeps their own weights, reps, readiness, history, and progression.</p></div><button class="text-button danger-text" data-action="cancel-shared-draft">'+(role==='host'?'CANCEL':'LEAVE')+'</button></div>'+
+      '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</p>'+(role==='host'?'<div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div>':'')+'</section>'+
+      '<div class="participant-grid"><article class="participant-card ready"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU · '+esc(role.toUpperCase())+'</span><strong>'+esc(displayName())+'</strong><small>'+(store.activeWorkout?.sharedSession?'Training':'Ready')+'</small></div><em>✓</em></article><article class="participant-card '+(partnerReady?'ready':'pending')+'"><div class="participant-avatar">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div><div><span>PARTNER</span><strong>'+esc(draft.partnerName||'Workout partner')+'</strong><small>'+(partnerReady?(remoteOnline?'Online · '+esc(partnerPhase):'Joined · reconnecting'):'Invite pending')+'</small></div><em>'+(partnerReady?'✓':'…')+'</em></article></div>'+
+      '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
+      '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
+      '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
+      '<section class="prototype-note compact"><strong>Realtime connected.</strong><span>Only lobby state, online status, workout phase, and exercise/set position synchronize. Readiness answers, body data, weights, reps, notes, PRs, and history stay private.</span></section>'+
+    '</div>';
+  }
+  return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
+    '<section class="together-hero"><div class="together-icon">◎</div><div><span>NEXT AVAILABLE WORKOUT</span><h3>'+esc(next?.adaptedDay?.name||next?.day?.name||'No session scheduled')+'</h3><p>'+(next?esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min':'Schedule a workout first.')+'</p></div></section>'+
+    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Invite one workout partner</h3></div></div><div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="For your own saved partner list"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label><label class="field"><span>SET FLOW</span><select id="shared-set-flow"><option value="alternating">Alternating Sets</option><option value="parallel">Parallel Sets</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
+    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">JOIN A SESSION</p><h3>Enter the code from your workout partner</h3></div></div><label class="field shared-code-input"><span>6-CHARACTER JOIN CODE</span><input id="shared-join-code" inputmode="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"></label><button class="button secondary" data-action="join-shared-session">JOIN WORKOUT</button></section>'+
+    (shared.partners.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT PARTNERS</p><h3>Recent partners</h3></div></div><div class="partner-list">'+shared.partners.slice(-5).reverse().map(item=>'<div class="partner-row"><div class="participant-avatar">'+esc((item.name[0]||'P').toUpperCase())+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(item.contact||'Shared workout partner')+'</small></div></div>').join('')+'</div></section>':'')+
+    (shared.history.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT SHARED SESSIONS</p><h3>Trained together</h3></div></div><div class="partner-list">'+shared.history.slice(0,5).map(item=>'<div class="partner-row"><div class="participant-avatar">✓</div><div><strong>'+esc(item.routineName)+'</strong><small>With '+esc(item.partnerName)+' · '+esc(formatDate(item.completedAt))+'</small></div></div>').join('')+'</div></section>':'')+
+    '<section class="prototype-note"><strong>Realtime shared training is live.</strong><span>Create or join from another signed-in browser or phone. Detailed workout performance remains on each person’s own device.</span></section>'+
+  '</div>';
+}
+
+function renderProfileHub(){
+  const p=store.profile;if(!p)return renderProfileEditor();
+  const context=programContext(),shared=sharedTrainingState();
+  const name=displayName()==='there'?'Your profile':displayName();
+  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large">'+esc((name[0]||'Y').toUpperCase())+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p></div></section>'+
+    '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
+    '<section class="settings-list">'+
+      '<button data-action="edit-profile"><div><span>TRAINING PROFILE</span><strong>Goals, schedule, gender, equipment, preferences</strong></div><em>›</em></button>'+
+      '<button data-action="train"><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
+      '<button data-action="together"><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
+      '<button data-action="open-cue-settings"><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
+      '<button data-action="account-info"><div><span>ACCOUNT</span><strong>'+(store.account?.email?esc(store.account.email):'Local prototype · backend sign-in foundation')+'</strong></div><em>›</em></button>'+
+      '<button data-action="history"><div><span>WORKOUT HISTORY</span><strong>'+store.history.length+' saved session'+(store.history.length===1?'':'s')+'</strong></div><em>›</em></button>'+
+    '</section>'+
+    '<section class="prototype-note"><strong>Account model prepared for shared authentication.</strong><span>Detailed workout data remains browser-local in this prototype. The parent project already has Supabase infrastructure for the later account-backed migration.</span></section>'+
+  '</div>';
+}
+function renderAccountSheet(){
+  const account=store.account||{},connected=account.status==='connected';
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-account-sheet"><section class="bottom-sheet account-sheet" data-account-sheet-panel>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">ACCOUNT</p><h2>'+(connected?'Your account':'Sign in to sync & share')+'</h2></div><button class="modal-close" data-action="close-account-sheet">×</button></div>'+
+    '<div class="account-status-card"><span>STATUS</span><strong>'+(connected?'CONNECTED':account.status==='pending'?'EMAIL CONFIRMATION PENDING':'LOCAL ONLY')+'</strong><p>'+(connected?'Your Supabase session is active and shared-workout identity can restore on this browser.':account.status==='pending'?'Confirm your email, then return here and sign in. Your local workouts stay intact while confirmation is pending.':'Your workouts remain stored locally until the account layer is connected.')+'</p></div>'+
+    (connected?
+      '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName())+'</strong><span>'+esc(account.email||'Connected account')+'</span></div></div><button class="button secondary account-signout" data-action="account-sign-out">SIGN OUT</button>'
+      :
+      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="'+(account.status==='pending'?'new-password':'current-password')+'" placeholder="••••••••"></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>'+(account.status==='pending'?'<button class="text-button account-resend" data-action="account-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':''))+
+    '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full training history</strong></div><div><span>SHARED SESSION</span><strong>Partner sees session state and only the data required to train together</strong></div></div>'+
+  '</section></div>';
+}
+function renderCueSettingsSheet(){
+  const settings=workoutCueSettings();
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Audio & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
+    [['sound','Sound','Timer and completion tones'],['voice','Voice','Exercise names and coaching announcements'],['haptics','Haptics','Supported-device vibration cues'],['flash','Flash','Visual workout cue flash']].map(([key,label,copy])=>'<button data-action="toggle-'+key+'" class="settings-toggle"><div><strong>'+label+'</strong><span>'+copy+'</span></div><em>'+(settings[key]?'ON':'OFF')+'</em></button>').join('')+
+    '</div><button class="button secondary" data-action="test-cues">TEST CUES</button></section></div>';
+}
+function renderExerciseActionsSheet(){
+  const w=store.activeWorkout,index=exerciseActionsIndex,ex=w?.exercises?.[index];if(!ex)return '';
+  const state=exerciseState(ex);
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-exercise-actions"><section class="bottom-sheet" data-exercise-actions-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">EXERCISE OPTIONS</p><h2>'+esc(ex.name)+'</h2></div><button class="modal-close" data-action="close-exercise-actions">×</button></div><div class="sheet-action-list">'+
+    '<button data-exercise-detail="'+esc(ex.id)+'"><span>ⓘ</span><div><strong>View exercise details</strong><small>Form, setup, cues, history</small></div></button>'+
+    (!exerciseCountsAsResolved(ex)?'<button data-action="swap-active" data-swap-index="'+index+'"><span>⇄</span><div><strong>Swap exercise</strong><small>Choose a compatible alternative</small></div></button><button data-action="move-exercise-later" data-exercise-index="'+index+'"><span>↓</span><div><strong>Move to later</strong><small>Keep it in the workout, change the order</small></div></button><button data-action="mark-exercise-complete" data-exercise-index="'+index+'"><span>✓</span><div><strong>Mark as complete</strong><small>No fake weight or rep data</small></div></button><button data-action="skip-exercise" data-exercise-index="'+index+'"><span>⊘</span><div><strong>Skip exercise</strong><small>Leave it unresolved for performance data</small></div></button>':'')+
+    (state==='completed-manually'?'<button data-action="undo-manual-exercise" data-exercise-index="'+index+'"><span>↺</span><div><strong>Undo manual completion</strong><small>Return the exercise to an unfinished state</small></div></button>':'')+
+    (state==='skipped'?'<button data-action="restore-exercise" data-exercise-index="'+index+'"><span>↺</span><div><strong>Restore exercise</strong><small>Return it to the workout</small></div></button>':'')+
+    '</div></section></div>';
+}
+function renderHistoryMenuSheet(){
+  const item=store.history.find(entry=>entry.id===historyMenuId);if(!item)return '';
+  const rows=(item.exercises||[]).map(ex=>{
+    const done=(ex.sets||[]).filter(set=>set.completed).length;
+    return '<div class="history-detail-row"><strong>'+esc(ex.name)+'</strong><span>'+done+'/'+(ex.sets?.length||0)+' sets'+(ex.feedback?' · '+esc(feedbackLabel(ex.feedback)):'')+'</span></div>';
+  }).join('');
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-history-menu"><section class="bottom-sheet history-detail-sheet" data-history-menu-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT DETAILS</p><h2>'+esc(item.routineName)+'</h2><p>'+esc(formatDate(item.completedAt))+'</p></div><button class="modal-close" data-action="close-history-menu">×</button></div>'+
+    '<div class="history-detail-summary"><div><span>TIME</span><strong>'+item.durationMinutes+' min</strong></div><div><span>SETS</span><strong>'+item.completedSets+'</strong></div><div><span>VOLUME</span><strong>'+formatVolume(item.totalVolume||0)+'</strong></div></div>'+
+    '<div class="history-detail-list">'+rows+'</div>'+
+    '<div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
+}
+
+function renderHome(){
+  const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
+  const context=programContext(),decision=adaptationDecision(),schedule=currentWeekSchedule();
+  const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const next=nextScheduledSession(),day=next?.adaptedDay||next?.day||null;
+  const missed=schedule.filter(entry=>entry.status==='missed');
+  const volume=weeklyVolumeValue();
+  const name=displayName()==='there'?'':displayName();
+  const shared=sharedTrainingState();
+  return '<div class="clean-page home-clean">'+
+    '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div><button class="shell-icon-button" data-action="open-cue-settings" aria-label="Workout settings">◉</button></section>'+
+    (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button>':'')+
+    '<section class="today-card '+(next?.status==='missed'?'missed':'')+'"><div class="today-card-top"><div><span>'+(next?.status==='missed'?'MISSED WORKOUT':next?.status==='today'?'TODAY’S WORKOUT':'NEXT WORKOUT')+'</span><em>'+esc(blockPhaseLabel(context.blockWeek))+'</em></div><strong>~'+esc(day?.estimatedMinutes||p.minutes)+' min</strong></div>'+
+      '<div class="today-card-body"><div><h3>'+esc(day?.name||'Week complete')+'</h3><p>'+esc(day?.focus||'Your next training week will adapt from this one.')+'</p>'+(day?'<small>'+day.exercises.length+' exercises · '+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</small>':'')+'</div></div>'+
+      (next&&!store.activeWorkout?'<button class="button primary-action today-start" data-start="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">'+(next.status==='missed'?'MAKE UP WORKOUT':next.status==='today'?'START WORKOUT':'PREPARE WORKOUT')+'</button>':'')+
+      (next?'<div class="today-secondary-actions"><button class="text-button" data-action="mark-scheduled-complete" data-day-id="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">✓ MARK COMPLETE</button><button class="text-button" data-action="share-next-workout">◎ WORK OUT TOGETHER</button></div>':'')+
+    '</section>'+
+    '<section class="clean-section week-overview"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+'/'+schedule.length+' workouts</h3></div><button class="text-button" data-action="train">SEE PROGRAM</button></div>'+renderCompactWeek(schedule)+
+      (missed.length?'<div class="missed-summary"><strong>'+missed.length+' missed session'+(missed.length===1?'':'s')+'</strong><span>They stay available to make up, complete manually, or skip.</span></div>':'')+
+    '</section>'+
+    '<section class="home-progress-grid"><button class="mini-metric-card" data-action="progress"><span>WORKOUTS</span><strong>'+completed+'/'+schedule.length+'</strong><small>This week</small></button><button class="mini-metric-card" data-action="progress"><span>VOLUME</span><strong>'+formatVolume(volume)+'</strong><small>This week</small></button></section>'+
+    '<section class="clean-panel adaptation-card"><div><span>THIS WEEK’S ADAPTATION</span><strong>'+esc(decision.mode.toUpperCase())+'</strong><p>'+esc(decision.notes.join(' ')||'Keep building from the targets earned in your previous sessions.')+'</p></div><button class="text-button" data-action="progress">WHY?</button></section>'+
+    (shared.draft?'<button class="shared-home-card" data-action="together"><div class="shared-avatar-stack small"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((shared.draft.partnerName[0]||'P').toUpperCase())+'</div></div><div><span>SHARED WORKOUT</span><strong>'+esc(shared.draft.routineName)+' with '+esc(shared.draft.partnerName)+'</strong><small>'+esc(shared.draft.partnerStatus==='ready'?'Both ready':'Invite pending')+'</small></div><em>→</em></button>':'')+
+  '</div>';
+}
 function renderCatalog(){
   const q=catalogQuery.trim().toLowerCase();
   const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty].join(' ').toLowerCase().includes(q));
@@ -2529,16 +3428,32 @@ function renderCatalog(){
 }
 
 function renderWorkoutIntro(w){
-  const first=w.exercises?.[0];
-  const equipment=[...new Set((w.exercises||[]).map(ex=>equipmentRequirement(exerciseSource(ex))))];
   const notes=(w.adaptationNotes||[]).filter(Boolean);
-  return '<div class="workout-intro-stage">'+
-    '<p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p class="intro-focus">'+esc(w.focus||'')+'</p>'+
-    '<div class="intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>WORKING SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
-    (notes.length?'<div class="intro-adjustments"><span>TODAY’S ADJUSTMENTS</span>'+notes.map(note=>'<p>'+esc(note)+'</p>').join('')+'</div>':'')+
-    (first?'<section class="intro-first-exercise">'+exerciseImageButton(first,'intro-exercise-media')+'<div><span>FIRST EXERCISE</span><h3>'+esc(first.name)+'</h3><p>'+esc(exerciseDescription(first))+'</p><strong>'+esc(equipmentRequirement(exerciseSource(first)))+'</strong></div></section>':'')+
-    '<div class="intro-equipment"><span>EQUIPMENT YOU’LL USE</span><p>'+equipment.map(esc).join(' · ')+'</p></div>'+
-    '<div class="intro-actions"><button class="button primary-action" data-action="begin-session">BEGIN WORKOUT</button><button class="button secondary" data-action="open-workout-map">REVIEW / REORDER SESSION</button></div>'+
+  const topNote=notes[0]||'Targets are based on your recent training and readiness.';
+  const warmupSeconds=(w.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const cooldownSeconds=(w.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
+    const loadLabel=ex.loadMode==='bodyweight'||ex.loadMode==='timed'||ex.loadMode==='band'
+      ? (ex.loadMode==='timed'?'Timed':'Bodyweight')
+      : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
+    return '<div class="preview-exercise-row">'+
+      '<div class="preview-exercise-index">'+String(index+1).padStart(2,'0')+'</div>'+
+      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span></div>'+
+      '<div class="preview-exercise-load">'+loadLabel+'</div>'+
+      '</div>';
+  }).join('');
+  return '<div class="clean-session-intro">'+
+    '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
+    '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
+    '<section class="preview-flow">'+
+      (w.warmup?.length?'<div class="preview-flow-card"><span>01 · WARM-UP</span><strong>Movement prep · '+Math.ceil(warmupSeconds/60)+' min</strong><small>Dynamic work selected for today’s training.</small></div>':'')+
+      '<div class="preview-flow-card preview-flow-main"><span>'+(w.warmup?.length?'02':'01')+' · STRENGTH WORK</span><strong>'+w.exercises.length+' exercises · '+totalSets(w.exercises)+' working sets</strong><small>Starting loads are pre-filled from your profile, calibration, and recent performance. Every value is editable.</small></div>'+
+      (w.cooldown?.length?'<div class="preview-flow-card"><span>'+(w.warmup?.length?'03':'02')+' · COOLDOWN</span><strong>Guided cooldown · '+Math.ceil(cooldownSeconds/60)+' min</strong><small>Finish with a short guided stretch and recovery sequence.</small></div>':'')+
+    '</section>'+
+    '<section class="preview-prescription"><div class="preview-section-head"><div><span>SESSION PLAN</span><strong>What you’ll do</strong></div><button class="text-button" data-action="open-workout-map">EDIT / SUBSTITUTE</button></div>'+exerciseRows+'</section>'+
+    '<section class="clean-panel intro-update-card"><span>TODAY’S UPDATE</span><strong>'+esc(topNote)+'</strong>'+(notes.length>1?'<button class="text-button" data-action="open-workout-map">Review session changes</button>':'')+'</section>'+
+    '<button class="button primary-action intro-begin" data-action="begin-session">BEGIN WORKOUT</button>'+
+    '<button class="text-button intro-review" data-action="open-workout-map">REVIEW FULL SESSION</button>'+
   '</div>';
 }
 function beginWorkoutSession(){
@@ -2557,98 +3472,73 @@ function beginWorkoutSession(){
 
 function renderWorkout(){
   const pos=getActivePosition();
-  if(!pos)return `<div class="page-head"><div><p class="eyebrow">GUIDED WORKOUT</p><h2 class="page-title">No active session.</h2><p class="page-copy">Start the next workout from your generated plan.</p></div><button class="button" data-action="home">VIEW PLAN</button></div>`;
+  if(!pos)return '<div class="clean-page empty-workout-page"><p class="eyebrow">TRAIN</p><h2>No active session.</h2><p>Start today’s workout from Home or Train.</p><button class="button" data-action="home">GO HOME</button></div>';
   const w=pos.workout;
-  const done=completedSets(w.exercises),total=totalSets(w.exercises),resolved=workoutResolvedCount(w),pct=Math.round(resolved/Math.max(1,w.exercises.length)*100);
+  const done=completedSets(w.exercises),total=totalSets(w.exercises),resolved=workoutResolvedCount(w);
   const inExercise=['work','rest','calibrate','feedback','pre-set','timed-set','exercise-review','exercise-transition'].includes(w.phase);
-  const stageLabel=w.isPaused?'PAUSED':w.phase==='intro'?'SESSION INTRO':w.phase==='review'?'SESSION REVIEW':w.phase==='exercise-transition'?'NEXT EXERCISE':w.phase==='exercise-review'?'EXERCISE REVIEW':w.phase==='warmup'?'DYNAMIC STRETCH':w.phase==='cooldown'?'COOLDOWN':w.phase==='feedback'?'EXERCISE FEEDBACK':w.phase==='pre-set'?'GET READY':w.phase==='timed-set'?'TIMED SET':'CURRENT EXERCISE';
-  return `<div class="guided-shell">
-    <div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>
-    <div class="session-status workout-status">
-      <div class="session-title"><p class="eyebrow">ACTIVE WORKOUT</p><h2>${esc(w.routineName)}</h2><div class="session-meta"><span>${resolved}/${w.exercises.length} exercises</span><span>${done}/${total} logged sets</span><span>${pct}%</span><span>${esc(stageLabel)}</span></div></div>
-      <div class="clock-pair">
-        <div class="clock-card"><span>TOTAL</span><strong id="elapsed-clock">${formatClock(workoutElapsedSeconds(w))}</strong></div>
-        <div class="clock-card"><span>EXERCISE</span><strong id="exercise-clock">${inExercise?formatClock(exerciseElapsedSeconds(w)):'--:--'}</strong></div>
-      </div>
-    </div>
-    ${renderCueControls()}
-    <div class="training-context-strip"><span>BLOCK ${w.programContext?.blockNumber||1} · WEEK ${w.programContext?.blockWeek||1}</span><strong>${esc(blockPhaseLabel(w.programContext?.blockWeek||1))}</strong>${w.readiness?.score?'<em>Readiness '+esc(w.readiness.score)+'/5 · '+esc(w.readiness.timeAvailable)+' min available</em>':''}</div>
-    ${w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>All workout timers are frozen. Resume when you are ready.</span></div>':''}
-    <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-    <div class="step-strip">${w.exercises.map((ex,i)=>`<button type="button" class="step-pip ${exerciseCountsAsResolved(ex)?'done':''} ${i===pos.ei&&inExercise?'current':''} ${exerciseState(ex)==='partial'?'partial':''}" data-action="jump-exercise" data-exercise-index="${i}" aria-label="${esc(ex.name)} · ${esc(exerciseStateLabel(ex))}"></button>`).join('')}</div>
-    <section class="exercise-stage">${w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos)}</section>
-    <div class="session-controls"><button class="button secondary" data-action="previous-exercise">← PREVIOUS</button><button class="button secondary" data-action="open-workout-map">WORKOUT MAP</button><button class="button secondary" data-action="next-exercise">NEXT →</button><button class="button secondary pause-workout-button" data-action="toggle-workout-pause">${w.isPaused?'RESUME WORKOUT':'PAUSE WORKOUT'}</button><button class="button ghost" data-action="home">LEAVE & RESUME LATER</button><button class="button danger" data-action="finish">FINISH EARLY</button><button class="button danger" data-action="discard">DISCARD</button></div>
-  </div>`;
+  const stageLabel=w.isPaused?'Paused':w.phase==='intro'?'Session intro':w.phase==='review'?'Review':w.phase==='exercise-transition'?'Next exercise':w.phase==='exercise-review'?'Exercise review':w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.phase==='feedback'?'Feedback':w.phase==='pre-set'?'Get ready':w.phase==='timed-set'?'Timed set':'Working';
+  const current=Math.min(w.exercises.length,Math.max(1,(w.currentExerciseIndex||0)+1));
+  return '<div class="guided-shell cleaned-workout">'+
+    '<div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
+    '<header class="clean-workout-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><span>'+esc(w.routineName)+'</span><strong id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</strong></div><div class="workout-header-actions"><button class="circle-action" data-action="open-cue-settings" aria-label="Workout settings">◉</button><button class="circle-action" data-action="toggle-workout-pause" aria-label="'+(w.isPaused?'Resume':'Pause')+' workout">'+(w.isPaused?'▶':'Ⅱ')+'</button></div></header>'+
+    (w.sharedSession?(()=>{const live=sharedTrainingState().draft?.backendId===w.sharedSession.backendId?sharedTrainingState().draft:w.sharedSession;return '<button class="shared-session-strip" data-action="together"><div class="shared-avatar-stack tiny"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((live.partnerName?.[0]||'P').toUpperCase())+'</div></div><div><span>SHARED SESSION</span><strong>With '+esc(live.partnerName||'Partner')+'</strong><small>'+esc(sharedRemotePositionLabel(live))+'</small></div><em>'+esc(live.remoteState?.connectionState==='offline'?'Reconnecting':'Live')+'</em></button>'})():'')+
+    '<div class="clean-progress-head"><span>'+esc(stageLabel)+'</span><strong>'+current+' of '+w.exercises.length+'</strong></div>'+
+    '<div class="step-strip clean-step-strip">'+w.exercises.map((ex,i)=>'<button type="button" class="step-pip '+(exerciseCountsAsResolved(ex)?'done':'')+' '+(i===pos.ei&&inExercise?'current':'')+' '+(exerciseState(ex)==='partial'?'partial':'')+'" data-action="jump-exercise" data-exercise-index="'+i+'" aria-label="'+esc(ex.name)+' · '+esc(exerciseStateLabel(ex))+'"></button>').join('')+'</div>'+
+    (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
+    '<section class="exercise-stage clean-exercise-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
+    '<nav class="workout-bottom-nav"><button data-action="previous-exercise" '+(current<=1?'disabled':'')+'>‹ <span>Previous</span></button><button class="workout-map-trigger" data-action="open-workout-map"><span>'+current+' / '+w.exercises.length+'</span><strong>Workout Map</strong></button><button data-action="next-exercise" '+(current>=w.exercises.length?'disabled':'')+'><span>Next</span> ›</button></nav>'+
+    '<div class="workout-quiet-actions"><button class="text-button" data-action="finish">END SESSION</button><button class="text-button muted" data-action="home">LEAVE & RESUME LATER</button></div>'+
+  '</div>';
 }
 
 function renderPreSet(pos){
   const snap=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
   const setup=snap.mode==='setup';
-  const target=pos.exercise.loadMode==='timed'?(pos.set.reps||pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))+' sec':pos.exercise.reps;
-  return `<div class="pre-set-stage" data-preset-mode="${esc(snap.mode)}">
-    <div class="pre-set-media">${exerciseImageButton(pos.exercise,'pre-set-exercise-media')}</div>
-    <div class="pre-set-copy">
-      <p class="eyebrow">${setup?'GET IN POSITION':'SET STARTING'}</p>
-      <div class="stage-count">SET ${pos.si+1} OF ${pos.exercise.sets.length} · ${esc(pos.exercise.name)}</div>
-      <p class="exercise-description pre-set-description">${esc(exerciseDescription(pos.exercise))}</p>
-      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
-      ${renderExerciseHistoryPanel(pos.exercise)}
-      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div>
-      <div class="pre-set-number" id="preset-count">${snap.remaining}</div>
-      <h3 id="preset-label">${setup?'Set up your equipment':'Get ready'}</h3>
-      <p>${setup?'You have a few seconds to get into position before the start countdown.':'The set begins automatically after 3 · 2 · 1.'}</p>
-      <div class="pre-set-target"><span>TARGET</span><strong>${esc(target)}</strong></div>
-      <div class="timer-actions compact-timer-actions"><button class="button secondary" type="button" data-action="reset-timer">RESET TIMER</button><button class="button secondary" type="button" data-action="start-set-now">START NOW</button></div>
-    </div>
-  </div>`;
+  const target=pos.exercise.loadMode==='timed'?(pos.set.reps||pos.exercise.suggestedReps||recommendedRepCount(pos.exercise.reps))+' sec':currentPrescriptionLabel(pos.exercise);
+  return '<div class="clean-preset-stage" data-preset-mode="'+esc(snap.mode)+'">'+
+    '<p class="eyebrow" id="preset-label">'+(setup?'GET IN POSITION':'SET STARTING')+'</p>'+
+    '<h2>'+esc(pos.exercise.name)+'</h2>'+
+    '<div class="clean-preset-media">'+exerciseImageButton(pos.exercise,'pre-set-exercise-media')+'</div>'+
+    '<div class="clean-preset-target"><span>SET '+(pos.si+1)+' OF '+pos.exercise.sets.length+'</span><strong>'+esc(target)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(pos.exercise)))+'</small></div>'+
+    '<div class="pre-set-number clean-countdown" id="preset-count">'+snap.remaining+'</div>'+
+    '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
+    '<button class="button secondary" type="button" data-action="start-set-now">START NOW</button>'+
+    '<div class="preset-tertiary"><button class="text-button" data-exercise-detail="'+esc(pos.exercise.id)+'">Form</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">Options</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  '</div>';
 }
-
 function renderTimedWorkSet(pos){
   const snap=timedSetSnapshot(pos.workout)||{remaining:num(pos.set.reps)||30,total:num(pos.set.reps)||30};
   const pct=Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100));
-  return `<div class="timed-work-stage">
-    <div class="timed-work-media">${exerciseImageButton(pos.exercise,'timed-work-exercise-media')}</div>
-    <div class="timed-work-copy">
-      <p class="eyebrow">TIMED SET · SET ${pos.si+1} OF ${pos.exercise.sets.length}</p>
-      <h3>${esc(pos.exercise.name)}</h3>
-      <p class="exercise-description timed-work-description">${esc(exerciseDescription(pos.exercise))}</p>
-      <div class="pre-set-equipment"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></div>
-      <div class="exercise-inline-actions centered-actions"><button class="text-button" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View form</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button></div>
-      <p class="timed-work-cue">${esc(exerciseGuidance(pos.exercise).cue)}</p>
-      <div class="timed-work-clock" id="timed-set-clock">${formatClock(snap.remaining)}</div>
-      <div class="stage-progress"><span id="timed-set-progress" style="width:${pct}%"></span></div>
-      <div class="timed-finish-note" id="timed-finish-note">${snap.remaining<=3&&snap.remaining>0?String(snap.remaining)+'…':'Stay controlled. You’ll get a finish cue at zero.'}</div>
-      <div class="timer-actions compact-timer-actions"><button class="button secondary" type="button" data-action="reset-timer">RESET TIMER</button><button class="button secondary" type="button" data-action="end-timed-set">END SET EARLY</button></div>
-    </div>
-  </div>`;
+  return '<div class="clean-timed-set">'+
+    '<p class="eyebrow">TIMED SET · '+(pos.si+1)+' OF '+pos.exercise.sets.length+'</p>'+
+    '<h2>'+esc(pos.exercise.name)+'</h2>'+
+    '<div class="clean-timed-media">'+exerciseImageButton(pos.exercise,'timed-work-exercise-media')+'</div>'+
+    '<div class="timed-work-clock clean-timed-clock" id="timed-set-clock">'+formatClock(snap.remaining)+'</div>'+
+    '<div class="stage-progress"><span id="timed-set-progress" style="width:'+pct+'%"></span></div>'+
+    '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
+    '<button class="button secondary" data-action="end-timed-set">END SET EARLY</button>'+
+    '<div class="preset-tertiary"><button class="text-button" data-exercise-detail="'+esc(pos.exercise.id)+'">Form</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">Options</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  '</div>';
 }
-
 function renderTimedStage(w){
   const items=timedStageItems(w);
   const snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30};
   const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1)));
   const item=items[index]||items[0];
-  const remaining=snap.remaining||0;
-  const isWarmup=w.phase==='warmup';
-  const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout summary');
+  const remaining=snap.remaining||0,isWarmup=w.phase==='warmup';
+  const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout review');
   const image=timedStageImageUrl(item,0);
-  return `<div class="timed-stage visual-timed-stage" data-stage-index="${index}">
-    <div class="timed-stage-media">${image?`<img src="${esc(image)}" loading="eager" decoding="async" alt="${esc(item?.name||'Stretch')} demonstration">`:''}</div>
-    <div class="timed-stage-copy">
-      <p class="eyebrow">${isWarmup?'DYNAMIC STRETCH':'COOLDOWN'}</p>
-      <div class="stage-count">STEP ${index+1} OF ${items.length} · TIMER V3</div>
-      <h3>${esc(item?.name||'Get ready')}</h3>
-      <p class="stretch-description">${esc(timedStageDescription(item))}</p>
-      <p class="stage-cue">${esc(item?.cue||'Move through a comfortable range and breathe steadily.')}</p>
-      <div class="stage-why"><span>WHY THIS STEP</span><strong>${esc(timedStageWhy(item))}</strong></div>
-      <div class="stage-timer" id="stage-clock">${formatClock(remaining)}</div>
-      <div class="stage-progress"><span id="stage-progress-fill" style="width:${Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))}%"></span></div>
-      <div class="next-preview"><div><span>UP NEXT</span><strong>${esc(nextLabel||'Begin workout')}</strong></div><div class="next-arrow">→</div></div>
-      <div class="timer-actions compact-timer-actions"><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button secondary stage-skip" data-action="skip-stage">SKIP STEP</button></div>
-    </div>
-  </div>`;
+  return '<div class="clean-timed-stage">'+
+    '<p class="eyebrow">'+(isWarmup?'WARM-UP':'COOLDOWN')+' · '+(index+1)+' OF '+items.length+'</p>'+
+    '<h2>'+esc(item?.name||'Get ready')+'</h2>'+
+    (image?'<div class="clean-timed-media"><img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Stretch')+' demonstration"></div>':'')+
+    '<div class="stage-timer clean-stage-clock" id="stage-clock">'+formatClock(remaining)+'</div>'+
+    '<div class="stage-progress"><span id="stage-progress-fill" style="width:'+Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))+'%"></span></div>'+
+    '<p class="preset-cue">'+esc(item?.cue||'Move through a comfortable range and breathe steadily.')+'</p>'+
+    '<div class="rest-next-copy"><span>UP NEXT</span><h3>'+esc(nextLabel||'Begin workout')+'</h3></div>'+
+    '<div class="clean-rest-actions"><button class="button secondary" data-action="reset-timer">RESET</button><button class="button" data-action="skip-stage">SKIP</button></div>'+
+  '</div>';
 }
-
 function exerciseSessionHistory(exerciseId,limit=4){
   const rows=[];
   for(const workout of store.history){
@@ -2726,23 +3616,32 @@ function suggestedLabel(ex){
 }
 
 function renderWorkSet(pos){
-  const next=nextPosition(pos.workout,pos.ei,pos.si);
-  const isTimed=pos.exercise.loadMode==='timed';
-  const noLoad=['bodyweight','timed','band'].includes(pos.exercise.loadMode);
-  const defaultWeight=pos.set.weight ?? (pos.exercise.suggestedWeight||'');
-  const defaultReps=pos.set.reps ?? pos.exercise.suggestedReps ?? '';
-  return `
-    <div class="exercise-hero visual-exercise-hero"><div class="exercise-hero-layout">${exerciseImageButton(pos.exercise,'active-exercise-media')}<div class="exercise-hero-copy"><div class="exercise-kicker"><span class="current-label">CURRENT EXERCISE</span><span>EXERCISE ${pos.ei+1}/${pos.workout.exercises.length}</span></div><h3>${esc(pos.exercise.name)}</h3><p class="exercise-muscles">${(pos.exercise.muscles||[]).map(esc).join(' · ')}</p><p class="exercise-description">${esc(exerciseDescription(pos.exercise))}</p><p class="exercise-equipment-line"><span>EQUIPMENT</span><strong>${esc(equipmentRequirement(exerciseSource(pos.exercise)))}</strong></p><p class="exercise-target">${pos.exercise.sets.length} sets · target ${esc(pos.exercise.reps)} · ${pos.exercise.rest}s rest</p><div class="workout-cue"><span>FORM CUE</span><strong>${esc(exerciseGuidance(pos.exercise).cue)}</strong></div><div class="exercise-inline-actions"><button class="text-button exercise-details-link" type="button" data-exercise-detail="${esc(pos.exercise.id)}">View exercise details</button><button class="text-button" type="button" data-action="swap-active" data-swap-index="${pos.ei}">Swap exercise</button>${pos.exercise.swapUndo&&!pos.exercise.sets.some(set=>set.completed)?`<button class="text-button muted" type="button" data-action="undo-active-swap" data-swap-index="${pos.ei}">Undo swap</button>`:''}</div><div class="initial-prescription"><span>${pos.exercise.adaptiveLabel?'LEARNED PRESCRIPTION':'STARTING PRESCRIPTION'}</span><strong>${esc(currentPrescriptionLabel(pos.exercise))}</strong>${pos.exercise.adaptiveReason?`<small>${esc(pos.exercise.adaptiveReason)}</small>`:''}</div><div class="recommend-row"><div class="exercise-best"><span>Suggested start</span><strong>${esc(suggestedLabel(pos.exercise))}</strong></div><div class="exercise-best"><span>Previous best</span><strong>${esc(bestLabel(pos.exercise.id))}</strong></div></div>${renderExerciseHistoryPanel(pos.exercise)}</div></div></div>
-    <div class="set-panel"><div class="set-heading"><h4>Set ${pos.si+1} of ${pos.exercise.sets.length}</h4><span>${pos.si===0&&pos.exercise.calibrationRequired?'Calibration set':'Working set'}</span></div>
-      <div class="input-grid">
-        <div class="field"><label>WEIGHT (LB)${noLoad?' · OPTIONAL':''}</label><input id="set-weight" inputmode="decimal" value="${esc(defaultWeight)}" placeholder="${noLoad?'Bodyweight':'0'}"></div>
-        <div class="field"><label>${isTimed?'SECONDS':'REPS'}</label><input id="set-reps" inputmode="numeric" value="${esc(defaultReps)}" placeholder="${isTimed?'45':'0'}"></div>
-      </div>
-      <button class="button primary-action" data-action="complete-set">COMPLETE SET ${pos.si+1}</button>
-      ${renderLoggedSets(pos.exercise,pos.ei)}
-      <div class="active-exercise-controls"><button class="button secondary" data-action="mark-exercise-complete" data-exercise-index="${pos.ei}">MARK EXERCISE COMPLETE</button><button class="button secondary" data-action="move-exercise-later" data-exercise-index="${pos.ei}">EQUIPMENT BUSY · MOVE LATER</button><button class="button ghost" data-action="skip-exercise" data-exercise-index="${pos.ei}">SKIP EXERCISE</button></div>
-      <div class="next-preview"><div><span>UP NEXT</span><strong>${next?(next.type==='set'?`Set ${next.si+1} · ${pos.exercise.name}`:pos.workout.exercises[next.ei].name):'Workout complete'}</strong></div><div class="next-arrow">→</div></div>
-    </div>`;
+  const ex=pos.exercise;
+  const isTimed=ex.loadMode==='timed';
+  const noLoad=['bodyweight','timed','band'].includes(ex.loadMode);
+  const defaultWeight=pos.set.weight ?? (ex.suggestedWeight||'');
+  const defaultReps=pos.set.reps ?? ex.suggestedReps ?? '';
+  const previous=exerciseSessionHistory(ex.id,1)[0];
+  const lastLabel=previous?.sets?.length?previous.sets.map(set=>set.weight?set.weight+' × '+set.reps:set.reps+' reps').join(' · '):bestLabel(ex.id);
+  const setRows=ex.sets.map((set,index)=>{
+    const active=index===pos.si&&!set.completed;
+    if(active){
+      return '<div class="clean-set-row current"><span>SET '+(index+1)+'</span><label><input id="set-weight" inputmode="decimal" value="'+esc(defaultWeight)+'" placeholder="'+(noLoad?'—':'0')+'"><small>lb</small></label><label><input id="set-reps" inputmode="numeric" value="'+esc(defaultReps)+'" placeholder="'+(isTimed?'45':'0')+'"><small>'+(isTimed?'sec':'reps')+'</small></label><em>CURRENT</em></div>';
+    }
+    if(set.completed){
+      return '<button class="clean-set-row completed" data-action="edit-set" data-exercise-index="'+pos.ei+'" data-set-index="'+index+'"><span>SET '+(index+1)+'</span><strong>'+esc(setPerformanceLabel(ex,set))+'</strong><em>✓</em></button>';
+    }
+    return '<div class="clean-set-row pending"><span>SET '+(index+1)+'</span><strong>'+esc(set.weight||ex.suggestedWeight||'')+(set.weight||ex.suggestedWeight?' lb · ':'')+esc(set.reps||ex.suggestedReps||'')+' '+(isTimed?'sec':'reps')+'</strong><em>UP NEXT</em></div>';
+  }).join('');
+  return '<div class="clean-active-exercise">'+
+    '<div class="clean-exercise-heading"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
+    '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="clean-target-strip"><div><span>TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
+    '<div class="clean-set-list">'+setRows+'</div>'+
+    '<button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button>'+
+    '<div class="clean-performance-note"><div><span>LAST TIME</span><strong>'+esc(lastLabel||'First session')+'</strong></div><div><span>TODAY</span><strong>'+esc(ex.adaptiveReason||'Hit the target with solid form.')+'</strong></div></div>'+
+    '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>More options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
+  '</div>';
 }
 
 function renderCalibration(pos){
@@ -2759,28 +3658,21 @@ function renderCalibration(pos){
 
 function renderExerciseFeedback(pos){
   const stats=completedExerciseStats(pos.exercise);
-  const setSummary=stats.sets.map((set,index)=>{
-    const weight=num(set.weight);
-    const value=pos.exercise.loadMode==='timed'?esc(set.reps)+' sec':weight?esc(weight)+' lb × '+esc(set.reps):esc(set.reps)+' reps';
-    return '<span><strong>Set '+String(index+1)+'</strong>'+value+'</span>';
-  }).join('');
-  return '<div class="exercise-feedback-stage">'+
-    '<p class="eyebrow">EXERCISE COMPLETE</p>'+
-    '<h3>How did '+esc(pos.exercise.name)+' feel?</h3>'+
-    '<p class="feedback-copy">One tap helps set your next-session target. Hard is okay if you completed the work with solid form.</p>'+
-    '<div class="feedback-set-summary">'+setSummary+'</div>'+
-    '<div class="feedback-target">Target: <strong>'+esc(pos.exercise.reps)+'</strong> · Rest: <strong>'+esc(pos.exercise.rest)+'s</strong></div>'+
-    '<div class="exercise-feedback-grid">'+
-      '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase the challenge</span></button>'+
-      '<button data-feedback="good"><strong>Good</strong><span>Right where it should be</span></button>'+
-      '<button data-feedback="hard"><strong>Hard, completed</strong><span>Keep building here</span></button>'+
-      '<button data-feedback="too-hard"><strong>Too hard</strong><span>Back off next time</span></button>'+
-      '<button data-feedback="form-off"><strong>Form felt off</strong><span>Hold progression</span></button>'+
+  const total=stats.sets.length;
+  return '<div class="clean-feedback-stage">'+
+    '<div class="summary-check small-check">✓</div><p class="eyebrow">EXERCISE COMPLETE</p><h2>'+esc(pos.exercise.name)+'</h2>'+
+    '<p>How did that movement feel? One tap updates the next-session recommendation.</p>'+
+    '<div class="feedback-mini-summary"><span>'+total+' set'+(total===1?'':'s')+' completed</span><strong>'+esc(currentPrescriptionLabel(pos.exercise))+'</strong></div>'+
+    '<div class="exercise-feedback-grid clean-feedback-grid">'+
+      '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase next time</span></button>'+
+      '<button data-feedback="good"><strong>Good</strong><span>Right on target</span></button>'+
+      '<button data-feedback="hard"><strong>Hard</strong><span>Completed with form</span></button>'+
+      '<button data-feedback="too-hard"><strong>Too hard</strong><span>Reduce next time</span></button>'+
+      '<button data-feedback="form-off"><strong>Form off</strong><span>Hold progression</span></button>'+
     '</div>'+
-    '<small class="feedback-note">If a movement causes pain rather than normal training effort, stop that movement and choose a comfortable alternative.</small>'+
+    '<small class="feedback-note">Pain is different from normal training effort. Stop or change a movement that causes pain.</small>'+
   '</div>';
 }
-
 function renderNextExerciseCard(nextEx,next){
   if(!nextEx||!next)return '';
   const src=exerciseImageUrl(nextEx,0,false),fallback=exerciseImageUrl(nextEx,0,true);
@@ -2804,34 +3696,53 @@ function renderExerciseTransition(w){
   const next=w.pendingPosition;
   const ex=next?w.exercises[next.ei]:null;
   if(!next||!ex)return '<div class="empty-state"><h2>No next exercise.</h2><button class="button" data-action="open-workout-review">REVIEW WORKOUT</button></div>';
-  return '<div class="exercise-transition-stage"><p class="eyebrow">NEXT EXERCISE</p>'+renderNextExerciseCard(ex,next)+
-    '<div class="transition-ready-actions"><button class="button primary-action" data-action="ready-next-exercise">I’M READY · START COUNTDOWN</button>'+
-    '<button class="button secondary" data-action="mark-exercise-complete" data-exercise-index="'+next.ei+'">ALREADY DONE · MARK COMPLETE</button>'+
-    '<button class="button secondary" data-action="move-exercise-later" data-exercise-index="'+next.ei+'">EQUIPMENT BUSY · MOVE LATER</button></div></div>';
+  return '<div class="exercise-transition-stage clean-transition-stage"><p class="eyebrow">UP NEXT · EXERCISE '+(next.ei+1)+' OF '+w.exercises.length+'</p>'+
+    '<div class="transition-hero">'+exerciseImageButton(ex,'next-exercise-media')+'<div><h2>'+esc(ex.name)+'</h2><p>'+esc(exerciseDescription(ex))+'</p><div class="transition-facts"><span>'+ex.sets.length+' sets · '+esc(ex.reps)+'</span><span>'+esc(equipmentRequirement(exerciseSource(ex)))+'</span></div></div></div>'+
+    '<div class="transition-target"><span>TODAY’S TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div>'+
+    '<button class="button primary-action" data-action="ready-next-exercise">I’M READY</button>'+
+    '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+next.ei+'"><span>•••</span><div><strong>Exercise options</strong><small>Swap · move later · already completed</small></div><em>›</em></button>'+
+  '</div>';
 }
 
+function nextExercisePreview(w,currentExerciseIndex){
+  for(let index=currentExerciseIndex+1;index<w.exercises.length;index++){
+    if(!exerciseCountsAsResolved(w.exercises[index]))return {index,exercise:w.exercises[index]};
+  }
+  return null;
+}
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
-  const result=pos.workout.lastProgressionResult;
-  const progression=result?`<div class="next-time-card"><span>NEXT TIME</span><strong>${esc(result.label)}</strong><p>${esc(result.reason)}</p></div>`:'';
-  return `<div class="rest-stage"><div class="rest-label">${changingExercise?'EXERCISE COMPLETE · TRANSITION':'REST TIMER'}</div>${progression}<div class="timer-wrap" id="timer-ring" style="--timer-progress:${restProgress(pos.workout)}%"><div><div class="timer-value" id="rest-clock">${formatClock(remaining)}</div><div class="timer-sub">${paused?'PAUSED':changingExercise?'GET READY FOR NEXT EXERCISE':'UNTIL NEXT SET'}</div></div></div><h3>${changingExercise?'Move to your next station':'Recover, then go again'}</h3><p>${changingExercise?'Use this time to grab the equipment and review the next movement. The 3 · 2 · 1 start countdown follows automatically.':'When rest ends, the get-ready countdown starts automatically.'}</p><div class="timer-actions"><button class="button secondary" data-action="add-rest" ${remaining>=60?'disabled':''}>${remaining>=60?'60 SEC MAX':'+15 SEC'}</button><button class="button secondary" data-action="pause-rest">${paused?'RESUME':'PAUSE'}</button><button class="button secondary" data-action="reset-timer">RESET TIMER</button><button class="button" data-action="skip-rest">SKIP REST</button></div>${changingExercise?renderNextExerciseCard(nextEx,next):(nextEx?`<div class="up-next-card"><div class="up-next-number">${String(next.ei+1).padStart(2,'0')}</div><div><span>UP NEXT</span><strong>Set ${next.si+1} · ${esc(nextEx.name)}</strong></div><em>${esc(nextEx.reps)}</em></div>`:'')}</div>`;
+  const preview=changingExercise&&nextEx?{index:next.ei,exercise:nextEx}:nextExercisePreview(pos.workout,pos.ei);
+  const previewEx=preview?.exercise||null;
+  const immediateLabel=changingExercise?'NEXT EXERCISE':next?'NEXT SET':'AFTER REST';
+  const immediateName=changingExercise?(nextEx?.name||'Next exercise'):next?('Set '+(next.si+1)+' · '+(nextEx?.name||pos.exercise.name)):'Cooldown';
+  return '<div class="rest-stage clean-rest-stage"><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><div class="timer-wrap clean-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':changingExercise?'NEXT EXERCISE':'RECOVER')+'</div></div></div>'+
+    '<div class="rest-next-copy"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><p>'+(changingExercise?'Set up the next station. The app will wait until you are ready.':next?'Recover for the next set. Your next exercise is previewed below.':'Finish strong, then move into cooldown.')+'</p></div>'+
+    (previewEx?'<div class="rest-next-exercise-card">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button class="rest-next-exercise-copy" type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'"><span>NEXT EXERCISE · '+(preview.index+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+' · '+esc(currentPrescriptionLabel(previewEx))+'</small></button><em>›</em></div>':'<div class="rest-next-exercise-card cooldown-preview"><div><span>UP NEXT</span><strong>Cooldown</strong><small>Finish the session with guided recovery.</small></div></div>')+
+    '<div class="clean-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">SKIP</button></div>'+
+    '<div class="rest-tertiary"><button class="text-button" data-action="pause-rest">'+(paused?'Resume timer':'Pause timer')+'</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  '</div>';
 }
 
+
 function renderHistory(){
-  const rows=store.history.map(x=>{
-    const learned=(x.exercises||[]).filter(ex=>ex.nextRecommendation).length;
+  const context=programContext();
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
+  let items=[...store.history];
+  if(historyFilter==='block')items=items.filter(item=>item.programContext?.blockNumber===context.blockNumber);
+  if(historyFilter==='30')items=items.filter(item=>new Date(item.completedAt)>=cutoff);
+  const rows=items.map(x=>{
     const scheduled=x.scheduledDate||'';
     const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
-    const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?'Scheduled & completed '+formatDate(actual):'Scheduled '+formatDate(scheduled)+' · trained '+formatDate(actual)):'Completed '+formatDate(x.completedAt);
-    const readiness=x.readiness?.score?'<span>•</span><span>readiness '+esc(x.readiness.score)+'/5</span>':'';
-    const block=x.programContext?'<span>•</span><span>Block '+esc(x.programContext.blockNumber)+' · W'+esc(x.programContext.blockWeek)+'</span>':'';
-    const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL COMPLETION':'COMPLETED';
-    return '<article class="history-card"><div class="history-top"><div><div class="history-status">'+status+'</div><h3>'+esc(x.routineName)+'</h3><div class="history-date">'+esc(timing)+'</div></div><div class="history-volume">'+formatVolume(x.totalVolume||0)+'</div></div>'+
-      '<div class="history-stats"><span>'+x.completedSets+' logged sets</span>'+(x.durationMinutes?'<span>•</span><span>'+x.durationMinutes+' min</span>':'')+block+readiness+(learned?'<span>•</span><span>'+learned+' learned target'+(learned===1?'':'s')+'</span>':'')+(x.newPRs?.length?'<span>•</span><span>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</span>':'')+'</div>'+
-      '<div class="history-actions"><button class="text-button danger-text" data-action="remove-history" data-history-id="'+esc(x.id)+'">REMOVE FROM HISTORY</button></div></article>';
+    const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?formatDate(actual):formatDate(scheduled)+' · trained '+formatDate(actual)):formatDate(x.completedAt);
+    const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL':'';
+    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
   }).join('');
-  return '<div class="page-head"><div><p class="eyebrow">TRAINING LOG</p><h2 class="page-title">History by day.</h2><p class="page-copy">Scheduled date, actual training date, readiness, status, volume, and adaptive decisions remain attached to the session. Removing a workout recalculates dependent training data.</p></div></div><div class="history-list">'+(rows||renderEmpty('No workout history','Complete your first scheduled workout and it will appear here.'))+'</div>';
+  const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
+  return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
+    '<div class="history-filter-row">'+filters.map(([value,label])=>'<button class="'+(historyFilter===value?'active':'')+'" data-action="set-history-filter" data-history-filter="'+value+'">'+label+'</button>').join('')+'</div>'+
+    '<div class="history-list clean-history-list">'+(rows||renderEmpty('No workouts here','Try another filter or complete a workout.'))+'</div></div>';
 }
 
 function personalRecords(){
@@ -2840,53 +3751,80 @@ function personalRecords(){
   return [...map.values()].sort((a,b)=>b.weight-a.weight);
 }
 function renderProgress(){
-  const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),prs=personalRecords().slice(0,12),calibrated=Object.keys(store.calibration).length;
+  const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),prs=personalRecords().slice(0,6),calibrated=Object.keys(store.calibration).length;
   const learnedAll=Object.values(store.progression||{}).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
-  const learned=learnedAll.slice(0,10);
-  const decisions=(Array.isArray(store.progressionLog)?store.progressionLog:[]).slice(0,12);
-  const trends=recentExerciseTrendCards(8);
-  const context=programContext();
-  const schedule=currentWeekSchedule();
-  return `<div class="page-head"><div><p class="eyebrow">PROGRESS · BLOCK ${context.blockNumber} WEEK ${context.blockWeek}</p><h2 class="page-title">Your training story.</h2><p class="page-copy">Progress includes stronger sets, more reps, consistency, readiness, adherence, and the adaptive choices your program makes next.</p></div></div>
-    <div class="progress-grid">
-      <section class="panel"><h3>This week</h3><div class="big-stat">${schedule.filter(entry=>entry.status==='complete').length}/${schedule.length}</div><div class="stat-label">scheduled workouts completed</div></section>
-      <section class="panel"><h3>All-time volume</h3><div class="big-stat">${formatVolume(allVolume)}</div><div class="stat-label">logged volume</div></section>
-      <section class="panel"><h3>Learned movements</h3><div class="big-stat">${learnedAll.length}</div><div class="stat-label">${calibrated} initially calibrated</div></section>
-      <section class="panel"><h3>Personal records</h3>${prs.length?`<div class="pr-list">${prs.map(pr=>`<div class="pr-row"><span>${esc(pr.name)}</span><strong>${pr.weight?`${pr.weight} lb × ${pr.reps}`:`${pr.reps} reps`}</strong></div>`).join('')}</div>`:'<div class="stat-label">Complete workouts to establish PRs.</div>'}</section>
-    </div>
-    ${trends.length?`<section class="panel trend-panel"><div class="section-head"><div><p class="eyebrow">EXERCISE TRENDS</p><h3>More than PRs.</h3></div></div><div class="trend-grid">${trends.map(item=>`<article class="trend-card"><span>${esc(item.trend.label)}</span><strong>${esc(item.ex.name)}</strong><p>${esc(item.trend.detail)}</p><small>${item.history.length} recent session${item.history.length===1?'':'s'} analyzed</small></article>`).join('')}</div></section>`:''}
-    ${learned.length?`<section class="panel learned-panel"><p class="eyebrow">NEXT-SESSION TARGETS</p><div class="learned-list">${learned.map(item=>`<div class="learned-row"><div><strong>${esc(item.name)}</strong><span>${esc(item.reason)}</span></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}
-    ${decisions.length?`<section class="panel decision-panel"><p class="eyebrow">RECENT ADAPTIVE DECISIONS</p><div class="decision-list">${decisions.map(item=>`<div class="decision-row"><div><strong>${esc(item.name)}</strong><span>${esc(feedbackLabel(item.feedback))} · ${esc(item.routineName||'Workout')} · ${esc(formatDate(item.loggedAt||item.updatedAt))}</span><small>${esc(item.reason)}</small></div><em>${esc(item.label)}</em></div>`).join('')}</div></section>`:''}`;
+  const trends=recentExerciseTrendCards(5);
+  const context=programContext(),schedule=currentWeekSchedule();
+  const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const thisWeekVolume=week.reduce((sum,item)=>sum+(item.totalVolume||0),0);
+  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>Consistency, strength trends, volume, PRs, and what the adaptive engine is learning.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+    '<div class="progress-overview-grid"><section class="clean-panel metric-panel"><span>TRAINING CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>scheduled workouts this week</small></section><section class="clean-panel metric-panel"><span>WEEKLY VOLUME</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' all time</small></section><section class="clean-panel metric-panel"><span>LEARNED MOVEMENTS</span><strong>'+learnedAll.length+'</strong><small>'+calibrated+' initially calibrated</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></section></div>'+
+    (trends.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">STRENGTH TREND</p><h3>Recent movements</h3></div></div><div class="clean-trend-list">'+trends.map(item=>'<button class="clean-trend-row" data-exercise-detail="'+esc(item.ex.id)+'"><div><strong>'+esc(item.ex.name)+'</strong><span>'+esc(item.trend.detail)+'</span></div><em>'+esc(item.trend.label)+'</em></button>').join('')+'</div></section>':'')+
+    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT PRS</p><h3>Personal records</h3></div></div>'+(prs.length?'<div class="pr-list clean-pr-list">'+prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div>':'<div class="clean-empty-inline">Complete workouts to establish PRs.</div>')+'</section>'+
+    '<section class="clean-panel progress-engine-card"><div><span>ADAPTIVE ENGINE</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><p>'+esc(adaptationDecision().notes.join(' ')||'The next training week updates from your completed work and feedback.')+'</p></div></section>'+
+  '</div>';
 }
 
 function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
-  const recommendations=(x.exercises||[]).filter(ex=>ex.nextRecommendation).map(ex=>ex.nextRecommendation);
   const partial=x.completionStatus==='partial';
-  return '<div class="summary-hero"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+(partial?' saved.':' done.')+'</h2><p>'+(partial?'Your completed work is preserved, but this scheduled session does not count as fully completed.':'Your calendar, history, and next-session targets are updated from what you actually did.')+'</p>'+
-    '<div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Logged sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
-    (recommendations.length?'<section class="panel adaptive-summary"><p class="eyebrow">NEXT TIME</p><div class="learned-list">'+recommendations.map(item=>'<div class="learned-row"><div><strong>'+esc(item.name)+'</strong><span>'+esc(item.reason)+'</span></div><em>'+esc(item.label)+'</em></div>').join('')+'</div></section>':'')+
-    (x.newPRs?.length?'<section class="panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
-    '<div class="summary-actions"><button class="button" data-action="home">BACK TO PLAN</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
+  return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2><p>'+(partial?'Your completed work is preserved. This scheduled session remains partial.':'History and progression were updated from what you actually logged.')+'</p><div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
+    (x.newPRs?.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
+    (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
+    '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
 
 function renderEmpty(title,copy){return `<div class="empty-state"><div class="empty-glyph">W/</div><h2>${esc(title)}</h2><p>${esc(copy)}</p></div>`;}
 
 function setTab(tab){
-  if(!store.profile&&tab!=='profile'){currentTab='profile';}else currentTab=tab;
+  if(!store.profile&&!['profile','profile-edit'].includes(tab)){currentTab='profile-edit';}
+  else currentTab=tab;
+  persistUiState();
   render();updateTimers();window.scrollTo({top:0,behavior:'smooth'});
 }
 function syncNav(){
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===currentTab||(currentTab==='summary'&&b.dataset.tab==='history')));
+  const navTab=currentTab==='workout'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===navTab));
   const nav=document.querySelector('.bottom-nav');if(nav)nav.classList.toggle('nav-disabled',!store.profile);
+}
+function syncShellIdentity(){
+  const avatar=document.querySelector('.avatar');
+  if(avatar){
+    const name=store.account?.displayName||store.profile?.displayName||'Me';
+    const initials=String(name).split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join('').toUpperCase();
+    avatar.textContent=initials||'ME';
+  }
 }
 function syncLiveBadge(){const b=document.querySelector('.nav-live');if(b)b.hidden=!store.activeWorkout;}
 function toast(message){const r=document.querySelector('#toast-region')||document.body;r.querySelector('.toast')?.remove();const n=document.createElement('div');n.className='toast';n.textContent=message;r.append(n);setTimeout(()=>n.remove(),2300);}
 
+function renderAccountEntry(){
+  const pending=store.account?.status==='pending';
+  return '<div class="onboard-shell account-entry-shell">'+
+    '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>Sign in to continue your program on this device, or create an account before building your first plan.</p></section>'+
+    (pending?'<div class="account-status-card"><span>EMAIL CONFIRMATION PENDING</span><strong>Check your inbox, then sign in here.</strong><p>Your setup on this browser stays intact while confirmation is pending.</p></div>':'')+
+    '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>Account</h3><p>Your profile, program, progress, history and active workout sync through your account.</p></div></div>'+
+      '<div class="form-grid two">'+
+        '<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>'+
+        '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(store.account?.email||store.profile?.email||'')+'" placeholder="you@example.com"></label>'+
+      '</div>'+
+      '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>'+
+      '<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in">SIGN IN</button><button class="button secondary" data-action="entry-create-account">CREATE ACCOUNT</button></div>'+
+      (pending?'<button class="text-button account-resend" data-action="entry-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':'')+
+    '</section>'+
+    '<div class="profile-privacy-note"><strong>Private by default.</strong><span>Your readiness, body data, notes and full training history are not exposed to workout partners.</span></div>'+
+  '</div>';
+}
+
 function render(){
   const app=document.querySelector('#app');if(!app)return;
-  if(currentTab==='profile')app.innerHTML=renderProfile();
+  if(!authReady){app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">WORKOUT</p><h2>Loading your training account…</h2></div>';return;}
+  if(store.account?.status!=='connected'){app.innerHTML=renderAccountEntry();document.body.classList.remove('modal-open','workout-mode');return;}
+  if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
+  else if(currentTab==='profile')app.innerHTML=renderProfileHub();
   else if(currentTab==='home')app.innerHTML=renderHome();
+  else if(currentTab==='train')app.innerHTML=renderTrain();
+  else if(currentTab==='together')app.innerHTML=renderTogether();
   else if(currentTab==='catalog')app.innerHTML=renderCatalog();
   else if(currentTab==='workout')app.innerHTML=renderWorkout();
   else if(currentTab==='history')app.innerHTML=renderHistory();
@@ -2898,8 +3836,13 @@ function render(){
   if(readinessContext) app.insertAdjacentHTML('beforeend',renderReadinessModal());
   if(workoutMapOpen) app.insertAdjacentHTML('beforeend',renderWorkoutMap());
   if(setEditContext) app.insertAdjacentHTML('beforeend',renderSetEditor());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext));
-  syncNav();syncLiveBadge();
+  if(cueSettingsOpen) app.insertAdjacentHTML('beforeend',renderCueSettingsSheet());
+  if(exerciseActionsIndex!==null) app.insertAdjacentHTML('beforeend',renderExerciseActionsSheet());
+  if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
+  if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId||accountSheetOpen));
+  document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
+  syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
 }
 
 function updateTimers(){
@@ -2934,7 +3877,7 @@ function updateTimers(){
     const snap=preSetSnapshot(w);
     if(!snap)return;
     if(snap.complete){finishPreSet();return;}
-    const stage=document.querySelector('.pre-set-stage');
+    const stage=document.querySelector('.clean-preset-stage');
     if(stage?.dataset.presetMode!==snap.mode){render();return;}
     if(snap.mode==='countdown'&&snap.remaining<=3)fireWorkoutSignal('tick','preset-tick-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const count=document.querySelector('#preset-count');
@@ -2967,6 +3910,30 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const accountClose=event.target.closest('[data-action="close-account-sheet"]');
+  if(accountClose){
+    const inside=event.target.closest('[data-account-sheet-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){accountSheetOpen=false;render();return;}
+  }
+  const cueClose=event.target.closest('[data-action="close-cue-settings"]');
+  if(cueClose){
+    const inside=event.target.closest('[data-cue-settings-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){cueSettingsOpen=false;render();return;}
+  }
+  const exerciseActionsClose=event.target.closest('[data-action="close-exercise-actions"]');
+  if(exerciseActionsClose){
+    const inside=event.target.closest('[data-exercise-actions-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){exerciseActionsIndex=null;render();return;}
+  }
+  const historyClose=event.target.closest('[data-action="close-history-menu"]');
+  if(historyClose){
+    const inside=event.target.closest('[data-history-menu-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){historyMenuId=null;render();return;}
+  }
   const setClose=event.target.closest('[data-action="close-set-editor"]');
   if(setClose){
     const inside=event.target.closest('[data-set-edit-panel]');
@@ -2992,7 +3959,7 @@ function handleClick(event){
     if(!insideSwap||explicitClose){closeSwap();return;}
   }
   const detail=event.target.closest('[data-exercise-detail]');
-  if(detail){exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
+  if(detail){exerciseActionsIndex=null;exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
   if(close){
     const insidePanel=event.target.closest('[data-modal-panel]');
@@ -3005,20 +3972,44 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='train')setTab('train');
+  else if(a==='together')setTab('together');
+  else if(a==='progress')setTab('progress');
+  else if(a==='profile')setTab('profile');
+  else if(a==='catalog'||a==='open-routine-details')setTab('catalog');
   else if(a==='history')setTab('history');
+  else if(a==='share-next-workout')setTab('together');
+  else if(a==='create-shared-draft')createSharedDraft();
+  else if(a==='join-shared-session')joinSharedSession();
+  else if(a==='cancel-shared-draft')cancelSharedDraft();
+  else if(a==='start-shared-workout')startSharedWorkout();
+  else if(a==='copy-shared-code')copySharedCode();
+  else if(a==='account-info'){accountSheetOpen=true;render();}
+  else if(a==='entry-sign-in')signInEntryAccount();
+  else if(a==='entry-create-account')createEntryAccount();
+  else if(a==='entry-resend-confirmation')resendEntryConfirmation();
+  else if(a==='account-sign-in')signInWorkoutAccount();
+  else if(a==='account-create')createWorkoutAccount();
+  else if(a==='onboard-create-account')createOnboardingAccount();
+  else if(a==='account-resend-confirmation')resendWorkoutConfirmation();
+  else if(a==='account-sign-out')signOutWorkoutAccount();
+  else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
+  else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
+  else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
+  else if(a==='set-history-filter'){historyFilter=node.dataset.historyFilter||'all';render();}
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='skip-scheduled')skipScheduledSession(node.dataset.scheduledDate);
   else if(a==='undo-skip-scheduled')undoSkipScheduledSession(node.dataset.scheduledDate);
   else if(a==='mark-scheduled-complete')markScheduledWorkoutComplete(node.dataset.dayId,node.dataset.scheduledDate);
-  else if(a==='remove-history')removeHistoryWorkout(node.dataset.historyId);
+  else if(a==='remove-history'){historyMenuId=null;removeHistoryWorkout(node.dataset.historyId);}
   else if(a==='begin-workout')startPreparedWorkout();
   else if(a==='begin-session')beginWorkoutSession();
   else if(a==='open-workout-map'){workoutMapOpen=true;render();}
@@ -3027,11 +4018,11 @@ function handleClick(event){
   else if(a==='jump-exercise')navigateToExercise(Number(node.dataset.exerciseIndex));
   else if(a==='jump-from-review')jumpFromReview(Number(node.dataset.exerciseIndex));
   else if(a==='continue-exercise')navigateToExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='mark-exercise-complete')markExerciseManual(Number(node.dataset.exerciseIndex));
+  else if(a==='mark-exercise-complete'){exerciseActionsIndex=null;markExerciseManual(Number(node.dataset.exerciseIndex));}
   else if(a==='undo-manual-exercise')undoManualExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='skip-exercise')skipExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='restore-exercise')restoreExercise(Number(node.dataset.exerciseIndex));
-  else if(a==='move-exercise-later')moveExerciseLater(Number(node.dataset.exerciseIndex));
+  else if(a==='skip-exercise'){exerciseActionsIndex=null;skipExercise(Number(node.dataset.exerciseIndex));}
+  else if(a==='restore-exercise'){exerciseActionsIndex=null;restoreExercise(Number(node.dataset.exerciseIndex));}
+  else if(a==='move-exercise-later'){exerciseActionsIndex=null;moveExerciseLater(Number(node.dataset.exerciseIndex));}
   else if(a==='add-set')addWorkingSet(Number(node.dataset.exerciseIndex));
   else if(a==='edit-set')openSetEditor(Number(node.dataset.exerciseIndex),Number(node.dataset.setIndex));
   else if(a==='save-set-edit')saveSetEdit();
@@ -3047,7 +4038,7 @@ function handleClick(event){
   else if(a==='save-workout-partial')finalizeWorkout('partial');
   else if(a==='regenerate')regeneratePlan();
   else if(a==='swap-plan')openSwap({mode:'plan',dayId:node.dataset.dayId,index:Number(node.dataset.swapIndex)});
-  else if(a==='swap-active')openSwap({mode:'active',index:Number(node.dataset.swapIndex)});
+  else if(a==='swap-active'){exerciseActionsIndex=null;openSwap({mode:'active',index:Number(node.dataset.swapIndex)});}
   else if(a==='choose-swap'){
     const reason=document.querySelector('#swap-reason')?.value||'other';
     const neverShow=Boolean(document.querySelector('#swap-never-show')?.checked);
@@ -3084,8 +4075,9 @@ document.addEventListener('error',event=>{
     img.dataset.fallbackAttempted='1';
     img.src=fallback;
   }else{
-    img.closest('.exercise-media, .exercise-modal-media')?.classList.add('image-unavailable');
+    const media=img.closest('.exercise-media, .exercise-modal-media');
     img.remove();
+    if(media&&!media.querySelector('img'))media.classList.add('image-unavailable');
   }
 },true);
 document.addEventListener('submit',event=>{
@@ -3110,6 +4102,10 @@ document.addEventListener('change',event=>{
   }
 });
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
+  if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
+  if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
+  if(event.key==='Escape'&&cueSettingsOpen){cueSettingsOpen=false;render();return;}
   if(event.key==='Escape'&&setEditContext){setEditContext=null;render();return;}
   if(event.key==='Escape'&&workoutMapOpen){workoutMapOpen=false;render();return;}
   if(event.key==='Escape'&&readinessContext){readinessContext=null;render();return;}
@@ -3126,9 +4122,14 @@ window.addEventListener('pageshow',event=>{
     window.location.reload();
   }
 });
-window.addEventListener('beforeunload',()=>tickHandle&&clearInterval(tickHandle));
+window.addEventListener('beforeunload',()=>{
+  persistUiState();
+  if(tickHandle)clearInterval(tickHandle);
+  try{sharedRuntime.channel?.untrack();}catch{}
+});
 render();
 updateTimers();
+initWorkoutAuth();
 if(clearedLegacyActiveWorkout){
   setTimeout(()=>toast('Previous test session cleared so this build can start with clean timer state.'),100);
 }
