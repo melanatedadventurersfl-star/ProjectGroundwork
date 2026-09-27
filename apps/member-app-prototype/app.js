@@ -98,6 +98,7 @@ function render(route) {
     journey: renderJourney,
     community: renderCommunity,
     campfire: renderCampfire,
+    workout: renderWorkout,
     more: renderMore
   };
   (routes[route] || routes.trailhead)();
@@ -105,6 +106,25 @@ function render(route) {
   updateCampfireIndicator();
   app.focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderWorkout() {
+  title.textContent = 'GoWorkout';
+  app.innerHTML = `
+    <section class="screen workout-page-host">
+      <div class="workout-module-intro">
+        <span class="eyebrow">GO MELANATED · TRAINING</span>
+        <h2>GoWorkout</h2>
+        <p>Your adaptive training experience, now living inside the Go Melanated app.</p>
+      </div>
+      <iframe
+        class="workout-module-frame"
+        title="GoWorkout"
+        src="workout/?embedded=1&v=phase3"
+        loading="eager"
+        allow="autoplay"
+      ></iframe>
+    </section>`;
 }
 
 function bindRoutes() {
@@ -153,6 +173,10 @@ function renderTrailhead() {
             <span>Eight members joined the next campout.</span>
           </span>
           <span class="tile-meta">Stories from outside</span>
+        </button>
+        <button class="tile tile-small tile-workout" data-route="workout">
+          <span class="tile-label">GOWORKOUT</span>
+          <span><strong>Train with your plan</strong><span class="tile-meta">Adaptive strength sessions · Progress · Together</span></span>
         </button>
         <button class="tile tile-small tile-passport" data-route="passport">
           <span class="tile-label">PASSPORT</span>
@@ -350,7 +374,7 @@ function renderCampfire() {
 
 function renderMore() {
   title.textContent = 'More';
-  app.innerHTML = `<section class="screen"><div class="section-heading"><div><h2>More paths</h2><p>Account, support and future modules.</p></div></div><div class="card-list"><div class="panel"><h3>Bucket List</h3><p>Save places and adventures for later.</p></div><div class="panel"><h3>Safety & Support</h3><p>Emergency information, reports and help.</p></div><div class="panel"><h3>Build-A-Camp</h3><p>Future equipment and setup services.</p></div><div class="panel"><h3>Settings</h3><p>Privacy, notifications and accessibility.</p></div><button class="secondary danger" id="reset-prototype">Reset Prototype Journey</button></div></section>`;
+  app.innerHTML = `<section class="screen"><div class="section-heading"><div><h2>More paths</h2><p>Account, support and future modules.</p></div></div><div class="card-list"><button class="panel more-module-card" data-route="workout"><h3>GoWorkout</h3><p>Open your adaptive training plan, guided sessions and progress.</p><span class="tag">OPEN TRAINING →</span></button><div class="panel"><h3>Bucket List</h3><p>Save places and adventures for later.</p></div><div class="panel"><h3>Safety & Support</h3><p>Emergency information, reports and help.</p></div><div class="panel"><h3>Build-A-Camp</h3><p>Future equipment and setup services.</p></div><div class="panel"><h3>Settings</h3><p>Privacy, notifications and accessibility.</p></div><button class="secondary danger" id="reset-prototype">Reset Prototype Journey</button></div></section>`;
   document.querySelector('#reset-prototype').addEventListener('click', () => {
     localStorage.removeItem('ma-prototype-state');
     Object.assign(state, { joined: false, checkedIn: false, completed: false, campfireRead: false, checklist: [true, true, true, false, false] });
