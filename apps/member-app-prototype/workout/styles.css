@@ -3811,3 +3811,91 @@ button.clean-set-row{cursor:pointer}
     animation:none !important;
   }
 }
+
+
+/* Phase 3 session preview */
+.preview-flow{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:7px;
+}
+.preview-flow-card{
+  display:grid;
+  gap:5px;
+  padding:12px;
+  min-height:108px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--panel);
+}
+.preview-flow-card span,
+.preview-section-head span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.preview-flow-card strong{font-size:10px;line-height:1.35}
+.preview-flow-card small{color:var(--muted);font-size:8px;line-height:1.45}
+.preview-flow-main{
+  border-color:rgba(216,180,92,.38);
+  background:rgba(216,180,92,.055);
+}
+.preview-prescription{
+  display:grid;
+  gap:6px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--panel);
+}
+.preview-section-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:2px 2px 6px;
+}
+.preview-section-head>div{display:grid;gap:4px}
+.preview-section-head strong{font-size:15px}
+.preview-exercise-row{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr) auto;
+  gap:9px;
+  align-items:center;
+  padding:10px 9px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--panel-2);
+}
+.preview-exercise-index{
+  color:var(--muted);
+  font-size:8px;
+  font-weight:900;
+}
+.preview-exercise-copy{min-width:0}
+.preview-exercise-copy strong,
+.preview-exercise-copy span{display:block}
+.preview-exercise-copy strong{
+  font-size:10px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.preview-exercise-copy span{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:7px;
+}
+.preview-exercise-load{
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  white-space:nowrap;
+}
+@media(max-width:620px){
+  .preview-flow{grid-template-columns:1fr}
+  .preview-flow-card{min-height:0}
+  .preview-exercise-row{grid-template-columns:28px minmax(0,1fr) auto}
+  .preview-exercise-load{font-size:7px}
+}
