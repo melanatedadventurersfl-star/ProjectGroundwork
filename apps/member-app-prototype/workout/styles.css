@@ -3899,3 +3899,18 @@ button.clean-set-row{cursor:pointer}
   .preview-exercise-row{grid-template-columns:28px minmax(0,1fr) auto}
   .preview-exercise-load{font-size:7px}
 }
+
+
+/* Embedded GoWorkout mode. The Go Melanated app owns the outer shell. */
+html.embedded-workout,
+html.embedded-workout body { background: transparent; min-height: 0; }
+html.embedded-workout .app-shell {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  padding-bottom: 0;
+  background: transparent;
+}
+html.embedded-workout .topbar,
+html.embedded-workout .bottom-nav { display: none !important; }
+html.embedded-workout main { padding: 8px 0 28px; }
