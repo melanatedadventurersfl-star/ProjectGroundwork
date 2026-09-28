@@ -2281,6 +2281,8 @@ function saveSetEdit(){
   const reps=(document.querySelector('#edit-set-reps')?.value||'').trim().replace(/[^0-9.]/g,'');
   if(num(reps)<=0){toast('Enter reps or seconds greater than zero.');return;}
   set.weight=weight;set.reps=reps;set.completed=true;set.completedAt=set.completedAt||new Date().toISOString();
+  set.performanceInsight=setPerformanceInsight(ex,set,setEditContext.si);
+  if(store.activeWorkout)store.activeWorkout.lastSetInsight=set.performanceInsight;
   if(ex.feedback){
     const result=computeProgression(ex,ex.feedback);
     ex.nextRecommendation=result;store.progression[ex.id]=result;
@@ -2416,6 +2418,9 @@ function completeTimedSet(early=false){
     pos.set.reps=String(duration);
   }
   pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
+  const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
+  pos.set.performanceInsight=insight;
+  w.lastSetInsight=insight;
   delete w.timedSetStartedAt;delete w.timedSetDuration;delete w.timedSetEndsAt;
   fireWorkoutSignal('complete','complete-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Done',label:'DONE'});
   const next=nextPosition(w,pos.ei,pos.si);
@@ -2513,11 +2518,16 @@ function applyExerciseFeedback(feedback){
 
 function completeCurrentSet(){
   const pos=getActivePosition(); if(!pos||pos.workout.phase!=='work')return;
-  const actionKey=workoutActionKey(pos.workout,'complete-set',pos.ei,pos.si);if(pos.set.completed||!claimWorkoutAction(pos.workout,actionKey)){toast('That set is already logged.');return;}
+  if(pos.set.completed){toast('That set is already logged.');return;}
   const weight=(document.querySelector('#set-weight')?.value||'').trim().replace(/[^0-9.]/g,'');
   const reps=(document.querySelector('#set-reps')?.value||'').trim().replace(/[^0-9.]/g,'');
   if(num(reps)<=0){toast(pos.exercise.loadMode==='timed'?'Enter the seconds completed.':'Enter the reps completed.');return;}
+  const actionKey=workoutActionKey(pos.workout,'complete-set',pos.ei,pos.si);
+  if(!claimWorkoutAction(pos.workout,actionKey)){toast('That set is already logged.');return;}
   pos.set.weight=weight;pos.set.reps=reps;pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
+  const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
+  pos.set.performanceInsight=insight;
+  pos.workout.lastSetInsight=insight;
   fireWorkoutSignal('complete','complete-'+pos.workout.id+'-'+pos.ei+'-'+pos.si,{voice:'Set complete',label:'DONE'});
   const next=nextPosition(pos.workout,pos.ei,pos.si);
 
@@ -4166,6 +4176,76 @@ function previousSetForPosition(ex,setIndex){
   const set=previous?.sets?.[setIndex]||previous?.sets?.[previous.sets.length-1]||null;
   return {session:previous,set};
 }
+function setTargetBounds(ex){
+  const primary=repBounds(ex?.reps||'');
+  if(primary.low||primary.high)return primary;
+  return repBounds(ex?.suggestedReps||'');
+}
+function setPerformanceInsight(ex,set,setIndex){
+  const reps=num(set?.reps),weight=num(set?.weight);
+  const bounds=setTargetBounds(ex);
+  const previous=previousSetForPosition(ex,setIndex);
+  const previousSet=previous.set;
+  const previousReps=num(previousSet?.reps),previousWeight=num(previousSet?.weight);
+  const targetLabel=currentPrescriptionLabel(ex);
+  const previousLabel=previousSet?setPerformanceLabel(ex,previousSet):'No previous set';
+  let tone='steady',label='Set logged',detail='This set is saved and will count toward your exercise result.';
+
+  if(bounds.low&&reps<bounds.low){
+    tone='caution';
+    label='Below target range';
+    detail='You logged '+reps+' '+(ex.loadMode==='timed'?'seconds':'reps')+' against a target of '+bounds.low+(bounds.high&&bounds.high!==bounds.low?'–'+bounds.high:'')+'. Keep the next set controlled. You can lower the load if clean reps are falling away.';
+  }else if(bounds.high&&reps>bounds.high){
+    tone='progress';
+    label='Above target range';
+    detail='You moved past the top of today’s target. Finish the exercise before GoWorkout decides whether the next session should progress.';
+  }else if(!previousSet){
+    tone='baseline';
+    label='Baseline established';
+    detail='This is your first recorded Set '+(setIndex+1)+' for '+ex.name+'. Future sessions can now compare against it.';
+  }else if(ex.loadMode==='timed'&&reps>previousReps){
+    tone='progress';
+    label='Longer than last time';
+    detail='You added '+Math.round(reps-previousReps)+' second'+(Math.round(reps-previousReps)===1?'':'s')+' to the matching set.';
+  }else if(isWeightedMode(ex.loadMode)&&weight>previousWeight&&(!bounds.low||reps>=bounds.low)){
+    tone='progress';
+    label='Heavier than last time';
+    detail='You added '+Math.round((weight-previousWeight)*10)/10+' lb to the matching set and stayed in the working range.';
+  }else if(reps>previousReps&&(!isWeightedMode(ex.loadMode)||weight===previousWeight)){
+    tone='progress';
+    label='More reps than last time';
+    detail='You added '+Math.round(reps-previousReps)+' rep'+(Math.round(reps-previousReps)===1?'':'s')+(weight?' at the same load.':'.');
+  }else if(bounds.low&&reps>=bounds.low&&(!bounds.high||reps<=bounds.high)){
+    tone='success';
+    label='Target reached';
+    detail='You are inside today’s rep range. Keep the next set controlled and repeat the quality.';
+  }else if(previousSet&&reps===previousReps&&weight===previousWeight){
+    tone='steady';
+    label='Matched last time';
+    detail='The matching set is steady. That still counts as useful consistency.';
+  }
+
+  return {
+    exerciseId:ex.id,
+    exerciseName:ex.name,
+    setIndex,
+    tone,
+    label,
+    detail,
+    targetLabel,
+    previousLabel,
+    weight,
+    reps,
+    at:new Date().toISOString()
+  };
+}
+function renderSetPerformanceInsight(insight,compact=false){
+  if(!insight)return '';
+  return '<section class="runner-set-insight tone-'+esc(insight.tone||'steady')+' '+(compact?'compact':'')+'" role="status">'+
+    '<span>SET FEEDBACK</span><strong>'+esc(insight.label||'Set logged')+'</strong><p>'+esc(insight.detail||'')+'</p>'+
+    (!compact?'<div><small>PREVIOUS</small><em>'+esc(insight.previousLabel||'No previous set')+'</em></div>':'')+
+  '</section>';
+}
 function renderWorkSet(pos){
   const ex=pos.exercise;
   const isTimed=ex.loadMode==='timed';
@@ -4220,9 +4300,11 @@ function renderCalibration(pos){
 function renderExerciseFeedback(pos){
   const stats=completedExerciseStats(pos.exercise);
   const total=stats.sets.length;
+  const latest=[...(pos.exercise.sets||[])].reverse().find(set=>set.completed)?.performanceInsight||null;
   return '<div class="clean-feedback-stage">'+
     '<div class="summary-check small-check">✓</div><p class="eyebrow">EXERCISE COMPLETE</p><h2>'+esc(pos.exercise.name)+'</h2>'+
     '<p>How did that movement feel? One tap updates the next-session recommendation.</p>'+
+    renderSetPerformanceInsight(latest,true)+
     '<div class="feedback-mini-summary"><span>'+total+' set'+(total===1?'':'s')+' completed</span><strong>'+esc(currentPrescriptionLabel(pos.exercise))+'</strong></div>'+
     '<div class="exercise-feedback-grid clean-feedback-grid">'+
       '<button data-feedback="too-easy"><strong>Too easy</strong><span>Increase next time</span></button>'+
@@ -4286,6 +4368,7 @@ function renderRest(pos){
   return '<div class="runner-rest-stage">'+
     '<div class="runner-rest-top"><div><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><h2>'+(paused?'Timer paused':'Recover')+'</h2></div>'+(justCompleted?'<div class="runner-just-completed"><span>LAST SET</span><strong>'+esc(setPerformanceLabel(pos.exercise,justCompleted))+'</strong></div>':'')+'</div>'+
     '<div class="timer-wrap clean-timer-ring runner-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
+    renderSetPerformanceInsight(justCompleted?.performanceInsight||pos.workout.lastSetInsight||null,true)+
     '<section class="runner-next-action"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><strong>'+esc(nextTarget)+'</strong><p>'+(changingExercise?'Set up the next station. GoWorkout will wait for you.':next?'Recover, then continue with the same movement.':'Your strength work is complete.')+'</p></section>'+
     (previewEx&&changingExercise?'<div class="runner-next-preview">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'"><span>PREVIEW</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+'</small></button></div>':'')+
     '<div class="clean-rest-actions runner-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">'+(changingExercise?'READY NOW':'SKIP REST')+'</button></div>'+

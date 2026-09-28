@@ -4953,3 +4953,80 @@ body.workout-mode .cleaned-workout{
   .runner-workout-nav>button:first-child span,
   .runner-workout-nav>button:last-child span{display:none}
 }
+
+
+/* GoWorkout Experience Slice 11A: performance-aware set feedback */
+.runner-set-insight{
+  display:grid;
+  gap:5px;
+  padding:13px 14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--panel);
+  text-align:left;
+}
+.runner-set-insight>span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.11em;
+}
+.runner-set-insight>strong{
+  font-size:15px;
+  line-height:1.15;
+}
+.runner-set-insight>p{
+  margin:0;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.5;
+}
+.runner-set-insight>div{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding-top:8px;
+  border-top:1px solid var(--line);
+}
+.runner-set-insight small{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.runner-set-insight em{
+  color:var(--text);
+  font-size:9px;
+  font-style:normal;
+  font-weight:700;
+  text-align:right;
+}
+.runner-set-insight.compact{
+  padding:11px 12px;
+}
+.runner-set-insight.compact>strong{font-size:13px}
+.runner-set-insight.tone-progress,
+.runner-set-insight.tone-success{
+  border-color:rgba(134,185,141,.42);
+  background:rgba(134,185,141,.07);
+}
+.runner-set-insight.tone-progress>strong,
+.runner-set-insight.tone-success>strong{color:var(--green)}
+.runner-set-insight.tone-caution{
+  border-color:rgba(216,180,92,.48);
+  background:rgba(216,180,92,.07);
+}
+.runner-set-insight.tone-caution>strong{color:var(--accent-2)}
+.runner-set-insight.tone-baseline{
+  border-color:rgba(216,180,92,.28);
+  background:linear-gradient(145deg,rgba(216,180,92,.055),transparent),var(--panel);
+}
+.clean-feedback-stage .runner-set-insight{
+  width:min(100%,520px);
+  margin:2px auto 5px;
+}
+@media(max-width:620px){
+  .runner-set-insight{padding:11px 12px}
+  .runner-set-insight>strong{font-size:14px}
+  .runner-set-insight>p{font-size:9px}
+}
