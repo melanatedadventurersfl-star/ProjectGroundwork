@@ -1591,11 +1591,11 @@ function engineCatalogExercise(engineExercise){if(!engineExercise)return null;co
 const ENGINE_STRETCH_MEDIA={doorway_chest:'Chest_And_Front_Of_Shoulder_Stretch',thread_needle:'Thread_the_Needle',kneeling_lat:'Overhead_Lat',cross_body_shoulder:'Cross_Body_Shoulder_Stretch',triceps_overhead:'Triceps_Stretch',child_lat:'Childs_Pose',hip_flexor:'Kneeling_Hip_Flexor',adductor_rockback:'Adductor',hamstring_fold:'Hamstring_Stretch',figure_four:'IT_Band_and_Glute_Stretch',calf_wall:'Standing_Gastrocnemius_Calf_Stretch','90_90':'90_90_Hamstring'};
 function engineStretchToLegacy(stretch){return (stretch?.activities||[]).map(item=>({name:item.name,seconds:Number(item.seconds)||30,description:'Hold a comfortable stretch and breathe steadily.',cue:item.perSide?'Complete both sides evenly.':'Stay relaxed and avoid forcing the range.',why:'Program Engine selected this for the muscles and movement patterns trained today.',mediaId:ENGINE_STRETCH_MEDIA[item.id]||''}));}
 function engineSubstitutionCatalogIds(ex){return (ex?.engineSubstitutions||[]).map(item=>ENGINE_EXERCISE_TO_CATALOG[item.id]).filter(Boolean);}
-function engineSessionToLegacyDay(session,fallbackDay,index=0){
+function engineSessionToLegacyDay(session,fallbackDay,index=0,blockNumber=programContext().blockNumber){
   if(!session)return clone(fallbackDay);
   const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||''};}).filter(Boolean);
   const fallback=clone(fallbackDay||{});if(!exercises.length)return fallback;
-  const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBlockNumber:programContext().blockNumber,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
+  const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBlockNumber:blockNumber,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
   recalculatePlanDay(day);
   day.warmup=(session.warmup||[]).map(item=>({name:item.name,seconds:Number(item.seconds)||30,description:'Program Engine movement preparation.',cue:'Move smoothly through a comfortable range.',why:'Prepares the movement patterns used in this session.'}));
   day.cooldown=engineStretchToLegacy(session.stretch);
@@ -1603,7 +1603,7 @@ function engineSessionToLegacyDay(session,fallbackDay,index=0){
   day.cooldownMinutes=Math.ceil(day.cooldown.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
   day.estimatedMinutes=num(session.timeBudget?.targetMinutes)||day.estimatedMinutes;return day;
 }
-function engineDayForSchedule(date,index,fallbackDay){const session=engineSessionForDate(date,index);return session?engineSessionToLegacyDay(session,fallbackDay,index):clone(fallbackDay);}
+function engineDayForSchedule(date,index,fallbackDay){const context=programContext(date),session=engineSessionForDate(date,index);return session?engineSessionToLegacyDay(session,fallbackDay,index,context.blockNumber):clone(fallbackDay);}
 function renderEngineProgramSummary(){
   const engine=currentEngineProgram();if(!engine)return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE</p><h3>Legacy plan active</h3><p>The new programming layer is unavailable, so your existing plan remains untouched.</p></div></section>';
   const context=programContext(),week=engineWeekForContext(context),audit=programEngine?.volumeAudit?.(engine.program),weekAudit=audit?.weeks?.find(item=>item.weekNumber===week?.weekNumber);
@@ -1865,7 +1865,7 @@ function createWorkout(day,meta={}){
     isPaused:false,pausedAt:null,
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,
     warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
-    engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
+    engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineBlockNumber:day.engineBlockNumber||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
     exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
