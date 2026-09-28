@@ -308,7 +308,7 @@ function compressSession(session,availableMinutes){
   const setCost=(x.prescription.restSeconds+45)/60;
   const fullCost=x.prescription.sets*setCost;
   if(used+fullCost<=budget){x.compressionStatus='full';used+=fullCost;return}
-  if(i<3&&used+setCost<=budget){const fit=Math.max(1,Math.floor((budget-used)/setCost));x.prescription.sets=Math.min(x.prescription.sets,fit);x.compressionStatus='reduced';used+=x.prescription.sets*setCost;return}
+  if(i<3){const remaining=Math.max(0,budget-used);const fit=Math.floor(remaining/setCost);if(fit>0){x.prescription.sets=Math.min(x.prescription.sets,fit);x.compressionStatus='reduced';used+=x.prescription.sets*setCost;return} if(i===2&&used>0){const donor=clone.strength.slice(0,2).reverse().find(y=>y.exercise&&y.prescription.sets>1);if(donor){donor.prescription.sets-=1;used-=((donor.prescription.restSeconds+45)/60);if(used+setCost<=budget){x.prescription.sets=1;x.compressionStatus='minimum_priority';used+=setCost;return}}}}
   x.prescription.sets=0;x.compressionStatus='removed_for_time';
  });
  clone.stretch=buildStretchSession(stretch<=5?5:stretch,clone.label,{equipment:['bodyweight','wall','bench']});
