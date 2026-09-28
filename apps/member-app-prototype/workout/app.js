@@ -3753,7 +3753,7 @@ function getHomeExperience(date=new Date()){
   if(awayDays!==null&&awayDays>=7){
     const entry=today||missed||upcoming||null;
     const day=entry?.adaptedDay||entry?.day;
-    return {state:'returning',context,schedule,eyebrow:'WELCOME BACK',title:day?.name||'Your program is ready',copy:'It’s been '+awayDays+' days since your last workout.',meta:day?'~'+(day.estimatedMinutes||store.profile?.minutes||45)+' min · '+day.exercises.length+' exercises':'Pick up from your current program',primaryLabel:entry?(entry.status==='missed'?'START COMEBACK WORKOUT':'VIEW NEXT WORKOUT'):'VIEW PROGRAM',primaryAction:entry&&entry.status==='missed'?'start':'train',entry,last};
+    return {state:'returning',context,schedule,eyebrow:'WELCOME BACK',title:day?.name||'Your program is ready',copy:'It’s been '+awayDays+' days since your last workout.',meta:day?'~'+(day.estimatedMinutes||store.profile?.minutes||45)+' min · '+day.exercises.length+' exercises':'Pick up from your current program',primaryLabel:entry&&(entry.status==='missed'||entry.status==='today')?(entry.status==='missed'?'START COMEBACK WORKOUT':'START WORKOUT'):'VIEW NEXT WORKOUT',primaryAction:entry&&(entry.status==='missed'||entry.status==='today')?'start':'train',entry,last};
   }
   if(missed){
     const day=missed.adaptedDay||missed.day;
