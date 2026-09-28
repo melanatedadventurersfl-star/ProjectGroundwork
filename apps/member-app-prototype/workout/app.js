@@ -1004,7 +1004,9 @@ function renderSwapModal(){
   const target=swapTarget();
   if(!target)return '';
   const source=exerciseSource(target.exercise);
-  let candidates=swapCandidates(source);\n  const preferredIds=engineSubstitutionCatalogIds(target.exercise);\n  if(preferredIds.length)candidates=[...candidates].sort((a,b)=>(preferredIds.includes(b.exercise.id)?1:0)-(preferredIds.includes(a.exercise.id)?1:0));
+  let candidates=swapCandidates(source);
+  const preferredIds=engineSubstitutionCatalogIds(target.exercise);
+  if(preferredIds.length)candidates=[...candidates].sort((a,b)=>(preferredIds.includes(b.exercise.id)?1:0)-(preferredIds.includes(a.exercise.id)?1:0));
   const available=candidates.filter(item=>item.available);
   const other=candidates.filter(item=>!item.available);
   const card=(item,index)=>{
@@ -1117,7 +1119,8 @@ function renderExerciseModal(){
         '<div class="coach-cue"><span>COACHING CUE</span><strong>'+esc(guide.cue)+'</strong></div>'+
         '<div class="instruction-block"><h3>Set up</h3><p>'+esc(guide.setup)+'</p></div>'+
         '<div class="instruction-block"><h3>How to move</h3><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></div>'+
-        '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+\n        (ex.engineReason?.length?'<div class="instruction-block engine-why"><h3>Why this exercise</h3><p>'+esc(ex.engineReason.join(' · '))+'</p>'+(ex.engineIntensityTarget?'<small>Target: '+esc(ex.engineIntensityTarget)+'</small>':'')+'</div>':'')+
+        '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
+        (ex.engineReason?.length?'<div class="instruction-block engine-why"><h3>Why this exercise</h3><p>'+esc(ex.engineReason.join(' · '))+'</p>'+(ex.engineIntensityTarget?'<small>Target: '+esc(ex.engineIntensityTarget)+'</small>':'')+'</div>':'')+
         renderExerciseHistoryPanel(ex)+
         '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
       '</div>'+
@@ -1810,7 +1813,9 @@ async function startPreparedWorkout(){
   if(readinessContext.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
     await workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',readinessContext.sharedDraft.backendId).eq('user_id',store.account.userId);
   }
-  let day=applyReadinessToDay(readinessContext.day,readiness);\n  if(day.engineBacked&&readiness.timeAvailable&&readiness.timeAvailable<(day.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){\n    const engine=currentEngineProgram(),week=engine?.program?.weeks?.find(w=>w.week===day.engineWeek),session=week?.sessions?.find(s=>s.id===day.engineSessionId);\n    if(session){const compressed=programEngine.compressSession(session,readiness.timeAvailable);day=engineSessionToLegacyDay(compressed,day);day.adaptationNotes=[...(day.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+readiness.timeAvailable+' available minutes.'];}\n  }
+  let day=applyReadinessToDay(readinessContext.day,readiness);
+  if(day.engineBacked&&readiness.timeAvailable&&readiness.timeAvailable<(day.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){\n    const engine=currentEngineProgram(),week=engine?.program?.weeks?.find(w=>w.week===day.engineWeek),session=week?.sessions?.find(s=>s.id===day.engineSessionId);
+    if(session){const compressed=programEngine.compressSession(session,readiness.timeAvailable);day=engineSessionToLegacyDay(compressed,day);day.adaptationNotes=[...(day.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+readiness.timeAvailable+' available minutes.'];}\n  }
   const scheduledDate=readinessContext.scheduledDate;
   const context=programContext(dateFromKey(scheduledDate));
   const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
@@ -1832,7 +1837,8 @@ function createWorkout(day,meta={}){
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,
-    warmup:plannedWarmup(day),cooldown:plannedCooldown(day),\n    engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
+    warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
+    engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
     exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
@@ -3583,7 +3589,8 @@ function renderWorkoutIntro(w){
   const topNote=notes[0]||'Targets are based on your recent training and readiness.';
   const warmupSeconds=(w.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
   const cooldownSeconds=(w.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
-  const minimumIds=new Set(w.engineMinimumViable||[]);\n  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
+  const minimumIds=new Set(w.engineMinimumViable||[]);
+  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
     const loadLabel=ex.loadMode==='bodyweight'||ex.loadMode==='timed'||ex.loadMode==='band'
       ? (ex.loadMode==='timed'?'Timed':'Bodyweight')
       : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
