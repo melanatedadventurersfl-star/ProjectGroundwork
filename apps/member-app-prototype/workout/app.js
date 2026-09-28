@@ -2377,6 +2377,18 @@ function completeCurrentSet(){
   beginRest(next,pos.exercise.rest||45);
 }
 
+function skipCurrentSet(reason='Skipped by user'){
+ const pos=getActivePosition();if(!pos||pos.workout.phase!=='work')return;
+ const key=workoutActionKey(pos.workout,'skip-set',pos.ei,pos.si);if(!claimWorkoutAction(pos.workout,key))return;
+ pos.set.skipped=true;pos.set.skipReason=reason;pos.set.completed=false;pos.set.completedAt=null;
+ const next=nextPosition(pos.workout,pos.ei,pos.si);
+ if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
+ beginRest(next,Math.min(30,pos.exercise.rest||30));
+}
+function skipRest(){
+ const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
+ const token=w.restToken;w.restEndsAt=new Date().toISOString();w.restPausedRemaining=null;saveStore();advanceAfterRest(token);
+}
 function applyCalibration(rir){
   const pos=getActivePosition(); if(!pos||pos.workout.phase!=='calibrate')return;
   const actual=num(pos.exercise.sets[0].weight)||num(pos.exercise.suggestedWeight);
@@ -2607,6 +2619,7 @@ function finalizeWorkout(status='complete'){
   }
   if(entry.engineBacked){ingestEngineWorkout(entry);maybeCreateNextEngineBlock(entry);}
   ['pendingPosition','restEndsAt','restPausedRemaining','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
+  if(store.history.some(item=>item.id===entry.id)){store.activeWorkout=null;saveStore();currentTab='summary';render();return;}
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
   if(entry.sharedSession){
     const shared=sharedTrainingState();
