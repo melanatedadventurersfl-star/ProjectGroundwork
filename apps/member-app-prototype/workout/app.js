@@ -3721,28 +3721,90 @@ function renderHistoryMenuSheet(){
     '<div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
 }
 
+function latestCompletedWorkout(){
+  return [...(store.history||[])].filter(item=>item?.completedAt).sort((a,b)=>Date.parse(b.completedAt)-Date.parse(a.completedAt))[0]||null;
+}
+function daysSince(iso,date=new Date()){
+  const value=Date.parse(iso||'');if(!Number.isFinite(value))return null;
+  const today=new Date(date);today.setHours(0,0,0,0);
+  const then=new Date(value);then.setHours(0,0,0,0);
+  return Math.max(0,Math.floor((today-then)/86400000));
+}
+function getHomeExperience(date=new Date()){
+  const schedule=currentWeekSchedule(date);
+  const todayKey=dateKey(date);
+  const completedToday=schedule.find(entry=>entry.dateKey===todayKey&&entry.status==='complete');
+  const today=schedule.find(entry=>entry.dateKey===todayKey&&entry.status==='today');
+  const missed=schedule.find(entry=>entry.status==='missed');
+  const upcoming=schedule.find(entry=>entry.status==='upcoming');
+  const last=latestCompletedWorkout();
+  const awayDays=daysSince(last?.completedAt,date);
+  const context=programContext(date);
+  if(store.activeWorkout){
+    const w=store.activeWorkout;
+    const resolved=workoutResolvedCount(w);
+    return {state:'active',context,schedule,eyebrow:'WORKOUT IN PROGRESS',title:w.routineName||'Current workout',copy:resolved+' of '+(w.exercises?.length||0)+' exercises resolved',meta:workoutElapsedSeconds(w)>60?formatClock(workoutElapsedSeconds(w))+' elapsed':'Ready when you are',primaryLabel:'RESUME WORKOUT',primaryAction:'resume',entry:null,last};
+  }
+  if(completedToday){
+    const history=completedToday.history||last;
+    const improvements=(history?.newPRs?.length||0);
+    return {state:'completed',context,schedule,eyebrow:'YOU’RE DONE FOR TODAY',title:history?.routineName||completedToday.day?.name||'Workout complete',copy:(history?.durationMinutes?history.durationMinutes+' min · ':'')+(history?.completedSets||0)+' sets completed',meta:improvements?improvements+' improvement'+(improvements===1?'':'s')+' recorded':'Your work is saved',primaryLabel:'SEE YOUR WORKOUT',primaryAction:'history',entry:completedToday,last};
+  }
+  if(awayDays!==null&&awayDays>=7){
+    const entry=today||missed||upcoming||null;
+    const day=entry?.adaptedDay||entry?.day;
+    return {state:'returning',context,schedule,eyebrow:'WELCOME BACK',title:day?.name||'Your program is ready',copy:'It’s been '+awayDays+' days since your last workout.',meta:day?'~'+(day.estimatedMinutes||store.profile?.minutes||45)+' min · '+day.exercises.length+' exercises':'Pick up from your current program',primaryLabel:entry&&(entry.status==='missed'||entry.status==='today')?(entry.status==='missed'?'START COMEBACK WORKOUT':'START WORKOUT'):'VIEW NEXT WORKOUT',primaryAction:entry&&(entry.status==='missed'||entry.status==='today')?'start':'train',entry,last};
+  }
+  if(missed){
+    const day=missed.adaptedDay||missed.day;
+    return {state:'missed',context,schedule,eyebrow:'STILL AVAILABLE',title:day?.name||'Missed workout',copy:'This session can move with you. You do not have to abandon the week.',meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises',primaryLabel:'DO IT TODAY',primaryAction:'start',entry:missed,last};
+  }
+  if(today){
+    const day=today.adaptedDay||today.day;
+    const previous=(store.history||[]).find(item=>item.routineName===day?.name);
+    return {state:'today',context,schedule,eyebrow:'TODAY',title:day?.name||'Today’s workout',copy:day?.focus||'Your planned training session',meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises'+(previous?' · last done '+(daysSince(previous.completedAt,date)||0)+' days ago':''),primaryLabel:'START WORKOUT',primaryAction:'start',entry:today,last};
+  }
+  if(upcoming){
+    const day=upcoming.adaptedDay||upcoming.day;
+    const when=upcoming.date.toLocaleDateString(undefined,{weekday:'long'});
+    return {state:'rest',context,schedule,eyebrow:'RECOVERY DAY',title:'No workout scheduled today',copy:'Your next session is '+day?.name+' on '+when+'.',meta:'Rest is part of the program.',primaryLabel:'VIEW NEXT WORKOUT',primaryAction:'train',entry:upcoming,last};
+  }
+  return {state:'week-complete',context,schedule,eyebrow:'WEEK COMPLETE',title:'Your planned sessions are done',copy:'Your next training week will build from what you completed.',meta:'Block '+context.blockNumber+' · Week '+context.blockWeek,primaryLabel:'VIEW PROGRESS',primaryAction:'progress',entry:null,last};
+}
+function renderHomePrimaryAction(x){
+  if(x.primaryAction==='start'&&x.entry)return '<button class="button primary-action home-state-cta" data-start="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">'+esc(x.primaryLabel)+'</button>';
+  return '<button class="button primary-action home-state-cta" data-action="'+esc(x.primaryAction)+'">'+esc(x.primaryLabel)+'</button>';
+}
+function renderHomeWeekPulse(schedule){
+  const context=programContext();
+  return '<div class="home-week-pulse">'+TRAINING_DAYS.map(dayDef=>{
+    const entry=schedule.find(item=>item.dayId===dayDef.id);
+    const date=addDays(context.weekStart,dayOffsetFromMonday(dayDef.id));
+    const status=entry?.status||'rest';
+    const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'•':status==='upcoming'?'○':'';
+    return '<div class="home-pulse-day status-'+status+'"><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><em>'+marker+'</em></div>';
+  }).join('')+'</div>';
+}
 function renderHome(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
-  const context=programContext(),decision=adaptationDecision(),schedule=currentWeekSchedule();
+  const x=getHomeExperience(),schedule=x.schedule,context=x.context;
   const completed=schedule.filter(entry=>entry.status==='complete').length;
-  const next=nextScheduledSession(),day=next?.adaptedDay||next?.day||null;
-  const missed=schedule.filter(entry=>entry.status==='missed');
-  const volume=weeklyVolumeValue();
-  const name=displayName()==='there'?'':displayName();
+  const planned=schedule.length;
   const shared=sharedTrainingState();
-  return '<div class="clean-page home-clean">'+
-    '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div></section>'+
-    (store.activeWorkout?'<section class="clean-resume-card recovery-card"><button class="recovery-main" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button><div class="recovery-actions"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div></section>':'')+
-    '<section class="today-card '+(next?.status==='missed'?'missed':'')+'"><div class="today-card-top"><div><span>'+(next?.status==='missed'?'MISSED WORKOUT':next?.status==='today'?'TODAY’S WORKOUT':'NEXT WORKOUT')+'</span><em>'+esc(blockPhaseLabel(context.blockWeek))+'</em></div><strong>~'+esc(day?.estimatedMinutes||p.minutes)+' min</strong></div>'+
-      '<div class="today-card-body"><div><h3>'+esc(day?.name||'Week complete')+'</h3><p>'+esc(day?.focus||'Your next training week will adapt from this one.')+'</p>'+(day?'<small>'+day.exercises.length+' exercises · '+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</small>':'')+'</div></div>'+
-      (next&&!store.activeWorkout?'<button class="button primary-action today-start" data-start="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">'+(next.status==='missed'?'MAKE UP WORKOUT':next.status==='today'?'START WORKOUT':'PREPARE WORKOUT')+'</button>':'')+
-      (next?'<div class="today-secondary-actions"><button class="text-button" data-action="mark-scheduled-complete" data-day-id="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">✓ MARK COMPLETE</button><button class="text-button" data-action="share-next-workout">◎ WORK OUT TOGETHER</button></div>':'')+
+  const name=displayName()==='there'?'':displayName();
+  const todayLabel=name?'Hey, '+esc(name)+'.':'Your training.';
+  return '<div class="clean-page home-clean home-contextual">'+
+    '<section class="home-greeting contextual-greeting"><div><p class="eyebrow">GOWORKOUT</p><h2>'+todayLabel+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div></section>'+
+    '<section class="home-state-hero state-'+esc(x.state)+'">'+
+      '<div class="home-state-copy"><span>'+esc(x.eyebrow)+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+esc(x.meta)+'</small></div>'+
+      renderHomePrimaryAction(x)+
+      (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
-    '<section class="clean-section week-overview"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+'/'+schedule.length+' workouts</h3></div><button class="text-button" data-action="train">SEE PROGRAM</button></div>'+renderCompactWeek(schedule)+
-      (missed.length?'<div class="missed-summary"><strong>'+missed.length+' missed session'+(missed.length===1?'':'s')+'</strong><span>They stay available to make up, complete manually, or skip.</span></div>':'')+
+    '<section class="clean-section home-week-section"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+' of '+planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
+      renderHomeWeekPulse(schedule)+
+      '<div class="home-week-progress" aria-label="'+completed+' of '+planned+' workouts complete"><span style="width:'+Math.round((completed/Math.max(1,planned))*100)+'%"></span></div>'+
     '</section>'+
-    '<section class="home-progress-grid"><button class="mini-metric-card" data-action="progress"><span>WORKOUTS</span><strong>'+completed+'/'+schedule.length+'</strong><small>This week</small></button><button class="mini-metric-card" data-action="progress"><span>VOLUME</span><strong>'+formatVolume(volume)+'</strong><small>This week</small></button></section>'+
-    '<section class="clean-panel adaptation-card"><div><span>THIS WEEK’S ADAPTATION</span><strong>'+esc(decision.mode.toUpperCase())+'</strong><p>'+esc(decision.notes.join(' ')||'Keep building from the targets earned in your previous sessions.')+'</p></div><button class="text-button" data-action="progress">WHY?</button></section>'+
+    (x.last&&x.state!=='completed'?'<button class="home-continuity-card" data-action="history"><div><span>LAST WORKOUT</span><strong>'+esc(x.last.routineName||'Workout')+'</strong><small>'+esc(formatDate(x.last.completedAt))+(x.last.durationMinutes?' · '+x.last.durationMinutes+' min':'')+'</small></div><em>VIEW →</em></button>':'')+
     (shared.draft?'<button class="shared-home-card" data-action="together"><div class="shared-avatar-stack small"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((shared.draft.partnerName[0]||'P').toUpperCase())+'</div></div><div><span>SHARED WORKOUT</span><strong>'+esc(shared.draft.routineName)+' with '+esc(shared.draft.partnerName)+'</strong><small>'+esc(shared.draft.partnerStatus==='ready'?'Both ready':'Invite pending')+'</small></div><em>→</em></button>':'')+
   '</div>';
 }
