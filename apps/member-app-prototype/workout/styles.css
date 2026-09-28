@@ -3946,3 +3946,11 @@ html.embedded-workout main { padding: 8px 0 28px; }
   .program-day-row{grid-template-columns:50px minmax(0,1fr) auto}
   .program-day-main>small{max-width:45vw}
 }
+
+/* Program Engine integration slice 1 */
+.engine-program-card{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.engine-program-card>div{display:grid;gap:5px}
+.engine-program-card h3,.engine-program-card p,.engine-program-card small{margin:0}
+.engine-program-card small{display:block;opacity:.72}
+.engine-program-badge{flex:0 0 auto;border:1px solid currentColor;border-radius:999px;padding:7px 10px;font-size:.7rem;font-weight:800;letter-spacing:.08em}
+@media(max-width:620px){.engine-program-card{align-items:flex-start;flex-direction:column}}
