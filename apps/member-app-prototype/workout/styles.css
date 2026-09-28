@@ -3973,3 +3973,9 @@ html.embedded-workout main { padding: 8px 0 28px; }
 /* Workout runner hardening */
 .set-primary-actions{display:grid;gap:8px}
 .set-primary-actions .text-button{justify-self:center}
+
+/* Workout recovery */
+.recovery-card{display:grid;padding:0;overflow:hidden}
+.recovery-main{display:flex;width:100%;align-items:center;justify-content:space-between;gap:14px;padding:16px;background:transparent;border:0;text-align:left;color:inherit}
+.recovery-main div{display:grid;gap:3px}.recovery-main span{font-size:.7rem;font-weight:800;letter-spacing:.08em}.recovery-main small{opacity:.72}
+.recovery-actions{display:flex;gap:16px;padding:10px 16px;border-top:1px solid var(--line,#d8d8d2)}

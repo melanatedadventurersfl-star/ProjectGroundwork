@@ -45,11 +45,7 @@ const defaultStore = {
 
 let store = loadStore();
 let clearedLegacyActiveWorkout = false;
-if (store.activeWorkout && store.activeWorkout.schemaVersion !== ACTIVE_WORKOUT_SCHEMA) {
-  store.activeWorkout = null;
-  clearedLegacyActiveWorkout = true;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-}
+if(store.activeWorkout){const bootRecovery=validateActiveWorkoutCandidate(store.activeWorkout,store.history);if(bootRecovery.valid)store.activeWorkout=bootRecovery.workout;else{store.activeWorkout=null;clearedLegacyActiveWorkout=true;localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}}
 const restoredUiState=loadUiState();
 const allowedTabs=new Set(['home','train','together','progress','profile','profile-edit','catalog','workout','history','summary']);
 let restoredTab=allowedTabs.has(restoredUiState.currentTab)?restoredUiState.currentTab:'';
@@ -117,6 +113,28 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
+const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
+function validateActiveWorkoutCandidate(candidate,history=store.history){
+ if(!candidate)return {valid:false,reason:'missing'};
+ if(candidate.schemaVersion!==ACTIVE_WORKOUT_SCHEMA)return {valid:false,reason:'schema'};
+ if(!candidate.id||!candidate.startedAt||!Array.isArray(candidate.exercises)||!candidate.exercises.length)return {valid:false,reason:'shape'};
+ if((history||[]).some(item=>item.id===candidate.id))return {valid:false,reason:'already-completed'};
+ if(candidate.phase==='complete'||!RESUMABLE_WORKOUT_PHASES.has(candidate.phase))return {valid:false,reason:'phase'};
+ const started=Date.parse(candidate.startedAt);if(!Number.isFinite(started))return {valid:false,reason:'started-at'};
+ const ageHours=(Date.now()-started)/3600000;if(ageHours>24)return {valid:false,reason:'stale',stale:true};
+ const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
+ const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
+ w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;
+ if(w.phase==='rest'&&!w.pendingPosition){w.phase='pre-set';w.restEndsAt=null;w.restPausedRemaining=null;w.restToken=null;}
+ if(w.phase==='rest'&&!w.restToken)w.restToken=newTimerToken('rest',w);
+ return {valid:true,workout:w,ageHours};
+}
+function reconcileActiveWorkout(source='local'){
+ const check=validateActiveWorkoutCandidate(store.activeWorkout,store.history);
+ if(check.valid){store.activeWorkout=check.workout;return {action:'resume',source,...check};}
+ if(store.activeWorkout)store.activeWorkout=null;
+ return {action:check.stale?'discard-stale':'clear-invalid',source,...check};
+}
 function cloudStatePayload(){
   return {user_id:store.account?.userId,profile:store.profile,plan:store.plan,calibration:store.calibration||{},progression:store.progression||{},progression_log:store.progressionLog||[],exercise_preferences:store.exercisePreferences||{},training_program:store.trainingProgram||{},cue_settings:store.cueSettings||{},history:store.history||[],active_workout:store.activeWorkout||null,last_summary_id:store.lastSummaryId||null,onboarding_complete:Boolean(store.profile&&store.plan),onboarding_step:store.profile&&store.plan?'complete':'profile',updated_at:new Date().toISOString()};
 }
@@ -136,8 +154,9 @@ async function hydrateCloudState(userId){
   if(error)throw error;
   if(!data){await syncCloudState();cloudHydrating=false;return false;}
   cloudHydrating=true;
-  for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['active_workout','activeWorkout'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
-  localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
+  for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
+  if(data.active_workout!==undefined){const cloudCandidate=validateActiveWorkoutCandidate(data.active_workout,store.history);store.activeWorkout=cloudCandidate.valid?cloudCandidate.workout:null;}
+  reconcileActiveWorkout('cloud');localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
   if(store.profile&&store.plan&&currentTab==='profile-edit')currentTab=store.activeWorkout?'workout':'home';
   render();return true;
 }
@@ -2637,6 +2656,13 @@ function finishWorkout(auto=false){
   openWorkoutReview();
 }
 
+function discardRecoveredWorkout(startNew=false){
+ if(!store.activeWorkout)return;
+ const name=store.activeWorkout.routineName||'current workout';
+ if(!confirm('Discard '+name+'? Logged progress in this unfinished session will be removed.'))return;
+ store.activeWorkout=null;saveStore();currentTab=startNew?'train':'home';render();
+ if(startNew)toast('Choose the workout you want to start.');
+}
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
 
 function renderProfileEditor(){
@@ -3653,7 +3679,7 @@ function renderHome(){
   const shared=sharedTrainingState();
   return '<div class="clean-page home-clean">'+
     '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div></section>'+
-    (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button>':'')+
+    (store.activeWorkout?'<section class="clean-resume-card recovery-card"><button class="recovery-main" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button><div class="recovery-actions"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div></section>':'')+
     '<section class="today-card '+(next?.status==='missed'?'missed':'')+'"><div class="today-card-top"><div><span>'+(next?.status==='missed'?'MISSED WORKOUT':next?.status==='today'?'TODAY’S WORKOUT':'NEXT WORKOUT')+'</span><em>'+esc(blockPhaseLabel(context.blockWeek))+'</em></div><strong>~'+esc(day?.estimatedMinutes||p.minutes)+' min</strong></div>'+
       '<div class="today-card-body"><div><h3>'+esc(day?.name||'Week complete')+'</h3><p>'+esc(day?.focus||'Your next training week will adapt from this one.')+'</p>'+(day?'<small>'+day.exercises.length+' exercises · '+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</small>':'')+'</div></div>'+
       (next&&!store.activeWorkout?'<button class="button primary-action today-start" data-start="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">'+(next.status==='missed'?'MAKE UP WORKOUT':next.status==='today'?'START WORKOUT':'PREPARE WORKOUT')+'</button>':'')+
@@ -4300,6 +4326,8 @@ function handleClick(event){
   else if(a==='undo-active-swap')undoExerciseSwap('active',Number(node.dataset.swapIndex));
   else if(a==='toggle-workout-pause')toggleWorkoutPause();
   else if(a==='complete-set')completeCurrentSet();
+  else if(a==='discard-recovered')discardRecoveredWorkout(false);
+  else if(a==='discard-and-new')discardRecoveredWorkout(true);
   else if(a==='skip-current-set')skipCurrentSet();
   else if(a==='start-set-now')finishPreSet();
   else if(a==='end-timed-set')completeTimedSet(true);
