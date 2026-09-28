@@ -1153,7 +1153,7 @@ function exerciseMediaState(ex){
   const spec=exerciseMediaSpec(ex);
   if(spec.status==='reference')return {kind:'review',label:'IMAGE UNDER REVIEW',note:spec.note||'This available source does not directly demonstrate the exercise.'};
   if(spec.status==='missing')return {kind:'missing',label:'DEMO COMING SOON',note:spec.note};
-  return {kind:'direct',label:'2-POSITION DEMO',note:'Two movement positions are available for this exercise.'};
+  return {kind:'direct',label:'MOVEMENT DEMO',note:'Mapped directly to this exercise. Frame order stays neutral until start and finish positions are individually reviewed.'};
 }
 function renderExerciseMediaPlaceholder(ex,className,state){
   const label=state?.label||'DEMO COMING SOON';
