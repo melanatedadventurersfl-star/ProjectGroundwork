@@ -100,11 +100,12 @@ function AppShell() {
   const isTrailhead = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/';
   const isCommunityHub = /\/community\/?$/.test(pathname);
   const isManagement = pathname.startsWith('/management');
+  const isWorkoutSurface = pathname === '/workout' || pathname.startsWith('/workout/');
   const isGoMemberSurface = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && !isManagement && !isAdminSurface && !isLegacyOrganizationPreview;
   const memberGateLocked = isGoMemberSurface && memberSurfaceGate !== 'allowed';
   const tutorialGateLocked = Boolean(session) && !isAuthScreen && !isProtectedWorkspace && (!tutorialGateReady || memberGateLocked);
-  const hideBottomNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || keyboardVisible || tutorialGateLocked || tutorialVisible;
-  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || memberGateLocked || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
+  const hideBottomNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || isWorkoutSurface || memberGateLocked || keyboardVisible || tutorialGateLocked || tutorialVisible;
+  const hideTopNav = isLoading || isAuthScreen || isProtectedWorkspace || isManagement || isWorkoutSurface || memberGateLocked || isTrailhead || isCommunityHub || tutorialGateLocked || tutorialVisible;
 
   useEffect(() => {
     if (isLoading || firstScreenLoggedRef.current) return;
@@ -290,7 +291,7 @@ function AppShell() {
             <Stack.Screen name="reset-password" /><Stack.Screen name="tenant-sign-in" /><Stack.Screen name="tenant-sign-up" /><Stack.Screen name="host-login" /><Stack.Screen name="vendor-login" /><Stack.Screen name="adventures" /><Stack.Screen name="checkout" />
             <Stack.Screen name="readiness" /><Stack.Screen name="notifications" /><Stack.Screen name="passport" />
             <Stack.Screen name="member" /><Stack.Screen name="experience" /><Stack.Screen name="host" /><Stack.Screen name="vendor" /><Stack.Screen name="overwatch" /><Stack.Screen name="management" /><Stack.Screen name="trail-guide" />
-            <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" />
+            <Stack.Screen name="community-guidelines" /><Stack.Screen name="whats-new" /><Stack.Screen name="workout" />
           </Stack>
         </KeyboardAvoidingView>
       </View>
