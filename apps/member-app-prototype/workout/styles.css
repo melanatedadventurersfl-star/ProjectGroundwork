@@ -4429,3 +4429,129 @@ body.workout-mode .cleaned-workout{
   .train-block-step strong{font-size:8px}
   .train-block-step span{font-size:7px}
 }
+
+
+/* GoWorkout Experience Slice 10D: human-facing program decisions */
+.human-program-card{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+.human-program-card>div{display:grid;gap:5px}
+.human-program-card h3,.human-program-card p,.human-program-card small{margin:0}
+.human-program-card h3{font-size:22px}
+.human-program-card p{color:var(--text);font-size:12px}
+.human-program-card small{color:var(--muted);font-size:10px}
+.human-program-phase{
+  flex:0 0 auto;
+  padding:7px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.program-decision-card{display:grid;gap:16px}
+.program-decision-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+.program-decision-head>div{display:grid;gap:6px}
+.program-decision-head h3,.program-decision-head p{margin:0}
+.program-decision-head h3{font-size:23px;letter-spacing:-.025em}
+.program-decision-head p{max-width:650px;color:var(--muted);font-size:12px;line-height:1.5}
+.program-decision-status{
+  flex:0 0 auto;
+  padding:7px 10px;
+  border:1px solid currentColor;
+  border-radius:999px;
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.program-decision-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+.program-decision-grid>div{
+  display:grid;
+  gap:5px;
+  min-height:82px;
+  align-content:start;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--panel-2);
+}
+.program-decision-grid span,
+.program-next-step span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.11em;
+}
+.program-decision-grid strong{font-size:11px;line-height:1.35}
+.program-why-toggle{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 0 0;
+  border:0;
+  border-top:1px solid var(--line);
+  background:transparent;
+  color:var(--text);
+  text-align:left;
+  font-size:10px;
+  font-weight:900;
+  cursor:pointer;
+}
+.program-why-toggle em{color:var(--accent-2);font-size:18px;font-style:normal;font-weight:400}
+.program-why-panel{
+  display:grid;
+  gap:12px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:var(--panel-2);
+}
+.program-why-panel>p{margin:0;color:var(--text);font-size:12px;line-height:1.55}
+.program-why-panel>small{color:var(--muted);font-size:9px}
+.program-evidence{display:flex;flex-wrap:wrap;gap:7px}
+.program-evidence span{
+  padding:6px 8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--muted);
+  font-size:8px;
+}
+.program-next-step{
+  display:grid;
+  gap:5px;
+  padding-top:11px;
+  border-top:1px solid var(--line);
+}
+.program-next-step strong{font-size:11px;line-height:1.45}
+.human-learning-card h3{margin:4px 0 5px}
+.human-learning-card p{margin:0;color:var(--muted);line-height:1.5}
+.human-learning-card small{display:block;margin-top:7px;color:var(--muted)}
+.progress-engine-card.human-learning-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+@media(max-width:620px){
+  .human-program-card{flex-direction:column}
+  .program-decision-head{flex-direction:column}
+  .program-decision-grid{grid-template-columns:1fr}
+  .program-decision-grid>div{min-height:0}
+  .progress-engine-card.human-learning-card{align-items:flex-start;flex-direction:column}
+}
