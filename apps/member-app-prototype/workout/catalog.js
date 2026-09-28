@@ -62,8 +62,11 @@ window.EXERCISE_MOVEMENTS = {
 
 /*
  * Exercise imagery is sourced from the public-domain Free Exercise DB.
- * Paths point at the repository's exercise image folders. If a specific
- * match fails to load, app.js falls back to a movement-level image.
+ * Each mapped source supplies two demonstration frames. Direct mappings
+ * may appear as exercise demonstrations. Known approximations are marked
+ * status:"reference" so the app does not present a different movement as
+ * if it were the requested exercise. Movement fallbacks are retained only
+ * as metadata for future review, not as silent demonstration replacements.
  */
 window.EXERCISE_MEDIA = {
   'goblet-squat': {sourceId:'Goblet_Squat'},
@@ -85,19 +88,19 @@ window.EXERCISE_MEDIA = {
   'cable-row': {sourceId:'Seated_Cable_Rows'},
   'chest-row': {sourceId:'Dumbbell_Incline_Row'},
   'one-arm-row': {sourceId:'One-Arm_Dumbbell_Row'},
-  'band-row': {sourceId:'Band_Pull_Apart'},
+  'band-row': {sourceId:'Band_Pull_Apart',status:'reference',note:'Band pull-apart is not the same movement as a band row.'},
   'lat-pulldown': {sourceId:'Wide-Grip_Lat_Pulldown'},
   'assisted-pullup': {sourceId:'Assisted_Chin-Up'},
   'pull-up': {sourceId:'Pullups'},
-  'band-pulldown': {sourceId:'Straight-Arm_Pulldown'},
+  'band-pulldown': {sourceId:'Straight-Arm_Pulldown',status:'reference',note:'Straight-arm pulldown imagery is only a movement reference.'},
   'shoulder-press-machine': {sourceId:'Machine_Shoulder_Military_Press'},
   'db-shoulder-press': {sourceId:'Dumbbell_Shoulder_Press'},
   'overhead-press': {sourceId:'Standing_Military_Press'},
-  'pike-pushup': {sourceId:'Handstand_Push-Ups'},
+  'pike-pushup': {sourceId:'Handstand_Push-Ups',status:'reference',note:'Handstand push-up imagery is not a direct pike push-up demonstration.'},
   'leg-curl': {sourceId:'Lying_Leg_Curls'},
   'leg-extension': {sourceId:'Leg_Extensions'},
   'lateral-raise': {sourceId:'Side_Lateral_Raise'},
-  'band-lateral-raise': {sourceId:'Band_Pull_Apart'},
+  'band-lateral-raise': {sourceId:'Band_Pull_Apart',status:'reference',note:'Band pull-apart imagery does not demonstrate a lateral raise.'},
   'biceps-curl': {sourceId:'Alternate_Hammer_Curl'},
   'cable-curl': {sourceId:'High_Cable_Curls'},
   'triceps-pushdown': {sourceId:'Triceps_Pushdown'},
@@ -107,8 +110,8 @@ window.EXERCISE_MEDIA = {
   'dead-bug': {sourceId:'Dead_Bug'},
   'cable-crunch': {sourceId:'Cable_Crunch'},
   'prone-w-raise': {sourceId:'Lying_Rear_Delt_Raise'},
-  'prone-lat-pull': {sourceId:'Straight-Arm_Pulldown'},
-  'band-overhead-press': {sourceId:'Standing_Military_Press'}
+  'prone-lat-pull': {sourceId:'Straight-Arm_Pulldown',status:'reference',note:'Straight-arm pulldown imagery is not a direct prone lat pull demonstration.'},
+  'band-overhead-press': {sourceId:'Standing_Military_Press',status:'reference',note:'Barbell military press imagery does not show a band overhead press.'}
 };
 
 window.EXERCISE_MEDIA_FALLBACKS = {
