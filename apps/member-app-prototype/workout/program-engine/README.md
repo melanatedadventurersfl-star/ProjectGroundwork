@@ -1,4 +1,4 @@
-# GoWorkout Program Engine v1.1
+# GoWorkout Program Engine v1.2
 
 An isolated, deterministic programming layer for GoWorkout. The live workout execution flow is intentionally untouched until the engine is proven.
 
@@ -57,5 +57,14 @@ const program = E.buildProgram({
 console.log(program);
 ```
 
+## v1.2 feedback loop
+- Readiness scoring returns normal, reduced, or recovery modes from energy, sleep, soreness, and stress.
+- Readiness-adjusted sessions are cloned so the canonical prescription remains unchanged.
+- Performance ingestion reconciles completed exercises and sets against the planned session and calculates adherence.
+- Muscle-volume accounting separates primary sets from secondary contribution.
+- Time compression preserves priority movements before removing accessory work.
+- Adaptation decisions can continue, simplify, reduce, or progress the next block.
+- Program revisions create a new immutable version with a parent-version reference.
+
 ## Next engine layer
-Before UI integration, add persistent program/version storage, performance ingestion, readiness adaptation, richer volume allocation by muscle, session compression rules, and a larger production exercise/stretch library.
+Before UI integration, add persistent program/version storage, richer per-muscle volume targets, exercise-history-aware selection, discomfort/limitation routing, calendar scheduling, post-workout feedback rules, and a larger production exercise/stretch library.
