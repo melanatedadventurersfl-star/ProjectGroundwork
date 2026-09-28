@@ -4032,7 +4032,7 @@ function renderWorkout(){
     '<div class="step-strip clean-step-strip">'+w.exercises.map((ex,i)=>'<button type="button" class="step-pip '+(exerciseCountsAsResolved(ex)?'done':'')+' '+(i===pos.ei&&inExercise?'current':'')+' '+(exerciseState(ex)==='partial'?'partial':'')+'" data-action="jump-exercise" data-exercise-index="'+i+'" aria-label="'+esc(ex.name)+' · '+esc(exerciseStateLabel(ex))+'"></button>').join('')+'</div>'+
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
     '<section class="exercise-stage clean-exercise-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
-    '<nav class="workout-bottom-nav"><button data-action="previous-exercise" '+(current<=1?'disabled':'')+'>‹ <span>Previous</span></button><button class="workout-map-trigger" data-action="open-workout-map"><span>'+current+' / '+w.exercises.length+'</span><strong>Workout Map</strong></button><button data-action="next-exercise" '+(current>=w.exercises.length?'disabled':'')+'><span>Next</span> ›</button></nav>'+
+    '<nav class="workout-bottom-nav runner-workout-nav"><button data-action="previous-exercise" '+(current<=1?'disabled':'')+' aria-label="Previous exercise">‹ <span>Previous</span></button><button class="workout-map-trigger" data-action="open-workout-map"><span>'+current+' / '+w.exercises.length+'</span><strong>Workout Map</strong></button><button data-action="next-exercise" '+(current>=w.exercises.length?'disabled':'')+' aria-label="Next exercise"><span>Next</span> ›</button></nav>'+
     '<div class="workout-quiet-actions"><button class="text-button" data-action="finish">END SESSION</button><button class="text-button muted" data-action="home">LEAVE & RESUME LATER</button></div>'+
   '</div>';
 }
@@ -4161,35 +4161,50 @@ function suggestedLabel(ex){
   return ex.suggestedWeight?`${ex.suggestedWeight} lb`:'Calibration required';
 }
 
+function previousSetForPosition(ex,setIndex){
+  const previous=exerciseSessionHistory(ex.id,1)[0];
+  const set=previous?.sets?.[setIndex]||previous?.sets?.[previous.sets.length-1]||null;
+  return {session:previous,set};
+}
 function renderWorkSet(pos){
   const ex=pos.exercise;
   const isTimed=ex.loadMode==='timed';
   const noLoad=['bodyweight','timed','band'].includes(ex.loadMode);
   const defaultWeight=pos.set.weight ?? (ex.suggestedWeight||'');
   const defaultReps=pos.set.reps ?? ex.suggestedReps ?? '';
-  const previous=exerciseSessionHistory(ex.id,1)[0];
-  const lastLabel=previous?.sets?.length?previous.sets.map(set=>set.weight?set.weight+' × '+set.reps:set.reps+' reps').join(' · '):bestLabel(ex.id);
-  const setRows=ex.sets.map((set,index)=>{
-    const active=index===pos.si&&!set.completed;
-    if(active){
-      return '<div class="clean-set-row current"><span>SET '+(index+1)+'</span><label><input id="set-weight" inputmode="decimal" value="'+esc(defaultWeight)+'" placeholder="'+(noLoad?'—':'0')+'"><small>lb</small></label><label><input id="set-reps" inputmode="numeric" value="'+esc(defaultReps)+'" placeholder="'+(isTimed?'45':'0')+'"><small>'+(isTimed?'sec':'reps')+'</small></label><em>CURRENT</em></div>';
-    }
-    if(set.completed){
-      return '<button class="clean-set-row completed" data-action="edit-set" data-exercise-index="'+pos.ei+'" data-set-index="'+index+'"><span>SET '+(index+1)+'</span><strong>'+esc(setPerformanceLabel(ex,set))+'</strong><em>✓</em></button>';
-    }
-    return '<div class="clean-set-row pending"><span>SET '+(index+1)+'</span><strong>'+esc(set.weight||ex.suggestedWeight||'')+(set.weight||ex.suggestedWeight?' lb · ':'')+esc(set.reps||ex.suggestedReps||'')+' '+(isTimed?'sec':'reps')+'</strong><em>UP NEXT</em></div>';
+  const previous=previousSetForPosition(ex,pos.si);
+  const previousLabel=previous.set?setPerformanceLabel(ex,previous.set):'No previous set';
+  const completedCount=ex.sets.filter(set=>set.completed).length;
+  const target=currentPrescriptionLabel(ex);
+  const setProgress=ex.sets.map((set,index)=>{
+    const state=set.completed?'done':index===pos.si?'current':'future';
+    return '<span class="'+state+'" aria-label="Set '+(index+1)+' '+state+'">'+(set.completed?'✓':index+1)+'</span>';
   }).join('');
-  return '<div class="clean-active-exercise">'+
-    '<div class="clean-exercise-heading"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
-    '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
-    '<div class="clean-target-strip"><div><span>TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
-    '<div class="clean-set-list">'+setRows+'</div>'+
-    '<div class="set-primary-actions"><button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></div>'+
-    '<div class="clean-performance-note"><div><span>LAST TIME</span><strong>'+esc(lastLabel||'First session')+'</strong></div><div><span>TODAY</span><strong>'+esc(ex.adaptiveReason||'Hit the target with solid form.')+'</strong></div></div>'+
-    '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>More options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
+  const completedRows=ex.sets.map((set,index)=>{
+    if(!set.completed)return '';
+    return '<button class="runner-set-history" data-action="edit-set" data-exercise-index="'+pos.ei+'" data-set-index="'+index+'"><span>SET '+(index+1)+'</span><strong>'+esc(setPerformanceLabel(ex,set))+'</strong><em>EDIT</em></button>';
+  }).join('');
+  const upcomingCount=Math.max(0,ex.sets.length-completedCount-1);
+  const weightField=noLoad
+    ? '<input id="set-weight" type="hidden" value="">'
+    : '<label class="runner-input-card"><span>WEIGHT</span><div><input id="set-weight" inputmode="decimal" value="'+esc(defaultWeight)+'" placeholder="0"><small>lb</small></div></label>';
+  const repsLabel=isTimed?'SECONDS':'REPS';
+  return '<div class="runner-active-set">'+
+    '<div class="runner-exercise-head"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
+    '<div class="runner-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="runner-set-status"><div><span>SET '+(pos.si+1)+' OF '+ex.sets.length+'</span><strong>'+esc(target)+'</strong></div><div class="runner-set-pips">'+setProgress+'</div></div>'+
+    '<section class="runner-entry-panel"><div class="runner-entry-head"><div><span>CURRENT SET</span><strong>Enter what you complete</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
+      '<div class="runner-input-grid '+(noLoad?'single':'')+'">'+weightField+
+        '<label class="runner-input-card"><span>'+repsLabel+'</span><div><input id="set-reps" inputmode="numeric" value="'+esc(defaultReps)+'" placeholder="'+(isTimed?'45':'0')+'"><small>'+(isTimed?'sec':'reps')+'</small></div></label>'+
+      '</div>'+
+      '<div class="runner-reference-row"><div><span>PREVIOUS SET '+(pos.si+1)+'</span><strong>'+esc(previousLabel)+'</strong></div><div><span>TODAY’S AIM</span><strong>'+esc(ex.adaptiveReason||'Stay in the target range with clean form.')+'</strong></div></div>'+
+      '<div class="set-primary-actions runner-primary-actions"><button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button><button class="text-button" data-action="skip-current-set">SKIP THIS SET</button></div>'+
+    '</section>'+
+    (completedRows?'<section class="runner-completed-sets"><div class="runner-subhead"><span>COMPLETED TODAY</span><small>'+completedCount+' of '+ex.sets.length+' sets</small></div>'+completedRows+'</section>':'')+
+    (upcomingCount?'<div class="runner-upcoming-note"><span>'+upcomingCount+' set'+(upcomingCount===1?'':'s')+' after this</span><strong>Next sets inherit what you log here. You can edit them anytime.</strong></div>':'')+
+    '<button class="workout-cue-compact runner-options" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>Exercise options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
   '</div>';
 }
-
 function renderCalibration(pos){
   const first=pos.exercise.sets[0];
   return `<div class="calibration-stage"><p class="eyebrow">QUICK CALIBRATION</p><h3>How much did you have left?</h3><p>You completed ${esc(first.reps)} reps at ${first.weight?esc(first.weight)+' lb':'your chosen resistance'}. Estimate how many clean reps you could still have done. We’ll adjust the next sets and remember it.</p>
@@ -4242,11 +4257,14 @@ function renderExerciseTransition(w){
   const next=w.pendingPosition;
   const ex=next?w.exercises[next.ei]:null;
   if(!next||!ex)return '<div class="empty-state"><h2>No next exercise.</h2><button class="button" data-action="open-workout-review">REVIEW WORKOUT</button></div>';
-  return '<div class="exercise-transition-stage clean-transition-stage"><p class="eyebrow">UP NEXT · EXERCISE '+(next.ei+1)+' OF '+w.exercises.length+'</p>'+
-    '<div class="transition-hero">'+exerciseImageButton(ex,'next-exercise-media')+'<div><h2>'+esc(ex.name)+'</h2><p>'+esc(exerciseDescription(ex))+'</p><div class="transition-facts"><span>'+ex.sets.length+' sets · '+esc(ex.reps)+'</span><span>'+esc(equipmentRequirement(exerciseSource(ex)))+'</span></div></div></div>'+
-    '<div class="transition-target"><span>TODAY’S TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div>'+
-    '<button class="button primary-action" data-action="ready-next-exercise">I’M READY</button>'+
-    '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+next.ei+'"><span>•••</span><div><strong>Exercise options</strong><small>Swap · move later · already completed</small></div><em>›</em></button>'+
+  const guide=exerciseGuidance(ex);
+  return '<div class="runner-transition-stage">'+
+    '<div class="runner-transition-heading"><p class="eyebrow">UP NEXT · EXERCISE '+(next.ei+1)+' OF '+w.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div>'+
+    '<div class="runner-transition-media">'+exerciseImageButton(ex,'next-exercise-media')+'</div>'+
+    '<div class="runner-transition-facts"><div><span>TODAY’S TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><div><span>EQUIPMENT</span><strong>'+esc(equipmentRequirement(exerciseSource(ex)))+'</strong></div></div>'+
+    '<div class="runner-setup-cue"><span>SETUP</span><strong>'+esc(guide.setup||exerciseDescription(ex))+'</strong></div>'+
+    '<button class="button primary-action runner-ready-next" data-action="ready-next-exercise">I’M READY</button>'+
+    '<div class="runner-transition-actions"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">VIEW FORM</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+next.ei+'">EXERCISE OPTIONS</button></div>'+
   '</div>';
 }
 
@@ -4261,16 +4279,19 @@ function renderRest(pos){
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
   const preview=changingExercise&&nextEx?{index:next.ei,exercise:nextEx}:nextExercisePreview(pos.workout,pos.ei);
   const previewEx=preview?.exercise||null;
+  const justCompleted=pos.exercise?.sets?.findLast?.(set=>set.completed)||[...(pos.exercise?.sets||[])].reverse().find(set=>set.completed);
   const immediateLabel=changingExercise?'NEXT EXERCISE':next?'NEXT SET':'AFTER REST';
   const immediateName=changingExercise?(nextEx?.name||'Next exercise'):next?('Set '+(next.si+1)+' · '+(nextEx?.name||pos.exercise.name)):'Cooldown';
-  return '<div class="rest-stage clean-rest-stage"><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><div class="timer-wrap clean-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':changingExercise?'NEXT EXERCISE':'RECOVER')+'</div></div></div>'+
-    '<div class="rest-next-copy"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><p>'+(changingExercise?'Set up the next station. The app will wait until you are ready.':next?'Recover for the next set. Your next exercise is previewed below.':'Finish strong, then move into cooldown.')+'</p></div>'+
-    (previewEx?'<div class="rest-next-exercise-card">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button class="rest-next-exercise-copy" type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'"><span>NEXT EXERCISE · '+(preview.index+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+' · '+esc(currentPrescriptionLabel(previewEx))+'</small></button><em>›</em></div>':'<div class="rest-next-exercise-card cooldown-preview"><div><span>UP NEXT</span><strong>Cooldown</strong><small>Finish the session with guided recovery.</small></div></div>')+
-    '<div class="clean-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">SKIP</button></div>'+
-    '<div class="rest-tertiary"><button class="text-button" data-action="pause-rest">'+(paused?'Resume timer':'Pause timer')+'</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
+  const nextTarget=changingExercise&&nextEx?currentPrescriptionLabel(nextEx):next?currentPrescriptionLabel(pos.exercise):'Guided cooldown';
+  return '<div class="runner-rest-stage">'+
+    '<div class="runner-rest-top"><div><p class="eyebrow">'+(changingExercise?'TRANSITION':'REST')+'</p><h2>'+(paused?'Timer paused':'Recover')+'</h2></div>'+(justCompleted?'<div class="runner-just-completed"><span>LAST SET</span><strong>'+esc(setPerformanceLabel(pos.exercise,justCompleted))+'</strong></div>':'')+'</div>'+
+    '<div class="timer-wrap clean-timer-ring runner-timer-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
+    '<section class="runner-next-action"><span>'+immediateLabel+'</span><h3>'+esc(immediateName)+'</h3><strong>'+esc(nextTarget)+'</strong><p>'+(changingExercise?'Set up the next station. GoWorkout will wait for you.':next?'Recover, then continue with the same movement.':'Your strength work is complete.')+'</p></section>'+
+    (previewEx&&changingExercise?'<div class="runner-next-preview">'+exerciseImageButton(previewEx,'rest-next-exercise-media')+'<button type="button" data-action="jump-exercise" data-exercise-index="'+preview.index+'"><span>PREVIEW</span><strong>'+esc(previewEx.name)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(previewEx)))+'</small></button></div>':'')+
+    '<div class="clean-rest-actions runner-rest-actions"><button class="button secondary" data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button><button class="button" data-action="skip-rest">'+(changingExercise?'READY NOW':'SKIP REST')+'</button></div>'+
+    '<div class="rest-tertiary"><button class="text-button" data-action="pause-rest">'+(paused?'RESUME TIMER':'PAUSE TIMER')+'</button><button class="text-button muted" data-action="reset-timer">RESET</button></div>'+
   '</div>';
 }
-
 
 function renderHistory(){
   const context=programContext();
