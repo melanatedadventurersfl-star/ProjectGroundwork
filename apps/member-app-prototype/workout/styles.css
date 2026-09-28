@@ -3969,3 +3969,7 @@ html.embedded-workout main { padding: 8px 0 28px; }
 .workout-learning-card{display:grid;gap:7px;margin-top:14px}
 .workout-learning-card h3,.workout-learning-card p{margin:0}
 @media(max-width:620px){.program-evolution-head{flex-direction:column}.evolution-metrics{grid-template-columns:1fr}}
+
+/* Workout runner hardening */
+.set-primary-actions{display:grid;gap:8px}
+.set-primary-actions .text-button{justify-self:center}
