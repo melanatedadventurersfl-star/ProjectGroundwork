@@ -260,8 +260,9 @@ function scheduledEntriesForWeek(date=new Date()){
     const dayDef=TRAINING_DAYS.find(item=>item.id===dayId)||TRAINING_DAYS[index];
     const scheduledDate=addDays(context.weekStart,dayOffsetFromMonday(dayId));
     const key=dateKey(scheduledDate);
-    const day=store.plan.days[index%store.plan.days.length];
-    const entry={dayId,date:scheduledDate,dateKey:key,day,index,override:overrides[key]||null};
+    const fallbackDay=store.plan.days[index%store.plan.days.length];
+    const day=engineDayForSchedule(scheduledDate,index,fallbackDay);
+    const entry={dayId,date:scheduledDate,dateKey:key,day,index,override:overrides[key]||null,engineBacked:Boolean(day?.engineBacked)};
     const history=scheduleHistoryMatch(entry);
     const referenceDate=new Date(date);referenceDate.setHours(0,0,0,0);
     const todayKey=dateKey(referenceDate);
@@ -363,9 +364,10 @@ function rotateAccessoriesForBlock(day,blockNumber){
 }
 function adaptDayForProgramWeek(baseDay,date=new Date()){
   const decision=adaptationDecision(date);
-  const day=rotateAccessoriesForBlock(clone(baseDay),decision.context.blockNumber);
+  const engineBacked=Boolean(baseDay?.engineBacked);
+  const day=engineBacked?clone(baseDay):rotateAccessoriesForBlock(clone(baseDay),decision.context.blockNumber);
   const compounds=day.exercises.filter(ex=>!ACCESSORY_MOVEMENTS.has(ex.movement));
-  for(let i=0;i<Math.min(decision.addSets,compounds.length);i++)compounds[i].sets=Math.min(4,(compounds[i].sets||2)+1);
+  if(!engineBacked)for(let i=0;i<Math.min(decision.addSets,compounds.length);i++)compounds[i].sets=Math.min(4,(compounds[i].sets||2)+1);
   if(decision.reduceAccessories){
     for(const ex of day.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
   }
@@ -379,7 +381,7 @@ function adaptDayForProgramWeek(baseDay,date=new Date()){
   }
   day.programContext=decision.context;
   day.adaptationMode=decision.mode;
-  day.adaptationNotes=decision.notes;
+  day.adaptationNotes=engineBacked?[...decision.notes,'Program Engine week prescription retained; legacy progression bump skipped.']:decision.notes;
   return day;
 }
 function currentWeekSchedule(date=new Date()){
@@ -1555,6 +1557,17 @@ function refreshEngineProgram(profile=store.profile){
 }
 function currentEngineProgram(){const e=ensureTrainingProgram().engine;return e?.storageSchema===PROGRAM_ENGINE_STORE_SCHEMA&&e?.program?e:null;}
 function engineWeekForContext(context=programContext()){const e=currentEngineProgram();if(!e)return null;return e.program.weeks?.[(Math.max(1,context.blockWeek)-1)%4]||null;}
+const ENGINE_EXERCISE_TO_CATALOG={db_bench:'db-bench',pushup:'push-up',machine_press:'chest-press-machine',db_shoulder_press:'db-shoulder-press',cable_row:'cable-row',db_row:'one-arm-row',lat_pulldown:'lat-pulldown',goblet_squat:'goblet-squat',leg_press:'leg-press',db_rdl:'db-rdl',reverse_lunge:'reverse-lunge',leg_curl:'leg-curl',lateral_raise:'lateral-raise',db_curl:'biceps-curl',triceps_pressdown:'triceps-pushdown',calf_raise:'calf-raise',dead_bug:'dead-bug',incline_pushup:'push-up',inverted_row:'prone-w-raise',band_pulldown:'band-pulldown',split_squat:'split-squat',glute_bridge:'glute-bridge',pallof_press:'dead-bug',suitcase_carry:'plank'};
+function engineSessionForDate(date,index){const context=programContext(date),week=engineWeekForContext(context);return week?.sessions?.[index%Math.max(1,week.sessions.length)]||null;}
+function engineCatalogExercise(engineExercise){if(!engineExercise)return null;const mapped=ENGINE_EXERCISE_TO_CATALOG[engineExercise.id];return catalog.find(item=>item.id===mapped)||catalog.find(item=>item.name.toLowerCase()===String(engineExercise.name||'').toLowerCase())||null;}
+function engineSessionToLegacyDay(session,fallbackDay,index=0){
+  if(!session)return clone(fallbackDay);
+  const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||''};}).filter(Boolean);
+  const fallback=clone(fallbackDay||{});if(!exercises.length)return fallback;
+  const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
+  recalculatePlanDay(day);day.estimatedMinutes=num(session.timeBudget?.targetMinutes)||day.estimatedMinutes;return day;
+}
+function engineDayForSchedule(date,index,fallbackDay){const session=engineSessionForDate(date,index);return session?engineSessionToLegacyDay(session,fallbackDay,index):clone(fallbackDay);}
 function renderEngineProgramSummary(){
   const engine=currentEngineProgram();if(!engine)return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE</p><h3>Legacy plan active</h3><p>The new programming layer is unavailable, so your existing plan remains untouched.</p></div></section>';
   const context=programContext(),week=engineWeekForContext(context),audit=programEngine?.volumeAudit?.(engine.program),weekAudit=audit?.weeks?.find(item=>item.weekNumber===week?.weekNumber);
@@ -1745,7 +1758,8 @@ function scheduledEntryFor(dayId,scheduledDate=''){
 function openReadiness(dayId,scheduledDate=''){
   if(store.activeWorkout){currentTab='workout';render();toast('Resume or finish your current workout first.');return;}
   const entry=scheduledEntryFor(dayId,scheduledDate);
-  const baseDay=entry?.adaptedDay||adaptDayForProgramWeek(store.plan?.days?.find(day=>day.id===dayId),scheduledDate?dateFromKey(scheduledDate):new Date());
+  const scheduledBase=entry?.day||store.plan?.days?.find(day=>day.id===dayId);
+  const baseDay=entry?.adaptedDay||adaptDayForProgramWeek(scheduledBase,scheduledDate?dateFromKey(scheduledDate):new Date());
   if(!baseDay)return;
   readinessContext={dayId,scheduledDate:scheduledDate||entry?.dateKey||dateKey(),day:baseDay};
   render();
