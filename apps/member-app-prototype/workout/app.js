@@ -2847,6 +2847,32 @@ async function signOutWorkoutAccount(){
 function weeklyVolumeValue(){
   return weeklyHistory().reduce((sum,item)=>sum+(item.totalVolume||0),0);
 }
+function renderProgramWeek(date,label,expanded=true){
+  const schedule=currentWeekSchedule(date);
+  const context=programContext(date);
+  const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const title=label||('Week '+context.weekNumber);
+  return '<section class="program-week-card '+(expanded?'expanded':'compact')+'">'+
+    '<div class="program-week-head"><div><p class="eyebrow">'+esc(title)+'</p><h3>'+esc(context.weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(addDays(context.weekStart,6).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</h3></div><span>'+completed+'/'+schedule.length+' complete</span></div>'+
+    (expanded?'<div class="program-week-days">'+schedule.map(entry=>{
+      const status=entry.status||'rest';
+      const day=entry.adaptedDay||entry.day;
+      return '<article class="program-day-row status-'+status+'"><div class="program-day-date"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase())+'</span><strong>'+entry.date.getDate()+'</strong></div><div class="program-day-main"><span>'+esc(status==='today'?'TODAY':status==='upcoming'?'UPCOMING':status.toUpperCase())+'</span><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Recovery')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small></div>'+(entry&&!store.activeWorkout&&!['complete','skipped'].includes(status)?'<button class="button secondary small-button" data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">'+(status==='today'?'START':'PREPARE')+'</button>':'')+'</article>';
+    }).join('')+'</div>':'<div class="program-week-compact"><span>'+schedule.map(entry=>esc((entry.day?.name||'Rest')+' · '+entry.date.toLocaleDateString(undefined,{weekday:'short'}))).join('</span><span>')+'</span></div>')+
+  '</section>';
+}
+function renderProgramHorizon(){
+  const start=startOfWeek(new Date());
+  return '<div class="program-horizon">'+
+    renderProgramWeek(start,'THIS WEEK',true)+
+    renderProgramWeek(addDays(start,7),'NEXT WEEK',true)+
+    '<div class="program-horizon-grid">'+
+      renderProgramWeek(addDays(start,14),'WEEK 3',false)+
+      renderProgramWeek(addDays(start,21),'WEEK 4',false)+
+    '</div>'+
+  '</div>';
+}
+
 function renderCompactWeek(schedule){
   const context=programContext();
   return '<div class="compact-week">'+TRAINING_DAYS.map(dayDef=>{
@@ -2863,10 +2889,12 @@ function renderTrain(){
   const schedule=currentWeekSchedule();
   const context=programContext();
   return '<div class="clean-page">'+
-    '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Start a scheduled session, review the rotation, or browse exercises without cluttering Home.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
+    '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Plan and preview the next four weeks, with the current and next week fully expanded.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
-    '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW WEEK</button></section>'+
-    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM</p><h3>'+plan.days.length+'-day rotation</h3></div><button class="text-button" data-action="regenerate">Regenerate</button></div>'+
+    '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW HOME</button></section>'+
+    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM HORIZON</p><h3>4 weeks planned</h3></div><button class="text-button" data-action="regenerate">REGENERATE</button></div>'+
+    renderProgramHorizon()+
+    '<div class="clean-section-head program-rotation-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+'-day rotation</h3></div></div>'+
     '<div class="clean-routine-list">'+plan.days.map((day,index)=>{
       const scheduled=schedule.find(entry=>entry.day.id===day.id);
       const first=day.exercises[0];
@@ -3410,12 +3438,12 @@ function renderProfileHub(){
   return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large">'+esc((name[0]||'Y').toUpperCase())+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
-      '<button data-action="edit-profile"><div><span>TRAINING PROFILE</span><strong>Goals, schedule, gender, equipment, preferences</strong></div><em>›</em></button>'+
-      '<button data-action="train"><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
-      '<button data-action="together"><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
-      '<button data-action="open-cue-settings"><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
-      '<button data-action="account-info"><div><span>ACCOUNT</span><strong>'+(store.account?.email?esc(store.account.email):'Local prototype · backend sign-in foundation')+'</strong></div><em>›</em></button>'+
-      '<button data-action="history"><div><span>WORKOUT HISTORY</span><strong>'+store.history.length+' saved session'+(store.history.length===1?'':'s')+'</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>Goals, schedule, gender, equipment, preferences</strong></div><em>›</em></button>'+
+      '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
+      '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
+      '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
+      '<button data-action="account-info"><i class="settings-icon" aria-hidden="true">○</i><div><span>ACCOUNT</span><strong>'+(store.account?.email?esc(store.account.email):'Local prototype · backend sign-in foundation')+'</strong></div><em>›</em></button>'+
+      '<button data-action="history"><i class="settings-icon" aria-hidden="true">≡</i><div><span>WORKOUT HISTORY</span><strong>'+store.history.length+' saved session'+(store.history.length===1?'':'s')+'</strong></div><em>›</em></button>'+
     '</section>'+
     '<section class="prototype-note"><strong>Account model prepared for shared authentication.</strong><span>Detailed workout data remains browser-local in this prototype. The parent project already has Supabase infrastructure for the later account-backed migration.</span></section>'+
   '</div>';
@@ -3470,7 +3498,7 @@ function renderHome(){
   const name=displayName()==='there'?'':displayName();
   const shared=sharedTrainingState();
   return '<div class="clean-page home-clean">'+
-    '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div><button class="shell-icon-button" data-action="open-cue-settings" aria-label="Workout settings">◉</button></section>'+
+    '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div></section>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button>':'')+
     '<section class="today-card '+(next?.status==='missed'?'missed':'')+'"><div class="today-card-top"><div><span>'+(next?.status==='missed'?'MISSED WORKOUT':next?.status==='today'?'TODAY’S WORKOUT':'NEXT WORKOUT')+'</span><em>'+esc(blockPhaseLabel(context.blockWeek))+'</em></div><strong>~'+esc(day?.estimatedMinutes||p.minutes)+' min</strong></div>'+
       '<div class="today-card-body"><div><h3>'+esc(day?.name||'Week complete')+'</h3><p>'+esc(day?.focus||'Your next training week will adapt from this one.')+'</p>'+(day?'<small>'+day.exercises.length+' exercises · '+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</small>':'')+'</div></div>'+
