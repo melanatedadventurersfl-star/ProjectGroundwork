@@ -1,4 +1,4 @@
-# GoWorkout Program Engine v1.4
+# GoWorkout Program Engine v1.5
 
 An isolated, deterministic programming layer for GoWorkout. The live workout execution flow is intentionally untouched until the engine is proven.
 
@@ -78,5 +78,14 @@ console.log(program);
 - Pause/exit snapshots can be resumed without rebuilding the workout.
 - Event logs provide a trace of state, set, navigation, rest, and substitution actions.
 
+## v1.5 hardening
+- Warm-up and stretch steps are individually completion-tracked.
+- Final stretch completion closes the workout and produces a structured completion payload.
+- Execution snapshots serialize and restore set data, state, rest timers, and revisions.
+- Stale sessions route to explicit resume/discard handling.
+- Invalid or corrupt stored state routes to safe cleanup.
+- Revision guards reject stale writes that could overwrite newer workout data.
+- The isolated browser harness exercises generation, warm-up, set entry, preview, navigation, exit/restore, and stretching.
+
 ## Next engine layer
-Before live UI integration, add persistent/cloud execution storage, warm-up and stretch step completion, completion payload generation, crash/reload recovery tests, concurrent-write protection, and a dedicated browser test harness.
+After browser validation, connect persistence to the real workout storage boundary and integrate the engine behind the GoWorkout UI without replacing the existing execution path in one jump.
