@@ -124,7 +124,7 @@ function validateActiveWorkoutCandidate(candidate,history=store.history){
  const ageHours=(Date.now()-started)/3600000;if(ageHours>24)return {valid:false,reason:'stale',stale:true};
  const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
  const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
- w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;
+ w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;w.recoveryCheckpointAt=w.recoveryCheckpointAt||w.startedAt;
  if(w.phase==='rest'&&!w.pendingPosition){w.phase='pre-set';w.restEndsAt=null;w.restPausedRemaining=null;w.restToken=null;}
  if(w.phase==='rest'&&!w.restToken)w.restToken=newTimerToken('rest',w);
  return {valid:true,workout:w,ageHours};
@@ -134,6 +134,48 @@ function reconcileActiveWorkout(source='local'){
  if(check.valid){store.activeWorkout=check.workout;return {action:'resume',source,...check};}
  if(store.activeWorkout)store.activeWorkout=null;
  return {action:check.stale?'discard-stale':'clear-invalid',source,...check};
+}
+function historyRecordTime(item){
+ const value=Date.parse(item?.completedAt||item?.updatedAt||item?.startedAt||'');
+ return Number.isFinite(value)?value:0;
+}
+function mergeWorkoutHistory(localHistory=[],remoteHistory=[]){
+ const byId=new Map();
+ for(const item of [...(Array.isArray(localHistory)?localHistory:[]),...(Array.isArray(remoteHistory)?remoteHistory:[])]){
+  if(!item?.id)continue;
+  const current=byId.get(item.id);
+  if(!current||historyRecordTime(item)>=historyRecordTime(current))byId.set(item.id,clone(item));
+ }
+ return [...byId.values()].sort((a,b)=>historyRecordTime(b)-historyRecordTime(a)).slice(0,100);
+}
+function workoutRecoveryCheckpoint(workout){
+ const value=Date.parse(workout?.recoveryCheckpointAt||workout?.updatedAt||workout?.startedAt||'');
+ return Number.isFinite(value)?value:0;
+}
+function workoutRecoveryProgress(workout){
+ if(!workout)return 0;
+ let completedSets=0,resolvedExercises=0;
+ for(const ex of workout.exercises||[]){
+  const sets=Array.isArray(ex?.sets)?ex.sets:[];
+  completedSets+=sets.filter(set=>set?.completed||set?.skipped).length;
+  if(ex?.skipped||sets.length&&sets.every(set=>set?.completed||set?.skipped))resolvedExercises+=1;
+ }
+ return completedSets+(resolvedExercises*10)+(Math.max(0,num(workout.revision)||0)*100);
+}
+function chooseRecoveredWorkout(localCandidate,cloudCandidate,history){
+ const localCheck=validateActiveWorkoutCandidate(localCandidate,history);
+ const cloudCheck=validateActiveWorkoutCandidate(cloudCandidate,history);
+ if(!localCheck.valid&&!cloudCheck.valid)return {workout:null,source:'none',localCheck,cloudCheck};
+ if(localCheck.valid&&!cloudCheck.valid)return {workout:localCheck.workout,source:'local',localCheck,cloudCheck};
+ if(!localCheck.valid&&cloudCheck.valid)return {workout:cloudCheck.workout,source:'cloud',localCheck,cloudCheck};
+ const local=localCheck.workout,cloud=cloudCheck.workout;
+ if(local.id===cloud.id){
+  const localProgress=workoutRecoveryProgress(local),cloudProgress=workoutRecoveryProgress(cloud);
+  if(localProgress!==cloudProgress)return {workout:localProgress>cloudProgress?local:cloud,source:localProgress>cloudProgress?'local':'cloud',localCheck,cloudCheck};
+ }
+ const localCheckpoint=workoutRecoveryCheckpoint(local),cloudCheckpoint=workoutRecoveryCheckpoint(cloud);
+ if(localCheckpoint!==cloudCheckpoint)return {workout:localCheckpoint>cloudCheckpoint?local:cloud,source:localCheckpoint>cloudCheckpoint?'local':'cloud',localCheck,cloudCheck};
+ return {workout:local,source:'local',localCheck,cloudCheck};
 }
 function cloudStatePayload(){
   return {user_id:store.account?.userId,profile:store.profile,plan:store.plan,calibration:store.calibration||{},progression:store.progression||{},progression_log:store.progressionLog||[],exercise_preferences:store.exercisePreferences||{},training_program:store.trainingProgram||{},cue_settings:store.cueSettings||{},history:store.history||[],active_workout:store.activeWorkout||null,last_summary_id:store.lastSummaryId||null,onboarding_complete:Boolean(store.profile&&store.plan),onboarding_step:store.profile&&store.plan?'complete':'profile',updated_at:new Date().toISOString()};
@@ -150,18 +192,29 @@ async function syncCloudState(){
 }
 async function hydrateCloudState(userId){
   if(!workoutSupabase||!userId)return false;
+  const localHistory=clone(store.history||[]),localActive=store.activeWorkout?clone(store.activeWorkout):null;
   const {data,error}=await workoutSupabase.from('workout_user_state').select('*').eq('user_id',userId).maybeSingle();
   if(error)throw error;
   if(!data){await syncCloudState();cloudHydrating=false;return false;}
   cloudHydrating=true;
-  for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['history','history'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
-  if(data.active_workout!==undefined){const cloudCandidate=validateActiveWorkoutCandidate(data.active_workout,store.history);store.activeWorkout=cloudCandidate.valid?cloudCandidate.workout:null;}
-  reconcileActiveWorkout('cloud');localStorage.setItem(STORAGE_KEY,JSON.stringify(store));cloudHydrating=false;
+  for(const [remote,local] of [['profile','profile'],['plan','plan'],['calibration','calibration'],['progression','progression'],['progression_log','progressionLog'],['exercise_preferences','exercisePreferences'],['training_program','trainingProgram'],['cue_settings','cueSettings'],['last_summary_id','lastSummaryId']]) if(data[remote]!==null&&data[remote]!==undefined)store[local]=data[remote];
+  const remoteHistory=Array.isArray(data.history)?data.history:[];
+  const mergedHistory=mergeWorkoutHistory(localHistory,remoteHistory);
+  store.history=mergedHistory;
+  const recovery=chooseRecoveredWorkout(localActive,data.active_workout,mergedHistory);
+  store.activeWorkout=recovery.workout;
+  reconcileActiveWorkout('cloud');
+  const cloudActive=data.active_workout||null;
+  const shouldConverge=recovery.source==='local'||JSON.stringify(mergedHistory)!==JSON.stringify(remoteHistory)||JSON.stringify(store.activeWorkout||null)!==JSON.stringify(cloudActive);
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}catch{}
+  cloudHydrating=false;
+  if(shouldConverge)scheduleCloudStateSync();
   if(store.profile&&store.plan&&currentTab==='profile-edit')currentTab=store.activeWorkout?'workout':'home';
   render();return true;
 }
 function saveStore(){
   let persisted=true;
+  if(store.activeWorkout)store.activeWorkout.recoveryCheckpointAt=new Date().toISOString();
   try{
     localStorage.setItem(STORAGE_KEY,JSON.stringify(store));
   }catch{
