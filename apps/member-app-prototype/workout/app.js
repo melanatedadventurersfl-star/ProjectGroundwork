@@ -1606,6 +1606,32 @@ function engineSessionToLegacyDay(session,fallbackDay,index=0,blockNumber=progra
   day.estimatedMinutes=num(session.timeBudget?.targetMinutes)||day.estimatedMinutes;return day;
 }
 function engineDayForSchedule(date,index,fallbackDay){const context=programContext(date),session=engineSessionForDate(date,index);return session?engineSessionToLegacyDay(session,fallbackDay,index,context.blockNumber):clone(fallbackDay);}
+function engineProgramSetCount(engine){return (engine?.program?.weeks||[]).reduce((sum,w)=>sum+(w.sessions||[]).reduce((s,session)=>s+(session.strength||[]).filter(x=>x.exercise).reduce((n,x)=>n+(num(x.prescription?.sets)||0),0),0),0);}
+function engineEvolutionData(){
+ const context=programContext(),training=ensureTrainingProgram(),current=engineVersionForBlock(context.blockNumber),next=(training.engineVersions||[]).find(v=>v.blockNumber===context.blockNumber+1);
+ if(!current)return null;
+ const latest=(training.engineAdaptations||[]).filter(x=>x.workoutId).slice(-1)[0]||null;
+ const source=next?.adaptation||latest;
+ const before=engineProgramSetCount(current),after=next?engineProgramSetCount(next):null;
+ const records=(training.enginePerformance||[]).filter(x=>x.blockNumber===context.blockNumber);
+ const readiness=(training.engineReadiness||[]).filter(x=>x.blockNumber===context.blockNumber);
+ const adherence=records.length?Math.round(records.reduce((s,x)=>s+(num(x.adherence)||0),0)/records.length):null;
+ const lowRecovery=readiness.length?Math.round(readiness.filter(x=>(num(x.energy)||3)<=2||(num(x.sleep)||3)<=2||(num(x.soreness)||2)>=4).length/readiness.length*100):null;
+ return {context,current,next,source,before,after,records:records.length,adherence,lowRecovery};
+}
+function renderProgramEvolution(){
+ const d=engineEvolutionData();if(!d)return '';
+ const action=d.next?.adaptation?.action||d.source?.action||'maintain';
+ const labels={progress:'Progressing',reduce:'Recovery adjustment',simplify:'Simplifying',maintain:'Holding steady'};
+ const reason=d.next?.adaptation?.reason||d.source?.reason||(d.records?'Your completed training is still being evaluated.':'Complete engine-backed workouts to start personalized block adaptation.');
+ const change=d.next&&d.after!==null?d.after-d.before:null;
+ const evidence=[];
+ if(d.adherence!==null)evidence.push(d.adherence+'% average adherence');
+ if(d.lowRecovery!==null)evidence.push(d.lowRecovery+'% low-recovery check-ins');
+ if(d.next)evidence.push('Block '+d.next.blockNumber+' · engine '+d.next.engineVersion);
+ const delta=change===null?'Next block is not locked yet.':change===0?'Planned set volume stays level.':Math.abs(change)+' planned sets '+(change>0?'added':'removed')+' across the four-week block.';
+ return '<section class="clean-panel program-evolution-card"><div class="program-evolution-head"><div><p class="eyebrow">PROGRAM EVOLUTION</p><h3>'+esc(labels[action]||'Adaptive programming')+'</h3></div><span class="evolution-status '+esc(action)+'">'+(d.next?'NEXT BLOCK READY':'LEARNING')+'</span></div><p>'+esc(reason)+'</p><div class="evolution-metrics"><div><strong>'+d.before+'</strong><span>Current block sets</span></div><div><strong>'+(d.after===null?'—':d.after)+'</strong><span>Next block sets</span></div><div><strong>'+d.records+'</strong><span>Sessions learned</span></div></div><small>'+esc(delta)+'</small>'+(evidence.length?'<div class="evolution-evidence">'+evidence.map(x=>'<span>'+esc(x)+'</span>').join('')+'</div>':'')+'</section>';
+}
 function renderEngineProgramSummary(){
   const engine=currentEngineProgram();if(!engine)return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE</p><h3>Legacy plan active</h3><p>The new programming layer is unavailable, so your existing plan remains untouched.</p></div></section>';
   const context=programContext(),week=engineWeekForContext(context),audit=programEngine?.volumeAudit?.(engine.program),weekAudit=audit?.weeks?.find(item=>item.weekNumber===week?.weekNumber);
@@ -2994,7 +3020,7 @@ function renderTrain(){
     '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Plan and preview the next four weeks, with the current and next week fully expanded.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW HOME</button></section>'+
-    renderEngineProgramSummary()+
+    renderEngineProgramSummary()+renderProgramEvolution()+
     '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM HORIZON</p><h3>4 weeks planned</h3></div><button class="text-button" data-action="regenerate">REGENERATE</button></div>'+
     renderProgramHorizon()+
     '<div class="clean-section-head program-rotation-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+'-day rotation</h3></div></div>'+
@@ -3969,6 +3995,7 @@ function renderSummary(){
   const partial=x.completionStatus==='partial';
   return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2><p>'+(partial?'Your completed work is preserved. This scheduled session remains partial.':'History and progression were updated from what you actually logged.')+'</p><div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
     (x.newPRs?.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
+    (x.engineLearning?'<section class="clean-panel workout-learning-card"><p class="eyebrow">PROGRAM LEARNING</p><h3>'+esc(({progress:'Progression signal',reduce:'Recovery signal',simplify:'Consistency signal',maintain:'Steady signal'})[x.engineLearning.adaptation?.action]||'Workout learned')+'</h3><p>'+esc(x.engineLearning.adaptation?.reason||x.engineLearning.performance?.interpretation?.reason||'This workout was added to your program evidence.')+'</p><small>Your current block stays unchanged. Learning is applied at the next block boundary.</small></section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
     '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
