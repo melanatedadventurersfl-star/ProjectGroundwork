@@ -941,6 +941,7 @@ function applyExerciseSwap(candidateId,reason='other',neverShow=false){
   const completed=(original.sets||[]).filter(set=>set.completed);
   const remaining=Math.max(1,(original.sets?.length||1)-completed.length);
   const replacement=workoutExerciseFromCandidate(candidate,original,remaining);
+  replacement.swapReason=reason;replacement.engineOriginalExerciseId=original.engineExerciseId||null;
   rememberSwap(original,replacement,reason,'workout');
 
   if(target.index>w.currentExerciseIndex){
