@@ -1575,8 +1575,10 @@ function maybeCreateNextEngineBlock(completedEntry){
  const training=ensureTrainingProgram(),context=programContext(completedEntry?.scheduledDate?dateFromKey(completedEntry.scheduledDate):new Date());
  if(!programEngine||context.blockWeek!==4)return null;
  const current=engineVersionForBlock(context.blockNumber);if(!current?.program)return null;
+ const blockRecords=(training.enginePerformance||[]).filter(r=>r.blockNumber===context.blockNumber);const finalWeekDone=blockRecords.filter(r=>r.engineWeek===4&&r.completionStatus!=='partial').length;
+ if(finalWeekDone<Math.max(1,num(store.profile?.days)||4))return null;
  const nextBlock=context.blockNumber+1;if((training.engineVersions||[]).some(v=>v.blockNumber===nextBlock))return null;
- const records=(training.enginePerformance||[]).filter(r=>r.blockNumber===context.blockNumber);
+ const records=blockRecords;
  const readiness=(training.engineReadiness||[]).filter(r=>r.blockNumber===context.blockNumber&&records.some(p=>p.workoutId===r.workoutId));
  const adaptation=programEngine.adaptationDecision(current.program,records,readiness);
  const nextProgram=programEngine.createProgramVersion(current.program,adaptation);
@@ -2540,7 +2542,7 @@ function engineFeedbackFromWorkout(entry){const feedback=(entry.exercises||[]).m
 function ingestEngineWorkout(entry){
  if(!entry?.engineBacked||!entry.engineSessionId||!programEngine)return null;const session=engineSessionById(entry.engineSessionId);if(!session)return null;
  const performed={completedAt:entry.completedAt,exercises:(entry.exercises||[]).map(ex=>({exerciseId:ex.engineExerciseId||ex.id,sets:(ex.sets||[]).map(set=>({reps:num(set.reps),weight:num(set.weight),completed:Boolean(set.completed)}))})),feedback:engineFeedbackFromWorkout(entry)};
- const performance=programEngine.ingestPerformance(session,performed);performance.workoutId=entry.id;performance.completionStatus=entry.completionStatus;performance.blockNumber=entry.engineBlockNumber||1;performance.engineVersion=currentEngineProgram()?.engineVersion||null;performance.interpretation=programEngine.interpretPostWorkoutFeedback(performed.feedback);
+ const performance=programEngine.ingestPerformance(session,performed);performance.workoutId=entry.id;performance.completionStatus=entry.completionStatus;performance.blockNumber=entry.engineBlockNumber||1;performance.engineWeek=entry.engineWeek||null;performance.engineVersion=engineVersionForBlock(entry.engineBlockNumber||1)?.engineVersion||null;performance.interpretation=programEngine.interpretPostWorkoutFeedback(performed.feedback);
  const training=ensureTrainingProgram();training.enginePerformance.push(performance);training.enginePerformance=training.enginePerformance.slice(-100);
  const readiness={energy:num(entry.readiness?.energy)||3,sleep:num(entry.readiness?.sleep)||3,soreness:num(entry.readiness?.soreness)||2,stress:3,workoutId:entry.id,blockNumber:entry.engineBlockNumber||1,completedAt:entry.completedAt};training.engineReadiness.push(readiness);training.engineReadiness=training.engineReadiness.slice(-100);
  const adaptation=programEngine.adaptationDecision(currentEngineProgram().program,training.enginePerformance,training.engineReadiness);training.engineAdaptations.push({...adaptation,workoutId:entry.id,at:entry.completedAt});training.engineAdaptations=training.engineAdaptations.slice(-50);
