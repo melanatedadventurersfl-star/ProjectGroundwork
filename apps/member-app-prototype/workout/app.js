@@ -55,6 +55,7 @@ let currentTab=restoredTab||(store.activeWorkout?'workout':'home');
 accountSheetOpen=Boolean(restoredUiState.accountSheetOpen);
 let trainView=['week','program','exercises'].includes(restoredUiState.trainView)?restoredUiState.trainView:'week';
 let trainExpandedWeek=[1,2,3].includes(Number(restoredUiState.trainExpandedWeek))?Number(restoredUiState.trainExpandedWeek):0;
+let programWhyOpen=Boolean(restoredUiState.programWhyOpen);
 let catalogQuery = '';
 let tickHandle = null;
 
@@ -98,6 +99,7 @@ function persistUiState(){
       accountSheetOpen:Boolean(accountSheetOpen),
       trainView,
       trainExpandedWeek,
+      programWhyOpen,
       savedAt:new Date().toISOString()
     }));
   }catch{}
@@ -1693,27 +1695,106 @@ function engineEvolutionData(){
  const readiness=(training.engineReadiness||[]).filter(x=>x.blockNumber===context.blockNumber);
  const adherence=records.length?Math.round(records.reduce((s,x)=>s+(num(x.adherence)||0),0)/records.length):null;
  const lowRecovery=readiness.length?Math.round(readiness.filter(x=>(num(x.energy)||3)<=2||(num(x.sleep)||3)<=2||(num(x.soreness)||2)>=4).length/readiness.length*100):null;
- return {context,current,next,source,before,after,records:records.length,adherence,lowRecovery};
+ return {context,current,next,source,before,after,records:records.length,adherence,lowRecovery,readiness};
+}
+function currentWeekDecisionExperience(){
+ const decision=adaptationDecision();
+ const map={
+   steady:{label:'Follow the planned week',copy:'No weekly adjustment is needed right now.'},
+   repeat:{label:'Keep this week conservative',copy:'Last week was incomplete, so accessory work stays conservative instead of increasing.'},
+   recover:{label:'Give recovery more room',copy:'Accessory volume is trimmed this week while the main work stays in place.'},
+   build:{label:'Build this week',copy:'One primary movement gets an additional working set.'},
+   push:{label:'Push this week',copy:'Up to two primary movements get one additional working set.'},
+   consolidate:{label:'Consolidate this week',copy:'Accessory volume comes down while productive anchor work stays in place.'}
+ };
+ const display=map[decision.mode]||map.steady;
+ const evidence=[];
+ const previous=decision.previous;
+ if(previous){
+   evidence.push(Math.round(previous.completionRate*100)+'% of last week’s planned workouts completed');
+   if(previous.averageReadiness)evidence.push('Average readiness '+previous.averageReadiness.toFixed(1)+'/5');
+   if(previous.tooHardRate)evidence.push(Math.round(previous.tooHardRate*100)+'% of exercise feedback flagged too hard or form-off');
+ }
+ return {...display,mode:decision.mode,evidence,context:decision.context};
+}
+function nextBlockDecisionExperience(){
+ const d=engineEvolutionData();
+ if(!d)return {action:'maintain',signal:'Program learning is starting',decision:'No next-block change is locked yet',copy:'Complete workouts and readiness check-ins to give GoWorkout enough evidence to adapt the next block.',evidence:[],next:'Your current block stays in place.'};
+ const action=d.next?.adaptation?.action||d.source?.action||'maintain';
+ const labels={
+   progress:{signal:'Performance is trending up',decision:d.next?'Progress the next block':'Keep learning before progressing'},
+   reduce:{signal:'Recovery needs more room',decision:d.next?'Reduce next-block volume':'Keep this block steady while recovery is watched'},
+   simplify:{signal:'Consistency is the priority',decision:d.next?'Simplify the next block':'Keep the current structure while consistency is watched'},
+   maintain:{signal:'Your program is holding steady',decision:d.next?'Keep the next block steady':'No next-block change is locked yet'}
+ };
+ const selected=labels[action]||labels.maintain;
+ const recent=(d.readiness||[]).slice(-3);
+ const average=key=>recent.length?recent.reduce((sum,item)=>sum+num(item[key]),0)/recent.length:null;
+ const flagged=recent.filter(item=>(num(item.energy)||3)<=2||(num(item.sleep)||3)<=2||(num(item.soreness)||2)>=4).length;
+ const evidence=[];
+ if(d.records)evidence.push(d.records+' completed session'+(d.records===1?'':'s')+' considered');
+ if(recent.length){
+   evidence.push('Recent energy '+average('energy').toFixed(1)+'/5');
+   evidence.push('Recent sleep '+average('sleep').toFixed(1)+'/5');
+   evidence.push('Recent soreness '+average('soreness').toFixed(1)+'/5');
+   if(flagged)evidence.push(flagged+' of '+recent.length+' recent check-ins showed higher recovery demand');
+ }else{
+   if(d.adherence!==null)evidence.push(d.adherence+'% average adherence');
+   if(d.lowRecovery!==null)evidence.push(d.lowRecovery+'% of readiness check-ins showed higher recovery demand');
+ }
+ const change=d.next&&d.after!==null?d.after-d.before:null;
+ let next='Your current block stays unchanged.';
+ if(d.next){
+   if(change>0)next='Block '+d.next.blockNumber+' is ready with '+change+' more planned working set'+(change===1?'':'s')+' across the four-week block.';
+   else if(change<0)next='Block '+d.next.blockNumber+' is ready with '+Math.abs(change)+' fewer planned working set'+(Math.abs(change)===1?'':'s')+' across the four-week block.';
+   else next='Block '+d.next.blockNumber+' is ready with about the same total planned volume.';
+ }
+ const copy=action==='progress'
+   ?'Completed work is supporting more progression, but changes stay at the block level so today’s plan does not keep moving underneath you.'
+   :action==='reduce'
+     ?'Recent readiness or workout feedback is pointing toward more recovery. GoWorkout keeps the current block stable and uses that pattern when the next block is created.'
+     :action==='simplify'
+       ?'Consistency matters more than adding complexity right now. GoWorkout is protecting the highest-priority work before adding more.'
+       :'The current evidence does not call for a block-level change yet. GoWorkout will keep learning from completed sessions and readiness.';
+ return {action,signal:selected.signal,decision:selected.decision,copy,evidence,next,ready:Boolean(d.next)};
+}
+function getProgramDecisionExperience(){
+ return {week:currentWeekDecisionExperience(),block:nextBlockDecisionExperience()};
 }
 function renderProgramEvolution(){
- const d=engineEvolutionData();if(!d)return '';
- const action=d.next?.adaptation?.action||d.source?.action||'maintain';
- const labels={progress:'Progressing',reduce:'Recovery adjustment',simplify:'Simplifying',maintain:'Holding steady'};
- const reason=d.next?.adaptation?.reason||d.source?.reason||(d.records?'Your completed training is still being evaluated.':'Complete engine-backed workouts to start personalized block adaptation.');
- const change=d.next&&d.after!==null?d.after-d.before:null;
- const evidence=[];
- if(d.adherence!==null)evidence.push(d.adherence+'% average adherence');
- if(d.lowRecovery!==null)evidence.push(d.lowRecovery+'% low-recovery check-ins');
- if(d.next)evidence.push('Block '+d.next.blockNumber+' · engine '+d.next.engineVersion);
- const delta=change===null?'Next block is not locked yet.':change===0?'Planned set volume stays level.':Math.abs(change)+' planned sets '+(change>0?'added':'removed')+' across the four-week block.';
- return '<section class="clean-panel program-evolution-card"><div class="program-evolution-head"><div><p class="eyebrow">PROGRAM EVOLUTION</p><h3>'+esc(labels[action]||'Adaptive programming')+'</h3></div><span class="evolution-status '+esc(action)+'">'+(d.next?'NEXT BLOCK READY':'LEARNING')+'</span></div><p>'+esc(reason)+'</p><div class="evolution-metrics"><div><strong>'+d.before+'</strong><span>Current block sets</span></div><div><strong>'+(d.after===null?'—':d.after)+'</strong><span>Next block sets</span></div><div><strong>'+d.records+'</strong><span>Sessions learned</span></div></div><small>'+esc(delta)+'</small>'+(evidence.length?'<div class="evolution-evidence">'+evidence.map(x=>'<span>'+esc(x)+'</span>').join('')+'</div>':'')+'</section>';
+ const x=getProgramDecisionExperience();
+ return '<section class="clean-panel program-decision-card decision-'+esc(x.block.action)+'">'+
+   '<div class="program-decision-head"><div><p class="eyebrow">PROGRAM DECISION</p><h3>'+esc(x.week.label)+'</h3><p>'+esc(x.week.copy)+'</p></div><span class="program-decision-status">'+(x.block.ready?'NEXT BLOCK READY':'LEARNING')+'</span></div>'+
+   '<div class="program-decision-grid">'+
+     '<div><span>THIS WEEK</span><strong>'+esc(x.week.label)+'</strong></div>'+
+     '<div><span>SIGNAL</span><strong>'+esc(x.block.signal)+'</strong></div>'+
+     '<div><span>NEXT BLOCK</span><strong>'+esc(x.block.decision)+'</strong></div>'+
+   '</div>'+
+   '<button class="program-why-toggle" type="button" data-action="toggle-program-why" aria-expanded="'+(programWhyOpen?'true':'false')+'"><span>Why this decision?</span><em>'+(programWhyOpen?'−':'+')+'</em></button>'+
+   (programWhyOpen?'<div class="program-why-panel"><p>'+esc(x.block.copy)+'</p>'+
+     ((x.week.evidence.length||x.block.evidence.length)?'<div class="program-evidence">'+[...x.week.evidence,...x.block.evidence].map(item=>'<span>'+esc(item)+'</span>').join('')+'</div>':'<small>GoWorkout needs more completed sessions before it can show stronger evidence.</small>')+
+     '<div class="program-next-step"><span>WHAT HAPPENS NEXT</span><strong>'+esc(x.block.next)+'</strong></div></div>':'')+
+ '</section>';
 }
 function renderEngineProgramSummary(){
-  const engine=currentEngineProgram();if(!engine)return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE</p><h3>Legacy plan active</h3><p>The new programming layer is unavailable, so your existing plan remains untouched.</p></div></section>';
-  const context=programContext(),week=engineWeekForContext(context),audit=programEngine?.volumeAudit?.(engine.program),weekAudit=audit?.weeks?.find(item=>item.weekNumber===week?.weekNumber);
-  const sessions=week?.sessions||[],first=sessions[0],phase=week?.label||blockPhaseLabel(context.blockWeek);
-  const focus=(engine.profile.priorities||[]).map(x=>String(x).replaceAll('_',' ')).join(' · ')||'Balanced development';
-  return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE · '+esc(engine.engineVersion)+'</p><h3>'+esc(phase)+' week</h3><p>'+sessions.length+' individualized sessions · '+esc(focus)+' · '+(engine.profile.stretchMinutes||10)+' min stretching</p>'+(first?'<small>First session: '+esc(first.name||first.type||'Training')+' · '+(first.strength?.filter(x=>x.exercise).length||0)+' movements · '+(first.timeBudget?.targetMinutes||engine.profile.sessionMinutes)+' min target</small>':'')+(weekAudit?.flags?.length?'<small>'+weekAudit.flags.length+' volume check'+(weekAudit.flags.length===1?'':'s')+' flagged for review.</small>':'')+'</div><span class="engine-program-badge">ENGINE-BACKED</span></section>';
+ const engine=currentEngineProgram();
+ const context=programContext(),profile=store.profile||{},goal=planGoalLabel(profile.goal||'general');
+ const week=engine?engineWeekForContext(context):null;
+ const sessions=week?.sessions?.length||num(profile.days)||store.plan?.days?.length||0;
+ const phase=week?.label||blockPhaseLabel(context.blockWeek);
+ const priorities=(profile.priorities||[]).map(x=>String(x).replaceAll('_',' '));
+ const focus=priorities.length?priorities.join(' · '):'Balanced development';
+ return '<section class="clean-panel human-program-card"><div><p class="eyebrow">YOUR PROGRAM</p><h3>'+esc(goal)+'</h3><p>'+sessions+' workouts/week · '+(num(profile.minutes)||45)+' min target · '+esc(equipmentLabel(profile.equipment||'full-gym'))+'</p><small>Current focus: '+esc(String(phase).toLowerCase())+' · '+esc(focus)+'</small></div><span class="human-program-phase">WEEK '+context.blockWeek+' OF 4</span></section>';
+}
+function workoutLearningExperience(learning){
+ const action=learning?.adaptation?.action||'maintain';
+ const map={
+   progress:{title:'Your performance is trending up',copy:'This workout adds evidence that your next block can progress.'},
+   reduce:{title:'Recovery needs more room',copy:'This workout adds evidence that your next block may need less volume.'},
+   simplify:{title:'Consistency is the priority',copy:'This workout supports protecting the highest-priority work before adding more.'},
+   maintain:{title:'Your program is holding steady',copy:'This workout supports keeping the current direction while GoWorkout learns more.'}
+ };
+ return map[action]||map.maintain;
 }
 function generatePlan(profile){
   const blueprints=BLUEPRINTS[profile.days] || BLUEPRINTS[4];
@@ -4226,7 +4307,7 @@ function renderProgress(){
     '<div class="progress-overview-grid"><section class="clean-panel metric-panel"><span>TRAINING CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>scheduled workouts this week</small></section><section class="clean-panel metric-panel"><span>WEEKLY VOLUME</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' all time</small></section><section class="clean-panel metric-panel"><span>LEARNED MOVEMENTS</span><strong>'+learnedAll.length+'</strong><small>'+calibrated+' initially calibrated</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></section></div>'+
     (trends.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">STRENGTH TREND</p><h3>Recent movements</h3></div></div><div class="clean-trend-list">'+trends.map(item=>'<button class="clean-trend-row" data-exercise-detail="'+esc(item.ex.id)+'"><div><strong>'+esc(item.ex.name)+'</strong><span>'+esc(item.trend.detail)+'</span></div><em>'+esc(item.trend.label)+'</em></button>').join('')+'</div></section>':'')+
     '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT PRS</p><h3>Personal records</h3></div></div>'+(prs.length?'<div class="pr-list clean-pr-list">'+prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div>':'<div class="clean-empty-inline">Complete workouts to establish PRs.</div>')+'</section>'+
-    '<section class="clean-panel progress-engine-card"><div><span>ADAPTIVE ENGINE</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><p>'+esc(adaptationDecision().notes.join(' ')||'The next training week updates from your completed work and feedback.')+'</p></div></section>'+
+    (()=>{const decision=getProgramDecisionExperience();return '<section class="clean-panel progress-engine-card human-learning-card"><div><span>WHAT GOWORKOUT IS LEARNING</span><strong>'+esc(decision.block.signal)+'</strong><p>'+esc(decision.block.decision)+'. '+esc(decision.block.next)+'</p></div><button class="text-button" data-action="train-program">SEE WHY</button></section>';})()+
   '</div>';
 }
 
@@ -4235,7 +4316,7 @@ function renderSummary(){
   const partial=x.completionStatus==='partial';
   return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2><p>'+(partial?'Your completed work is preserved. This scheduled session remains partial.':'History and progression were updated from what you actually logged.')+'</p><div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
     (x.newPRs?.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
-    (x.engineLearning?'<section class="clean-panel workout-learning-card"><p class="eyebrow">PROGRAM LEARNING</p><h3>'+esc(({progress:'Progression signal',reduce:'Recovery signal',simplify:'Consistency signal',maintain:'Steady signal'})[x.engineLearning.adaptation?.action]||'Workout learned')+'</h3><p>'+esc(x.engineLearning.adaptation?.reason||x.engineLearning.performance?.interpretation?.reason||'This workout was added to your program evidence.')+'</p><small>Your current block stays unchanged. Learning is applied at the next block boundary.</small></section>':'')+
+    (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
     '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
@@ -4445,6 +4526,8 @@ function handleClick(event){
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='toggle-program-why'){programWhyOpen=!programWhyOpen;persistUiState();render();}
+  else if(a==='train-program'){trainView='program';programWhyOpen=true;persistUiState();setTab('train');}
   else if(a==='set-train-view'){trainView=['week','program','exercises'].includes(node.dataset.trainView)?node.dataset.trainView:'week';persistUiState();render();}
   else if(a==='toggle-train-week'){const offset=Number(node.dataset.weekOffset);trainExpandedWeek=trainExpandedWeek===offset?0:offset;persistUiState();render();}
   else if(a==='train')setTab('train');
