@@ -24,12 +24,18 @@ export type ActiveExercise = ExerciseTemplate & {
   sets: WorkoutSet[];
 };
 
+export type WorkoutStage = 'warmup' | 'exercise' | 'rest' | 'cooldown';
+
 export type ActiveWorkout = {
   id: string;
   routineId: string;
   routineName: string;
   startedAt: string;
   exercises: ActiveExercise[];
+  stage?: WorkoutStage;
+  currentExerciseIndex?: number;
+  currentSetIndex?: number;
+  restEndsAt?: string | null;
 };
 
 export type WorkoutHistoryEntry = {
