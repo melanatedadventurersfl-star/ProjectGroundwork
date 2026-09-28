@@ -238,7 +238,7 @@ function buildProgram(input){
    });
    const model=(WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness)[week-1]; const recoveryActivities=[]; for(let m=0;m<p.mobilitySessionsPerWeek;m++)recoveryActivities.push(buildMobilitySession(p.stretchMinutes,p,'full')); weeks.push({week,label:model.label,sessions,recoveryActivities});
  }
- return {version:'1.4.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.4'};
+ return {version:'1.5.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.5'};
 }
 function validateProgram(program){
  const errors=[];
@@ -423,7 +423,7 @@ function createWorkoutExecution(session){
   originalExerciseId:x.exercise.id,sets:Array.from({length:x.prescription.sets},(_,i)=>({index:i+1,reps:null,weight:null,completed:false,completedAt:null})),
   substitutions:x.substitutions||[],status:'pending'
  }));
- return {schemaVersion:1,sessionId:session.id,state:'scheduled',phase:'scheduled',warmupIndex:0,exerciseIndex:0,stretchIndex:0,strength,startedAt:null,completedAt:null,pausedAt:null,rest:null,eventLog:[],revision:0};
+ return {schemaVersion:2,sessionId:session.id,state:'scheduled',phase:'scheduled',warmupIndex:0,exerciseIndex:0,stretchIndex:0,warmup:(session.warmup||[]).map((x,i)=>({...x,index:i,completed:false})),stretch:(session.stretch?.activities||[]).map((x,i)=>({...x,index:i,completed:false})),strength,startedAt:null,completedAt:null,pausedAt:null,lastSavedAt:null,rest:null,eventLog:[],revision:0};
 }
 function executionTransition(execution,next,meta){
  const allowed={scheduled:['preparing'],preparing:['warmup','active','exited_resumable'],warmup:['warmup','active','paused','exited_resumable'],active:['active','resting','stretching','paused','exited_resumable'],resting:['active','paused','exited_resumable'],paused:['warmup','active','resting','stretching','exited_resumable'],stretching:['stretching','completed','paused','exited_resumable'],exited_resumable:['preparing'],completed:[]};
@@ -497,6 +497,53 @@ function resumeExecution(snapshot){
  if(e.state!=='exited_resumable'&&e.state!=='paused')return {ok:false,error:'Execution is not resumable',execution:e};
  e.state=e.phase==='warmup'?'warmup':e.phase==='stretch'?'stretching':'active';e.revision++;e.eventLog.push({type:'resumed'});return {ok:true,execution:e};
 }
+function completeWarmupStep(execution,index,at){
+ const e=executionSnapshot(execution);
+ if(e.state!=='warmup')return {ok:false,error:'Warm-up step unavailable outside warm-up phase',execution};
+ const step=e.warmup?.[index];if(!step)return {ok:false,error:'Warm-up step not found',execution};
+ step.completed=true;step.completedAt=at||null;e.warmupIndex=Math.min(index+1,e.warmup.length-1);e.revision++;e.eventLog.push({type:'warmup_step_completed',index,at:at||null});
+ if(e.warmup.every(x=>x.completed)){e.state='active';e.phase='strength';e.warmupIndex=e.warmup.length}
+ return {ok:true,execution:e};
+}
+function completeStretchStep(execution,index,at){
+ const e=executionSnapshot(execution);
+ if(e.state!=='stretching')return {ok:false,error:'Stretch step unavailable outside stretch phase',execution};
+ const step=e.stretch?.[index];if(!step)return {ok:false,error:'Stretch step not found',execution};
+ step.completed=true;step.completedAt=at||null;e.stretchIndex=Math.min(index+1,e.stretch.length-1);e.revision++;e.eventLog.push({type:'stretch_step_completed',index,at:at||null});
+ if(e.stretch.every(x=>x.completed)){e.state='completed';e.phase='completed';e.completedAt=at||null;e.stretchIndex=e.stretch.length;e.eventLog.push({type:'workout_completed',at:at||null})}
+ return {ok:true,execution:e};
+}
+function completionPayload(execution,feedback){
+ if(execution.state!=='completed')return {ok:false,error:'Workout is not completed'};
+ const completedSets=execution.strength.flatMap(x=>x.sets.filter(s=>s.completed).map(s=>({exerciseId:x.exerciseId,originalExerciseId:x.originalExerciseId,set:s.index,reps:s.reps,weight:s.weight,completedAt:s.completedAt})));
+ return {ok:true,payload:{schemaVersion:1,sessionId:execution.sessionId,startedAt:execution.startedAt,completedAt:execution.completedAt,completedSets,exerciseSummary:execution.strength.map(x=>({exerciseId:x.exerciseId,originalExerciseId:x.originalExerciseId,completedSets:x.sets.filter(s=>s.completed).length,plannedSets:x.sets.length,substitutionHistory:x.substitutionHistory||[]})),warmupCompleted:execution.warmup.every(x=>x.completed),stretchCompleted:execution.stretch.every(x=>x.completed),feedback:feedback||{},executionRevision:execution.revision}};
+}
+function serializeExecution(execution,savedAt){
+ const envelope={storageSchema:1,savedAt:savedAt||null,revision:execution.revision,execution:executionSnapshot(execution)};
+ return JSON.stringify(envelope);
+}
+function restoreExecution(serialized,options){
+ let envelope;try{envelope=typeof serialized==='string'?JSON.parse(serialized):serialized}catch(e){return {ok:false,recovery:'discard',error:'Stored workout is corrupted JSON'}}
+ if(!envelope||envelope.storageSchema!==1||!envelope.execution)return {ok:false,recovery:'discard',error:'Stored workout envelope is invalid'};
+ const x=envelope.execution;
+ if(x.schemaVersion!==2||!x.sessionId||!EXECUTION_STATES.includes(x.state)||!Array.isArray(x.strength))return {ok:false,recovery:'discard',error:'Stored workout schema is unsupported or incomplete'};
+ const now=Number(options?.nowMs)||0,saved=Number(options?.savedAtMs??envelope.savedAt)||0,maxAge=Number(options?.maxAgeMs)||1000*60*60*24;
+ const stale=!!(now&&saved&&now-saved>maxAge);
+ return {ok:true,execution:executionSnapshot(x),stale,recovery:stale?'confirm_resume':'resume',savedAt:envelope.savedAt};
+}
+function guardedExecutionWrite(current,incoming,expectedRevision){
+ if(!incoming)return {ok:false,error:'Incoming execution missing'};
+ if(Number(current?.revision)!==Number(expectedRevision))return {ok:false,conflict:true,error:'Execution revision conflict',currentRevision:current?.revision,expectedRevision};
+ if(incoming.revision<=current.revision)return {ok:false,conflict:true,error:'Incoming execution is not newer',currentRevision:current.revision,incomingRevision:incoming.revision};
+ return {ok:true,execution:executionSnapshot(incoming)};
+}
+function recoverExecution(serialized,options){
+ const restored=restoreExecution(serialized,options);
+ if(!restored.ok)return {action:'clear_invalid',canResume:false,error:restored.error};
+ if(restored.execution.state==='completed')return {action:'archive_completed',canResume:false,execution:restored.execution};
+ if(restored.stale)return {action:'ask_resume_or_discard',canResume:true,execution:restored.execution};
+ return {action:'resume',canResume:true,execution:restored.execution};
+}
 function progressionDecision(history,target){
  if(!Array.isArray(history)||history.length<2)return {action:'repeat',reason:'Need at least two comparable performances'};
  const recent=history.slice(-2);
@@ -508,7 +555,7 @@ function progressionDecision(history,target){
  return {action:'maintain',reason:'Performance remains within progression range'};
 }
 
-const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,EXECUTION_STATES,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,createWorkoutExecution,executionTransition,recordSet,startRest,restRemaining,finishRest,previewNextExercise,navigateExercise,canAdvanceExercise,advanceExercise,substituteDuringWorkout,executionSnapshot,resumeExecution,progressionDecision};
+const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,EXECUTION_STATES,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,createWorkoutExecution,executionTransition,recordSet,startRest,restRemaining,finishRest,previewNextExercise,navigateExercise,canAdvanceExercise,advanceExercise,substituteDuringWorkout,executionSnapshot,resumeExecution,completeWarmupStep,completeStretchStep,completionPayload,serializeExecution,restoreExecution,guardedExecutionWrite,recoverExecution,progressionDecision};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.GoWorkoutProgramEngine=API;
 })(typeof globalThis!=='undefined'?globalThis:this);
