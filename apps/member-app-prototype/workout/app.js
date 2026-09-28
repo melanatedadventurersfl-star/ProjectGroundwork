@@ -2,6 +2,8 @@ const STORAGE_KEY = 'workout-web-store-v3';
 const UI_STATE_KEY = 'workout-web-ui-v1';
 const LEGACY_KEYS = ['workout-web-store-v2','workout-web-store-v1'];
 const ACTIVE_WORKOUT_SCHEMA = 4;
+const PROGRAM_ENGINE_STORE_SCHEMA = 1;
+const programEngine = window.GoWorkoutProgramEngine || null;
 const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
@@ -34,7 +36,7 @@ const defaultStore = {
   progression: {},
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
-  trainingProgram: {scheduleOverrides:{},weekReviews:{}},
+  trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
@@ -205,6 +207,7 @@ function ensureTrainingProgram(){
   store.trainingProgram=store.trainingProgram||{};
   store.trainingProgram.scheduleOverrides=store.trainingProgram.scheduleOverrides||{};
   store.trainingProgram.weekReviews=store.trainingProgram.weekReviews||{};
+  if(!('engine' in store.trainingProgram))store.trainingProgram.engine=null;
   return store.trainingProgram;
 }
 function programOriginDate(){
@@ -1528,6 +1531,37 @@ function buildDay(blueprint,profile,index){
   };
 }
 
+function engineGoal(goal){return ({muscle:'hypertrophy',strength:'strength','fat-loss':'general_fitness',general:'general_fitness'})[goal]||'general_fitness';}
+function engineEquipment(equipment){
+  const map={'full-gym':['dumbbell','bench','cable','machine','band'],'dumbbells':['dumbbell','bench'],'bodyweight':['bodyweight'],'bands':['band'],'mixed-home':['dumbbell','bench','band']};
+  return map[equipment]||['bodyweight'];
+}
+function engineExperience(experience){return experience==='new'?'beginner':(experience||'beginner');}
+function buildEngineProgram(profile){
+  if(!programEngine)return null;
+  try{
+    const engineProfile={goal:engineGoal(profile.goal),experience:engineExperience(profile.experience),sessionsPerWeek:profile.days,sessionMinutes:profile.minutes,equipment:engineEquipment(profile.equipment),priorities:clone(profile.priorities||[]),exclusions:clone(store.exercisePreferences?.excluded||[]),stretchMinutes:10,mobilitySessionsPerWeek:1};
+    const built=programEngine.rebalancePriorityVolume(programEngine.buildProgram(engineProfile));
+    const validation=programEngine.validateProgram(built);
+    if(!validation.valid)throw new Error(validation.errors.join('; '));
+    return {storageSchema:PROGRAM_ENGINE_STORE_SCHEMA,engineVersion:built.version,createdAt:new Date().toISOString(),source:'program-engine',profile:engineProfile,program:built,validation};
+  }catch(error){console.warn('Program Engine generation failed; legacy plan remains available.',error);return null;}
+}
+function refreshEngineProgram(profile=store.profile){
+  const training=ensureTrainingProgram();
+  const next=buildEngineProgram(profile);
+  if(next)training.engine=next;
+  return next;
+}
+function currentEngineProgram(){const e=ensureTrainingProgram().engine;return e?.storageSchema===PROGRAM_ENGINE_STORE_SCHEMA&&e?.program?e:null;}
+function engineWeekForContext(context=programContext()){const e=currentEngineProgram();if(!e)return null;return e.program.weeks?.[(Math.max(1,context.blockWeek)-1)%4]||null;}
+function renderEngineProgramSummary(){
+  const engine=currentEngineProgram();if(!engine)return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE</p><h3>Legacy plan active</h3><p>The new programming layer is unavailable, so your existing plan remains untouched.</p></div></section>';
+  const context=programContext(),week=engineWeekForContext(context),audit=programEngine?.volumeAudit?.(engine.program),weekAudit=audit?.weeks?.find(item=>item.weekNumber===week?.weekNumber);
+  const sessions=week?.sessions||[],first=sessions[0],phase=week?.label||blockPhaseLabel(context.blockWeek);
+  const focus=(engine.profile.priorities||[]).map(x=>String(x).replaceAll('_',' ')).join(' · ')||'Balanced development';
+  return '<section class="clean-panel engine-program-card"><div><p class="eyebrow">PROGRAM ENGINE · '+esc(engine.engineVersion)+'</p><h3>'+esc(phase)+' week</h3><p>'+sessions.length+' individualized sessions · '+esc(focus)+' · '+(engine.profile.stretchMinutes||10)+' min stretching</p>'+(first?'<small>First session: '+esc(first.name||first.type||'Training')+' · '+(first.strength?.filter(x=>x.exercise).length||0)+' movements · '+(first.timeBudget?.targetMinutes||engine.profile.sessionMinutes)+' min target</small>':'')+(weekAudit?.flags?.length?'<small>'+weekAudit.flags.length+' volume check'+(weekAudit.flags.length===1?'':'s')+' flagged for review.</small>':'')+'</div><span class="engine-program-badge">ENGINE-BACKED</span></section>';
+}
 function generatePlan(profile){
   const blueprints=BLUEPRINTS[profile.days] || BLUEPRINTS[4];
   return {
@@ -1649,7 +1683,8 @@ function saveProfileFromForm(form){
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null};
+  refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
     accountSheetOpen=true;
@@ -1675,9 +1710,10 @@ function editProfile(){
 function regeneratePlan(){
   if (!store.profile || store.activeWorkout) return;
   store.plan=generatePlan(store.profile);
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{}};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null};
+  refreshEngineProgram(store.profile);
   saveStore();
-  toast('Plan rebuilt from your profile.');
+  toast(currentEngineProgram()?'Plan rebuilt with Program Engine '+currentEngineProgram().engineVersion+'.':'Plan rebuilt from your profile.');
   render();
 }
 
@@ -2889,6 +2925,7 @@ function renderTrain(){
     '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Plan and preview the next four weeks, with the current and next week fully expanded.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW HOME</button></section>'+
+    renderEngineProgramSummary()+
     '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM HORIZON</p><h3>4 weeks planned</h3></div><button class="text-button" data-action="regenerate">REGENERATE</button></div>'+
     renderProgramHorizon()+
     '<div class="clean-section-head program-rotation-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+'-day rotation</h3></div></div>'+
