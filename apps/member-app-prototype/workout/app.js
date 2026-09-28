@@ -211,6 +211,8 @@ function ensureTrainingProgram(){
   store.trainingProgram.enginePerformance=store.trainingProgram.enginePerformance||[];
   store.trainingProgram.engineReadiness=store.trainingProgram.engineReadiness||[];
   store.trainingProgram.engineAdaptations=store.trainingProgram.engineAdaptations||[];
+  store.trainingProgram.engineVersions=store.trainingProgram.engineVersions||[];
+  store.trainingProgram.engineBlockVersion=store.trainingProgram.engineBlockVersion||1;
   return store.trainingProgram;
 }
 function programOriginDate(){
@@ -1563,7 +1565,26 @@ function refreshEngineProgram(profile=store.profile){
   return next;
 }
 function currentEngineProgram(){const e=ensureTrainingProgram().engine;return e?.storageSchema===PROGRAM_ENGINE_STORE_SCHEMA&&e?.program?e:null;}
-function engineWeekForContext(context=programContext()){const e=currentEngineProgram();if(!e)return null;return e.program.weeks?.[(Math.max(1,context.blockWeek)-1)%4]||null;}
+function engineVersionForBlock(blockNumber){
+ const training=ensureTrainingProgram(),versions=training.engineVersions||[];
+ if(blockNumber<=1)return currentEngineProgram();
+ return versions.find(v=>v.blockNumber===blockNumber)||currentEngineProgram();
+}
+function engineWeekForContext(context=programContext()){const e=engineVersionForBlock(context.blockNumber);if(!e)return null;return e.program.weeks?.[(Math.max(1,context.blockWeek)-1)%4]||null;}
+function maybeCreateNextEngineBlock(completedEntry){
+ const training=ensureTrainingProgram(),context=programContext(completedEntry?.scheduledDate?dateFromKey(completedEntry.scheduledDate):new Date());
+ if(!programEngine||context.blockWeek!==4)return null;
+ const current=engineVersionForBlock(context.blockNumber);if(!current?.program)return null;
+ const nextBlock=context.blockNumber+1;if((training.engineVersions||[]).some(v=>v.blockNumber===nextBlock))return null;
+ const records=(training.enginePerformance||[]).filter(r=>{const h=store.history.find(x=>x.id===r.workoutId);return h?.engineBlockNumber===context.blockNumber||h?.engineWeek===4||context.blockNumber===1;});
+ const readiness=(training.engineReadiness||[]).filter(r=>records.some(p=>p.workoutId===r.workoutId));
+ const adaptation=programEngine.adaptationDecision(current.program,records,readiness);
+ const nextProgram=programEngine.createProgramVersion(current.program,adaptation);
+ const validation=programEngine.validateProgram(nextProgram);if(!validation.valid)return null;
+ const version={storageSchema:PROGRAM_ENGINE_STORE_SCHEMA,engineVersion:nextProgram.version,createdAt:new Date().toISOString(),source:'program-engine-adaptation',blockNumber:nextBlock,parentBlockNumber:context.blockNumber,profile:clone(current.profile),program:nextProgram,validation,adaptation:clone(adaptation)};
+ training.engineVersions.push(version);training.engineVersions=training.engineVersions.slice(-12);training.engineBlockVersion=nextBlock;
+ return version;
+}
 const ENGINE_EXERCISE_TO_CATALOG={db_bench:'db-bench',pushup:'push-up',machine_press:'chest-press-machine',db_shoulder_press:'db-shoulder-press',cable_row:'cable-row',db_row:'one-arm-row',lat_pulldown:'lat-pulldown',goblet_squat:'goblet-squat',leg_press:'leg-press',db_rdl:'db-rdl',reverse_lunge:'reverse-lunge',leg_curl:'leg-curl',lateral_raise:'lateral-raise',db_curl:'biceps-curl',triceps_pressdown:'triceps-pushdown',calf_raise:'calf-raise',dead_bug:'dead-bug',incline_pushup:'push-up',inverted_row:'prone-w-raise',band_pulldown:'band-pulldown',split_squat:'split-squat',glute_bridge:'glute-bridge',pallof_press:'dead-bug',suitcase_carry:'plank'};
 function engineSessionForDate(date,index){const context=programContext(date),week=engineWeekForContext(context);return week?.sessions?.[index%Math.max(1,week.sessions.length)]||null;}
 function engineCatalogExercise(engineExercise){if(!engineExercise)return null;const mapped=ENGINE_EXERCISE_TO_CATALOG[engineExercise.id];return catalog.find(item=>item.id===mapped)||catalog.find(item=>item.name.toLowerCase()===String(engineExercise.name||'').toLowerCase())||null;}
@@ -1574,7 +1595,7 @@ function engineSessionToLegacyDay(session,fallbackDay,index=0){
   if(!session)return clone(fallbackDay);
   const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||''};}).filter(Boolean);
   const fallback=clone(fallbackDay||{});if(!exercises.length)return fallback;
-  const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
+  const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBlockNumber:programContext().blockNumber,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
   recalculatePlanDay(day);
   day.warmup=(session.warmup||[]).map(item=>({name:item.name,seconds:Number(item.seconds)||30,description:'Program Engine movement preparation.',cue:'Move smoothly through a comfortable range.',why:'Prepares the movement patterns used in this session.'}));
   day.cooldown=engineStretchToLegacy(session.stretch);
@@ -2544,7 +2565,7 @@ function finalizeWorkout(status='complete'){
     const before=old.get(ex.id);
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
-  if(entry.engineBacked)ingestEngineWorkout(entry);
+  if(entry.engineBacked){ingestEngineWorkout(entry);maybeCreateNextEngineBlock(entry);}
   ['pendingPosition','restEndsAt','restPausedRemaining','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
   if(entry.sharedSession){
