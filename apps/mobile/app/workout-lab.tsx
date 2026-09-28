@@ -136,6 +136,13 @@ export default function WorkoutLabScreen() {
   const [tab, setTab] = useState<TabKey>('home');
   const [store, setStore] = useState<WorkoutStore>({ history: [], activeWorkout: null });
   const [hydrated, setHydrated] = useState(false);
+  const [previewRoutine, setPreviewRoutine] = useState<WorkoutRoutine | null>(null);
+  const [clockNow, setClockNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setClockNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -183,15 +190,81 @@ export default function WorkoutLabScreen() {
 
   function beginWorkout(routine: WorkoutRoutine) {
     if (activeWorkout) {
-      Alert.alert(
-        'Workout in progress',
-        `Finish or discard ${activeWorkout.routineName} before starting another workout.`,
-      );
+      Alert.alert('Workout in progress', `Resume or discard ${activeWorkout.routineName} before starting another workout.`);
       setTab('workout');
       return;
     }
-    setStore((current) => ({ ...current, activeWorkout: createActiveWorkout(routine) }));
+    setPreviewRoutine(routine);
+  }
+
+  function startPreviewedWorkout() {
+    if (!previewRoutine) return;
+    const workout = createActiveWorkout(previewRoutine);
+    workout.stage = 'warmup';
+    workout.currentExerciseIndex = 0;
+    workout.currentSetIndex = 0;
+    workout.restEndsAt = null;
+    setStore((current) => ({ ...current, activeWorkout: workout }));
+    setPreviewRoutine(null);
     setTab('workout');
+  }
+
+  function patchActiveWorkout(patch: Partial<ActiveWorkout>) {
+    setStore((current) => current.activeWorkout ? {
+      ...current,
+      activeWorkout: { ...current.activeWorkout, ...patch },
+    } : current);
+  }
+
+  function startTraining() {
+    patchActiveWorkout({ stage: 'exercise', currentExerciseIndex: 0, currentSetIndex: 0, restEndsAt: null });
+  }
+
+  function completeGuidedSet() {
+    if (!activeWorkout) return;
+    const exerciseIndex = activeWorkout.currentExerciseIndex ?? 0;
+    const setIndex = activeWorkout.currentSetIndex ?? 0;
+    const exercise = activeWorkout.exercises[exerciseIndex];
+    const set = exercise?.sets[setIndex];
+    if (!exercise || !set) return;
+    if (!set.reps) {
+      Alert.alert('Add reps', 'Enter the reps you completed before finishing this set.');
+      return;
+    }
+    setStore((current) => {
+      if (!current.activeWorkout) return current;
+      const exercises = current.activeWorkout.exercises.map((item, index) =>
+        index !== exerciseIndex ? item : {
+          ...item,
+          sets: item.sets.map((itemSet, indexSet) => indexSet === setIndex ? { ...itemSet, completed: true } : itemSet),
+        });
+      return {
+        ...current,
+        activeWorkout: {
+          ...current.activeWorkout,
+          exercises,
+          stage: 'rest',
+          restEndsAt: new Date(Date.now() + 60000).toISOString(),
+        },
+      };
+    });
+  }
+
+  function advanceAfterRest() {
+    if (!activeWorkout) return;
+    const exerciseIndex = activeWorkout.currentExerciseIndex ?? 0;
+    const setIndex = activeWorkout.currentSetIndex ?? 0;
+    const exercise = activeWorkout.exercises[exerciseIndex];
+    if (!exercise) return;
+    if (setIndex + 1 < exercise.sets.length) {
+      patchActiveWorkout({ stage: 'exercise', currentSetIndex: setIndex + 1, restEndsAt: null });
+      return;
+    }
+    if (exerciseIndex + 1 < activeWorkout.exercises.length) {
+      patchActiveWorkout({ stage: 'exercise', currentExerciseIndex: exerciseIndex + 1, currentSetIndex: 0, restEndsAt: null });
+      return;
+    }
+    patchActiveWorkout({ stage: 'cooldown', restEndsAt: null });
   }
 
   function updateSet(exerciseId: string, setId: string, field: 'weight' | 'reps', value: string) {
@@ -332,6 +405,24 @@ export default function WorkoutLabScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {previewRoutine ? (
+            <View style={styles.previewOverlay}>
+              <View style={styles.previewCard}>
+                <Text style={styles.eyebrow}>WORKOUT PREVIEW</Text>
+                <Text style={styles.previewTitle}>{previewRoutine.name}</Text>
+                <Text style={styles.previewMeta}>{previewRoutine.durationMinutes} min · {previewRoutine.exercises.length} exercises</Text>
+                <View style={styles.previewSection}><Text style={styles.previewLabel}>WARM-UP</Text><Text style={styles.previewValue}>3–5 min</Text></View>
+                <View style={styles.previewSection}><Text style={styles.previewLabel}>WORKOUT</Text><Text style={styles.previewValue}>{previewRoutine.exercises.length} exercises</Text></View>
+                <View style={styles.previewList}>
+                  {previewRoutine.exercises.map((exercise, index) => <Text key={exercise.id} style={styles.previewExercise}>{index + 1}. {exercise.name} · {exercise.targetSets} × {exercise.targetReps}</Text>)}
+                </View>
+                <View style={styles.previewSection}><Text style={styles.previewLabel}>COOLDOWN</Text><Text style={styles.previewValue}>1–3 min</Text></View>
+                <Pressable style={styles.finishButton} onPress={startPreviewedWorkout}><Text style={styles.finishButtonText}>START WORKOUT</Text></Pressable>
+                <Pressable style={styles.discardButton} onPress={() => setPreviewRoutine(null)}><Text style={styles.discardButtonText}>Back to workouts</Text></Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {tab === 'home' ? (
             <>
               <View style={styles.heroCard}>
@@ -404,104 +495,83 @@ export default function WorkoutLabScreen() {
           ) : null}
 
           {tab === 'workout' ? (
-            activeWorkout ? (
-              <>
-                <View style={styles.workoutHeaderCard}>
-                  <Text style={styles.eyebrow}>ACTIVE WORKOUT</Text>
-                  <Text style={styles.workoutTitle}>{activeWorkout.routineName}</Text>
-                  <Text style={styles.workoutStarted}>Started {new Date(activeWorkout.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text>
-                  <View style={styles.progressLineTrack}>
-                    <View
-                      style={[
-                        styles.progressLineFill,
-                        {
-                          width: `${Math.min(
-                            100,
-                            (countCompletedSets(activeWorkout.exercises) /
-                              Math.max(1, activeWorkout.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0))) *
-                              100,
-                          )}%`,
-                        },
-                      ]}
-                    />
+            activeWorkout ? (() => {
+              const stage = activeWorkout.stage ?? 'exercise';
+              const exerciseIndex = activeWorkout.currentExerciseIndex ?? 0;
+              const setIndex = activeWorkout.currentSetIndex ?? 0;
+              const exercise = activeWorkout.exercises[exerciseIndex];
+              const set = exercise?.sets[setIndex];
+              const nextExercise = activeWorkout.exercises[exerciseIndex + 1];
+              const elapsedSeconds = Math.max(0, Math.floor((clockNow - new Date(activeWorkout.startedAt).getTime()) / 1000));
+              const restSeconds = activeWorkout.restEndsAt ? Math.max(0, Math.ceil((new Date(activeWorkout.restEndsAt).getTime() - clockNow) / 1000)) : 0;
+              const formatClock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+              return (
+                <>
+                  <View style={styles.guidedHeader}>
+                    <Pressable onPress={() => setTab('home')}><Text style={styles.guidedBack}>‹ Save & exit</Text></Pressable>
+                    <Text style={styles.guidedRoutine}>{activeWorkout.routineName}</Text>
+                    <Text style={styles.guidedClock}>{formatClock(elapsedSeconds)}</Text>
                   </View>
-                </View>
 
-                {activeWorkout.exercises.map((exercise, exerciseIndex) => (
-                  <View key={exercise.id} style={styles.exerciseCard}>
-                    <View style={styles.exerciseHeader}>
-                      <View style={styles.exerciseNumber}><Text style={styles.exerciseNumberText}>{exerciseIndex + 1}</Text></View>
-                      <View style={styles.flexOne}>
-                        <Text style={styles.exerciseName}>{exercise.name}</Text>
-                        <Text style={styles.exerciseTarget}>{exercise.targetSets} sets • {exercise.targetReps} reps</Text>
+                  {stage === 'warmup' ? (
+                    <View style={styles.guidedCard}>
+                      <Text style={styles.eyebrow}>WARM-UP · 3–5 MIN</Text>
+                      <Text style={styles.guidedTitle}>Get ready to move</Text>
+                      <Text style={styles.guidedBody}>Arm circles · shoulder rotations · light movement · one easy practice set</Text>
+                      <View style={styles.nextCard}><Text style={styles.nextLabel}>FIRST EXERCISE</Text><Text style={styles.nextName}>{activeWorkout.exercises[0]?.name}</Text></View>
+                      <Pressable style={styles.finishButton} onPress={startTraining}><Text style={styles.finishButtonText}>START TRAINING</Text></Pressable>
+                    </View>
+                  ) : null}
+
+                  {stage === 'exercise' && exercise && set ? (
+                    <View style={styles.guidedCard}>
+                      <Text style={styles.eyebrow}>EXERCISE {exerciseIndex + 1} OF {activeWorkout.exercises.length}</Text>
+                      <Text style={styles.guidedTitle}>{exercise.name}</Text>
+                      <Text style={styles.previousText}>Previous best: {previousBest(exercise.id)}</Text>
+                      <Text style={styles.setCounter}>SET {setIndex + 1} OF {exercise.sets.length}</Text>
+                      <View style={styles.bigInputs}>
+                        <View style={styles.bigInputWrap}><TextInput value={set.weight} onChangeText={(value) => updateSet(exercise.id, set.id, 'weight', value)} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#5E6963" style={styles.bigInput} /><Text style={styles.bigInputLabel}>LB</Text></View>
+                        <View style={styles.bigInputWrap}><TextInput value={set.reps} onChangeText={(value) => updateSet(exercise.id, set.id, 'reps', value)} keyboardType="number-pad" placeholder="0" placeholderTextColor="#5E6963" style={styles.bigInput} /><Text style={styles.bigInputLabel}>REPS</Text></View>
+                      </View>
+                      <Text style={styles.targetText}>Target {exercise.targetReps} reps</Text>
+                      <Pressable style={styles.finishButton} onPress={completeGuidedSet}><Text style={styles.finishButtonText}>COMPLETE SET</Text></Pressable>
+                      {nextExercise ? <View style={styles.nextCard}><Text style={styles.nextLabel}>UP NEXT</Text><Text style={styles.nextName}>{nextExercise.name}</Text><Text style={styles.nextMeta}>{nextExercise.targetSets} sets · {nextExercise.targetReps} reps</Text></View> : null}
+                    </View>
+                  ) : null}
+
+                  {stage === 'rest' && exercise ? (
+                    <View style={styles.restCard}>
+                      <Text style={styles.restCheck}>✓</Text>
+                      <Text style={styles.eyebrow}>SET COMPLETE</Text>
+                      <Text style={styles.restTitle}>REST</Text>
+                      <Text style={styles.restClock}>{formatClock(restSeconds)}</Text>
+                      <Text style={styles.restNext}>{setIndex + 1 < exercise.sets.length ? `Next: Set ${setIndex + 2} · ${exercise.targetReps} reps` : nextExercise ? `Next: ${nextExercise.name}` : 'Final set complete'}</Text>
+                      <View style={styles.restActions}>
+                        <Pressable style={styles.secondaryButton} onPress={() => patchActiveWorkout({ restEndsAt: new Date(Date.now() + restSeconds * 1000 + 15000).toISOString() })}><Text style={styles.secondaryButtonText}>+15 SEC</Text></Pressable>
+                        <Pressable style={styles.finishButtonFlex} onPress={advanceAfterRest}><Text style={styles.finishButtonText}>{restSeconds > 0 ? 'SKIP REST' : 'NEXT'}</Text></Pressable>
                       </View>
                     </View>
-                    <Text style={styles.previousText}>Previous best: {previousBest(exercise.id)}</Text>
+                  ) : null}
 
-                    <View style={styles.setHeaderRow}>
-                      <Text style={[styles.setHeaderText, styles.setIndexCell]}>SET</Text>
-                      <Text style={[styles.setHeaderText, styles.inputCell]}>LB</Text>
-                      <Text style={[styles.setHeaderText, styles.inputCell]}>REPS</Text>
-                      <Text style={[styles.setHeaderText, styles.doneCell]}>DONE</Text>
+                  {stage === 'cooldown' ? (
+                    <View style={styles.guidedCard}>
+                      <Text style={styles.eyebrow}>WORKING SETS COMPLETE</Text>
+                      <Text style={styles.guidedTitle}>Cooldown</Text>
+                      <Text style={styles.guidedBody}>Take 1–3 minutes. Slow your breathing and stretch the muscles you trained.</Text>
+                      <View style={styles.summaryStrip}><Text style={styles.summaryValue}>{countCompletedSets(activeWorkout.exercises)}</Text><Text style={styles.summaryLabel}>SETS</Text><Text style={styles.summaryValue}>{formatVolume(calculateVolume(activeWorkout.exercises))}</Text><Text style={styles.summaryLabel}>VOLUME</Text></View>
+                      <Pressable style={styles.finishButton} onPress={finishWorkout}><Text style={styles.finishButtonText}>FINISH WORKOUT</Text></Pressable>
                     </View>
+                  ) : null}
 
-                    {exercise.sets.map((set, setIndex) => (
-                      <View key={set.id} style={[styles.setRow, set.completed && styles.setRowDone]}>
-                        <Text style={[styles.setIndex, styles.setIndexCell]}>{setIndex + 1}</Text>
-                        <View style={styles.inputCell}>
-                          <TextInput
-                            value={set.weight}
-                            onChangeText={(value) => updateSet(exercise.id, set.id, 'weight', value)}
-                            placeholder="0"
-                            placeholderTextColor="#5E6963"
-                            keyboardType="decimal-pad"
-                            style={styles.setInput}
-                            selectTextOnFocus
-                          />
-                        </View>
-                        <View style={styles.inputCell}>
-                          <TextInput
-                            value={set.reps}
-                            onChangeText={(value) => updateSet(exercise.id, set.id, 'reps', value)}
-                            placeholder="0"
-                            placeholderTextColor="#5E6963"
-                            keyboardType="number-pad"
-                            style={styles.setInput}
-                            selectTextOnFocus
-                          />
-                        </View>
-                        <View style={styles.doneCell}>
-                          <Pressable
-                            style={[styles.checkButton, set.completed && styles.checkButtonDone]}
-                            onPress={() => toggleSet(exercise.id, set.id)}
-                          >
-                            <Text style={[styles.checkText, set.completed && styles.checkTextDone]}>{set.completed ? '✓' : ''}</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ))}
-
-                    <Pressable style={styles.addSetButton} onPress={() => addSet(exercise.id)}>
-                      <Text style={styles.addSetText}>+ ADD SET</Text>
-                    </Pressable>
-                  </View>
-                ))}
-
-                <Pressable style={styles.finishButton} onPress={finishWorkout}>
-                  <Text style={styles.finishButtonText}>FINISH WORKOUT</Text>
-                </Pressable>
-                <Pressable style={styles.discardButton} onPress={discardWorkout}>
-                  <Text style={styles.discardButtonText}>Discard workout</Text>
-                </Pressable>
-              </>
-            ) : (
+                  <Pressable style={styles.discardButton} onPress={discardWorkout}><Text style={styles.discardButtonText}>Workout options · Discard</Text></Pressable>
+                </>
+              );
+            })() : (
               <View style={styles.emptyLarge}>
                 <Text style={styles.emptyGlyph}>+</Text>
                 <Text style={styles.emptyLargeTitle}>Nothing active</Text>
                 <Text style={styles.emptyLargeBody}>Choose a routine from Home when you are ready to train.</Text>
-                <Pressable style={styles.primaryButton} onPress={() => setTab('home')}>
-                  <Text style={styles.primaryButtonText}>CHOOSE WORKOUT</Text>
-                </Pressable>
+                <Pressable style={styles.primaryButton} onPress={() => setTab('home')}><Text style={styles.primaryButtonText}>CHOOSE WORKOUT</Text></Pressable>
               </View>
             )
           ) : null}
@@ -719,5 +789,43 @@ const styles = StyleSheet.create({
   navLabel: { color: '#5E6963', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
   navActive: { color: ACCENT },
   navDot: { position: 'absolute', top: 11, right: '29%', width: 6, height: 6, borderRadius: 3, backgroundColor: ACCENT },
+  previewOverlay: { backgroundColor: '#0A0D0B', marginBottom: 8 },
+  previewCard: { backgroundColor: CARD, borderRadius: 22, padding: 20, borderWidth: 1, borderColor: '#303A34' },
+  previewTitle: { color: TEXT, fontSize: 30, fontWeight: '900' },
+  previewMeta: { color: MUTED, fontSize: 12, marginTop: 5, marginBottom: 14 },
+  previewSection: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2B342F' },
+  previewLabel: { color: '#718078', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  previewValue: { color: TEXT, fontSize: 12, fontWeight: '800' },
+  previewList: { gap: 8, paddingVertical: 8 },
+  previewExercise: { color: '#B8C2BC', fontSize: 12, lineHeight: 18 },
+  guidedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 5 },
+  guidedBack: { color: ACCENT, fontSize: 11, fontWeight: '900' },
+  guidedRoutine: { color: TEXT, fontSize: 12, fontWeight: '900' },
+  guidedClock: { color: TEXT, fontSize: 12, fontVariant: ['tabular-nums'] },
+  guidedCard: { backgroundColor: CARD, borderRadius: 24, padding: 22, borderWidth: 1, borderColor: '#29332D' },
+  guidedTitle: { color: TEXT, fontSize: 32, lineHeight: 37, fontWeight: '900', marginTop: 4 },
+  guidedBody: { color: MUTED, fontSize: 14, lineHeight: 22, marginTop: 12 },
+  setCounter: { color: ACCENT, fontSize: 11, fontWeight: '900', letterSpacing: 1.3, marginTop: 18 },
+  bigInputs: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  bigInputWrap: { flex: 1, backgroundColor: CARD_2, borderRadius: 18, padding: 14, alignItems: 'center' },
+  bigInput: { color: TEXT, width: '100%', fontSize: 34, fontWeight: '900', textAlign: 'center', paddingVertical: 4 },
+  bigInputLabel: { color: '#6E7A73', fontSize: 9, fontWeight: '900', letterSpacing: 1.3 },
+  targetText: { color: MUTED, textAlign: 'center', fontSize: 11, marginTop: 10 },
+  nextCard: { backgroundColor: '#202823', borderRadius: 16, padding: 16, marginTop: 18 },
+  nextLabel: { color: '#6F7B74', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  nextName: { color: TEXT, fontSize: 17, fontWeight: '900', marginTop: 4 },
+  nextMeta: { color: MUTED, fontSize: 10, marginTop: 3 },
+  restCard: { backgroundColor: CARD, borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: '#39442B' },
+  restCheck: { color: BG, backgroundColor: ACCENT, width: 42, height: 42, borderRadius: 21, textAlign: 'center', lineHeight: 42, fontSize: 22, fontWeight: '900', marginBottom: 14 },
+  restTitle: { color: TEXT, fontSize: 22, fontWeight: '900', marginTop: 8 },
+  restClock: { color: ACCENT, fontSize: 68, fontWeight: '900', fontVariant: ['tabular-nums'], marginVertical: 12 },
+  restNext: { color: MUTED, fontSize: 13, textAlign: 'center' },
+  restActions: { flexDirection: 'row', gap: 10, marginTop: 22, width: '100%' },
+  secondaryButton: { flex: 1, backgroundColor: CARD_2, borderRadius: 15, paddingVertical: 17, alignItems: 'center' },
+  secondaryButtonText: { color: TEXT, fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  finishButtonFlex: { flex: 1, backgroundColor: ACCENT, borderRadius: 15, paddingVertical: 17, alignItems: 'center' },
+  summaryStrip: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 22, paddingVertical: 16, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#303A34' },
+  summaryValue: { color: TEXT, fontSize: 20, fontWeight: '900' },
+  summaryLabel: { color: MUTED, fontSize: 8, fontWeight: '900', marginRight: 8 },
   flexOne: { flex: 1 },
 });
