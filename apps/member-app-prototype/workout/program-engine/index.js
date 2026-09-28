@@ -1,0 +1,171 @@
+(function(root){
+'use strict';
+
+const TAXONOMY={
+  movements:['horizontal_push','vertical_push','horizontal_pull','vertical_pull','squat','hinge','lunge','knee_extension','knee_flexion','hip_extension','calf','elbow_flexion','elbow_extension','shoulder_abduction','anti_extension','anti_rotation','rotation','carry'],
+  muscles:['chest','lats','upper_back','anterior_delts','lateral_delts','rear_delts','biceps','triceps','quads','hamstrings','glutes','calves','core','hip_flexors','adductors'],
+  activityTypes:['strength','warmup','mobility','stretch','conditioning','recovery','rest'],
+  stretchTypes:['dynamic','active','static','mobility','breath_assisted']
+};
+
+const EXERCISES=[
+{id:'db_bench',name:'Dumbbell Bench Press',pattern:'horizontal_push',primary:['chest'],secondary:['triceps','anterior_delts'],equipment:['dumbbell','bench'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'horizontal_press'},
+{id:'pushup',name:'Push-Up',pattern:'horizontal_push',primary:['chest'],secondary:['triceps','anterior_delts'],equipment:['bodyweight'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_leverage',group:'horizontal_press'},
+{id:'machine_press',name:'Machine Chest Press',pattern:'horizontal_push',primary:['chest'],secondary:['triceps','anterior_delts'],equipment:['machine'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'horizontal_press'},
+{id:'db_shoulder_press',name:'Dumbbell Shoulder Press',pattern:'vertical_push',primary:['anterior_delts'],secondary:['triceps'],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'vertical_press'},
+{id:'cable_row',name:'Seated Cable Row',pattern:'horizontal_pull',primary:['upper_back'],secondary:['lats','biceps'],equipment:['cable'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'horizontal_pull'},
+{id:'db_row',name:'One-Arm Dumbbell Row',pattern:'horizontal_pull',primary:['upper_back'],secondary:['lats','biceps'],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'horizontal_pull'},
+{id:'lat_pulldown',name:'Lat Pulldown',pattern:'vertical_pull',primary:['lats'],secondary:['biceps','upper_back'],equipment:['cable'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'vertical_pull'},
+{id:'goblet_squat',name:'Goblet Squat',pattern:'squat',primary:['quads'],secondary:['glutes','core'],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'double_progression',group:'squat'},
+{id:'leg_press',name:'Leg Press',pattern:'squat',primary:['quads'],secondary:['glutes'],equipment:['machine'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'squat'},
+{id:'db_rdl',name:'Dumbbell Romanian Deadlift',pattern:'hinge',primary:['hamstrings'],secondary:['glutes'],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'hinge'},
+{id:'reverse_lunge',name:'Reverse Lunge',pattern:'lunge',primary:['quads','glutes'],secondary:['hamstrings'],equipment:['bodyweight'],optionalEquipment:['dumbbell'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_load',group:'lunge'},
+{id:'leg_curl',name:'Leg Curl',pattern:'knee_flexion',primary:['hamstrings'],secondary:[],equipment:['machine'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'knee_flexion'},
+{id:'lateral_raise',name:'Dumbbell Lateral Raise',pattern:'shoulder_abduction',primary:['lateral_delts'],secondary:[],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'shoulder_isolation'},
+{id:'db_curl',name:'Dumbbell Curl',pattern:'elbow_flexion',primary:['biceps'],secondary:[],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'biceps'},
+{id:'triceps_pressdown',name:'Triceps Pressdown',pattern:'elbow_extension',primary:['triceps'],secondary:[],equipment:['cable'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'triceps'},
+{id:'calf_raise',name:'Standing Calf Raise',pattern:'calf',primary:['calves'],secondary:[],equipment:['bodyweight'],optionalEquipment:['dumbbell'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_load',group:'calf'},
+{id:'dead_bug',name:'Dead Bug',pattern:'anti_extension',primary:['core'],secondary:[],equipment:['bodyweight'],difficulty:1,goals:['general_fitness','hypertrophy'],progression:'rep_control',group:'core'}
+];
+
+const STRETCHES=[
+{id:'cat_cow',name:'Cat-Cow Flow',regions:['spine','upper_back'],muscles:['core'],type:'dynamic',position:'quadruped',equipment:['bodyweight'],side:'both',minSeconds:40},
+{id:'thread_needle',name:'Thread the Needle',regions:['upper_back','shoulders'],muscles:['upper_back','rear_delts'],type:'mobility',position:'quadruped',equipment:['bodyweight'],side:'per_side',minSeconds:30},
+{id:'doorway_chest',name:'Doorway Chest Stretch',regions:['chest','shoulders'],muscles:['chest','anterior_delts'],type:'static',position:'standing',equipment:['wall'],side:'per_side',minSeconds:30},
+{id:'kneeling_lat',name:'Bench Kneeling Lat Stretch',regions:['back','shoulders'],muscles:['lats'],type:'static',position:'kneeling',equipment:['bench'],side:'both',minSeconds:40},
+{id:'cross_body_shoulder',name:'Cross-Body Shoulder Stretch',regions:['shoulders'],muscles:['rear_delts'],type:'static',position:'standing',equipment:['bodyweight'],side:'per_side',minSeconds:30},
+{id:'triceps_overhead',name:'Overhead Triceps Stretch',regions:['arms','shoulders'],muscles:['triceps'],type:'static',position:'standing',equipment:['bodyweight'],side:'per_side',minSeconds:30},
+{id:'90_90',name:'90/90 Hip Switch',regions:['hips'],muscles:['glutes','adductors'],type:'dynamic',position:'seated',equipment:['bodyweight'],side:'both',minSeconds:45},
+{id:'hip_flexor',name:'Half-Kneeling Hip Flexor Stretch',regions:['hips'],muscles:['hip_flexors'],type:'static',position:'half_kneeling',equipment:['bodyweight'],side:'per_side',minSeconds:35},
+{id:'adductor_rockback',name:'Adductor Rockback',regions:['hips','groin'],muscles:['adductors'],type:'mobility',position:'quadruped',equipment:['bodyweight'],side:'per_side',minSeconds:35},
+{id:'hamstring_fold',name:'Single-Leg Hamstring Fold',regions:['legs'],muscles:['hamstrings'],type:'static',position:'seated',equipment:['bodyweight'],side:'per_side',minSeconds:35},
+{id:'figure_four',name:'Supine Figure-Four Stretch',regions:['hips'],muscles:['glutes'],type:'static',position:'supine',equipment:['bodyweight'],side:'per_side',minSeconds:35},
+{id:'quad_couch',name:'Supported Quad and Hip Flexor Stretch',regions:['legs','hips'],muscles:['quads','hip_flexors'],type:'static',position:'half_kneeling',equipment:['bench'],side:'per_side',minSeconds:30},
+{id:'calf_wall',name:'Wall Calf Stretch',regions:['legs','ankles'],muscles:['calves'],type:'static',position:'standing',equipment:['wall'],side:'per_side',minSeconds:30},
+{id:'child_lat',name:"Child's Pose with Side Reach",regions:['back','shoulders'],muscles:['lats','upper_back'],type:'breath_assisted',position:'kneeling',equipment:['bodyweight'],side:'per_side',minSeconds:35}
+];
+
+const SPLITS={
+  2:['full_a','full_b'],
+  3:['full_a','full_b','full_c'],
+  4:['upper_a','lower_a','upper_b','lower_b'],
+  5:['upper_a','lower_a','upper_b','lower_b','full_c']
+};
+const SLOT_TEMPLATES={
+ upper_a:['horizontal_push','horizontal_pull','vertical_pull','shoulder_abduction','elbow_flexion','elbow_extension'],
+ upper_b:['vertical_push','horizontal_pull','horizontal_push','vertical_pull','shoulder_abduction','elbow_extension','elbow_flexion'],
+ lower_a:['squat','hinge','lunge','knee_flexion','calf','anti_extension'],
+ lower_b:['hinge','squat','lunge','knee_flexion','calf','anti_extension'],
+ full_a:['squat','horizontal_push','horizontal_pull','hinge','shoulder_abduction','anti_extension'],
+ full_b:['hinge','vertical_push','vertical_pull','lunge','elbow_flexion','calf'],
+ full_c:['squat','horizontal_push','vertical_pull','hinge','elbow_extension','anti_extension']
+};
+
+function normalizeProfile(input){
+ const p=Object.assign({goal:'hypertrophy',experience:'beginner',sessionsPerWeek:4,sessionMinutes:45,equipment:['bodyweight','dumbbell','bench'],priorities:[],preferences:[],exclusions:[],stretchMinutes:10,mobilitySessionsPerWeek:1},input||{});
+ p.sessionsPerWeek=Math.max(2,Math.min(5,Number(p.sessionsPerWeek)||4));
+ p.sessionMinutes=Math.max(20,Math.min(120,Number(p.sessionMinutes)||45));
+ p.stretchMinutes=[5,10,15].includes(Number(p.stretchMinutes))?Number(p.stretchMinutes):10;
+ p.equipment=Array.from(new Set(['bodyweight'].concat(p.equipment||[])));
+ return p;
+}
+function equipmentFits(item,p){
+ return (item.equipment||[]).every(eq=>eq==='bodyweight'||p.equipment.includes(eq)||eq==='wall');
+}
+function chooseExercise(pattern,p,used){
+ const candidates=EXERCISES.filter(e=>e.pattern===pattern&&!p.exclusions.includes(e.id)&&equipmentFits(e,p));
+ if(!candidates.length)return null;
+ const scored=candidates.map(e=>{
+   let score=100;
+   if(e.goals.includes(p.goal))score+=20;
+   if((p.preferences||[]).includes(e.id))score+=15;
+   if(used.has(e.id))score-=25;
+   if((p.priorities||[]).some(m=>e.primary.includes(m)))score+=10;
+   return {e,score};
+ }).sort((a,b)=>b.score-a.score||a.e.id.localeCompare(b.e.id));
+ return scored[0].e;
+}
+function prescriptionFor(exercise,p,week){
+ const accessory=['shoulder_abduction','elbow_flexion','elbow_extension','calf','anti_extension'].includes(exercise.pattern);
+ const base=accessory?{sets:3,reps:[10,15],restSeconds:60}:{sets:3,reps:[8,12],restSeconds:90};
+ return Object.assign(base,{intensityTarget:p.experience==='beginner'?'comfortable technique, 2-3 reps in reserve':'1-3 reps in reserve',progression:exercise.progression,week});
+}
+function warmupFor(label){
+ const lower=label.startsWith('lower');
+ return lower?
+ [{name:'Easy movement',seconds:60},{name:'Ankle rocks',seconds:45},{name:'90/90 Hip Switch',seconds:60},{name:'Glute bridge',seconds:45},{name:'Bodyweight squat rehearsal',seconds:90}]:
+ [{name:'Easy movement',seconds:60},{name:'Cat-Cow Flow',seconds:45},{name:'Thread the Needle',seconds:60},{name:'Scapular wall slide',seconds:45},{name:'Movement rehearsal',seconds:90}];
+}
+function stretchTargets(label){
+ if(label.startsWith('lower'))return ['hip_flexor','adductor_rockback','hamstring_fold','figure_four','calf_wall','90_90','quad_couch'];
+ if(label.startsWith('upper'))return ['doorway_chest','thread_needle','kneeling_lat','cross_body_shoulder','triceps_overhead','child_lat'];
+ return ['90_90','hip_flexor','hamstring_fold','doorway_chest','thread_needle','child_lat','calf_wall','figure_four'];
+}
+function buildStretchSession(minutes,label,p){
+ const target=Math.max(300,Math.min(900,minutes*60));
+ let pool=stretchTargets(label).map(id=>STRETCHES.find(s=>s.id===id)).filter(Boolean).filter(s=>equipmentFits(s,p));
+ if(!pool.length)pool=STRETCHES.filter(s=>equipmentFits(s,p));
+ const activities=[]; let total=0, i=0;
+ while(total<target && i<30){
+   const s=pool[i%pool.length];
+   const perSide=s.side==='per_side';
+   const remaining=target-total;
+   let seconds=Math.min(Math.max(s.minSeconds, perSide?60:45),remaining);
+   if(perSide && seconds>=40)seconds=Math.floor(seconds/2)*2;
+   activities.push({id:s.id,name:s.name,type:s.type,seconds,perSide,secondsPerSide:perSide?seconds/2:null,regions:s.regions});
+   total+=seconds;i++;
+ }
+ if(total<target)activities.push({id:'breathing_reset',name:'Breathing Reset',type:'breath_assisted',seconds:target-total,perSide:false,secondsPerSide:null,regions:['full_body']});
+ return {type:'stretch',targetMinutes:minutes,totalSeconds:target,activities};
+}
+function buildStrategy(p){
+ const split=p.sessionsPerWeek===4?'upper_lower':p.sessionsPerWeek===3?'full_body_3':p.sessionsPerWeek===2?'full_body_2':'hybrid_5';
+ return {goal:p.goal,frequency:p.sessionsPerWeek,split,blockWeeks:4,progression:'exercise_specific',stretchMinutes:p.stretchMinutes,mobilitySessionsPerWeek:p.mobilitySessionsPerWeek};
+}
+function buildProgram(input){
+ const p=normalizeProfile(input), strategy=buildStrategy(p), labels=SPLITS[p.sessionsPerWeek], used=new Set(), weeks=[];
+ for(let week=1;week<=4;week++){
+   const sessions=labels.map((label,index)=>{
+     const slots=SLOT_TEMPLATES[label];
+     const strength=slots.map((pattern,slotIndex)=>{
+       const exercise=chooseExercise(pattern,p,used);
+       if(!exercise)return {slot:pattern,unfilled:true,reason:'No compatible exercise for available equipment/exclusions'};
+       used.add(exercise.id);
+       return {slot:pattern,exercise:Object.assign({},exercise),prescription:prescriptionFor(exercise,p,week),reason:['matches '+pattern,'equipment available',exercise.goals.includes(p.goal)?'supports '+p.goal:'compatible training option']};
+     });
+     return {id:'w'+week+'s'+(index+1),week,index:index+1,label,type:'strength',estimatedMinutes:p.sessionMinutes,warmup:warmupFor(label),strength,stretch:buildStretchSession(p.stretchMinutes,label,p),status:'scheduled'};
+   });
+   weeks.push({week,sessions});
+ }
+ return {version:'1.0.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1'};
+}
+function validateProgram(program){
+ const errors=[];
+ if(!program||program.weeks?.length!==4)errors.push('Program must contain four weeks');
+ const sessions=(program.weeks||[]).flatMap(w=>w.sessions||[]);
+ if(sessions.length!==program.profile.sessionsPerWeek*4)errors.push('Session count does not match frequency');
+ sessions.forEach(s=>{
+   if(!s.warmup?.length)errors.push(s.id+': missing warmup');
+   if(!s.stretch||![300,600,900].includes(s.stretch.totalSeconds))errors.push(s.id+': stretch duration invalid');
+   s.strength.forEach(x=>{
+     if(x.exercise&&!equipmentFits(x.exercise,program.profile))errors.push(s.id+': incompatible equipment '+x.exercise.id);
+     if(x.exercise&&program.profile.exclusions.includes(x.exercise.id))errors.push(s.id+': excluded exercise selected '+x.exercise.id);
+   });
+ });
+ return {valid:errors.length===0,errors};
+}
+function progressionDecision(history,target){
+ if(!Array.isArray(history)||history.length<2)return {action:'repeat',reason:'Need at least two comparable performances'};
+ const recent=history.slice(-2);
+ const top=target?.reps?.[1]||10;
+ const allTop=recent.every(session=>session.reps?.length&&session.reps.every(r=>r>=top));
+ if(allTop)return {action:'progress',reason:'Top of rep range achieved across two sessions'};
+ const below=recent.every(session=>session.reps?.length&&session.reps.some(r=>r<(target?.reps?.[0]||8)));
+ if(below)return {action:'review',reason:'Below target range across two sessions'};
+ return {action:'maintain',reason:'Performance remains within progression range'};
+}
+
+const API={TAXONOMY,EXERCISES,STRETCHES,normalizeProfile,buildStrategy,buildStretchSession,buildProgram,validateProgram,progressionDecision};
+if(typeof module!=='undefined'&&module.exports)module.exports=API;
+root.GoWorkoutProgramEngine=API;
+})(typeof globalThis!=='undefined'?globalThis:this);
