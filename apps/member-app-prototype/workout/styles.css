@@ -3954,3 +3954,18 @@ html.embedded-workout main { padding: 8px 0 28px; }
 .engine-program-card small{display:block;opacity:.72}
 .engine-program-badge{flex:0 0 auto;border:1px solid currentColor;border-radius:999px;padding:7px 10px;font-size:.7rem;font-weight:800;letter-spacing:.08em}
 @media(max-width:620px){.engine-program-card{align-items:flex-start;flex-direction:column}}
+
+/* Program Engine evolution */
+.program-evolution-card{display:grid;gap:14px}
+.program-evolution-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.program-evolution-head h3,.program-evolution-card p{margin:0}
+.evolution-status{border:1px solid currentColor;border-radius:999px;padding:6px 9px;font-size:.68rem;font-weight:800;letter-spacing:.08em;white-space:nowrap}
+.evolution-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.evolution-metrics>div{display:grid;gap:3px;padding:12px;border:1px solid var(--line,#d8d8d2);border-radius:12px}
+.evolution-metrics strong{font-size:1.35rem}
+.evolution-metrics span,.program-evolution-card small{font-size:.76rem;opacity:.72}
+.evolution-evidence{display:flex;flex-wrap:wrap;gap:7px}
+.evolution-evidence span{border:1px solid var(--line,#d8d8d2);border-radius:999px;padding:5px 8px;font-size:.72rem}
+.workout-learning-card{display:grid;gap:7px;margin-top:14px}
+.workout-learning-card h3,.workout-learning-card p{margin:0}
+@media(max-width:620px){.program-evolution-head{flex-direction:column}.evolution-metrics{grid-template-columns:1fr}}
