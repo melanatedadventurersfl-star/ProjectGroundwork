@@ -1004,7 +1004,7 @@ function renderSwapModal(){
   const target=swapTarget();
   if(!target)return '';
   const source=exerciseSource(target.exercise);
-  const candidates=swapCandidates(source);
+  let candidates=swapCandidates(source);\n  const preferredIds=engineSubstitutionCatalogIds(target.exercise);\n  if(preferredIds.length)candidates=[...candidates].sort((a,b)=>(preferredIds.includes(b.exercise.id)?1:0)-(preferredIds.includes(a.exercise.id)?1:0));
   const available=candidates.filter(item=>item.available);
   const other=candidates.filter(item=>!item.available);
   const card=(item,index)=>{
@@ -1117,7 +1117,7 @@ function renderExerciseModal(){
         '<div class="coach-cue"><span>COACHING CUE</span><strong>'+esc(guide.cue)+'</strong></div>'+
         '<div class="instruction-block"><h3>Set up</h3><p>'+esc(guide.setup)+'</p></div>'+
         '<div class="instruction-block"><h3>How to move</h3><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></div>'+
-        '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
+        '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+\n        (ex.engineReason?.length?'<div class="instruction-block engine-why"><h3>Why this exercise</h3><p>'+esc(ex.engineReason.join(' · '))+'</p>'+(ex.engineIntensityTarget?'<small>Target: '+esc(ex.engineIntensityTarget)+'</small>':'')+'</div>':'')+
         renderExerciseHistoryPanel(ex)+
         '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
       '</div>'+
@@ -1560,6 +1560,9 @@ function engineWeekForContext(context=programContext()){const e=currentEnginePro
 const ENGINE_EXERCISE_TO_CATALOG={db_bench:'db-bench',pushup:'push-up',machine_press:'chest-press-machine',db_shoulder_press:'db-shoulder-press',cable_row:'cable-row',db_row:'one-arm-row',lat_pulldown:'lat-pulldown',goblet_squat:'goblet-squat',leg_press:'leg-press',db_rdl:'db-rdl',reverse_lunge:'reverse-lunge',leg_curl:'leg-curl',lateral_raise:'lateral-raise',db_curl:'biceps-curl',triceps_pressdown:'triceps-pushdown',calf_raise:'calf-raise',dead_bug:'dead-bug',incline_pushup:'push-up',inverted_row:'prone-w-raise',band_pulldown:'band-pulldown',split_squat:'split-squat',glute_bridge:'glute-bridge',pallof_press:'dead-bug',suitcase_carry:'plank'};
 function engineSessionForDate(date,index){const context=programContext(date),week=engineWeekForContext(context);return week?.sessions?.[index%Math.max(1,week.sessions.length)]||null;}
 function engineCatalogExercise(engineExercise){if(!engineExercise)return null;const mapped=ENGINE_EXERCISE_TO_CATALOG[engineExercise.id];return catalog.find(item=>item.id===mapped)||catalog.find(item=>item.name.toLowerCase()===String(engineExercise.name||'').toLowerCase())||null;}
+const ENGINE_STRETCH_MEDIA={doorway_chest:'Chest_And_Front_Of_Shoulder_Stretch',thread_needle:'Thread_the_Needle',kneeling_lat:'Overhead_Lat',cross_body_shoulder:'Cross_Body_Shoulder_Stretch',triceps_overhead:'Triceps_Stretch',child_lat:'Childs_Pose',hip_flexor:'Kneeling_Hip_Flexor',adductor_rockback:'Adductor',hamstring_fold:'Hamstring_Stretch',figure_four:'IT_Band_and_Glute_Stretch',calf_wall:'Standing_Gastrocnemius_Calf_Stretch','90_90':'90_90_Hamstring'};
+function engineStretchToLegacy(stretch){return (stretch?.activities||[]).map(item=>({name:item.name,seconds:Number(item.seconds)||30,description:'Hold a comfortable stretch and breathe steadily.',cue:item.perSide?'Complete both sides evenly.':'Stay relaxed and avoid forcing the range.',why:'Program Engine selected this for the muscles and movement patterns trained today.',mediaId:ENGINE_STRETCH_MEDIA[item.id]||''}));}
+function engineSubstitutionCatalogIds(ex){return (ex?.engineSubstitutions||[]).map(item=>ENGINE_EXERCISE_TO_CATALOG[item.id]).filter(Boolean);}
 function engineSessionToLegacyDay(session,fallbackDay,index=0){
   if(!session)return clone(fallbackDay);
   const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||''};}).filter(Boolean);
@@ -1824,7 +1827,7 @@ function createWorkout(day,meta={}){
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,
-    warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
+    warmup:plannedWarmup(day),cooldown:plannedCooldown(day),\n    engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
     exerciseStartedAt:null,exerciseDurations:{},
     restEndsAt:null,restDuration:0,restPausedRemaining:null,pendingPosition:null,
     exercises:day.exercises.map(ex=>{
@@ -3575,13 +3578,13 @@ function renderWorkoutIntro(w){
   const topNote=notes[0]||'Targets are based on your recent training and readiness.';
   const warmupSeconds=(w.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
   const cooldownSeconds=(w.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
-  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
+  const minimumIds=new Set(w.engineMinimumViable||[]);\n  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
     const loadLabel=ex.loadMode==='bodyweight'||ex.loadMode==='timed'||ex.loadMode==='band'
       ? (ex.loadMode==='timed'?'Timed':'Bodyweight')
       : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
     return '<div class="preview-exercise-row">'+
       '<div class="preview-exercise-index">'+String(index+1).padStart(2,'0')+'</div>'+
-      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span></div>'+
+      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+(minimumIds.has(ex.engineExerciseId)?' <em class="engine-priority-tag">CORE</em>':'')+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span>'+(ex.engineIntensityTarget?'<small>'+esc(ex.engineIntensityTarget)+'</small>':'')+'</div>'+
       '<div class="preview-exercise-load">'+loadLabel+'</div>'+
       '</div>';
   }).join('');
@@ -3590,7 +3593,7 @@ function renderWorkoutIntro(w){
     '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
     '<section class="preview-flow">'+
       (w.warmup?.length?'<div class="preview-flow-card"><span>01 · WARM-UP</span><strong>Movement prep · '+Math.ceil(warmupSeconds/60)+' min</strong><small>Dynamic work selected for today’s training.</small></div>':'')+
-      '<div class="preview-flow-card preview-flow-main"><span>'+(w.warmup?.length?'02':'01')+' · STRENGTH WORK</span><strong>'+w.exercises.length+' exercises · '+totalSets(w.exercises)+' working sets</strong><small>Starting loads are pre-filled from your profile, calibration, and recent performance. Every value is editable.</small></div>'+
+      '<div class="preview-flow-card preview-flow-main"><span>'+(w.warmup?.length?'02':'01')+' · STRENGTH WORK</span><strong>'+w.exercises.length+' exercises · '+totalSets(w.exercises)+' working sets</strong><small>'+(w.engineBacked?'CORE marks the movements protected first if today needs to be shortened.':'Starting loads are pre-filled from your profile, calibration, and recent performance. Every value is editable.')+'</small></div>'+
       (w.cooldown?.length?'<div class="preview-flow-card"><span>'+(w.warmup?.length?'03':'02')+' · COOLDOWN</span><strong>Guided cooldown · '+Math.ceil(cooldownSeconds/60)+' min</strong><small>Finish with a short guided stretch and recovery sequence.</small></div>':'')+
     '</section>'+
     '<section class="preview-prescription"><div class="preview-section-head"><div><span>SESSION PLAN</span><strong>What you’ll do</strong></div><button class="text-button" data-action="open-workout-map">EDIT / SUBSTITUTE</button></div>'+exerciseRows+'</section>'+
