@@ -2656,6 +2656,13 @@ function finishWorkout(auto=false){
   openWorkoutReview();
 }
 
+function discardRecoveredWorkout(startNew=false){
+ if(!store.activeWorkout)return;
+ const name=store.activeWorkout.routineName||'current workout';
+ if(!confirm('Discard '+name+'? Logged progress in this unfinished session will be removed.'))return;
+ store.activeWorkout=null;saveStore();currentTab=startNew?'train':'home';render();
+ if(startNew)toast('Choose the workout you want to start.');
+}
 function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
 
 function renderProfileEditor(){
@@ -3672,7 +3679,7 @@ function renderHome(){
   const shared=sharedTrainingState();
   return '<div class="clean-page home-clean">'+
     '<section class="home-greeting"><div><p class="eyebrow">TRAINING</p><h2>'+(name?'Hey, '+esc(name)+'.':'Your training week.')+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' phase · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div></section>'+
-    (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button>':'')+
+    (store.activeWorkout?'<section class="clean-resume-card recovery-card"><button class="recovery-main" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong><small>'+esc(store.activeWorkout.phase==='rest'?'Resting':store.activeWorkout.phase==='pre-set'?'Getting ready':store.activeWorkout.phase==='exercise-transition'?'Next exercise':store.activeWorkout.phase==='review'?'Final review':'Session active')+'</small></div><em>RESUME →</em></button><div class="recovery-actions"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div></section>':'')+
     '<section class="today-card '+(next?.status==='missed'?'missed':'')+'"><div class="today-card-top"><div><span>'+(next?.status==='missed'?'MISSED WORKOUT':next?.status==='today'?'TODAY’S WORKOUT':'NEXT WORKOUT')+'</span><em>'+esc(blockPhaseLabel(context.blockWeek))+'</em></div><strong>~'+esc(day?.estimatedMinutes||p.minutes)+' min</strong></div>'+
       '<div class="today-card-body"><div><h3>'+esc(day?.name||'Week complete')+'</h3><p>'+esc(day?.focus||'Your next training week will adapt from this one.')+'</p>'+(day?'<small>'+day.exercises.length+' exercises · '+day.exercises.reduce((sum,ex)=>sum+(ex.sets||0),0)+' working sets</small>':'')+'</div></div>'+
       (next&&!store.activeWorkout?'<button class="button primary-action today-start" data-start="'+esc(next.day.id)+'" data-scheduled-date="'+esc(next.dateKey)+'">'+(next.status==='missed'?'MAKE UP WORKOUT':next.status==='today'?'START WORKOUT':'PREPARE WORKOUT')+'</button>':'')+
@@ -4319,6 +4326,8 @@ function handleClick(event){
   else if(a==='undo-active-swap')undoExerciseSwap('active',Number(node.dataset.swapIndex));
   else if(a==='toggle-workout-pause')toggleWorkoutPause();
   else if(a==='complete-set')completeCurrentSet();
+  else if(a==='discard-recovered')discardRecoveredWorkout(false);
+  else if(a==='discard-and-new')discardRecoveredWorkout(true);
   else if(a==='skip-current-set')skipCurrentSet();
   else if(a==='start-set-now')finishPreSet();
   else if(a==='end-timed-set')completeTimedSet(true);
