@@ -4572,19 +4572,50 @@ function renderExerciseProgressDetail(summary){
     '<button class="button secondary progress-form-button" data-exercise-detail="'+esc(summary.exerciseId)+'">VIEW FORM & EXERCISE HISTORY</button>'+
   '</section>';
 }
-function progressMoments(limit=6){
-  const moments=[];
-  const ordered=[...(store.history||[])];
-  for(const workout of ordered){
-    for(const baseline of workout.baselines||[]){
-      moments.push({type:'baseline',date:workout.completedAt,title:'Baseline established',name:baseline.name,value:baseline.weight?baseline.weight+' lb × '+baseline.reps:baseline.reps+' reps'});
+function workoutRecordClassification(workout){
+  if(!workout)return {baselines:[],prs:[]};
+  const workoutTime=Date.parse(workout.completedAt||'');
+  const baselines=[],prs=[];
+  for(const ex of workout.exercises||[]){
+    const sets=(ex.sets||[]).filter(set=>set.completed);
+    if(!sets.length)continue;
+    let current=null;
+    for(const set of sets){
+      const candidate={weight:num(set.weight),reps:num(set.reps)};
+      if(!current||candidate.weight>current.weight||(candidate.weight===current.weight&&candidate.reps>current.reps))current=candidate;
     }
-    for(const pr of workout.newPRs||[]){
-      moments.push({type:'pr',date:workout.completedAt,title:'New personal record',name:pr.name,value:pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps'});
+    let before=null;
+    for(const prior of store.history||[]){
+      if(prior.id===workout.id)continue;
+      const priorTime=Date.parse(prior.completedAt||'');
+      if(Number.isFinite(workoutTime)&&Number.isFinite(priorTime)&&priorTime>=workoutTime)continue;
+      const priorEx=(prior.exercises||[]).find(item=>item.id===ex.id);
+      for(const set of priorEx?.sets||[]){
+        if(!set.completed)continue;
+        const candidate={weight:num(set.weight),reps:num(set.reps)};
+        if(!before||candidate.weight>before.weight||(candidate.weight===before.weight&&candidate.reps>before.reps))before=candidate;
+      }
     }
-    if(moments.length>=limit)break;
+    const event={exerciseId:ex.id,name:ex.name,...current};
+    if(!before)baselines.push(event);
+    else if(current.weight>before.weight||(current.weight===before.weight&&current.reps>before.reps))prs.push(event);
   }
-  return moments.slice(0,limit);
+  return {baselines,prs};
+}
+function progressRecordEvents(){
+  const events=[];
+  for(const workout of store.history||[]){
+    const classified=workoutRecordClassification(workout);
+    for(const item of classified.baselines)events.push({type:'baseline',date:workout.completedAt,title:'Baseline established',...item});
+    for(const item of classified.prs)events.push({type:'pr',date:workout.completedAt,title:'New personal record',...item});
+  }
+  return events.sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+}
+function progressMoments(limit=6){
+  return progressRecordEvents().slice(0,limit).map(item=>({
+    ...item,
+    value:item.weight?item.weight+' lb × '+item.reps:item.reps+' reps'
+  }));
 }
 function renderProgress(){
   const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),records=personalRecords(),calibrated=Object.keys(store.calibration).length;
@@ -4592,8 +4623,9 @@ function renderProgress(){
   const context=programContext(),schedule=currentWeekSchedule();
   const completed=schedule.filter(entry=>entry.status==='complete').length;
   const thisWeekVolume=week.reduce((sum,item)=>sum+(item.totalVolume||0),0);
-  const truePRCount=(store.history||[]).reduce((sum,item)=>sum+(item.newPRs?.length||0),0);
-  const moments=progressMoments();
+  const recordEvents=progressRecordEvents();
+  const truePRCount=recordEvents.filter(item=>item.type==='pr').length;
+  const moments=recordEvents.slice(0,6).map(item=>({...item,value:item.weight?item.weight+' lb × '+item.reps:item.reps+' reps'}));
   if(progressExerciseId&&!records.some(item=>item.exerciseId===progressExerciseId))progressExerciseId='';
   const selected=(progressExerciseId?records.find(item=>item.exerciseId===progressExerciseId):null)||trends[0]||null;
   if(selected&&!progressExerciseId)progressExerciseId=selected.exerciseId;
@@ -4612,9 +4644,10 @@ function renderProgress(){
 function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
   const partial=x.completionStatus==='partial';
+  const records=workoutRecordClassification(x);
   return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2><p>'+(partial?'Your completed work is preserved. This scheduled session remains partial.':'History and progression were updated from what you actually logged.')+'</p><div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
-    (x.baselines?.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+x.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
-    (x.newPRs?.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+x.newPRs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
+    (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
+    (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
     '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
