@@ -110,21 +110,21 @@ function normalizeProfile(input){
  p.sessionsPerWeek=Math.max(2,Math.min(5,Number(p.sessionsPerWeek)||4));
  p.sessionMinutes=Math.max(20,Math.min(120,Number(p.sessionMinutes)||45));
  p.stretchMinutes=[5,10,15].includes(Number(p.stretchMinutes))?Number(p.stretchMinutes):10;
- p.equipment=Array.from(new Set(['bodyweight'].concat(p.equipment||[])));
+ p.equipment=Array.from(new Set(['bodyweight'].concat(p.equipment||[]))); p.temporaryExclusions=p.temporaryExclusions||[]; p.exerciseHistory=p.exerciseHistory||{}; p.discomfortPatterns=p.discomfortPatterns||[];
  return p;
 }
 function equipmentFits(item,p){
  return (item.equipment||[]).every(eq=>eq==='bodyweight'||p.equipment.includes(eq)||eq==='wall');
 }
 function chooseExercise(pattern,p,used){
- const candidates=EXERCISES.filter(e=>e.pattern===pattern&&!p.exclusions.includes(e.id)&&equipmentFits(e,p));
+ const candidates=EXERCISES.filter(e=>e.pattern===pattern&&!p.exclusions.includes(e.id)&&!p.temporaryExclusions.includes(e.id)&&!(p.discomfortPatterns||[]).includes(e.pattern)&&equipmentFits(e,p));
  if(!candidates.length)return null;
  const scored=candidates.map(e=>{
    let score=100;
    if(e.goals.includes(p.goal))score+=20;
    if((p.preferences||[]).includes(e.id))score+=15;
    if(used.has(e.id))score-=25;
-   if((p.priorities||[]).some(m=>e.primary.includes(m)))score+=10;
+   if((p.priorities||[]).some(m=>e.primary.includes(m)))score+=10; const h=p.exerciseHistory?.[e.id]; if(h){score+=Math.min(12,(h.completedSessions||0)*2); if(h.lastFeedback==='discomfort')score-=50; if(h.lastFeedback==='liked')score+=8;}
    return {e,score};
  }).sort((a,b)=>b.score-a.score||a.e.id.localeCompare(b.e.id));
  return scored[0].e;
@@ -238,7 +238,7 @@ function buildProgram(input){
    });
    const model=(WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness)[week-1]; const recoveryActivities=[]; for(let m=0;m<p.mobilitySessionsPerWeek;m++)recoveryActivities.push(buildMobilitySession(p.stretchMinutes,p,'full')); weeks.push({week,label:model.label,sessions,recoveryActivities});
  }
- return {version:'1.2.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.2'};
+ return {version:'1.3.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.3'};
 }
 function validateProgram(program){
  const errors=[];
@@ -254,6 +254,61 @@ function validateProgram(program){
    });
  });
  return {valid:errors.length===0,errors};
+}
+function weeklyMuscleTargets(profile){
+ const p=normalizeProfile(profile), base=p.goal==='hypertrophy'?10:p.goal==='strength'?8:6;
+ const targets={};
+ TAXONOMY.muscles.forEach(m=>targets[m]=base);
+ ['hip_flexors','adductors'].forEach(m=>targets[m]=Math.max(4,base-4));
+ (p.priorities||[]).forEach(m=>{if(targets[m]!=null)targets[m]+=4});
+ return targets;
+}
+function weeklyMuscleVolume(program,weekNumber){
+ const totals={};
+ const week=(program.weeks||[]).find(w=>w.week===weekNumber);
+ (week?.sessions||[]).forEach(s=>(s.strength||[]).forEach(x=>{if(!x.exercise)return;const sets=x.prescription?.sets||0;(x.exercise.primary||[]).forEach(m=>totals[m]=(totals[m]||0)+sets);(x.exercise.secondary||[]).forEach(m=>totals[m]=(totals[m]||0)+sets*.5)}));
+ return Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,Math.round(v*10)/10]));
+}
+function volumeAudit(program){
+ const targets=weeklyMuscleTargets(program.profile),weeks=(program.weeks||[]).map(w=>{
+  const actual=weeklyMuscleVolume(program,w.week),muscles={};
+  Object.keys(targets).forEach(m=>{const a=actual[m]||0,t=targets[m];muscles[m]={target:t,actual:a,status:a<t*.7?'low':a>t*1.5?'high':'in_range'}});
+  return {week:w.week,muscles};
+ });
+ return {targets,weeks};
+}
+function interpretPostWorkoutFeedback(feedback){
+ const f=Object.assign({difficulty:3,energyAfter:3,pain:false,enjoyment:3},feedback||{});
+ let action='none',reason='Feedback is compatible with the current prescription';
+ if(f.pain){action='route_discomfort';reason='Pain/discomfort feedback should route the movement for review rather than automatic progression'}
+ else if(Number(f.difficulty)>=5&&Number(f.energyAfter)<=2){action='reduce_next';reason='Very high difficulty with low post-session energy suggests reducing the next exposure'}
+ else if(Number(f.difficulty)<=2&&Number(f.enjoyment)>=3){action='consider_progression';reason='Low difficulty with acceptable enjoyment supports reviewing progression'}
+ return {action,reason,feedback:f};
+}
+function substitutionOptions(exercise,p,context){
+ const profile=normalizeProfile(p),ctx=context||{};
+ return EXERCISES.filter(e=>e.id!==exercise.id&&e.pattern===exercise.pattern&&!profile.exclusions.includes(e.id)&&!profile.temporaryExclusions.includes(e.id)&&equipmentFits(e,profile))
+ .map(e=>{let score=100,reasons=['preserves '+exercise.pattern+' objective','works with available equipment'];if(e.group===exercise.group){score+=10;reasons.push('same substitution family')}if(ctx.reason==='discomfort'){score+=(e.difficulty<=exercise.difficulty?8:0);reasons.push('selected conservatively after discomfort report')}if(profile.preferences.includes(e.id)){score+=10;reasons.push('user preference')}return {id:e.id,name:e.name,score,reasons}})
+ .sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,4);
+}
+function createSchedule(program,startDate,trainingDays){
+ const start=new Date((startDate||new Date().toISOString().slice(0,10))+'T12:00:00');
+ const days=(trainingDays&&trainingDays.length?trainingDays:[1,3,5,6]).map(Number);
+ const entries=[];let cursor=new Date(start),wi=0,si=0;
+ while(wi<program.weeks.length){
+  if(days.includes(cursor.getDay())){
+   const session=program.weeks[wi].sessions[si];
+   if(session){entries.push({id:'schedule_'+session.id,sessionId:session.id,week:wi+1,date:cursor.toISOString().slice(0,10),status:'scheduled',history:[]});si++}
+   if(si>=program.weeks[wi].sessions.length){wi++;si=0}
+  }
+  cursor.setDate(cursor.getDate()+1);
+ }
+ return entries;
+}
+function transitionScheduleEntry(entry,status,date){
+ const allowed={scheduled:['started','skipped','rescheduled'],started:['in_progress','completed'],in_progress:['paused','completed'],paused:['in_progress','completed'],skipped:['rescheduled'],rescheduled:['started','skipped','rescheduled'],completed:[]};
+ if(!(allowed[entry.status]||[]).includes(status))return {ok:false,error:'Invalid schedule transition '+entry.status+' -> '+status,entry};
+ const next=JSON.parse(JSON.stringify(entry));next.history.push({from:entry.status,to:status,date:date||null});next.status=status;if(status==='rescheduled'&&date)next.date=date;return {ok:true,entry:next};
 }
 function readinessDecision(input){
  const r=Object.assign({energy:3,sleep:3,soreness:2,stress:2},input||{});
@@ -352,7 +407,7 @@ function progressionDecision(history,target){
  return {action:'maintain',reason:'Performance remains within progression range'};
 }
 
-const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,progressionDecision};
+const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,progressionDecision};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.GoWorkoutProgramEngine=API;
 })(typeof globalThis!=='undefined'?globalThis:this);
