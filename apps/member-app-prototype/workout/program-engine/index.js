@@ -238,7 +238,7 @@ function buildProgram(input){
    });
    const model=(WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness)[week-1]; const recoveryActivities=[]; for(let m=0;m<p.mobilitySessionsPerWeek;m++)recoveryActivities.push(buildMobilitySession(p.stretchMinutes,p,'full')); weeks.push({week,label:model.label,sessions,recoveryActivities});
  }
- return {version:'1.3.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.3'};
+ return {version:'1.4.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.4'};
 }
 function validateProgram(program){
  const errors=[];
@@ -416,6 +416,87 @@ function createProgramVersion(program,adaptation){
  next.weeks.forEach(w=>w.sessions.forEach(s=>s.strength.forEach(x=>{if(x.exercise)x.prescription.sets=Math.max(1,Math.round(x.prescription.sets*multiplier))})));
  return next;
 }
+const EXECUTION_STATES=['scheduled','preparing','warmup','active','resting','paused','stretching','completed','exited_resumable'];
+function createWorkoutExecution(session){
+ const strength=(session.strength||[]).filter(x=>x.exercise).map((x,index)=>({
+  index,exerciseId:x.exercise.id,name:x.exercise.name,prescription:JSON.parse(JSON.stringify(x.prescription)),
+  originalExerciseId:x.exercise.id,sets:Array.from({length:x.prescription.sets},(_,i)=>({index:i+1,reps:null,weight:null,completed:false,completedAt:null})),
+  substitutions:x.substitutions||[],status:'pending'
+ }));
+ return {schemaVersion:1,sessionId:session.id,state:'scheduled',phase:'scheduled',warmupIndex:0,exerciseIndex:0,stretchIndex:0,strength,startedAt:null,completedAt:null,pausedAt:null,rest:null,eventLog:[],revision:0};
+}
+function executionTransition(execution,next,meta){
+ const allowed={scheduled:['preparing'],preparing:['warmup','active','exited_resumable'],warmup:['warmup','active','paused','exited_resumable'],active:['active','resting','stretching','paused','exited_resumable'],resting:['active','paused','exited_resumable'],paused:['warmup','active','resting','stretching','exited_resumable'],stretching:['stretching','completed','paused','exited_resumable'],exited_resumable:['preparing'],completed:[]};
+ if(!(allowed[execution.state]||[]).includes(next))return {ok:false,error:'Invalid execution transition '+execution.state+' -> '+next,execution};
+ const e=JSON.parse(JSON.stringify(execution)),now=meta?.at||null;
+ e.eventLog.push({type:'state',from:e.state,to:next,at:now});e.state=next;e.revision++;
+ if(next==='preparing'&&!e.startedAt)e.startedAt=now;
+ if(next==='paused')e.pausedAt=now;
+ if(next==='warmup')e.phase='warmup';
+ if(next==='active')e.phase='strength';
+ if(next==='stretching')e.phase='stretch';
+ if(next==='completed'){e.phase='completed';e.completedAt=now;e.rest=null}
+ return {ok:true,execution:e};
+}
+function recordSet(execution,exerciseIndex,setIndex,data){
+ const e=JSON.parse(JSON.stringify(execution)),ex=e.strength[exerciseIndex],set=ex?.sets?.[setIndex];
+ if(!set)return {ok:false,error:'Set not found',execution};
+ if(!['active','resting'].includes(e.state))return {ok:false,error:'Sets can only be recorded during active strength work',execution};
+ set.reps=data?.reps==null?set.reps:Number(data.reps);set.weight=data?.weight==null?set.weight:Number(data.weight);set.completed=data?.completed!==false;set.completedAt=data?.at||null;
+ ex.status=ex.sets.every(s=>s.completed)?'completed':'in_progress';e.exerciseIndex=exerciseIndex;e.revision++;e.eventLog.push({type:'set_recorded',exerciseId:ex.exerciseId,set:setIndex+1,at:data?.at||null});
+ return {ok:true,execution:e};
+}
+function startRest(execution,seconds,atMs){
+ if(execution.state!=='active')return {ok:false,error:'Rest can only start from active state',execution};
+ const e=JSON.parse(JSON.stringify(execution)),duration=Math.max(0,Number(seconds)||0),start=Number(atMs)||0;
+ e.state='resting';e.rest={durationSeconds:duration,startedAtMs:start,endsAtMs:start+duration*1000};e.revision++;e.eventLog.push({type:'rest_started',seconds:duration,atMs:start});
+ return {ok:true,execution:e};
+}
+function restRemaining(execution,nowMs){
+ if(!execution.rest)return 0;
+ return Math.max(0,Math.ceil((execution.rest.endsAtMs-Number(nowMs))/1000));
+}
+function finishRest(execution,nowMs){
+ if(execution.state!=='resting')return {ok:false,error:'Not resting',execution};
+ if(restRemaining(execution,nowMs)>0)return {ok:false,error:'Rest timer has not finished',execution};
+ const e=JSON.parse(JSON.stringify(execution));e.state='active';e.rest=null;e.revision++;e.eventLog.push({type:'rest_finished',atMs:Number(nowMs)});return {ok:true,execution:e};
+}
+function previewNextExercise(execution){
+ const current=execution.exerciseIndex,next=execution.strength[current+1];
+ return next?{exerciseId:next.exerciseId,name:next.name,prescription:JSON.parse(JSON.stringify(next.prescription)),previewOnly:true}:null;
+}
+function navigateExercise(execution,index){
+ const i=Number(index);
+ if(i<0||i>=execution.strength.length)return {ok:false,error:'Exercise index out of range',execution};
+ const e=JSON.parse(JSON.stringify(execution));e.exerciseIndex=i;e.revision++;e.eventLog.push({type:'navigate',exerciseIndex:i});return {ok:true,execution:e};
+}
+function canAdvanceExercise(execution){
+ const ex=execution.strength[execution.exerciseIndex];
+ return !!ex&&ex.sets.length>0&&ex.sets.every(s=>s.completed);
+}
+function advanceExercise(execution){
+ if(!canAdvanceExercise(execution))return {ok:false,error:'Current exercise still has incomplete sets',execution};
+ const e=JSON.parse(JSON.stringify(execution));
+ if(e.exerciseIndex<e.strength.length-1){e.exerciseIndex++;e.state='active';e.rest=null;e.revision++;e.eventLog.push({type:'exercise_advanced',exerciseIndex:e.exerciseIndex});return {ok:true,execution:e,finishedStrength:false}}
+ e.state='stretching';e.phase='stretch';e.rest=null;e.revision++;e.eventLog.push({type:'strength_completed'});return {ok:true,execution:e,finishedStrength:true};
+}
+function substituteDuringWorkout(execution,replacement,reason){
+ if(!['active','resting'].includes(execution.state))return {ok:false,error:'Substitution unavailable outside active strength work',execution};
+ const e=JSON.parse(JSON.stringify(execution)),ex=e.strength[e.exerciseIndex];
+ if(!ex)return {ok:false,error:'Current exercise not found',execution};
+ const completed=ex.sets.filter(s=>s.completed).length;
+ ex.substitutionHistory=ex.substitutionHistory||[];ex.substitutionHistory.push({from:ex.exerciseId,to:replacement.id,reason:reason||'user_choice',afterCompletedSets:completed});
+ ex.exerciseId=replacement.id;ex.name=replacement.name;ex.status=completed?'in_progress':'pending';e.state='active';e.rest=null;e.revision++;e.eventLog.push({type:'substitution',to:replacement.id,reason:reason||'user_choice'});
+ return {ok:true,execution:e};
+}
+function executionSnapshot(execution){
+ return JSON.parse(JSON.stringify(execution));
+}
+function resumeExecution(snapshot){
+ const e=executionSnapshot(snapshot);
+ if(e.state!=='exited_resumable'&&e.state!=='paused')return {ok:false,error:'Execution is not resumable',execution:e};
+ e.state=e.phase==='warmup'?'warmup':e.phase==='stretch'?'stretching':'active';e.revision++;e.eventLog.push({type:'resumed'});return {ok:true,execution:e};
+}
 function progressionDecision(history,target){
  if(!Array.isArray(history)||history.length<2)return {action:'repeat',reason:'Need at least two comparable performances'};
  const recent=history.slice(-2);
@@ -427,7 +508,7 @@ function progressionDecision(history,target){
  return {action:'maintain',reason:'Performance remains within progression range'};
 }
 
-const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,progressionDecision};
+const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,EXECUTION_STATES,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,createWorkoutExecution,executionTransition,recordSet,startRest,restRemaining,finishRest,previewNextExercise,navigateExercise,canAdvanceExercise,advanceExercise,substituteDuringWorkout,executionSnapshot,resumeExecution,progressionDecision};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.GoWorkoutProgramEngine=API;
 })(typeof globalThis!=='undefined'?globalThis:this);
