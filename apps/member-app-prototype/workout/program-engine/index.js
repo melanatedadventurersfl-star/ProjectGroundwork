@@ -413,7 +413,13 @@ function createProgramVersion(program,adaptation){
  next.previousProgramSnapshot={version:program.version,createdBy:program.createdBy};
  next.createdBy='GoWorkout Program Engine '+next.version;
  const multiplier=adaptation?.volumeMultiplier||1;
- next.weeks.forEach(w=>w.sessions.forEach(s=>s.strength.forEach(x=>{if(x.exercise)x.prescription.sets=Math.max(1,Math.round(x.prescription.sets*multiplier))})));
+ next.weeks.forEach(w=>w.sessions.forEach(s=>{
+  const items=s.strength.filter(x=>x.exercise),before=items.reduce((n,x)=>n+x.prescription.sets,0),target=Math.max(items.length,Math.round(before*multiplier));
+  let delta=target-before;
+  if(delta>0){let i=0;while(delta>0&&items.length){const x=items[i%items.length];if(x.prescription.sets<6){x.prescription.sets++;delta--}i++;if(i>items.length*6)break}}
+  if(delta<0){let i=items.length-1;while(delta<0&&items.length){const x=items[(i+items.length)%items.length];if(x.prescription.sets>1){x.prescription.sets--;delta++}i--;if(Math.abs(i)>items.length*8)break}}
+  s.versionedVolume={previousSets:before,targetSets:target,appliedSets:items.reduce((n,x)=>n+x.prescription.sets,0),multiplier};
+ }));
  return next;
 }
 const EXECUTION_STATES=['scheduled','preparing','warmup','active','resting','paused','stretching','completed','exited_resumable'];
