@@ -2088,9 +2088,6 @@ function preSetSnapshot(w,nowMs=Date.now()){
   nowMs=workoutNowMs(w,nowMs);
   const start=Date.parse(w.preSetStartedAt||'');
   if(!Number.isFinite(start))return null;
-  const setup=Math.max(0,num(w.preSetSetupSeconds));
-  const countdown=Math.max(1,num(w.preSetCountdownSeconds)||3);
-  const total=setup+countdown;
   const elapsed=Math.max(0,(nowMs-start)/1000);
   const remainingExact=Math.max(0,total-elapsed);
   if(remainingExact<=0)return {complete:true,mode:'countdown',remaining:0,total:total};
