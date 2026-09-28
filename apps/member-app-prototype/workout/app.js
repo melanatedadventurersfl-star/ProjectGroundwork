@@ -208,6 +208,9 @@ function ensureTrainingProgram(){
   store.trainingProgram.scheduleOverrides=store.trainingProgram.scheduleOverrides||{};
   store.trainingProgram.weekReviews=store.trainingProgram.weekReviews||{};
   if(!('engine' in store.trainingProgram))store.trainingProgram.engine=null;
+  store.trainingProgram.enginePerformance=store.trainingProgram.enginePerformance||[];
+  store.trainingProgram.engineReadiness=store.trainingProgram.engineReadiness||[];
+  store.trainingProgram.engineAdaptations=store.trainingProgram.engineAdaptations||[];
   return store.trainingProgram;
 }
 function programOriginDate(){
@@ -2510,6 +2513,17 @@ function rebuildDerivedTrainingState(){
   store.progressionLog=(store.progressionLog||[]).filter(item=>!item.workoutId||valid.has(item.workoutId));
   ensureTrainingProgram().weekReviews={};
 }
+function engineSessionById(id){const engine=currentEngineProgram();if(!engine||!id)return null;for(const week of engine.program.weeks||[])for(const session of week.sessions||[])if(session.id===id)return session;return null;}
+function engineFeedbackFromWorkout(entry){const feedback=(entry.exercises||[]).map(ex=>ex.feedback).filter(Boolean);const difficulty=feedback.includes('too-hard')?5:feedback.includes('hard')||feedback.includes('form-off')?4:feedback.includes('too-easy')?2:3;const pain=(entry.exercises||[]).some(ex=>ex.swapReason==='pain'||ex.skipReason==='pain'||ex.feedback==='form-off');const enjoyment=feedback.includes('too-hard')?2:feedback.includes('too-easy')?4:3;return {difficulty,energyAfter:Math.max(1,Math.min(5,num(entry.readiness?.energy)||3)),pain,enjoyment};}
+function ingestEngineWorkout(entry){
+ if(!entry?.engineBacked||!entry.engineSessionId||!programEngine)return null;const session=engineSessionById(entry.engineSessionId);if(!session)return null;
+ const performed={completedAt:entry.completedAt,exercises:(entry.exercises||[]).map(ex=>({exerciseId:ex.engineExerciseId||ex.id,sets:(ex.sets||[]).map(set=>({reps:num(set.reps),weight:num(set.weight),completed:Boolean(set.completed)}))})),feedback:engineFeedbackFromWorkout(entry)};
+ const performance=programEngine.ingestPerformance(session,performed);performance.workoutId=entry.id;performance.completionStatus=entry.completionStatus;performance.interpretation=programEngine.interpretPostWorkoutFeedback(performed.feedback);
+ const training=ensureTrainingProgram();training.enginePerformance.push(performance);training.enginePerformance=training.enginePerformance.slice(-100);
+ const readiness={energy:num(entry.readiness?.energy)||3,sleep:num(entry.readiness?.sleep)||3,soreness:num(entry.readiness?.soreness)||2,stress:3,workoutId:entry.id,completedAt:entry.completedAt};training.engineReadiness.push(readiness);training.engineReadiness=training.engineReadiness.slice(-100);
+ const adaptation=programEngine.adaptationDecision(currentEngineProgram().program,training.enginePerformance,training.engineReadiness);training.engineAdaptations.push({...adaptation,workoutId:entry.id,at:entry.completedAt});training.engineAdaptations=training.engineAdaptations.slice(-50);
+ entry.engineLearning={performance:clone(performance),adaptation:clone(adaptation)};return entry.engineLearning;
+}
 function finalizeWorkout(status='complete'){
   const w=store.activeWorkout;if(!w)return;
   if(status==='complete'&&!workoutIsFullyResolved(w)){
@@ -2529,6 +2543,7 @@ function finalizeWorkout(status='complete'){
     const before=old.get(ex.id);
     if(session&&(!before||session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
+  if(entry.engineBacked)ingestEngineWorkout(entry);
   ['pendingPosition','restEndsAt','restPausedRemaining','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
   if(entry.sharedSession){
