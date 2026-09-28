@@ -269,6 +269,26 @@ function weeklyMuscleVolume(program,weekNumber){
  (week?.sessions||[]).forEach(s=>(s.strength||[]).forEach(x=>{if(!x.exercise)return;const sets=x.prescription?.sets||0;(x.exercise.primary||[]).forEach(m=>totals[m]=(totals[m]||0)+sets);(x.exercise.secondary||[]).forEach(m=>totals[m]=(totals[m]||0)+sets*.5)}));
  return Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,Math.round(v*10)/10]));
 }
+function rebalancePriorityVolume(program){
+ const clone=JSON.parse(JSON.stringify(program)),targets=weeklyMuscleTargets(clone.profile);
+ (clone.weeks||[]).forEach(w=>{
+  const actual=weeklyMuscleVolume({weeks:[w]},w.week);
+  (clone.profile.priorities||[]).forEach(m=>{
+   let deficit=Math.max(0,(targets[m]||0)-(actual[m]||0));
+   if(deficit<=0)return;
+   const candidates=w.sessions.flatMap(s=>s.strength.map(x=>({s,x}))).filter(o=>o.x.exercise?.primary?.includes(m));
+   let i=0;
+   while(deficit>0&&candidates.length&&i<20){
+    const o=candidates[i%candidates.length];
+    if(o.x.prescription.sets<5){o.x.prescription.sets+=1;o.x.priorityVolumeAdded=(o.x.priorityVolumeAdded||0)+1;deficit-=1}
+    i++;
+    if(candidates.every(z=>z.x.prescription.sets>=5))break;
+   }
+  });
+ });
+ clone.volumeAudit=volumeAudit(clone);
+ return clone;
+}
 function volumeAudit(program){
  const targets=weeklyMuscleTargets(program.profile),weeks=(program.weeks||[]).map(w=>{
   const actual=weeklyMuscleVolume(program,w.week),muscles={};
@@ -407,7 +427,7 @@ function progressionDecision(history,target){
  return {action:'maintain',reason:'Performance remains within progression range'};
 }
 
-const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,progressionDecision};
+const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,progressionDecision};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.GoWorkoutProgramEngine=API;
 })(typeof globalThis!=='undefined'?globalThis:this);
