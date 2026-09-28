@@ -53,6 +53,8 @@ if(!store.profile||!store.plan)restoredTab='profile-edit';
 else if(restoredTab==='workout'&&!store.activeWorkout)restoredTab='home';
 let currentTab=restoredTab||(store.activeWorkout?'workout':'home');
 accountSheetOpen=Boolean(restoredUiState.accountSheetOpen);
+let trainView=['week','program','exercises'].includes(restoredUiState.trainView)?restoredUiState.trainView:'week';
+let trainExpandedWeek=[1,2,3].includes(Number(restoredUiState.trainExpandedWeek))?Number(restoredUiState.trainExpandedWeek):0;
 let catalogQuery = '';
 let tickHandle = null;
 
@@ -94,6 +96,8 @@ function persistUiState(){
     localStorage.setItem(UI_STATE_KEY,JSON.stringify({
       currentTab,
       accountSheetOpen:Boolean(accountSheetOpen),
+      trainView,
+      trainExpandedWeek,
       savedAt:new Date().toISOString()
     }));
   }catch{}
@@ -3116,25 +3120,95 @@ function renderCompactWeek(schedule){
   }).join('')+'</div>';
 }
 
+function renderTrainTabs(){
+  const tabs=[['week','Week'],['program','Program'],['exercises','Exercises']];
+  return '<div class="train-tabs" role="tablist" aria-label="Train sections">'+tabs.map(([id,label])=>
+    '<button type="button" role="tab" aria-selected="'+(trainView===id?'true':'false')+'" class="train-tab '+(trainView===id?'active':'')+'" data-action="set-train-view" data-train-view="'+id+'">'+label+'</button>'
+  ).join('')+'</div>';
+}
+function renderTrainCurrentWeek(){
+  const schedule=currentWeekSchedule();
+  const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const start=startOfWeek(new Date()),end=addDays(start,6);
+  return '<section class="train-current-week">'+
+    '<div class="train-week-title"><div><p class="eyebrow">THIS WEEK</p><h3>'+esc(start.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(end.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</h3></div><span>'+completed+'/'+schedule.length+' complete</span></div>'+
+    '<div class="train-week-list">'+schedule.map(entry=>{
+      const day=entry.adaptedDay||entry.day,status=entry.status||'upcoming';
+      const statusLabel=status==='complete'?'COMPLETED':status==='today'?'TODAY':status==='missed'?'AVAILABLE':status==='partial'?'PARTIAL':status==='skipped'?'SKIPPED':'UPCOMING';
+      const action=!store.activeWorkout&&!['complete','skipped'].includes(status)
+        ? '<button class="button '+(status==='today'?'':'secondary')+' small-button" data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">'+(status==='today'?'START':status==='missed'?'DO TODAY':'PREPARE')+'</button>'
+        : status==='complete'?'<span class="train-day-done">✓</span>':'';
+      return '<article class="train-day-card status-'+status+'">'+
+        '<div class="train-day-date"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase())+'</span><strong>'+entry.date.getDate()+'</strong></div>'+
+        '<div class="train-day-copy"><span>'+statusLabel+'</span><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small></div>'+
+        '<div class="train-day-action">'+action+'</div>'+
+      '</article>';
+    }).join('')+'</div>'+
+  '</section>';
+}
+function trainFutureWeekData(offset){
+  const weekStart=addDays(startOfWeek(new Date()),offset*7);
+  const entries=scheduledEntriesForWeek(weekStart).map(entry=>({...entry,adaptedDay:adaptDayForProgramWeek(entry.day,entry.date)}));
+  return {offset,weekStart,weekEnd:addDays(weekStart,6),entries};
+}
+function renderTrainFutureWeek(offset){
+  const data=trainFutureWeekData(offset),expanded=trainExpandedWeek===offset;
+  const label=offset===1?'NEXT WEEK':'WEEK '+(offset+1);
+  const totalMinutes=data.entries.reduce((sum,entry)=>sum+(entry.adaptedDay?.estimatedMinutes||store.profile?.minutes||45),0);
+  return '<section class="train-future-week '+(expanded?'expanded':'')+'">'+
+    '<button class="train-future-toggle" type="button" data-action="toggle-train-week" data-week-offset="'+offset+'" aria-expanded="'+(expanded?'true':'false')+'">'+
+      '<div><span>'+label+'</span><strong>'+esc(data.weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(data.weekEnd.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</strong><small>'+data.entries.length+' workouts · ~'+totalMinutes+' min planned</small></div><em>'+((expanded?'−':'+'))+'</em>'+
+    '</button>'+
+    (expanded?'<div class="train-future-list">'+data.entries.map(entry=>{
+      const day=entry.adaptedDay||entry.day;
+      return '<div class="train-future-row"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+' '+entry.date.getDate()+'</span><div><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small></div></div>';
+    }).join('')+'</div>':'')+
+  '</section>';
+}
+function renderTrainWeekView(){
+  return '<div class="train-view train-week-view">'+
+    renderTrainCurrentWeek()+
+    '<div class="train-future-stack">'+[1,2,3].map(renderTrainFutureWeek).join('')+'</div>'+
+  '</div>';
+}
+function renderTrainBlockTimeline(context){
+  const labels=['Establish','Build','Progress','Consolidate'];
+  return '<section class="train-block-timeline"><div class="train-block-head"><div><p class="eyebrow">CURRENT BLOCK</p><h3>Block '+context.blockNumber+'</h3></div><span>Week '+context.blockWeek+' of 4</span></div>'+
+    '<div class="train-block-track">'+labels.map((label,index)=>{
+      const week=index+1,state=week<context.blockWeek?'done':week===context.blockWeek?'current':'future';
+      return '<div class="train-block-step '+state+'"><i></i><strong>Week '+week+'</strong><span>'+label+'</span></div>';
+    }).join('')+'</div></section>';
+}
+function renderTrainProgramView(){
+  const context=programContext(),plan=store.plan;
+  return '<div class="train-view train-program-view">'+
+    renderTrainBlockTimeline(context)+
+    renderEngineProgramSummary()+
+    renderProgramEvolution()+
+    '<section class="clean-section train-rotation-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+' workouts</h3></div><button class="text-button" data-action="edit-profile">EDIT PLAN</button></div>'+
+      '<div class="train-rotation-list">'+plan.days.map((day,index)=>{
+        const first=day.exercises?.[0];
+        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></article>';
+      }).join('')+'</div>'+
+    '</section>'+
+  '</div>';
+}
+function renderTrainExercisesView(){
+  const q=catalogQuery.trim().toLowerCase();
+  const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty,...(e.equipment||[])].join(' ').toLowerCase().includes(q));
+  return '<div class="train-view train-exercises-view">'+
+    '<section class="train-library-head"><div><p class="eyebrow">EXERCISES</p><h3>'+catalog.length+' movements</h3><p>Search by movement, muscle, or equipment. Tap an exercise for form cues and details.</p></div></section>'+
+    '<div class="catalog-search train-catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="'+esc(catalogQuery)+'"><span>'+items.length+' shown</span></div>'+
+    '<div class="catalog-grid train-catalog-grid">'+items.map(e=>'<article class="catalog-card visual-catalog-card">'+exerciseImageButton(e,'catalog-exercise-media')+'<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(movements[e.movement]||e.movement)+'</span><span>'+esc(e.difficulty)+'</span></div><h3>'+esc(e.name)+'</h3><p>'+e.muscles.map(esc).join(' · ')+'</p><div class="catalog-tags"><span>'+esc(e.style)+'</span><span>'+esc(e.equipment.join(' / '))+'</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="'+esc(e.id)+'">View form & cues</button></div></article>').join('')+'</div>'+
+  '</div>';
+}
 function renderTrain(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
-  const schedule=currentWeekSchedule();
-  const context=programContext();
-  return '<div class="clean-page">'+
-    '<div class="clean-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program.</h2><p>Plan and preview the next four weeks, with the current and next week fully expanded.</p></div><button class="button secondary" data-action="edit-profile">EDIT PLAN</button></div>'+
+  return '<div class="clean-page train-reframed">'+
+    '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your training.</h2><p>See what is coming up, understand your program, or find an exercise without scrolling through all three at once.</p></div></div>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
-    '<section class="clean-panel block-summary"><div><span>CURRENT BLOCK</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+'</small></div><button class="text-button" data-action="home">VIEW HOME</button></section>'+
-    renderEngineProgramSummary()+renderProgramEvolution()+
-    '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">PROGRAM HORIZON</p><h3>4 weeks planned</h3></div><button class="text-button" data-action="regenerate">REGENERATE</button></div>'+
-    renderProgramHorizon()+
-    '<div class="clean-section-head program-rotation-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+'-day rotation</h3></div></div>'+
-    '<div class="clean-routine-list">'+plan.days.map((day,index)=>{
-      const scheduled=schedule.find(entry=>entry.day.id===day.id);
-      const first=day.exercises[0];
-      return '<article class="clean-routine-card"><div class="routine-card-main"><span class="routine-index">'+String(index+1).padStart(2,'0')+'</span><div><h3>'+esc(day.name)+'</h3><p>'+esc(day.focus)+'</p><small>'+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></div>'+
-        '<div class="routine-card-actions">'+(scheduled&&!store.activeWorkout?'<button class="button secondary" data-start="'+esc(day.id)+'" data-scheduled-date="'+esc(scheduled.dateKey)+'">'+(scheduled.status==='today'?'START TODAY':'PREPARE')+'</button>':'')+'<button class="text-button" data-action="catalog">LIBRARY</button></div></article>';
-    }).join('')+'</div></section>'+
-    '<section class="clean-panel train-library-card"><div><p class="eyebrow">EXERCISE LIBRARY</p><h3>'+catalog.length+' movements</h3><p>Form cues, equipment requirements, muscle groups, and exercise history.</p></div><button class="button secondary" data-action="catalog">BROWSE</button></section>'+
+    renderTrainTabs()+
+    (trainView==='program'?renderTrainProgramView():trainView==='exercises'?renderTrainExercisesView():renderTrainWeekView())+
   '</div>';
 }
 function sharedTrainingState(){
@@ -4371,6 +4445,8 @@ function handleClick(event){
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='set-train-view'){trainView=['week','program','exercises'].includes(node.dataset.trainView)?node.dataset.trainView:'week';persistUiState();render();}
+  else if(a==='toggle-train-week'){const offset=Number(node.dataset.weekOffset);trainExpandedWeek=trainExpandedWeek===offset?0:offset;persistUiState();render();}
   else if(a==='train')setTab('train');
   else if(a==='together')setTab('together');
   else if(a==='progress')setTab('progress');
