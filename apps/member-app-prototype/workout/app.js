@@ -1805,7 +1805,7 @@ async function startPreparedWorkout(){
   if(readinessContext.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
     await workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',readinessContext.sharedDraft.backendId).eq('user_id',store.account.userId);
   }
-  const day=applyReadinessToDay(readinessContext.day,readiness);
+  let day=applyReadinessToDay(readinessContext.day,readiness);\n  if(day.engineBacked&&readiness.timeAvailable&&readiness.timeAvailable<(day.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){\n    const engine=currentEngineProgram(),week=engine?.program?.weeks?.find(w=>w.week===day.engineWeek),session=week?.sessions?.find(s=>s.id===day.engineSessionId);\n    if(session){const compressed=programEngine.compressSession(session,readiness.timeAvailable);day=engineSessionToLegacyDay(compressed,day);day.adaptationNotes=[...(day.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+readiness.timeAvailable+' available minutes.'];}\n  }
   const scheduledDate=readinessContext.scheduledDate;
   const context=programContext(dateFromKey(scheduledDate));
   const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
