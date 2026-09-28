@@ -238,7 +238,7 @@ function buildProgram(input){
    });
    const model=(WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness)[week-1]; const recoveryActivities=[]; for(let m=0;m<p.mobilitySessionsPerWeek;m++)recoveryActivities.push(buildMobilitySession(p.stretchMinutes,p,'full')); weeks.push({week,label:model.label,sessions,recoveryActivities});
  }
- return {version:'1.1.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.1'};
+ return {version:'1.2.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.2'};
 }
 function validateProgram(program){
  const errors=[];
@@ -255,6 +255,92 @@ function validateProgram(program){
  });
  return {valid:errors.length===0,errors};
 }
+function readinessDecision(input){
+ const r=Object.assign({energy:3,sleep:3,soreness:2,stress:2},input||{});
+ const clamp=n=>Math.max(1,Math.min(5,Number(n)||3));
+ const energy=clamp(r.energy),sleep=clamp(r.sleep),soreness=clamp(r.soreness),stress=clamp(r.stress);
+ const score=Math.round(((energy+sleep+(6-soreness)+(6-stress))/20)*100);
+ let mode='normal',volumeMultiplier=1,intensityAdjustment='none';
+ if(score<45){mode='recovery';volumeMultiplier=.55;intensityAdjustment='reduce load and keep 4+ reps in reserve'}
+ else if(score<70){mode='reduced';volumeMultiplier=.75;intensityAdjustment='keep 3+ reps in reserve'}
+ return {score,mode,volumeMultiplier,intensityAdjustment,inputs:{energy,sleep,soreness,stress},reason:mode==='normal'?'Readiness supports planned training':mode==='reduced'?'Readiness is below baseline; reduce workload':'Readiness is low; prioritize recovery-quality work'};
+}
+function applyReadiness(session,readiness){
+ const decision=readinessDecision(readiness);
+ const clone=JSON.parse(JSON.stringify(session));
+ clone.readiness=decision;
+ if(decision.mode!=='normal'){
+  clone.strength.forEach(x=>{if(x.exercise){x.prescription.sets=Math.max(1,Math.round(x.prescription.sets*decision.volumeMultiplier));x.prescription.intensityTarget=decision.intensityAdjustment}});
+ }
+ return clone;
+}
+function muscleVolume(program){
+ const totals={};
+ (program.weeks||[]).forEach(w=>(w.sessions||[]).forEach(s=>(s.strength||[]).forEach(x=>{
+  if(!x.exercise)return;
+  const sets=x.prescription?.sets||0;
+  (x.exercise.primary||[]).forEach(m=>totals[m]=(totals[m]||0)+sets);
+  (x.exercise.secondary||[]).forEach(m=>totals[m]=(totals[m]||0)+sets*.5);
+ })));
+ return Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,Math.round(v*10)/10]));
+}
+function ingestPerformance(session,performed){
+ const entries=(performed?.exercises||[]).map(e=>{
+  const planned=(session.strength||[]).find(x=>x.exercise?.id===e.exerciseId);
+  if(!planned)return {exerciseId:e.exerciseId,status:'unplanned',sets:e.sets||[]};
+  const completed=(e.sets||[]).filter(s=>s.completed!==false);
+  const targetSets=planned.prescription.sets;
+  const avgReps=completed.length?completed.reduce((n,s)=>n+(Number(s.reps)||0),0)/completed.length:0;
+  return {exerciseId:e.exerciseId,status:'planned',targetSets,completedSets:completed.length,completionRate:targetSets?Math.round(completed.length/targetSets*100):0,averageReps:Math.round(avgReps*10)/10,sets:completed};
+ });
+ const plannedIds=(session.strength||[]).filter(x=>x.exercise).map(x=>x.exercise.id);
+ const completedIds=new Set(entries.filter(x=>x.status==='planned'&&x.completedSets>0).map(x=>x.exerciseId));
+ const adherence=plannedIds.length?Math.round(completedIds.size/plannedIds.length*100):100;
+ return {sessionId:session.id,completedAt:performed?.completedAt||null,entries,adherence,feedback:performed?.feedback||{},source:'performance_ingestion_v1'};
+}
+function compressSession(session,availableMinutes){
+ const clone=JSON.parse(JSON.stringify(session));
+ const minutes=Math.max(10,Number(availableMinutes)||clone.estimatedMinutes||30);
+ const warm=clone.timeBudget?.warmupMinutes||5,stretch=Math.min(clone.timeBudget?.stretchMinutes||5,minutes<=25?5:clone.timeBudget?.stretchMinutes||5);
+ let budget=Math.max(5,minutes-warm-stretch),used=0;
+ clone.strength.forEach((x,i)=>{
+  if(!x.exercise){x.compressionStatus='unfilled';return}
+  const setCost=(x.prescription.restSeconds+45)/60;
+  const fullCost=x.prescription.sets*setCost;
+  if(used+fullCost<=budget){x.compressionStatus='full';used+=fullCost;return}
+  if(i<3&&used+setCost<=budget){const fit=Math.max(1,Math.floor((budget-used)/setCost));x.prescription.sets=Math.min(x.prescription.sets,fit);x.compressionStatus='reduced';used+=x.prescription.sets*setCost;return}
+  x.prescription.sets=0;x.compressionStatus='removed_for_time';
+ });
+ clone.stretch=buildStretchSession(stretch<=5?5:stretch,clone.label,{equipment:['bodyweight','wall','bench']});
+ clone.compressedFromMinutes=session.estimatedMinutes;
+ clone.estimatedMinutes=minutes;
+ clone.compression={availableMinutes:minutes,strengthBudgetMinutes:Math.round(budget*10)/10,estimatedUsedMinutes:Math.round(used*10)/10,principle:'preserve highest-priority movements before accessory work'};
+ return clone;
+}
+function adaptationDecision(program,performanceRecords,readinessRecords){
+ const records=performanceRecords||[], readiness=readinessRecords||[];
+ const avgAdherence=records.length?records.reduce((n,r)=>n+(r.adherence||0),0)/records.length:100;
+ const lowReadiness=readiness.filter(r=>readinessDecision(r).mode!=='normal').length;
+ const ratio=readiness.length?lowReadiness/readiness.length:0;
+ let action='continue',reason='Adherence and readiness support the current strategy',volumeMultiplier=1;
+ if(avgAdherence<60){action='simplify';volumeMultiplier=.8;reason='Low adherence suggests the current program demand is too high'}
+ else if(ratio>=.5){action='reduce';volumeMultiplier=.85;reason='Repeated reduced readiness suggests accumulated recovery demand'}
+ else if(avgAdherence>=90&&records.length>=4){action='progress';volumeMultiplier=1.05;reason='High adherence supports a modest next-block progression'}
+ return {action,reason,volumeMultiplier,averageAdherence:Math.round(avgAdherence),lowReadinessRate:Math.round(ratio*100)};
+}
+function createProgramVersion(program,adaptation){
+ const next=JSON.parse(JSON.stringify(program));
+ const current=String(program.version||'1.0.0').split('.').map(Number);
+ current[1]=(current[1]||0)+1;current[2]=0;
+ next.version=current.join('.');
+ next.parentVersion=program.version;
+ next.versionReason=adaptation?.reason||'Program revision';
+ next.previousProgramSnapshot={version:program.version,createdBy:program.createdBy};
+ next.createdBy='GoWorkout Program Engine '+next.version;
+ const multiplier=adaptation?.volumeMultiplier||1;
+ next.weeks.forEach(w=>w.sessions.forEach(s=>s.strength.forEach(x=>{if(x.exercise)x.prescription.sets=Math.max(1,Math.round(x.prescription.sets*multiplier))})));
+ return next;
+}
 function progressionDecision(history,target){
  if(!Array.isArray(history)||history.length<2)return {action:'repeat',reason:'Need at least two comparable performances'};
  const recent=history.slice(-2);
@@ -266,7 +352,7 @@ function progressionDecision(history,target){
  return {action:'maintain',reason:'Performance remains within progression range'};
 }
 
-const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,buildProgram,validateProgram,progressionDecision};
+const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,normalizeProfile,buildStrategy,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,progressionDecision};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.GoWorkoutProgramEngine=API;
 })(typeof globalThis!=='undefined'?globalThis:this);
