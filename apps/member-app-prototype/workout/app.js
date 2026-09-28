@@ -3888,7 +3888,7 @@ function renderWorkSet(pos){
     '<div class="clean-exercise-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
     '<div class="clean-target-strip"><div><span>TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
     '<div class="clean-set-list">'+setRows+'</div>'+
-    '<button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button>'+
+    '<div class="set-primary-actions"><button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></div>'+
     '<div class="clean-performance-note"><div><span>LAST TIME</span><strong>'+esc(lastLabel||'First session')+'</strong></div><div><span>TODAY</span><strong>'+esc(ex.adaptiveReason||'Hit the target with solid form.')+'</strong></div></div>'+
     '<button class="workout-cue-compact" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>More options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
   '</div>';
@@ -4300,6 +4300,7 @@ function handleClick(event){
   else if(a==='undo-active-swap')undoExerciseSwap('active',Number(node.dataset.swapIndex));
   else if(a==='toggle-workout-pause')toggleWorkoutPause();
   else if(a==='complete-set')completeCurrentSet();
+  else if(a==='skip-current-set')skipCurrentSet();
   else if(a==='start-set-now')finishPreSet();
   else if(a==='end-timed-set')completeTimedSet(true);
   else if(a==='toggle-sound')toggleCueSetting('sound');
