@@ -364,9 +364,10 @@ function rotateAccessoriesForBlock(day,blockNumber){
 }
 function adaptDayForProgramWeek(baseDay,date=new Date()){
   const decision=adaptationDecision(date);
-  const day=rotateAccessoriesForBlock(clone(baseDay),decision.context.blockNumber);
+  const engineBacked=Boolean(baseDay?.engineBacked);
+  const day=engineBacked?clone(baseDay):rotateAccessoriesForBlock(clone(baseDay),decision.context.blockNumber);
   const compounds=day.exercises.filter(ex=>!ACCESSORY_MOVEMENTS.has(ex.movement));
-  for(let i=0;i<Math.min(decision.addSets,compounds.length);i++)compounds[i].sets=Math.min(4,(compounds[i].sets||2)+1);
+  if(!engineBacked)for(let i=0;i<Math.min(decision.addSets,compounds.length);i++)compounds[i].sets=Math.min(4,(compounds[i].sets||2)+1);
   if(decision.reduceAccessories){
     for(const ex of day.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
   }
@@ -380,7 +381,7 @@ function adaptDayForProgramWeek(baseDay,date=new Date()){
   }
   day.programContext=decision.context;
   day.adaptationMode=decision.mode;
-  day.adaptationNotes=decision.notes;
+  day.adaptationNotes=engineBacked?[...decision.notes,'Program Engine week prescription retained; legacy progression bump skipped.']:decision.notes;
   return day;
 }
 function currentWeekSchedule(date=new Date()){
