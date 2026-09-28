@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GoWorkout Engine Harness</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f5f2e9;color:#17372c}main{max-width:980px;margin:auto;padding:24px}.card{background:white;border:1px solid #d9d3c4;border-radius:16px;padding:18px;margin:14px 0}button,select,input{font:inherit;padding:9px 12px;margin:4px;border-radius:9px;border:1px solid #aaa}button{background:#17372c;color:white;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.pill{display:inline-block;padding:5px 9px;background:#eee8d8;border-radius:999px;margin:3px}pre{white-space:pre-wrap;max-height:420px;overflow:auto;background:#10251f;color:#eef6ef;padding:14px;border-radius:12px}.ok{color:#176b3a}.warn{color:#9a5a00}
+</style></head><body><main>
+<h1>GoWorkout Program Engine v1.5 Harness</h1><p>Isolated browser test surface. This does not write to the live GoWorkout store.</p>
+<div class="card grid">
+<label>Goal <select id="goal"><option>hypertrophy</option><option>strength</option><option>general_fitness</option></select></label>
+<label>Days/week <select id="days"><option>2</option><option>3</option><option selected>4</option><option>5</option></select></label>
+<label>Session minutes <input id="minutes" type="number" value="45" min="20" max="120"></label>
+<label>Stretch <select id="stretch"><option>5</option><option selected>10</option><option>15</option></select></label>
+</div>
+<div class="card"><button id="generate">Generate Program</button><button id="start">Start First Session</button><button id="warmup">Complete Warm-up</button><button id="set">Complete Current Set</button><button id="advance">Advance Exercise</button><button id="preview">Preview Next</button><button id="exit">Exit + Restore</button><button id="stretchStep">Complete Stretch Step</button></div>
+<div class="card"><div id="status">Generate a program to begin.</div><div id="summary"></div></div>
+<div class="card"><h2>State inspector</h2><pre id="output"></pre></div>
+<script src="./index.js"></script><script>
+const E=window.GoWorkoutProgramEngine;let program=null,execution=null;
+const out=v=>document.querySelector('#output').textContent=JSON.stringify(v,null,2);
+const status=t=>document.querySelector('#status').textContent=t;
+function profile(){return{goal:goal.value,sessionsPerWeek:+days.value,sessionMinutes:+minutes.value,stretchMinutes:+stretch.value,experience:'intermediate',equipment:['dumbbell','bench','cable','machine'],priorities:['chest','lateral_delts']}}
+generate.onclick=()=>{program=E.rebalancePriorityVolume(E.buildProgram(profile()));const a=E.volumeAudit(program);summary.innerHTML='<span class="pill">v'+program.version+'</span><span class="pill">'+program.weeks.length+' weeks</span><span class="pill">'+program.profile.sessionsPerWeek+' days/week</span>';status('Program generated and volume-audited.');out({strategy:program.strategy,week1:program.weeks[0],audit:a.weeks[0]})}
+start.onclick=()=>{if(!program)return status('Generate a program first.');execution=E.createWorkoutExecution(program.weeks[0].sessions[0]);execution=E.executionTransition(execution,'preparing',{at:new Date().toISOString()}).execution;execution=E.executionTransition(execution,'warmup').execution;status('Workout started in warm-up.');out(execution)}
+warmup.onclick=()=>{if(!execution)return;for(let i=0;i<execution.warmup.length;i++)if(!execution.warmup[i].completed)execution=E.completeWarmupStep(execution,i,new Date().toISOString()).execution;status('Warm-up complete. Strength is active.');out(execution)}
+set.onclick=()=>{if(!execution||execution.state!=='active')return status('Strength must be active.');const ex=execution.strength[execution.exerciseIndex],i=ex.sets.findIndex(s=>!s.completed);if(i<0)return status('Current exercise has no incomplete sets.');execution=E.recordSet(execution,execution.exerciseIndex,i,{reps:10,weight:25,at:new Date().toISOString()}).execution;status('Set recorded.');out(execution)}
+advance.onclick=()=>{if(!execution)return;const r=E.advanceExercise(execution);if(!r.ok)return status(r.error);execution=r.execution;status(r.finishedStrength?'Strength complete. Stretching started.':'Advanced to next exercise.');out(execution)}
+preview.onclick=()=>{if(!execution)return;const p=E.previewNextExercise(execution);status(p?'Preview only. Workout position unchanged.':'No next exercise.');out({preview:p,currentExerciseIndex:execution.exerciseIndex})}
+exit.onclick=()=>{if(!execution)return;const r=E.executionTransition(execution,'exited_resumable');if(!r.ok)return status(r.error);const saved=E.serializeExecution(r.execution,Date.now()),restored=E.restoreExecution(saved,{nowMs:Date.now(),maxAgeMs:86400000});execution=E.resumeExecution(restored.execution).execution;status('Serialized, restored, and resumed.');out(execution)}
+stretchStep.onclick=()=>{if(!execution||execution.state!=='stretching')return status('Finish strength first.');const i=execution.stretch.findIndex(s=>!s.completed);if(i<0)return;execution=E.completeStretchStep(execution,i,new Date().toISOString()).execution;status(execution.state==='completed'?'Workout completed.':'Stretch step completed.');out(execution)}
+</script></main></body></html>
