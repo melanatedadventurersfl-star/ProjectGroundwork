@@ -72,13 +72,13 @@ const WEEK_MODELS={
  hypertrophy:[
   {week:1,label:'Base',setMultiplier:1,intensity:'2-3 reps in reserve'},
   {week:2,label:'Build',setMultiplier:1,intensity:'2 reps in reserve'},
-  {week:3,label:'Overload',setMultiplier:1.15,intensity:'1-2 reps in reserve'},
+  {week:3,label:'Overload',setMultiplier:1.34,intensity:'1-2 reps in reserve'},
   {week:4,label:'Consolidate',setMultiplier:.75,intensity:'3-4 reps in reserve'}
  ],
  strength:[
   {week:1,label:'Base',setMultiplier:1,intensity:'3 reps in reserve'},
   {week:2,label:'Build',setMultiplier:1,intensity:'2 reps in reserve'},
-  {week:3,label:'Overload',setMultiplier:1.1,intensity:'1-2 reps in reserve'},
+  {week:3,label:'Overload',setMultiplier:1.34,intensity:'1-2 reps in reserve'},
   {week:4,label:'Consolidate',setMultiplier:.75,intensity:'3-4 reps in reserve'}
  ],
  general_fitness:[
