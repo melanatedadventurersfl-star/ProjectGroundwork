@@ -1,4 +1,4 @@
-# GoWorkout Program Engine v1.2
+# GoWorkout Program Engine v1.4
 
 An isolated, deterministic programming layer for GoWorkout. The live workout execution flow is intentionally untouched until the engine is proven.
 
@@ -66,5 +66,17 @@ console.log(program);
 - Adaptation decisions can continue, simplify, reduce, or progress the next block.
 - Program revisions create a new immutable version with a parent-version reference.
 
+## v1.4 workout execution
+- Explicit scheduled → preparing → warm-up → active/resting → stretching → completed lifecycle.
+- Illegal state transitions are rejected.
+- Set entry is immutable and revisioned.
+- Next-exercise preview never advances the workout.
+- Forward/back exercise navigation preserves entered data.
+- Exercise advancement is blocked until the current exercise's final set is complete.
+- Rest timers use absolute end timestamps to prevent timer drift.
+- Mid-workout substitutions retain completed sets and substitution history.
+- Pause/exit snapshots can be resumed without rebuilding the workout.
+- Event logs provide a trace of state, set, navigation, rest, and substitution actions.
+
 ## Next engine layer
-Before UI integration, add persistent program/version storage, richer per-muscle volume targets, exercise-history-aware selection, discomfort/limitation routing, calendar scheduling, post-workout feedback rules, and a larger production exercise/stretch library.
+Before live UI integration, add persistent/cloud execution storage, warm-up and stretch step completion, completion payload generation, crash/reload recovery tests, concurrent-write protection, and a dedicated browser test harness.
