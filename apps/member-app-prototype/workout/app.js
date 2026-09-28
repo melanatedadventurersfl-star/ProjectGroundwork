@@ -1117,10 +1117,49 @@ function renderSwapModal(){
     '</section></div>';
 }
 
+function exerciseMediaSpec(ex){
+  if(!ex)return {status:'missing',frames:[],sourceId:'',note:'No exercise selected.'};
+  const mapped=exerciseMedia[ex.id]||null;
+  if(!mapped?.sourceId){
+    return {
+      status:'missing',
+      frames:[],
+      sourceId:'',
+      note:'No direct demonstration image has been mapped for this exercise.',
+      movementFallback:exerciseMediaFallbacks[ex.movement]||''
+    };
+  }
+  const status=mapped.status||'direct';
+  const frames=Array.isArray(mapped.frames)&&mapped.frames.length?mapped.frames:[0,1];
+  return {
+    status,
+    sourceId:mapped.sourceId,
+    frames,
+    note:mapped.note||'',
+    movementFallback:exerciseMediaFallbacks[ex.movement]||''
+  };
+}
+function exerciseMediaFrameUrl(ex,frameIndex=0){
+  const spec=exerciseMediaSpec(ex);
+  if(spec.status==='reference'||!spec.sourceId||!spec.frames.length)return '';
+  const frame=spec.frames[Math.max(0,Math.min(frameIndex,spec.frames.length-1))];
+  return EXERCISE_IMAGE_BASE+encodeURIComponent(spec.sourceId)+'/'+frame+'.jpg';
+}
 function exerciseImageUrl(ex,index=0,useFallback=false){
-  if(!ex)return '';
-  const sourceId=useFallback?exerciseMediaFallbacks[ex.movement]:(exerciseMedia[ex.id]?.sourceId||exerciseMediaFallbacks[ex.movement]);
-  return sourceId?EXERCISE_IMAGE_BASE+encodeURIComponent(sourceId)+'/'+index+'.jpg':'';
+  if(useFallback)return '';
+  return exerciseMediaFrameUrl(ex,index);
+}
+function exerciseMediaState(ex){
+  const spec=exerciseMediaSpec(ex);
+  if(spec.status==='reference')return {kind:'review',label:'IMAGE UNDER REVIEW',note:spec.note||'This available source does not directly demonstrate the exercise.'};
+  if(spec.status==='missing')return {kind:'missing',label:'DEMO COMING SOON',note:spec.note};
+  return {kind:'direct',label:'2-POSITION DEMO',note:'Two movement positions are available for this exercise.'};
+}
+function renderExerciseMediaPlaceholder(ex,className,state){
+  const label=state?.label||'DEMO COMING SOON';
+  const note=state?.note||'Use the form cues below until a direct demonstration is available.';
+  return '<button class="'+className+' exercise-media media-placeholder media-'+esc(state?.kind||'missing')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
+    '<span class="media-placeholder-mark" aria-hidden="true">FORM</span><strong>'+esc(label)+'</strong><small>'+esc(note)+'</small><em>VIEW FORM →</em></button>';
 }
 
 const TIMED_STAGE_MEDIA = {
@@ -1167,17 +1206,17 @@ function timedStageDescription(item){
 }
 
 function exerciseImageButton(ex,className='exercise-media',index=0){
-  const src=exerciseImageUrl(ex,index,false);
-  const fallback=exerciseImageUrl(ex,index,true);
+  const spec=exerciseMediaSpec(ex);
+  const state=exerciseMediaState(ex);
+  const src=exerciseMediaFrameUrl(ex,index);
   const animate=/active-exercise-media|pre-set-exercise-media|timed-work-exercise-media/.test(className);
-  const second=animate?exerciseImageUrl(ex,index===0?1:0,false):'';
-  const secondFallback=animate?exerciseImageUrl(ex,index===0?1:0,true):'';
-  if(!src)return '<button class="'+className+' exercise-media missing" type="button" data-exercise-detail="'+esc(ex.id)+'"><span>VIEW FORM</span></button>';
+  const second=animate&&spec.frames.length>1?exerciseMediaFrameUrl(ex,index===0?1:0):'';
+  if(!src)return renderExerciseMediaPlaceholder(ex,className,state);
   const media=animate&&second
-    ?'<span class="exercise-motion-frames"><img class="motion-frame motion-frame-a" src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' starting position"><img class="motion-frame motion-frame-b" src="'+esc(second)+'" data-fallback-src="'+esc(secondFallback)+'" loading="eager" decoding="async" alt="" aria-hidden="true"></span>'
-    :'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
-  return '<button class="'+className+' exercise-media'+(animate?' motion-enabled':'')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+media+
-    '<span class="media-hint">VIEW FORM</span></button>';
+    ?'<span class="exercise-motion-frames"><img class="motion-frame motion-frame-a" src="'+esc(src)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' demonstration, position 1"><img class="motion-frame motion-frame-b" src="'+esc(second)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' demonstration, position 2"></span>'
+    :'<img src="'+esc(src)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
+  return '<button class="'+className+' exercise-media'+(animate&&second?' motion-enabled':'')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+media+
+    '<span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span><span class="media-hint">VIEW FORM</span></button>';
 }
 
 function renderExerciseModal(){
@@ -1185,17 +1224,20 @@ function renderExerciseModal(){
   const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
   if(!ex)return '';
   const guide=exerciseGuidance(ex);
-  const primary=exerciseImageUrl(ex,0,false),secondary=exerciseImageUrl(ex,1,false);
-  const primaryFallback=exerciseImageUrl(ex,0,true),secondaryFallback=exerciseImageUrl(ex,1,true);
-  const images=[
-    primary?'<img src="'+esc(primary)+'" data-fallback-src="'+esc(primaryFallback)+'" alt="'+esc(ex.name)+' starting position">':'',
-    secondary?'<img src="'+esc(secondary)+'" data-fallback-src="'+esc(secondaryFallback)+'" alt="'+esc(ex.name)+' finishing position">':''
-  ].join('');
+  const spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex);
+  const primary=exerciseMediaFrameUrl(ex,0),secondary=exerciseMediaFrameUrl(ex,1);
+  const media=primary
+    ?'<div class="exercise-position-grid">'+
+      '<figure><img src="'+esc(primary)+'" alt="'+esc(ex.name)+' demonstration, position 1"><figcaption>POSITION 1</figcaption></figure>'+
+      (secondary?'<figure><img src="'+esc(secondary)+'" alt="'+esc(ex.name)+' demonstration, position 2"><figcaption>POSITION 2</figcaption></figure>':'')+
+      '</div>'
+    :'<div class="exercise-modal-placeholder"><span>'+esc(state.label)+'</span><strong>'+esc(ex.name)+'</strong><p>'+esc(state.note)+'</p></div>';
   return '<div class="exercise-modal-backdrop" data-action="close-details">'+
     '<section class="exercise-modal" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise instructions" data-modal-panel>'+
       '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise instructions">×</button>'+
-      '<div class="exercise-modal-media">'+images+'</div>'+
+      '<div class="exercise-modal-media structured-media">'+media+'</div>'+
       '<div class="exercise-modal-copy">'+
+        '<div class="exercise-media-meta"><span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span>'+(spec.status==='direct'?'<small>Movement frames are shown as neutral positions until their start/end order is individually reviewed.</small>':'<small>'+esc(state.note)+'</small>')+'</div>'+
         '<p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p>'+
         '<h2>'+esc(ex.name)+'</h2>'+
         '<p class="modal-muscles">'+(ex.muscles||[]).map(esc).join(' · ')+'</p>'+
@@ -1206,12 +1248,11 @@ function renderExerciseModal(){
         '<div class="instruction-block caution"><h3>Watch for</h3><p>'+esc(guide.mistake)+'</p></div>'+
         (ex.engineReason?.length?'<div class="instruction-block engine-why"><h3>Why this exercise</h3><p>'+esc(ex.engineReason.join(' · '))+'</p>'+(ex.engineIntensityTarget?'<small>Target: '+esc(ex.engineIntensityTarget)+'</small>':'')+'</div>':'')+
         renderExerciseHistoryPanel(ex)+
-        '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset.</p>'+
+        '<p class="media-credit">Exercise imagery: Free Exercise DB · public-domain dataset. GoWorkout suppresses known non-matching reference images.</p>'+
       '</div>'+
     '</section>'+
   '</div>';
 }
-
 
 function goalSettings(goal,movement,experience){
   const accessory = ['biceps','triceps','calves','core','shoulder-accessory','quad-accessory','hamstring-accessory'].includes(movement);
@@ -4727,16 +4768,24 @@ function handleClick(event){
 }
 document.addEventListener('click',handleClick);
 document.addEventListener('error',event=>{
-  const img=event.target.closest?.('img[data-fallback-src]');
+  const img=event.target.closest?.('img');
   if(!img)return;
   const fallback=img.dataset.fallbackSrc;
   if(fallback&&img.src!==fallback&&!img.dataset.fallbackAttempted){
     img.dataset.fallbackAttempted='1';
     img.src=fallback;
-  }else{
-    const media=img.closest('.exercise-media, .exercise-modal-media');
+    return;
+  }
+  const media=img.closest('.exercise-media, .exercise-modal-media');
+  if(media){
     img.remove();
-    if(media&&!media.querySelector('img'))media.classList.add('image-unavailable');
+    if(!media.querySelector('img')){
+      media.classList.add('image-unavailable');
+      const detail=media.closest('[data-exercise-detail]')||media;
+      if(!media.querySelector('.media-load-failed')){
+        media.insertAdjacentHTML('beforeend','<span class="media-load-failed">IMAGE UNAVAILABLE · VIEW FORM</span>');
+      }
+    }
   }
 },true);
 document.addEventListener('submit',event=>{
