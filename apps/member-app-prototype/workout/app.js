@@ -844,7 +844,7 @@ function planSlotFromCandidate(candidate,template){
     setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
     startWeight:adaptive?.weight??calibrated??start.weight,startLabel:adaptive?.label||start.label,startSource:adaptive?'learned progression':start.source||'',
     calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
-    swappedFrom:{id:template.id,name:template.name},
+    swappedFrom:{id:template.id,name:template.name},swapReason:swapReason||template.swapReason||'',
     swapUndo:clone({...template,swapUndo:undefined})
   };
 }
