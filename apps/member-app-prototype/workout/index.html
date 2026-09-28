@@ -23,18 +23,28 @@
   <div class="app-shell">
     <header class="topbar">
       <button class="brand-wrap" type="button" data-action="go-home" aria-label="Go to workout home">
-        <div class="brand-mark">T/</div>
-        <div class="brand-copy"><h1>TRAINING</h1><p>Adaptive workout coach</p></div>
+        <div class="brand-mark" aria-hidden="true">GO</div>
+        <div class="brand-copy"><h1>GOWORKOUT</h1><p>Adaptive training</p></div>
       </button>
       <div class="top-actions"><span class="storage-badge build-badge">Build __WORKOUT_BUILD__</span><button class="avatar" type="button" data-tab="profile" aria-label="Open profile">ME</button></div>
     </header>
     <main id="app" class="main" aria-live="polite"></main>
     <nav class="bottom-nav" aria-label="Training navigation">
-      <button class="nav-item active" type="button" data-tab="home"><span class="nav-icon" aria-hidden="true">⌂</span><span>Home</span></button>
-      <button class="nav-item" type="button" data-tab="train"><span class="nav-icon" aria-hidden="true">◇</span><span>Train</span><span class="nav-live" hidden></span></button>
-      <button class="nav-item" type="button" data-tab="together"><span class="nav-icon" aria-hidden="true">◎</span><span>Together</span></button>
-      <button class="nav-item" type="button" data-tab="progress"><span class="nav-icon" aria-hidden="true">▥</span><span>Progress</span></button>
-      <button class="nav-item" type="button" data-tab="profile"><span class="nav-icon" aria-hidden="true">○</span><span>Profile</span></button>
+      <button class="nav-item active" type="button" data-tab="home">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5H15v-6H9v6H3.5a.5.5 0 0 1-.5-.5z"/></svg></span><span>Home</span>
+      </button>
+      <button class="nav-item" type="button" data-tab="train">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12"/></svg></span><span>Train</span><span class="nav-live" hidden></span>
+      </button>
+      <button class="nav-item" type="button" data-tab="together">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM15.8 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 20v-2.2C3 14.7 5.5 13 8.5 13s5.5 1.7 5.5 4.8V20ZM14.2 13.2c3.4-.7 6.8.9 6.8 4.1V20h-4.8"/></svg></span><span>Together</span>
+      </button>
+      <button class="nav-item" type="button" data-tab="progress">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19V3"/></svg></span><span>Progress</span>
+      </button>
+      <button class="nav-item" type="button" data-tab="profile">
+        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21c.6-4.2 3.2-6.5 7.5-6.5s6.9 2.3 7.5 6.5"/></svg></span><span>Profile</span>
+      </button>
     </nav>
   </div>
   <div id="toast-region" aria-live="assertive" aria-atomic="true"></div>
