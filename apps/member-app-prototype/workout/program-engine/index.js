@@ -280,9 +280,9 @@ function rebalancePriorityVolume(program){
    let i=0;
    while(deficit>0&&candidates.length&&i<20){
     const o=candidates[i%candidates.length];
-    if(o.x.prescription.sets<5){o.x.prescription.sets+=1;o.x.priorityVolumeAdded=(o.x.priorityVolumeAdded||0)+1;deficit-=1}
+    if(o.x.prescription.sets<7){o.x.prescription.sets+=1;o.x.priorityVolumeAdded=(o.x.priorityVolumeAdded||0)+1;deficit-=1}
     i++;
-    if(candidates.every(z=>z.x.prescription.sets>=5))break;
+    if(candidates.every(z=>z.x.prescription.sets>=7))break;
    }
   });
  });
