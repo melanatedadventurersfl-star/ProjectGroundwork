@@ -5815,3 +5815,651 @@ body.workout-mode .cleaned-workout{
   opacity:.62;
   cursor:wait;
 }
+
+
+/* Clean guided runner v2 */
+body.workout-mode{
+  background:
+    radial-gradient(circle at 50% 0,rgba(25,86,52,.34),transparent 34rem),
+    #07140d;
+}
+body.workout-mode .main{
+  width:min(620px,100%);
+  padding:0 12px calc(18px + env(safe-area-inset-bottom));
+}
+.runner-v2{
+  gap:0;
+  padding-top:0;
+}
+.runner-v2-header{
+  position:sticky;
+  top:0;
+  z-index:15;
+  display:grid;
+  grid-template-columns:42px 1fr 42px;
+  align-items:center;
+  gap:8px;
+  min-height:70px;
+  padding:calc(8px + env(safe-area-inset-top)) 2px 8px;
+  background:rgba(7,20,13,.96);
+  backdrop-filter:blur(18px);
+}
+.runner-v2-header>div{text-align:center}
+.runner-v2-header strong{display:block;font-size:13px}
+.runner-v2-header span{display:block;margin-top:2px;color:#d6dfd7;font-size:8px}
+.runner-v2-header .circle-action{
+  border:0;
+  background:transparent;
+  color:#f7f1e3;
+  font-size:17px;
+}
+.runner-top-progress{
+  height:4px;
+  margin:0 12px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(255,255,255,.13);
+}
+.runner-top-progress span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:#e8bd55;
+}
+.runner-v2-stage{
+  --text:#101713;
+  --muted:#667168;
+  --line:#ded7c8;
+  --panel:#fbf8f0;
+  --panel-2:#f0e9dc;
+  --panel-3:#e4ddcf;
+  --accent:#e6b844;
+  --accent-2:#8b6b22;
+  --green:#39744f;
+  --danger:#a54f43;
+  min-height:0;
+  margin-top:10px;
+  overflow:hidden;
+  border:0;
+  border-radius:28px;
+  background:#f5f0e4;
+  color:#101713;
+}
+.runner-v2-stage .eyebrow{color:#8b6b22}
+.runner-v2-stage .text-button{color:#183d28}
+.runner-v2-stage .button.secondary{border-color:#d7d0c0;color:#183d28}
+.runner-gold-action{
+  min-height:58px;
+  border:0;
+  border-radius:13px;
+  background:linear-gradient(100deg,#e6b844,#f2cd68);
+  color:#15130d;
+  box-shadow:0 8px 24px rgba(192,142,36,.18);
+}
+.runner-map-link{justify-self:center}
+.runner-v2-quiet{
+  display:flex;
+  justify-content:center;
+  gap:14px;
+  padding:13px 0 4px;
+}
+.runner-v2-quiet .text-button{color:#c8d1ca}
+
+/* Workout overview */
+.runner-overview{
+  display:grid;
+  gap:18px;
+  padding:22px 14px 18px;
+}
+.runner-overview-title h2{
+  margin:0;
+  font-size:31px;
+  letter-spacing:-.045em;
+}
+.runner-overview-title p{margin:4px 0 0;color:#4f5d55;font-size:11px}
+.runner-phase-list{display:grid;gap:9px}
+.runner-phase-row{
+  width:100%;
+  min-height:74px;
+  display:grid;
+  grid-template-columns:44px 1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:11px 13px;
+  border:1px solid #e3ddcf;
+  border-radius:13px;
+  background:#fbf8f0;
+  color:#101713;
+  text-align:left;
+}
+button.runner-phase-row{cursor:pointer}
+.runner-phase-row.active{box-shadow:0 7px 22px rgba(30,54,38,.07)}
+.runner-phase-icon{
+  display:grid;
+  place-items:center;
+  width:38px;
+  height:38px;
+  border-radius:11px;
+  background:#f2ead5;
+  color:#224f33;
+  font-size:15px;
+}
+.runner-phase-row strong{display:block;font-size:13px}
+.runner-phase-row small{display:block;margin-top:4px;color:#667168;font-size:9px}
+.runner-phase-row em{color:#c38f24;font-style:normal;font-size:22px}
+.runner-overview-note{
+  display:grid;
+  gap:4px;
+  padding:11px 12px;
+  border-radius:11px;
+  background:#e8efe7;
+}
+.runner-overview-note span{font-size:7px;font-weight:900;letter-spacing:.09em;color:#55705d}
+.runner-overview-note strong{font-size:9px;line-height:1.45}
+
+/* Warm-up routine */
+.runner-warmup-routine{
+  display:grid;
+  gap:14px;
+  padding:18px 14px;
+}
+.runner-routine-head h2{margin:0;font-size:24px;letter-spacing:-.035em}
+.runner-routine-head p{margin:3px 0;color:#39483f;font-size:10px}
+.runner-routine-head small{display:block;color:#68736c;font-size:9px;line-height:1.45}
+.runner-routine-list{display:grid;gap:5px}
+.runner-routine-row{
+  display:grid;
+  grid-template-columns:48px 1fr 24px;
+  gap:10px;
+  align-items:center;
+  min-height:58px;
+  padding:6px 8px;
+  border-radius:11px;
+  background:#fbf8f0;
+}
+.runner-routine-thumb{
+  width:46px;
+  height:46px;
+  overflow:hidden;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  background:#efe6d1;
+  color:#8f6c25;
+  font-size:10px;
+  font-weight:900;
+}
+.runner-routine-thumb img{width:100%;height:100%;object-fit:cover}
+.runner-routine-row strong{display:block;font-size:11px}
+.runner-routine-row small{display:block;margin-top:3px;color:#6e766f;font-size:8px}
+.runner-routine-row em{color:#9a9e98;font-style:normal}
+
+/* Active warm-up */
+.runner-guided-stage{
+  display:grid;
+  gap:14px;
+  padding:18px 14px 16px;
+  text-align:center;
+}
+.runner-stage-media{
+  width:min(280px,82vw);
+  aspect-ratio:1.18;
+  margin:0 auto;
+  overflow:hidden;
+  border-radius:50% 50% 44% 44%;
+  background:radial-gradient(circle,#f0e6cf 0 58%,transparent 59%);
+}
+.runner-stage-media img{width:100%;height:100%;object-fit:contain}
+.runner-stage-placeholder{
+  width:100%;
+  height:100%;
+  display:grid;
+  place-items:center;
+  color:#b28a34;
+  font-size:44px;
+  font-weight:900;
+}
+.runner-stage-copy h2{margin:0;font-size:23px;letter-spacing:-.035em}
+.runner-stage-copy p{max-width:360px;margin:6px auto 0;color:#4d5b52;font-size:10px;line-height:1.45}
+.runner-stage-time{
+  font-size:52px;
+  font-weight:900;
+  letter-spacing:-.055em;
+}
+.runner-rep-counter{
+  justify-self:center;
+  min-width:180px;
+  padding:4px 18px 7px;
+  border:0;
+  background:transparent;
+  color:#111712;
+}
+.runner-rep-counter strong{display:block;font-size:38px;letter-spacing:-.04em}
+.runner-rep-counter span{display:block;font-size:11px;font-weight:800}
+.runner-rep-counter small{display:block;margin-top:3px;color:#70776f;font-size:7px}
+.runner-stage-progress{
+  height:7px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e1d9c8;
+}
+.runner-stage-progress span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#e4af35,#f0ca69);
+}
+.runner-stage-controls{
+  display:grid;
+  grid-template-columns:1fr 72px 1fr;
+  gap:18px;
+  align-items:center;
+}
+.runner-stage-controls button{
+  border:0;
+  background:transparent;
+  color:#18231c;
+}
+.runner-stage-controls span{display:block;font-size:18px}
+.runner-stage-controls small{display:block;margin-top:3px;font-size:8px}
+.runner-stage-pause{
+  width:60px;
+  height:60px;
+  justify-self:center;
+  border-radius:50%!important;
+  background:#0e4b2c!important;
+  color:#fff!important;
+  font-size:22px;
+  font-weight:900;
+}
+.runner-stage-pause:disabled{opacity:.35}
+.runner-up-next{
+  display:grid;
+  grid-template-columns:auto 44px 1fr;
+  gap:9px;
+  align-items:center;
+  padding-top:10px;
+  border-top:1px solid #ded7c8;
+  text-align:left;
+}
+.runner-up-next>span{font-size:8px;font-weight:800}
+.runner-up-next .runner-routine-thumb{width:40px;height:40px}
+.runner-up-next strong{display:block;font-size:10px}
+.runner-up-next small{display:block;margin-top:2px;color:#6a736d;font-size:8px}
+
+/* Warm-up complete */
+.runner-warmup-complete{
+  display:grid;
+  gap:14px;
+  justify-items:center;
+  padding:36px 14px 24px;
+  text-align:center;
+}
+.runner-complete-mark{
+  display:grid;
+  place-items:center;
+  width:78px;
+  height:78px;
+  border-radius:50%;
+  background:#ebbd4f;
+  color:#162018;
+  font-size:37px;
+}
+.runner-warmup-complete h2{margin:8px 0 0;font-size:28px}
+.runner-warmup-complete>p{margin:0;color:#536057;font-size:10px}
+.runner-first-strength{
+  width:100%;
+  display:grid;
+  grid-template-columns:92px 1fr;
+  gap:12px;
+  align-items:center;
+  overflow:hidden;
+  border:1px solid #ded7c8;
+  border-radius:14px;
+  background:#faf7ef;
+  text-align:left;
+}
+.runner-first-strength .exercise-media{
+  width:92px;
+  height:92px;
+  min-height:92px;
+  border:0;
+  border-radius:0;
+}
+.runner-first-strength strong{display:block;font-size:13px}
+.runner-first-strength small{display:block;margin-top:4px;color:#657067;font-size:9px}
+
+/* Set ready */
+.runner-set-ready{
+  display:grid;
+  gap:14px;
+  padding:16px 14px 18px;
+}
+.runner-set-ready-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+.runner-set-ready-head h2{margin:0;font-size:27px;letter-spacing:-.04em}
+.runner-set-ready-head p{margin:3px 0 0;color:#677168;font-size:10px}
+.runner-set-ready .more-action{border:0;background:transparent;color:#223b2b}
+.runner-set-ready-media{
+  overflow:hidden;
+  height:min(300px,38vh);
+  border-radius:14px;
+  background:#e9e2d5;
+}
+.runner-set-ready-media .exercise-media{
+  width:100%;
+  height:100%;
+  min-height:100%;
+  border:0;
+}
+.runner-set-ready-media img{width:100%;height:100%;object-fit:cover}
+.runner-set-prescription{text-align:center}
+.runner-set-prescription strong{display:block;font-size:25px}
+.runner-set-prescription span{display:block;margin-top:5px;color:#657067;font-size:9px}
+.runner-set-links{display:flex;justify-content:center;gap:26px}
+
+/* Strength screens inherit the light system */
+.phase-work .runner-v2-stage,
+.phase-timed-set .runner-v2-stage,
+.phase-rest .runner-v2-stage,
+.phase-feedback .runner-v2-stage,
+.phase-calibrate .runner-v2-stage,
+.phase-exercise-transition .runner-v2-stage,
+.phase-exercise-review .runner-v2-stage{padding:14px}
+.phase-work .runner-exercise-head h2,
+.phase-exercise-transition .runner-transition-heading h2{color:#111712}
+.phase-work .runner-exercise-head p,
+.phase-work .runner-upcoming-note,
+.phase-exercise-transition .runner-transition-heading p{color:#69746c}
+.phase-work .runner-media,
+.phase-exercise-transition .runner-transition-media{border-color:#ded7c8;background:#e9e2d5}
+.phase-work .runner-set-status,
+.phase-work .runner-entry-panel,
+.phase-work .runner-set-history,
+.phase-work .runner-upcoming-note,
+.phase-work .runner-options,
+.phase-exercise-transition .runner-transition-facts>div,
+.phase-exercise-transition .runner-setup-cue{
+  border-color:#ded7c8;
+  background:#fbf8f0;
+  color:#111712;
+}
+.phase-work .runner-input-card{border-color:#ded7c8;background:#f4eee2}
+.phase-work .runner-input-card input{color:#111712}
+.phase-work .runner-reference-row{border-color:#ded7c8}
+.phase-work .runner-reference-row span,
+.phase-work .runner-reference-row strong{color:#4f5d54}
+.phase-work .runner-options small,
+.phase-work .runner-options>span,
+.phase-work .runner-options em{color:#6b746e}
+
+/* Rest */
+.runner-rest-clean{
+  display:grid;
+  gap:13px;
+  justify-items:center;
+  padding:24px 14px 18px;
+  text-align:center;
+}
+.runner-rest-check{
+  display:grid;
+  place-items:center;
+  width:54px;
+  height:54px;
+  border:2px solid #d5a72f;
+  border-radius:50%;
+  color:#b78318;
+  font-size:25px;
+}
+.runner-rest-clean h2{margin:0;font-size:25px}
+.runner-rest-clean>p{margin:-6px 0 0;color:#627067;font-size:10px}
+.runner-rest-ring{
+  width:180px;
+  margin:5px auto;
+}
+.runner-rest-ring::after{background:#f5f0e4}
+.runner-rest-ring .timer-value{color:#111712;font-size:40px}
+.runner-rest-ring .timer-sub{color:#6d756f}
+.runner-rest-next{
+  width:100%;
+  display:grid;
+  grid-template-columns:82px 1fr;
+  gap:10px;
+  align-items:center;
+  overflow:hidden;
+  border-radius:13px;
+  background:#fbf8f0;
+  text-align:left;
+}
+.runner-rest-next .exercise-media{
+  width:82px;
+  height:82px;
+  min-height:82px;
+  border:0;
+}
+.runner-rest-next span{color:#717a73;font-size:7px;text-transform:uppercase}
+.runner-rest-next strong{display:block;margin-top:3px;font-size:11px}
+.runner-rest-next small{display:block;margin-top:3px;color:#606b63;font-size:8px}
+.runner-rest-actions-clean{
+  width:100%;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.runner-rest-actions-clean button{
+  min-height:44px;
+  border:0;
+  border-radius:11px;
+  background:#e8ebdf;
+  color:#536057;
+  font-size:9px;
+  font-weight:800;
+}
+
+/* Workout map */
+.runner-map-modal{
+  width:min(560px,96vw);
+  background:#f5f0e4;
+  color:#111712;
+}
+.runner-map-modal .modal-close{color:#183c28}
+.runner-map-modal .workout-map-head h2{color:#111712}
+.runner-map-tabs{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:5px;
+  margin:10px 0 12px;
+  padding:4px;
+  border-radius:12px;
+  background:#e5dfd2;
+}
+.runner-map-tabs button{
+  min-height:34px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#536057;
+  font-size:8px;
+  font-weight:800;
+}
+.runner-map-tabs button.active{background:#fffaf0;color:#111712}
+.runner-map-modal .workout-map-row,
+.map-simple-row{
+  border:0;
+  border-radius:10px;
+  background:#fbf8f0;
+}
+.runner-map-modal .map-open{color:#111712}
+.runner-map-modal .map-copy span{color:#677269}
+.runner-map-modal .map-more{border-left:1px solid #e0d8c8;color:#24372b}
+.map-simple-row{
+  display:grid;
+  grid-template-columns:30px 1fr;
+  gap:8px;
+  align-items:center;
+  padding:10px 11px;
+}
+.map-simple-row>span{
+  display:grid;
+  place-items:center;
+  width:25px;
+  height:25px;
+  border-radius:50%;
+  background:#efc560;
+  font-size:8px;
+  font-weight:900;
+}
+.map-simple-row strong{display:block;font-size:10px}
+.map-simple-row small{display:block;margin-top:2px;color:#69736c;font-size:8px}
+
+@media(max-width:560px){
+  .runner-v2-stage{border-radius:24px}
+  .runner-overview{padding:20px 12px 16px}
+  .runner-overview-title h2{font-size:28px}
+  .runner-phase-row{min-height:69px}
+  .runner-warmup-routine{padding:16px 12px}
+  .runner-guided-stage{padding:16px 12px}
+  .runner-stage-media{width:min(255px,80vw)}
+  .runner-set-ready{padding:14px 12px 16px}
+  .runner-set-ready-media{height:min(260px,34vh)}
+}
+
+
+/* Focused active set */
+.runner-work-clean{
+  display:grid;
+  gap:16px;
+  padding:14px 12px 18px;
+  text-align:center;
+}
+.runner-work-clean-head{
+  display:grid;
+  grid-template-columns:54px 1fr 44px;
+  gap:8px;
+  align-items:start;
+}
+.runner-work-clean-head>div{text-align:center}
+.runner-work-clean-head strong{display:block;font-size:12px}
+.runner-work-clean-head span{display:block;margin-top:2px;color:#667168;font-size:8px}
+.runner-work-clean-head .more-action{
+  width:40px;
+  height:36px;
+  border:0;
+  background:transparent;
+  color:#1d3526;
+}
+.runner-target-ring{
+  width:210px;
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:2px;
+  margin:4px auto 0;
+  border:8px solid #e2b84e;
+  border-right-color:#7f947d;
+  border-radius:50%;
+  background:#123d27;
+  color:#fff;
+  box-shadow:0 10px 30px rgba(16,55,36,.12);
+}
+.runner-target-ring strong{
+  font-size:56px;
+  line-height:1;
+  letter-spacing:-.055em;
+}
+.runner-target-ring span{
+  color:#e8eee9;
+  font-size:10px;
+  font-weight:800;
+}
+.runner-load-focus strong{
+  display:block;
+  font-size:27px;
+  letter-spacing:-.03em;
+}
+.runner-load-focus span{
+  display:block;
+  max-width:320px;
+  margin:5px auto 0;
+  color:#59675e;
+  font-size:9px;
+  line-height:1.45;
+}
+.runner-live-reference{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:8px;
+  align-items:center;
+  padding:9px 10px;
+  border-top:1px solid #ddd5c5;
+  border-bottom:1px solid #ddd5c5;
+  text-align:left;
+}
+.runner-live-reference span{
+  color:#748078;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.runner-live-reference strong{
+  color:#1b2820;
+  font-size:9px;
+}
+.runner-live-reference em{
+  color:#8b6b22;
+  font-size:8px;
+  font-style:normal;
+  font-weight:800;
+}
+.runner-live-log{
+  display:grid;
+  gap:10px;
+}
+.runner-live-inputs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.runner-live-inputs.single{grid-template-columns:1fr}
+.runner-live-input{
+  display:grid;
+  gap:4px;
+  padding:9px 10px;
+  border:1px solid #ddd5c5;
+  border-radius:11px;
+  background:#fbf8f0;
+  text-align:left;
+}
+.runner-live-input>span{
+  color:#6e786f;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.runner-live-input>div{
+  display:flex;
+  gap:5px;
+  align-items:baseline;
+}
+.runner-live-input input{
+  width:100%;
+  min-width:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#111712;
+  font-size:26px;
+  font-weight:900;
+}
+.runner-live-input small{color:#68736c;font-size:8px}
+.runner-live-log>.text-button{justify-self:center}
+
+@media(max-width:560px){
+  .runner-target-ring{width:188px}
+  .runner-target-ring strong{font-size:50px}
+}
