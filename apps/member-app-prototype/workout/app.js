@@ -981,10 +981,10 @@ function recalculatePlanDay(day){
   if(!day)return;
   day.warmup=buildWarmup(day.exercises||[]);
   day.cooldown=buildCooldown(day.exercises||[]);
-  const prep=[...(day.warmup||[]),...(day.cooldown||[])].reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
+  const prep=[...(day.warmup||[]),...(day.cooldown||[])].reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0);
   const work=(day.exercises||[]).reduce((sum,ex)=>sum+estimatePlanExerciseSeconds(ex),0);
-  day.warmupMinutes=Math.ceil((day.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
-  day.cooldownMinutes=Math.ceil((day.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
+  day.warmupMinutes=Math.ceil((day.warmup||[]).reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
+  day.cooldownMinutes=Math.ceil((day.cooldown||[]).reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
   day.estimatedMinutes=Math.max(10,Math.ceil((prep+work)/60));
 }
 function swapTarget(){
@@ -1450,6 +1450,16 @@ function computeProgression(ex,feedback){
     label:progressionLabel(ex,nextWeight,nextReps,labelOverride),reason:reason,hardStreak:hardStreak,
     updatedAt:new Date().toISOString(),session:{reps:stats.reps,weights:stats.weights}
   };
+}
+
+function timedStageEstimateSeconds(item){
+  if(!item)return 0;
+  if(item.mode==='reps'||item.reps){
+    const reps=Math.max(1,Number(item.reps)||8);
+    const sides=item.side?2:1;
+    return Math.max(20,reps*sides*2.5);
+  }
+  return Math.max(1,Number(item.seconds)||30);
 }
 
 function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
@@ -1955,7 +1965,7 @@ function buildDay(blueprint,profile,index){
   const prepForSelected=()=>{
     const warmup=buildWarmup(selected);
     const cooldown=buildCooldown(selected);
-    return {warmup,cooldown,seconds:[...warmup,...cooldown].reduce((sum,item)=>sum+(Number(item.seconds)||0),0)};
+    return {warmup,cooldown,seconds:[...warmup,...cooldown].reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)};
   };
   const total=()=>prepForSelected().seconds+selected.reduce((sum,e)=>sum+estimateExerciseSeconds(e),0);
   const addMovement=pattern=>{
@@ -2011,8 +2021,8 @@ function buildDay(blueprint,profile,index){
     targetMinutes:profile.minutes,
     warmup:prep.warmup,
     cooldown:prep.cooldown,
-    warmupMinutes:Math.ceil(prep.warmup.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60),
-    cooldownMinutes:Math.ceil(prep.cooldown.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60),
+    warmupMinutes:Math.ceil(prep.warmup.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60),
+    cooldownMinutes:Math.ceil(prep.cooldown.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60),
     estimatedMinutes:Math.max(10,Math.ceil(estimatedSeconds/60)),
     exercises:selected.map(e=>({
       id:e.id,name:e.name,movement:e.movement,muscles:e.muscles,loadMode:e.loadMode,
@@ -2083,8 +2093,8 @@ function engineSessionToLegacyDay(session,fallbackDay,index=0,blockNumber=progra
   recalculatePlanDay(day);
   day.warmup=(session.warmup||[]).map(item=>({name:item.name,seconds:Number(item.seconds)||30,description:'Program Engine movement preparation.',cue:'Move smoothly through a comfortable range.',why:'Prepares the movement patterns used in this session.'}));
   day.cooldown=engineStretchToLegacy(session.stretch);
-  day.warmupMinutes=Math.ceil(day.warmup.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
-  day.cooldownMinutes=Math.ceil(day.cooldown.reduce((sum,item)=>sum+(Number(item.seconds)||0),0)/60);
+  day.warmupMinutes=Math.ceil(day.warmup.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
+  day.cooldownMinutes=Math.ceil(day.cooldown.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
   day.estimatedMinutes=num(session.timeBudget?.targetMinutes)||day.estimatedMinutes;return day;
 }
 function engineDayForSchedule(date,index,fallbackDay){const context=programContext(date),session=engineSessionForDate(date,index);return session?engineSessionToLegacyDay(session,fallbackDay,index,context.blockNumber):clone(fallbackDay);}
@@ -2224,13 +2234,18 @@ function nextPlanDay(){
 }
 
 function plannedWarmup(day){
-  return day?.warmup?.length?day.warmup:buildWarmup(day?.exercises||[]);
+  const existing=Array.isArray(day?.warmup)?day.warmup:[];
+  const hasGuidedModel=existing.length&&existing.every(item=>item.mode||item.reps);
+  return hasGuidedModel?existing:buildWarmup(day?.exercises||[]);
 }
 function plannedCooldown(day){
   return day?.cooldown?.length?day.cooldown:buildCooldown(day?.exercises||[]);
 }
 function renderPlanTimedRow(item,type,index){
   const image=timedStageImageUrl(item,0);
+  const target=item.mode==='reps'||item.reps
+    ? String(item.reps)+' reps'+(item.side?' '+item.side:'')
+    : String(Number(item.seconds)||30)+'s';
   return `<div class="plan-prep-row ${type}">
     <div class="plan-prep-media">${image?`<img src="${esc(image)}" loading="lazy" decoding="async" alt="${esc(item.name)} demonstration">`:''}</div>
     <div class="plan-prep-copy">
@@ -2239,7 +2254,7 @@ function renderPlanTimedRow(item,type,index){
       <small class="plan-description">${esc(timedStageDescription(item))}</small>
       <small>${esc(item.cue||'Move through a comfortable range.')}</small>
     </div>
-    <em>${Number(item.seconds)||30}s</em>
+    <em>${esc(target)}</em>
   </div>`;
 }
 
