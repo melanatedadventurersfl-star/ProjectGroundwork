@@ -5798,3 +5798,20 @@ body.workout-mode .cleaned-workout{
   font-size:7px;
   line-height:1.25;
 }
+
+
+/* Visible authentication feedback */
+.auth-entry-error{
+  padding:10px 12px;
+  border:1px solid rgba(227,148,131,.45);
+  border-radius:11px;
+  background:rgba(227,148,131,.08);
+  color:var(--danger);
+  font-size:9px;
+  line-height:1.45;
+  font-weight:700;
+}
+.account-entry-card button:disabled{
+  opacity:.62;
+  cursor:wait;
+}
