@@ -29,6 +29,8 @@ let sessionSetupOpen = false;
 let accountEntryMode = 'sign-in';
 let accountEntryBusy = false;
 let accountEntryError = '';
+let accountEntryEmail = '';
+let accountEntryDisplay = '';
 let historyFilter = 'all';
 
 const defaultStore = {
@@ -3459,6 +3461,7 @@ async function signInEntryAccount(){
   if(!workoutSupabase){accountEntryError='Account service is unavailable. Reload and try again.';render();return;}
   const email=(document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
   const password=document.querySelector('#entry-password')?.value||'';
+  accountEntryEmail=email;
   if(!email||!password){accountEntryError='Enter your email and password.';render();return;}
   accountEntryBusy=true;
   const button=document.querySelector('[data-action="entry-sign-in"]');
@@ -3492,6 +3495,8 @@ async function createEntryAccount(){
   if(!workoutSupabase){accountEntryError='Account service is unavailable. Reload and try again.';render();return;}
   const display=(document.querySelector('#entry-display-name')?.value||'').trim();
   const email=(document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
+  accountEntryDisplay=display;
+  accountEntryEmail=email;
   const password=document.querySelector('#entry-password')?.value||'';
   if(!display){accountEntryError='Enter your display name.';render();return;}
   if(!email||password.length<6){accountEntryError='Enter a valid email and a password with at least 6 characters.';render();return;}
@@ -3508,7 +3513,7 @@ async function createEntryAccount(){
     store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};
     saveStore();
     if(data?.session){
-      if(store.account?.status!=='connected'||store.account?.userId!==data.session.user?.id)applyWorkoutSession(data.session);
+      applyWorkoutSession(data.session);
       toast('Account created. Now build your training profile.');
     }else{
       toast('Account created. Check your email to confirm it, then sign in here.');
@@ -5118,12 +5123,12 @@ function toast(message){const r=document.querySelector('#toast-region')||documen
 function renderAccountEntry(){
   const pending=store.account?.status==='pending';
   const createMode=accountEntryMode==='create';
-  const knownEmail=store.account?.email||store.profile?.email||'';
+  const knownEmail=accountEntryEmail||store.account?.email||store.profile?.email||'';
   return '<div class="onboard-shell account-entry-shell">'+
     '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>'+(createMode?'Create your account, then build your training profile.':'Sign in to continue your program on this device.')+'</p></section>'+
     (pending?'<div class="account-status-card"><span>EMAIL CONFIRMATION PENDING</span><strong>Check your inbox, then sign in here.</strong><p>Your setup on this browser stays intact while confirmation is pending.</p></div>':'')+
     '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>'+(createMode?'Create account':'Sign in')+'</h3><p>'+(createMode?'Your display name is used for your profile and shared workout identity.':'Use the email and password for your GoWorkout account.')+'</p></div></div>'+
-      (createMode?'<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>':'')+
+      (createMode?'<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(accountEntryDisplay||store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>':'')+
       '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(knownEmail)+'" placeholder="you@example.com"></label>'+
       '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="'+(createMode?'new-password':'current-password')+'" placeholder="'+(createMode?'At least 6 characters':'Your password')+'"></label>'+
       (accountEntryError?'<div class="auth-entry-error" role="alert">'+esc(accountEntryError)+'</div>':'')+
