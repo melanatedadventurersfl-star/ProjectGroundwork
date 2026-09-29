@@ -1040,7 +1040,15 @@ function applyExerciseSwap(candidateId,reason='other',neverShow=false){
   const w=target.workout;
   const completed=(original.sets||[]).filter(set=>set.completed);
   const remaining=Math.max(1,(original.sets?.length||1)-completed.length);
-  const replacement=workoutExerciseFromCandidate(candidate,original,remaining);
+  const effectiveCandidate=activeSetup?effectiveExerciseForSetup(candidate,activeSetup):candidate;
+  const replacement=workoutExerciseFromCandidate(effectiveCandidate,original,remaining);
+  if(effectiveCandidate.sessionLoadOverride){
+    replacement.loadMode='bodyweight';
+    replacement.suggestedWeight=0;
+    replacement.calibrationRequired=false;
+    replacement.sets.forEach(set=>{set.weight='';});
+    replacement.sessionLoadOverride='bodyweight';
+  }
   replacement.swapReason=reason;replacement.engineOriginalExerciseId=original.engineExerciseId||null;
   rememberSwap(original,replacement,reason,'workout');
 
@@ -1115,15 +1123,16 @@ function renderSwapModal(){
   const available=candidates.filter(item=>item.available);
   const other=candidates.filter(item=>!item.available);
   const card=(item,index)=>{
-    const ex=item.exercise;
+    const raw=item.exercise;
+    const ex=activeSetup&&item.available?effectiveExerciseForSetup(raw,activeSetup):raw;
     const src=exerciseImageUrl(ex,0,false),fallback=exerciseImageUrl(ex,0,true);
     return '<article class="swap-option">'+
       '<div class="swap-option-media">'+(src?'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" alt="'+esc(ex.name)+' demonstration">':'')+'</div>'+
       '<div class="swap-option-copy"><div class="swap-option-top"><span>'+esc(item.tier)+'</span>'+(index===0&&item.available?'<em>BEST MATCH</em>':'')+'</div>'+
       '<h3>'+esc(ex.name)+'</h3>'+
       '<p>'+esc(exerciseDescription(ex))+'</p>'+
-      '<div class="swap-option-meta"><span>'+esc((ex.muscles||[]).join(' · '))+'</span><strong>'+esc(equipmentRequirement(ex))+'</strong></div>'+
-      (item.available?'<button class="button secondary" type="button" data-action="choose-swap" data-candidate-id="'+esc(ex.id)+'">USE THIS EXERCISE</button>':'<span class="swap-unavailable-label">NOT AVAILABLE TODAY</span>')+'</div>'+
+      '<div class="swap-option-meta"><span>'+esc((ex.muscles||[]).join(' · '))+'</span><strong>'+esc(ex.sessionLoadOverride==='bodyweight'?'No special equipment':equipmentRequirement(ex))+'</strong></div>'+
+      (item.available?'<button class="button secondary" type="button" data-action="choose-swap" data-candidate-id="'+esc(raw.id)+'">USE THIS EXERCISE</button>':'<span class="swap-unavailable-label">NOT AVAILABLE TODAY</span>')+'</div>'+
     '</article>';
   };
   return '<div class="exercise-modal-backdrop swap-modal-backdrop" data-action="close-swap">'+
@@ -1180,7 +1189,11 @@ function exerciseMediaState(ex){
 function renderExerciseMediaPlaceholder(ex,className,state){
   const label=state?.label||'DEMO COMING SOON';
   const note=state?.note||'Use the form cues below until a direct demonstration is available.';
-  const workoutCompact=/active-exercise-media|pre-set-exercise-media|timed-work-exercise-media|next-exercise-media|rest-next-exercise-media/.test(className);
+  const restMini=/rest-next-exercise-media/.test(className);
+  if(restMini){
+    return '<button class="'+className+' exercise-media media-placeholder mini-workout-media media-'+esc(state?.kind||'missing')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions"><span>FORM</span><strong>DEMO PENDING</strong></button>';
+  }
+  const workoutCompact=/active-exercise-media|pre-set-exercise-media|timed-work-exercise-media|next-exercise-media/.test(className);
   if(workoutCompact){
     const guide=exerciseGuidance(ex);
     return '<button class="'+className+' exercise-media media-placeholder compact-workout-media media-'+esc(state?.kind||'missing')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
