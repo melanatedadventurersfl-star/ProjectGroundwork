@@ -888,7 +888,17 @@ function muscleOverlap(a,b){
 function excludedExerciseIds(){
   return new Set(store.exercisePreferences?.excluded||[]);
 }
-function swapCandidates(ex,{includeOtherEquipment=true,limit=7}={}){
+function activeSwapSetup(){
+  if(swapContext?.mode!=='workout')return null;
+  const context=store.activeWorkout?.trainingContext;
+  if(!context?.modes?.length)return null;
+  return context;
+}
+function swapCandidateAvailable(candidate,setup=null){
+  if(setup)return setupAllowsExercise(candidate,setup);
+  return equipmentAllows(candidate,store.profile?.equipment||'full-gym');
+}
+function swapCandidates(ex,{includeOtherEquipment=true,limit=7,setup=null}={}){
   const source=exerciseSource(ex);
   if(!source)return [];
   const profile=store.profile||{};
@@ -900,7 +910,7 @@ function swapCandidates(ex,{includeOtherEquipment=true,limit=7}={}){
     .map(candidate=>{
       const sameMovement=candidate.movement===source.movement;
       const overlap=muscleOverlap(source,candidate);
-      const available=equipmentAllows(candidate,profile.equipment||'full-gym');
+      const available=swapCandidateAvailable(candidate,setup);
       const difficultyGap=Math.abs(exerciseDifficultyRank(source.difficulty)-exerciseDifficultyRank(candidate.difficulty));
       const setupGap=Math.abs((candidate.setup||25)-(source.setup||25));
       const duplicatePenalty=(activeIds.has(candidate.id)||planIds.has(candidate.id))?6:0;
@@ -1005,6 +1015,11 @@ function applyExerciseSwap(candidateId,reason='other',neverShow=false){
   const candidate=catalog.find(item=>item.id===candidateId);
   if(!target||!candidate)return;
   const original=target.exercise;
+  const activeSetup=swapContext.mode==='workout'?activeSwapSetup():null;
+  if(activeSetup&&!setupAllowsExercise(candidate,activeSetup)){
+    toast(candidate.name+' is not available with today’s '+sessionSetupLabel(activeSetup).toLowerCase()+' setup.');
+    return;
+  }
   if(neverShow){
     store.exercisePreferences=store.exercisePreferences||{excluded:[],swapHistory:[]};
     const set=new Set(store.exercisePreferences.excluded||[]);
@@ -1025,7 +1040,15 @@ function applyExerciseSwap(candidateId,reason='other',neverShow=false){
   const w=target.workout;
   const completed=(original.sets||[]).filter(set=>set.completed);
   const remaining=Math.max(1,(original.sets?.length||1)-completed.length);
-  const replacement=workoutExerciseFromCandidate(candidate,original,remaining);
+  const effectiveCandidate=activeSetup?effectiveExerciseForSetup(candidate,activeSetup):candidate;
+  const replacement=workoutExerciseFromCandidate(effectiveCandidate,original,remaining);
+  if(effectiveCandidate.sessionLoadOverride){
+    replacement.loadMode='bodyweight';
+    replacement.suggestedWeight=0;
+    replacement.calibrationRequired=false;
+    replacement.sets.forEach(set=>{set.weight='';});
+    replacement.sessionLoadOverride='bodyweight';
+  }
   replacement.swapReason=reason;replacement.engineOriginalExerciseId=original.engineExerciseId||null;
   rememberSwap(original,replacement,reason,'workout');
 
@@ -1093,21 +1116,23 @@ function renderSwapModal(){
   const target=swapTarget();
   if(!target)return '';
   const source=exerciseSource(target.exercise);
-  let candidates=swapCandidates(source);
+  const activeSetup=activeSwapSetup();
+  let candidates=swapCandidates(source,{setup:activeSetup});
   const preferredIds=engineSubstitutionCatalogIds(target.exercise);
   if(preferredIds.length)candidates=[...candidates].sort((a,b)=>(preferredIds.includes(b.exercise.id)?1:0)-(preferredIds.includes(a.exercise.id)?1:0));
   const available=candidates.filter(item=>item.available);
   const other=candidates.filter(item=>!item.available);
   const card=(item,index)=>{
-    const ex=item.exercise;
+    const raw=item.exercise;
+    const ex=activeSetup&&item.available?effectiveExerciseForSetup(raw,activeSetup):raw;
     const src=exerciseImageUrl(ex,0,false),fallback=exerciseImageUrl(ex,0,true);
     return '<article class="swap-option">'+
       '<div class="swap-option-media">'+(src?'<img src="'+esc(src)+'" data-fallback-src="'+esc(fallback)+'" alt="'+esc(ex.name)+' demonstration">':'')+'</div>'+
       '<div class="swap-option-copy"><div class="swap-option-top"><span>'+esc(item.tier)+'</span>'+(index===0&&item.available?'<em>BEST MATCH</em>':'')+'</div>'+
       '<h3>'+esc(ex.name)+'</h3>'+
       '<p>'+esc(exerciseDescription(ex))+'</p>'+
-      '<div class="swap-option-meta"><span>'+esc((ex.muscles||[]).join(' · '))+'</span><strong>'+esc(equipmentRequirement(ex))+'</strong></div>'+
-      '<button class="button secondary" type="button" data-action="choose-swap" data-candidate-id="'+esc(ex.id)+'">USE THIS EXERCISE</button></div>'+
+      '<div class="swap-option-meta"><span>'+esc((ex.muscles||[]).join(' · '))+'</span><strong>'+esc(ex.sessionLoadOverride==='bodyweight'?'No special equipment':equipmentRequirement(ex))+'</strong></div>'+
+      (item.available?'<button class="button secondary" type="button" data-action="choose-swap" data-candidate-id="'+esc(raw.id)+'">USE THIS EXERCISE</button>':'<span class="swap-unavailable-label">NOT AVAILABLE TODAY</span>')+'</div>'+
     '</article>';
   };
   return '<div class="exercise-modal-backdrop swap-modal-backdrop" data-action="close-swap">'+
@@ -1116,8 +1141,9 @@ function renderSwapModal(){
       '<div class="swap-head"><p class="eyebrow">SWAP EXERCISE</p><h2>'+esc(source.name)+'</h2><p>Choose a comparable movement. Your completed work stays intact and replacement loads are recalculated for the new exercise.</p></div>'+
       '<div class="swap-controls"><label>WHY ARE YOU SWAPPING?<select id="swap-reason"><option value="equipment">Equipment unavailable</option><option value="dislike">Don’t like this exercise</option><option value="pain">Pain or discomfort</option><option value="difficulty">Too difficult</option><option value="easy">Too easy</option><option value="other">Other</option></select></label>'+
       '<label class="swap-exclude"><input id="swap-never-show" type="checkbox"> Don’t show me '+esc(source.name)+' again</label></div>'+
-      (available.length?'<div class="swap-section"><h3>AVAILABLE WITH YOUR SETUP</h3><div class="swap-options">'+available.map(card).join('')+'</div></div>':'')+
-      (other.length?'<div class="swap-section other-equipment"><h3>REQUIRES OTHER EQUIPMENT</h3><div class="swap-options">'+other.map((item,index)=>card(item,index+available.length)).join('')+'</div></div>':'')+
+      (activeSetup?'<div class="swap-active-context"><span>TODAY’S SETUP</span><strong>'+esc(sessionSetupLabel(activeSetup))+'</strong><small>Available replacements are filtered to what you have right now.</small></div>':'')+
+      (available.length?'<div class="swap-section"><h3>AVAILABLE WITH '+esc(activeSetup?sessionSetupLabel(activeSetup).toUpperCase():'YOUR SETUP')+'</h3><div class="swap-options">'+available.map(card).join('')+'</div></div>':'')+
+      (other.length?'<div class="swap-section other-equipment"><h3>NOT AVAILABLE WITH TODAY’S SETUP</h3><div class="swap-options">'+other.map((item,index)=>card(item,index+available.length)).join('')+'</div></div>':'')+
       (!candidates.length?'<div class="empty-state"><strong>No close replacements found.</strong><span>Try changing your equipment profile or keeping this exercise.</span></div>':'')+
     '</section></div>';
 }
@@ -1163,6 +1189,18 @@ function exerciseMediaState(ex){
 function renderExerciseMediaPlaceholder(ex,className,state){
   const label=state?.label||'DEMO COMING SOON';
   const note=state?.note||'Use the form cues below until a direct demonstration is available.';
+  const restMini=/rest-next-exercise-media/.test(className);
+  if(restMini){
+    return '<button class="'+className+' exercise-media media-placeholder mini-workout-media media-'+esc(state?.kind||'missing')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions"><span>FORM</span><strong>DEMO PENDING</strong></button>';
+  }
+  const workoutCompact=/active-exercise-media|pre-set-exercise-media|timed-work-exercise-media|next-exercise-media/.test(className);
+  if(workoutCompact){
+    const guide=exerciseGuidance(ex);
+    return '<button class="'+className+' exercise-media media-placeholder compact-workout-media media-'+esc(state?.kind||'missing')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
+      '<div class="compact-form-mark"><span>FORM DEMO PENDING</span><strong>'+esc(ex.name)+'</strong></div>'+
+      '<div class="compact-form-cues"><span>SETUP</span><strong>'+esc(guide.setup||exerciseDescription(ex))+'</strong><small>'+esc(guide.cue||note)+'</small></div>'+
+      '<em>VIEW FORM →</em></button>';
+  }
   return '<button class="'+className+' exercise-media media-placeholder media-'+esc(state?.kind||'missing')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
     '<span class="media-placeholder-mark" aria-hidden="true">FORM</span><strong>'+esc(label)+'</strong><small>'+esc(note)+'</small><em>VIEW FORM →</em></button>';
 }
@@ -4455,7 +4493,7 @@ function renderPreSet(pos){
   return '<div class="clean-preset-stage" data-preset-mode="'+esc(snap.mode)+'">'+
     '<p class="eyebrow" id="preset-label">'+(setup?'GET IN POSITION':'SET STARTING')+'</p>'+
     '<h2>'+esc(pos.exercise.name)+'</h2>'+
-    '<div class="clean-preset-media">'+exerciseImageButton(pos.exercise,'pre-set-exercise-media')+'</div>'+
+    '<div class="clean-preset-media '+(exerciseMediaSpec(pos.exercise).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(pos.exercise,'pre-set-exercise-media')+'</div>'+
     '<div class="clean-preset-target"><span>SET '+(pos.si+1)+' OF '+pos.exercise.sets.length+'</span><strong>'+esc(target)+'</strong><small>'+esc(equipmentRequirement(exerciseSource(pos.exercise)))+'</small></div>'+
     '<div class="pre-set-number clean-countdown" id="preset-count">'+snap.remaining+'</div>'+
     '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
@@ -4469,7 +4507,7 @@ function renderTimedWorkSet(pos){
   return '<div class="clean-timed-set">'+
     '<p class="eyebrow">TIMED SET · '+(pos.si+1)+' OF '+pos.exercise.sets.length+'</p>'+
     '<h2>'+esc(pos.exercise.name)+'</h2>'+
-    '<div class="clean-timed-media">'+exerciseImageButton(pos.exercise,'timed-work-exercise-media')+'</div>'+
+    '<div class="clean-timed-media '+(exerciseMediaSpec(pos.exercise).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(pos.exercise,'timed-work-exercise-media')+'</div>'+
     '<div class="timed-work-clock clean-timed-clock" id="timed-set-clock">'+formatClock(snap.remaining)+'</div>'+
     '<div class="stage-progress"><span id="timed-set-progress" style="width:'+pct+'%"></span></div>'+
     '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
@@ -4672,7 +4710,7 @@ function renderWorkSet(pos){
   const repsLabel=isTimed?'SECONDS':'REPS';
   return '<div class="runner-active-set">'+
     '<div class="runner-exercise-head"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
-    '<div class="runner-media">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="runner-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
     '<div class="runner-set-status"><div><span>SET '+(pos.si+1)+' OF '+ex.sets.length+'</span><strong>'+esc(target)+'</strong></div><div class="runner-set-pips">'+setProgress+'</div></div>'+
     '<section class="runner-entry-panel"><div class="runner-entry-head"><div><span>CURRENT SET</span><strong>Enter what you complete</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
       '<div class="runner-input-grid '+(noLoad?'single':'')+'">'+weightField+
@@ -4743,7 +4781,7 @@ function renderExerciseTransition(w){
   const guide=exerciseGuidance(ex);
   return '<div class="runner-transition-stage">'+
     '<div class="runner-transition-heading"><p class="eyebrow">UP NEXT · EXERCISE '+(next.ei+1)+' OF '+w.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div>'+
-    '<div class="runner-transition-media">'+exerciseImageButton(ex,'next-exercise-media')+'</div>'+
+    '<div class="runner-transition-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'next-exercise-media')+'</div>'+
     '<div class="runner-transition-facts"><div><span>TODAY’S TARGET</span><strong>'+esc(currentPrescriptionLabel(ex))+'</strong></div><div><span>EQUIPMENT</span><strong>'+esc(equipmentRequirement(exerciseSource(ex)))+'</strong></div></div>'+
     '<div class="runner-setup-cue"><span>SETUP</span><strong>'+esc(guide.setup||exerciseDescription(ex))+'</strong></div>'+
     '<button class="button primary-action runner-ready-next" data-action="ready-next-exercise">I’M READY</button>'+
