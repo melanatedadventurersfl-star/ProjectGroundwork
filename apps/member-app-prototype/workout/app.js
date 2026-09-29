@@ -1700,20 +1700,22 @@ function adaptDayForSessionSetup(day,setup,availableMinutes=null){
     }
   }
   adjusted.exercises=nextExercises;
+  recalculatePlanDay(adjusted);
+  if(availableMinutes)fitSessionDayToTime(adjusted,availableMinutes);
+  const keptIds=new Set((adjusted.exercises||[]).map(ex=>ex.id));
+  const relevantChanges=changes.filter(change=>change.type==='unavailable'||keptIds.has(change.toId));
   adjusted.trainingContext={
     ...setup,
     originalExercises,
-    changes,
-    adapted:changes.length>0,
-    changedCount:changes.filter(item=>item.type==='replacement').length,
-    unavailableCount:changes.filter(item=>item.type==='unavailable').length
+    changes:relevantChanges,
+    adapted:relevantChanges.length>0,
+    changedCount:relevantChanges.filter(item=>item.type==='replacement').length,
+    unavailableCount:relevantChanges.filter(item=>item.type==='unavailable').length
   };
   adjusted.adaptationNotes=[...(adjusted.adaptationNotes||[])];
-  if(setup.key!==normalSessionSetupKey()||changes.length){
-    adjusted.adaptationNotes.unshift('Today’s setup: '+sessionSetupLabel(setup)+'. '+(changes.length?changes.length+' planned movement'+(changes.length===1?' was':'s were')+' adjusted for this session.':'Your planned movements already fit.'));
+  if(setup.key!==normalSessionSetupKey()||relevantChanges.length){
+    adjusted.adaptationNotes.unshift('Today’s setup: '+sessionSetupLabel(setup)+'. '+(relevantChanges.length?relevantChanges.length+' planned movement'+(relevantChanges.length===1?' was':'s were')+' adjusted for this session.':'Your planned movements already fit.'));
   }
-  recalculatePlanDay(adjusted);
-  if(availableMinutes)fitSessionDayToTime(adjusted,availableMinutes);
   return adjusted;
 }
 function runtimeExerciseFromSessionReplacement(source,template,replacement,setup){
@@ -1825,9 +1827,9 @@ function renderSessionSetupExtras(context={}){
     '<label><input type="checkbox" name="sessionChair" '+(context.chair?'checked':'')+'> Sturdy chair / step</label>'+
     '<label><input type="checkbox" name="sessionPullupBar" '+(context.pullupBar?'checked':'')+'> Pull-up bar</label>'+
     '<div class="custom-equipment-row"><span>CUSTOM EQUIPMENT</span>'+
-      '<label><input type="checkbox" name="customEquipment" value="bodyweight" checked> Bodyweight</label>'+
-      '<label><input type="checkbox" name="customEquipment" value="dumbbells"> Dumbbells</label>'+
-      '<label><input type="checkbox" name="customEquipment" value="bands"> Bands</label>'+
+      '<label><input type="checkbox" name="customEquipment" value="bodyweight" '+((context.modes||['bodyweight']).includes('bodyweight')?'checked':'')+'> Bodyweight</label>'+
+      '<label><input type="checkbox" name="customEquipment" value="dumbbells" '+((context.modes||[]).includes('dumbbells')?'checked':'')+'> Dumbbells</label>'+
+      '<label><input type="checkbox" name="customEquipment" value="bands" '+((context.modes||[]).includes('bands')?'checked':'')+'> Bands</label>'+
     '</div></div>';
 }
 function renderTrainingContextSummary(context,compact=false){
