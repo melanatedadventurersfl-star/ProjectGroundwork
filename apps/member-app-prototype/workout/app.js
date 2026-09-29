@@ -50,6 +50,8 @@ const defaultStore = {
   lastSummaryId: null
 };
 
+const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup-routine','warmup','warmup-complete','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
+
 let store = loadStore();
 let clearedLegacyActiveWorkout = false;
 if(store.activeWorkout){const bootRecovery=validateActiveWorkoutCandidate(store.activeWorkout,store.history);if(bootRecovery.valid)store.activeWorkout=bootRecovery.workout;else{store.activeWorkout=null;clearedLegacyActiveWorkout=true;localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}}
@@ -130,7 +132,6 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
-const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup-routine','warmup','warmup-complete','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
 function validateActiveWorkoutCandidate(candidate,history=store.history){
  if(!candidate)return {valid:false,reason:'missing'};
  if(candidate.schemaVersion!==ACTIVE_WORKOUT_SCHEMA)return {valid:false,reason:'schema'};
