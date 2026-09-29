@@ -3072,7 +3072,7 @@ function resetActiveTimer(){
   fireWorkoutSignal('transition','timer-reset-'+w.id+'-'+w.phase+'-'+Date.now(),{voice:'Timer reset',label:'RESET'});
   render();
 }
-function skipRest(){ advanceAfterRest(); }
+
 
 function previousBest(exerciseId,exclude=null){
   let best=null;
