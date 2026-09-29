@@ -4468,49 +4468,84 @@ function renderCatalog(){
 }
 
 function renderWorkoutIntro(w){
-  const notes=(w.adaptationNotes||[]).filter(Boolean);
-  const topNote=notes[0]||'Targets are based on your recent training and readiness.';
-  const warmupSeconds=(w.warmup||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
-  const cooldownSeconds=(w.cooldown||[]).reduce((sum,item)=>sum+(Number(item.seconds)||0),0);
-  const minimumIds=new Set(w.engineMinimumViable||[]);
-  const exerciseRows=(w.exercises||[]).map((ex,index)=>{
-    const loadLabel=ex.loadMode==='bodyweight'||ex.loadMode==='timed'||ex.loadMode==='band'
-      ? (ex.loadMode==='timed'?'Timed':'Bodyweight')
-      : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
-    return '<div class="preview-exercise-row">'+
-      '<div class="preview-exercise-index">'+String(index+1).padStart(2,'0')+'</div>'+
-      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+(minimumIds.has(ex.engineExerciseId)?' <em class="engine-priority-tag">CORE</em>':'')+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span>'+(ex.sessionAdapted?'<small class="session-swap-note">'+esc(ex.sessionMatchQuality||'Temporary swap')+' · '+(ex.sessionOriginalName===ex.name?'bodyweight version':'replaces '+esc(ex.sessionOriginalName||'planned movement'))+'</small>':(ex.engineIntensityTarget?'<small>'+esc(ex.engineIntensityTarget)+'</small>':''))+'</div>'+
-      '<div class="preview-exercise-load">'+loadLabel+'</div>'+
-      '</div>';
-  }).join('');
-  return '<div class="clean-session-intro">'+
-    '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
-    (w.trainingContext?'<section class="session-context-banner">'+renderTrainingContextSummary(w.trainingContext,true)+'<button class="text-button" data-action="open-session-setup">CHANGE SETUP</button></section>':'')+
-    (w.trainingContext?.changes?.length?'<section class="session-change-review"><div class="preview-section-head"><div><span>WHAT CHANGED TODAY</span><strong>Temporary substitutions</strong></div></div><div class="session-change-list">'+w.trainingContext.changes.map(change=>'<div class="session-change-row '+esc(change.type)+'"><div><span>'+esc(change.quality||'Adjusted')+'</span><strong>'+esc(change.fromName||'Planned movement')+(change.toName?' → '+esc(change.toName):'')+'</strong><small>'+esc(change.reason||'No useful match is available with the selected setup.')+'</small></div><em>'+(change.type==='unavailable'?'NOT IN SESSION':'TODAY ONLY')+'</em></div>').join('')+'</div></section>':'')+
-    '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
-    '<section class="preview-flow">'+
-      (w.warmup?.length?'<div class="preview-flow-card"><span>01 · WARM-UP</span><strong>Movement prep · '+Math.ceil(warmupSeconds/60)+' min</strong><small>Dynamic work selected for today’s training.</small></div>':'')+
-      '<div class="preview-flow-card preview-flow-main"><span>'+(w.warmup?.length?'02':'01')+' · STRENGTH WORK</span><strong>'+w.exercises.length+' exercises · '+totalSets(w.exercises)+' working sets</strong><small>'+(w.engineBacked?'CORE marks the movements protected first if today needs to be shortened.':'Starting loads are pre-filled from your profile, calibration, and recent performance. Every value is editable.')+'</small></div>'+
-      (w.cooldown?.length?'<div class="preview-flow-card"><span>'+(w.warmup?.length?'03':'02')+' · COOLDOWN</span><strong>Guided cooldown · '+Math.ceil(cooldownSeconds/60)+' min</strong><small>Finish with a short guided stretch and recovery sequence.</small></div>':'')+
-    '</section>'+
-    '<section class="preview-prescription"><div class="preview-section-head"><div><span>SESSION PLAN</span><strong>What you’ll do</strong></div><button class="text-button" data-action="open-workout-map">EDIT / SUBSTITUTE</button></div>'+exerciseRows+'</section>'+
-    '<section class="clean-panel intro-update-card"><span>TODAY’S UPDATE</span><strong>'+esc(topNote)+'</strong>'+(notes.length>1?'<button class="text-button" data-action="open-workout-map">Review session changes</button>':'')+'</section>'+
-    '<button class="button primary-action intro-begin" data-action="begin-session">BEGIN WORKOUT</button>'+
-    '<button class="text-button intro-review" data-action="open-workout-map">REVIEW FULL SESSION</button>'+
+  const warmCount=w.warmup?.length||0,coolCount=w.cooldown?.length||0;
+  const strengthMinutes=Math.max(1,(w.readiness?.timeAvailable||store.profile?.minutes||45)-runnerPhaseMinutes(w.warmup)-runnerPhaseMinutes(w.cooldown));
+  const setup=w.trainingContext?sessionSetupLabel(w.trainingContext):(store.profile?.equipment==='full-gym'?'Gym':'Training');
+  return '<div class="runner-overview">'+
+    '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+'</p></div>'+
+    '<div class="runner-phase-list">'+
+      (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up</strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small></div><em>›</em></button>':'')+
+      '<div class="runner-phase-row"><span class="runner-phase-icon">▰</span><div><strong>Strength</strong><small>'+w.exercises.length+' exercises · ~'+strengthMinutes+' minutes</small></div></div>'+
+      (coolCount?'<div class="runner-phase-row"><span class="runner-phase-icon">✦</span><div><strong>Cooldown</strong><small>'+coolCount+' movements · '+runnerPhaseMinutes(w.cooldown)+' minutes</small></div></div>':'')+
+    '</div>'+
+    (w.trainingContext?.changes?.length?'<div class="runner-overview-note"><span>TODAY’S ADAPTATION</span><strong>'+w.trainingContext.changes.length+' movement'+(w.trainingContext.changes.length===1?'':'s')+' adjusted for '+esc(sessionSetupLabel(w.trainingContext))+'</strong></div>':'')+
+    '<button class="button primary-action runner-gold-action" data-action="begin-session">START WORKOUT</button>'+
+    '<button class="text-button runner-map-link" data-action="open-workout-map">VIEW WORKOUT MAP</button>'+
   '</div>';
 }
 function beginWorkoutSession(){
   const w=store.activeWorkout;if(!w||w.phase!=='intro')return;
   unlockWorkoutCues();
-  fireWorkoutSignal('go','session-intro-'+w.id,{voice:w.routineName+'. '+w.exercises.length+' exercises today. We will start with '+(w.warmup?.length?'your warm-up.':' '+(w.exercises[0]?.name||'your first exercise')+'.'),label:'READY'});
+  fireWorkoutSignal('go','session-intro-'+w.id,{voice:w.routineName+'. '+w.exercises.length+' exercises today.',label:'READY'});
   if(w.warmup?.length){
-    w.phase='warmup';
-    w.timedPhaseStartedAt=new Date().toISOString();
-    w.timedPhaseSkippedSeconds=0;
+    w.phase='warmup-routine';
+    w.timedStageIndex=0;
+    w.timedStageReps=0;
+    w.timedPhaseStartedAt=null;
     saveStore();render();
-  }else{
-    beginPreSetPosition(0,0,true);
+  }else beginPreSetPosition(0,0,true);
+}
+
+function startWarmupRoutine(){
+  const w=store.activeWorkout;if(!w||w.phase!=='warmup-routine')return;
+  w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=0;w.timedPhaseStartedAt=new Date().toISOString();w.timedPhaseSkippedSeconds=0;
+  fireWorkoutSignal('go','warmup-start-'+w.id,{voice:'Warm-up starts now.',label:'GO'});
+  saveStore();render();
+}
+function completeWarmup(){
+  const w=store.activeWorkout;if(!w)return;
+  w.phase='warmup-complete';w.timedPhaseStartedAt=null;w.timedStageReps=0;
+  fireWorkoutSignal('complete','warmup-complete-'+w.id,{voice:'Warm-up complete.',label:'READY'});
+  saveStore();render();
+}
+function startStrengthWork(){
+  const w=store.activeWorkout;if(!w||w.phase!=='warmup-complete')return;
+  beginPreSetPosition(0,0,true);
+}
+function addWarmupRep(){
+  const w=store.activeWorkout;if(!w||w.phase!=='warmup')return;
+  const snap=timedStageSnapshot(w);if(!snap||snap.mode!=='reps')return;
+  w.timedStageReps=Math.min(snap.totalReps,(Number(w.timedStageReps)||0)+1);
+  if(w.timedStageReps>=snap.totalReps){
+    fireWorkoutSignal('complete','warmup-reps-'+w.id+'-'+snap.index,{voice:'Done',label:'DONE'});
+    advanceTimedStage();return;
   }
+  saveStore();render();
+}
+function removeWarmupRep(){
+  const w=store.activeWorkout;if(!w||w.phase!=='warmup')return;
+  w.timedStageReps=Math.max(0,(Number(w.timedStageReps)||0)-1);
+  saveStore();render();
+}
+function runnerPhaseMinutes(items=[]){
+  return Math.max(1,Math.round(items.reduce((sum,item)=>sum+(item.mode==='reps'||item.reps?20:Number(item.seconds)||30),0)/60));
+}
+function renderWarmupRoutine(w){
+  return '<div class="runner-warmup-routine">'+
+    '<div class="runner-routine-head"><h2>'+esc(w.routineName)+' Warm-up</h2><p>'+runnerPhaseMinutes(w.warmup)+' minutes · '+w.warmup.length+' movements</p><small>Get your body ready for today’s workout with dynamic movement and mobility.</small></div>'+
+    '<div class="runner-routine-list">'+w.warmup.map((item,index)=>{
+      const image=timedStageImageUrl(item,0);
+      const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' '+item.side:'')):formatClock(item.seconds||30);
+      return '<div class="runner-routine-row"><div class="runner-routine-thumb">'+(image?'<img src="'+esc(image)+'" alt="">':'<span>'+String(index+1).padStart(2,'0')+'</span>')+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div><em>≡</em></div>';
+    }).join('')+'</div>'+
+    '<button class="button primary-action runner-gold-action" data-action="start-warmup">START WARM-UP</button>'+
+  '</div>';
+}
+function renderWarmupComplete(w){
+  const first=w.exercises?.[0];
+  return '<div class="runner-warmup-complete"><div class="runner-complete-mark">✓</div><h2>You’re warm.</h2><p>'+esc(w.routineName)+' starts with</p>'+
+    (first?'<div class="runner-first-strength">'+exerciseImageButton(first,'warmup-complete-media')+'<div><strong>'+esc(first.name)+'</strong><small>'+esc(currentPrescriptionLabel(first))+'</small></div></div>':'')+
+    '<button class="button primary-action runner-gold-action" data-action="start-strength">START WORKOUT</button><button class="text-button runner-map-link" data-action="open-workout-map">VIEW WORKOUT MAP</button></div>';
 }
 
 function renderWorkout(){
@@ -4564,22 +4599,19 @@ function renderTimedWorkSet(pos){
   '</div>';
 }
 function renderTimedStage(w){
-  const items=timedStageItems(w);
-  const snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30};
-  const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1)));
-  const item=items[index]||items[0];
-  const remaining=snap.remaining||0,isWarmup=w.phase==='warmup';
-  const nextLabel=index+1<items.length?items[index+1].name:(isWarmup?w.exercises[0]?.name:'Workout review');
+  const items=timedStageItems(w),snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30,mode:'time'};
+  const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1))),item=items[index]||items[0],next=index+1<items.length?items[index+1]:null;
   const image=timedStageImageUrl(item,0);
-  return '<div class="clean-timed-stage">'+
-    '<p class="eyebrow">'+(isWarmup?'WARM-UP':'COOLDOWN')+' · '+(index+1)+' OF '+items.length+'</p>'+
-    '<h2>'+esc(item?.name||'Get ready')+'</h2>'+
-    (image?'<div class="clean-timed-media"><img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Stretch')+' demonstration"></div>':'')+
-    '<div class="stage-timer clean-stage-clock" id="stage-clock">'+formatClock(remaining)+'</div>'+
-    '<div class="stage-progress"><span id="stage-progress-fill" style="width:'+Math.max(0,Math.min(100,(remaining/Math.max(1,item?.seconds||30))*100))+'%"></span></div>'+
-    '<p class="preset-cue">'+esc(item?.cue||'Move through a comfortable range and breathe steadily.')+'</p>'+
-    '<div class="rest-next-copy"><span>UP NEXT</span><h3>'+esc(nextLabel||'Begin workout')+'</h3></div>'+
-    '<div class="clean-rest-actions"><button class="button secondary" data-action="reset-timer">RESET</button><button class="button" data-action="skip-stage">SKIP</button></div>'+
+  const pct=snap.mode==='reps'?Math.max(0,Math.min(100,(snap.completedReps/Math.max(1,snap.totalReps))*100)):Math.max(0,Math.min(100,((snap.total-snap.remaining)/Math.max(1,snap.total))*100));
+  return '<div class="timed-stage runner-guided-stage" data-stage-index="'+index+'" data-stage-mode="'+esc(snap.mode)+'">'+
+    '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
+    '<div class="runner-stage-copy"><h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.cue||'Move through a comfortable range.')+'</p></div>'+
+    (snap.mode==='reps'?'<button class="runner-rep-counter" data-action="warmup-rep"><strong>'+snap.completedReps+' / '+snap.totalReps+'</strong><span>reps'+(item?.side?' · '+esc(item.side):'')+'</span><small>Tap to count</small></button>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
+    '<div class="runner-stage-progress"><span id="stage-progress-fill" style="width:'+pct+'%"></span></div>'+
+    '<div class="runner-stage-controls"><button class="runner-stage-skip" data-action="skip-stage"><span>◀|</span><small>Skip</small></button>'+
+      (snap.mode==='reps'?'<button class="runner-stage-pause" data-action="warmup-rep-minus" '+(snap.completedReps<=0?'disabled':'')+'>−</button>':'<button class="runner-stage-pause" data-action="toggle-workout-pause">'+(w.isPaused?'▶':'Ⅱ')+'</button>')+
+      '<button class="runner-stage-next" data-action="skip-stage"><span>|▶</span><small>Next</small></button></div>'+
+    (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' '+next.side:'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
   '</div>';
 }
 function exerciseSessionHistory(exerciseId,limit=4){
