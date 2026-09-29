@@ -2857,9 +2857,12 @@ function startCooldown(){
   const now=new Date().toISOString();
   w.phase='cooldown';
   w.exerciseStartedAt=null;
+  w.timedStageIndex=0;
+  w.timedStageReps=0;
   w.timedPhaseStartedAt=now;
   w.timedPhaseSkippedSeconds=0;
-  if(!w.cooldown?.length){ openWorkoutReview(); return; }
+  delete w.reviewPausedTimedStage;
+  if(!w.cooldown?.length){openWorkoutReview();return;}
   saveStore();render();
 }
 
@@ -2878,10 +2881,11 @@ function completeTimedStagePhase(w){
 
 function reconcileTimedStage(){
   const w=store.activeWorkout;
-  if(!w||!['warmup','cooldown'].includes(w.phase)) return false;
+  if(!w||!['warmup','cooldown'].includes(w.phase))return false;
   const snap=timedStageSnapshot(w);
-  if(!snap) return false;
-  if(snap.complete){ completeTimedStagePhase(w); return true; }
+  if(!snap)return false;
+  if(snap.mode==='time'&&snap.itemComplete){advanceTimedStage();return true;}
+  if(snap.mode==='reps'&&snap.itemComplete){advanceTimedStage();return true;}
   return false;
 }
 
@@ -5301,7 +5305,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
