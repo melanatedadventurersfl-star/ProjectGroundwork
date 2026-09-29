@@ -5662,3 +5662,112 @@ body.workout-mode .cleaned-workout{
 @media(max-width:620px){
   .session-change-row{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Train Anywhere test fixes */
+.swap-active-context{
+  display:grid;
+  gap:3px;
+  margin:0 0 12px;
+  padding:10px 11px;
+  border:1px solid rgba(216,180,92,.28);
+  border-radius:11px;
+  background:rgba(216,180,92,.045);
+}
+.swap-active-context span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.swap-active-context strong{font-size:11px}
+.swap-active-context small{color:var(--muted);font-size:8px}
+.swap-unavailable-label{
+  display:inline-flex;
+  width:max-content;
+  padding:7px 9px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.compact-fallback{
+  height:auto!important;
+  min-height:0!important;
+  border:0!important;
+  background:transparent!important;
+  overflow:visible!important;
+}
+.media-placeholder.compact-workout-media{
+  min-height:0;
+  width:100%;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:9px 12px;
+  align-items:center;
+  place-items:initial;
+  align-content:initial;
+  padding:12px 13px;
+  border:1px solid rgba(216,180,92,.28);
+  border-radius:14px;
+  background:rgba(216,180,92,.04);
+  color:var(--text);
+  text-align:left;
+}
+.compact-form-mark{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+.compact-form-mark span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.compact-form-mark strong{
+  overflow:hidden;
+  font-size:12px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.compact-form-cues{
+  grid-column:1 / -1;
+  display:grid;
+  gap:3px;
+  padding-top:9px;
+  border-top:1px solid var(--line);
+}
+.compact-form-cues span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.compact-form-cues strong{
+  font-size:9px;
+  line-height:1.45;
+}
+.compact-form-cues small{
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.4;
+}
+.media-placeholder.compact-workout-media>em{
+  grid-column:2;
+  grid-row:1;
+  margin:0;
+  align-self:center;
+  color:var(--accent-2);
+  font-size:7px;
+  white-space:nowrap;
+}
+@media(max-width:620px){
+  .media-placeholder.compact-workout-media{
+    padding:11px;
+    border-radius:12px;
+  }
+  .compact-form-mark strong{font-size:11px}
+}
