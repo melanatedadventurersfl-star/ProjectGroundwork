@@ -109,7 +109,7 @@ window.EXERCISE_MEDIA = {
   'plank': {sourceId:'Plank'},
   'dead-bug': {sourceId:'Dead_Bug'},
   'cable-crunch': {sourceId:'Cable_Crunch'},
-  'prone-w-raise': {sourceId:'Lying_Rear_Delt_Raise'},
+  'prone-w-raise': {sourceId:'Lying_Rear_Delt_Raise',status:'reference',note:'The available rear-delt raise image uses weights and a bench, so it does not directly demonstrate the bodyweight Prone W Raise.'},
   'prone-lat-pull': {sourceId:'Straight-Arm_Pulldown',status:'reference',note:'Straight-arm pulldown imagery is not a direct prone lat pull demonstration.'},
   'band-overhead-press': {sourceId:'Standing_Military_Press',status:'reference',note:'Barbell military press imagery does not show a band overhead press.'}
 };
