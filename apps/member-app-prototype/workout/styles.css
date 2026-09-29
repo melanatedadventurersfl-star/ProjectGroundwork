@@ -5867,6 +5867,16 @@ body.workout-mode .main{
   background:#e8bd55;
 }
 .runner-v2-stage{
+  --text:#101713;
+  --muted:#667168;
+  --line:#ded7c8;
+  --panel:#fbf8f0;
+  --panel-2:#f0e9dc;
+  --panel-3:#e4ddcf;
+  --accent:#e6b844;
+  --accent-2:#8b6b22;
+  --green:#39744f;
+  --danger:#a54f43;
   min-height:0;
   margin-top:10px;
   overflow:hidden;
