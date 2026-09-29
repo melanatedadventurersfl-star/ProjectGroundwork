@@ -8,6 +8,13 @@ const catalog = window.EXERCISE_CATALOG || [];
 const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
+const avatarExerciseMedia = window.EXERCISE_AVATAR_MEDIA || {};
+const TRAINING_AVATARS = [
+  {id:'masc-athletic',name:'Malik',presentation:'Masculine',build:'Lean / athletic',tone:'medium-dark',hair:'short textured curls'},
+  {id:'masc-full',name:'Drew',presentation:'Masculine',build:'Stocky / fuller',tone:'dark',hair:'bald / clean head'},
+  {id:'fem-athletic',name:'Nia',presentation:'Feminine',build:'Lean / athletic',tone:'medium-dark',hair:'long braids / locs'},
+  {id:'fem-full',name:'Maya',presentation:'Feminine',build:'Curvy / fuller',tone:'medium-dark',hair:'natural curls'}
+];
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
 const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
@@ -27,6 +34,7 @@ let exerciseActionsIndex = null;
 let historyMenuId = null;
 let accountSheetOpen = false;
 let sessionSetupOpen = false;
+let avatarPickerOpen = false;
 let accountEntryMode = 'sign-in';
 let accountEntryBusy = false;
 let accountEntryError = '';
@@ -246,6 +254,27 @@ function saveStore(){
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
 function num(value){ const n=Number.parseFloat(value); return Number.isFinite(n)?n:0; }
 function esc(value){ return String(value ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function trainingAvatarId(profile=store.profile){
+  const id=String(profile?.visualAvatarId||'');
+  if(TRAINING_AVATARS.some(item=>item.id===id))return id;
+  if(profile?.gender==='woman')return 'fem-athletic';
+  if(profile?.gender==='man')return 'masc-athletic';
+  return 'masc-athletic';
+}
+function trainingAvatar(profile=store.profile){return TRAINING_AVATARS.find(item=>item.id===trainingAvatarId(profile))||TRAINING_AVATARS[0];}
+function renderAvatarFigure(avatarId,className=''){
+  const avatar=TRAINING_AVATARS.find(item=>item.id===avatarId)||TRAINING_AVATARS[0];
+  return '<span class="training-avatar-figure '+esc(avatar.id)+' '+esc(className)+'" aria-hidden="true"><i class="avatar-head"></i><i class="avatar-hair"></i><i class="avatar-neck"></i><i class="avatar-torso"></i><i class="avatar-arm left"></i><i class="avatar-arm right"></i><i class="avatar-leg left"></i><i class="avatar-leg right"></i></span>';
+}
+function renderAvatarChoices(selectedId='',inputName='visualAvatarId'){
+  return '<div class="training-avatar-grid">'+TRAINING_AVATARS.map(avatar=>
+    '<label class="training-avatar-card"><input type="radio" name="'+esc(inputName)+'" value="'+esc(avatar.id)+'" '+(selectedId===avatar.id?'checked':'')+'><span>'+
+      renderAvatarFigure(avatar.id,'card-avatar')+
+      '<span class="training-avatar-copy"><strong>'+esc(avatar.name)+'</strong><small>'+esc(avatar.presentation)+' · '+esc(avatar.build)+'</small></span>'+
+      '<em>SELECTED</em>'+
+    '</span></label>'
+  ).join('')+'</div>';
+}
 function roundTo(value,step=5){ if(!value) return 0; return Math.max(step,Math.round(value/step)*step); }
 function formatClock(seconds){ const s=Math.max(0,Math.floor(seconds)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 function formatDate(iso){
@@ -1155,8 +1184,18 @@ function renderSwapModal(){
     '</section></div>';
 }
 
+function avatarExerciseMediaSpec(ex){
+  if(!ex)return null;
+  const avatarId=trainingAvatarId();
+  const mapped=avatarExerciseMedia?.[ex.id]?.[avatarId]||null;
+  const frames=Array.isArray(mapped?.frames)?mapped.frames.filter(Boolean):[];
+  if(mapped?.status!=='approved'||!frames.length)return null;
+  return {status:'avatar',frames:frames.map((_,index)=>index),directUrls:frames,sourceId:'',avatarId,note:mapped.note||'Approved GoWorkout avatar demonstration.'};
+}
 function exerciseMediaSpec(ex){
   if(!ex)return {status:'missing',frames:[],sourceId:'',note:'No exercise selected.'};
+  const avatarMapped=avatarExerciseMediaSpec(ex);
+  if(avatarMapped)return avatarMapped;
   const mapped=exerciseMedia[ex.id]||null;
   if(!mapped?.sourceId){
     return {
@@ -1179,8 +1218,11 @@ function exerciseMediaSpec(ex){
 }
 function exerciseMediaFrameUrl(ex,frameIndex=0){
   const spec=exerciseMediaSpec(ex);
-  if(spec.status==='reference'||!spec.sourceId||!spec.frames.length)return '';
-  const frame=spec.frames[Math.max(0,Math.min(frameIndex,spec.frames.length-1))];
+  if(spec.status==='reference'||!spec.frames.length)return '';
+  const selected=Math.max(0,Math.min(frameIndex,spec.frames.length-1));
+  if(Array.isArray(spec.directUrls))return spec.directUrls[selected]||'';
+  if(!spec.sourceId)return '';
+  const frame=spec.frames[selected];
   return EXERCISE_IMAGE_BASE+encodeURIComponent(spec.sourceId)+'/'+frame+'.jpg';
 }
 function exerciseImageUrl(ex,index=0,useFallback=false){
@@ -1189,6 +1231,7 @@ function exerciseImageUrl(ex,index=0,useFallback=false){
 }
 function exerciseMediaState(ex){
   const spec=exerciseMediaSpec(ex);
+  if(spec.status==='avatar')return {kind:'direct avatar',label:'YOUR AVATAR',note:'This approved demonstration uses your selected training avatar.'};
   if(spec.status==='reference')return {kind:'review',label:'IMAGE UNDER REVIEW',note:spec.note||'This available source does not directly demonstrate the exercise.'};
   if(spec.status==='missing')return {kind:'missing',label:'DEMO COMING SOON',note:spec.note};
   return {kind:'direct',label:'MOVEMENT DEMO',note:'Mapped directly to this exercise. Frame order stays neutral until start and finish positions are individually reviewed.'};
@@ -1287,7 +1330,7 @@ function renderExerciseModal(){
       '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise instructions">×</button>'+
       '<div class="exercise-modal-media structured-media">'+media+'</div>'+
       '<div class="exercise-modal-copy">'+
-        '<div class="exercise-media-meta"><span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span>'+(spec.status==='direct'?'<small>Movement frames are shown as neutral positions until their start/end order is individually reviewed.</small>':'<small>'+esc(state.note)+'</small>')+'</div>'+
+        '<div class="exercise-media-meta"><span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span>'+((spec.status==='direct'||spec.status==='avatar')?'<small>'+(spec.status==='avatar'?'Approved avatar-specific positions for this exercise.':'Movement frames are shown as neutral positions until their start/end order is individually reviewed.')+'</small>':'<small>'+esc(state.note)+'</small>')+'</div>'+
         '<p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p>'+
         '<h2>'+esc(ex.name)+'</h2>'+
         '<p class="modal-muscles">'+(ex.muscles||[]).map(esc).join(' · ')+'</p>'+
@@ -2274,6 +2317,7 @@ function saveProfileFromForm(form){
     email:String(data.get('email')||'').trim(),
     gender:data.get('gender')||'',
     pronouns:String(data.get('pronouns')||'').trim(),
+    visualAvatarId:String(data.get('visualAvatarId')||''),
     weight:num(data.get('weight')),
     heightFeet:num(data.get('heightFeet')),
     heightInches:num(data.get('heightInches')),
@@ -2302,6 +2346,11 @@ function saveProfileFromForm(form){
   if(!profile.gender){
     toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');
     form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return false;
+  }
+  if(!TRAINING_AVATARS.some(item=>item.id===profile.visualAvatarId)){
+    toast('Choose the training avatar you want reflected in your workout visuals.');
+    form.querySelector('.avatar-setup-section')?.scrollIntoView({behavior:'smooth',block:'center'});
     return false;
   }
   if(profile.workoutDays.length!==profile.days){
@@ -3293,16 +3342,21 @@ function renderProfileEditor(){
         <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
       </section>
 
+      <section class="form-section avatar-setup-section"><div class="form-section-head"><span>03</span><div><h3>Choose your training avatar</h3><p>Your avatar changes workout and exercise visuals only. It never changes your weights, difficulty, progression, or exercise recommendations.</p></div></div>
+        ${renderAvatarChoices(p.visualAvatarId||'')}
+        <div class="avatar-setup-note"><strong>VISUAL PREFERENCE ONLY</strong><span>Exercise performance stays tied to your training history, not the avatar you choose.</span></div>
+      </section>
+
       <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account connected</h3><p>${esc(store.account?.email||'Signed in')} · Your setup and training state sync through this account.</p></div></div>
         <div class="profile-privacy-note"><strong>CONNECTED</strong><span>You can manage or sign out from your profile account controls after setup.</span></div>
       </section>
-      <section class="form-section"><div class="form-section-head"><span>03</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
         <div class="choice-grid four">
           ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Your real schedule</h3><p>Choose how many days you train, which days they actually are, and how long you normally have.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>05</span><div><h3>Your real schedule</h3><p>Choose how many days you train, which days they actually are, and how long you normally have.</p></div></div>
         <div class="form-grid two">
           <label class="field"><span>DAYS PER WEEK</span><select name="days" id="training-days-count">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
           <label class="field"><span>MINUTES PER WORKOUT</span><select name="minutes">${[20,30,45,60,75].map(v=>`<option value="${v}" ${num(p.minutes||45)===v?'selected':''}>${v} minutes</option>`).join('')}</select></label>
@@ -3315,7 +3369,7 @@ function renderProfileEditor(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>05</span><div><h3>Where are you training?</h3><p>We only choose exercises your setup supports.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Where are you training?</h3><p>We only choose exercises your setup supports.</p></div></div>
         <div class="choice-grid">
           ${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
         </div>
@@ -3324,16 +3378,16 @@ function renderProfileEditor(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
         <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
       </section>
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
         <div class="form-grid five">
           ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
         <div class="check-row">
           ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
         </div>
@@ -4324,12 +4378,13 @@ function renderTogether(){
 
 function renderProfileHub(){
   const p=store.profile;if(!p)return renderProfileEditor();
-  const context=programContext(),shared=sharedTrainingState();
+  const context=programContext(),shared=sharedTrainingState(),avatar=trainingAvatar(p);
   const name=displayName()==='there'?'Your profile':displayName();
-  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large">'+esc((name[0]||'Y').toUpperCase())+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p></div></section>'+
+  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
-      '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>Goals, schedule, gender, equipment, preferences</strong></div><em>›</em></button>'+
+      '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>Goals, schedule, identity, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -4338,6 +4393,18 @@ function renderProfileHub(){
     '</section>'+
     '<section class="prototype-note"><strong>Account model prepared for shared authentication.</strong><span>Detailed workout data remains browser-local in this prototype. The parent project already has Supabase infrastructure for the later account-backed migration.</span></section>'+
   '</div>';
+}
+function renderAvatarPickerSheet(){
+  const current=trainingAvatarId();
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-avatar-picker"><section class="bottom-sheet avatar-picker-sheet" data-avatar-picker-panel>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">VISUAL PREFERENCE</p><h2>Choose your training avatar</h2><p>This changes workout imagery only. Your training plan and performance data stay exactly the same.</p></div><button class="modal-close" data-action="close-avatar-picker">×</button></div>'+
+    '<div class="training-avatar-grid sheet-avatar-grid">'+TRAINING_AVATARS.map(avatar=>
+      '<button class="training-avatar-card button-card '+(current===avatar.id?'selected':'')+'" type="button" data-action="choose-avatar" data-avatar-id="'+esc(avatar.id)+'">'+
+        '<span>'+renderAvatarFigure(avatar.id,'card-avatar')+'<span class="training-avatar-copy"><strong>'+esc(avatar.name)+'</strong><small>'+esc(avatar.presentation)+' · '+esc(avatar.build)+'</small></span><em>'+(current===avatar.id?'CURRENT':'CHOOSE')+'</em></span>'+
+      '</button>'
+    ).join('')+'</div>'+
+    '<div class="avatar-setup-note"><strong>REPRESENTATION, NOT PROGRAMMING</strong><span>Avatar selection never changes load, reps, difficulty, readiness adjustments, or progression.</span></div>'+
+  '</section></div>';
 }
 function renderAccountSheet(){
   const account=store.account||{},connected=account.status==='connected';
@@ -5187,7 +5254,8 @@ function render(){
   if(sessionSetupOpen) app.insertAdjacentHTML('beforeend',renderSessionSetupSheet());
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen));
+  if(avatarPickerOpen) app.insertAdjacentHTML('beforeend',renderAvatarPickerSheet());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
 }
@@ -5241,6 +5309,12 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const avatarClose=event.target.closest('[data-action="close-avatar-picker"]');
+  if(avatarClose){
+    const inside=event.target.closest('[data-avatar-picker-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){avatarPickerOpen=false;render();return;}
+  }
   const accountClose=event.target.closest('[data-action="close-account-sheet"]');
   if(accountClose){
     const inside=event.target.closest('[data-account-sheet-panel]');
@@ -5343,6 +5417,14 @@ function handleClick(event){
   else if(a==='set-progress-metric'){progressMetric=['weight','reps','volume'].includes(node.dataset.progressMetric)?node.dataset.progressMetric:'weight';persistUiState();render();}
   else if(a==='close-progress-exercise'){progressExerciseId='';persistUiState();render();}
   else if(a==='profile')setTab('profile');
+  else if(a==='open-avatar-picker'){avatarPickerOpen=true;render();}
+  else if(a==='close-avatar-picker'){avatarPickerOpen=false;render();}
+  else if(a==='choose-avatar'){
+    const id=String(node.dataset.avatarId||'');
+    if(!TRAINING_AVATARS.some(item=>item.id===id)){toast('That avatar is not available.');return;}
+    store.profile={...(store.profile||{}),visualAvatarId:id};
+    saveStore();avatarPickerOpen=false;render();toast('Training avatar updated.');
+  }
   else if(a==='catalog'||a==='open-routine-details')setTab('catalog');
   else if(a==='history')setTab('history');
   else if(a==='share-next-workout')setTab('together');
@@ -5483,6 +5565,7 @@ document.addEventListener('change',event=>{
 document.addEventListener('keydown',event=>{
   if(event.key==='Enter'&&store.account?.status!=='connected'&&document.activeElement?.matches?.('#entry-email,#entry-password,#entry-display-name')){event.preventDefault();if(accountEntryMode==='create')createEntryAccount();else signInEntryAccount();return;}
   if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
+  if(event.key==='Escape'&&avatarPickerOpen){avatarPickerOpen=false;render();return;}
   if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
   if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
