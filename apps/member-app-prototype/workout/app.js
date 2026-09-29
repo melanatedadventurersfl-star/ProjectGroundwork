@@ -25,6 +25,7 @@ let cueSettingsOpen = false;
 let exerciseActionsIndex = null;
 let historyMenuId = null;
 let accountSheetOpen = false;
+let sessionSetupOpen = false;
 let historyFilter = 'all';
 
 const defaultStore = {
@@ -1520,6 +1521,322 @@ function buildCooldown(exercises){
   return normalizeTimedStage(items.slice(0,4),exercises.length<=3?60:exercises.length>=7?180:120,60,180);
 }
 
+
+const SESSION_SETUP_PRESETS = {
+  'full-gym':{label:'Gym',shortLabel:'Gym',modes:['full-gym']},
+  'bodyweight':{label:'Bodyweight only',shortLabel:'Bodyweight',modes:['bodyweight']},
+  'dumbbells':{label:'Dumbbells + bodyweight',shortLabel:'Dumbbells',modes:['dumbbells','bodyweight']},
+  'bands':{label:'Bands + bodyweight',shortLabel:'Bands',modes:['bands','bodyweight']},
+  'mixed-home':{label:'Home mix',shortLabel:'Home mix',modes:['mixed-home','dumbbells','bands','bodyweight']},
+  'custom':{label:'Custom equipment',shortLabel:'Custom',modes:[]}
+};
+const FLOOR_EXERCISE_IDS=new Set(['push-up','glute-bridge','plank','dead-bug','pike-pushup','prone-w-raise','prone-lat-pull','db-floor-press']);
+const CHAIR_STEP_EXERCISE_IDS=new Set(['step-up']);
+const PULLUP_BAR_EXERCISE_IDS=new Set(['pull-up']);
+const SESSION_MOVEMENT_ALTERNATIVES={
+  'vertical-pull':['horizontal-pull'],
+  'horizontal-pull':['vertical-pull'],
+  'quad-accessory':['squat','single-leg'],
+  'hamstring-accessory':['hinge','single-leg'],
+  'shoulder-accessory':['vertical-push','horizontal-pull'],
+  'biceps':['horizontal-pull','vertical-pull'],
+  'triceps':['horizontal-push','vertical-push']
+};
+function normalSessionSetupKey(){
+  const key=store.profile?.equipment||'full-gym';
+  return SESSION_SETUP_PRESETS[key]?key:'full-gym';
+}
+function sessionSetupLabel(setup){
+  return SESSION_SETUP_PRESETS[setup?.key]?.label||setup?.label||'Custom equipment';
+}
+function buildSessionSetup(key,{customModes=[],floor=true,chair=false,pullupBar=false}={}){
+  const preset=SESSION_SETUP_PRESETS[key]||SESSION_SETUP_PRESETS['full-gym'];
+  let modes=key==='custom'?customModes.filter(mode=>['bodyweight','dumbbells','bands'].includes(mode)):[...preset.modes];
+  if(!modes.length)modes=['bodyweight'];
+  const fullGym=modes.includes('full-gym');
+  return {
+    key:SESSION_SETUP_PRESETS[key]?key:'custom',
+    label:key==='custom'?'Custom equipment':preset.label,
+    modes:[...new Set(modes)],
+    floor:fullGym?true:Boolean(floor),
+    chair:fullGym?true:Boolean(chair),
+    pullupBar:fullGym?true:Boolean(pullupBar),
+    temporary:key!==normalSessionSetupKey()||key==='custom'
+  };
+}
+function sessionSetupFromForm(form,fallbackKey=normalSessionSetupKey()){
+  if(!form)return buildSessionSetup(fallbackKey);
+  const data=new FormData(form);
+  const key=String(data.get('sessionSetup')||fallbackKey);
+  return buildSessionSetup(key,{
+    customModes:data.getAll('customEquipment').map(String),
+    floor:data.get('sessionFloor')==='on',
+    chair:data.get('sessionChair')==='on',
+    pullupBar:data.get('sessionPullupBar')==='on'
+  });
+}
+function setupAllowsExercise(exercise,setup){
+  if(!exercise||!setup)return false;
+  if(!setup.modes.some(mode=>(exercise.equipment||[]).includes(mode)))return false;
+  if(FLOOR_EXERCISE_IDS.has(exercise.id)&&!setup.floor)return false;
+  if(CHAIR_STEP_EXERCISE_IDS.has(exercise.id)&&!setup.chair&&!setup.modes.includes('full-gym'))return false;
+  if(PULLUP_BAR_EXERCISE_IDS.has(exercise.id)&&!setup.pullupBar&&!setup.modes.includes('full-gym'))return false;
+  return !avoided(exercise,store.profile||{});
+}
+function effectiveExerciseForSetup(exercise,setup){
+  const out=clone(exercise);
+  const bodyweightOnly=setup.modes.length===1&&setup.modes[0]==='bodyweight';
+  if(bodyweightOnly&&(out.equipment||[]).includes('bodyweight')&&!['bodyweight','timed'].includes(out.loadMode)){
+    out.loadMode='bodyweight';
+    out.style='bodyweight';
+    out.increment=0;
+    out.baseLoadFactor=0;
+    out.referenceKey='';
+    out.referenceMultiplier=0;
+    out.sessionLoadOverride='bodyweight';
+  }
+  return out;
+}
+function sessionReplacementQuality(source,candidate){
+  if(source.id===candidate.id)return 'Original';
+  const overlap=muscleOverlap(source,candidate);
+  if(source.movement===candidate.movement&&overlap>0)return 'Direct match';
+  if(source.movement===candidate.movement)return 'Close match';
+  return 'Training alternative';
+}
+function sessionReplacementReason(source,candidate,quality){
+  if(quality==='Original')return 'This movement works with today’s setup.';
+  if(quality==='Direct match')return 'Same movement pattern with overlapping target muscles.';
+  if(quality==='Close match')return 'Same movement pattern with a different exercise setup.';
+  return 'No direct equipment-free match was available, so this keeps the closest useful training purpose.';
+}
+function findSessionReplacement(source,setup,used=new Set()){
+  const allowed=candidate=>!used.has(candidate.id)&&setupAllowsExercise(candidate,setup);
+  const alternatives=SESSION_MOVEMENT_ALTERNATIVES[source.movement]||[];
+  const scored=catalog
+    .filter(allowed)
+    .map(candidate=>{
+      const sameId=candidate.id===source.id;
+      const sameMovement=candidate.movement===source.movement;
+      const alternativeIndex=alternatives.indexOf(candidate.movement);
+      if(!sameId&&!sameMovement&&alternativeIndex<0)return null;
+      const overlap=muscleOverlap(source,candidate);
+      if(!sameId&&!sameMovement&&alternativeIndex>=0&&overlap===0)return null;
+      const difficultyGap=Math.abs(exerciseDifficultyRank(source.difficulty)-exerciseDifficultyRank(candidate.difficulty));
+      const score=(sameId?200:0)+(sameMovement?100:0)+(overlap*18)+(alternativeIndex>=0?40-(alternativeIndex*5):0)-difficultyGap*6-(candidate.setup||20)/30;
+      return {candidate,score};
+    })
+    .filter(Boolean)
+    .sort((a,b)=>b.score-a.score);
+  if(!scored.length)return null;
+  const candidate=effectiveExerciseForSetup(scored[0].candidate,setup);
+  const quality=candidate.sessionLoadOverride?'Direct match':sessionReplacementQuality(source,candidate);
+  const reason=candidate.sessionLoadOverride?'Same movement performed without external load for today’s setup.':sessionReplacementReason(source,candidate,quality);
+  return {candidate,quality,reason};
+}
+function sessionPlanExerciseFromCandidate(source,template,replacement,setup){
+  const candidate=replacement.candidate;
+  const profile=store.profile||{};
+  const settings=goalSettings(profile.goal||'muscle',candidate.movement,profile.experience||'beginner');
+  const start=estimateStartingLoad(candidate,profile);
+  const sameExercise=candidate.id===source.id&&!candidate.sessionLoadOverride;
+  const reps=sameExercise?(template.reps||settings.reps):settings.reps;
+  const sets=Math.max(1,num(template.sets)||settings.sets||2);
+  return {
+    ...candidate,
+    sets,
+    reps,
+    startReps:recommendedRepCount(reps),
+    rest:Math.max(30,Math.min(60,num(template.rest)||settings.rest||45)),
+    setup:template.setup||candidate.setup||25,
+    startWeight:start.weight||0,
+    startLabel:start.label||'Bodyweight',
+    startSource:sameExercise?(template.startSource||start.source||''):'temporary session setup',
+    calibrationRequired:Boolean(start.calibrate),
+    sessionAdapted:!sameExercise,
+    sessionOriginalExerciseId:source.id,
+    sessionOriginalName:source.name,
+    sessionMatchQuality:replacement.quality,
+    sessionMatchReason:replacement.reason,
+    sessionSetupKey:setup.key,
+    engineOriginalExerciseId:template.engineExerciseId||template.engineOriginalExerciseId||null,
+    engineExerciseId:sameExercise?(template.engineExerciseId||null):null
+  };
+}
+function fitSessionDayToTime(day,available){
+  recalculatePlanDay(day);
+  const notes=day.adaptationNotes=Array.isArray(day.adaptationNotes)?day.adaptationNotes:[];
+  while(day.estimatedMinutes>available&&day.exercises.length>2){
+    const reverse=[...day.exercises].reverse();
+    const offset=reverse.findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));
+    if(offset<0)break;
+    day.exercises.splice(day.exercises.length-1-offset,1);
+    recalculatePlanDay(day);
+  }
+  for(let i=day.exercises.length-1;i>=0&&day.estimatedMinutes>available;i--){
+    while(day.exercises[i]?.sets>2&&day.estimatedMinutes>available){
+      day.exercises[i].sets-=1;
+      recalculatePlanDay(day);
+    }
+  }
+  return day;
+}
+function adaptDayForSessionSetup(day,setup,availableMinutes=null){
+  const adjusted=clone(day);
+  const originalExercises=clone(day.exercises||[]);
+  const used=new Set(),changes=[],nextExercises=[];
+  for(const template of originalExercises){
+    const source=exerciseSource(template)||template;
+    const replacement=findSessionReplacement(source,setup,used);
+    if(!replacement){
+      changes.push({type:'unavailable',fromId:source.id,fromName:source.name,quality:'Unavailable',reason:'No useful movement from the current catalog fits this setup.'});
+      continue;
+    }
+    used.add(replacement.candidate.id);
+    const next=sessionPlanExerciseFromCandidate(source,template,replacement,setup);
+    nextExercises.push(next);
+    if(next.sessionAdapted){
+      changes.push({type:'replacement',fromId:source.id,fromName:source.name,toId:next.id,toName:next.name,quality:replacement.quality,reason:replacement.reason});
+    }
+  }
+  adjusted.exercises=nextExercises;
+  recalculatePlanDay(adjusted);
+  if(availableMinutes)fitSessionDayToTime(adjusted,availableMinutes);
+  const keptIds=new Set((adjusted.exercises||[]).map(ex=>ex.id));
+  const relevantChanges=changes.filter(change=>change.type==='unavailable'||keptIds.has(change.toId));
+  adjusted.trainingContext={
+    ...setup,
+    originalExercises,
+    changes:relevantChanges,
+    adapted:relevantChanges.length>0,
+    changedCount:relevantChanges.filter(item=>item.type==='replacement').length,
+    unavailableCount:relevantChanges.filter(item=>item.type==='unavailable').length
+  };
+  adjusted.adaptationNotes=[...(adjusted.adaptationNotes||[])];
+  if(setup.key!==normalSessionSetupKey()||relevantChanges.length){
+    adjusted.adaptationNotes.unshift('Today’s setup: '+sessionSetupLabel(setup)+'. '+(relevantChanges.length?relevantChanges.length+' planned movement'+(relevantChanges.length===1?' was':'s were')+' adjusted for this session.':'Your planned movements already fit.'));
+  }
+  return adjusted;
+}
+function runtimeExerciseFromSessionReplacement(source,template,replacement,setup){
+  const effective=replacement.candidate;
+  const next=workoutExerciseFromCandidate(effective,template,Math.max(1,template.sets?.length||2));
+  next.sessionAdapted=effective.id!==source.id||Boolean(effective.sessionLoadOverride);
+  next.sessionOriginalExerciseId=source.id;
+  next.sessionOriginalName=source.name;
+  next.sessionMatchQuality=replacement.quality;
+  next.sessionMatchReason=replacement.reason;
+  next.sessionSetupKey=setup.key;
+  next.engineOriginalExerciseId=template.engineOriginalExerciseId||template.engineExerciseId||null;
+  next.engineExerciseId=next.sessionAdapted?null:(template.engineExerciseId||null);
+  next.manualComplete=false;
+  next.manualCompletedAt=null;
+  next.skipped=false;
+  next.skipReason='';
+  next.sessionSetupUnavailable=false;
+  return next;
+}
+function applySetupToActiveWorkout(setup){
+  const w=store.activeWorkout;
+  if(!w)return {changed:0,unavailable:0};
+  if(w.phase==='intro'&&w.trainingContext?.originalExercises?.length){
+    const baseDay={
+      id:w.planDayId,
+      name:w.routineName,
+      focus:w.focus,
+      targetMinutes:w.readiness?.timeAvailable||store.profile?.minutes||45,
+      estimatedMinutes:w.readiness?.timeAvailable||store.profile?.minutes||45,
+      exercises:clone(w.trainingContext.originalExercises),
+      adaptationNotes:clone(w.adaptationNotes||[]),
+      engineBacked:w.engineBacked,
+      engineSessionId:w.engineSessionId,
+      engineWeek:w.engineWeek,
+      engineBlockNumber:w.engineBlockNumber,
+      engineMinimumViable:clone(w.engineMinimumViable||[]),
+      engineStretch:clone(w.engineStretch||null)
+    };
+    const adapted=adaptDayForSessionSetup(baseDay,setup,w.readiness?.timeAvailable||store.profile?.minutes||45);
+    if(!adapted.exercises.length)return {changed:0,unavailable:adapted.trainingContext?.unavailableCount||baseDay.exercises.length,blocked:true};
+    const rebuilt=createWorkout(adapted,{
+      scheduledDate:w.scheduledDate,
+      readiness:w.readiness,
+      programContext:w.programContext,
+      trainingContext:adapted.trainingContext,
+      adaptationNotes:adapted.adaptationNotes
+    });
+    w.exercises=rebuilt.exercises;
+    w.warmup=rebuilt.warmup;
+    w.cooldown=rebuilt.cooldown;
+    w.trainingContext=adapted.trainingContext;
+    w.adaptationNotes=adapted.adaptationNotes;
+    w.currentExerciseIndex=0;
+    w.currentSetIndex=0;
+    w.furthestExerciseIndex=0;
+    w.pendingPosition=null;
+    w.revision=(num(w.revision)||0)+1;
+    return {changed:num(adapted.trainingContext?.changedCount),unavailable:num(adapted.trainingContext?.unavailableCount)};
+  }
+
+  const used=new Set();
+  for(const ex of w.exercises||[])if(exerciseState(ex)!=='not-started'&&!ex.sessionSetupUnavailable)used.add(ex.id);
+  let changed=0,unavailable=0;
+  const changes=[];
+  for(let index=0;index<w.exercises.length;index++){
+    const ex=w.exercises[index];
+    const state=exerciseState(ex);
+    if(!['not-started','skipped'].includes(state)&&!ex.sessionSetupUnavailable){used.add(ex.id);continue;}
+    if(state==='skipped'&&!ex.sessionSetupUnavailable){used.add(ex.id);continue;}
+    const source=catalog.find(item=>item.id===(ex.sessionOriginalExerciseId||ex.id))||exerciseSource(ex)||ex;
+    const replacement=findSessionReplacement(source,setup,used);
+    if(!replacement){
+      ex.skipped=true;
+      ex.skipReason='Unavailable with '+sessionSetupLabel(setup);
+      ex.sessionSetupUnavailable=true;
+      ex.sessionOriginalExerciseId=source.id;
+      ex.sessionOriginalName=source.name;
+      unavailable++;
+      changes.push({type:'unavailable',fromId:source.id,fromName:source.name,quality:'Unavailable'});
+      continue;
+    }
+    const next=runtimeExerciseFromSessionReplacement(source,ex,replacement,setup);
+    w.exercises[index]=next;
+    used.add(next.id);
+    if(next.sessionAdapted){
+      changed++;
+      changes.push({type:'replacement',fromId:source.id,fromName:source.name,toId:next.id,toName:next.name,quality:replacement.quality,reason:replacement.reason});
+    }
+  }
+  w.trainingContext={...(w.trainingContext||{}),...setup,changes,adapted:changed>0||unavailable>0,changedCount:changed,unavailableCount:unavailable,changedAt:new Date().toISOString()};
+  const current=w.exercises[w.currentExerciseIndex||0];
+  if(current)w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),Math.max(0,(current.sets?.length||1)-1)));
+  w.revision=(num(w.revision)||0)+1;
+  return {changed,unavailable};
+}
+function renderSessionSetupOptions(selectedKey=normalSessionSetupKey(),prefix=''){
+  const name=prefix+'sessionSetup';
+  const options=['full-gym','bodyweight','dumbbells','bands','mixed-home','custom'];
+  return '<div class="session-setup-grid">'+options.map(key=>{
+    const preset=SESSION_SETUP_PRESETS[key];
+    const copy=key==='full-gym'?'Machines, cables, barbells and more':key==='bodyweight'?'No gym equipment required':key==='dumbbells'?'Dumbbells plus bodyweight':key==='bands'?'Resistance bands plus bodyweight':key==='mixed-home'?'Dumbbells, bands and bodyweight':'Choose what is available';
+    return '<label class="session-setup-card"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+'</strong><small>'+copy+'</small></span></label>';
+  }).join('')+'</div>';
+}
+function renderSessionSetupExtras(context={}){
+  return '<div class="session-setup-extras"><div><span>AVAILABLE EXTRAS</span><small>These prevent the app from assuming equipment you do not have.</small></div>'+
+    '<label><input type="checkbox" name="sessionFloor" '+(context.floor===false?'':'checked')+'> Floor space</label>'+
+    '<label><input type="checkbox" name="sessionChair" '+(context.chair?'checked':'')+'> Sturdy chair / step</label>'+
+    '<label><input type="checkbox" name="sessionPullupBar" '+(context.pullupBar?'checked':'')+'> Pull-up bar</label>'+
+    '<div class="custom-equipment-row"><span>CUSTOM EQUIPMENT</span>'+
+      '<label><input type="checkbox" name="customEquipment" value="bodyweight" '+((context.modes||['bodyweight']).includes('bodyweight')?'checked':'')+'> Bodyweight</label>'+
+      '<label><input type="checkbox" name="customEquipment" value="dumbbells" '+((context.modes||[]).includes('dumbbells')?'checked':'')+'> Dumbbells</label>'+
+      '<label><input type="checkbox" name="customEquipment" value="bands" '+((context.modes||[]).includes('bands')?'checked':'')+'> Bands</label>'+
+    '</div></div>';
+}
+function renderTrainingContextSummary(context,compact=false){
+  if(!context)return '';
+  const changed=num(context.changedCount),unavailable=num(context.unavailableCount);
+  return '<div class="training-context-summary '+(compact?'compact':'')+'"><div><span>TODAY’S SETUP</span><strong>'+esc(sessionSetupLabel(context))+'</strong><small>'+(changed?changed+' movement'+(changed===1?'':'s')+' changed':'Plan fits this setup')+(unavailable?' · '+unavailable+' unavailable':'')+'</small></div>'+(context.temporary?'<em>TODAY ONLY</em>':'')+'</div>';
+}
 function equipmentAllows(exercise,equipment){
   if (equipment === 'full-gym') return exercise.equipment.includes('full-gym');
   return exercise.equipment.includes(equipment);
@@ -2021,13 +2338,13 @@ function scheduledEntryFor(dayId,scheduledDate=''){
   return currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId&&entry.dateKey===key)||
     currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId)||null;
 }
-function openReadiness(dayId,scheduledDate=''){
+function openReadiness(dayId,scheduledDate='',preferredSetup=''){
   if(store.activeWorkout){currentTab='workout';render();toast('Resume or finish your current workout first.');return;}
   const entry=scheduledEntryFor(dayId,scheduledDate);
   const scheduledBase=entry?.day||store.plan?.days?.find(day=>day.id===dayId);
   const baseDay=entry?.adaptedDay||adaptDayForProgramWeek(scheduledBase,scheduledDate?dateFromKey(scheduledDate):new Date());
   if(!baseDay)return;
-  readinessContext={dayId,scheduledDate:scheduledDate||entry?.dateKey||dateKey(),day:baseDay};
+  readinessContext={dayId,scheduledDate:scheduledDate||entry?.dateKey||dateKey(),day:baseDay,preferredSetup:preferredSetup||normalSessionSetupKey()};
   render();
 }
 function closeReadiness(){readinessContext=null;render();}
@@ -2035,21 +2352,26 @@ function renderReadinessModal(){
   if(!readinessContext)return '';
   const day=readinessContext.day;
   const selectedMinutes=num(store.profile?.minutes)||45;
+  const selectedSetup=readinessContext.preferredSetup||normalSessionSetupKey();
   const timeOptions=[20,30,45,60,75].filter(v=>v<=Math.max(75,selectedMinutes));
   if(!timeOptions.includes(selectedMinutes))timeOptions.push(selectedMinutes);
   timeOptions.sort((a,b)=>a-b);
   const scale=(name,left,right,selected=3)=>'<div class="readiness-scale"><div class="readiness-scale-head"><span>'+left+'</span><span>'+right+'</span></div><div class="readiness-buttons">'+[1,2,3,4,5].map(value=>'<label><input type="radio" name="'+name+'" value="'+value+'" '+(value===selected?'checked':'')+'><span>'+value+'</span></label>').join('')+'</div></div>';
   return '<div class="exercise-modal-backdrop readiness-backdrop" data-action="close-readiness">'+
-    '<section class="exercise-modal readiness-modal" role="dialog" aria-modal="true" aria-label="Pre-workout readiness" data-readiness-panel>'+
+    '<section class="exercise-modal readiness-modal train-anywhere-readiness" role="dialog" aria-modal="true" aria-label="Pre-workout readiness" data-readiness-panel>'+
       '<button class="modal-close" type="button" data-action="close-readiness" aria-label="Close readiness check">×</button>'+
-      '<div class="readiness-head"><p class="eyebrow">TODAY · '+esc(formatDate(readinessContext.scheduledDate))+'</p><h2>'+esc(day.name)+'</h2><p>A quick check lets this session fit how you actually feel and how much time you have today.</p></div>'+
+      '<div class="readiness-head"><p class="eyebrow">TODAY · '+esc(formatDate(readinessContext.scheduledDate))+'</p><h2>'+esc(day.name)+'</h2><p>Set today’s time, recovery, and equipment. These choices affect this session only.</p></div>'+
       '<form id="readiness-form" class="readiness-form">'+
+        '<section class="today-context-section"><div class="today-context-head"><div><span>TODAY’S SETUP</span><strong>Where are you training?</strong></div><em>TEMPORARY</em></div>'+
+          renderSessionSetupOptions(selectedSetup)+renderSessionSetupExtras()+
+          '<p class="session-context-note">Your normal training profile stays unchanged. GoWorkout will preserve the session’s movement intent and show any substitutions before you begin.</p>'+
+        '</section>'+
         '<label class="readiness-question"><strong>Energy</strong><small>How much training energy do you have?</small>'+scale('energy','Low','High',3)+'</label>'+
         '<label class="readiness-question"><strong>Muscle soreness</strong><small>How sore do you feel overall?</small>'+scale('soreness','None','Very sore',2)+'</label>'+
         '<label class="readiness-question"><strong>Sleep</strong><small>How rested do you feel from last night?</small>'+scale('sleep','Poor','Great',3)+'</label>'+
         '<label class="field readiness-time"><span>TIME AVAILABLE TODAY</span><select name="timeAvailable">'+timeOptions.map(value=>'<option value="'+value+'" '+(value===selectedMinutes?'selected':'')+'>'+value+' minutes</option>').join('')+'</select></label>'+
-        '<div class="readiness-preview"><span>PLANNED SESSION</span><strong>~'+esc(day.estimatedMinutes)+' min · '+day.exercises.length+' exercises</strong></div>'+
-        '<button class="button primary-action" type="button" data-action="begin-workout">START TODAY’S WORKOUT</button>'+
+        '<div class="readiness-preview"><span>PLANNED SESSION</span><strong>~'+esc(day.estimatedMinutes)+' min · '+day.exercises.length+' exercises</strong><small>You’ll review all temporary changes before the workout timer begins.</small></div>'+
+        '<button class="button primary-action" type="button" data-action="begin-workout">PREPARE TODAY’S WORKOUT</button>'+
       '</form>'+
     '</section></div>';
 }
@@ -2064,21 +2386,36 @@ async function startPreparedWorkout(){
     sleep:num(data.get('sleep'))||3,
     timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
   };
+  const setup=sessionSetupFromForm(form,readinessContext.preferredSetup||normalSessionSetupKey());
   readiness.score=readinessScore(readiness);
+  readiness.sessionSetup={key:setup.key,label:sessionSetupLabel(setup),modes:clone(setup.modes)};
   if(readinessContext.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
     await workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',readinessContext.sharedDraft.backendId).eq('user_id',store.account.userId);
   }
-  let day=applyReadinessToDay(readinessContext.day,readiness);
+  const sourceDay=clone(readinessContext.day);
+  let day=applyReadinessToDay(sourceDay,readiness);
   if(day.engineBacked&&readiness.timeAvailable&&readiness.timeAvailable<(day.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){
     const engine=currentEngineProgram(),week=engine?.program?.weeks?.find(w=>w.week===day.engineWeek),session=week?.sessions?.find(s=>s.id===day.engineSessionId);
-    if(session){const compressed=programEngine.compressSession(session,readiness.timeAvailable);day=engineSessionToLegacyDay(compressed,day);day.adaptationNotes=[...(day.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+readiness.timeAvailable+' available minutes.'];}
+    if(session){
+      const compressed=programEngine.compressSession(session,readiness.timeAvailable);
+      day=engineSessionToLegacyDay(compressed,day);
+      day.adaptationNotes=[...(day.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+readiness.timeAvailable+' available minutes.'];
+    }
   }
+  day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
+  if(!day.exercises.length){toast('No usable exercises match that setup. Add floor space, equipment, or choose another setup.');return;}
   const scheduledDate=readinessContext.scheduledDate;
   const context=programContext(dateFromKey(scheduledDate));
   const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
   readinessContext=null;
   unlockWorkoutCues();
-  store.activeWorkout=createWorkout(day,{scheduledDate,readiness,programContext:context,adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]});
+  store.activeWorkout=createWorkout(day,{
+    scheduledDate,
+    readiness,
+    programContext:context,
+    trainingContext:day.trainingContext,
+    adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]
+  });
   if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString()};
   saveStore();currentTab='workout';render();
   if(sharedDraft?.backendId)activateSharedWorkout(sharedDraft).catch(error=>console.warn('Shared workout activation failed',error));
@@ -2090,7 +2427,7 @@ function createWorkout(day,meta={}){
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
-    readiness:meta.readiness||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
+    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,
@@ -3915,10 +4252,24 @@ function renderExerciseActionsSheet(){
   const state=exerciseState(ex);
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-exercise-actions"><section class="bottom-sheet" data-exercise-actions-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">EXERCISE OPTIONS</p><h2>'+esc(ex.name)+'</h2></div><button class="modal-close" data-action="close-exercise-actions">×</button></div><div class="sheet-action-list">'+
     '<button data-exercise-detail="'+esc(ex.id)+'"><span>ⓘ</span><div><strong>View exercise details</strong><small>Form, setup, cues, history</small></div></button>'+
+    '<button data-action="open-session-setup"><span>⌂</span><div><strong>Change equipment for this workout</strong><small>Adapt unfinished exercises only</small></div></button>'+
     (!exerciseCountsAsResolved(ex)?'<button data-action="swap-active" data-swap-index="'+index+'"><span>⇄</span><div><strong>Swap exercise</strong><small>Choose a compatible alternative</small></div></button><button data-action="move-exercise-later" data-exercise-index="'+index+'"><span>↓</span><div><strong>Move to later</strong><small>Keep it in the workout, change the order</small></div></button><button data-action="mark-exercise-complete" data-exercise-index="'+index+'"><span>✓</span><div><strong>Mark as complete</strong><small>No fake weight or rep data</small></div></button><button data-action="skip-exercise" data-exercise-index="'+index+'"><span>⊘</span><div><strong>Skip exercise</strong><small>Leave it unresolved for performance data</small></div></button>':'')+
     (state==='completed-manually'?'<button data-action="undo-manual-exercise" data-exercise-index="'+index+'"><span>↺</span><div><strong>Undo manual completion</strong><small>Return the exercise to an unfinished state</small></div></button>':'')+
     (state==='skipped'?'<button data-action="restore-exercise" data-exercise-index="'+index+'"><span>↺</span><div><strong>Restore exercise</strong><small>Return it to the workout</small></div></button>':'')+
     '</div></section></div>';
+}
+
+function renderSessionSetupSheet(){
+  if(!sessionSetupOpen||!store.activeWorkout)return '';
+  const current=store.activeWorkout.trainingContext?.key||normalSessionSetupKey();
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-session-setup"><section class="bottom-sheet session-setup-sheet" data-session-setup-panel>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">TRAIN ANYWHERE</p><h2>Change today’s setup</h2><p>Completed work stays untouched. GoWorkout adapts unfinished movements only.</p></div><button class="modal-close" data-action="close-session-setup">×</button></div>'+
+    '<form id="session-setup-form" class="session-setup-form">'+
+      renderSessionSetupOptions(current)+renderSessionSetupExtras(store.activeWorkout.trainingContext||{})+
+      '<div class="session-setup-warning"><strong>TODAY ONLY</strong><span>Your normal program and profile equipment will not change.</span></div>'+
+      '<button type="button" class="button primary-action" data-action="apply-session-setup">ADAPT REMAINING WORKOUT</button>'+
+    '</form>'+
+  '</section></div>';
 }
 function renderHistoryMenuSheet(){
   const item=store.history.find(entry=>entry.id===historyMenuId);if(!item)return '';
@@ -3928,6 +4279,7 @@ function renderHistoryMenuSheet(){
   }).join('');
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-history-menu"><section class="bottom-sheet history-detail-sheet" data-history-menu-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT DETAILS</p><h2>'+esc(item.routineName)+'</h2><p>'+esc(formatDate(item.completedAt))+'</p></div><button class="modal-close" data-action="close-history-menu">×</button></div>'+
     '<div class="history-detail-summary"><div><span>TIME</span><strong>'+item.durationMinutes+' min</strong></div><div><span>SETS</span><strong>'+item.completedSets+'</strong></div><div><span>VOLUME</span><strong>'+formatVolume(item.totalVolume||0)+'</strong></div></div>'+
+    ((item.trainingContext?.temporary||item.trainingContext?.adapted)?renderTrainingContextSummary(item.trainingContext,false):'')+
     '<div class="history-detail-list">'+rows+'</div>'+
     '<div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
 }
@@ -4009,6 +4361,7 @@ function renderHome(){
     '<section class="home-state-hero state-'+esc(x.state)+'">'+
       '<div class="home-state-copy"><span>'+esc(x.eyebrow)+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+esc(x.meta)+'</small></div>'+
       renderHomePrimaryAction(x)+
+      (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
       (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
     '<section class="clean-section home-week-section"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+' of '+planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
@@ -4040,12 +4393,14 @@ function renderWorkoutIntro(w){
       : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
     return '<div class="preview-exercise-row">'+
       '<div class="preview-exercise-index">'+String(index+1).padStart(2,'0')+'</div>'+
-      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+(minimumIds.has(ex.engineExerciseId)?' <em class="engine-priority-tag">CORE</em>':'')+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span>'+(ex.engineIntensityTarget?'<small>'+esc(ex.engineIntensityTarget)+'</small>':'')+'</div>'+
+      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+(minimumIds.has(ex.engineExerciseId)?' <em class="engine-priority-tag">CORE</em>':'')+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span>'+(ex.sessionAdapted?'<small class="session-swap-note">'+esc(ex.sessionMatchQuality||'Temporary swap')+' · '+(ex.sessionOriginalName===ex.name?'bodyweight version':'replaces '+esc(ex.sessionOriginalName||'planned movement'))+'</small>':(ex.engineIntensityTarget?'<small>'+esc(ex.engineIntensityTarget)+'</small>':''))+'</div>'+
       '<div class="preview-exercise-load">'+loadLabel+'</div>'+
       '</div>';
   }).join('');
   return '<div class="clean-session-intro">'+
     '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
+    (w.trainingContext?'<section class="session-context-banner">'+renderTrainingContextSummary(w.trainingContext,true)+'<button class="text-button" data-action="open-session-setup">CHANGE SETUP</button></section>':'')+
+    (w.trainingContext?.changes?.length?'<section class="session-change-review"><div class="preview-section-head"><div><span>WHAT CHANGED TODAY</span><strong>Temporary substitutions</strong></div></div><div class="session-change-list">'+w.trainingContext.changes.map(change=>'<div class="session-change-row '+esc(change.type)+'"><div><span>'+esc(change.quality||'Adjusted')+'</span><strong>'+esc(change.fromName||'Planned movement')+(change.toName?' → '+esc(change.toName):'')+'</strong><small>'+esc(change.reason||'No useful match is available with the selected setup.')+'</small></div><em>'+(change.type==='unavailable'?'NOT IN SESSION':'TODAY ONLY')+'</em></div>').join('')+'</div></section>':'')+
     '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
     '<section class="preview-flow">'+
       (w.warmup?.length?'<div class="preview-flow-card"><span>01 · WARM-UP</span><strong>Movement prep · '+Math.ceil(warmupSeconds/60)+' min</strong><small>Dynamic work selected for today’s training.</small></div>':'')+
@@ -4433,7 +4788,7 @@ function renderHistory(){
     const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
     const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?formatDate(actual):formatDate(scheduled)+' · trained '+formatDate(actual)):formatDate(x.completedAt);
     const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL':'';
-    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
+    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+((x.trainingContext?.temporary||x.trainingContext?.adapted)?' · '+esc(sessionSetupLabel(x.trainingContext))+' adaptation':'')+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
   }).join('');
   const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
   return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
@@ -4649,6 +5004,7 @@ function renderSummary(){
     (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
+    ((x.trainingContext?.temporary||x.trainingContext?.adapted)?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
     '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
@@ -4717,9 +5073,10 @@ function render(){
   if(setEditContext) app.insertAdjacentHTML('beforeend',renderSetEditor());
   if(cueSettingsOpen) app.insertAdjacentHTML('beforeend',renderCueSettingsSheet());
   if(exerciseActionsIndex!==null) app.insertAdjacentHTML('beforeend',renderExerciseActionsSheet());
+  if(sessionSetupOpen) app.insertAdjacentHTML('beforeend',renderSessionSetupSheet());
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||historyMenuId||accountSheetOpen));
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
 }
@@ -4808,6 +5165,12 @@ function handleClick(event){
     const explicit=event.target.closest('.modal-close');
     if(!inside||explicit){exerciseActionsIndex=null;render();return;}
   }
+  const sessionSetupClose=event.target.closest('[data-action="close-session-setup"]');
+  if(sessionSetupClose){
+    const inside=event.target.closest('[data-session-setup-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit){sessionSetupOpen=false;render();return;}
+  }
   const historyClose=event.target.closest('[data-action="close-history-menu"]');
   if(historyClose){
     const inside=event.target.closest('[data-history-menu-panel]');
@@ -4852,12 +5215,24 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='train-anywhere-home')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'','bodyweight');
+  else if(a==='open-session-setup'){exerciseActionsIndex=null;sessionSetupOpen=true;render();}
+  else if(a==='apply-session-setup'){
+    const form=document.querySelector('#session-setup-form');
+    const setup=sessionSetupFromForm(form,store.activeWorkout?.trainingContext?.key||normalSessionSetupKey());
+    const result=applySetupToActiveWorkout(setup);
+    if(result.blocked){toast('That setup has no usable exercises for this session. Choose another setup or add available equipment.');return;}
+    sessionSetupOpen=false;
+    saveStore();
+    render();
+    toast(result.changed+' movement'+(result.changed===1?'':'s')+' adapted'+(result.unavailable?' · '+result.unavailable+' unavailable':'')+'.');
+  }
   else if(a==='toggle-program-why'){programWhyOpen=!programWhyOpen;persistUiState();render();}
   else if(a==='train-program'){trainView='program';programWhyOpen=true;persistUiState();setTab('train');}
   else if(a==='set-train-view'){trainView=['week','program','exercises'].includes(node.dataset.trainView)?node.dataset.trainView:'week';persistUiState();render();}
@@ -5006,6 +5381,7 @@ document.addEventListener('change',event=>{
 });
 document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
+  if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
   if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
   if(event.key==='Escape'&&cueSettingsOpen){cueSettingsOpen=false;render();return;}
