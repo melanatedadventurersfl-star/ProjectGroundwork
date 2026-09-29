@@ -5439,3 +5439,181 @@ body.workout-mode .cleaned-workout{
   .exercise-progress-kpis{grid-template-columns:1fr}
   .exercise-chart-heading strong{font-size:17px}
 }
+
+
+/* GoWorkout Slice 12A: Train Anywhere and temporary session context */
+.home-train-anywhere{
+  width:max-content;
+  max-width:100%;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  font-size:9px;
+  text-align:left;
+}
+.home-train-anywhere strong{color:var(--accent-2)}
+.train-anywhere-readiness{width:min(760px,96vw)}
+.today-context-section{
+  display:grid;
+  gap:12px;
+  padding:14px;
+  border:1px solid rgba(216,180,92,.28);
+  border-radius:16px;
+  background:rgba(216,180,92,.035);
+}
+.today-context-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.today-context-head>div{display:grid;gap:3px}
+.today-context-head span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.today-context-head strong{font-size:14px}
+.today-context-head em{
+  padding:5px 7px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--accent-2);
+  font-size:7px;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.session-setup-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+}
+.session-setup-card input{position:absolute;opacity:0;pointer-events:none}
+.session-setup-card>span{
+  min-height:64px;
+  display:grid;
+  align-content:center;
+  gap:3px;
+  padding:10px 11px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel-2);
+}
+.session-setup-card strong{font-size:10px}
+.session-setup-card small{color:var(--muted);font-size:8px;line-height:1.35}
+.session-setup-card input:checked+span{
+  border-color:rgba(216,180,92,.65);
+  background:rgba(216,180,92,.08);
+  box-shadow:inset 3px 0 0 var(--accent);
+}
+.session-setup-extras{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 12px;
+  align-items:center;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.session-setup-extras>div:first-child{
+  flex:1 1 100%;
+  display:grid;
+  gap:2px;
+}
+.session-setup-extras>div:first-child span,
+.custom-equipment-row>span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.session-setup-extras>div:first-child small{color:var(--muted);font-size:8px}
+.session-setup-extras label{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  color:var(--text);
+  font-size:9px;
+}
+.custom-equipment-row{
+  flex:1 1 100%;
+  display:flex;
+  gap:8px 12px;
+  flex-wrap:wrap;
+  align-items:center;
+  padding-top:8px;
+}
+.custom-equipment-row>span{flex:1 1 100%}
+.session-context-note{
+  margin:0;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.45;
+}
+.readiness-preview small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:8px;
+}
+.session-context-banner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 13px;
+  border:1px solid rgba(216,180,92,.28);
+  border-radius:14px;
+  background:rgba(216,180,92,.045);
+}
+.training-context-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  width:100%;
+}
+.training-context-summary>div{display:grid;gap:2px}
+.training-context-summary span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.training-context-summary strong{font-size:12px}
+.training-context-summary small{color:var(--muted);font-size:8px}
+.training-context-summary em{
+  flex:0 0 auto;
+  color:var(--accent-2);
+  font-size:7px;
+  font-style:normal;
+  font-weight:900;
+}
+.session-context-banner .training-context-summary{width:auto;flex:1}
+.session-swap-note{
+  color:var(--accent-2)!important;
+  font-weight:700;
+}
+.session-setup-sheet{max-height:min(88dvh,760px);overflow:auto}
+.session-setup-form{display:grid;gap:14px}
+.session-setup-warning{
+  display:flex;
+  gap:9px;
+  align-items:center;
+  padding:10px 11px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--panel-2);
+}
+.session-setup-warning strong{color:var(--accent-2);font-size:7px;letter-spacing:.09em}
+.session-setup-warning span{color:var(--muted);font-size:8px}
+.summary-training-context{display:block}
+.summary-training-context .training-context-summary{width:100%}
+@media(max-width:620px){
+  .session-setup-grid{grid-template-columns:1fr 1fr}
+  .session-setup-card>span{min-height:58px;padding:9px}
+  .session-context-banner{align-items:flex-start;flex-direction:column}
+  .training-context-summary{align-items:flex-start}
+}
