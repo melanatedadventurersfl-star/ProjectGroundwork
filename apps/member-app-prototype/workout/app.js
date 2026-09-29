@@ -1819,11 +1819,11 @@ function renderSessionSetupOptions(selectedKey=normalSessionSetupKey(),prefix=''
     return '<label class="session-setup-card"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+'</strong><small>'+copy+'</small></span></label>';
   }).join('')+'</div>';
 }
-function renderSessionSetupExtras(){
+function renderSessionSetupExtras(context={}){
   return '<div class="session-setup-extras"><div><span>AVAILABLE EXTRAS</span><small>These prevent the app from assuming equipment you do not have.</small></div>'+
-    '<label><input type="checkbox" name="sessionFloor" checked> Floor space</label>'+
-    '<label><input type="checkbox" name="sessionChair"> Sturdy chair / step</label>'+
-    '<label><input type="checkbox" name="sessionPullupBar"> Pull-up bar</label>'+
+    '<label><input type="checkbox" name="sessionFloor" '+(context.floor===false?'':'checked')+'> Floor space</label>'+
+    '<label><input type="checkbox" name="sessionChair" '+(context.chair?'checked':'')+'> Sturdy chair / step</label>'+
+    '<label><input type="checkbox" name="sessionPullupBar" '+(context.pullupBar?'checked':'')+'> Pull-up bar</label>'+
     '<div class="custom-equipment-row"><span>CUSTOM EQUIPMENT</span>'+
       '<label><input type="checkbox" name="customEquipment" value="bodyweight" checked> Bodyweight</label>'+
       '<label><input type="checkbox" name="customEquipment" value="dumbbells"> Dumbbells</label>'+
@@ -4263,7 +4263,7 @@ function renderSessionSetupSheet(){
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-session-setup"><section class="bottom-sheet session-setup-sheet" data-session-setup-panel>'+
     '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">TRAIN ANYWHERE</p><h2>Change today’s setup</h2><p>Completed work stays untouched. GoWorkout adapts unfinished movements only.</p></div><button class="modal-close" data-action="close-session-setup">×</button></div>'+
     '<form id="session-setup-form" class="session-setup-form">'+
-      renderSessionSetupOptions(current)+renderSessionSetupExtras()+
+      renderSessionSetupOptions(current)+renderSessionSetupExtras(store.activeWorkout.trainingContext||{})+
       '<div class="session-setup-warning"><strong>TODAY ONLY</strong><span>Your normal program and profile equipment will not change.</span></div>'+
       '<button type="button" class="button primary-action" data-action="apply-session-setup">ADAPT REMAINING WORKOUT</button>'+
     '</form>'+
@@ -4398,6 +4398,7 @@ function renderWorkoutIntro(w){
   return '<div class="clean-session-intro">'+
     '<div class="session-intro-heading"><p class="eyebrow">TODAY’S SESSION</p><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'')+'</p></div>'+
     (w.trainingContext?'<section class="session-context-banner">'+renderTrainingContextSummary(w.trainingContext,true)+'<button class="text-button" data-action="open-session-setup">CHANGE SETUP</button></section>':'')+
+    (w.trainingContext?.changes?.length?'<section class="session-change-review"><div class="preview-section-head"><div><span>WHAT CHANGED TODAY</span><strong>Temporary substitutions</strong></div></div><div class="session-change-list">'+w.trainingContext.changes.map(change=>'<div class="session-change-row '+esc(change.type)+'"><div><span>'+esc(change.quality||'Adjusted')+'</span><strong>'+esc(change.fromName||'Planned movement')+(change.toName?' → '+esc(change.toName):'')+'</strong><small>'+esc(change.reason||'No useful match is available with the selected setup.')+'</small></div><em>'+(change.type==='unavailable'?'NOT IN SESSION':'TODAY ONLY')+'</em></div>').join('')+'</div></section>':'')+
     '<div class="intro-stats clean-intro-stats"><div><span>TIME</span><strong>~'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' min</strong></div><div><span>EXERCISES</span><strong>'+w.exercises.length+'</strong></div><div><span>SETS</span><strong>'+totalSets(w.exercises)+'</strong></div></div>'+
     '<section class="preview-flow">'+
       (w.warmup?.length?'<div class="preview-flow-card"><span>01 · WARM-UP</span><strong>Movement prep · '+Math.ceil(warmupSeconds/60)+' min</strong><small>Dynamic work selected for today’s training.</small></div>':'')+
