@@ -26,6 +26,7 @@ let exerciseActionsIndex = null;
 let historyMenuId = null;
 let accountSheetOpen = false;
 let sessionSetupOpen = false;
+let accountEntryMode = 'sign-in';
 let historyFilter = 'all';
 
 const defaultStore = {
@@ -5073,17 +5074,17 @@ function toast(message){const r=document.querySelector('#toast-region')||documen
 
 function renderAccountEntry(){
   const pending=store.account?.status==='pending';
+  const createMode=accountEntryMode==='create';
+  const knownEmail=store.account?.email||store.profile?.email||'';
   return '<div class="onboard-shell account-entry-shell">'+
-    '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>Sign in to continue your program on this device, or create an account before building your first plan.</p></section>'+
+    '<section class="account-entry-hero"><p class="eyebrow">WORKOUT</p><h1>Training that learns you.</h1><p>'+(createMode?'Create your account, then build your training profile.':'Sign in to continue your program on this device.')+'</p></section>'+
     (pending?'<div class="account-status-card"><span>EMAIL CONFIRMATION PENDING</span><strong>Check your inbox, then sign in here.</strong><p>Your setup on this browser stays intact while confirmation is pending.</p></div>':'')+
-    '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>Account</h3><p>Your profile, program, progress, history and active workout sync through your account.</p></div></div>'+
-      '<div class="form-grid two">'+
-        '<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>'+
-        '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(store.account?.email||store.profile?.email||'')+'" placeholder="you@example.com"></label>'+
-      '</div>'+
-      '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>'+
-      '<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in">SIGN IN</button><button class="button secondary" data-action="entry-create-account">CREATE ACCOUNT</button></div>'+
-      (pending?'<button class="text-button account-resend" data-action="entry-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':'')+
+    '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>'+(createMode?'Create account':'Sign in')+'</h3><p>'+(createMode?'Your display name is used for your profile and shared workout identity.':'Use the email and password for your GoWorkout account.')+'</p></div></div>'+
+      (createMode?'<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>':'')+
+      '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(knownEmail)+'" placeholder="you@example.com"></label>'+
+      '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="'+(createMode?'new-password':'current-password')+'" placeholder="'+(createMode?'At least 6 characters':'Your password')+'"></label>'+
+      (createMode?'<div class="auth-choice-grid"><button class="button" data-action="entry-create-account">CREATE ACCOUNT</button><button class="button secondary" data-action="entry-show-sign-in">BACK TO SIGN IN</button></div>':'<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in">SIGN IN</button><button class="button secondary" data-action="entry-show-create">CREATE ACCOUNT</button></div>')+
+      (pending&&!createMode?'<button class="text-button account-resend" data-action="entry-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':'')+
     '</section>'+
     '<div class="profile-privacy-note"><strong>Private by default.</strong><span>Your readiness, body data, notes and full training history are not exposed to workout partners.</span></div>'+
   '</div>';
@@ -5296,6 +5297,8 @@ function handleClick(event){
   else if(a==='start-shared-workout')startSharedWorkout();
   else if(a==='copy-shared-code')copySharedCode();
   else if(a==='account-info'){accountSheetOpen=true;render();}
+  else if(a==='entry-show-create'){accountEntryMode='create';render();}
+  else if(a==='entry-show-sign-in'){accountEntryMode='sign-in';render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
   else if(a==='entry-resend-confirmation')resendEntryConfirmation();
