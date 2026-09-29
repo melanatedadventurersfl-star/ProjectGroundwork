@@ -4551,7 +4551,7 @@ function removeWarmupRep(){
   saveStore();render();
 }
 function runnerPhaseMinutes(items=[]){
-  return Math.max(1,Math.round(items.reduce((sum,item)=>sum+(item.mode==='reps'||item.reps?20:Number(item.seconds)||30),0)/60));
+  return Math.max(1,Math.round(items.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60));
 }
 function renderWarmupRoutine(w){
   return '<div class="runner-warmup-routine">'+
@@ -4785,35 +4785,23 @@ function renderWorkSet(pos){
   const defaultReps=pos.set.reps ?? ex.suggestedReps ?? '';
   const previous=previousSetForPosition(ex,pos.si);
   const previousLabel=previous.set?setPerformanceLabel(ex,previous.set):'No previous set';
-  const completedCount=ex.sets.filter(set=>set.completed).length;
-  const target=currentPrescriptionLabel(ex);
-  const setProgress=ex.sets.map((set,index)=>{
-    const state=set.completed?'done':index===pos.si?'current':'future';
-    return '<span class="'+state+'" aria-label="Set '+(index+1)+' '+state+'">'+(set.completed?'✓':index+1)+'</span>';
-  }).join('');
-  const completedRows=ex.sets.map((set,index)=>{
-    if(!set.completed)return '';
-    return '<button class="runner-set-history" data-action="edit-set" data-exercise-index="'+pos.ei+'" data-set-index="'+index+'"><span>SET '+(index+1)+'</span><strong>'+esc(setPerformanceLabel(ex,set))+'</strong><em>EDIT</em></button>';
-  }).join('');
-  const upcomingCount=Math.max(0,ex.sets.length-completedCount-1);
+  const displayLoad=noLoad?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(String(defaultWeight||ex.suggestedWeight||0)+' lb');
+  const displayTarget=isTimed?(String(defaultReps||30)+' sec'):(String(defaultReps||ex.suggestedReps||'')+' reps');
   const weightField=noLoad
     ? '<input id="set-weight" type="hidden" value="">'
-    : '<label class="runner-input-card"><span>WEIGHT</span><div><input id="set-weight" inputmode="decimal" value="'+esc(defaultWeight)+'" placeholder="0"><small>lb</small></div></label>';
-  const repsLabel=isTimed?'SECONDS':'REPS';
-  return '<div class="runner-active-set">'+
-    '<div class="runner-exercise-head"><div><p class="eyebrow">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+' · '+esc(equipmentRequirement(exerciseSource(ex)))+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="More exercise options">•••</button></div>'+
-    '<div class="runner-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
-    '<div class="runner-set-status"><div><span>SET '+(pos.si+1)+' OF '+ex.sets.length+'</span><strong>'+esc(target)+'</strong></div><div class="runner-set-pips">'+setProgress+'</div></div>'+
-    '<section class="runner-entry-panel"><div class="runner-entry-head"><div><span>CURRENT SET</span><strong>Enter what you complete</strong></div><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button></div>'+
-      '<div class="runner-input-grid '+(noLoad?'single':'')+'">'+weightField+
-        '<label class="runner-input-card"><span>'+repsLabel+'</span><div><input id="set-reps" inputmode="numeric" value="'+esc(defaultReps)+'" placeholder="'+(isTimed?'45':'0')+'"><small>'+(isTimed?'sec':'reps')+'</small></div></label>'+
+    : '<label class="runner-live-input"><span>WEIGHT</span><div><input id="set-weight" inputmode="decimal" value="'+esc(defaultWeight)+'" placeholder="0"><small>lb</small></div></label>';
+  return '<div class="runner-work-clean">'+
+    '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><strong>'+esc(ex.name)+'</strong><span>Set '+(pos.si+1)+' of '+ex.sets.length+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="runner-target-ring"><strong>'+esc(defaultReps||ex.suggestedReps||'')+'</strong><span>'+(isTimed?'seconds':'reps target')+'</span></div>'+
+    '<div class="runner-load-focus"><strong>'+esc(displayLoad)+'</strong><span>'+esc(exerciseGuidance(ex).cue||'Keep the movement controlled.')+'</span></div>'+
+    '<div class="runner-live-reference"><span>PREVIOUS</span><strong>'+esc(previousLabel)+'</strong><em>TODAY · '+esc(displayTarget)+'</em></div>'+
+    '<section class="runner-live-log">'+
+      '<div class="runner-live-inputs '+(noLoad?'single':'')+'">'+weightField+
+        '<label class="runner-live-input"><span>'+(isTimed?'SECONDS':'REPS')+'</span><div><input id="set-reps" inputmode="numeric" value="'+esc(defaultReps)+'" placeholder="'+(isTimed?'30':'0')+'"><small>'+(isTimed?'sec':'reps')+'</small></div></label>'+
       '</div>'+
-      '<div class="runner-reference-row"><div><span>PREVIOUS SET '+(pos.si+1)+'</span><strong>'+esc(previousLabel)+'</strong></div><div><span>TODAY’S AIM</span><strong>'+esc(ex.adaptiveReason||'Stay in the target range with clean form.')+'</strong></div></div>'+
-      '<div class="set-primary-actions runner-primary-actions"><button class="button primary-action clean-complete-set" data-action="complete-set">COMPLETE SET '+(pos.si+1)+'</button><button class="text-button" data-action="skip-current-set">SKIP THIS SET</button></div>'+
+      '<button class="button primary-action runner-gold-action" data-action="complete-set">COMPLETE SET</button>'+
+      '<button class="text-button" data-action="skip-current-set">SKIP SET</button>'+
     '</section>'+
-    (completedRows?'<section class="runner-completed-sets"><div class="runner-subhead"><span>COMPLETED TODAY</span><small>'+completedCount+' of '+ex.sets.length+' sets</small></div>'+completedRows+'</section>':'')+
-    (upcomingCount?'<div class="runner-upcoming-note"><span>'+upcomingCount+' set'+(upcomingCount===1?'':'s')+' after this</span><strong>Next sets inherit what you log here. You can edit them anytime.</strong></div>':'')+
-    '<button class="workout-cue-compact runner-options" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'"><span>•••</span><div><strong>Exercise options</strong><small>Swap · move later · mark complete · skip</small></div><em>›</em></button>'+
   '</div>';
 }
 function renderCalibration(pos){
