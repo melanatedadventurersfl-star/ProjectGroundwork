@@ -1561,7 +1561,7 @@ function buildSessionSetup(key,{customModes=[],floor=true,chair=false,pullupBar=
     floor:fullGym?true:Boolean(floor),
     chair:fullGym?true:Boolean(chair),
     pullupBar:fullGym?true:Boolean(pullupBar),
-    temporary:true
+    temporary:key!==normalSessionSetupKey()||key==='custom'
   };
 }
 function sessionSetupFromForm(form,fallbackKey=normalSessionSetupKey()){
@@ -1621,6 +1621,7 @@ function findSessionReplacement(source,setup,used=new Set()){
       const alternativeIndex=alternatives.indexOf(candidate.movement);
       if(!sameId&&!sameMovement&&alternativeIndex<0)return null;
       const overlap=muscleOverlap(source,candidate);
+      if(!sameId&&!sameMovement&&alternativeIndex>=0&&overlap===0)return null;
       const difficultyGap=Math.abs(exerciseDifficultyRank(source.difficulty)-exerciseDifficultyRank(candidate.difficulty));
       const score=(sameId?200:0)+(sameMovement?100:0)+(overlap*18)+(alternativeIndex>=0?40-(alternativeIndex*5):0)-difficultyGap*6-(candidate.setup||20)/30;
       return {candidate,score};
@@ -1629,8 +1630,9 @@ function findSessionReplacement(source,setup,used=new Set()){
     .sort((a,b)=>b.score-a.score);
   if(!scored.length)return null;
   const candidate=effectiveExerciseForSetup(scored[0].candidate,setup);
-  const quality=sessionReplacementQuality(source,candidate);
-  return {candidate,quality,reason:sessionReplacementReason(source,candidate,quality)};
+  const quality=candidate.sessionLoadOverride?'Direct match':sessionReplacementQuality(source,candidate);
+  const reason=candidate.sessionLoadOverride?'Same movement performed without external load for today’s setup.':sessionReplacementReason(source,candidate,quality);
+  return {candidate,quality,reason};
 }
 function sessionPlanExerciseFromCandidate(source,template,replacement,setup){
   const candidate=replacement.candidate;
@@ -1735,6 +1737,44 @@ function runtimeExerciseFromSessionReplacement(source,template,replacement,setup
 function applySetupToActiveWorkout(setup){
   const w=store.activeWorkout;
   if(!w)return {changed:0,unavailable:0};
+  if(w.phase==='intro'&&w.trainingContext?.originalExercises?.length){
+    const baseDay={
+      id:w.planDayId,
+      name:w.routineName,
+      focus:w.focus,
+      targetMinutes:w.readiness?.timeAvailable||store.profile?.minutes||45,
+      estimatedMinutes:w.readiness?.timeAvailable||store.profile?.minutes||45,
+      exercises:clone(w.trainingContext.originalExercises),
+      adaptationNotes:clone(w.adaptationNotes||[]),
+      engineBacked:w.engineBacked,
+      engineSessionId:w.engineSessionId,
+      engineWeek:w.engineWeek,
+      engineBlockNumber:w.engineBlockNumber,
+      engineMinimumViable:clone(w.engineMinimumViable||[]),
+      engineStretch:clone(w.engineStretch||null)
+    };
+    const adapted=adaptDayForSessionSetup(baseDay,setup,w.readiness?.timeAvailable||store.profile?.minutes||45);
+    if(!adapted.exercises.length)return {changed:0,unavailable:adapted.trainingContext?.unavailableCount||baseDay.exercises.length,blocked:true};
+    const rebuilt=createWorkout(adapted,{
+      scheduledDate:w.scheduledDate,
+      readiness:w.readiness,
+      programContext:w.programContext,
+      trainingContext:adapted.trainingContext,
+      adaptationNotes:adapted.adaptationNotes
+    });
+    w.exercises=rebuilt.exercises;
+    w.warmup=rebuilt.warmup;
+    w.cooldown=rebuilt.cooldown;
+    w.trainingContext=adapted.trainingContext;
+    w.adaptationNotes=adapted.adaptationNotes;
+    w.currentExerciseIndex=0;
+    w.currentSetIndex=0;
+    w.furthestExerciseIndex=0;
+    w.pendingPosition=null;
+    w.revision=(num(w.revision)||0)+1;
+    return {changed:num(adapted.trainingContext?.changedCount),unavailable:num(adapted.trainingContext?.unavailableCount)};
+  }
+
   const used=new Set();
   for(const ex of w.exercises||[])if(exerciseState(ex)!=='not-started'&&!ex.sessionSetupUnavailable)used.add(ex.id);
   let changed=0,unavailable=0;
@@ -4223,7 +4263,7 @@ function renderSessionSetupSheet(){
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-session-setup"><section class="bottom-sheet session-setup-sheet" data-session-setup-panel>'+
     '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">TRAIN ANYWHERE</p><h2>Change today’s setup</h2><p>Completed work stays untouched. GoWorkout adapts unfinished movements only.</p></div><button class="modal-close" data-action="close-session-setup">×</button></div>'+
     '<form id="session-setup-form" class="session-setup-form">'+
-      renderSessionSetupOptions(current,'active-')+renderSessionSetupExtras()+
+      renderSessionSetupOptions(current)+renderSessionSetupExtras()+
       '<div class="session-setup-warning"><strong>TODAY ONLY</strong><span>Your normal program and profile equipment will not change.</span></div>'+
       '<button type="button" class="button primary-action" data-action="apply-session-setup">ADAPT REMAINING WORKOUT</button>'+
     '</form>'+
@@ -4237,7 +4277,7 @@ function renderHistoryMenuSheet(){
   }).join('');
   return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-history-menu"><section class="bottom-sheet history-detail-sheet" data-history-menu-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT DETAILS</p><h2>'+esc(item.routineName)+'</h2><p>'+esc(formatDate(item.completedAt))+'</p></div><button class="modal-close" data-action="close-history-menu">×</button></div>'+
     '<div class="history-detail-summary"><div><span>TIME</span><strong>'+item.durationMinutes+' min</strong></div><div><span>SETS</span><strong>'+item.completedSets+'</strong></div><div><span>VOLUME</span><strong>'+formatVolume(item.totalVolume||0)+'</strong></div></div>'+
-    (item.trainingContext?renderTrainingContextSummary(item.trainingContext,false):'')+
+    ((item.trainingContext?.temporary||item.trainingContext?.adapted)?renderTrainingContextSummary(item.trainingContext,false):'')+
     '<div class="history-detail-list">'+rows+'</div>'+
     '<div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
 }
@@ -4351,7 +4391,7 @@ function renderWorkoutIntro(w){
       : (ex.suggestedWeight?esc(ex.suggestedWeight)+' lb':'Starting weight');
     return '<div class="preview-exercise-row">'+
       '<div class="preview-exercise-index">'+String(index+1).padStart(2,'0')+'</div>'+
-      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+(minimumIds.has(ex.engineExerciseId)?' <em class="engine-priority-tag">CORE</em>':'')+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span>'+(ex.sessionAdapted?'<small class="session-swap-note">'+esc(ex.sessionMatchQuality||'Temporary swap')+' · replaces '+esc(ex.sessionOriginalName||'planned movement')+'</small>':(ex.engineIntensityTarget?'<small>'+esc(ex.engineIntensityTarget)+'</small>':''))+'</div>'+
+      '<div class="preview-exercise-copy"><strong>'+esc(ex.name)+(minimumIds.has(ex.engineExerciseId)?' <em class="engine-priority-tag">CORE</em>':'')+'</strong><span>'+esc(ex.sets.length+' sets · '+ex.suggestedReps+' reps · '+ex.rest+'s rest')+'</span>'+(ex.sessionAdapted?'<small class="session-swap-note">'+esc(ex.sessionMatchQuality||'Temporary swap')+' · '+(ex.sessionOriginalName===ex.name?'bodyweight version':'replaces '+esc(ex.sessionOriginalName||'planned movement'))+'</small>':(ex.engineIntensityTarget?'<small>'+esc(ex.engineIntensityTarget)+'</small>':''))+'</div>'+
       '<div class="preview-exercise-load">'+loadLabel+'</div>'+
       '</div>';
   }).join('');
@@ -4745,7 +4785,7 @@ function renderHistory(){
     const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
     const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?formatDate(actual):formatDate(scheduled)+' · trained '+formatDate(actual)):formatDate(x.completedAt);
     const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL':'';
-    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+(x.trainingContext?' · '+esc(sessionSetupLabel(x.trainingContext))+' adaptation':'')+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
+    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+'</p><small>'+x.durationMinutes+' min · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+((x.trainingContext?.temporary||x.trainingContext?.adapted)?' · '+esc(sessionSetupLabel(x.trainingContext))+' adaptation':'')+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
   }).join('');
   const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
   return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
@@ -4961,7 +5001,7 @@ function renderSummary(){
     (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
-    (x.trainingContext?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
+    ((x.trainingContext?.temporary||x.trainingContext?.adapted)?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
     '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
@@ -5184,6 +5224,7 @@ function handleClick(event){
     const form=document.querySelector('#session-setup-form');
     const setup=sessionSetupFromForm(form,store.activeWorkout?.trainingContext?.key||normalSessionSetupKey());
     const result=applySetupToActiveWorkout(setup);
+    if(result.blocked){toast('That setup has no usable exercises for this session. Choose another setup or add available equipment.');return;}
     sessionSetupOpen=false;
     saveStore();
     render();
