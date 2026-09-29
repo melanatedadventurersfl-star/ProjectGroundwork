@@ -27,6 +27,8 @@ let historyMenuId = null;
 let accountSheetOpen = false;
 let sessionSetupOpen = false;
 let accountEntryMode = 'sign-in';
+let accountEntryBusy = false;
+let accountEntryError = '';
 let historyFilter = 'all';
 
 const defaultStore = {
@@ -3452,32 +3454,73 @@ function applyWorkoutSession(session){
   }
 }
 async function signInEntryAccount(){
-  if(!workoutSupabase){toast('Account service is unavailable. Reload and try again.');return;}
+  if(accountEntryBusy)return;
+  accountEntryError='';
+  if(!workoutSupabase){accountEntryError='Account service is unavailable. Reload and try again.';render();return;}
   const email=(document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
   const password=document.querySelector('#entry-password')?.value||'';
-  if(!email||!password){toast('Enter your email and password.');return;}
-  const {data,error}=await workoutSupabase.auth.signInWithPassword({email,password});
-  if(error){toast(error.code==='email_not_confirmed'?'Confirm your email first, then sign in.':(error.message||'Could not sign in.'));return;}
-  if(!data?.session){toast('Sign-in did not create a session. Try again.');return;}
-  toast('Signed in.');
+  if(!email||!password){accountEntryError='Enter your email and password.';render();return;}
+  accountEntryBusy=true;
+  const button=document.querySelector('[data-action="entry-sign-in"]');
+  if(button){button.disabled=true;button.textContent='SIGNING IN…';}
+  try{
+    const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Sign-in request timed out. Check your connection and try again.')),15000));
+    const {data,error}=await Promise.race([workoutSupabase.auth.signInWithPassword({email,password}),timeout]);
+    if(error){
+      accountEntryError=error.code==='email_not_confirmed'?'Confirm your email first, then sign in.':(error.message||'Could not sign in.');
+      return;
+    }
+    if(!data?.session){
+      accountEntryError='Sign-in did not create a session. Try again.';
+      return;
+    }
+    if(store.account?.status!=='connected'||store.account?.userId!==data.session.user?.id){
+      applyWorkoutSession(data.session);
+    }
+    toast('Signed in.');
+  }catch(error){
+    console.error('Workout sign-in failed',error);
+    accountEntryError=error?.message||'Could not sign in. Try again.';
+  }finally{
+    accountEntryBusy=false;
+    if(store.account?.status!=='connected')render();
+  }
 }
 async function createEntryAccount(){
-  if(!workoutSupabase){toast('Account service is unavailable. Reload and try again.');return;}
+  if(accountEntryBusy)return;
+  accountEntryError='';
+  if(!workoutSupabase){accountEntryError='Account service is unavailable. Reload and try again.';render();return;}
   const display=(document.querySelector('#entry-display-name')?.value||'').trim();
   const email=(document.querySelector('#entry-email')?.value||'').trim().toLowerCase();
   const password=document.querySelector('#entry-password')?.value||'';
-  if(!display){toast('Enter your display name.');return;}
-  if(!email||password.length<6){toast('Enter a valid email and a password with at least 6 characters.');return;}
-  const redirectTo=window.location.origin+window.location.pathname;
-  let result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
-  if(result.error&&/redirect/i.test(result.error.message||''))result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display}}});
-  const {data,error}=result;
-  if(error){toast(error.message||'Could not create the account.');return;}
-  if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){toast('That email already has an account. Sign in instead.');return;}
-  store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};
-  saveStore();
-  if(data?.session){toast('Account created. Now build your training profile.');}
-  else{toast('Account created. Check your email to confirm it, then sign in here.');render();}
+  if(!display){accountEntryError='Enter your display name.';render();return;}
+  if(!email||password.length<6){accountEntryError='Enter a valid email and a password with at least 6 characters.';render();return;}
+  accountEntryBusy=true;
+  const button=document.querySelector('[data-action="entry-create-account"]');
+  if(button){button.disabled=true;button.textContent='CREATING ACCOUNT…';}
+  try{
+    const redirectTo=window.location.origin+window.location.pathname;
+    let result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display},emailRedirectTo:redirectTo}});
+    if(result.error&&/redirect/i.test(result.error.message||''))result=await workoutSupabase.auth.signUp({email,password,options:{data:{display_name:display}}});
+    const {data,error}=result;
+    if(error){accountEntryError=error.message||'Could not create the account.';return;}
+    if(data?.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0){accountEntryError='That email already has an account. Sign in instead.';return;}
+    store.account={...(store.account||{}),email,userId:data?.user?.id||'',displayName:display,status:data?.session?'connected':'pending'};
+    saveStore();
+    if(data?.session){
+      if(store.account?.status!=='connected'||store.account?.userId!==data.session.user?.id)applyWorkoutSession(data.session);
+      toast('Account created. Now build your training profile.');
+    }else{
+      toast('Account created. Check your email to confirm it, then sign in here.');
+      accountEntryMode='sign-in';
+    }
+  }catch(error){
+    console.error('Workout account creation failed',error);
+    accountEntryError=error?.message||'Could not create the account.';
+  }finally{
+    accountEntryBusy=false;
+    if(store.account?.status!=='connected')render();
+  }
 }
 async function resendEntryConfirmation(){
   if(!workoutSupabase){toast('Account service is unavailable.');return;}
@@ -5083,7 +5126,8 @@ function renderAccountEntry(){
       (createMode?'<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>':'')+
       '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(knownEmail)+'" placeholder="you@example.com"></label>'+
       '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="'+(createMode?'new-password':'current-password')+'" placeholder="'+(createMode?'At least 6 characters':'Your password')+'"></label>'+
-      (createMode?'<div class="auth-choice-grid"><button class="button" data-action="entry-create-account">CREATE ACCOUNT</button><button class="button secondary" data-action="entry-show-sign-in">BACK TO SIGN IN</button></div>':'<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in">SIGN IN</button><button class="button secondary" data-action="entry-show-create">CREATE ACCOUNT</button></div>')+
+      (accountEntryError?'<div class="auth-entry-error" role="alert">'+esc(accountEntryError)+'</div>':'')+
+      (createMode?'<div class="auth-choice-grid"><button class="button" data-action="entry-create-account" '+(accountEntryBusy?'disabled':'')+'>'+(accountEntryBusy?'CREATING ACCOUNT…':'CREATE ACCOUNT')+'</button><button class="button secondary" data-action="entry-show-sign-in" '+(accountEntryBusy?'disabled':'')+'>BACK TO SIGN IN</button></div>':'<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in" '+(accountEntryBusy?'disabled':'')+'>'+(accountEntryBusy?'SIGNING IN…':'SIGN IN')+'</button><button class="button secondary" data-action="entry-show-create" '+(accountEntryBusy?'disabled':'')+'>CREATE ACCOUNT</button></div>')+
       (pending&&!createMode?'<button class="text-button account-resend" data-action="entry-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':'')+
     '</section>'+
     '<div class="profile-privacy-note"><strong>Private by default.</strong><span>Your readiness, body data, notes and full training history are not exposed to workout partners.</span></div>'+
@@ -5297,8 +5341,8 @@ function handleClick(event){
   else if(a==='start-shared-workout')startSharedWorkout();
   else if(a==='copy-shared-code')copySharedCode();
   else if(a==='account-info'){accountSheetOpen=true;render();}
-  else if(a==='entry-show-create'){accountEntryMode='create';render();}
-  else if(a==='entry-show-sign-in'){accountEntryMode='sign-in';render();}
+  else if(a==='entry-show-create'){accountEntryError='';accountEntryMode='create';render();}
+  else if(a==='entry-show-sign-in'){accountEntryError='';accountEntryMode='sign-in';render();}
   else if(a==='entry-sign-in')signInEntryAccount();
   else if(a==='entry-create-account')createEntryAccount();
   else if(a==='entry-resend-confirmation')resendEntryConfirmation();
@@ -5421,6 +5465,7 @@ document.addEventListener('change',event=>{
   }
 });
 document.addEventListener('keydown',event=>{
+  if(event.key==='Enter'&&store.account?.status!=='connected'&&document.activeElement?.matches?.('#entry-email,#entry-password,#entry-display-name')){event.preventDefault();if(accountEntryMode==='create')createEntryAccount();else signInEntryAccount();return;}
   if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
   if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
