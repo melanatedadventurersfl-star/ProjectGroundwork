@@ -2950,6 +2950,63 @@ button:focus-visible, input:focus-visible {
 .profile-privacy-note strong{font-size:10px}
 .profile-privacy-note span{color:var(--muted);font-size:9px;line-height:1.5}
 
+
+/* Training avatar V1 */
+.training-avatar-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.training-avatar-card{position:relative;min-width:0}
+.training-avatar-card>input{position:absolute;opacity:0;pointer-events:none}
+.training-avatar-card>span,
+.training-avatar-card.button-card{display:block;width:100%;min-height:190px;padding:13px;border:1px solid var(--line);border-radius:18px;background:var(--panel-2);color:var(--text);text-align:left}
+.training-avatar-card.button-card{cursor:pointer}
+.training-avatar-card>input:checked+span,
+.training-avatar-card.button-card.selected{border-color:var(--accent);box-shadow:inset 0 0 0 1px rgba(216,180,92,.28);background:rgba(216,180,92,.08)}
+.training-avatar-copy{display:block;margin-top:9px}
+.training-avatar-copy strong,.training-avatar-copy small{display:block}
+.training-avatar-copy strong{font-size:14px}
+.training-avatar-copy small{margin-top:4px;color:var(--muted);font-size:9px;line-height:1.35}
+.training-avatar-card em{display:block;margin-top:8px;color:var(--accent-2);font-size:8px;font-weight:900;font-style:normal;letter-spacing:.08em}
+.training-avatar-card>input:not(:checked)+span>em{visibility:hidden}
+.avatar-setup-note{display:grid;gap:4px;margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(216,180,92,.07)}
+.avatar-setup-note strong{font-size:9px;letter-spacing:.08em}
+.avatar-setup-note span{color:var(--muted);font-size:9px;line-height:1.45}
+.training-avatar-figure{position:relative;display:block;width:72px;height:100px;margin:0 auto;border-radius:30px 30px 18px 18px;background:radial-gradient(circle at 50% 34%,rgba(216,180,92,.13),transparent 58%)}
+.training-avatar-figure i{position:absolute;display:block}
+.training-avatar-figure .avatar-head{left:50%;top:7px;width:25px;height:28px;transform:translateX(-50%);border-radius:48% 48% 45% 45%;background:#8f5b3e}
+.training-avatar-figure.masc-full .avatar-head{background:#5f3829}
+.training-avatar-figure .avatar-hair{left:50%;top:3px;width:28px;height:11px;transform:translateX(-50%);border-radius:14px 14px 5px 5px;background:#171b18}
+.training-avatar-figure.masc-full .avatar-hair{top:6px;width:25px;height:3px;border-radius:50%;background:#2a211e}
+.training-avatar-figure.fem-athletic .avatar-hair{top:0;width:31px;height:25px;border-radius:50% 50% 35% 35%}
+.training-avatar-figure.fem-full .avatar-hair{top:-1px;width:35px;height:28px;border-radius:50%;box-shadow:-8px 6px 0 -3px #171b18,8px 6px 0 -3px #171b18}
+.training-avatar-figure .avatar-neck{left:50%;top:31px;width:10px;height:9px;transform:translateX(-50%);background:#8f5b3e}
+.training-avatar-figure.masc-full .avatar-neck{background:#5f3829}
+.training-avatar-figure .avatar-torso{left:50%;top:37px;width:38px;height:40px;transform:translateX(-50%);border-radius:13px 13px 9px 9px;background:#173d2b}
+.training-avatar-figure.masc-full .avatar-torso{width:48px}
+.training-avatar-figure.fem-athletic .avatar-torso{width:36px;border-radius:15px 15px 11px 11px}
+.training-avatar-figure.fem-full .avatar-torso{width:47px;border-radius:17px 17px 14px 14px}
+.training-avatar-figure .avatar-arm{top:40px;width:9px;height:38px;border-radius:6px;background:#8f5b3e}
+.training-avatar-figure.masc-full .avatar-arm{width:11px;background:#5f3829}
+.training-avatar-figure.fem-full .avatar-arm{width:11px}
+.training-avatar-figure .avatar-arm.left{left:11px;transform:rotate(6deg)}
+.training-avatar-figure .avatar-arm.right{right:11px;transform:rotate(-6deg)}
+.training-avatar-figure.masc-full .avatar-arm.left{left:7px}.training-avatar-figure.masc-full .avatar-arm.right{right:7px}
+.training-avatar-figure.fem-full .avatar-arm.left{left:7px}.training-avatar-figure.fem-full .avatar-arm.right{right:7px}
+.training-avatar-figure .avatar-leg{top:72px;width:13px;height:27px;border-radius:5px;background:#202522}
+.training-avatar-figure .avatar-leg.left{left:22px}.training-avatar-figure .avatar-leg.right{right:22px}
+.training-avatar-figure.masc-full .avatar-leg{width:17px}.training-avatar-figure.masc-full .avatar-leg.left{left:17px}.training-avatar-figure.masc-full .avatar-leg.right{right:17px}
+.training-avatar-figure.fem-full .avatar-leg{width:17px}.training-avatar-figure.fem-full .avatar-leg.left{left:17px}.training-avatar-figure.fem-full .avatar-leg.right{right:17px}
+.training-avatar-profile{padding:4px;overflow:hidden}
+.profile-avatar-figure{width:58px;height:70px}
+.profile-avatar-label{display:block;margin-top:5px;color:var(--accent-2);font-size:9px;font-weight:800;letter-spacing:.04em}
+.avatar-settings-icon{width:34px;height:34px;overflow:hidden}
+.settings-avatar-figure{width:28px;height:38px;transform:scale(.8);transform-origin:center top}
+.sheet-avatar-grid{margin:4px 0 14px}
+.avatar-picker-sheet .sheet-head p:last-child{max-width:460px}
+
+@media(max-width:700px){
+  .training-avatar-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .training-avatar-card>span,.training-avatar-card.button-card{min-height:176px}
+}
+
 /* Sheets */
 .sheet-backdrop{align-items:flex-end}
 .bottom-sheet{
