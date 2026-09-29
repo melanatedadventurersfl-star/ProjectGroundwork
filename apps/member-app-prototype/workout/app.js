@@ -20,6 +20,7 @@ let exerciseDetailId = null;
 let swapContext = null;
 let readinessContext = null;
 let workoutMapOpen = false;
+let workoutMapView = 'strength';
 let setEditContext = null;
 let cueSettingsOpen = false;
 let exerciseActionsIndex = null;
@@ -129,7 +130,7 @@ function loadStore(){
   } catch {}
   return clone(defaultStore);
 }
-const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
+const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup-routine','warmup','warmup-complete','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
 function validateActiveWorkoutCandidate(candidate,history=store.history){
  if(!candidate)return {valid:false,reason:'missing'};
  if(candidate.schemaVersion!==ACTIVE_WORKOUT_SCHEMA)return {valid:false,reason:'schema'};
@@ -1459,47 +1460,45 @@ function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
 }
 function buildWarmup(exercises){
   const moves=new Set(exercises.map(e=>e.movement));
+  const lower=[...moves].some(m=>['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'].includes(m));
+  const upper=[...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory','biceps','triceps'].includes(m));
   const items=[{
     name:'Easy march + arm swing',
+    mode:'time',
     seconds:30,
-    description:'March in place while swinging the arms naturally to gradually raise your heart rate and loosen the whole body.',
-    cue:'Raise your temperature and breathe easily.',
-    why:'Gets your whole body moving before the first loaded set.',
+    description:'March in place while the arms swing naturally.',
+    cue:'Raise your temperature. Keep your shoulders loose.',
+    why:'Gently raises body temperature before training.',
     mediaId:'Arm_Circles'
   }];
-  if([...moves].some(m=>['squat','single-leg','quad-accessory'].includes(m))) items.push({
-    name:'Bodyweight squat stretch',
-    seconds:30,
-    description:'Move through easy bodyweight squats to warm the hips, knees, and ankles before loaded lower-body work.',
-    cue:'Controlled depth, knees tracking comfortably.',
-    why:'Prepares the hips, knees, and ankles for lower-body work.',
-    mediaId:'Bodyweight_Squat'
-  });
-  if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))) items.push({
-    name:'Dynamic hip hinge reach',
-    seconds:30,
-    description:'Practice a gentle hip hinge by reaching the hips back and returning tall, keeping the movement smooth and unloaded.',
-    cue:'Soft knees, reach hips back, stand tall.',
-    why:'Primes the hamstrings and hinge pattern before loaded pulls.',
-    mediaId:'Romanian_Deadlift_from_Deficit'
-  });
-  if([...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory'].includes(m))) items.push({
-    name:'Arm circles + shoulder sweep',
-    seconds:30,
-    description:'Circle and sweep the arms through a comfortable range to warm the shoulders before pressing or pulling.',
-    cue:'Small circles into larger comfortable circles.',
-    why:'Warms the shoulders before pressing and pulling.',
-    mediaId:'Arm_Circles'
-  });
-  if(items.length<4) items.push({
-    name:'Alternating reverse lunge reach',
-    seconds:30,
-    description:'Step back into an alternating reverse lunge while reaching to open the hips and prepare each leg individually.',
-    cue:'Move slowly through a comfortable range.',
-    why:'Opens the hips and adds single-leg movement before training.',
-    mediaId:'Crossover_Reverse_Lunge'
-  });
-  return normalizeTimedStage(items.slice(0,5),exercises.length<=3?180:exercises.length>=7?300:240,180,300);
+  if(lower){
+    items.push(
+      {name:'Ankle rocks',mode:'reps',reps:8,side:'each side',description:'Drive the knee forward over the toes while the heel stays down.',cue:'Keep the heel planted and move through a comfortable range.',why:'Prepares the ankles for squats, lunges, and leg work.',mediaId:'Standing_Gastrocnemius_Calf_Stretch'},
+      {name:'Bodyweight squat',mode:'reps',reps:8,description:'Sit between the hips and stand tall without load.',cue:'Keep your knees tracking over your toes.',why:'Warms the squat pattern before loaded lower-body work.',mediaId:'Bodyweight_Squat'}
+    );
+    if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))){
+      items.push({name:'Hip hinge reach',mode:'reps',reps:8,description:'Reach the hips back with soft knees, then return tall.',cue:'Keep your spine long and feel the hamstrings load lightly.',why:'Primes the hinge pattern without external load.'});
+    }
+    items.push(
+      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',description:'Step back into a controlled reverse lunge with an easy reach.',cue:'Stay tall and use a comfortable range.',why:'Adds single-leg motion and opens the hips.',mediaId:'Crossover_Reverse_Lunge'},
+      {name:'Glute bridge',mode:'reps',reps:8,description:'Press through the feet and lift the hips under control.',cue:'Squeeze the glutes without arching the lower back.',why:'Turns on the glutes before loaded lower-body work.'}
+    );
+  }else if(upper){
+    items.push(
+      {name:'Arm circles',mode:'time',seconds:30,description:'Move from small circles into a comfortable larger range.',cue:'Keep the neck relaxed.',why:'Warms the shoulders before pressing and pulling.',mediaId:'Arm_Circles'},
+      {name:'Shoulder sweep',mode:'reps',reps:8,description:'Sweep the arms through a comfortable overhead range.',cue:'Move smoothly without shrugging.',why:'Prepares overhead shoulder motion.'},
+      {name:'Thoracic rotation',mode:'reps',reps:5,side:'each side',description:'Rotate through the upper back while the hips stay quiet.',cue:'Breathe out as you rotate.',why:'Prepares the upper back for rows and presses.'},
+      {name:'Scapular squeeze',mode:'reps',reps:8,description:'Draw the shoulder blades gently back and down, then release.',cue:'Keep the ribs quiet and neck long.',why:'Primes shoulder-blade control before upper-body work.'},
+      {name:'Wall push-up',mode:'reps',reps:8,description:'Use an easy wall push-up to warm the pressing pattern.',cue:'Keep a straight line from head to heels.',why:'Prepares the chest, shoulders, and triceps.'}
+    );
+  }else{
+    items.push(
+      {name:'Bodyweight squat',mode:'reps',reps:8,cue:'Move through a comfortable range.',why:'Adds gentle full-body movement.',mediaId:'Bodyweight_Squat'},
+      {name:'Shoulder sweep',mode:'reps',reps:8,cue:'Keep the shoulders relaxed.',why:'Warms the upper body.'},
+      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',cue:'Move slowly and stay tall.',why:'Adds hip and single-leg motion.',mediaId:'Crossover_Reverse_Lunge'}
+    );
+  }
+  return items.slice(0,6);
 }
 
 function buildCooldown(exercises){
@@ -2473,7 +2472,7 @@ function createWorkout(day,meta={}){
     readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
     startedAt:now,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,
-    phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,
+    phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,
     warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
     engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineBlockNumber:day.engineBlockNumber||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
     exerciseStartedAt:null,exerciseDurations:{},
@@ -2543,30 +2542,27 @@ function timedStageSnapshot(w,nowMs=Date.now()){
   if(!w||!['warmup','cooldown'].includes(w.phase)) return null;
   const items=timedStageItems(w);
   if(!items.length) return {complete:true,index:0,remaining:0,remainingExact:0,total:0};
+  const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
+  const item=items[index];
   if(w.reviewPausedTimedStage&&w.reviewPausedTimedStage.phase===w.phase){
     const paused=w.reviewPausedTimedStage;
-    return {complete:false,index:Math.max(0,Math.min(Number(paused.index)||0,items.length-1)),remaining:Math.max(0,Math.ceil(Number(paused.remainingExact)||0)),remainingExact:Math.max(0,Number(paused.remainingExact)||0),total:Number(paused.total)||Number(items[Math.max(0,Math.min(Number(paused.index)||0,items.length-1))]?.seconds)||30};
+    if(paused.mode==='reps'){
+      return {complete:false,itemComplete:false,index,mode:'reps',completedReps:Number(paused.completedReps)||0,totalReps:Number(item.reps)||8,total:0,remaining:0,remainingExact:0};
+    }
+    return {complete:false,itemComplete:false,index,mode:'time',remaining:Math.max(0,Math.ceil(Number(paused.remainingExact)||0)),remainingExact:Math.max(0,Number(paused.remainingExact)||0),total:Number(paused.total)||Number(item.seconds)||30};
+  }
+  if(item.mode==='reps'||item.reps){
+    const completedReps=Math.max(0,Number(w.timedStageReps)||0);
+    const totalReps=Math.max(1,Number(item.reps)||8);
+    return {complete:false,itemComplete:completedReps>=totalReps,index,mode:'reps',completedReps,totalReps,total:0,remaining:0,remainingExact:0};
   }
   nowMs=workoutNowMs(w,nowMs);
   const startMs=Date.parse(w.timedPhaseStartedAt||'');
   if(!Number.isFinite(startMs)) return null;
-  const skipped=Math.max(0,Number(w.timedPhaseSkippedSeconds)||0);
-  const elapsed=Math.max(0,(nowMs-startMs)/1000+skipped);
-  let cumulative=0;
-  for(let i=0;i<items.length;i++){
-    cumulative+=Number(items[i].seconds)||0;
-    if(elapsed<cumulative){
-      const remainingExact=Math.max(0,cumulative-elapsed);
-      return {
-        complete:false,
-        index:i,
-        remaining:Math.max(0,Math.ceil(remainingExact)),
-        remainingExact,
-        total:Number(items[i].seconds)||30
-      };
-    }
-  }
-  return {complete:true,index:items.length-1,remaining:0,remainingExact:0,total:Number(items[items.length-1]?.seconds)||30};
+  const total=Math.max(1,Number(item.seconds)||30);
+  const elapsed=Math.max(0,(nowMs-startMs)/1000);
+  const remainingExact=Math.max(0,total-elapsed);
+  return {complete:false,itemComplete:remainingExact<=0,index,mode:'time',remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total};
 }
 function stageRemaining(w){ return timedStageSnapshot(w)?.remaining||0; }
 
@@ -2889,12 +2885,15 @@ function reconcileTimedStage(){
 
 function advanceTimedStage(){
   const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
-  const snap=timedStageSnapshot(w);
-  if(!snap)return;
-  if(snap.complete){ completeTimedStagePhase(w); return; }
-  w.timedPhaseSkippedSeconds=(Number(w.timedPhaseSkippedSeconds)||0)+snap.remainingExact+0.001;
-  const next=timedStageSnapshot(w);
-  if(next?.complete){ completeTimedStagePhase(w); return; }
+  const items=timedStageItems(w);
+  if(!items.length){completeTimedStagePhase(w);return;}
+  const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
+  if(index>=items.length-1){completeTimedStagePhase(w);return;}
+  w.timedStageIndex=index+1;
+  w.timedStageReps=0;
+  w.timedPhaseStartedAt=new Date().toISOString();
+  delete w.reviewPausedTimedStage;
+  fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Next',label:'NEXT'});
   saveStore();render();
 }
 
