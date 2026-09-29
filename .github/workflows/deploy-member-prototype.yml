@@ -80,17 +80,13 @@ jobs:
           source_html = (workout / 'index.html').read_text(encoding='utf-8')
           source_html = source_html.replace('__WORKOUT_BUILD__', short)
 
-          fingerprints = {}
-          for asset in ('styles.css', 'catalog.js', 'app.js'):
-              src = workout / asset
-              stem, suffix = src.stem, src.suffix
-              fingerprinted = f'{stem}.{build}{suffix}'
-              shutil.copy2(src, workout / fingerprinted)
-              fingerprints[asset] = fingerprinted
-
+          # Keep root asset filenames stable. A cached workout index must never
+          # point at fingerprinted files that disappear on the next Pages deploy.
+          # The build query busts normal caches while allowing an older cached
+          # index to fall back to the current stable asset path.
           root_html = source_html
-          for asset, fingerprinted in fingerprints.items():
-              root_html = root_html.replace(f'./{asset}', f'./{fingerprinted}')
+          for asset in ('styles.css', 'catalog.js', 'app.js'):
+              root_html = root_html.replace(f'./{asset}', f'./{asset}?v={build}')
           (workout / 'index.html').write_text(root_html, encoding='utf-8')
 
           release = workout / 'releases' / build
@@ -100,7 +96,7 @@ jobs:
               shutil.copy2(workout / asset, release / asset)
           (release / 'index.html').write_text(release_html, encoding='utf-8')
 
-          print(f'Workout build {build}: fingerprinted root assets + unique release path')
+          print(f'Workout build {build}: stable root assets with cache-busting query + unique release path')
           PY
           # Publish a dedicated workout route so the current build is not confused with older /workout deployments.
           rm -rf _site/goworkout
