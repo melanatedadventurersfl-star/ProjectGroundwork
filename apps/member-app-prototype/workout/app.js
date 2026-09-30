@@ -6584,6 +6584,48 @@ function startWarmupRoutine(){
   if(next)prefetchGuidedStageCoach('stretch_started',w,next,1,'warmup');
   beginGuidedStageAfterInstruction(w,'warmup',0,intro);
 }
+async function startGuidedStageNow(){
+  const w=store.activeWorkout;
+  if(!w||!['warmup','cooldown'].includes(w.phase)||!w.timedStageAwaitingStart||w.timedStageStarting)return;
+  unlockWorkoutCues();
+  const workoutId=w.id,phase=w.phase,index=w.timedStageIndex||0;
+  w.timedStageStarting=true;
+  saveStore();render();
+
+  const settings=workoutCueSettings();
+  if(settings.countdownMode!=='off'){
+    for(const n of ['3','2','1']){
+      const started=Date.now();
+      await fireWorkoutSignal('warning','guided-start-'+workoutId+'-'+phase+'-'+index+'-'+n,{voice:n,label:n});
+      const elapsed=Date.now()-started;
+      if(elapsed<650)await waitForCoachBeat(650-elapsed);
+    }
+    await fireWorkoutSignal('go','guided-start-'+workoutId+'-'+phase+'-'+index+'-go',{voice:'Go',label:'GO'});
+  }
+
+  const active=store.activeWorkout;
+  if(!active||active.id!==workoutId||active.phase!==phase||active.timedStageIndex!==index)return;
+  active.timedStageAwaitingStart=false;
+  active.timedStageStarting=false;
+  active.timedPhaseStartedAt=new Date().toISOString();
+  const item=timedStageItems(active)[index];
+  if(item&&!item.startedAt)item.startedAt=active.timedPhaseStartedAt;
+  prefetchGuidedLookahead(active);
+  saveStore();render();
+}
+function beginGuidedStageAfterInstruction(w,phase,index,instructionPromise){
+  const workoutId=w.id;
+  w.timedStageAwaitingStart=true;
+  w.timedStageStarting=false;
+  w.timedPhaseStartedAt=null;
+  saveStore();render();
+
+  Promise.resolve(instructionPromise).finally(()=>{
+    const active=store.activeWorkout;
+    if(!active||active.id!==workoutId||active.phase!==phase||active.timedStageIndex!==index)return;
+    if(guidedAutoStartEnabled(phase))startGuidedStageNow();
+  });
+}
 function completeWarmup(){
   const w=store.activeWorkout;if(!w)return;
   const now=new Date().toISOString();
