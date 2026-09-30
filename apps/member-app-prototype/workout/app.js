@@ -5672,6 +5672,12 @@ function handleClick(event){
   else if(a==='discard')discardWorkout();
 }
 document.addEventListener('click',handleClick);
+document.addEventListener('load',event=>{
+  const img=event.target?.closest?.('img');
+  if(!img)return;
+  const shell=img.closest('.runner-set-ready-media,.runner-transition-media,.runner-first-strength,.runner-rest-next .exercise-media,.runner-stage-media');
+  if(shell)shell.classList.add('media-loaded');
+},true);
 document.addEventListener('error',event=>{
   const img=event.target.closest?.('img');
   if(!img)return;
