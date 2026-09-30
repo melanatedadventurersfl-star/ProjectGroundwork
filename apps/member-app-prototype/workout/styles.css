@@ -3159,6 +3159,13 @@ body.workout-mode .main{
   gap:12px;
   padding:2px 0 8px;
 }
+.runner-cue-access{
+  padding:8px 12px 0;
+}
+.runner-cue-access .workout-cue-compact{
+  background:rgba(216,180,92,.045);
+  border-color:rgba(216,180,92,.24);
+}
 .workout-cue-compact{
   width:100%;
   display:grid;
