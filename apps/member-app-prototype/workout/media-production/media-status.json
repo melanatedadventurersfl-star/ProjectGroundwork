@@ -1,0 +1,2277 @@
+{
+  "version": 1,
+  "sourceCatalogCount": 49,
+  "avatarCount": 4,
+  "positionsPerAvatar": 2,
+  "summary": {
+    "totalExercises": 49,
+    "approvedExercises": 5,
+    "pendingExercises": 44,
+    "totalRequiredImages": 392,
+    "approvedImages": 40,
+    "remainingImages": 352
+  },
+  "statuses": [
+    "missing",
+    "generated",
+    "needs-review",
+    "needs-redo",
+    "approved"
+  ],
+  "exercises": {
+    "goblet-squat": {
+      "name": "Goblet Squat",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "back-squat": {
+      "name": "Barbell Back Squat",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "leg-press": {
+      "name": "Leg Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/masc-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/masc-athletic/position-2.webp"
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/masc-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/masc-full/position-2.webp"
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/fem-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/fem-athletic/position-2.webp"
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/fem-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press/fem-full/position-2.webp"
+          }
+        }
+      }
+    },
+    "seated-leg-press": {
+      "name": "Seated Leg Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "45-leg-press": {
+      "name": "45° Leg Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "bodyweight-squat": {
+      "name": "Bodyweight Squat",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "romanian-deadlift": {
+      "name": "Romanian Deadlift",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "db-rdl": {
+      "name": "Dumbbell Romanian Deadlift",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/masc-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/masc-athletic/position-2.webp"
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/masc-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/masc-full/position-2.webp"
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/fem-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/fem-athletic/position-2.webp"
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/fem-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-rdl/fem-full/position-2.webp"
+          }
+        }
+      }
+    },
+    "hip-thrust": {
+      "name": "Hip Thrust",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "glute-bridge": {
+      "name": "Glute Bridge",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "split-squat": {
+      "name": "Bulgarian Split Squat",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "reverse-lunge": {
+      "name": "Reverse Lunge",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "step-up": {
+      "name": "Step-Up",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "bench-press": {
+      "name": "Barbell Bench Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "db-bench": {
+      "name": "Dumbbell Bench Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/masc-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/masc-athletic/position-2.webp"
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/masc-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/masc-full/position-2.webp"
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/fem-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/fem-athletic/position-2.webp"
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/fem-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-bench/fem-full/position-2.webp"
+          }
+        }
+      }
+    },
+    "db-floor-press": {
+      "name": "Dumbbell Floor Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "chest-press-machine": {
+      "name": "Chest Press Machine",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "push-up": {
+      "name": "Push-Up",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "cable-row": {
+      "name": "Seated Cable Row",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "chest-row": {
+      "name": "Chest-Supported Row",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "one-arm-row": {
+      "name": "One-Arm Dumbbell Row",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/masc-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/masc-athletic/position-2.webp"
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/masc-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/masc-full/position-2.webp"
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/fem-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/fem-athletic/position-2.webp"
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/fem-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/one-arm-row/fem-full/position-2.webp"
+          }
+        }
+      }
+    },
+    "band-row": {
+      "name": "Band Row",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "lat-pulldown": {
+      "name": "Lat Pulldown",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "assisted-pullup": {
+      "name": "Assisted Pull-Up",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "pull-up": {
+      "name": "Pull-Up",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "band-pulldown": {
+      "name": "Band Lat Pulldown",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "shoulder-press-machine": {
+      "name": "Shoulder Press Machine",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "db-shoulder-press": {
+      "name": "Dumbbell Shoulder Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "overhead-press": {
+      "name": "Barbell Overhead Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "pike-pushup": {
+      "name": "Pike Push-Up",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "leg-curl": {
+      "name": "Leg Curl",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/masc-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/masc-athletic/position-2.webp"
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/masc-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/masc-full/position-2.webp"
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/fem-athletic/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/fem-athletic/position-2.webp"
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/fem-full/position-1.webp"
+          },
+          "end": {
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-curl/fem-full/position-2.webp"
+          }
+        }
+      }
+    },
+    "leg-extension": {
+      "name": "Leg Extension",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "lateral-raise": {
+      "name": "Dumbbell Lateral Raise",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "band-lateral-raise": {
+      "name": "Band Lateral Raise",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "biceps-curl": {
+      "name": "Dumbbell Curl",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "cable-curl": {
+      "name": "Cable Curl",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "triceps-pushdown": {
+      "name": "Triceps Pushdown",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "db-triceps-extension": {
+      "name": "Overhead Dumbbell Triceps Extension",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "calf-raise": {
+      "name": "Standing Dumbbell Calf Raise",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "calf-extension-machine": {
+      "name": "Calf Extension Machine",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "leg-press-calf-raise": {
+      "name": "Leg Press Calf Raise",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "single-leg-db-calf-raise": {
+      "name": "Single-Leg Dumbbell Calf Raise",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "plank": {
+      "name": "Plank",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "sit-up": {
+      "name": "Sit-Up",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "dead-bug": {
+      "name": "Dead Bug",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "cable-crunch": {
+      "name": "Cable Crunch",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "prone-w-raise": {
+      "name": "Prone W Raise",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "prone-lat-pull": {
+      "name": "Prone Lat Pull-Down",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    },
+    "band-overhead-press": {
+      "name": "Band Overhead Press",
+      "specStatus": "ready",
+      "avatars": {
+        "masc-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "masc-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-athletic": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        },
+        "fem-full": {
+          "start": {
+            "status": "missing",
+            "assetPath": ""
+          },
+          "end": {
+            "status": "missing",
+            "assetPath": ""
+          }
+        }
+      }
+    }
+  }
+}
