@@ -765,7 +765,8 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
             :'AI voice needs an OpenAI API key in Workout App Supabase.');
         }
       }
-    }
+    },
+    onPlaybackError:()=>toast('AI coach audio arrived, but iPhone blocked playback. Tap AI Coach & cues, then Preview once to unlock audio.')
   }).catch(error=>console.warn('Workout coach event failed',error));
 }
 function selectCoachVoice(voice){
@@ -796,7 +797,8 @@ function previewCoachVoice(voice){
     fallbackLine:fallback,
     onError:error=>toast(error?.code==='ai_quota_exhausted'
       ?'AI voice is connected, but the OpenAI API account has no credits remaining.'
-      :(error?.code==='ai_not_configured'?'AI voice needs an OpenAI API key in Workout App Supabase.':(error?.message||'Voice preview failed.')))
+      :(error?.code==='ai_not_configured'?'AI voice needs an OpenAI API key in Workout App Supabase.':(error?.message||'Voice preview failed.'))),
+    onPlaybackError:()=>toast('AI voice arrived, but iPhone blocked audio playback. Tap Preview again.')
   }).catch(error=>console.warn('Voice preview failed',error));
 }
 function feedbackCoachFallback(feedback,result){
