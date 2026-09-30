@@ -3404,8 +3404,9 @@ function startCooldown(){
   w.phase='cooldown';
   w.exerciseStartedAt=null;
   w.timedStageIndex=0;
-  w.timedStageReps=0;
-  w.timedStageSide=w.cooldown?.[0]?.side?'right':'';
+  const firstCooldown=w.cooldown?.[0];
+  w.timedStageReps=(firstCooldown?.mode==='reps'||firstCooldown?.reps)?Math.max(1,num(firstCooldown.reps)||8):0;
+  w.timedStageSide=firstCooldown?.side?'right':'';
   if(w.cooldown?.[0]&&!w.cooldown[0].startedAt)w.cooldown[0].startedAt=now;
   w.timedPhaseStartedAt=now;
   w.timedPhaseSkippedSeconds=0;
@@ -5135,28 +5136,6 @@ function renderSessionSetupSheet(){
     '</form>'+
   '</section></div>';
 }
-function renderHistoryMenuSheet(){
-  const item=store.history.find(entry=>entry.id===historyMenuId);if(!item)return '';
-  const rows=(item.exercises||[]).map(ex=>{
-    const completed=(ex.sets||[]).filter(set=>set.completed);
-    const setTimes=completed.map((set,index)=>{
-      const range=formatTimeRange(set.startedAt,set.endedAt||set.completedAt);
-      const sides=set.sides?Object.entries(set.sides).map(([side,data])=>side.toUpperCase()+' '+formatTimeRange(data.startedAt,data.endedAt)).filter(Boolean).join(' · '):'';
-      return '<small><b>S'+(index+1)+'</b> '+esc(range||formatTimeStamp(set.completedAt))+(sides?' · '+esc(sides):'')+'</small>';
-    }).join('');
-    return '<div class="history-detail-row timestamped"><div><strong>'+esc(ex.name)+'</strong><span>'+completed.length+'/'+(ex.sets?.length||0)+' sets'+(ex.feedback?' · '+esc(feedbackLabel(ex.feedback)):'')+'</span><em>'+esc(formatTimeRange(ex.startedAt,ex.endedAt))+'</em></div>'+(setTimes?'<div class="history-set-times">'+setTimes+'</div>':'')+'</div>';
-  }).join('');
-  const phases=item.phaseTimestamps||{};
-  const phaseRows=[['Warm-up',phases.warmup],['Strength',phases.strength],['Cooldown',phases.cooldown]].filter(([,value])=>value?.startedAt||value?.endedAt).map(([label,value])=>'<div><span>'+label+'</span><strong>'+esc(formatTimeRange(value.startedAt,value.endedAt))+'</strong></div>').join('');
-  const sessionRange=formatTimeRange(item.trainingStartedAt||item.startedAt,item.endedAt||item.completedAt);
-  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-history-menu"><section class="bottom-sheet history-detail-sheet" data-history-menu-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT DETAILS</p><h2>'+esc(item.routineName)+'</h2><p>'+esc(formatDate(item.completedAt))+(sessionRange?' · '+esc(sessionRange):'')+'</p></div><button class="modal-close" data-action="close-history-menu">×</button></div>'+
-    '<div class="history-detail-summary"><div><span>ACTIVE</span><strong>'+item.durationMinutes+' min</strong></div><div><span>CLOCK</span><strong>'+(item.elapsedMinutes||item.durationMinutes)+' min</strong></div><div><span>SETS</span><strong>'+item.completedSets+'</strong></div><div><span>VOLUME</span><strong>'+formatVolume(item.totalVolume||0)+'</strong></div></div>'+
-    (phaseRows?'<div class="history-phase-times">'+phaseRows+'</div>':'')+
-    ((item.trainingContext?.temporary||item.trainingContext?.adapted)?renderTrainingContextSummary(item.trainingContext,false):'')+
-    '<div class="history-detail-list">'+rows+'</div>'+
-    '<div class="sheet-action-list"><button class="danger-sheet-action" data-action="remove-history" data-history-id="'+esc(item.id)+'"><span>⌫</span><div><strong>Remove from history</strong><small>Recalculates calendar and adaptive data</small></div></button></div></section></div>';
-}
-
 function latestCompletedWorkout(){
   return [...(store.history||[])].filter(item=>item?.completedAt).sort((a,b)=>Date.parse(b.completedAt)-Date.parse(a.completedAt))[0]||null;
 }
