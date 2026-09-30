@@ -1186,15 +1186,18 @@ function renderSwapModal(){
 }
 
 function avatarLibraryMediaSpec(ex){
-  if(!ex||!avatarLibraryMedia?.spriteUrl)return null;
-  const column=avatarLibraryMedia.exercises?.[ex.id];
+  if(!ex||!avatarLibraryMedia)return null;
+  const mapped=avatarLibraryMedia.exercises?.[ex.id];
   const row=avatarLibraryMedia.avatars?.[trainingAvatarId()];
-  const columns=Number(avatarLibraryMedia.columns)||0;
-  const rows=Number(avatarLibraryMedia.rows)||0;
-  if(!Number.isInteger(column)||!Number.isInteger(row)||columns<1||rows<1)return null;
+  if(!mapped||!Number.isInteger(row))return null;
+  const spriteUrl=typeof mapped==='object'?mapped.spriteUrl:avatarLibraryMedia.spriteUrl;
+  const column=typeof mapped==='object'?Number(mapped.column):Number(mapped);
+  const columns=typeof mapped==='object'?Number(mapped.columns||avatarLibraryMedia.columns):Number(avatarLibraryMedia.columns);
+  const rows=typeof mapped==='object'?Number(mapped.rows||avatarLibraryMedia.rows):Number(avatarLibraryMedia.rows);
+  if(!spriteUrl||!Number.isInteger(column)||columns<1||rows<1)return null;
   const x=columns===1?0:(column/(columns-1))*100;
   const y=rows===1?0:(row/(rows-1))*100;
-  return {spriteUrl:avatarLibraryMedia.spriteUrl,columns,rows,x,y,avatarId:trainingAvatarId()};
+  return {spriteUrl,columns,rows,x,y,avatarId:trainingAvatarId()};
 }
 function renderAvatarLibraryMedia(ex,className='catalog-exercise-media'){
   const spec=avatarLibraryMediaSpec(ex);
