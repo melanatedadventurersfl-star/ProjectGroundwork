@@ -1060,6 +1060,7 @@ function estimatePlanExerciseSeconds(ex){
 }
 function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
   if(!day?.exercises?.length)return day;
+  if(day.exercises.some(ex=>ex.blockId))return day;
   for(const ex of day.exercises){
     delete ex.blockId;delete ex.blockType;delete ex.blockOrder;delete ex.transitionRest;delete ex.blockRest;
   }
@@ -3309,7 +3310,7 @@ function completeCurrentSet(){
     nextSet.targetPrepared=true;
     nextSet.targetSource='previous-set';
   }
-  if(pos.si===0 && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
+  if(pos.si===0 && !pos.exercise.blockId && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
     pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
   }
   if(next&&sameDynamicBlock(pos.exercise,pos.workout.exercises[next.ei])){
