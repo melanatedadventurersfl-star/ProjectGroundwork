@@ -248,6 +248,7 @@
         return;
       } catch (error) {
         console.warn('AI coach audio playback failed, using local voice fallback', error);
+        if (typeof options.onPlaybackError === 'function') options.onPlaybackError(error);
       }
     }
 
