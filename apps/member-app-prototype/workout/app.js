@@ -50,6 +50,12 @@ let historyRoutineFilter = 'all';
 let historyMuscleFilter = 'all';
 let historySetupFilter = 'all';
 let historyLastRemoved = null;
+let measurementCheckinOpen = false;
+let measurementEditId = '';
+let measurementPhotoDraft = {};
+let programReviewOpen = false;
+let bodyProgressMetric = 'weightLb';
+let bodyProgressRange = '3m';
 
 const defaultStore = {
   profile: null,
@@ -60,7 +66,7 @@ const defaultStore = {
   progression: {},
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
-  trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null},
+  trainingProgram: {scheduleOverrides:{},weekReviews:{},programReviews:{},engine:null,bodyProgress:{measurements:[],weeklyCheckins:{},photos:[]}},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
@@ -350,8 +356,205 @@ function ensureTrainingProgram(){
   store.trainingProgram.engineAdaptations=store.trainingProgram.engineAdaptations||[];
   store.trainingProgram.engineVersions=store.trainingProgram.engineVersions||[];
   store.trainingProgram.engineBlockVersion=store.trainingProgram.engineBlockVersion||1;
+  store.trainingProgram.programReviews=store.trainingProgram.programReviews||{};
+  store.trainingProgram.bodyProgress=store.trainingProgram.bodyProgress||{};
+  store.trainingProgram.bodyProgress.measurements=Array.isArray(store.trainingProgram.bodyProgress.measurements)?store.trainingProgram.bodyProgress.measurements:[];
+  store.trainingProgram.bodyProgress.weeklyCheckins=store.trainingProgram.bodyProgress.weeklyCheckins||{};
+  store.trainingProgram.bodyProgress.photos=Array.isArray(store.trainingProgram.bodyProgress.photos)?store.trainingProgram.bodyProgress.photos:[];
   return store.trainingProgram;
 }
+const BODY_METRICS=[
+  {key:'weightLb',label:'Body weight',kind:'weight'},
+  {key:'chestIn',label:'Chest',kind:'length'},
+  {key:'waistIn',label:'Waist',kind:'length'},
+  {key:'hipsIn',label:'Hips',kind:'length'},
+  {key:'armIn',label:'Upper arm',kind:'length'},
+  {key:'thighIn',label:'Thigh',kind:'length'},
+  {key:'calfIn',label:'Calf',kind:'length'}
+];
+const STRENGTH_PIN_LABELS={bench:'Chest strength',row:'Back strength',squat:'Leg strength',overhead:'Shoulder strength',hinge:'Hinge strength'};
+function lbFromDisplay(value,unit='lb'){const n=num(value);return unit==='kg'?n*2.2046226218:n;}
+function lbToDisplay(value,unit='lb'){const n=num(value);return unit==='kg'?n/2.2046226218:n;}
+function inchesFromDisplay(value,unit='in'){const n=num(value);return unit==='cm'?n/2.54:n;}
+function inchesToDisplay(value,unit='in'){const n=num(value);return unit==='cm'?n*2.54:n;}
+function roundMeasure(value){return Math.round(num(value)*10)/10;}
+function bodyProgress(){return ensureTrainingProgram().bodyProgress;}
+function bodyMeasurementUnit(){return store.profile?.measurementUnit==='cm'?'cm':'in';}
+function bodyWeightUnit(){return store.profile?.weightUnit==='kg'?'kg':'lb';}
+function latestBodyMeasurement(){
+  return [...bodyProgress().measurements].sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0))[0]||null;
+}
+function startingBodyMeasurement(){
+  return [...bodyProgress().measurements].sort((a,b)=>Date.parse(a.recordedAt||0)-Date.parse(b.recordedAt||0))[0]||null;
+}
+function displayBodyMetric(record,key){
+  if(!record||!num(record[key]))return '';
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  if(metric?.kind==='weight'){
+    const unit=bodyWeightUnit();
+    return roundMeasure(lbToDisplay(record[key],unit))+' '+unit;
+  }
+  const unit=bodyMeasurementUnit();
+  return roundMeasure(inchesToDisplay(record[key],unit))+' '+unit;
+}
+function bodyMetricChange(key){
+  const first=startingBodyMeasurement(),latest=latestBodyMeasurement();
+  if(!first||!latest||!num(first[key])||!num(latest[key]))return null;
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const raw=num(latest[key])-num(first[key]);
+  const converted=metric?.kind==='weight'?lbToDisplay(raw,bodyWeightUnit()):inchesToDisplay(raw,bodyMeasurementUnit());
+  return Math.round(converted*10)/10;
+}
+function bodyMeasurementInputValue(record,key){
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const raw=num(record?.[key]);
+  if(!raw)return '';
+  return roundMeasure(metric?.kind==='weight'?lbToDisplay(raw,bodyWeightUnit()):inchesToDisplay(raw,bodyMeasurementUnit()));
+}
+function measurementRecordFromData(data,existing=null){
+  const weightUnit=String(data.get('checkinWeightUnit')||bodyWeightUnit());
+  const measurementUnit=String(data.get('checkinMeasurementUnit')||bodyMeasurementUnit());
+  const record={...(existing||{}),id:existing?.id||uid('measure'),recordedAt:existing?.recordedAt||new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:existing?.weekKey||weekKey(),source:existing?.source||'weekly'};
+  for(const metric of BODY_METRICS){
+    const field='measure-'+metric.key;
+    const raw=num(data.get(field));
+    if(raw>0)record[metric.key]=roundMeasure(metric.kind==='weight'?lbFromDisplay(raw,weightUnit):inchesFromDisplay(raw,measurementUnit));
+    else delete record[metric.key];
+  }
+  if(Object.keys(measurementPhotoDraft).length)record.photos={...(existing?.photos||{}),...measurementPhotoDraft};
+  return record;
+}
+function recordInitialBodyMeasurement(profile,data){
+  const progress=bodyProgress();
+  if(progress.measurements.length)return;
+  const record={id:uid('measure'),recordedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:weekKey(),source:'baseline'};
+  if(profile.weight)record.weightLb=roundMeasure(profile.weight);
+  const unit=profile.measurementUnit||'in';
+  for(const [field,key] of [['chest','chestIn'],['waist','waistIn'],['hips','hipsIn'],['arm','armIn'],['thigh','thighIn'],['calf','calfIn']]){
+    const value=num(data.get(field));if(value>0)record[key]=roundMeasure(inchesFromDisplay(value,unit));
+  }
+  progress.measurements.push(record);
+  progress.weeklyCheckins[weekKey()]={status:'baseline',at:record.recordedAt};
+}
+function weeklyMeasurementDue(date=new Date()){
+  if(!store.profile)return false;
+  return !bodyProgress().weeklyCheckins[weekKey(date)];
+}
+function saveMeasurementCheckin(form){
+  if(!form)return;
+  const data=new FormData(form);
+  const progress=bodyProgress();
+  store.profile.weightUnit=String(data.get('checkinWeightUnit')||bodyWeightUnit())==='kg'?'kg':'lb';
+  store.profile.measurementUnit=String(data.get('checkinMeasurementUnit')||bodyMeasurementUnit())==='cm'?'cm':'in';
+  const existing=measurementEditId?progress.measurements.find(item=>item.id===measurementEditId):null;
+  const record=measurementRecordFromData(data,existing);
+  if(!BODY_METRICS.some(metric=>num(record[metric.key]))){toast('Enter at least one measurement.');return;}
+  if(existing)Object.assign(existing,record);
+  else progress.measurements.push(record);
+  const photoRecords=[...progress.measurements].filter(item=>item.photos&&Object.values(item.photos).some(Boolean)).sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0));
+  for(const stale of photoRecords.slice(20))delete stale.photos;
+  if(!existing)progress.weeklyCheckins[weekKey()]={status:'saved',at:new Date().toISOString(),measurementId:record.id};
+  if(record.weightLb)store.profile.weight=record.weightLb;
+  measurementPhotoDraft={};measurementEditId='';measurementCheckinOpen=false;
+  saveStore();render();toast(existing?'Measurement updated.':'Weekly measurements saved.');
+}
+function markMeasurementNoChanges(){
+  const latest=latestBodyMeasurement();if(!latest){measurementCheckinOpen=true;render();return;}
+  const copy={...clone(latest),id:uid('measure'),recordedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:weekKey(),source:'unchanged'};
+  delete copy.photos;
+  bodyProgress().measurements.push(copy);
+  bodyProgress().weeklyCheckins[weekKey()]={status:'unchanged',at:copy.recordedAt,measurementId:copy.id};
+  saveStore();render();toast('No changes recorded for this week.');
+}
+function skipMeasurementCheckin(){
+  bodyProgress().weeklyCheckins[weekKey()]={status:'skipped',at:new Date().toISOString()};
+  measurementCheckinOpen=false;saveStore();render();
+}
+function removeMeasurementRecord(id){
+  const progress=bodyProgress(),record=progress.measurements.find(item=>item.id===id);if(!record)return;
+  if(!confirm('Remove this dated measurement?'))return;
+  progress.measurements=progress.measurements.filter(item=>item.id!==id);
+  saveStore();render();toast('Measurement removed.');
+}
+function openMeasurementCheckin(id=''){
+  measurementEditId=id||'';
+  measurementPhotoDraft={};
+  measurementCheckinOpen=true;render();
+}
+function compressProgressPhoto(file){
+  return new Promise((resolve,reject)=>{
+    if(!file||!file.type?.startsWith('image/')){reject(new Error('Choose an image file.'));return;}
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('Could not read photo.'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Could not open photo.'));
+      img.onload=()=>{
+        const max=420,scale=Math.min(1,max/Math.max(img.width,img.height));
+        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL('image/jpeg',.68));
+      };
+      img.src=String(reader.result||'');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function renderMeasurementCheckin(){
+  const latest=measurementEditId?bodyProgress().measurements.find(item=>item.id===measurementEditId):latestBodyMeasurement();
+  const editing=Boolean(measurementEditId);
+  const weightUnit=bodyWeightUnit(),measureUnit=bodyMeasurementUnit();
+  const photos={...(latest?.photos||{}),...measurementPhotoDraft};
+  return '<div class="exercise-modal-backdrop sheet-backdrop measurement-backdrop"><section class="bottom-sheet measurement-sheet" data-measurement-panel>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">'+(editing?'EDIT ENTRY':'WEEKLY CHECK-IN')+'</p><h2>'+(editing?'Correct this measurement':'Anything to update?')+'</h2><p>'+(editing?'This changes only this dated record.':'Last week’s values are prefilled. Change only what changed.')+'</p></div><button class="modal-close" data-action="close-measurement-checkin">×</button></div>'+
+    '<form id="measurement-form"><div class="measurement-units"><label>WEIGHT <select name="checkinWeightUnit"><option value="lb" '+(weightUnit==='lb'?'selected':'')+'>lb</option><option value="kg" '+(weightUnit==='kg'?'selected':'')+'>kg</option></select></label><label>MEASUREMENTS <select name="checkinMeasurementUnit"><option value="in" '+(measureUnit==='in'?'selected':'')+'>in</option><option value="cm" '+(measureUnit==='cm'?'selected':'')+'>cm</option></select></label></div>'+
+      '<div class="measurement-grid">'+BODY_METRICS.map(metric=>'<label class="field"><span>'+esc(metric.label.toUpperCase())+'</span><input name="measure-'+metric.key+'" type="number" step=".1" min="0" value="'+esc(bodyMeasurementInputValue(latest,metric.key))+'" placeholder="Optional"></label>').join('')+'</div>'+
+      '<section class="progress-photo-section"><div><span>PROGRESS PHOTOS <em>OPTIONAL</em></span><small>Private by default. Stored as small progress thumbnails with this dated entry.</small></div><div class="progress-photo-grid">'+['front','side','back'].map(view=>'<label class="progress-photo-slot">'+(photos[view]?'<img src="'+esc(photos[view])+'" alt="'+view+' progress photo">':'<span>'+view.toUpperCase()+'</span>')+'<input type="file" accept="image/*" data-progress-photo="'+view+'"></label>').join('')+'</div></section>'+
+      '<div class="measurement-actions"><button type="button" class="button" data-action="save-measurement-checkin">'+(editing?'SAVE CORRECTION':'SAVE THIS WEEK')+'</button>'+(!editing?'<button type="button" class="button secondary" data-action="measurement-no-changes">NO CHANGES</button><button type="button" class="text-button" data-action="skip-measurement-checkin">SKIP THIS WEEK</button>':'<button type="button" class="text-button danger-text" data-action="remove-measurement" data-measurement-id="'+esc(latest?.id||'')+'">REMOVE ENTRY</button>')+'</div>'+
+    '</form></section></div>';
+}
+function programReviewDue(){
+  const context=programContext();
+  return context.blockNumber>1&&context.blockWeek===1&&!ensureTrainingProgram().programReviews[context.blockNumber];
+}
+function rebuildPlanKeepingOrigin(profile=store.profile){
+  if(!store.plan||!profile)return;
+  const createdAt=store.plan.createdAt,id=store.plan.id;
+  const blueprints=BLUEPRINTS[profile.days]||BLUEPRINTS[4];
+  store.plan={...store.plan,id,createdAt,goal:profile.goal,daysPerWeek:profile.days,workoutDays:preferredWorkoutDays(profile),minutes:profile.minutes,days:blueprints.map((b,i)=>assignDynamicWorkoutBlocks(buildDay(b,profile,i),profile))};
+  refreshEngineProgram(profile);
+}
+function saveProgramReview(form){
+  if(!form)return;
+  const data=new FormData(form),context=programContext();
+  store.profile.workoutStyle=String(data.get('reviewWorkoutStyle')||store.profile.workoutStyle||'classic');
+  store.profile.pacing=String(data.get('reviewPacing')||store.profile.pacing||'balanced');
+  store.profile.goal=String(data.get('reviewGoal')||store.profile.goal||'muscle');
+  store.profile.days=num(data.get('reviewDays'))||store.profile.days||4;
+  store.profile.minutes=num(data.get('reviewMinutes'))||store.profile.minutes||45;
+  store.profile.equipment=String(data.get('reviewEquipment')||store.profile.equipment||'full-gym');
+  const reviewedDays=data.getAll('reviewWorkoutDays').map(String);
+  store.profile.workoutDays=reviewedDays.length===store.profile.days?reviewedDays:defaultWorkoutDays(store.profile.days);
+  ensureTrainingProgram().programReviews[context.blockNumber]={at:new Date().toISOString(),blockNumber:context.blockNumber,workoutStyle:store.profile.workoutStyle,pacing:store.profile.pacing,goal:store.profile.goal,days:store.profile.days,workoutDays:clone(store.profile.workoutDays),minutes:store.profile.minutes,equipment:store.profile.equipment};
+  rebuildPlanKeepingOrigin(store.profile);
+  programReviewOpen=false;saveStore();render();toast('Block settings updated.');
+}
+function renderProgramReview(){
+  const p=store.profile||{},context=programContext();
+  return '<div class="exercise-modal-backdrop sheet-backdrop"><section class="bottom-sheet program-review-sheet" data-program-review-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">BLOCK '+context.blockNumber+' REVIEW</p><h2>Keep what works. Change what does not.</h2><p>Your previous block stays in history. These choices shape the new block.</p></div><button class="modal-close" data-action="close-program-review">×</button></div>'+
+    '<form id="program-review-form" class="program-review-form">'+
+    '<label class="field"><span>WORKOUT STYLE</span><select name="reviewWorkoutStyle"><option value="classic" '+((p.workoutStyle||'classic')==='classic'?'selected':'')+'>Classic</option><option value="flow" '+(p.workoutStyle==='flow'?'selected':'')+'>Flow</option></select></label>'+
+    '<label class="field"><span>PACING</span><select name="reviewPacing"><option value="relaxed" '+(p.pacing==='relaxed'?'selected':'')+'>Relaxed</option><option value="balanced" '+((p.pacing||'balanced')==='balanced'?'selected':'')+'>Balanced</option><option value="fast" '+(p.pacing==='fast'?'selected':'')+'>Fast-paced</option></select></label>'+
+    '<label class="field"><span>GOAL</span><select name="reviewGoal">'+[['muscle','Build muscle'],['strength','Get stronger'],['fat-loss','Fat loss + conditioning'],['general','General fitness']].map(([v,l])=>'<option value="'+v+'" '+(p.goal===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+    '<div class="form-grid two"><label class="field"><span>DAYS/WEEK</span><select name="reviewDays" id="review-days-count">'+[2,3,4,5].map(v=>'<option value="'+v+'" '+(num(p.days)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="field"><span>MINUTES</span><select name="reviewMinutes">'+[20,30,45,60,75].map(v=>'<option value="'+v+'" '+(num(p.minutes)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+
+    '<div class="schedule-day-picker review-day-picker"><div class="schedule-day-head"><span>TRAINING DAYS</span><small>Choose the days that fit this block.</small></div><div class="weekday-pills">'+TRAINING_DAYS.map(day=>'<label class="weekday-pill"><input type="checkbox" name="reviewWorkoutDays" value="'+day.id+'" '+(preferredWorkoutDays(p).includes(day.id)?'checked':'')+'><span><strong>'+day.label+'</strong><small>'+day.name+'</small></span></label>').join('')+'</div></div>'+
+    '<label class="field"><span>PRIMARY SETUP</span><select name="reviewEquipment">'+Object.entries(SESSION_SETUP_PRESETS).filter(([key])=>key!=='custom').map(([key,val])=>'<option value="'+key+'" '+(p.equipment===key?'selected':'')+'>'+esc(val.label)+'</option>').join('')+'</select></label>'+
+    '<button type="button" class="button" data-action="save-program-review">SAVE BLOCK SETTINGS</button></form></section></div>';
+}
+function workoutStyleLabel(value){return value==='flow'?'Flow':'Classic';}
+function pacingLabel(value){return ({relaxed:'Relaxed',balanced:'Balanced',fast:'Fast-paced'})[value]||'Balanced';}
+function workoutLimiterLabel(value){return ({time:'Time',equipment:'Equipment',energy:'Energy','gym-crowding':'Gym crowding',none:'No usual limiter'})[value]||'No usual limiter';}
+
 function programOriginDate(){
   const created=store.plan?.createdAt?new Date(store.plan.createdAt):new Date();
   return startOfWeek(Number.isFinite(created.getTime())?created:new Date());
@@ -513,6 +716,7 @@ function adaptDayForProgramWeek(baseDay,date=new Date()){
   if(decision.reduceAccessories){
     for(const ex of day.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
   }
+  assignDynamicWorkoutBlocks(day,store.profile||{});
   recalculatePlanDay(day);
   const cap=Math.max(20,num(store.profile?.minutes)||45)*1.03;
   for(let i=day.exercises.length-1;i>=0&&day.estimatedMinutes>cap;i--){
@@ -1158,39 +1362,54 @@ function estimatePlanExerciseSeconds(ex){
   const between=ex.blockId?(ex.transitionRest||15):(ex.rest||45);
   return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*between+35;
 }
+function pacingConfig(profile=store.profile||{}){
+  const pacing=profile.pacing||'balanced';
+  if(pacing==='relaxed')return {groupSize:2,transitionRest:20,roundRest:90};
+  if(pacing==='fast')return {groupSize:4,transitionRest:10,roundRest:60};
+  return {groupSize:3,transitionRest:15,roundRest:75};
+}
 function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
   if(!day?.exercises?.length)return day;
-  if(day.exercises.some(ex=>ex.blockId))return day;
   for(const ex of day.exercises){
     delete ex.blockId;delete ex.blockType;delete ex.blockOrder;delete ex.transitionRest;delete ex.blockRest;
   }
-  const exactIds=['push-up','sit-up','pull-up'];
-  const exact=exactIds.map(id=>day.exercises.findIndex(ex=>ex.id===id));
-  let indexes=[];
-  const exactMatch=exact.every(index=>index>=0);
-  if(exactMatch)indexes=exact;
-  else{
-    const accessory=new Set(['core','biceps','triceps','shoulder-accessory','calves','horizontal-push','horizontal-pull','vertical-pull']);
-    const candidates=day.exercises.map((ex,index)=>({ex,index}))
-      .filter(({ex})=>accessory.has(ex.movement)&&(num(ex.setup)||25)<=35)
-      .map(item=>item.index);
-    const wanted=['general','fat-loss'].includes(profile.goal)?3:2;
-    if(candidates.length>=wanted)indexes=candidates.slice(-wanted);
+  day.blocks=[];
+  const style=profile.workoutStyle||'classic';
+  if(style!=='flow')return day;
+  const config=pacingConfig(profile);
+  let size=Math.max(2,Math.min(4,config.groupSize));
+  if(profile.workoutLimiter==='time')size=Math.min(4,size+1);
+  if(profile.workoutLimiter==='equipment'||profile.workoutLimiter==='gym-crowding')size=Math.min(2,size);
+  if(profile.workoutLimiter==='energy')size=2;
+  const exercises=day.exercises;
+  let cursor=0,blockNumber=1;
+  while(cursor<exercises.length){
+    const remaining=exercises.length-cursor;
+    let count=Math.min(size,remaining);
+    if(count===1&&day.blocks.length){
+      const prior=day.blocks[day.blocks.length-1];
+      if(prior.exerciseIndexes.length<4){
+        const index=cursor,ex=exercises[index],order=prior.exerciseIndexes.length;
+        const expandedType=prior.type==='superset'?'tri-set':'circuit';
+        ex.blockId=prior.id;ex.blockType=expandedType;ex.blockOrder=order;ex.transitionRest=config.transitionRest;ex.blockRest=config.roundRest;
+        prior.exerciseIndexes.push(index);prior.exerciseIds.push(ex.id);prior.type=expandedType;
+        for(const peerIndex of prior.exerciseIndexes)exercises[peerIndex].blockType=expandedType;
+        cursor+=1;continue;
+      }
+    }
+    if(count<2){cursor+=1;continue;}
+    const indexes=Array.from({length:count},(_,i)=>cursor+i);
+    const type=count===2?'superset':count===3?'tri-set':'circuit';
+    const id=(day.id||'session')+'-flow-'+blockNumber++;
+    const transitionRest=profile.workoutLimiter==='time'?Math.max(8,config.transitionRest-5):profile.workoutLimiter==='energy'?Math.max(20,config.transitionRest):config.transitionRest;
+    const roundRest=profile.workoutLimiter==='energy'?Math.max(90,config.roundRest):config.roundRest;
+    indexes.forEach((index,order)=>{
+      const ex=exercises[index];
+      ex.blockId=id;ex.blockType=type;ex.blockOrder=order;ex.transitionRest=transitionRest;ex.blockRest=roundRest;
+    });
+    day.blocks.push({id,type,exerciseIndexes:indexes,exerciseIds:indexes.map(index=>exercises[index].id),transitionRest,roundRest});
+    cursor+=count;
   }
-  if(indexes.length<2)return day;
-  const ordered=exactMatch?[...new Set(indexes)]:[...new Set(indexes)].sort((a,b)=>a-b);
-  const blockType=ordered.length>=3?'tri-set':'superset';
-  const blockId=(day.id||'session')+'-'+blockType+'-1';
-  const roundRest=blockType==='tri-set'?75:60;
-  ordered.forEach((index,order)=>{
-    const ex=day.exercises[index];
-    ex.blockId=blockId;
-    ex.blockType=blockType;
-    ex.blockOrder=order;
-    ex.transitionRest=15;
-    ex.blockRest=roundRest;
-  });
-  day.blocks=[{id:blockId,type:blockType,exerciseIds:ordered.map(index=>day.exercises[index].id),transitionRest:15,roundRest}];
   return day;
 }
 function recalculatePlanDay(day){
@@ -1957,7 +2176,8 @@ const SESSION_SETUP_PRESETS = {
   'bodyweight':{label:'Bodyweight only',shortLabel:'Bodyweight',modes:['bodyweight']},
   'dumbbells':{label:'Dumbbells + bodyweight',shortLabel:'Dumbbells',modes:['dumbbells','bodyweight']},
   'bands':{label:'Bands + bodyweight',shortLabel:'Bands',modes:['bands','bodyweight']},
-  'mixed-home':{label:'Home mix',shortLabel:'Home mix',modes:['mixed-home','dumbbells','bands','bodyweight']},
+  'mixed-home':{label:'Home',shortLabel:'Home',modes:['mixed-home','dumbbells','bands','bodyweight']},
+  'travel':{label:'Travel',shortLabel:'Travel',modes:['bands','bodyweight']},
   'custom':{label:'Custom equipment',shortLabel:'Custom',modes:[]}
 };
 const FLOOR_EXERCISE_IDS=new Set(['push-up','glute-bridge','plank','dead-bug','pike-pushup','prone-w-raise','prone-lat-pull','db-floor-press']);
@@ -2244,11 +2464,12 @@ function applySetupToActiveWorkout(setup){
 }
 function renderSessionSetupOptions(selectedKey=normalSessionSetupKey(),prefix=''){
   const name=prefix+'sessionSetup';
-  const options=['full-gym','bodyweight','dumbbells','bands','mixed-home','custom'];
+  const saved=[...new Set(store.profile?.savedSetups||[normalSessionSetupKey(),'bodyweight'])].filter(key=>SESSION_SETUP_PRESETS[key]&&key!=='custom');
+  const options=[...saved,...['full-gym','mixed-home','travel','dumbbells','bands','bodyweight'].filter(key=>!saved.includes(key)),'custom'];
   return '<div class="session-setup-grid">'+options.map(key=>{
     const preset=SESSION_SETUP_PRESETS[key];
-    const copy=key==='full-gym'?'Machines, cables, barbells and more':key==='bodyweight'?'No gym equipment required':key==='dumbbells'?'Dumbbells plus bodyweight':key==='bands'?'Resistance bands plus bodyweight':key==='mixed-home'?'Dumbbells, bands and bodyweight':'Choose what is available';
-    return '<label class="session-setup-card"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+'</strong><small>'+copy+'</small></span></label>';
+    const copy=key==='full-gym'?'Machines, cables, barbells and more':key==='bodyweight'?'No gym equipment required':key==='dumbbells'?'Dumbbells plus bodyweight':key==='bands'?'Resistance bands plus bodyweight':key==='mixed-home'?'Dumbbells, bands and bodyweight':key==='travel'?'Bands and bodyweight for travel':'Choose what is available';
+    return '<label class="session-setup-card '+(saved.includes(key)?'saved':'')+'"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+(saved.includes(key)?' · SAVED':'')+'</strong><small>'+copy+'</small></span></label>';
   }).join('')+'</div>';
 }
 function renderSessionSetupExtras(context={}){
@@ -2269,6 +2490,7 @@ function renderTrainingContextSummary(context,compact=false){
 }
 function equipmentAllows(exercise,equipment){
   if (equipment === 'full-gym') return exercise.equipment.includes('full-gym');
+  if (equipment === 'travel') return exercise.equipment.includes('bodyweight')||exercise.equipment.includes('bands');
   return exercise.equipment.includes(equipment);
 }
 
@@ -2415,7 +2637,7 @@ function buildDay(blueprint,profile,index){
 
 function engineGoal(goal){return ({muscle:'hypertrophy',strength:'strength','fat-loss':'general_fitness',general:'general_fitness'})[goal]||'general_fitness';}
 function engineEquipment(equipment){
-  const map={'full-gym':['dumbbell','bench','cable','machine','band'],'dumbbells':['dumbbell','bench'],'bodyweight':['bodyweight'],'bands':['band'],'mixed-home':['dumbbell','bench','band']};
+  const map={'full-gym':['dumbbell','bench','cable','machine','band'],'dumbbells':['dumbbell','bench'],'bodyweight':['bodyweight'],'bands':['band'],'mixed-home':['dumbbell','bench','band'],'travel':['bodyweight','band']};
   return map[equipment]||['bodyweight'];
 }
 function engineExperience(experience){return experience==='new'?'beginner':(experience||'beginner');}
@@ -2606,7 +2828,7 @@ function planGoalLabel(goal){
   return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Fat loss + conditioning',general:'General fitness'})[goal] || goal;
 }
 function experienceLabel(v){ return ({new:'New to lifting',beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'})[v]||v; }
-function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home mix'})[v]||v; }
+function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home',travel:'Travel'})[v]||v; }
 
 function nextPlanDay(){
   return nextScheduledSession()?.adaptedDay||store.plan?.days?.[0]||null;
@@ -2640,12 +2862,9 @@ function renderPlanTimedRow(item,type,index){
 function saveProfileFromForm(form){
   if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
   let data;
-  try{
-    data=new FormData(form);
-  }catch{
-    toast('Chrome could not read the plan form. Reload this page and try again.');
-    return false;
-  }
+  try{data=new FormData(form);}catch{toast('Chrome could not read the plan form. Reload this page and try again.');return false;}
+  const weightUnit=String(data.get('weightUnit')||'lb');
+  const measurementUnit=String(data.get('measurementUnit')||'in');
   const profile={
     goal:data.get('goal')||'muscle',
     displayName:String(data.get('displayName')||'').trim(),
@@ -2653,18 +2872,25 @@ function saveProfileFromForm(form){
     gender:data.get('gender')||'',
     pronouns:String(data.get('pronouns')||'').trim(),
     visualAvatarId:String(data.get('visualAvatarId')||''),
-    weight:num(data.get('weight')),
+    weight:lbFromDisplay(data.get('weight'),weightUnit),
+    weightUnit,
+    measurementUnit,
     heightFeet:num(data.get('heightFeet')),
     heightInches:num(data.get('heightInches')),
     ageRange:data.get('ageRange')||'25-34',
     experience:data.get('experience')||'new',
+    workoutStyle:data.get('workoutStyle')||'classic',
+    pacing:data.get('pacing')||'balanced',
+    workoutLimiter:data.get('workoutLimiter')||'none',
     days:num(data.get('days'))||4,
     workoutDays:data.getAll('workoutDays'),
     minutes:num(data.get('minutes'))||45,
     equipment:data.get('equipment')||'full-gym',
+    savedSetups:[...new Set([String(data.get('equipment')||'full-gym'),...data.getAll('savedSetups').map(String),'bodyweight'])],
     style:data.get('style')||'mixed',
     avoid:data.getAll('avoid'),
     priorities:data.getAll('priorities').slice(0,2),
+    progressPins:data.getAll('progressPins').length?data.getAll('progressPins').map(String):['weight','chest','arm','bench','row'],
     lifts:{
       bench:num(data.get('bench')),
       squat:num(data.get('squat')),
@@ -2673,69 +2899,35 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
-  if(!profile.displayName){
-    toast('Enter the display name you want to use in training and shared workouts.');
-    form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(!profile.gender){
-    toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');
-    form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(!TRAINING_AVATARS.some(item=>item.id===profile.visualAvatarId)){
-    toast('Choose the training avatar you want reflected in your workout visuals.');
-    form.querySelector('.avatar-setup-section')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(profile.workoutDays.length!==profile.days){
-    toast('Choose exactly '+profile.days+' training days for your weekly schedule.');
-    form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-    if(profile.weight<50||profile.weight>700){
-    toast('Enter a body weight between 50 and 700 lb.');
-    form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){
-    toast('Enter height feet between 3 and 8, or leave height blank.');
-    return false;
-  }
-  if(profile.heightInches<0||profile.heightInches>11){
-    toast('Enter height inches between 0 and 11.');
-    return false;
-  }
+  if(!profile.displayName){toast('Enter the display name you want to use in training and shared workouts.');form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(!profile.gender){toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(!TRAINING_AVATARS.some(item=>item.id===profile.visualAvatarId)){toast('Choose the training avatar you want reflected in your workout visuals.');form.querySelector('.avatar-setup-section')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(profile.workoutDays.length!==profile.days){toast('Choose exactly '+profile.days+' training days for your weekly schedule.');form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(profile.weight<50||profile.weight>700){toast('Enter a valid body weight.');form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){toast('Enter height feet between 3 and 8, or leave height blank.');return false;}
+  if(profile.heightInches<0||profile.heightInches>11){toast('Enter height inches between 0 and 11.');return false;}
+  const existingPlan=store.plan?clone(store.plan):null;
   let plan;
-  try{
-    plan=generatePlan(profile);
-  }catch(error){
-    console.error('Workout plan generation failed',error);
-    toast('Could not build the plan. Please reload and try again.');
-    return false;
-  }
-  if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){
-    toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');
-    return false;
-  }
+  try{plan=generatePlan(profile);}catch(error){console.error('Workout plan generation failed',error);toast('Could not build the plan. Please reload and try again.');return false;}
+  if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');return false;}
+  if(existingPlan){plan.id=existingPlan.id;plan.createdAt=existingPlan.createdAt;}
+
+  const previousTraining=store.trainingProgram||{};
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null};
+  store.trainingProgram={...previousTraining,scheduleOverrides:{},weekReviews:{},programReviews:previousTraining.programReviews||{},engine:null,bodyProgress:previousTraining.bodyProgress||{measurements:[],weeklyCheckins:{},photos:[]}};
+  ensureTrainingProgram();
+  recordInitialBodyMeasurement(profile,data);
   refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
-    accountSheetOpen=true;
-    currentTab='profile-edit';
-    render();
+    accountSheetOpen=true;currentTab='profile-edit';render();
     setTimeout(()=>toast(store.account?.status==='pending'?'Confirm your email and sign in so this plan can follow you between browsers.':'Create or sign in to your account to finish setup and sync your plan.'),100);
     return true;
   }
-  currentTab='home';
-  render();
-  if(!persisted){
-    setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
-  }
+  currentTab='home';render();
+  if(!persisted)setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
   return true;
 }
 
@@ -3292,7 +3484,8 @@ function renderWorkoutMap(){
   const strengthRows=w.exercises.map((ex,index)=>{
     const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
     const status=state==='complete'?'✓':state==='completed-manually'?'✓':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIP':'';
-    return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(!['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase)?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1)+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+(ex.suggestedWeight?' · '+esc(ex.suggestedWeight)+' lb':'')+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'">•••</button></article>';
+    const block=ex.blockId?(ex.blockType==='superset'?'SUPERSET':ex.blockType==='tri-set'?'TRI-SET':'FLOW BLOCK')+' · '+(num(ex.blockOrder)+1):'';
+    return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(!['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase)?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1)+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+(ex.suggestedWeight?' · '+esc(ex.suggestedWeight)+' lb':'')+(block?' · '+esc(block):'')+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'">•••</button></article>';
   }).join('');
   const body=workoutMapView==='warmup'?warmRows:workoutMapView==='cooldown'?coolRows:strengthRows;
   return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal runner-map-modal" data-workout-map-panel role="dialog" aria-modal="true"><button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><h2>'+esc(w.routineName)+'</h2></div><div class="runner-map-tabs">'+tabs.map(([id,label])=>'<button class="'+(workoutMapView===id?'active':'')+'" data-action="set-workout-map-view" data-map-view="'+id+'">'+label+'</button>').join('')+'</div><div class="workout-map-list">'+body+'</div></section></div>';
@@ -3999,80 +4192,83 @@ function renderProfileEditor(){
   const checked=(field,value)=>p[field]===value?'checked':'';
   const av=v=>(p.avoid||[]).includes(v)?'checked':'';
   const scheduledDays=preferredWorkoutDays(p);
+  const savedSetups=p.savedSetups||[p.equipment||'full-gym','bodyweight'];
+  const pins=p.progressPins||['weight','chest','arm','bench','row'];
   return `
   <div class="onboard-shell">
-    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Your actual performance drives progression. Profile details help personalize scheduling, presentation, exercise selection, and future shared workouts without assuming strength from identity.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Choose how you want to train, what equipment you have, and what progress you want GoWorkout to remember.</p></div></div>
     <form id="profile-form" class="intake-form" novalidate>
-      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and recovery.</p></div></div>
         <div class="choice-grid">
           ${[['muscle','Build muscle','Moderate reps + progressive overload'],['strength','Get stronger','Heavier work + longer recovery'],['fat-loss','Fat loss + conditioning','Higher reps + shorter recovery'],['general','General fitness','Balanced strength and work capacity']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="goal" value="${v}" ${checked('goal',v)||(!p.goal&&v==='muscle'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Identity and body information stay separate from performance. Gender is stored for profile personalization and future relevant context, not used to guess your strength.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Body information helps track progress. It does not determine your starting strength.</p></div></div>
         <div class="form-grid two identity-grid">
           <label class="field"><span>DISPLAY NAME</span><input name="displayName" autocomplete="name" value="${esc(store.account?.displayName||p.displayName||'')}" placeholder="How you want to appear"></label>
-          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for future account sign-in"></label>
+          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for account sign-in"></label>
           <label class="field"><span>GENDER</span><select name="gender">${[['','Choose'],['woman','Woman'],['man','Man'],['nonbinary','Nonbinary'],['another','Another identity'],['prefer-not','Prefer not to say']].map(([v,label])=>`<option value="${v}" ${p.gender===v?'selected':''}>${label}</option>`).join('')}</select></label>
           <label class="field"><span>PRONOUNS <em>OPTIONAL</em></span><input name="pronouns" value="${esc(p.pronouns||'')}" placeholder="e.g. he/him"></label>
         </div>
         <div class="form-grid three body-grid">
-          <label class="field"><span>BODY WEIGHT (LB)</span><input name="weight" type="number" min="50" max="700" value="${esc(p.weight||'')}" required placeholder="180"></label>
+          <label class="field"><span>BODY WEIGHT</span><div class="inline-inputs unit-pair"><input name="weight" type="number" min="20" max="700" step=".1" value="${esc(p.weight?roundMeasure(lbToDisplay(p.weight,p.weightUnit||'lb')):'')}" required placeholder="180"><select name="weightUnit"><option value="lb" ${(p.weightUnit||'lb')==='lb'?'selected':''}>lb</option><option value="kg" ${p.weightUnit==='kg'?'selected':''}>kg</option></select></div></label>
           <label class="field"><span>HEIGHT</span><div class="inline-inputs"><input name="heightFeet" type="number" min="3" max="8" value="${esc(p.heightFeet||'')}" placeholder="5"><input name="heightInches" type="number" min="0" max="11" value="${esc(p.heightInches||'')}" placeholder="10"></div></label>
           <label class="field"><span>AGE RANGE</span><select name="ageRange">${['18-24','25-34','35-44','45-54','55-64','65+'].map(v=>`<option ${p.ageRange===v?'selected':''}>${v}</option>`).join('')}</select></label>
         </div>
-        <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
+        <div class="starting-measurements">
+          <div class="starting-measurements-head"><div><strong>Starting measurements <em>optional</em></strong><span>Your first saved values stay as the original baseline. Weekly updates create new dated records.</span></div><label class="field compact-unit"><span>UNIT</span><select name="measurementUnit"><option value="in" ${(p.measurementUnit||'in')==='in'?'selected':''}>in</option><option value="cm" ${p.measurementUnit==='cm'?'selected':''}>cm</option></select></label></div>
+          <div class="form-grid three">${[['chest','Chest'],['waist','Waist'],['hips','Hips'],['arm','Upper arm'],['thigh','Thigh'],['calf','Calf']].map(([key,label])=>`<label class="field"><span>${label.toUpperCase()}</span><input name="${key}" type="number" min="0" step=".1" placeholder="Optional"></label>`).join('')}</div>
+        </div>
+        <div class="profile-privacy-note"><strong>Private by default.</strong><span>Measurements, progress photos, readiness, notes, and full training history are not exposed to workout partners.</span></div>
       </section>
 
-      <section class="form-section avatar-setup-section"><div class="form-section-head"><span>03</span><div><h3>Choose your training avatar</h3><p>Your avatar changes workout and exercise visuals only. It never changes your weights, difficulty, progression, or exercise recommendations.</p></div></div>
+      <section class="form-section avatar-setup-section"><div class="form-section-head"><span>03</span><div><h3>Choose your training avatar</h3><p>Your avatar changes workout visuals only.</p></div></div>
         ${renderAvatarChoices(p.visualAvatarId||'')}
-        <div class="avatar-setup-note"><strong>VISUAL PREFERENCE ONLY</strong><span>Exercise performance stays tied to your training history, not the avatar you choose.</span></div>
       </section>
 
-      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account connected</h3><p>${esc(store.account?.email||'Signed in')} · Your setup and training state sync through this account.</p></div></div>
-        <div class="profile-privacy-note"><strong>CONNECTED</strong><span>You can manage or sign out from your profile account controls after setup.</span></div>
-      </section>
       <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
-        <div class="choice-grid four">
-          ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        <div class="choice-grid four">${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}</div>
+      </section>
+
+      <section class="form-section workout-style-section"><div class="form-section-head"><span>05</span><div><h3>How should your workouts flow?</h3><p>This changes session structure without changing your goal.</p></div></div>
+        <div class="choice-grid two workout-style-grid">
+          ${[['classic','Classic','Finish the prescribed sets for one exercise before moving to the next.'],['flow','Flow','Move through blocks of 2–4 exercises with quick transitions and a full rest after each round.']].map(([v,t,d])=>`<label class="choice-card workout-style-card"><input type="radio" name="workoutStyle" value="${v}" ${(p.workoutStyle||'classic')===v?'checked':''}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        </div>
+        <div class="form-grid two">
+          <label class="field"><span>PACING</span><select name="pacing">${[['relaxed','Relaxed'],['balanced','Balanced'],['fast','Fast-paced']].map(([v,l])=>`<option value="${v}" ${(p.pacing||'balanced')===v?'selected':''}>${l}</option>`).join('')}</select><small>Flow uses this to choose block size and recovery.</small></label>
+          <label class="field"><span>WHAT USUALLY LIMITS YOUR WORKOUT?</span><select name="workoutLimiter">${[['none','No usual limiter'],['time','Time'],['equipment','Equipment'],['energy','Energy'],['gym-crowding','Gym crowding']].map(([v,l])=>`<option value="${v}" ${(p.workoutLimiter||'none')===v?'selected':''}>${l}</option>`).join('')}</select><small>Gym crowding keeps Flow blocks smaller and easier to execute.</small></label>
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>05</span><div><h3>Your real schedule</h3><p>Choose how many days you train, which days they actually are, and how long you normally have.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Your real schedule</h3><p>Choose how many days you train and how long you usually have.</p></div></div>
         <div class="form-grid two">
           <label class="field"><span>DAYS PER WEEK</span><select name="days" id="training-days-count">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
           <label class="field"><span>MINUTES PER WORKOUT</span><select name="minutes">${[20,30,45,60,75].map(v=>`<option value="${v}" ${num(p.minutes||45)===v?'selected':''}>${v} minutes</option>`).join('')}</select></label>
         </div>
-        <div class="schedule-day-picker">
-          <div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days. You can change them later.</small></div>
-          <div class="weekday-pills">
-            ${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}
-          </div>
-        </div>
+        <div class="schedule-day-picker"><div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days.</small></div><div class="weekday-pills">${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}</div></div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Where are you training?</h3><p>We only choose exercises your setup supports.</p></div></div>
-        <div class="choice-grid">
-          ${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
-        </div>
-        <div class="choice-grid three sub-choice">
-          ${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
-        </div>
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Where are you training?</h3><p>Choose your normal setup and save the alternatives you use.</p></div></div>
+        <div class="choice-grid">${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
+        <div class="choice-grid three sub-choice">${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
+        <div class="saved-setup-picker"><span>SAVED SETUPS</span><small>Quick choices when the day’s equipment changes.</small><div class="check-row">${[['full-gym','Gym'],['mixed-home','Home'],['travel','Travel'],['dumbbells','Dumbbells'],['bands','Bands'],['bodyweight','Bodyweight']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="savedSetups" value="${v}" ${savedSetups.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div></div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize.</p></div></div>
         <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
       </section>
-      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
-        <div class="form-grid five">
-          ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
-        </div>
+
+      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Recent working weights <em>optional</em></h3><p>Use these only if you know them. Otherwise your first completed sessions establish the strength baseline.</p></div></div>
+        <div class="form-grid five">${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}</div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
-        <div class="check-row">
-          ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
-        </div>
+      <section class="form-section progress-pin-section"><div class="form-section-head"><span>10</span><div><h3>What should Progress show first?</h3><p>Pin the body and strength metrics you care about most.</p></div></div>
+        <div class="check-row">${[['weight','Body weight'],['chest','Chest'],['waist','Waist'],['hips','Hips'],['arm','Arms'],['thigh','Thigh'],['calf','Calf'],['bench','Chest strength'],['row','Back strength'],['squat','Leg strength'],['overhead','Shoulder strength'],['hinge','Hinge strength']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="progressPins" value="${v}" ${pins.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>11</span><div><h3>Movements to leave out</h3><p>These are preference controls. They do not diagnose or treat injuries.</p></div></div>
+        <div class="check-row">${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}</div>
       </section>
       <div class="form-actions"><button type="button" class="button large" data-action="build-plan">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
     </form>
@@ -4526,13 +4722,15 @@ function renderTrainBlockTimeline(context){
 function renderTrainProgramView(){
   const context=programContext(),plan=store.plan;
   return '<div class="train-view train-program-view">'+
+    '<section class="program-style-summary"><div><span>WORKOUT STYLE</span><strong>'+esc(workoutStyleLabel(store.profile?.workoutStyle))+'</strong><small>'+esc(pacingLabel(store.profile?.pacing))+' pacing · '+esc(workoutLimiterLabel(store.profile?.workoutLimiter))+'</small></div>'+(store.profile?.workoutStyle==='flow'?'<p>Flow groups each workout into 2–4 exercise blocks. Quick rest happens between movements, then a full rest after the round.</p>':'<p>Classic completes the prescribed sets for one exercise before moving to the next.</p>')+'</section>'+
     renderTrainBlockTimeline(context)+
     renderEngineProgramSummary()+
     renderProgramEvolution()+
     '<section class="clean-section train-rotation-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+' workouts</h3></div><button class="text-button" data-action="edit-profile">EDIT PLAN</button></div>'+
       '<div class="train-rotation-list">'+plan.days.map((day,index)=>{
         const first=day.exercises?.[0];
-        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></article>';
+        const flow=day.blocks?.length?' · '+day.blocks.length+' Flow block'+(day.blocks.length===1?'':'s'):'';
+        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises'+flow+' · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></article>';
       }).join('')+'</div>'+
     '</section>'+
   '</div>';
@@ -5086,7 +5284,7 @@ function renderProfileHub(){
   const p=store.profile;if(!p)return renderProfileEditor();
   const context=programContext(),shared=sharedTrainingState(),avatar=trainingAvatar(p);
   const name=displayName()==='there'?'Your profile':displayName();
-  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
+  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(workoutStyleLabel(p.workoutStyle))+' · '+esc(pacingLabel(p.pacing))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
@@ -5163,6 +5361,33 @@ function daysSince(iso,date=new Date()){
   const then=new Date(value);then.setHours(0,0,0,0);
   return Math.max(0,Math.floor((today-then)/86400000));
 }
+function completedWorkoutHeadline(history){
+  if(!history)return 'Your work is saved';
+  const prs=Array.isArray(history.newPRs)?history.newPRs:[];
+  const baselines=Array.isArray(history.baselines)?history.baselines:[];
+  const targets=(store.progressionLog||[]).filter(item=>item.workoutId===history.id);
+  if(prs.length===1){
+    const pr=prs[0];
+    return pr.name+' · new best '+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps');
+  }
+  if(prs.length>1)return prs.length+' personal records · tap to see each one';
+  if(baselines.length===1)return baselines[0].name+' · first strength baseline saved';
+  if(baselines.length>1)return baselines.length+' new strength baselines saved';
+  if(targets.length===1)return targets[0].name+' · next target updated';
+  if(targets.length>1)return targets.length+' next targets updated';
+  return 'Workout saved with your actual sets and feedback';
+}
+function renderWeeklyMeasurementPrompt(){
+  if(!weeklyMeasurementDue())return '';
+  const latest=latestBodyMeasurement();
+  return '<section class="home-checkin-card"><div><span>WEEKLY CHECK-IN</span><strong>Anything to update?</strong><p>'+(latest?'Last measurements: '+esc(formatDate(latest.recordedAt))+'. Change only what changed.':'Add your first body measurements so Progress has a starting point.')+'</p></div><div class="home-checkin-actions"><button class="button secondary" data-action="open-measurement-checkin">'+(latest?'UPDATE':'ADD BASELINE')+'</button>'+(latest?'<button class="text-button" data-action="measurement-no-changes">NO CHANGES</button>':'')+'<button class="text-button muted" data-action="skip-measurement-checkin">SKIP</button></div></section>';
+}
+function renderProgramReviewPrompt(){
+  if(!programReviewDue())return '';
+  const context=programContext();
+  return '<section class="home-program-review"><div><span>NEW BLOCK</span><strong>Review your setup for Block '+context.blockNumber+'</strong><p>'+esc(workoutStyleLabel(store.profile?.workoutStyle))+' · '+esc(pacingLabel(store.profile?.pacing))+' · '+esc(planGoalLabel(store.profile?.goal))+'</p></div><button class="button secondary" data-action="open-program-review">REVIEW PROGRAM</button></section>';
+}
+
 function getHomeExperience(date=new Date()){
   const schedule=currentWeekSchedule(date);
   const todayKey=dateKey(date);
@@ -5180,8 +5405,7 @@ function getHomeExperience(date=new Date()){
   }
   if(completedToday){
     const history=completedToday.history||last;
-    const improvements=(history?.newPRs?.length||0);
-    return {state:'completed',context,schedule,eyebrow:'YOU’RE DONE FOR TODAY',title:history?.routineName||completedToday.day?.name||'Workout complete',copy:(history?.durationMinutes?history.durationMinutes+' min · ':'')+(history?.completedSets||0)+' sets completed',meta:improvements?improvements+' improvement'+(improvements===1?'':'s')+' recorded':'Your work is saved',primaryLabel:'SEE YOUR WORKOUT',primaryAction:'history',entry:completedToday,last};
+    return {state:'completed',context,schedule,eyebrow:'YOU’RE DONE FOR TODAY',title:history?.routineName||completedToday.day?.name||'Workout complete',copy:(history?.durationMinutes?history.durationMinutes+' min · ':'')+(history?.completedSets||0)+' sets completed',meta:completedWorkoutHeadline(history),primaryLabel:'SEE YOUR WORKOUT',primaryAction:'history',entry:completedToday,last};
   }
   if(awayDays!==null&&awayDays>=7){
     const entry=today||missed||upcoming||null;
@@ -5234,6 +5458,8 @@ function renderHome(){
       (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
       (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
+    renderWeeklyMeasurementPrompt()+
+    renderProgramReviewPrompt()+
     '<section class="clean-section home-week-section"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+' of '+planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       renderHomeWeekPulse(schedule)+
       '<div class="home-week-progress" aria-label="'+completed+' of '+planned+' workouts complete"><span style="width:'+Math.round((completed/Math.max(1,planned))*100)+'%"></span></div>'+
@@ -5257,7 +5483,7 @@ function renderWorkoutIntro(w){
   const setup=w.trainingContext?sessionSetupLabel(w.trainingContext):(store.profile?.equipment==='full-gym'?'Gym':'Training');
   const motivation=preWorkoutMotivation(w);
   return '<div class="runner-overview">'+
-    '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+'</p></div>'+
+    '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+' · '+esc(workoutStyleLabel(store.profile?.workoutStyle))+' · '+esc(pacingLabel(store.profile?.pacing))+'</p></div>'+
     '<section class="runner-motivation-card pre"><span>TODAY’S FOCUS</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
     '<div class="runner-phase-list">'+
       (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up</strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small></div><em>›</em></button>':'')+
@@ -6237,6 +6463,104 @@ function progressMoments(limit=6){
     value:item.weight?item.weight+' lb × '+item.reps:item.reps+' reps'
   }));
 }
+function strengthPinMovements(pin){
+  return ({
+    bench:['horizontal-push'],
+    row:['horizontal-pull','vertical-pull'],
+    squat:['squat','single-leg','quad-accessory'],
+    overhead:['vertical-push','shoulder-accessory'],
+    hinge:['hinge','hamstring-accessory']
+  })[pin]||[];
+}
+function strengthPinSummary(pin,records=personalRecords()){
+  const movements=strengthPinMovements(pin);
+  const candidates=records.filter(summary=>{
+    const ex=catalog.find(item=>item.id===summary.exerciseId)||(store.history||[]).flatMap(item=>item.exercises||[]).find(item=>item.id===summary.exerciseId);
+    return movements.includes(ex?.movement);
+  });
+  return candidates.sort((a,b)=>b.sessions-a.sessions)[0]||null;
+}
+function progressBodyPinKey(pin){
+  return ({weight:'weightLb',chest:'chestIn',waist:'waistIn',hips:'hipsIn',arm:'armIn',thigh:'thighIn',calf:'calfIn'})[pin]||'';
+}
+function signedBodyChange(key,value){
+  if(value===null)return 'No change data';
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const unit=metric?.kind==='weight'?bodyWeightUnit():bodyMeasurementUnit();
+  return (value>0?'+':'')+roundMeasure(value)+' '+unit+' from start';
+}
+function renderPinnedProgress(records){
+  const pins=store.profile?.progressPins||['weight','chest','arm','bench','row'];
+  const first=startingBodyMeasurement(),latest=latestBodyMeasurement();
+  const cards=[];
+  for(const pin of pins){
+    const bodyKey=progressBodyPinKey(pin);
+    if(bodyKey){
+      const metric=BODY_METRICS.find(item=>item.key===bodyKey);
+      const start=displayBodyMetric(first,bodyKey),current=displayBodyMetric(latest,bodyKey),change=bodyMetricChange(bodyKey);
+      cards.push('<article class="pinned-progress-card body"><span>'+esc(metric?.label||pin)+'</span><strong>'+(current?esc(current):'Not logged')+'</strong><small>'+(start?'Started '+esc(start)+' · '+esc(signedBodyChange(bodyKey,change)):'Add a baseline in the weekly check-in')+'</small></article>');
+      continue;
+    }
+    const summary=strengthPinSummary(pin,records);
+    cards.push('<article class="pinned-progress-card strength"><span>'+esc(STRENGTH_PIN_LABELS[pin]||pin)+'</span><strong>'+(summary?esc(summary.bestLabel):'Baseline pending')+'</strong><small>'+(summary?'Started '+esc(summary.baselineLabel)+' · '+esc(summary.changeLabel):'Your first completed working sets will establish this automatically.')+'</small></article>');
+  }
+  return '<section class="clean-section pinned-progress-section"><div class="clean-section-head"><div><p class="eyebrow">PINNED PROGRESS</p><h3>Start → current</h3></div><button class="text-button" data-action="edit-profile">EDIT PINS</button></div><div class="pinned-progress-grid">'+cards.join('')+'</div></section>';
+}
+function bodyRangeDays(range){
+  return ({'4w':28,'3m':92,'6m':184,all:0})[range]??92;
+}
+function bodyTrendRecords(metricKey=bodyProgressMetric,range=bodyProgressRange){
+  const days=bodyRangeDays(range),cutoff=days?Date.now()-days*86400000:0;
+  return [...bodyProgress().measurements]
+    .filter(item=>num(item[metricKey])&&(!cutoff||Date.parse(item.recordedAt||0)>=cutoff))
+    .sort((a,b)=>Date.parse(a.recordedAt||0)-Date.parse(b.recordedAt||0));
+}
+function bodyTrendDisplayValue(record,key){
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const raw=num(record?.[key]);
+  return metric?.kind==='weight'?lbToDisplay(raw,bodyWeightUnit()):inchesToDisplay(raw,bodyMeasurementUnit());
+}
+function bodyTrendChartPath(records,key,width=320,height=110){
+  if(!records.length)return {path:'',points:[]};
+  const values=records.map(item=>bodyTrendDisplayValue(item,key));
+  const min=Math.min(...values),max=Math.max(...values),range=Math.max(.1,max-min);
+  const left=10,right=width-10,top=10,bottom=height-18;
+  const points=values.map((value,index)=>{
+    const x=records.length===1?(left+right)/2:left+(right-left)*(index/(records.length-1));
+    const y=bottom-((value-min)/range)*(bottom-top);
+    return {x:Math.round(x*10)/10,y:Math.round(y*10)/10,value};
+  });
+  return {path:points.map((point,index)=>(index?'L':'M')+point.x+' '+point.y).join(' '),points};
+}
+function renderBodyTrendChart(){
+  const available=BODY_METRICS.filter(metric=>bodyProgress().measurements.some(item=>num(item[metric.key])));
+  if(!available.length)return '';
+  if(!available.some(metric=>metric.key===bodyProgressMetric))bodyProgressMetric=available[0].key;
+  const metric=BODY_METRICS.find(item=>item.key===bodyProgressMetric)||available[0];
+  const records=bodyTrendRecords(metric.key,bodyProgressRange);
+  const chart=bodyTrendChartPath(records,metric.key);
+  const latest=records[records.length-1],first=records[0];
+  const latestValue=latest?displayBodyMetric(latest,metric.key):'';
+  const startValue=first?displayBodyMetric(first,metric.key):'';
+  return '<section class="body-trend-card"><div class="body-trend-head"><div><span>BODY TREND</span><strong>'+esc(metric.label)+'</strong><small>'+(latestValue?esc(startValue)+' → '+esc(latestValue):'Not enough data yet')+'</small></div><button class="button secondary compact-button" data-action="open-measurement-checkin">UPDATE</button></div>'+
+    '<div class="body-trend-metrics">'+available.map(item=>'<button class="'+(item.key===metric.key?'active':'')+'" data-action="set-body-progress-metric" data-body-metric="'+esc(item.key)+'">'+esc(item.label)+'</button>').join('')+'</div>'+
+    (records.length?'<svg class="body-trend-chart" viewBox="0 0 320 110" role="img" aria-label="'+esc(metric.label)+' trend"><path d="'+chart.path+'"></path>'+chart.points.map(point=>'<circle cx="'+point.x+'" cy="'+point.y+'" r="3"></circle>').join('')+'</svg>':'<div class="progress-chart-empty"><strong>Not enough data in this range</strong><span>Choose a longer range or save another weekly check-in.</span></div>')+
+    '<div class="body-trend-ranges">'+[['4w','4 weeks'],['3m','3 months'],['6m','6 months'],['all','All']].map(([value,label])=>'<button class="'+(bodyProgressRange===value?'active':'')+'" data-action="set-body-progress-range" data-body-range="'+value+'">'+label+'</button>').join('')+'</div>'+
+  '</section>';
+}
+
+function renderBodyMeasurementHistory(){
+  const rows=[...bodyProgress().measurements].sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0)).slice(0,12);
+  if(!rows.length)return '<section class="clean-panel body-progress-empty"><span>BODY PROGRESS</span><strong>No measurements yet</strong><p>Add a baseline from your weekly check-in.</p><button class="button secondary" data-action="open-measurement-checkin">ADD MEASUREMENTS</button></section>';
+  return '<section class="clean-section body-progress-history"><div class="clean-section-head"><div><p class="eyebrow">BODY PROGRESS</p><h3>Dated measurements</h3></div></div>'+
+    renderBodyTrendChart()+
+    '<div class="body-measurement-list">'+rows.map((record,index)=>{
+      const values=BODY_METRICS.filter(metric=>num(record[metric.key])).map(metric=>'<span><b>'+esc(metric.label)+'</b> '+esc(displayBodyMetric(record,metric.key))+'</span>').join('');
+      const photos=record.photos?Object.values(record.photos).filter(Boolean):[];
+      return '<article class="body-measurement-row '+(record.source==='baseline'?'baseline':'')+'"><button data-action="edit-measurement" data-measurement-id="'+esc(record.id)+'"><div><strong>'+(record.source==='baseline'?'Starting baseline':record.source==='unchanged'?'No changes logged':'Weekly check-in')+'</strong><small>'+esc(formatDate(record.recordedAt))+'</small></div><em>EDIT</em></button><div class="body-measurement-values">'+values+'</div>'+(photos.length?'<div class="body-photo-thumbs">'+photos.map(src=>'<img src="'+esc(src)+'" alt="Progress photo thumbnail">').join('')+'</div>':'')+'</article>';
+    }).join('')+'</div></section>';
+}
+
 function renderProgress(){
   const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),records=personalRecords(),calibrated=Object.keys(store.calibration).length;
   const trends=records.slice(0,6);
@@ -6249,7 +6573,9 @@ function renderProgress(){
   if(progressExerciseId&&!records.some(item=>item.exerciseId===progressExerciseId))progressExerciseId='';
   const selected=(progressExerciseId?records.find(item=>item.exerciseId===progressExerciseId):null)||trends[0]||null;
   if(selected&&!progressExerciseId)progressExerciseId=selected.exerciseId;
-  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See what changed, where you started, and which movements are moving forward.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See body changes, strength baselines, and what moved forward from where you started.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+    renderPinnedProgress(records)+
+    renderBodyMeasurementHistory()+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
     (trends.length?'<section class="clean-section progress-movements-section"><div class="clean-section-head"><div><p class="eyebrow">MOVEMENT PROGRESS</p><h3>What is changing</h3></div></div><div class="progress-movement-grid">'+trends.map(item=>{
       const metric=item.weighted?'weight':'reps';
@@ -6346,7 +6672,9 @@ function render(){
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
   if(avatarPickerOpen) app.insertAdjacentHTML('beforeend',renderAvatarPickerSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
+  if(measurementCheckinOpen) app.insertAdjacentHTML('beforeend',renderMeasurementCheckin());
+  if(programReviewOpen) app.insertAdjacentHTML('beforeend',renderProgramReview());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen||measurementCheckinOpen||programReviewOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
   prefetchUpcomingWorkoutMedia();
@@ -6433,6 +6761,10 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const measurementClose=event.target.closest('[data-action="close-measurement-checkin"]');
+  if(measurementClose){measurementCheckinOpen=false;measurementEditId='';measurementPhotoDraft={};render();return;}
+  const programReviewClose=event.target.closest('[data-action="close-program-review"]');
+  if(programReviewClose){programReviewOpen=false;render();return;}
   const avatarClose=event.target.closest('[data-action="close-avatar-picker"]');
   if(avatarClose){
     const inside=event.target.closest('[data-avatar-picker-panel]');
@@ -6509,6 +6841,18 @@ function handleClick(event){
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='open-measurement-checkin')openMeasurementCheckin();
+  else if(a==='close-measurement-checkin'){measurementCheckinOpen=false;measurementEditId='';measurementPhotoDraft={};render();}
+  else if(a==='measurement-no-changes')markMeasurementNoChanges();
+  else if(a==='skip-measurement-checkin')skipMeasurementCheckin();
+  else if(a==='save-measurement-checkin')saveMeasurementCheckin(document.querySelector('#measurement-form'));
+  else if(a==='edit-measurement')openMeasurementCheckin(node.dataset.measurementId||'');
+  else if(a==='remove-measurement')removeMeasurementRecord(node.dataset.measurementId||'');
+  else if(a==='set-body-progress-metric'){bodyProgressMetric=node.dataset.bodyMetric||'weightLb';render();}
+  else if(a==='set-body-progress-range'){bodyProgressRange=['4w','3m','6m','all'].includes(node.dataset.bodyRange)?node.dataset.bodyRange:'3m';render();}
+  else if(a==='open-program-review'){programReviewOpen=true;render();}
+  else if(a==='close-program-review'){programReviewOpen=false;render();}
+  else if(a==='save-program-review')saveProgramReview(document.querySelector('#program-review-form'));
   else if(a==='train-anywhere-home')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'','bodyweight');
   else if(a==='open-session-setup'){exerciseActionsIndex=null;sessionSetupOpen=true;render();}
   else if(a==='apply-session-setup'){
@@ -6695,7 +7039,11 @@ document.addEventListener('input',event=>{
   }
 });
 document.addEventListener('change',event=>{
-  if(event.target.id==='training-days-count'){
+  if(event.target.id==='review-days-count'){
+    const desired=num(event.target.value)||4;
+    const defaults=defaultWorkoutDays(desired);
+    document.querySelectorAll('input[name="reviewWorkoutDays"]').forEach(input=>{input.checked=defaults.includes(input.value);});
+  }else if(event.target.id==='training-days-count'){
     const desired=num(event.target.value)||4;
     const defaults=defaultWorkoutDays(desired);
     document.querySelectorAll('input[name="workoutDays"]').forEach(input=>{input.checked=defaults.includes(input.value);});
@@ -6714,8 +7062,21 @@ document.addEventListener('change',event=>{
     if(note)note.textContent=selected+' of '+desired+' days selected.';
   }
 });
+document.addEventListener('change',async event=>{
+  const photoInput=event.target.closest?.('[data-progress-photo]');
+  if(!photoInput)return;
+  const file=photoInput.files?.[0];if(!file)return;
+  try{
+    const value=await compressProgressPhoto(file);
+    measurementPhotoDraft[photoInput.dataset.progressPhoto]=value;
+    render();
+    toast(photoInput.dataset.progressPhoto+' progress photo added.');
+  }catch(error){toast(error?.message||'Could not add that photo.');}
+});
 document.addEventListener('keydown',event=>{
   if(event.key==='Enter'&&store.account?.status!=='connected'&&document.activeElement?.matches?.('#entry-email,#entry-password,#entry-display-name')){event.preventDefault();if(accountEntryMode==='create')createEntryAccount();else signInEntryAccount();return;}
+  if(event.key==='Escape'&&measurementCheckinOpen){measurementCheckinOpen=false;measurementEditId='';measurementPhotoDraft={};render();return;}
+  if(event.key==='Escape'&&programReviewOpen){programReviewOpen=false;render();return;}
   if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
   if(event.key==='Escape'&&avatarPickerOpen){avatarPickerOpen=false;render();return;}
   if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
