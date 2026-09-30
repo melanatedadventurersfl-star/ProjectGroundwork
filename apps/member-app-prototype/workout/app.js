@@ -365,6 +365,10 @@ function ensureTrainingLearner({backfill=true}={}){
       const result=engine.recordWorkout(training.learner,workout);
       training.learner=result.learner;
     }
+    if(pending.length){
+      try{localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}catch{}
+      scheduleCloudStateSync();
+    }
   }
   return training.learner;
 }
