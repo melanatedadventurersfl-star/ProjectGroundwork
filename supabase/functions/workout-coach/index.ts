@@ -5,15 +5,23 @@ const TTS_MODEL = "gpt-4o-mini-tts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://melanatedadventurersfl-star.github.io",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-api-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-retry-count, traceparent, tracestate, baggage",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Vary": "Origin",
 };
 const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
-const EVENTS = new Set(["session_started","exercise_started","set_completed","exercise_feedback","workout_completed","test"]);
-const STYLES = new Set(["balanced","calm","hype","tough"]);
-const FREQUENCIES = new Set(["minimal","normal","talkative"]);
+const EVENTS = new Set(["session_started","warmup_started","stretch_started","warmup_completed","exercise_started","set_completed","exercise_feedback","cooldown_started","cooldown_completed","workout_completed","test","cue_pack"]);
+const STYLES = new Set(["balanced","direct","supportive","energetic","calm","technical"]);
+const FREQUENCIES = new Set(["minimal","normal","high"]);
+const DETAILS = new Set(["short","standard","detailed"]);
+const TALK_SPEEDS = new Set(["slow","normal","fast"]);
+const NAME_USAGE = new Set(["never","occasional","often"]);
+const FORM_CUES = new Set(["off","basic","detailed"]);
+const PERFORMANCE_FEEDBACK = new Set(["off","session","history"]);
+const MOTIVATION = new Set(["low","moderate","high"]);
+const COUNTDOWN_MODES = new Set(["full","compact","beep","off"]);
+const GUIDANCE = new Set(["simple","guided","detailed"]);
 const VOICES = new Set(["alloy","ash","ballad","coral","echo","fable","nova","onyx","sage","shimmer","verse","marin","cedar"]);
 
 function json(body: unknown, status = 200) {
@@ -36,11 +44,14 @@ function outputText(payload: any) {
   }
   return "";
 }
-function voiceInstructions(style: string) {
-  if (style === "calm") return "Speak like a calm, grounded personal trainer. Warm, natural, steady, concise, never theatrical.";
-  if (style === "hype") return "Speak like an energetic personal trainer. Upbeat and playful, but do not shout or sound exaggerated.";
-  if (style === "tough") return "Speak like a direct, demanding personal trainer. Firm and concise, never insulting, shaming, or aggressive.";
-  return "Speak like a confident personal trainer standing nearby. Conversational, warm, concise, lightly playful when appropriate.";
+function voiceInstructions(style: string, talkSpeed: string) {
+  const pace = talkSpeed === "slow" ? "Use a measured pace." : talkSpeed === "fast" ? "Keep the pace brisk and crisp." : "Use a natural conversational pace.";
+  if (style === "calm") return "Speak like a calm, grounded personal trainer. Warm, steady, concise, never theatrical. " + pace;
+  if (style === "energetic") return "Speak like an energetic personal trainer. Upbeat and playful, never shouting or exaggerated. " + pace;
+  if (style === "direct") return "Speak like a direct personal trainer. Firm, efficient, concise, never insulting or aggressive. " + pace;
+  if (style === "supportive") return "Speak like a supportive personal trainer. Reassuring, warm, specific, and concise. " + pace;
+  if (style === "technical") return "Speak like a precise strength coach. Clear, instructional, concise, focused on useful technique. " + pace;
+  return "Speak like a confident personal trainer standing nearby. Conversational, warm, concise, lightly playful when appropriate. " + pace;
 }
 function fallbackLine(event: string, context: any) {
   const name = firstName(context?.name);
@@ -49,16 +60,28 @@ function fallbackLine(event: string, context: any) {
   const exercise = clean(context?.exercise?.name || context?.exerciseName, 90);
   const feedback = clean(context?.feedback, 30);
   const progression = context?.progression || {};
-  if (event === "session_started") return `Alright${who}, you ready? ${routine ? routine + ". " : ""}Let's get started.`;
+  const stage = context?.stage || {};
+  const stageName = clean(stage?.name, 90);
+  const stageTarget = clean(stage?.target, 80);
+  const nextExercise = clean(context?.nextExercise?.name, 90);
+  if (event === "session_started") {
+    if (Number(context?.warmupCount) > 0) return `Alright${who}. Warm-up first, then ${Number(context?.exerciseCount) || 0} strength exercises.`;
+    return `Alright${who}, you ready? ${routine ? routine + ". " : ""}Let's get started.`;
+  }
+  if (event === "warmup_started") return stageName ? `Warm-up first. ${stageName}. ${stageTarget}.` : "Warm-up first. Let's get moving.";
+  if (event === "stretch_started") return stageName ? `${stageName}. ${stageTarget}.` : "Next stretch. Stay controlled.";
+  if (event === "warmup_completed") return nextExercise ? `Warm-up complete. Next is ${nextExercise}.` : "Warm-up complete.";
   if (event === "exercise_started") return exercise ? `Next up, ${exercise}. Let's get set.` : "Next exercise. Let's get set.";
   if (event === "set_completed") return "Set complete. Take your rest.";
   if (event === "exercise_feedback") {
-    if (feedback === "too-easy") return progression?.label ? `Looks like I'm taking it easy on you. ${clean(progression.label, 90)} next time.` : "Looks like I'm taking it easy on you. We'll bump this up next time.";
+    if (feedback === "too-easy") return progression?.label ? `Looks like I'm taking it easy on you. ${clean(progression.label, 90)} next time.` : "We'll bump this up next time.";
     if (feedback === "too-hard") return "That was too much today. We'll back the next target down.";
     if (feedback === "hard") return "That made you work. We'll keep the next target controlled.";
     if (feedback === "form-off") return "Keep the target steady. Clean reps come first.";
     return "That target looks right. We'll build from there.";
   }
+  if (event === "cooldown_started") return stageName ? `Strength work is done. Let's cool down with ${stageName}.` : "Strength work is done. Let's cool down.";
+  if (event === "cooldown_completed") return "Cooldown complete. Review your workout before saving.";
   if (event === "workout_completed") return `That's it${who}. Workout complete.`;
   return `Alright${who}. Your AI coach is ready.`;
 }
@@ -121,6 +144,16 @@ Deno.serve(async (req: Request) => {
     const style = STYLES.has(String(body?.style)) ? String(body.style) : "balanced";
     const frequency = FREQUENCIES.has(String(body?.frequency)) ? String(body.frequency) : "normal";
     const voice = VOICES.has(String(body?.voice)) ? String(body.voice) : "cedar";
+    const detail = DETAILS.has(String(body?.detail)) ? String(body.detail) : "short";
+    const talkSpeed = TALK_SPEEDS.has(String(body?.talkSpeed)) ? String(body.talkSpeed) : "normal";
+    const nameUsage = NAME_USAGE.has(String(body?.nameUsage)) ? String(body.nameUsage) : "occasional";
+    const formCues = FORM_CUES.has(String(body?.formCues)) ? String(body.formCues) : "basic";
+    const performanceFeedback = PERFORMANCE_FEEDBACK.has(String(body?.performanceFeedback)) ? String(body.performanceFeedback) : "session";
+    const motivation = MOTIVATION.has(String(body?.motivation)) ? String(body.motivation) : "moderate";
+    const countdownMode = COUNTDOWN_MODES.has(String(body?.countdownMode)) ? String(body.countdownMode) : "full";
+    const warmupGuidance = GUIDANCE.has(String(body?.warmupGuidance)) ? String(body.warmupGuidance) : "guided";
+    const cooldownGuidance = GUIDANCE.has(String(body?.cooldownGuidance)) ? String(body.cooldownGuidance) : "guided";
+    const adaptiveCoach = body?.adaptiveCoach !== false;
     const context = body?.context && typeof body.context === "object" ? body.context : {};
     const fallback = fallbackLine(event, context);
 
@@ -129,11 +162,50 @@ Deno.serve(async (req: Request) => {
       code: "ai_not_configured"
     }, 503);
 
+    const speechSpeed = talkSpeed === "slow" ? 0.94 : talkSpeed === "fast" ? 1.12 : 1.03;
+
+    if (event === "cue_pack") {
+      const phrases: Record<string,string> = {
+        three:"Three.", two:"Two.", one:"One.", go:"Go.", left_go:"Left side. Go.",
+        switch:"Switch sides.", done:"Done.", next:"Next.", resume:"Resume.",
+        paused:"Workout paused.", reset:"Timer reset."
+      };
+      const entries = await Promise.all(Object.entries(phrases).map(async ([key, line]) => {
+        const speech = await fetch("https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
+          body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style, talkSpeed), response_format: "mp3", speed: speechSpeed }),
+        });
+        if (!speech.ok) return [key, null] as const;
+        const bytes = new Uint8Array(await speech.arrayBuffer());
+        return [key, { line, audioBase64: toBase64(bytes), mimeType: "audio/mpeg" }] as const;
+      }));
+      const cues = Object.fromEntries(entries.filter(([,clip]) => clip));
+      console.log("workout-coach cue pack ready", { voice, style, talkSpeed, count: Object.keys(cues).length });
+      return json({ cues });
+    }
+
     const safeContext = JSON.stringify({
       event,
       name: firstName(context?.name),
       routineName: clean(context?.routineName, 90),
       goal: clean(context?.goal, 50),
+      phase: clean(context?.phase, 40),
+      warmupCount: Number(context?.warmupCount) || 0,
+      warmupMinutes: Number(context?.warmupMinutes) || 0,
+      stage: context?.stage && typeof context.stage === "object" ? {
+        phase: clean(context.stage.phase, 30),
+        name: clean(context.stage.name, 90),
+        target: clean(context.stage.target, 80),
+        description: clean(context.stage.description, 180),
+        cue: clean(context.stage.cue, 180),
+        index: Number(context.stage.index) || 0,
+        total: Number(context.stage.total) || 0,
+      } : undefined,
+      nextExercise: context?.nextExercise && typeof context.nextExercise === "object" ? {
+        name: clean(context.nextExercise.name, 90),
+        target: clean(context.nextExercise.target, 80),
+      } : undefined,
       exercise: context?.exercise && typeof context.exercise === "object" ? {
         name: clean(context.exercise.name, 90),
         setNumber: Number(context.exercise.setNumber) || undefined,
@@ -160,15 +232,29 @@ Deno.serve(async (req: Request) => {
       })) : [],
     });
 
-    const instructions = `You are the GoWorkout voice coach. Produce one short spoken coaching line based only on the supplied workout event and data. The workout engine is authoritative. Never invent or change a weight, rep target, rest time, exercise, or progression. Never claim work the data does not show. Use the user's first name occasionally. Keep the line under 32 words. No markdown, emoji, quotes, headings, or stage directions. Do not praise every action. Light teasing is allowed for too-easy feedback only when the approved progression supports an increase. Never shame the user. Coach style: ${style}. Talk frequency preference: ${frequency}.`;
+    const maxWords = detail === "detailed" ? 42 : detail === "standard" ? 30 : 20;
+    const nameRule = nameUsage === "never" ? "Do not say the user's name." : nameUsage === "often" ? "Use the user's first name naturally when it helps." : "Use the user's first name occasionally.";
+    const formRule = formCues === "off" ? "Do not add form coaching." : formCues === "detailed" ? "When the supplied stage or exercise data supports it, include one precise form cue." : "Use brief form cues only when useful and supported by supplied data.";
+    const performanceRule = performanceFeedback === "off" ? "Do not mention performance comparisons." : performanceFeedback === "history" ? "You may reference supplied performance history or progression data." : "Only reference performance from the current session unless explicit history data is supplied.";
+    const motivationRule = motivation === "low" ? "Keep motivation restrained." : motivation === "high" ? "Use more energetic encouragement without shouting or empty praise." : "Use moderate encouragement.";
+    const phaseRule = adaptiveCoach ? "Adapt delivery to the workout phase. Warm-up and cooldown should sound calmer than working sets, even with an energetic style." : "Keep the selected style consistent across phases.";
+    const guidanceRule = `Warm-up guidance: ${warmupGuidance}. Cooldown guidance: ${cooldownGuidance}.`;
+    const instructions = `You are the GoWorkout voice coach. Produce one short spoken coaching line based only on the supplied workout event and data. The workout engine is authoritative. Never invent or change a weight, rep target, rest time, exercise, or progression. Never claim work the data does not show. ${nameRule} Keep the line under ${maxWords} words. No markdown, emoji, quotes, headings, or stage directions. Do not praise every action. ${formRule} ${performanceRule} ${motivationRule} ${phaseRule} ${guidanceRule} Light teasing is allowed for too-easy feedback only when the approved progression supports an increase. Never shame the user. Coach style: ${style}. Talk frequency preference: ${frequency}.`;
 
     let line = fallback;
     let source = "fallback";
 
     if (event === "test") {
-      const name = firstName(context?.name);
+      const name = nameUsage === "never" ? "" : firstName(context?.name);
       const voiceName = clean(context?.previewVoice || voice, 30);
-      line = `Alright${name ? ` ${name}` : ""}. This is ${voiceName}. Your AI coach is ready.`;
+      const lead =
+        style === "technical" ? "Stay controlled and keep your setup clean." :
+        style === "energetic" ? "Let's bring some energy." :
+        style === "direct" ? "Lock in." :
+        style === "supportive" ? "We'll take this one step at a time." :
+        style === "calm" ? "Settle in and move with control." :
+        "Let's get after it.";
+      line = `Alright${name ? ` ${name}` : ""}. This is ${voiceName}. ${lead} Three, two, one, go.`;
       source = "preview";
     }
 
@@ -214,7 +300,7 @@ Deno.serve(async (req: Request) => {
       const speech = await fetch("https://api.openai.com/v1/audio/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
-        body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style), response_format: "mp3", speed: 1.03 }),
+        body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style, talkSpeed), response_format: "mp3", speed: speechSpeed }),
       });
       if (speech.ok) {
         const bytes = new Uint8Array(await speech.arrayBuffer());
