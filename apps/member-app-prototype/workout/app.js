@@ -1170,7 +1170,7 @@ function speakCueSettingsPreview(text,settings=cueSettingsCurrent()){
   try{
     window.speechSynthesis.cancel?.();
     const utterance=new window.SpeechSynthesisUtterance(String(text));
-    utterance.rate=settings.talkSpeed==='fast'?1.32:settings.talkSpeed==='slow'?.92:1.12;
+    utterance.rate=settings.talkSpeed==='fast'?1.32:settings.talkSpeed==='slow'?0.92:1.12;
     utterance.pitch=1.02;
     utterance.volume=1;
     window.speechSynthesis.speak(utterance);
@@ -6537,66 +6537,111 @@ function renderAccountSheet(){
   '</section></div>';
 }
 function renderCueSettingsSheet(){
-  const settings=workoutCueSettings();
+  const settings=cueSettingsCurrent();
   const label=(key)=>COACH_SETTING_LABELS[key]?.[settings[key]]||String(settings[key]||'');
-  const presetNames={guide:'Guide',hype:'Hype',coach:'Coach',quiet:'Quiet',recovery:'Recovery'};
-  const presetChips=Object.entries(COACH_PRESETS).map(([id,preset])=>
-    '<button type="button" class="coach-mode-chip '+(settings.coachPreset===id?'selected':'')+'" data-action="apply-coach-preset" data-coach-preset="'+esc(id)+'" aria-pressed="'+(settings.coachPreset===id?'true':'false')+'">'+esc(presetNames[id]||preset.label)+'</button>'
+  const summary=cueCoachBehaviorSummary(settings);
+  const dirty=cueSettingsAreDirty();
+  const demoImage=cueSettingsDemoImage();
+  const frequencyIndex={minimal:0,normal:1,high:2}[settings.coachFrequency]??1;
+  const helpLevel=settings.exerciseInstruction==='off'||settings.formCues==='off'?'off':(settings.exerciseInstruction==='detailed'||settings.formCues==='detailed'?'detailed':'quick');
+  const previewMode=settings.nextSetPreview==='off'?'off':settings.nextSetPreview==='exercise'?'exercise':'target';
+  const presetMeta={
+    guide:{icon:'◒',title:'Guide',copy:'Balanced',detail:'Short, useful cues'},
+    hype:{icon:'⚡',title:'Hype',copy:'High energy',detail:'More encouragement'},
+    coach:{icon:'▰',title:'Coach',copy:'Technical',detail:'More form detail'},
+    quiet:{icon:'◌',title:'Quiet',copy:'Minimal',detail:'Only important cues'},
+    recovery:{icon:'✦',title:'Recovery',copy:'Calm',detail:'Slower, lighter coaching'}
+  };
+  const presetCards=Object.entries(presetMeta).map(([id,meta])=>
+    '<button type="button" class="coach-mode-card '+(settings.coachPreset===id?'selected':'')+'" data-action="cue-draft-preset" data-coach-preset="'+id+'" aria-pressed="'+(settings.coachPreset===id?'true':'false')+'">'+
+      '<span class="coach-mode-icon">'+meta.icon+'</span><strong>'+meta.title+'</strong><span>'+meta.copy+'</span><small>'+meta.detail+'</small>'+
+      (settings.coachPreset===id?'<em>✓</em>':'')+
+    '</button>'
   ).join('');
-  const voiceCards=COACH_VOICES.map(voice=>{
-    const selected=settings.coachVoice===voice.id;
-    return '<div class="coach-voice-card compact '+(selected?'selected':'')+'">'+
-      '<button type="button" class="coach-voice-select" data-action="select-coach-voice" data-coach-voice="'+esc(voice.id)+'" aria-pressed="'+(selected?'true':'false')+'">'+
-        '<span><strong>'+esc(voice.label)+'</strong><small>'+(voice.recommended?'Recommended':'AI voice')+'</small></span>'+
-        '<em>'+(selected?'CURRENT':'CHOOSE')+'</em>'+
-      '</button>'+
-      '<button type="button" class="coach-voice-preview" data-action="preview-coach-voice" data-coach-voice="'+esc(voice.id)+'" aria-label="Preview '+esc(voice.label)+' voice">▶</button>'+
+  const stageMeta=[
+    ['warmup','♨','Warm-up'],
+    ['exercise','▰','Exercise'],
+    ['rest','⌛','Rest'],
+    ['next','↻','Next set'],
+    ['cooldown','⚑','Cooldown']
+  ];
+  const stages=stageMeta.map(([id,icon,title])=>
+    '<button type="button" class="coach-stage-tab '+(cueSettingsPreviewStage===id?'selected':'')+'" data-action="cue-preview-stage" data-stage="'+id+'"><span>'+icon+'</span><small>'+title+'</small></button>'
+  ).join('');
+  const advancedOptions={
+    coachVibe:COACH_SETTING_VALUES.coachVibe,
+    talkSpeed:COACH_SETTING_VALUES.talkSpeed,
+    nameUsage:COACH_SETTING_VALUES.nameUsage,
+    performanceFeedback:COACH_SETTING_VALUES.performanceFeedback,
+    motivation:COACH_SETTING_VALUES.motivation,
+    coachDetail:COACH_SETTING_VALUES.coachDetail,
+    nextSetPreview:COACH_SETTING_VALUES.nextSetPreview,
+    formCues:COACH_SETTING_VALUES.formCues
+  };
+  const advancedRows=[
+    ['coachVibe','◉','Voice vibe','Overall tone and conversational feel.'],
+    ['talkSpeed','◴','Talk speed','Slower or faster speech.'],
+    ['nameUsage','♙','Name usage','How often your coach says your name.'],
+    ['performanceFeedback','▥','Performance feedback','How much workout data gets referenced.'],
+    ['motivation','☆','Motivation','Amount of encouragement.'],
+    ['coachDetail','☰','Coach detail','How much the coach says at once.'],
+    ['nextSetPreview','↻','Full next-set preview','Extra detail before the next set.'],
+    ['formCues','◎','Form cue detail','Technique reminders during training.']
+  ].map(([key,icon,title,copy])=>{
+    const open=cueSettingsAdvancedKey===key;
+    const choices=(advancedOptions[key]||[]).map(value=>
+      '<button type="button" class="'+(settings[key]===value?'selected':'')+'" data-action="cue-draft-set" data-setting-key="'+key+'" data-setting-value="'+esc(value)+'">'+esc(COACH_SETTING_LABELS[key]?.[value]||value)+'</button>'
+    ).join('');
+    return '<div class="coach-advanced-row '+(open?'open':'')+'"><button type="button" data-action="cue-advanced-row" data-setting-key="'+key+'"><span class="coach-advanced-icon">'+icon+'</span><div><strong>'+title+'</strong><small>'+copy+'</small></div><b>'+esc(label(key))+'</b><em>›</em></button>'+
+      (open?'<div class="coach-inline-options">'+choices+'</div>':'')+
     '</div>';
   }).join('');
-  const row=(action,title,value)=>'<button type="button" data-action="'+action+'" class="coach-setting-row"><strong>'+title+'</strong><span>'+esc(value)+'</span><em>›</em></button>';
-  const toggle=(action,title,on)=>'<button type="button" data-action="'+action+'" class="coach-setting-row toggle-row"><strong>'+title+'</strong><span class="compact-toggle '+(on?'on':'')+'" aria-hidden="true"><i></i></span><em class="sr-only">'+(on?'On':'Off')+'</em></button>';
-  const advancedRows=[
-    row('cycle-coach-vibe','Voice vibe',label('coachVibe')),
-    row('cycle-coach-detail','Coach detail',label('coachDetail')),
-    row('cycle-talk-speed','Talk speed',label('talkSpeed')),
-    row('cycle-name-usage','Use my name',label('nameUsage')),
-    row('cycle-performance-feedback','Performance feedback',label('performanceFeedback')),
-    row('cycle-motivation','Motivation',label('motivation')),
-    row('cycle-exercise-instruction','Exercise instruction',label('exerciseInstruction')),
-    toggle('toggle-adaptive-coach','Adaptive coach',settings.adaptiveCoach)
-  ].join('');
-  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet coach-settings-sheet coach-settings-clean" data-cue-settings-panel>'+
-    '<div class="sheet-handle"></div><div class="sheet-head compact-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Voice coach & cues</h2><p>Choose how much help you want during a workout.</p></div><button class="modal-close" data-action="close-cue-settings">×</button></div>'+
-    '<section class="coach-clean-section coach-mode-section"><div class="coach-clean-head"><strong>COACH MODE</strong><span>'+(settings.coachPreset==='custom'?'Custom':esc(COACH_PRESETS[settings.coachPreset]?.label||'Custom'))+'</span></div><div class="coach-mode-scroll">'+presetChips+'</div></section>'+
-    '<section class="coach-clean-section"><div class="coach-clean-head"><strong>YOUR COACH</strong></div>'+
-      '<div class="coach-selected-voice"><div><span>AI VOICE</span><strong>'+esc(coachVoiceLabel(settings.coachVoice))+'</strong></div><button type="button" data-action="preview-coach-voice" data-coach-voice="'+esc(settings.coachVoice)+'">▶ PREVIEW</button></div>'+
-      '<details class="coach-disclosure voice-disclosure"><summary><span>Change voice</span><em>›</em></summary><div class="coach-voice-grid compact-grid">'+voiceCards+'</div></details>'+
-      '<div class="coach-row-group">'+toggle('toggle-voice','Voice cues',settings.voice)+toggle('toggle-ai-coach','AI Coach',settings.aiCoach)+'</div>'+
-    '</section>'+
-    '<section class="coach-clean-section"><div class="coach-clean-head"><strong>COACHING</strong></div><div class="coach-row-group">'+
-      row('cycle-coach-style','Coach personality',label('coachStyle'))+
-      row('cycle-coach-frequency','How often they talk',label('coachFrequency'))+
-      row('cycle-form-cues','Exercise guidance',label('formCues'))+
-      row('cycle-next-set-preview','Next exercise preview',label('nextSetPreview'))+
-    '</div></section>'+
-    '<section class="coach-clean-section"><div class="coach-clean-head"><strong>WORKOUT FLOW</strong></div><div class="coach-row-group">'+
-      row('cycle-countdown-mode','Countdown',label('countdownMode'))+
-      row('cycle-warmup-guidance','Warm-up guidance',label('warmupGuidance'))+
-      row('cycle-cooldown-guidance','Cooldown guidance',label('cooldownGuidance'))+
-      '<details class="coach-disclosure nested"><summary><span>Automatic starts</span><strong>'+((settings.autoStartWarmup||settings.autoStartCooldown||settings.autoStartTimedExercise)?'On':'Off')+'</strong><em>›</em></summary><div class="coach-row-group inset">'+
-        toggle('toggle-auto-start-warmup','Warm-up movements',settings.autoStartWarmup)+
-        toggle('toggle-auto-start-cooldown','Cooldown movements',settings.autoStartCooldown)+
-        toggle('toggle-auto-start-timed','Timed exercises',settings.autoStartTimedExercise)+
-      '</div></details>'+
-    '</div></section>'+
-    '<section class="coach-clean-section"><details class="coach-disclosure advanced"><summary><span>Advanced coach settings</span><em>›</em></summary><div class="coach-row-group inset">'+advancedRows+'</div></details></section>'+
-    '<section class="coach-clean-section"><div class="coach-clean-head"><strong>DEVICE CUES</strong></div><div class="coach-row-group">'+
-      toggle('toggle-sound','Sound',settings.sound)+
-      toggle('toggle-haptics','Haptics',settings.haptics)+
-      toggle('toggle-flash','Flash',settings.flash)+
-    '</div></section>'+
-    '<button class="button secondary coach-test-button" data-action="test-cues">TEST COACH</button>'+
-  '</section></div>';
+  const voiceCards=COACH_VOICES.map(voice=>{
+    const selected=settings.coachVoice===voice.id;
+    return '<div class="coach-voice-choice '+(selected?'selected':'')+'"><button type="button" data-action="cue-draft-voice" data-coach-voice="'+esc(voice.id)+'"><div><strong>'+esc(voice.label)+'</strong><small>'+(voice.recommended?'Recommended':'AI voice')+'</small></div><em>'+(selected?'✓ Selected':'Choose')+'</em></button><button type="button" class="voice-play" data-action="cue-preview-voice" data-coach-voice="'+esc(voice.id)+'">▶</button></div>';
+  }).join('');
+  const autoSummary=cueAutoStartSummary(settings);
+  const flowCard=(type,title,imageCopy,auto,guidanceKey)=>'<div class="coach-flow-row"><div class="coach-flow-title"><div class="flow-thumb">'+(demoImage?'<img src="'+esc(demoImage)+'" alt="">':'<span>◌</span>')+'</div><div><strong>'+title+'</strong><button type="button" class="coach-info-button" data-action="cue-flow-detail" data-flow-detail="'+guidanceKey+'" aria-label="Explain '+title+'">ⓘ</button></div></div>'+
+    '<div class="coach-segment two"><button type="button" class="'+(!auto?'selected':'')+'" data-action="cue-draft-bool" data-setting-key="'+type+'" data-setting-value="false">Manual</button><button type="button" class="'+(auto?'selected':'')+'" data-action="cue-draft-bool" data-setting-key="'+type+'" data-setting-value="true">Auto</button></div>'+
+    '<small>'+(auto?'The coach gives the instruction, counts down, and starts this automatically.':'This waits for you to tap Start before the timer begins.')+'</small>'+
+    (cueSettingsFlowDetail===guidanceKey?'<div class="coach-guidance-detail"><span>GUIDANCE DETAIL</span><div class="coach-inline-options">'+COACH_SETTING_VALUES[guidanceKey].map(value=>'<button type="button" class="'+(settings[guidanceKey]===value?'selected':'')+'" data-action="cue-draft-set" data-setting-key="'+guidanceKey+'" data-setting-value="'+value+'">'+esc(COACH_SETTING_LABELS[guidanceKey][value])+'</button>').join('')+'</div></div>':'')+
+  '</div>';
+  return '<div class="coach-settings-fullscreen" id="coach-settings-view" data-cue-settings-panel>'+
+    '<header class="coach-settings-topbar"><button type="button" class="coach-settings-back" data-action="close-cue-settings">‹</button><div><strong>Workout Coach Settings</strong><small>'+(dirty?'Unsaved changes':'Your coach is up to date')+'</small></div><button type="button" class="coach-settings-top-save '+(dirty?'active':'')+'" data-action="cue-save-settings" '+(!dirty||cueSettingsSaving?'disabled':'')+'>'+(cueSettingsSaving?'Saving…':cueSettingsSavedPulse?'Saved ✓':'Save')+'</button></header>'+
+    '<main class="coach-settings-scroll" id="coach-settings-scroll">'+
+      '<section class="coach-settings-intro"><h1>Build your coach.</h1><p>See and hear what each choice changes before you save it.</p></section>'+
+      '<section class="coach-hero-v2">'+
+        (demoImage?'<img class="coach-hero-photo" src="'+esc(demoImage)+'" alt="">':'')+
+        '<div class="coach-hero-shade"></div><div class="coach-hero-copy"><span>YOUR COACH</span><h2>🎙 '+esc(coachVoiceLabel(settings.coachVoice))+'</h2><p id="coach-hero-behavior">'+esc(summary.style+' · '+summary.talk+' · '+summary.instruction)+'</p><button type="button" data-action="cue-preview-coach">▶ Hear my coach</button></div>'+
+      '</section>'+
+      '<div class="coach-status-strip"><div><span>🔊</span><small>VOICE</small><strong>'+ (settings.voice?'ON':'OFF') +'</strong></div><div><span>✦</span><small>AI COACH</small><strong>'+(settings.aiCoach?'ON':'OFF')+'</strong></div><div><span>▶</span><small>AUTO START</small><strong>'+autoSummary+'</strong></div></div>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Coach Mode</h2><p>Pick a starting personality. You can tune it below.</p></div>'+(settings.coachPreset==='custom'?'<span>CUSTOM</span>':'')+'</div><div class="coach-mode-grid">'+presetCards+'</div></section>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>How your coach behaves</h2><p>Control how much guidance reaches you during a workout.</p></div><button type="button" data-action="cue-reset-behavior">Reset</button></div>'+
+        '<article class="coach-cream-card"><div class="coach-card-heading"><strong>How much should your coach talk?</strong><span id="coach-frequency-value">'+esc(label('coachFrequency'))+'</span></div><input id="coach-frequency-range" class="coach-frequency-range" type="range" min="0" max="2" step="1" value="'+frequencyIndex+'" style="--coach-range:'+(frequencyIndex*50)+'%"><div class="coach-range-labels"><span>Minimal</span><span>Frequent</span></div><div class="coach-setting-explainer"><span>💬</span><div><strong id="coach-frequency-value-copy">'+esc(label('coachFrequency'))+'</strong><p id="coach-frequency-copy">'+esc(cueFrequencyCopy(settings.coachFrequency))+'</p></div></div></article>'+
+        '<article class="coach-cream-card"><div class="coach-card-heading"><strong>Exercise help</strong></div><div class="coach-segment three"><button type="button" class="'+(helpLevel==='off'?'selected':'')+'" data-action="cue-exercise-help" data-help="off">Off</button><button type="button" class="'+(helpLevel==='quick'?'selected':'')+'" data-action="cue-exercise-help" data-help="quick">Quick</button><button type="button" class="'+(helpLevel==='detailed'?'selected':'')+'" data-action="cue-exercise-help" data-help="detailed">Detailed</button></div><div class="coach-example-row">'+(demoImage?'<img src="'+esc(demoImage)+'" alt="">':'<span class="coach-example-placeholder">▰</span>')+'<p>“'+esc(cueExerciseHelpCopy(settings))+'”</p></div></article>'+
+      '</section>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Next exercise preview</h2><p>Choose what you hear before the next movement.</p></div></div><article class="coach-dark-card"><div class="coach-segment three dark"><button type="button" class="'+(previewMode==='off'?'selected':'')+'" data-action="cue-next-preview" data-preview="off">None</button><button type="button" class="'+(previewMode==='exercise'?'selected':'')+'" data-action="cue-next-preview" data-preview="exercise">Exercise only</button><button type="button" class="'+(previewMode==='target'?'selected':'')+'" data-action="cue-next-preview" data-preview="target">Exercise + target</button></div><div class="coach-speech-example"><div class="coach-mini-avatar">'+renderAvatarFigure(trainingAvatarId(),'settings-coach-avatar')+'</div><p>'+esc(cueNextPreviewCopy(settings))+'</p></div></article></section>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>See it in action</h2><p>Preview how your current settings behave through a workout.</p></div></div><article class="coach-action-preview" id="coach-screen-preview"><div class="coach-stage-tabs">'+stages+'</div><div class="coach-action-media">'+(demoImage?'<img src="'+esc(demoImage)+'" alt="">':'')+'<span>'+esc(cueSettingsPreviewStage.toUpperCase())+'</span><div class="coach-action-bubble"><div>'+renderAvatarFigure(trainingAvatarId(),'settings-coach-avatar')+'</div><p>'+esc(cueStagePreviewCopy(cueSettingsPreviewStage,settings))+'</p></div></div><div class="coach-action-controls"><div><span>COUNTDOWN</span><strong>'+esc(settings.countdownMode==='off'?'Off':'3 · 2 · 1 · Go')+'</strong></div><button type="button" data-action="cue-preview-stage-audio">▶</button></div></article></section>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Workout flow</h2><p>Choose when your workout waits for you and when it moves automatically.</p></div></div><article class="coach-cream-card coach-flow-card">'+
+        flowCard('autoStartWarmup','Warm-up guidance','Warm-up',settings.autoStartWarmup,'warmupGuidance')+
+        flowCard('autoStartCooldown','Cooldown guidance','Cooldown',settings.autoStartCooldown,'cooldownGuidance')+
+        flowCard('autoStartTimedExercise','Timed exercises','Timed',settings.autoStartTimedExercise,'cooldownGuidance').replace('data-flow-detail="cooldownGuidance"','data-flow-detail=""').replace(/<div class="coach-guidance-detail">[\s\S]*?<\/div><\/div>$/,'</div>')+
+      '</article></section>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Device cues</h2><p>Choose what your phone does during key moments.</p></div></div><article class="coach-device-card">'+
+        '<div class="coach-device-row"><span>🔊</span><div><strong>Sound</strong><small>Play cue tones and sound effects.</small></div><button type="button" class="coach-switch '+(settings.sound?'on':'')+'" data-action="cue-draft-toggle" data-setting-key="sound"><i></i></button><button type="button" data-action="cue-test-device" data-device="sound">Test</button></div>'+
+        '<div class="coach-device-row"><span>▣</span><div><strong>Haptics</strong><small>Vibrate for countdowns and transitions.</small></div><button type="button" class="coach-switch '+(settings.haptics?'on':'')+'" data-action="cue-draft-toggle" data-setting-key="haptics"><i></i></button><button type="button" data-action="cue-test-device" data-device="haptics">Test</button></div>'+
+        '<div class="coach-device-row"><span>☀</span><div><strong>Screen cue</strong><small>Show visual cues for important moments.</small></div><button type="button" class="coach-switch '+(settings.flash?'on':'')+'" data-action="cue-draft-toggle" data-setting-key="flash"><i></i></button><button type="button" data-action="cue-test-device" data-device="screen">Test</button></div>'+
+      '</article></section>'+
+      '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Coach preview</h2><p>Hear the whole setup together in a short sample.</p></div></div><article class="coach-quick-preview">'+
+        (demoImage?'<img src="'+esc(demoImage)+'" alt="">':'')+'<div class="coach-quick-shade"></div><div class="coach-quick-copy"><div>'+renderAvatarFigure(trainingAvatarId(),'settings-coach-avatar')+'</div><p id="coach-preview-live">“Let’s do this. 3, 2, 1... Go!”</p><button type="button" data-action="cue-preview-quick">▶ Run a quick preview</button></div></article></section>'+
+      '<section class="coach-v2-section"><button type="button" class="coach-advanced-summary '+(cueSettingsAdvancedOpen?'open':'')+'" data-action="cue-toggle-advanced"><div><strong>Advanced coach settings</strong><small>Fine tune voice, feedback, motivation, and detail.</small></div><em>›</em></button>'+(cueSettingsAdvancedOpen?'<article class="coach-advanced-panel">'+advancedRows+'<div class="coach-advanced-row"><button type="button" data-action="cue-draft-toggle" data-setting-key="adaptiveCoach"><span class="coach-advanced-icon">◉</span><div><strong>Adaptive coaching</strong><small>Adjust delivery to workout phase and readiness.</small></div><b>'+(settings.adaptiveCoach?'On':'Off')+'</b><em>›</em></button></div></article>':'')+'</section>'+
+      '<section class="coach-v2-section coach-voice-toggle-section"><div class="coach-v2-head"><div><h2>Core coach controls</h2><p>Turn spoken guidance or AI-generated dialogue on and off.</p></div></div><article class="coach-device-card compact"><div class="coach-device-row"><span>🎙</span><div><strong>Voice cues</strong><small>Spoken workout guidance.</small></div><button type="button" class="coach-switch '+(settings.voice?'on':'')+'" data-action="cue-draft-toggle" data-setting-key="voice"><i></i></button></div><div class="coach-device-row"><span>✦</span><div><strong>AI Coach</strong><small>Natural, context-aware dialogue.</small></div><button type="button" class="coach-switch '+(settings.aiCoach?'on':'')+'" data-action="cue-draft-toggle" data-setting-key="aiCoach"><i></i></button></div><button type="button" class="coach-change-voice" data-action="cue-open-voice-picker">Change voice <strong>'+esc(coachVoiceLabel(settings.coachVoice))+'</strong><em>›</em></button></article></section>'+
+      '<div class="coach-save-zone"><button id="coach-save-settings" type="button" class="coach-save-button '+(dirty?'active':'')+'" data-action="cue-save-settings" '+(!dirty||cueSettingsSaving?'disabled':'')+'>'+(cueSettingsSaving?'SAVING…':cueSettingsSavedPulse?'SAVED ✓':'SAVE SETTINGS')+'</button><small>'+(dirty?'Your workout will keep its current coach settings until you save.':'All coach settings are saved.')+'</small></div>'+
+    '</main>'+
+    '<div class="coach-settings-toast '+(cueSettingsNotice?'show':'')+'" id="coach-settings-toast">'+esc(cueSettingsNotice)+'</div>'+
+    (cueSettingsVoicePickerOpen?'<div class="coach-picker-backdrop"><section class="coach-voice-picker"><header><div><span>AI VOICE</span><h2>Choose your coach voice</h2></div><button type="button" data-action="cue-close-voice-picker">×</button></header><div class="coach-voice-choice-list">'+voiceCards+'</div></section></div>':'')+
+    (cueSettingsClosePrompt?'<div class="coach-picker-backdrop"><section class="coach-unsaved-prompt"><span>UNSAVED CHANGES</span><h2>Save your coach changes?</h2><p>Your current workout settings stay unchanged until you save.</p><button type="button" class="primary" data-action="cue-save-close">Save</button><button type="button" data-action="cue-keep-editing">Keep editing</button><button type="button" class="danger" data-action="cue-discard-close">Discard changes</button></section></div>':'')+
+  '</div>';
 }
 function renderExerciseActionsSheet(){
   const w=store.activeWorkout,index=exerciseActionsIndex,ex=w?.exercises?.[index];if(!ex)return '';
