@@ -6530,3 +6530,338 @@ button.runner-phase-row{cursor:pointer}
   .runner-target-ring{width:188px}
   .runner-target-ring strong{font-size:50px}
 }
+
+
+/* Runner refinement: targets, timers, media loading, detail */
+.runner-v2-header small{
+  display:block;
+  margin-top:3px;
+  color:rgba(229,238,231,.68);
+  font-size:7px;
+  font-weight:700;
+}
+.runner-v2-header small b{
+  color:#f3d47d;
+  font:inherit;
+  font-variant-numeric:tabular-nums;
+}
+.runner-recommended-line{
+  display:grid;
+  gap:3px;
+  padding:10px 12px;
+  border-top:1px solid #ddd5c5;
+  border-bottom:1px solid #ddd5c5;
+  text-align:center;
+}
+.runner-recommended-line span{
+  color:#7c857e;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.runner-recommended-line strong{
+  color:#18231c;
+  font-size:11px;
+}
+.runner-recommended-line small{
+  color:#6d766f;
+  font-size:8px;
+}
+.runner-target-steppers{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.runner-target-steppers.single{grid-template-columns:1fr}
+.runner-target-steppers.compact{margin-top:-2px}
+.runner-target-stepper{
+  display:grid;
+  gap:6px;
+  padding:10px;
+  border:1px solid #ddd5c5;
+  border-radius:12px;
+  background:#fbf8f0;
+}
+.runner-target-stepper>span{
+  color:#707970;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.runner-target-stepper>div{
+  display:grid;
+  grid-template-columns:38px 1fr 38px;
+  align-items:center;
+  gap:6px;
+}
+.runner-target-stepper button{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border:1px solid #d6cebd;
+  border-radius:10px;
+  background:#f1eadc;
+  color:#173b27;
+  font-size:21px;
+  font-weight:800;
+}
+.runner-target-stepper strong{
+  min-width:0;
+  color:#111712;
+  font-size:15px;
+  text-align:center;
+  white-space:nowrap;
+}
+.runner-set-timer strong{
+  font-variant-numeric:tabular-nums;
+}
+.runner-live-plan{
+  display:grid;
+  gap:3px;
+  text-align:center;
+}
+.runner-live-plan span{
+  color:#788078;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.runner-live-plan strong{
+  color:#17231b;
+  font-size:12px;
+}
+.runner-rest-actions-clean.three{
+  grid-template-columns:repeat(3,1fr);
+}
+.runner-rest-actions-clean.three button{
+  padding:0 6px;
+}
+.runner-rep-stepper{
+  justify-self:center;
+  display:grid;
+  grid-template-columns:56px minmax(120px,1fr) 56px;
+  gap:10px;
+  align-items:center;
+}
+.runner-rep-stepper button{
+  width:52px;
+  height:52px;
+  border:1px solid #d7cfbe;
+  border-radius:50%;
+  background:#f2eadc;
+  color:#163d28;
+  font-size:27px;
+  font-weight:800;
+}
+.runner-rep-stepper button:disabled{opacity:.35}
+.runner-rep-stepper>div{
+  display:grid;
+  gap:2px;
+}
+.runner-rep-stepper strong{
+  color:#111712;
+  font-size:38px;
+  line-height:1;
+  letter-spacing:-.04em;
+}
+.runner-rep-stepper span{
+  color:#616d65;
+  font-size:9px;
+  font-weight:800;
+}
+.compact-transition{
+  display:grid;
+  gap:13px;
+}
+.runner-transition-target{
+  display:grid;
+  gap:3px;
+  padding:10px 12px;
+  border:1px solid #ded7c8;
+  border-radius:11px;
+  background:#fbf8f0;
+}
+.runner-transition-target span{
+  color:#707a72;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.runner-transition-target strong{
+  color:#111712;
+  font-size:12px;
+}
+
+/* Media uses a neutral loading surface instead of an empty black block. */
+.runner-set-ready-media,
+.runner-transition-media,
+.runner-first-strength,
+.runner-rest-next .exercise-media,
+.runner-stage-media{
+  background-color:#ece4d5;
+  background-image:linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.5),rgba(255,255,255,.08));
+  background-size:220% 100%;
+  animation:runner-media-load 1.35s ease-in-out infinite;
+}
+.runner-set-ready-media:has(img),
+.runner-transition-media:has(img),
+.runner-first-strength:has(img),
+.runner-rest-next .exercise-media:has(img),
+.runner-stage-media:has(img){
+  animation:none;
+  background-image:none;
+}
+@keyframes runner-media-load{
+  0%{background-position:100% 0}
+  100%{background-position:-100% 0}
+}
+
+/* Exercise detail now matches the cream guided runner. */
+.runner-exercise-detail{
+  width:min(620px,96vw);
+  max-height:min(90dvh,860px);
+  overflow:auto;
+  padding:0;
+  border:1px solid #d9d1c0;
+  background:#f5f0e4;
+  color:#111712;
+}
+.runner-exercise-detail .modal-close{
+  z-index:3;
+  color:#173b27;
+  background:rgba(245,240,228,.9);
+}
+.runner-detail-head{
+  display:grid;
+  gap:3px;
+  padding:22px 18px 12px;
+}
+.runner-detail-head .eyebrow{color:#8a6920}
+.runner-detail-head h2{
+  margin:0;
+  color:#111712;
+  font-size:27px;
+  letter-spacing:-.04em;
+}
+.runner-detail-head>p:last-child{
+  margin:0;
+  color:#647067;
+  font-size:9px;
+}
+.runner-detail-media{
+  padding:0 14px;
+  background:transparent;
+}
+.runner-detail-positions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+}
+.runner-detail-positions figure{
+  min-height:190px;
+  margin:0;
+  overflow:hidden;
+  border-radius:13px;
+  background:#e9e1d2;
+}
+.runner-detail-positions img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+}
+.runner-detail-body{
+  display:grid;
+  gap:9px;
+  padding:14px 18px 22px;
+}
+.runner-detail-cue,
+.runner-detail-body>section{
+  display:grid;
+  gap:5px;
+  padding:11px 12px;
+  border:1px solid #ded6c6;
+  border-radius:11px;
+  background:#fbf8f0;
+}
+.runner-detail-cue span,
+.runner-detail-body>section>span{
+  color:#7c6a3c;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.runner-detail-cue strong{
+  color:#153d28;
+  font-size:12px;
+}
+.runner-detail-body p,
+.runner-detail-body li{
+  color:#4f5c54;
+  font-size:9px;
+  line-height:1.5;
+}
+.runner-detail-body ol{
+  margin:0;
+  padding-left:18px;
+}
+.runner-detail-body .watch{
+  background:#f5e9e2;
+}
+.runner-exercise-detail .exercise-history-panel,
+.runner-exercise-detail .exercise-history-list,
+.runner-exercise-detail .clean-panel{
+  border-color:#ded6c6;
+  background:#fbf8f0;
+  color:#111712;
+}
+
+/* Slightly roomier map rows. */
+.runner-map-modal .workout-map-row{
+  min-height:62px;
+}
+.runner-map-modal .map-open{
+  padding:10px 8px;
+}
+.runner-map-modal .map-copy strong{
+  font-size:10px;
+}
+.runner-map-modal .map-copy span{
+  margin-top:3px;
+  font-size:8px;
+  line-height:1.35;
+}
+
+@media(max-width:560px){
+  .runner-target-steppers{grid-template-columns:1fr}
+  .runner-target-stepper>div{grid-template-columns:42px 1fr 42px}
+  .runner-rest-actions-clean.three{gap:5px}
+  .runner-rest-actions-clean.three button{font-size:8px}
+  .runner-detail-positions{grid-template-columns:1fr 1fr}
+  .runner-detail-positions figure{min-height:145px}
+}
+
+
+.runner-rest-plan{
+  display:grid;
+  gap:2px;
+  margin-top:-5px;
+}
+.runner-rest-plan span{
+  color:#7b847c;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.runner-rest-plan strong{
+  color:#425048;
+  font-size:9px;
+}
+.runner-exercise-detail .last-set-strip span em{
+  display:block;
+  margin-top:2px;
+  color:#758078;
+  font-size:7px;
+  font-style:normal;
+  font-weight:700;
+}
