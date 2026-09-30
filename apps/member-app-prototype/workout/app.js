@@ -4787,7 +4787,10 @@ function renderPreSet(pos){
   const bounds=repBounds(ex.reps);
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
   const repLabel=ex.loadMode==='timed'?'sec':'reps';
-  const recommendedReps=bounds.low&&bounds.high&&bounds.low!==bounds.high?(bounds.low+'–'+bounds.high+' reps'):(recommendedRepTarget(ex)+' '+repLabel);
+  const targetReps=recommendedRepTarget(ex);
+  const recommendedReps=bounds.low&&bounds.high&&bounds.low!==bounds.high
+    ?(targetReps>bounds.high?(targetReps+' reps · base '+bounds.low+'–'+bounds.high):(bounds.low+'–'+bounds.high+' reps'))
+    :(targetReps+' '+repLabel);
   const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):(recommendedWeightTarget(ex)+' lb');
   return '<div class="runner-set-ready">'+
     '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
@@ -4848,7 +4851,7 @@ function exerciseSessionHistory(exerciseId,limit=4){
       date:workout.completedAt,
       scheduledDate:workout.scheduledDate||'',
       routineName:workout.routineName,
-      sets:sets.map(set=>({weight:num(set.weight),reps:num(set.reps)})),
+      sets:sets.map(set=>({weight:num(set.weight),reps:num(set.reps),durationSeconds:num(set.durationSeconds),plannedWeight:num(set.plannedWeight),plannedReps:num(set.plannedReps)})),
       best,
       feedback:ex.feedback||'',
       volume:sets.reduce((sum,set)=>sum+num(set.weight)*num(set.reps),0)
@@ -4882,7 +4885,7 @@ function renderExerciseHistoryPanel(ex){
   if(!latest)return '<div class="exercise-history-card first-session"><div><span>PROGRESSION</span><strong>'+esc(trend.label)+'</strong><p>'+esc(trend.detail)+'</p></div><em>Baseline today</em></div>';
   return '<div class="exercise-history-card">'+
     '<div class="exercise-history-head"><div><span>LAST TIME · '+esc(formatDate(latest.date))+'</span><strong>'+esc(trend.label)+'</strong></div><em>'+esc(trend.detail)+'</em></div>'+
-    '<div class="last-set-strip">'+latest.sets.map((set,index)=>'<span><small>S'+(index+1)+'</small><strong>'+esc(setPerformanceLabel(ex,set))+'</strong></span>').join('')+'</div>'+
+    '<div class="last-set-strip">'+latest.sets.map((set,index)=>'<span><small>S'+(index+1)+'</small><strong>'+esc(setPerformanceLabel(ex,set))+'</strong>'+(set.durationSeconds?'<em>'+formatClock(set.durationSeconds)+'</em>':'')+'</span>').join('')+'</div>'+
     '<div class="exercise-history-foot"><div><span>ALL-TIME BEST</span><strong>'+esc(bestLabel(ex.id))+'</strong></div><div><span>NEXT TARGET</span><strong>'+esc(target?.label||currentPrescriptionLabel(ex))+'</strong></div></div>'+
   '</div>';
 }
@@ -5080,7 +5083,12 @@ function renderRest(pos){
   const completed=last&&last.exerciseId===pos.exercise.id
     ?((last.weight?last.weight+' lb × ':'')+last.reps+' reps'+(last.durationSeconds?' · '+formatClock(last.durationSeconds):''))
     :'Set logged';
+  const planned=last&&last.exerciseId===pos.exercise.id
+    ?((last.plannedWeight?last.plannedWeight+' lb × ':'')+last.plannedReps+' reps')
+    :'';
+  const changed=Boolean(planned&&completed&&!completed.startsWith(planned));
   return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>Great set.</h2><p>'+esc(completed)+'</p>'+
+    (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
     '<div class="timer-wrap runner-rest-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
     '<div class="runner-rest-next">'+(nextEx?exerciseImageButton(nextEx,'rest-next-exercise-media'):'')+'<div><span>Up next</span><strong>'+esc(nextName)+'</strong><small>'+(nextSet?'Set '+nextSet+' of '+(nextEx?.sets?.length||pos.exercise.sets.length)+' · ':'')+esc(nextEx?currentPrescriptionLabel(nextEx):next?currentPrescriptionLabel(pos.exercise):'Guided cooldown')+'</small></div></div>'+
     '<div class="runner-rest-actions-clean three"><button data-action="skip-rest">SKIP REST</button><button data-action="pause-rest">'+(paused?'RESUME':'PAUSE')+'</button><button data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button></div></div>';
