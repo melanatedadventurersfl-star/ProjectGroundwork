@@ -5338,6 +5338,33 @@ function daysSince(iso,date=new Date()){
   const then=new Date(value);then.setHours(0,0,0,0);
   return Math.max(0,Math.floor((today-then)/86400000));
 }
+function completedWorkoutHeadline(history){
+  if(!history)return 'Your work is saved';
+  const prs=Array.isArray(history.newPRs)?history.newPRs:[];
+  const baselines=Array.isArray(history.baselines)?history.baselines:[];
+  const targets=(store.progressionLog||[]).filter(item=>item.workoutId===history.id);
+  if(prs.length===1){
+    const pr=prs[0];
+    return pr.name+' · new best '+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps');
+  }
+  if(prs.length>1)return prs.length+' personal records · tap to see each one';
+  if(baselines.length===1)return baselines[0].name+' · first strength baseline saved';
+  if(baselines.length>1)return baselines.length+' new strength baselines saved';
+  if(targets.length===1)return targets[0].name+' · next target updated';
+  if(targets.length>1)return targets.length+' next targets updated';
+  return 'Workout saved with your actual sets and feedback';
+}
+function renderWeeklyMeasurementPrompt(){
+  if(!weeklyMeasurementDue())return '';
+  const latest=latestBodyMeasurement();
+  return '<section class="home-checkin-card"><div><span>WEEKLY CHECK-IN</span><strong>Anything to update?</strong><p>'+(latest?'Last measurements: '+esc(formatDate(latest.recordedAt))+'. Change only what changed.':'Add your first body measurements so Progress has a starting point.')+'</p></div><div class="home-checkin-actions"><button class="button secondary" data-action="open-measurement-checkin">'+(latest?'UPDATE':'ADD BASELINE')+'</button>'+(latest?'<button class="text-button" data-action="measurement-no-changes">NO CHANGES</button>':'')+'<button class="text-button muted" data-action="skip-measurement-checkin">SKIP</button></div></section>';
+}
+function renderProgramReviewPrompt(){
+  if(!programReviewDue())return '';
+  const context=programContext();
+  return '<section class="home-program-review"><div><span>NEW BLOCK</span><strong>Review your setup for Block '+context.blockNumber+'</strong><p>'+esc(workoutStyleLabel(store.profile?.workoutStyle))+' · '+esc(pacingLabel(store.profile?.pacing))+' · '+esc(planGoalLabel(store.profile?.goal))+'</p></div><button class="button secondary" data-action="open-program-review">REVIEW PROGRAM</button></section>';
+}
+
 function getHomeExperience(date=new Date()){
   const schedule=currentWeekSchedule(date);
   const todayKey=dateKey(date);
@@ -5355,8 +5382,7 @@ function getHomeExperience(date=new Date()){
   }
   if(completedToday){
     const history=completedToday.history||last;
-    const improvements=(history?.newPRs?.length||0);
-    return {state:'completed',context,schedule,eyebrow:'YOU’RE DONE FOR TODAY',title:history?.routineName||completedToday.day?.name||'Workout complete',copy:(history?.durationMinutes?history.durationMinutes+' min · ':'')+(history?.completedSets||0)+' sets completed',meta:improvements?improvements+' improvement'+(improvements===1?'':'s')+' recorded':'Your work is saved',primaryLabel:'SEE YOUR WORKOUT',primaryAction:'history',entry:completedToday,last};
+    return {state:'completed',context,schedule,eyebrow:'YOU’RE DONE FOR TODAY',title:history?.routineName||completedToday.day?.name||'Workout complete',copy:(history?.durationMinutes?history.durationMinutes+' min · ':'')+(history?.completedSets||0)+' sets completed',meta:completedWorkoutHeadline(history),primaryLabel:'SEE YOUR WORKOUT',primaryAction:'history',entry:completedToday,last};
   }
   if(awayDays!==null&&awayDays>=7){
     const entry=today||missed||upcoming||null;
@@ -5409,6 +5435,8 @@ function renderHome(){
       (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
       (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
+    renderWeeklyMeasurementPrompt()+
+    renderProgramReviewPrompt()+
     '<section class="clean-section home-week-section"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+' of '+planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       renderHomeWeekPulse(schedule)+
       '<div class="home-week-progress" aria-label="'+completed+' of '+planned+' workouts complete"><span style="width:'+Math.round((completed/Math.max(1,planned))*100)+'%"></span></div>'+
