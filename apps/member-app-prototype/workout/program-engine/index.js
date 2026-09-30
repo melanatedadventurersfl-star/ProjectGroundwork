@@ -22,10 +22,17 @@ const EXERCISES=[
 {id:'reverse_lunge',name:'Reverse Lunge',pattern:'lunge',primary:['quads','glutes'],secondary:['hamstrings'],equipment:['bodyweight'],optionalEquipment:['dumbbell'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_load',group:'lunge'},
 {id:'leg_curl',name:'Leg Curl',pattern:'knee_flexion',primary:['hamstrings'],secondary:[],equipment:['machine'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'knee_flexion'},
 {id:'lateral_raise',name:'Dumbbell Lateral Raise',pattern:'shoulder_abduction',primary:['lateral_delts'],secondary:[],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'shoulder_isolation'},
+{id:'band_lateral_raise',name:'Band Lateral Raise',pattern:'shoulder_abduction',primary:['lateral_delts'],secondary:[],equipment:['band'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_resistance',group:'shoulder_isolation'},
 {id:'db_curl',name:'Dumbbell Curl',pattern:'elbow_flexion',primary:['biceps'],secondary:[],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'biceps'},
+{id:'cable_curl',name:'Cable Curl',pattern:'elbow_flexion',primary:['biceps'],secondary:[],equipment:['cable'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'biceps'},
 {id:'triceps_pressdown',name:'Triceps Pressdown',pattern:'elbow_extension',primary:['triceps'],secondary:[],equipment:['cable'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'triceps'},
+{id:'db_triceps_extension',name:'Overhead Dumbbell Triceps Extension',pattern:'elbow_extension',primary:['triceps'],secondary:[],equipment:['dumbbell'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'triceps'},
 {id:'calf_raise',name:'Standing Calf Raise',pattern:'calf',primary:['calves'],secondary:[],equipment:['bodyweight'],optionalEquipment:['dumbbell'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_load',group:'calf'},
+{id:'calf_extension_machine',name:'Calf Extension Machine',pattern:'calf',primary:['calves'],secondary:[],equipment:['machine'],difficulty:1,goals:['hypertrophy'],progression:'double_progression',group:'calf'},
+{id:'single_leg_calf_raise',name:'Single-Leg Dumbbell Calf Raise',pattern:'calf',primary:['calves'],secondary:[],equipment:['dumbbell'],difficulty:2,goals:['hypertrophy','general_fitness'],progression:'rep_load',group:'calf'},
 {id:'dead_bug',name:'Dead Bug',pattern:'anti_extension',primary:['core'],secondary:[],equipment:['bodyweight'],difficulty:1,goals:['general_fitness','hypertrophy'],progression:'rep_control',group:'core'},
+{id:'sit_up',name:'Sit-Up',pattern:'anti_extension',primary:['core'],secondary:[],equipment:['bodyweight'],difficulty:1,goals:['general_fitness','hypertrophy'],progression:'rep_control',group:'core'},
+{id:'cable_crunch',name:'Cable Crunch',pattern:'anti_extension',primary:['core'],secondary:[],equipment:['cable'],difficulty:1,goals:['hypertrophy','strength'],progression:'double_progression',group:'core'},
 {id:'incline_pushup',name:'Incline Push-Up',pattern:'horizontal_push',primary:['chest'],secondary:['triceps','anterior_delts'],equipment:['bodyweight'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_leverage',group:'horizontal_press'},
 {id:'inverted_row',name:'Inverted Row',pattern:'horizontal_pull',primary:['upper_back'],secondary:['lats','biceps'],equipment:['bodyweight'],difficulty:2,goals:['hypertrophy','general_fitness'],progression:'rep_leverage',group:'horizontal_pull'},
 {id:'band_pulldown',name:'Resistance Band Lat Pulldown',pattern:'vertical_pull',primary:['lats'],secondary:['biceps'],equipment:['band'],difficulty:1,goals:['hypertrophy','general_fitness'],progression:'rep_resistance',group:'vertical_pull'},
@@ -223,22 +230,106 @@ function buildStrategy(p){
  const split=p.sessionsPerWeek===4?'upper_lower':p.sessionsPerWeek===3?'full_body_3':p.sessionsPerWeek===2?'full_body_2':'hybrid_5';
  return {goal:p.goal,frequency:p.sessionsPerWeek,split,blockWeeks:4,progression:'weekly_block_plus_exercise_specific',stretchMinutes:p.stretchMinutes,mobilitySessionsPerWeek:p.mobilitySessionsPerWeek,weekModel:WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness};
 }
+function eligibleExercises(pattern,p){
+ return EXERCISES.filter(e=>e.pattern===pattern&&!p.exclusions.includes(e.id)&&!p.temporaryExclusions.includes(e.id)&&!(p.discomfortPatterns||[]).includes(e.pattern)&&equipmentFits(e,p));
+}
+function rotationScore(exercise,p,exposure,baselineId){
+ let score=100;
+ if(exercise.goals.includes(p.goal))score+=20;
+ if((p.preferences||[]).includes(exercise.id))score+=15;
+ if((p.priorities||[]).some(m=>exercise.primary.includes(m)))score+=10;
+ if(exercise.id!==baselineId)score+=12;
+ score-=(exposure.get(exercise.id)||0)*14;
+ const h=p.exerciseHistory?.[exercise.id];
+ if(h){
+   score+=Math.min(10,(h.completedSessions||0)*1.5);
+   if(h.lastFeedback==='discomfort')score-=60;
+   if(h.lastFeedback==='liked')score+=8;
+ }
+ return score;
+}
+function chooseBlockExercise(pattern,p,{baseline=null,role='anchor',week=1,sessionIndex=0,slotIndex=0,exposure=new Map()}={}){
+ const candidates=eligibleExercises(pattern,p);
+ if(!candidates.length)return null;
+ if(role==='anchor'&&baseline)return baseline;
+ if(role==='rotation'&&week===4&&baseline)return baseline;
+ const baselineId=baseline?.id||'';
+ const ranked=candidates.map(e=>({e,score:rotationScore(e,p,exposure,baselineId)})).sort((a,b)=>b.score-a.score||a.e.id.localeCompare(b.e.id));
+ if(role==='rotation'&&baseline&&week>1&&week<4){
+   const alternates=ranked.filter(item=>item.e.id!==baseline.id);
+   if(alternates.length){
+     const pick=alternates[(week+sessionIndex+slotIndex-3)%alternates.length];
+     return pick.e;
+   }
+ }
+ if(baseline)return baseline;
+ return ranked[0].e;
+}
+function sessionChangeSummary(session,baselineSession){
+ const current=(session.strength||[]).filter(x=>x.exercise);
+ const baseline=(baselineSession?.strength||[]).filter(x=>x.exercise);
+ let retained=0,rotated=0,progressed=0;
+ current.forEach((item,index)=>{
+   const base=baseline[index];
+   if(base?.exercise?.id===item.exercise?.id)retained++;
+   else if(base?.exercise&&item.exercise)rotated++;
+   const currentSets=Number(item.prescription?.sets)||0;
+   const baseSets=Number(base?.prescription?.sets)||0;
+   if(currentSets>baseSets)progressed++;
+ });
+ return {retained,rotated,progressed,total:current.length};
+}
 function buildProgram(input){
- const p=normalizeProfile(input), strategy=buildStrategy(p), labels=SPLITS[p.sessionsPerWeek], used=new Set(), weeks=[];
+ const p=normalizeProfile(input), strategy=buildStrategy(p), labels=SPLITS[p.sessionsPerWeek], weeks=[];
+ const exposure=new Map(),baselineSessions=[];
  for(let week=1;week<=4;week++){
    const sessions=labels.map((label,index)=>{
      const slots=SLOT_TEMPLATES[label];
+     const baselineSession=baselineSessions[index]||null;
+     const anchorCount=Math.max(1,Math.ceil(slots.length*.6));
      const strength=slots.map((pattern,slotIndex)=>{
-       const exercise=chooseExercise(pattern,p,used);
-       if(!exercise)return {slot:pattern,unfilled:true,reason:'No compatible exercise for available equipment/exclusions'};
-       used.add(exercise.id);
-       return {slot:pattern,exercise:Object.assign({},exercise),prescription:prescriptionFor(exercise,p,week),substitutions:substitutionsFor(exercise,p),reason:['matches '+pattern,'equipment available',exercise.goals.includes(p.goal)?'supports '+p.goal:'compatible training option']};
+       const role=slotIndex<anchorCount?'anchor':'rotation';
+       const baseline=baselineSession?.strength?.[slotIndex]?.exercise||null;
+       const exercise=chooseBlockExercise(pattern,p,{baseline,role,week,sessionIndex:index,slotIndex,exposure});
+       if(!exercise)return {slot:pattern,programRole:role,unfilled:true,reason:'No compatible exercise for available equipment/exclusions'};
+       exposure.set(exercise.id,(exposure.get(exercise.id)||0)+1);
+       const changed=Boolean(baseline&&baseline.id!==exercise.id);
+       return {
+         slot:pattern,
+         programRole:role,
+         changedFromWeek1:changed?{id:baseline.id,name:baseline.name}:null,
+         exercise:Object.assign({},exercise),
+         prescription:prescriptionFor(exercise,p,week),
+         substitutions:substitutionsFor(exercise,p),
+         reason:[
+           'matches '+pattern,
+           'equipment available',
+           role==='anchor'?'anchor movement retained for measurable progression':'rotation slot balances variety with progression',
+           changed?'rotated from '+baseline.name:'retained from block baseline',
+           exercise.goals.includes(p.goal)?'supports '+p.goal:'compatible training option'
+         ]
+       };
      });
-     let session={id:'w'+week+'s'+(index+1),week,index:index+1,label,type:'strength',estimatedMinutes:p.sessionMinutes,warmup:warmupFor(label),strength,stretch:buildStretchSession(p.stretchMinutes,label,p),status:'scheduled'}; session=applySupersets(session); return timeBudgetSession(session,p);
+     let session={id:'w'+week+'s'+(index+1),week,index:index+1,label,type:'strength',estimatedMinutes:p.sessionMinutes,warmup:warmupFor(label),strength,stretch:buildStretchSession(p.stretchMinutes,label,p),status:'scheduled'};
+     session=applySupersets(session);
+     session=timeBudgetSession(session,p);
+     if(week===1)baselineSessions[index]=JSON.parse(JSON.stringify(session));
+     session.changeSummary=sessionChangeSummary(session,baselineSessions[index]);
+     return session;
    });
-   const model=(WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness)[week-1]; const recoveryActivities=[]; for(let m=0;m<p.mobilitySessionsPerWeek;m++)recoveryActivities.push(buildMobilitySession(p.stretchMinutes,p,'full')); weeks.push({week,label:model.label,sessions,recoveryActivities});
+   const model=(WEEK_MODELS[p.goal]||WEEK_MODELS.general_fitness)[week-1];
+   const recoveryActivities=[];
+   for(let m=0;m<p.mobilitySessionsPerWeek;m++)recoveryActivities.push(buildMobilitySession(p.stretchMinutes,p,'full'));
+   const totals=sessions.reduce((acc,session)=>{
+     acc.retained+=session.changeSummary?.retained||0;
+     acc.rotated+=session.changeSummary?.rotated||0;
+     acc.progressed+=session.changeSummary?.progressed||0;
+     acc.total+=session.changeSummary?.total||0;
+     return acc;
+   },{retained:0,rotated:0,progressed:0,total:0});
+   weeks.push({week,label:model.label,sessions,recoveryActivities,changeSummary:totals,provisional:week>1});
  }
- return {version:'1.5.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.5'};
+ return {version:'1.6.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.6',programModel:'anchor_rotation'};
 }
 function validateProgram(program){
  const errors=[];
