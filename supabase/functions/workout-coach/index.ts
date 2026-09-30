@@ -85,7 +85,7 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  const openAiKey = Deno.env.get("OPENAI_API_KEY") || "";
+  const openAiKey = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("voice_key") || Deno.env.get("VOICE_KEY") || "";
   if (!supabaseUrl || !anonKey) return json({ error: "Function environment is incomplete." }, 503);
 
   const user = await authenticate(authHeader, supabaseUrl, anonKey);
