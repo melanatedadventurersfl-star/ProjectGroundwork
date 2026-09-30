@@ -164,6 +164,29 @@ export default function WorkoutLabScreen() {
 
   const history = store.history;
   const activeWorkout = store.activeWorkout;
+  const activeStage = activeWorkout?.stage;
+  const activeRestEndsAt = activeWorkout?.restEndsAt;
+
+  useEffect(() => {
+    if (activeStage !== 'rest' || !activeRestEndsAt) return;
+    const restEnd = new Date(activeRestEndsAt).getTime();
+    if (!Number.isFinite(restEnd) || clockNow < restEnd) return;
+    setStore((current) => {
+      const workout = current.activeWorkout;
+      if (!workout || workout.stage !== 'rest' || workout.restEndsAt !== activeRestEndsAt) return current;
+      const exerciseIndex = workout.currentExerciseIndex ?? 0;
+      const setIndex = workout.currentSetIndex ?? 0;
+      const exercise = workout.exercises[exerciseIndex];
+      if (!exercise) return current;
+      if (setIndex + 1 < exercise.sets.length) {
+        return { ...current, activeWorkout: { ...workout, stage: 'exercise', currentSetIndex: setIndex + 1, restEndsAt: null } };
+      }
+      if (exerciseIndex + 1 < workout.exercises.length) {
+        return { ...current, activeWorkout: { ...workout, stage: 'exercise', currentExerciseIndex: exerciseIndex + 1, currentSetIndex: 0, restEndsAt: null } };
+      }
+      return { ...current, activeWorkout: { ...workout, stage: 'cooldown', restEndsAt: null } };
+    });
+  }, [activeRestEndsAt, activeStage, clockNow]);
 
   const weekStart = useMemo(() => startOfWeek(), []);
   const weeklyWorkouts = history.filter((entry) => new Date(entry.completedAt) >= weekStart);
