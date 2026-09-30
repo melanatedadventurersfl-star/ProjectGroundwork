@@ -2912,33 +2912,73 @@ function timedStageItems(w){
   if(!w) return [];
   return w.phase==='warmup'?(w.warmup||[]):w.phase==='cooldown'?(w.cooldown||[]):[];
 }
+function timedStageSideLabel(w,item){
+  if(!item?.side)return '';
+  return w?.timedStageSide==='left'?'LEFT SIDE':'RIGHT SIDE';
+}
+function timedStageSwitchSeconds(item){
+  return Math.max(3,Math.min(12,num(item?.sideSwitchSeconds)||5));
+}
 function timedStageSnapshot(w,nowMs=Date.now()){
   if(!w||!['warmup','cooldown'].includes(w.phase)) return null;
   const items=timedStageItems(w);
   if(!items.length) return {complete:true,index:0,remaining:0,remainingExact:0,total:0};
   const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
   const item=items[index];
+  nowMs=workoutNowMs(w,nowMs);
+  const switchEnd=Date.parse(w.timedStageSwitchEndsAt||'');
+  if(item?.side&&Number.isFinite(switchEnd)){
+    const total=timedStageSwitchSeconds(item);
+    const remainingExact=Math.max(0,(switchEnd-nowMs)/1000);
+    return {complete:false,itemComplete:false,index,mode:'switch',side:'switch',nextSide:'left',remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total};
+  }
   if(w.reviewPausedTimedStage&&w.reviewPausedTimedStage.phase===w.phase){
     const paused=w.reviewPausedTimedStage;
     if(paused.mode==='reps'){
-      return {complete:false,itemComplete:false,index,mode:'reps',completedReps:Number(paused.completedReps)||0,totalReps:Number(item.reps)||8,total:0,remaining:0,remainingExact:0};
+      return {complete:false,itemComplete:false,index,mode:'reps',side:paused.side||timedStageSideLabel(w,item),completedReps:Number(paused.completedReps)||0,totalReps:Number(item.reps)||8,total:0,remaining:0,remainingExact:0};
     }
-    return {complete:false,itemComplete:false,index,mode:'time',remaining:Math.max(0,Math.ceil(Number(paused.remainingExact)||0)),remainingExact:Math.max(0,Number(paused.remainingExact)||0),total:Number(paused.total)||Number(item.seconds)||30};
+    return {complete:false,itemComplete:false,index,mode:'time',side:paused.side||timedStageSideLabel(w,item),remaining:Math.max(0,Math.ceil(Number(paused.remainingExact)||0)),remainingExact:Math.max(0,Number(paused.remainingExact)||0),total:Number(paused.total)||Number(item.seconds)||30};
   }
   if(item.mode==='reps'||item.reps){
     const completedReps=Math.max(0,Number(w.timedStageReps)||0);
     const totalReps=Math.max(1,Number(item.reps)||8);
-    return {complete:false,itemComplete:completedReps>=totalReps,index,mode:'reps',completedReps,totalReps,total:0,remaining:0,remainingExact:0};
+    return {complete:false,itemComplete:completedReps>=totalReps,index,mode:'reps',side:timedStageSideLabel(w,item),completedReps,totalReps,total:0,remaining:0,remainingExact:0};
   }
-  nowMs=workoutNowMs(w,nowMs);
   const startMs=Date.parse(w.timedPhaseStartedAt||'');
   if(!Number.isFinite(startMs)) return null;
   const total=Math.max(1,Number(item.seconds)||30);
   const elapsed=Math.max(0,(nowMs-startMs)/1000);
   const remainingExact=Math.max(0,total-elapsed);
-  return {complete:false,itemComplete:remainingExact<=0,index,mode:'time',remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total};
+  return {complete:false,itemComplete:remainingExact<=0,index,mode:'time',side:timedStageSideLabel(w,item),remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total};
 }
 function stageRemaining(w){ return timedStageSnapshot(w)?.remaining||0; }
+function beginTimedStageSideSwitch(w){
+  if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const item=timedStageItems(w)[w.timedStageIndex||0];
+  if(!item?.side||w.timedStageSide==='left'){advanceTimedStage();return;}
+  const now=new Date().toISOString(),seconds=timedStageSwitchSeconds(item);
+  w.timedStageSwitchStartedAt=now;
+  w.timedStageSwitchEndsAt=new Date(Date.now()+seconds*1000).toISOString();
+  w.timedStageReps=0;
+  fireWorkoutSignal('transition','side-switch-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Switch sides',label:'SWITCH'});
+  saveStore();render();
+}
+function finishTimedStageSideSwitch(){
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase)||!w.timedStageSwitchEndsAt)return;
+  w.timedStageSide='left';
+  w.timedStageReps=0;
+  w.timedPhaseStartedAt=new Date().toISOString();
+  delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
+  fireWorkoutSignal('go','side-go-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Left side. Go.',label:'GO'});
+  saveStore();render();
+}
+function skipTimedStage(){
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const item=timedStageItems(w)[w.timedStageIndex||0];
+  if(item)item.skippedAt=new Date().toISOString();
+  delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
+  advanceTimedStage();
+}
 
 function recordExerciseDuration(w,index){
   if(!w?.exerciseStartedAt||index<0)return;
@@ -3271,8 +3311,12 @@ function reconcileTimedStage(){
   if(!w||!['warmup','cooldown'].includes(w.phase))return false;
   const snap=timedStageSnapshot(w);
   if(!snap)return false;
-  if(snap.mode==='time'&&snap.itemComplete){advanceTimedStage();return true;}
-  if(snap.mode==='reps'&&snap.itemComplete){advanceTimedStage();return true;}
+  if(snap.mode==='switch'&&snap.remaining<=0){finishTimedStageSideSwitch();return true;}
+  if((snap.mode==='time'||snap.mode==='reps')&&snap.itemComplete){
+    const item=timedStageItems(w)[snap.index];
+    if(item?.side&&w.timedStageSide!=='left'){beginTimedStageSideSwitch(w);return true;}
+    advanceTimedStage();return true;
+  }
   return false;
 }
 
@@ -3281,9 +3325,12 @@ function advanceTimedStage(){
   const items=timedStageItems(w);
   if(!items.length){completeTimedStagePhase(w);return;}
   const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
+  delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
   if(index>=items.length-1){completeTimedStagePhase(w);return;}
   w.timedStageIndex=index+1;
   w.timedStageReps=0;
+  const next=items[w.timedStageIndex];
+  w.timedStageSide=next?.side?'right':'';
   w.timedPhaseStartedAt=new Date().toISOString();
   delete w.reviewPausedTimedStage;
   fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Next',label:'NEXT'});
@@ -4952,7 +4999,9 @@ function addWarmupRep(){
   const snap=timedStageSnapshot(w);if(!snap||snap.mode!=='reps')return;
   w.timedStageReps=Math.min(snap.totalReps,(Number(w.timedStageReps)||0)+1);
   if(w.timedStageReps>=snap.totalReps){
-    fireWorkoutSignal('complete','warmup-reps-'+w.id+'-'+snap.index,{voice:'Done',label:'DONE'});
+    fireWorkoutSignal('complete','warmup-reps-'+w.id+'-'+snap.index+'-'+(w.timedStageSide||'both'),{voice:'Done',label:'DONE'});
+    const item=timedStageItems(w)[snap.index];
+    if(item?.side&&w.timedStageSide!=='left'){beginTimedStageSideSwitch(w);return;}
     advanceTimedStage();return;
   }
   saveStore();render();
