@@ -50,6 +50,10 @@ let historyRoutineFilter = 'all';
 let historyMuscleFilter = 'all';
 let historySetupFilter = 'all';
 let historyLastRemoved = null;
+let measurementCheckinOpen = false;
+let measurementEditId = '';
+let measurementPhotoDraft = {};
+let programReviewOpen = false;
 
 const defaultStore = {
   profile: null,
@@ -60,7 +64,7 @@ const defaultStore = {
   progression: {},
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
-  trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null},
+  trainingProgram: {scheduleOverrides:{},weekReviews:{},programReviews:{},engine:null,bodyProgress:{measurements:[],weeklyCheckins:{},photos:[]}},
   cueSettings: {sound:true,voice:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
@@ -350,8 +354,198 @@ function ensureTrainingProgram(){
   store.trainingProgram.engineAdaptations=store.trainingProgram.engineAdaptations||[];
   store.trainingProgram.engineVersions=store.trainingProgram.engineVersions||[];
   store.trainingProgram.engineBlockVersion=store.trainingProgram.engineBlockVersion||1;
+  store.trainingProgram.programReviews=store.trainingProgram.programReviews||{};
+  store.trainingProgram.bodyProgress=store.trainingProgram.bodyProgress||{};
+  store.trainingProgram.bodyProgress.measurements=Array.isArray(store.trainingProgram.bodyProgress.measurements)?store.trainingProgram.bodyProgress.measurements:[];
+  store.trainingProgram.bodyProgress.weeklyCheckins=store.trainingProgram.bodyProgress.weeklyCheckins||{};
+  store.trainingProgram.bodyProgress.photos=Array.isArray(store.trainingProgram.bodyProgress.photos)?store.trainingProgram.bodyProgress.photos:[];
   return store.trainingProgram;
 }
+const BODY_METRICS=[
+  {key:'weightLb',label:'Body weight',kind:'weight'},
+  {key:'chestIn',label:'Chest',kind:'length'},
+  {key:'waistIn',label:'Waist',kind:'length'},
+  {key:'hipsIn',label:'Hips',kind:'length'},
+  {key:'armIn',label:'Upper arm',kind:'length'},
+  {key:'thighIn',label:'Thigh',kind:'length'},
+  {key:'calfIn',label:'Calf',kind:'length'}
+];
+const STRENGTH_PIN_LABELS={bench:'Chest strength',row:'Back strength',squat:'Leg strength',overhead:'Shoulder strength',hinge:'Hinge strength'};
+function lbFromDisplay(value,unit='lb'){const n=num(value);return unit==='kg'?n*2.2046226218:n;}
+function lbToDisplay(value,unit='lb'){const n=num(value);return unit==='kg'?n/2.2046226218:n;}
+function inchesFromDisplay(value,unit='in'){const n=num(value);return unit==='cm'?n/2.54:n;}
+function inchesToDisplay(value,unit='in'){const n=num(value);return unit==='cm'?n*2.54:n;}
+function roundMeasure(value){return Math.round(num(value)*10)/10;}
+function bodyProgress(){return ensureTrainingProgram().bodyProgress;}
+function bodyMeasurementUnit(){return store.profile?.measurementUnit==='cm'?'cm':'in';}
+function bodyWeightUnit(){return store.profile?.weightUnit==='kg'?'kg':'lb';}
+function latestBodyMeasurement(){
+  return [...bodyProgress().measurements].sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0))[0]||null;
+}
+function startingBodyMeasurement(){
+  return [...bodyProgress().measurements].sort((a,b)=>Date.parse(a.recordedAt||0)-Date.parse(b.recordedAt||0))[0]||null;
+}
+function displayBodyMetric(record,key){
+  if(!record||!num(record[key]))return '';
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  if(metric?.kind==='weight'){
+    const unit=bodyWeightUnit();
+    return roundMeasure(lbToDisplay(record[key],unit))+' '+unit;
+  }
+  const unit=bodyMeasurementUnit();
+  return roundMeasure(inchesToDisplay(record[key],unit))+' '+unit;
+}
+function bodyMetricChange(key){
+  const first=startingBodyMeasurement(),latest=latestBodyMeasurement();
+  if(!first||!latest||!num(first[key])||!num(latest[key]))return null;
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const raw=num(latest[key])-num(first[key]);
+  const converted=metric?.kind==='weight'?lbToDisplay(raw,bodyWeightUnit()):inchesToDisplay(raw,bodyMeasurementUnit());
+  return Math.round(converted*10)/10;
+}
+function bodyMeasurementInputValue(record,key){
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const raw=num(record?.[key]);
+  if(!raw)return '';
+  return roundMeasure(metric?.kind==='weight'?lbToDisplay(raw,bodyWeightUnit()):inchesToDisplay(raw,bodyMeasurementUnit()));
+}
+function measurementRecordFromData(data,existing=null){
+  const weightUnit=String(data.get('checkinWeightUnit')||bodyWeightUnit());
+  const measurementUnit=String(data.get('checkinMeasurementUnit')||bodyMeasurementUnit());
+  const record={...(existing||{}),id:existing?.id||uid('measure'),recordedAt:existing?.recordedAt||new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:existing?.weekKey||weekKey(),source:existing?.source||'weekly'};
+  for(const metric of BODY_METRICS){
+    const field='measure-'+metric.key;
+    const raw=num(data.get(field));
+    if(raw>0)record[metric.key]=roundMeasure(metric.kind==='weight'?lbFromDisplay(raw,weightUnit):inchesFromDisplay(raw,measurementUnit));
+    else delete record[metric.key];
+  }
+  if(Object.keys(measurementPhotoDraft).length)record.photos={...(existing?.photos||{}),...measurementPhotoDraft};
+  return record;
+}
+function recordInitialBodyMeasurement(profile,data){
+  const progress=bodyProgress();
+  if(progress.measurements.length)return;
+  const record={id:uid('measure'),recordedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:weekKey(),source:'baseline'};
+  if(profile.weight)record.weightLb=roundMeasure(profile.weight);
+  const unit=profile.measurementUnit||'in';
+  for(const [field,key] of [['chest','chestIn'],['waist','waistIn'],['hips','hipsIn'],['arm','armIn'],['thigh','thighIn'],['calf','calfIn']]){
+    const value=num(data.get(field));if(value>0)record[key]=roundMeasure(inchesFromDisplay(value,unit));
+  }
+  progress.measurements.push(record);
+  progress.weeklyCheckins[weekKey()]={status:'baseline',at:record.recordedAt};
+}
+function weeklyMeasurementDue(date=new Date()){
+  if(!store.profile)return false;
+  return !bodyProgress().weeklyCheckins[weekKey(date)];
+}
+function saveMeasurementCheckin(form){
+  if(!form)return;
+  const data=new FormData(form);
+  const progress=bodyProgress();
+  const existing=measurementEditId?progress.measurements.find(item=>item.id===measurementEditId):null;
+  const record=measurementRecordFromData(data,existing);
+  if(!BODY_METRICS.some(metric=>num(record[metric.key]))){toast('Enter at least one measurement.');return;}
+  if(existing)Object.assign(existing,record);
+  else progress.measurements.push(record);
+  if(!existing)progress.weeklyCheckins[weekKey()]={status:'saved',at:new Date().toISOString(),measurementId:record.id};
+  if(record.weightLb)store.profile.weight=record.weightLb;
+  measurementPhotoDraft={};measurementEditId='';measurementCheckinOpen=false;
+  saveStore();render();toast(existing?'Measurement updated.':'Weekly measurements saved.');
+}
+function markMeasurementNoChanges(){
+  const latest=latestBodyMeasurement();if(!latest){measurementCheckinOpen=true;render();return;}
+  const copy={...clone(latest),id:uid('measure'),recordedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:weekKey(),source:'unchanged'};
+  bodyProgress().measurements.push(copy);
+  bodyProgress().weeklyCheckins[weekKey()]={status:'unchanged',at:copy.recordedAt,measurementId:copy.id};
+  saveStore();render();toast('No changes recorded for this week.');
+}
+function skipMeasurementCheckin(){
+  bodyProgress().weeklyCheckins[weekKey()]={status:'skipped',at:new Date().toISOString()};
+  measurementCheckinOpen=false;saveStore();render();
+}
+function removeMeasurementRecord(id){
+  const progress=bodyProgress(),record=progress.measurements.find(item=>item.id===id);if(!record)return;
+  if(!confirm('Remove this dated measurement?'))return;
+  progress.measurements=progress.measurements.filter(item=>item.id!==id);
+  saveStore();render();toast('Measurement removed.');
+}
+function openMeasurementCheckin(id=''){
+  measurementEditId=id||'';
+  measurementPhotoDraft={};
+  measurementCheckinOpen=true;render();
+}
+function compressProgressPhoto(file){
+  return new Promise((resolve,reject)=>{
+    if(!file||!file.type?.startsWith('image/')){reject(new Error('Choose an image file.'));return;}
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('Could not read photo.'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Could not open photo.'));
+      img.onload=()=>{
+        const max=420,scale=Math.min(1,max/Math.max(img.width,img.height));
+        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL('image/jpeg',.68));
+      };
+      img.src=String(reader.result||'');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function renderMeasurementCheckin(){
+  const latest=measurementEditId?bodyProgress().measurements.find(item=>item.id===measurementEditId):latestBodyMeasurement();
+  const editing=Boolean(measurementEditId);
+  const weightUnit=bodyWeightUnit(),measureUnit=bodyMeasurementUnit();
+  const photos={...(latest?.photos||{}),...measurementPhotoDraft};
+  return '<div class="exercise-modal-backdrop sheet-backdrop measurement-backdrop"><section class="bottom-sheet measurement-sheet" data-measurement-panel>'+
+    '<div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">'+(editing?'EDIT ENTRY':'WEEKLY CHECK-IN')+'</p><h2>'+(editing?'Correct this measurement':'Anything to update?')+'</h2><p>'+(editing?'This changes only this dated record.':'Last week’s values are prefilled. Change only what changed.')+'</p></div><button class="modal-close" data-action="close-measurement-checkin">×</button></div>'+
+    '<form id="measurement-form"><div class="measurement-units"><label>WEIGHT <select name="checkinWeightUnit"><option value="lb" '+(weightUnit==='lb'?'selected':'')+'>lb</option><option value="kg" '+(weightUnit==='kg'?'selected':'')+'>kg</option></select></label><label>MEASUREMENTS <select name="checkinMeasurementUnit"><option value="in" '+(measureUnit==='in'?'selected':'')+'>in</option><option value="cm" '+(measureUnit==='cm'?'selected':'')+'>cm</option></select></label></div>'+
+      '<div class="measurement-grid">'+BODY_METRICS.map(metric=>'<label class="field"><span>'+esc(metric.label.toUpperCase())+'</span><input name="measure-'+metric.key+'" type="number" step=".1" min="0" value="'+esc(bodyMeasurementInputValue(latest,metric.key))+'" placeholder="Optional"></label>').join('')+'</div>'+
+      '<section class="progress-photo-section"><div><span>PROGRESS PHOTOS <em>OPTIONAL</em></span><small>Private by default. Stored as small progress thumbnails with this dated entry.</small></div><div class="progress-photo-grid">'+['front','side','back'].map(view=>'<label class="progress-photo-slot">'+(photos[view]?'<img src="'+esc(photos[view])+'" alt="'+view+' progress photo">':'<span>'+view.toUpperCase()+'</span>')+'<input type="file" accept="image/*" data-progress-photo="'+view+'"></label>').join('')+'</div></section>'+
+      '<div class="measurement-actions"><button type="button" class="button" data-action="save-measurement-checkin">'+(editing?'SAVE CORRECTION':'SAVE THIS WEEK')+'</button>'+(!editing?'<button type="button" class="button secondary" data-action="measurement-no-changes">NO CHANGES</button><button type="button" class="text-button" data-action="skip-measurement-checkin">SKIP THIS WEEK</button>':'<button type="button" class="text-button danger-text" data-action="remove-measurement" data-measurement-id="'+esc(latest?.id||'')+'">REMOVE ENTRY</button>')+'</div>'+
+    '</form></section></div>';
+}
+function programReviewDue(){
+  const context=programContext();
+  return context.blockNumber>1&&context.blockWeek===1&&!ensureTrainingProgram().programReviews[context.blockNumber];
+}
+function rebuildPlanKeepingOrigin(profile=store.profile){
+  if(!store.plan||!profile)return;
+  const createdAt=store.plan.createdAt,id=store.plan.id;
+  const blueprints=BLUEPRINTS[profile.days]||BLUEPRINTS[4];
+  store.plan={...store.plan,id,createdAt,goal:profile.goal,daysPerWeek:profile.days,workoutDays:preferredWorkoutDays(profile),minutes:profile.minutes,days:blueprints.map((b,i)=>assignDynamicWorkoutBlocks(buildDay(b,profile,i),profile))};
+  refreshEngineProgram(profile);
+}
+function saveProgramReview(form){
+  if(!form)return;
+  const data=new FormData(form),context=programContext();
+  store.profile.workoutStyle=String(data.get('reviewWorkoutStyle')||store.profile.workoutStyle||'classic');
+  store.profile.pacing=String(data.get('reviewPacing')||store.profile.pacing||'balanced');
+  store.profile.goal=String(data.get('reviewGoal')||store.profile.goal||'muscle');
+  store.profile.days=num(data.get('reviewDays'))||store.profile.days||4;
+  store.profile.minutes=num(data.get('reviewMinutes'))||store.profile.minutes||45;
+  store.profile.equipment=String(data.get('reviewEquipment')||store.profile.equipment||'full-gym');
+  store.profile.workoutDays=defaultWorkoutDays(store.profile.days);
+  ensureTrainingProgram().programReviews[context.blockNumber]={at:new Date().toISOString(),blockNumber:context.blockNumber,workoutStyle:store.profile.workoutStyle,pacing:store.profile.pacing,goal:store.profile.goal,days:store.profile.days,minutes:store.profile.minutes,equipment:store.profile.equipment};
+  rebuildPlanKeepingOrigin(store.profile);
+  programReviewOpen=false;saveStore();render();toast('Block settings updated.');
+}
+function renderProgramReview(){
+  const p=store.profile||{},context=programContext();
+  return '<div class="exercise-modal-backdrop sheet-backdrop"><section class="bottom-sheet program-review-sheet" data-program-review-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">BLOCK '+context.blockNumber+' REVIEW</p><h2>Keep what works. Change what does not.</h2><p>Your previous block stays in history. These choices shape the new block.</p></div><button class="modal-close" data-action="close-program-review">×</button></div>'+
+    '<form id="program-review-form" class="program-review-form">'+
+    '<label class="field"><span>WORKOUT STYLE</span><select name="reviewWorkoutStyle"><option value="classic" '+((p.workoutStyle||'classic')==='classic'?'selected':'')+'>Classic</option><option value="flow" '+(p.workoutStyle==='flow'?'selected':'')+'>Flow</option></select></label>'+
+    '<label class="field"><span>PACING</span><select name="reviewPacing"><option value="relaxed" '+(p.pacing==='relaxed'?'selected':'')+'>Relaxed</option><option value="balanced" '+((p.pacing||'balanced')==='balanced'?'selected':'')+'>Balanced</option><option value="fast" '+(p.pacing==='fast'?'selected':'')+'>Fast-paced</option></select></label>'+
+    '<label class="field"><span>GOAL</span><select name="reviewGoal">'+[['muscle','Build muscle'],['strength','Get stronger'],['fat-loss','Fat loss + conditioning'],['general','General fitness']].map(([v,l])=>'<option value="'+v+'" '+(p.goal===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+    '<div class="form-grid two"><label class="field"><span>DAYS/WEEK</span><select name="reviewDays">'+[2,3,4,5].map(v=>'<option value="'+v+'" '+(num(p.days)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="field"><span>MINUTES</span><select name="reviewMinutes">'+[20,30,45,60,75].map(v=>'<option value="'+v+'" '+(num(p.minutes)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+
+    '<label class="field"><span>PRIMARY SETUP</span><select name="reviewEquipment">'+Object.entries(SESSION_SETUP_PRESETS).filter(([key])=>key!=='custom').map(([key,val])=>'<option value="'+key+'" '+(p.equipment===key?'selected':'')+'>'+esc(val.label)+'</option>').join('')+'</select></label>'+
+    '<button type="button" class="button" data-action="save-program-review">SAVE BLOCK SETTINGS</button></form></section></div>';
+}
+function workoutStyleLabel(value){return value==='flow'?'Flow':'Classic';}
+function pacingLabel(value){return ({relaxed:'Relaxed',balanced:'Balanced',fast:'Fast-paced'})[value]||'Balanced';}
+function workoutLimiterLabel(value){return ({time:'Time',equipment:'Equipment',energy:'Energy','gym-crowding':'Gym crowding',none:'No usual limiter'})[value]||'No usual limiter';}
+
 function programOriginDate(){
   const created=store.plan?.createdAt?new Date(store.plan.createdAt):new Date();
   return startOfWeek(Number.isFinite(created.getTime())?created:new Date());
