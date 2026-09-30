@@ -626,7 +626,7 @@ function announceExercise(ex,prefix='Next exercise'){
   },prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.','coach-'+token);
 }
 let workoutAudioContext=null;
-const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0,coachCuePack:null,coachCuePackKey:'',coachCuePackPromise:null,recentSignalTokens:new Set()};
+const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0,coachCuePack:null,coachCuePackKey:'',coachCuePackPromise:null,recentSignalTokens:new Map()};
 
 const COACH_VOICES=[
   {id:'marin',label:'Marin',recommended:true},
@@ -910,10 +910,12 @@ function triggerVisualCue(type,label='',token=''){
 }
 function fireWorkoutSignal(type,token,{voice='',label=''}={}){
   if(token){
-    if(cueRuntime.recentSignalTokens.has(token))return Promise.resolve(false);
-    cueRuntime.recentSignalTokens.add(token);
+    const now=Date.now();
+    const lastAt=cueRuntime.recentSignalTokens.get(token)||0;
+    if(now-lastAt<1500)return Promise.resolve(false);
+    cueRuntime.recentSignalTokens.set(token,now);
     if(cueRuntime.recentSignalTokens.size>160){
-      const oldest=cueRuntime.recentSignalTokens.values().next().value;
+      const oldest=cueRuntime.recentSignalTokens.keys().next().value;
       cueRuntime.recentSignalTokens.delete(oldest);
     }
   }
@@ -3491,16 +3493,23 @@ function navigateToExercise(index,{announce=true}={}){
   if(exerciseCountsAsResolved(ex)){
     w.phase='exercise-review';
     w.exerciseStartedAt=null;
-  }else{
-    w.phase='pre-set';
-    w.preSetStartedAt=new Date().toISOString();
-    w.preSetSetupSeconds=5;
-    w.preSetCountdownSeconds=3;
-    w.preSetIsNewExercise=true;
-    w.exerciseStartedAt=null;
-    if(announce)announceExercise(ex,index===0?'First exercise':'Next exercise');
+    workoutMapOpen=false;
+    saveStore();render();
+    return;
   }
   workoutMapOpen=false;
+  if(announce){
+    beginPreSetPosition(index,w.currentSetIndex,true,5);
+    return;
+  }
+  w.phase='pre-set';
+  w.preSetCoachPending=false;
+  w.preSetFinishing=false;
+  w.preSetStartedAt=new Date().toISOString();
+  w.preSetSetupSeconds=5;
+  w.preSetCountdownSeconds=3;
+  w.preSetIsNewExercise=true;
+  w.exerciseStartedAt=null;
   saveStore();render();
 }
 function navigateExercise(delta){
