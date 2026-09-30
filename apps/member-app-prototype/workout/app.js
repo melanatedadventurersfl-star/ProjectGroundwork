@@ -575,7 +575,7 @@ function pauseInteractiveTimers(w){
   if(!w)return;
   if(['warmup','cooldown'].includes(w.phase)){
     const snap=timedStageSnapshot(w);
-    if(snap&&!snap.complete)w.reviewPausedTimedStage={phase:w.phase,index:snap.index,mode:snap.mode,remainingExact:snap.remainingExact,total:snap.total,completedReps:snap.completedReps||0};
+    if(snap&&!snap.complete)w.reviewPausedTimedStage={phase:w.phase,index:snap.index,mode:snap.mode,side:snap.side||'',remainingExact:snap.remainingExact,total:snap.total,completedReps:snap.completedReps||0};
   }
   if(w.phase==='pre-set'){
     const snap=preSetSnapshot(w);
@@ -586,16 +586,7 @@ function pauseInteractiveTimers(w){
     );
   }
   if(w.phase==='rest'&&!Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=restRemaining(w);
-  if(w.phase==='side-switch'){
-    const remaining=sideSwitchRemaining(w);
-    const clock=document.querySelector('#side-switch-clock');
-    const ring=document.querySelector('#timer-ring');
-    if(clock)clock.textContent=formatClock(remaining);
-    if(ring)ring.style.setProperty('--timer-progress',`${Math.max(0,Math.min(100,(remaining/Math.max(1,num(w.sideSwitchDuration)||5))*100))}%`);
-    if(remaining>0&&remaining<=3)fireWorkoutSignal('warning','exercise-side-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
-    if(remaining<=0)finishExerciseSideSwitch();
-    return;
-  }
+  if(w.phase==='side-switch'&&!Number.isFinite(w.sideSwitchPausedRemaining))w.sideSwitchPausedRemaining=sideSwitchRemaining(w);
 
   if(w.phase==='timed-set'){
     const snap=timedSetSnapshot(w);
@@ -657,7 +648,7 @@ function speakWorkoutCue(text,token=''){
   }catch{}
 }
 function pulseLocalCountdown(label=''){
-  const target=document.querySelector('#preset-count, #timed-set-clock, #rest-clock, #stage-clock');
+  const target=document.querySelector('#preset-count, #preset-countdown, #timed-set-clock, #rest-clock, #stage-clock, #side-switch-clock');
   if(!target)return;
   target.classList.remove('countdown-pulse');
   requestAnimationFrame(()=>target.classList.add('countdown-pulse'));
@@ -3730,10 +3721,15 @@ function resumeReviewedPhase(w,phase){
     w.timedStageIndex=index;
     if(w.reviewPausedTimedStage.mode==='reps'){
       w.timedStageReps=Math.max(0,Number(w.reviewPausedTimedStage.completedReps)||0);
+      w.timedStageSide=w.reviewPausedTimedStage.side==='LEFT SIDE'?'left':w.timedStageSide;
       w.timedPhaseStartedAt=new Date(now).toISOString();
+    }else if(w.reviewPausedTimedStage.mode==='switch'){
+      const remaining=Math.max(0,Number(w.reviewPausedTimedStage.remainingExact)||0);
+      w.timedStageSwitchEndsAt=new Date(now+remaining*1000).toISOString();
     }else{
       const total=Number(items[index]?.seconds)||Number(w.reviewPausedTimedStage.total)||30;
       const remaining=Math.max(0,Number(w.reviewPausedTimedStage.remainingExact)||0);
+      w.timedStageSide=w.reviewPausedTimedStage.side==='LEFT SIDE'?'left':w.timedStageSide;
       w.timedPhaseStartedAt=new Date(now-(total-remaining)*1000).toISOString();
     }
     delete w.reviewPausedTimedStage;
@@ -3743,6 +3739,11 @@ function resumeReviewedPhase(w,phase){
     const total=setup+countdown,remaining=Math.max(0,Number(w.reviewPausedPreSetRemaining));
     w.preSetStartedAt=new Date(now-(total-remaining)*1000).toISOString();
     delete w.reviewPausedPreSetRemaining;
+  }
+  if(phase==='side-switch'&&Number.isFinite(w.sideSwitchPausedRemaining)){
+    const remaining=Math.max(0,Number(w.sideSwitchPausedRemaining));
+    w.sideSwitchEndsAt=new Date(now+remaining*1000).toISOString();
+    delete w.sideSwitchPausedRemaining;
   }
   if(phase==='timed-set'&&Number.isFinite(w.reviewPausedTimedSetRemaining)){
     const duration=Math.max(1,num(w.timedSetDuration)||1),remaining=Math.max(0,Number(w.reviewPausedTimedSetRemaining));
@@ -5901,6 +5902,17 @@ function updateTimers(){
   if(w.phase==='work'){
     const setClock=document.querySelector('#set-clock');
     if(setClock)setClock.textContent=formatClock(setElapsedSeconds(w));
+    return;
+  }
+
+  if(w.phase==='side-switch'){
+    const remaining=sideSwitchRemaining(w);
+    const clock=document.querySelector('#side-switch-clock');
+    const ring=document.querySelector('#timer-ring');
+    if(clock)clock.textContent=formatClock(remaining);
+    if(ring)ring.style.setProperty('--timer-progress',`${Math.max(0,Math.min(100,(remaining/Math.max(1,num(w.sideSwitchDuration)||5))*100))}%`);
+    if(remaining>0&&remaining<=3)fireWorkoutSignal('warning','exercise-side-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+    if(remaining<=0)finishExerciseSideSwitch();
     return;
   }
 
