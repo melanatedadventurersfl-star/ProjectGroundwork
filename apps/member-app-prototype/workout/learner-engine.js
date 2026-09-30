@@ -1,6 +1,6 @@
 (function(global){
 'use strict';
-const VERSION='0.3.0',SCHEMA_VERSION=1;
+const VERSION='0.4.0',SCHEMA_VERSION=1;
 const n=value=>{const v=Number.parseFloat(value);return Number.isFinite(v)?v:0;};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const round=(value,digits=2)=>{const scale=Math.pow(10,digits);return Math.round((n(value)+Number.EPSILON)*scale)/scale;};
@@ -91,6 +91,61 @@ function restProposal(model,target={}){
     evidence:{observations:observations.length,shortRest:round(shortRest,1),longRest:round(longRest,1),shortRepDrop:round(shortDrop,2),longRepDrop:round(longDrop,2),shortCompletion:round(shortCompletion,3),longCompletion:round(longCompletion,3)}
   };
 }
+function upwardShadowProposal(model,target={},exercise={}){
+  const mode=String(exercise.loadMode||model?.loadMode||''),variable=['bodyweight','timed'].includes(mode)?'reps':'weight';
+  const gate=variableGate(model,variable),base={weight:n(target.weight),reps:n(target.reps),restSeconds:n(target.restSeconds),sets:n(target.sets)};
+  const recent=(model?.observations||[]).slice(-3),metrics=model?.metrics||{};
+  const stable=recent.length>=3&&recent.every(item=>n(item.completionRate)>=.9&&item.predictionHit!==false&&!['hard','too-hard','form-off'].includes(item.feedback));
+  const supported=!['band','assisted'].includes(mode);
+  const accurate=(metrics.targetHitRate===null||metrics.targetHitRate===undefined||n(metrics.targetHitRate)>=.75)&&n(metrics.averageRepDrop)<=1.25&&n(metrics.targetAdjustmentRate)<=.15;
+  const proposed={...base};
+  if(!supported||!stable||!accurate||!['suggest','influence'].includes(gate.level)){
+    return {action:'observe',applied:false,changed:false,variable,gate,base,proposed,reason:'Upward shadow testing waits for stable completion, low rep drop-off, low manual adjustment, and accurate recent predictions.'};
+  }
+  if(variable==='weight'){
+    const increment=Math.max(1,n(exercise.increment)||5);
+    proposed.weight=base.weight+increment;
+    proposed.reps=Math.max(1,base.reps);
+  }else{
+    proposed.reps=base.reps+(mode==='timed'?5:2);
+  }
+  return {
+    action:'shadow',applied:false,changed:true,variable,gate,base,proposed,
+    reason:'Stable recent performance supports testing a higher target in shadow mode. GoWorkout records this candidate but does not change the workout.',
+    evidence:{exposures:n(model?.exposures),predictions:n(model?.predictionCount),targetHitRate:metrics.targetHitRate??null,averageRepDrop:metrics.averageRepDrop??null,targetAdjustmentRate:metrics.targetAdjustmentRate??null}
+  };
+}
+function readinessRelationship(model){
+  const observations=(model?.observations||[]).filter(item=>n(item.readinessScore)>0);
+  const low=observations.filter(item=>n(item.readinessScore)<=2.5);
+  const ready=observations.filter(item=>n(item.readinessScore)>=3.5);
+  if(low.length<2||ready.length<2){
+    return {available:false,lowCount:low.length,readyCount:ready.length,label:'COLLECTING',detail:'Need at least 2 low-readiness and 2 normal-readiness exposures before comparing performance.'};
+  }
+  const summarize=items=>({
+    completion:mean(items.map(item=>n(item.completionRate))),
+    repDrop:mean(items.map(item=>n(item.repDrop))),
+    reps:mean(items.map(item=>n(item.averageReps)))
+  });
+  const lowStats=summarize(low),readyStats=summarize(ready);
+  const completionDelta=lowStats.completion-readyStats.completion;
+  const repDropDelta=lowStats.repDrop-readyStats.repDrop;
+  let label='NO CLEAR EFFECT',detail='Readiness has not produced a consistent performance difference yet.';
+  if(completionDelta<=-.08||repDropDelta>=.75){
+    label='LOW READINESS COST';
+    detail='Lower-readiness sessions show lower completion or more rep drop-off than normal-readiness sessions.';
+  }else if(completionDelta>=.05&&repDropDelta<=-.5){
+    label='LOW READINESS STABLE';
+    detail='Performance has stayed stable even on lower-readiness sessions so far.';
+  }
+  return {
+    available:true,label,detail,
+    lowCount:low.length,readyCount:ready.length,
+    low:{completion:round(lowStats.completion,3),repDrop:round(lowStats.repDrop,2),averageReps:round(lowStats.reps,2)},
+    ready:{completion:round(readyStats.completion,3),repDrop:round(readyStats.repDrop,2),averageReps:round(readyStats.reps,2)},
+    delta:{completion:round(completionDelta,3),repDrop:round(repDropDelta,2)}
+  };
+}
 function targetProposal(model,target={},exercise={}){
   const mode=String(exercise.loadMode||model?.loadMode||''),variable=['bodyweight','timed'].includes(mode)?'reps':'weight',gate=variableGate(model,variable),base={weight:n(target.weight),reps:n(target.reps),restSeconds:n(target.restSeconds),sets:n(target.sets)};
   const recent=(model?.observations||[]).slice(-3),latest=recent[recent.length-1]||null;
@@ -170,6 +225,7 @@ function normalizeLearner(value){
       };
     });
     model.variableGates=variableGates(model);
+    model.readinessRelationship=readinessRelationship(model);
   });
   return learner;
 }
@@ -227,6 +283,7 @@ function updateModel(existing,event,evaluation=null){
   model.metrics={setCompletionRate:round(completionRate,3),targetHitRate:model.predictionCount?round(model.targetHits/model.predictionCount,3):null,averageRepDrop:round(model.repDropTotal/model.exposures,2),averageSetDurationSeconds:model.setDurationCount?round(model.setDurationTotal/model.setDurationCount,1):null,averageRestSeconds:model.restCount?round(model.restTotal/model.restCount,1):null,targetAdjustmentRate:model.completedSets?round(model.targetAdjustedSets/model.completedSets,3):0,averageWeightPredictionError:model.predictionCount?round(model.weightAbsoluteErrorTotal/model.predictionCount,2):null,averageRepsPredictionError:model.predictionCount?round(model.repsAbsoluteErrorTotal/model.predictionCount,2):null,weightProgressionPerExposure:round((n(latest.weight)-n(first.weight))/gap,2),repsProgressionPerExposure:round((n(latest.reps)-n(first.reps))/gap,2)};
   model.confidence=confidence(model.exposures,completionRate,model.predictionCount);
   model.variableGates=variableGates(model);
+  model.readinessRelationship=readinessRelationship(model);
   model.gate=recommendationGate(model);
   return model;
 }
@@ -314,6 +371,8 @@ function overview(value){
     interventionOutcomes:outcomes.length,
     interventionSuccessRate:outcomes.length?round(successful/outcomes.length,3):null,
     rollbackCount:rollbacks,
+    upwardShadowCandidates:learner.decisions.filter(item=>item.action==='shadow').length,
+    readinessRelationships:models.filter(model=>model.readinessRelationship?.available).length,
     appliedInfluences:learner.decisions.filter(item=>item.applied).length,
     suggestions:learner.decisions.filter(item=>item.action==='suggest').length,
     decisions:learner.decisions.length,
@@ -321,5 +380,5 @@ function overview(value){
     version:learner.version
   };
 }
-global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,decisionOutcome,applyInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
+global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,upwardShadowProposal,readinessRelationship,decisionOutcome,applyInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
 })(typeof window!=='undefined'?window:globalThis);
