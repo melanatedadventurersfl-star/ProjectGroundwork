@@ -10,13 +10,13 @@ function confidence(exposures,setCompletionRate=0,predictionCount=0){
   return {level:score>=75?'high':score>=45?'medium':'low',score,evidence:exposures+' session'+(exposures===1?'':'s')+(predictionCount?' · '+predictionCount+' prediction'+(predictionCount===1?'':'s')+' checked':'')};
 }
 function recommendationGate(model){
-  const exposures=n(model?.exposures),predictions=n(model?.predictionCount),metrics=model?.metrics||{};
-  const completion=n(metrics.setCompletionRate),hit=metrics.targetHitRate,repError=metrics.averageRepsPredictionError,weightError=metrics.averageWeightPredictionError;
-  const weighted=!['bodyweight','timed','band'].includes(model?.loadMode||'');
-  const influenceReady=exposures>=6&&predictions>=4&&completion>=.8&&(hit===null||hit===undefined||n(hit)>=.65)&&(repError===null||repError===undefined||n(repError)<=1.5)&&(!weighted||weightError===null||weightError===undefined||n(weightError)<=5);
-  if(influenceReady)return {level:'influence',label:'READY TO INFLUENCE',reason:'6+ exposures, 4+ checked predictions, stable completion, and acceptable prediction error'};
-  if(exposures>=3&&predictions>=2&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Enough evidence to surface suggestions, but not enough to steer training'};
-  return {level:'observe',label:'OBSERVE ONLY',reason:'Collecting evidence before this learner can affect a workout'};
+  const mode=String(model?.loadMode||'');
+  const primary=['bodyweight','timed','band','assisted'].includes(mode)?'reps':'weight';
+  const target=variableGate(model,primary),rest=variableGate(model,'rest');
+  if(target.rollback||rest.rollback)return {level:'suggest',label:'PARTIAL ROLLBACK',reason:'At least one learner variable was returned to suggestion mode after weak intervention outcomes'};
+  if(target.level==='influence'||rest.level==='influence')return {level:'influence',label:'READY TO INFLUENCE',reason:'At least one variable-specific gate has enough evidence for narrow automatic influence'};
+  if(target.level==='suggest'||rest.level==='suggest')return {level:'suggest',label:'SUGGEST ONLY',reason:'Evidence supports suggestions but no variable is cleared for automatic influence'};
+  return {level:'observe',label:'OBSERVE ONLY',reason:'Variable-specific evidence is still being collected'};
 }
 function variableConfidence(model,variable){
   const metrics=model?.metrics||{},exposures=n(model?.exposures),predictions=n(model?.predictionCount),completion=n(metrics.setCompletionRate);
