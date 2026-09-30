@@ -13,6 +13,8 @@ const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
 const EVENTS = new Set(["session_started","warmup_started","stretch_started","warmup_completed","exercise_started","set_completed","exercise_feedback","cooldown_started","cooldown_completed","workout_completed","test","cue_pack"]);
 const STYLES = new Set(["balanced","direct","supportive","energetic","calm","technical"]);
+const VIBES = new Set(["warm-familiar","gym-partner","southern-warmth","east-coast-direct","west-coast-smooth","soulful","neutral"]);
+const FAST_DIALOGUE_EVENTS = new Set(["warmup_started","stretch_started","warmup_completed","exercise_started","cooldown_started","cooldown_completed"]);
 const FREQUENCIES = new Set(["minimal","normal","high"]);
 const DETAILS = new Set(["short","standard","detailed"]);
 const TALK_SPEEDS = new Set(["slow","normal","fast"]);
@@ -44,16 +46,36 @@ function outputText(payload: any) {
   }
   return "";
 }
-function voiceInstructions(style: string, talkSpeed: string) {
-  const pace = talkSpeed === "slow" ? "Use a measured pace." : talkSpeed === "fast" ? "Keep the pace brisk and crisp." : "Use a natural conversational pace.";
-  if (style === "calm") return "Speak like a calm, grounded personal trainer. Warm, steady, concise, never theatrical. " + pace;
-  if (style === "energetic") return "Speak like an energetic personal trainer. Upbeat and playful, never shouting or exaggerated. " + pace;
-  if (style === "direct") return "Speak like a direct personal trainer. Firm, efficient, concise, never insulting or aggressive. " + pace;
-  if (style === "supportive") return "Speak like a supportive personal trainer. Reassuring, warm, specific, and concise. " + pace;
-  if (style === "technical") return "Speak like a precise strength coach. Clear, instructional, concise, focused on useful technique. " + pace;
-  return "Speak like a confident personal trainer standing nearby. Conversational, warm, concise, lightly playful when appropriate. " + pace;
+function vibeVoiceInstruction(vibe: string) {
+  if (vibe === "gym-partner") return "Sound like a trusted workout partner: casual, rhythmic, confident, and familiar. Keep slang light and natural. Never force slang, imitate a racial identity, or exaggerate dialect.";
+  if (vibe === "southern-warmth") return "Use a warm Southern U.S. conversational cadence. Keep it subtle, natural, grounded, and contemporary. Do not exaggerate the accent or turn it into a character.";
+  if (vibe === "east-coast-direct") return "Use a brisk East Coast U.S. conversational rhythm. Sound direct, quick, confident, and familiar without becoming abrasive or caricatured.";
+  if (vibe === "west-coast-smooth") return "Use a relaxed West Coast U.S. conversational cadence. Sound smooth, confident, and easygoing without sounding sleepy or performative.";
+  if (vibe === "soulful") return "Use warm resonance and expressive, musical intonation while still speaking naturally. Keep it grounded and conversational, never theatrical or sung.";
+  if (vibe === "neutral") return "Use a clear contemporary American coaching cadence with minimal regional coloring.";
+  return "Use a warm, familiar, culturally natural American conversational cadence. Sound grounded, personable, and contemporary. Avoid forced slang, imitation, caricature, or exaggerated dialect.";
 }
-function fallbackLine(event: string, context: any) {
+function vibeLanguageInstruction(vibe: string) {
+  if (vibe === "gym-partner") return "Use casual workout-partner phrasing such as 'let's get it', 'lock in', or 'one more' only when it fits naturally. Do not force slang.";
+  if (vibe === "southern-warmth") return "Keep wording warm, unhurried, and conversational. Do not write out a phonetic accent.";
+  if (vibe === "east-coast-direct") return "Keep wording punchy, direct, and efficient.";
+  if (vibe === "west-coast-smooth") return "Keep wording relaxed, confident, and conversational.";
+  if (vibe === "soulful") return "Use warm, expressive wording with natural rhythm, without becoming poetic or theatrical.";
+  if (vibe === "neutral") return "Use neutral contemporary coaching language.";
+  return "Use warm, familiar conversational wording. Light natural phrases such as 'alright', 'let's get it', or 'you good' are fine when context fits. Never force AAVE, slang, or stereotypes.";
+}
+function voiceInstructions(style: string, talkSpeed: string, vibe: string) {
+  const pace = talkSpeed === "slow" ? "Use a measured pace." : talkSpeed === "fast" ? "Keep the pace brisk and crisp." : "Use a natural conversational pace.";
+  const delivery =
+    style === "calm" ? "Speak like a calm, grounded personal trainer. Warm, steady, concise, never theatrical." :
+    style === "energetic" ? "Speak like an energetic personal trainer. Upbeat and playful, never shouting or exaggerated." :
+    style === "direct" ? "Speak like a direct personal trainer. Firm, efficient, concise, never insulting or aggressive." :
+    style === "supportive" ? "Speak like a supportive personal trainer. Reassuring, warm, specific, and concise." :
+    style === "technical" ? "Speak like a precise strength coach. Clear, instructional, concise, focused on useful technique." :
+    "Speak like a confident personal trainer standing nearby. Conversational, warm, concise, lightly playful when appropriate.";
+  return delivery + " " + vibeVoiceInstruction(vibe) + " " + pace;
+}
+function fallbackLine(event: string, context: any, vibe = "warm-familiar") {
   const name = firstName(context?.name);
   const who = name ? ` ${name}` : "";
   const routine = clean(context?.routineName, 90);
@@ -71,7 +93,17 @@ function fallbackLine(event: string, context: any) {
   if (event === "warmup_started") return stageName ? `Warm-up first. ${stageName}. ${stageTarget}.` : "Warm-up first. Let's get moving.";
   if (event === "stretch_started") return stageName ? `${stageName}. ${stageTarget}.` : "Next stretch. Stay controlled.";
   if (event === "warmup_completed") return nextExercise ? `Warm-up complete. Next is ${nextExercise}.` : "Warm-up complete.";
-  if (event === "exercise_started") return exercise ? `Next up, ${exercise}. Let's get set.` : "Next exercise. Let's get set.";
+  if (event === "exercise_started") {
+    const lead =
+      vibe === "gym-partner" ? "Alright, let's get it." :
+      vibe === "east-coast-direct" ? "Lock in." :
+      vibe === "west-coast-smooth" ? "Alright, you're up." :
+      vibe === "southern-warmth" ? "Alright, let's get to it." :
+      vibe === "soulful" ? "Alright, settle in. Let's work." :
+      vibe === "neutral" ? "Next up." :
+      "Alright, let's get into it.";
+    return exercise ? `${lead} ${exercise}. Let's get set.` : `${lead} Next exercise.`;
+  }
   if (event === "set_completed") return "Set complete. Take your rest.";
   if (event === "exercise_feedback") {
     if (feedback === "too-easy") return progression?.label ? `Looks like I'm taking it easy on you. ${clean(progression.label, 90)} next time.` : "We'll bump this up next time.";
@@ -142,6 +174,7 @@ Deno.serve(async (req: Request) => {
     if (!event) return json({ error: "Unsupported coach event." }, 400);
 
     const style = STYLES.has(String(body?.style)) ? String(body.style) : "balanced";
+    const vibe = VIBES.has(String(body?.vibe)) ? String(body.vibe) : "warm-familiar";
     const frequency = FREQUENCIES.has(String(body?.frequency)) ? String(body.frequency) : "normal";
     const voice = VOICES.has(String(body?.voice)) ? String(body.voice) : "cedar";
     const detail = DETAILS.has(String(body?.detail)) ? String(body.detail) : "short";
@@ -155,7 +188,7 @@ Deno.serve(async (req: Request) => {
     const cooldownGuidance = GUIDANCE.has(String(body?.cooldownGuidance)) ? String(body.cooldownGuidance) : "guided";
     const adaptiveCoach = body?.adaptiveCoach !== false;
     const context = body?.context && typeof body.context === "object" ? body.context : {};
-    const fallback = fallbackLine(event, context);
+    const fallback = fallbackLine(event, context, vibe);
 
     if (!openAiKey) return json({
       error: "AI voice is not configured on the Workout App server yet.",
@@ -174,14 +207,14 @@ Deno.serve(async (req: Request) => {
         const speech = await fetch("https://api.openai.com/v1/audio/speech", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
-          body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style, talkSpeed), response_format: "mp3", speed: speechSpeed }),
+          body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style, talkSpeed, vibe), response_format: "wav", speed: speechSpeed }),
         });
         if (!speech.ok) return [key, null] as const;
         const bytes = new Uint8Array(await speech.arrayBuffer());
-        return [key, { line, audioBase64: toBase64(bytes), mimeType: "audio/mpeg" }] as const;
+        return [key, { line, audioBase64: toBase64(bytes), mimeType: "audio/wav" }] as const;
       }));
       const cues = Object.fromEntries(entries.filter(([,clip]) => clip));
-      console.log("workout-coach cue pack ready", { voice, style, talkSpeed, count: Object.keys(cues).length });
+      console.log("workout-coach cue pack ready", { voice, style, vibe, talkSpeed, count: Object.keys(cues).length });
       return json({ cues });
     }
 
@@ -239,7 +272,8 @@ Deno.serve(async (req: Request) => {
     const motivationRule = motivation === "low" ? "Keep motivation restrained." : motivation === "high" ? "Use more energetic encouragement without shouting or empty praise." : "Use moderate encouragement.";
     const phaseRule = adaptiveCoach ? "Adapt delivery to the workout phase. Warm-up and cooldown should sound calmer than working sets, even with an energetic style." : "Keep the selected style consistent across phases.";
     const guidanceRule = `Warm-up guidance: ${warmupGuidance}. Cooldown guidance: ${cooldownGuidance}.`;
-    const instructions = `You are the GoWorkout voice coach. Produce one short spoken coaching line based only on the supplied workout event and data. The workout engine is authoritative. Never invent or change a weight, rep target, rest time, exercise, or progression. Never claim work the data does not show. ${nameRule} Keep the line under ${maxWords} words. No markdown, emoji, quotes, headings, or stage directions. Do not praise every action. ${formRule} ${performanceRule} ${motivationRule} ${phaseRule} ${guidanceRule} Light teasing is allowed for too-easy feedback only when the approved progression supports an increase. Never shame the user. Coach style: ${style}. Talk frequency preference: ${frequency}.`;
+    const vibeRule = vibeLanguageInstruction(vibe);
+    const instructions = `You are the GoWorkout voice coach. Produce one short spoken coaching line based only on the supplied workout event and data. The workout engine is authoritative. Never invent or change a weight, rep target, rest time, exercise, or progression. Never claim work the data does not show. ${nameRule} Keep the line under ${maxWords} words. No markdown, emoji, quotes, headings, or stage directions. Do not praise every action. ${formRule} ${performanceRule} ${motivationRule} ${phaseRule} ${guidanceRule} ${vibeRule} Light teasing is allowed for too-easy feedback only when the approved progression supports an increase. Never shame the user. Coach style: ${style}. Talk frequency preference: ${frequency}.`;
 
     let line = fallback;
     let source = "fallback";
@@ -248,17 +282,17 @@ Deno.serve(async (req: Request) => {
       const name = nameUsage === "never" ? "" : firstName(context?.name);
       const voiceName = clean(context?.previewVoice || voice, 30);
       const lead =
-        style === "technical" ? "Stay controlled and keep your setup clean." :
-        style === "energetic" ? "Let's bring some energy." :
-        style === "direct" ? "Lock in." :
-        style === "supportive" ? "We'll take this one step at a time." :
-        style === "calm" ? "Settle in and move with control." :
-        "Let's get after it.";
+        vibe === "gym-partner" ? "Let's get it." :
+        vibe === "east-coast-direct" ? "Lock in." :
+        vibe === "west-coast-smooth" ? "Alright, you're up." :
+        vibe === "southern-warmth" ? "Let's get to work." :
+        vibe === "soulful" ? "Settle in. Let's work." :
+        vibe === "neutral" ? "Your coach is ready." :
+        "Let's get into it.";
       line = `Alright${name ? ` ${name}` : ""}. This is ${voiceName}. ${lead} Three, two, one, go.`;
       source = "preview";
     }
-
-    if (event !== "test") {
+    if (event !== "test" && !FAST_DIALOGUE_EVENTS.has(event)) {
     try {
       const dialogueStarted = Date.now();
       const upstream = await fetchWithTimeout("https://api.openai.com/v1/responses", {
@@ -300,12 +334,12 @@ Deno.serve(async (req: Request) => {
       const speech = await fetch("https://api.openai.com/v1/audio/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
-        body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style, talkSpeed), response_format: "mp3", speed: speechSpeed }),
+        body: JSON.stringify({ model: TTS_MODEL, voice, input: line, instructions: voiceInstructions(style, talkSpeed, vibe), response_format: "wav", speed: speechSpeed }),
       });
       if (speech.ok) {
         const bytes = new Uint8Array(await speech.arrayBuffer());
         console.log("workout-coach audio ready", { event, voice, source, bytes: bytes.length, speechMs: Date.now() - speechStarted });
-        return json({ line, source, audioBase64: toBase64(bytes), mimeType: "audio/mpeg" });
+        return json({ line, source, audioBase64: toBase64(bytes), mimeType: "audio/wav" });
       }
       const speechText = await speech.text();
       console.error("workout-coach speech upstream", speechText);
