@@ -154,6 +154,15 @@ Deno.serve(async (req: Request) => {
 
     let line = fallback;
     let source = "fallback";
+
+    if (event === "test") {
+      const name = firstName(context?.name);
+      const voiceName = clean(context?.previewVoice || voice, 30);
+      line = `Alright${name ? ` ${name}` : ""}. This is ${voiceName}. Your AI coach is ready.`;
+      source = "preview";
+    }
+
+    if (event !== "test") {
     try {
       const upstream = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -185,6 +194,7 @@ Deno.serve(async (req: Request) => {
     } catch (error) {
       console.error("workout-coach dialogue", error);
     }
+    }
 
     try {
       const speech = await fetch("https://api.openai.com/v1/audio/speech", {
@@ -194,6 +204,7 @@ Deno.serve(async (req: Request) => {
       });
       if (speech.ok) {
         const bytes = new Uint8Array(await speech.arrayBuffer());
+        console.log("workout-coach audio ready", { event, voice, source, bytes: bytes.length });
         return json({ line, source, audioBase64: toBase64(bytes), mimeType: "audio/mpeg" });
       }
       const speechText = await speech.text();
