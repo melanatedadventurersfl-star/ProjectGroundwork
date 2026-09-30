@@ -673,7 +673,8 @@ function ensureWorkoutAudio(){
 function unlockWorkoutCues(){
   ensureWorkoutAudio();
   window.GoWorkoutCoach?.unlock?.();
-  if(workoutCueSettings().voice&&'speechSynthesis' in window){
+  const settings=workoutCueSettings();
+  if(settings.voice&&!settings.aiCoach&&'speechSynthesis' in window){
     try{window.speechSynthesis.resume?.();}catch{}
   }
 }
@@ -744,7 +745,7 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
   if(!coachEventAllowed(event,settings.coachFrequency))return;
   const coach=window.GoWorkoutCoach;
   if(!coach?.emit){
-    if(fallbackLine)speakWorkoutCue(fallbackLine,'coach-missing-'+token);
+    console.warn('AI coach engine is unavailable');
     return;
   }
   coach.emit({
@@ -777,15 +778,15 @@ function selectCoachVoice(voice){
 }
 function previewCoachVoice(voice){
   if(!COACH_VOICE_IDS.includes(voice))return;
-  unlockWorkoutCues();
   const coach=window.GoWorkoutCoach;
   const name=displayName()==='there'?'':displayName();
   const fallback='Alright'+(name?' '+name:'')+'. This is '+coachVoiceLabel(voice)+'. Your AI coach is ready.';
   if(!coach?.emit){
-    speakWorkoutCue(fallback,'voice-preview-local-'+voice+'-'+Date.now());
+    toast('AI voice playback is unavailable. Reload GoWorkout and try again.');
     return;
   }
   coach.stop?.();
+  unlockWorkoutCues();
   const settings={...workoutCueSettings(),voice:true,aiCoach:true,coachVoice:voice};
   coach.emit({
     event:'test',
@@ -841,7 +842,8 @@ function triggerVisualCue(type,label='',token=''){
 }
 function fireWorkoutSignal(type,token,{voice='',label=''}={}){
   playWorkoutCue(type,token);
-  if(voice)speakWorkoutCue(voice,'voice-'+token);
+  const settings=workoutCueSettings();
+  if(voice&&!settings.aiCoach)speakWorkoutCue(voice,'voice-'+token);
   const numericCue=/^\d+$/.test(String(label||''));
   if(type==='tick'||(type==='warning'&&numericCue))pulseLocalCountdown(label);
   else triggerVisualCue(type,label,'visual-'+token);
@@ -6718,7 +6720,11 @@ function handleClick(event){
     toast('Resume the workout before changing the active set or timer.');
     return;
   }
-  if(a==='go-home'||a==='home')setTab('home');
+  if(a==='go-home'||a==='home'){
+    if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
+    window.GoWorkoutCoach?.stop?.();
+    setTab('home');
+  }
   else if(a==='train-anywhere-home')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'','bodyweight');
   else if(a==='open-session-setup'){exerciseActionsIndex=null;sessionSetupOpen=true;render();}
   else if(a==='apply-session-setup'){
