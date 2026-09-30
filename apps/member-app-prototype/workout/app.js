@@ -1434,7 +1434,7 @@ function planPrescriptionHtml(ex){
 
 function recommendedRepTarget(ex){
   const bounds=repBounds(ex?.reps||ex?.suggestedReps||'');
-  return Math.max(1,bounds.high||num(ex?.suggestedReps)||num(recommendedRepCount(ex?.reps))||1);
+  return Math.max(1,bounds.high||0,num(ex?.suggestedReps)||0,num(recommendedRepCount(ex?.reps))||0);
 }
 function recommendedWeightTarget(ex){
   if(['bodyweight','timed','band'].includes(ex?.loadMode))return 0;
@@ -3022,6 +3022,7 @@ function completeTimedSet(early=false){
   pos.set.plannedReps=String(pos.set.plannedReps??duration);
   pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
   pos.set.durationSeconds=num(pos.set.reps);
+  w.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight:String(pos.set.weight||''),reps:String(pos.set.reps||''),durationSeconds:pos.set.durationSeconds,plannedWeight:String(pos.set.plannedWeight||''),plannedReps:String(pos.set.plannedReps||duration)};
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
   pos.set.performanceInsight=insight;
   w.lastSetInsight=insight;
@@ -3257,6 +3258,8 @@ function resetActiveTimer(){
     w.timedSetEndsAt=new Date(now.getTime()+duration*1000).toISOString();
   }else if(w.phase==='pre-set'){
     w.preSetStartedAt=now.toISOString();
+  }else if(w.phase==='work'){
+    w.setStartedAt=now.toISOString();
   }else if(w.phase==='warmup'||w.phase==='cooldown'){
     const snap=timedStageSnapshot(w);if(!snap)return;
     if(snap.mode==='reps')w.timedStageReps=0;
@@ -4769,7 +4772,7 @@ function renderWorkout(){
   const warmSnap=w.phase==='warmup'?timedStageSnapshot(w):null;
   const headerTitle=w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.routineName;
   const headerProgress=w.phase==='warmup'&&warmSnap?(warmSnap.index+1)+' of '+(w.warmup?.length||0):activeStrength?(pos.ei+1)+' of '+w.exercises.length:'';
-  const warmElapsed=w.phase==='warmup'?(' · Warm-up '+formatClock(warmupElapsedSeconds(w))):'';
+  const warmElapsed=w.phase==='warmup'?(' · Warm-up <b id="warmup-elapsed-clock">'+formatClock(warmupElapsedSeconds(w))+'</b>'):'';
   return '<div class="guided-shell cleaned-workout runner-v2 phase-'+esc(w.phase)+'"><div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
     '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+'<small>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b>'+warmElapsed+'</small></div><button class="circle-action" data-action="open-workout-map" aria-label="Workout map">•••</button></header>'+
     (w.phase==='warmup'?'<div class="runner-top-progress"><span style="width:'+(((warmSnap?.index||0)+1)/Math.max(1,w.warmup.length)*100)+'%"></span></div>':activeStrength?'<div class="runner-top-progress"><span style="width:'+((pos.ei+1)/Math.max(1,w.exercises.length)*100)+'%"></span></div>':'')+
@@ -5398,6 +5401,8 @@ function updateTimers(){
   const elapsed=document.querySelector('#elapsed-clock');
   const exerciseClock=document.querySelector('#exercise-clock');
   if(elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  const warmupElapsed=document.querySelector('#warmup-elapsed-clock');
+  if(warmupElapsed&&w.phase==='warmup')warmupElapsed.textContent=formatClock(warmupElapsedSeconds(w));
   if(exerciseClock&&['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase))exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
   if(w.isPaused)return;
 
