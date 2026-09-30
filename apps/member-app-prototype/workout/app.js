@@ -3693,6 +3693,7 @@ function timedStageSnapshot(w,nowMs=Date.now()){
   const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
   const item=items[index];
   nowMs=workoutNowMs(w,nowMs);
+  if(w.timedStageAwaitingStart)return {complete:false,itemComplete:false,index,mode:'ready',side:timedStageSideLabel(w,item),remaining:0,remainingExact:0,total:Number(item?.seconds)||0};
   const switchEnd=Date.parse(w.timedStageSwitchEndsAt||'');
   if(item?.side&&Number.isFinite(switchEnd)){
     const total=timedStageSwitchSeconds(item);
@@ -3962,8 +3963,12 @@ function beginPreSetPosition(ei,si,isNewExercise=true,setupSeconds=null){
   prepareSetTarget(w.exercises[ei],w.exercises[ei]?.sets?.[si],si);
   const settings=workoutCueSettings();
   const exercise=w.exercises[ei];
-  const manualStart=exercise?.loadMode!=='timed';
-  const gateForCoach=Boolean(isNewExercise&&settings.voice&&settings.aiCoach);
+  const manualStart=exercise?.loadMode!=='timed'||!settings.autoStartTimedExercise;
+  const previewKey=strengthPreviewKey(w,{ei,si,type:isNewExercise?'exercise':'set'});
+  const previewAlreadySpoken=timelineWasPlayed(previewKey);
+  const formLine=exerciseInstructionLine(exercise,si);
+  const needsIntro=Boolean(isNewExercise&&!previewAlreadySpoken);
+  const gateForCoach=Boolean(settings.voice&&settings.aiCoach&&(needsIntro||formLine));
   w.phase='pre-set';
   w.preSetCoachPending=gateForCoach;
   w.preSetManualStart=manualStart;
@@ -3977,24 +3982,23 @@ function beginPreSetPosition(ei,si,isNewExercise=true,setupSeconds=null){
   if(isNewExercise)w.exerciseStartedAt=null;
   w.lastProgressionResult=null;
   saveStore();render();
-
-  if(isNewExercise){
-    const workoutId=w.id;
-    const intro=announceExercise(w.exercises[ei],ei===0?'First exercise':'Next exercise');
-    if(gateForCoach){
-      Promise.race([
-        Promise.resolve(intro).then(()=> 'complete'),
-        new Promise(resolve=>setTimeout(()=>resolve('timeout'),12000))
-      ]).then(status=>{
-        const active=store.activeWorkout;
-        if(!active||active.id!==workoutId||active.phase!=='pre-set'||active.currentExerciseIndex!==ei||active.currentSetIndex!==si||!active.preSetCoachPending)return;
-        if(status==='timeout')window.GoWorkoutCoach?.stop?.();
-        active.preSetCoachPending=false;
-        active.preSetStartedAt=active.preSetManualStart?null:new Date().toISOString();
-        active.preSetSetupSeconds=0;
-        saveStore();render();
-      });
-    }
+  const workoutId=w.id;
+  let sequence=Promise.resolve();
+  if(needsIntro)sequence=sequence.then(()=>announceExercise(exercise,ei===0?'First exercise':'Next exercise'));
+  if(formLine)sequence=sequence.then(()=>playExerciseInstruction(w,ei,si));
+  if(gateForCoach){
+    Promise.race([
+      sequence.then(()=> 'complete'),
+      new Promise(resolve=>setTimeout(()=>resolve('timeout'),12000))
+    ]).then(status=>{
+      const active=store.activeWorkout;
+      if(!active||active.id!==workoutId||active.phase!=='pre-set'||active.currentExerciseIndex!==ei||active.currentSetIndex!==si||!active.preSetCoachPending)return;
+      if(status==='timeout')window.GoWorkoutCoach?.cancel?.();
+      active.preSetCoachPending=false;
+      active.preSetStartedAt=active.preSetManualStart?null:new Date().toISOString();
+      active.preSetSetupSeconds=0;
+      saveStore();render();
+    });
   }
 }
 function preSetSnapshot(w,nowMs=Date.now()){
@@ -4136,13 +4140,11 @@ function startCooldown(){
   const firstCooldown=w.cooldown?.[0];
   w.timedStageReps=(firstCooldown?.mode==='reps'||firstCooldown?.reps)?Math.max(1,num(firstCooldown.reps)||8):0;
   w.timedStageSide=firstCooldown?.side?'right':'';
-  if(w.cooldown?.[0]&&!w.cooldown[0].startedAt)w.cooldown[0].startedAt=now;
-  w.timedPhaseStartedAt=now;
   w.timedPhaseSkippedSeconds=0;
   delete w.reviewPausedTimedStage;
   if(!w.cooldown?.length){markPhaseEnd(w,'cooldown',now);openWorkoutReview();return;}
   const extra=coachStageExtra(w,firstCooldown,0,'cooldown');
-  playPreparedWorkoutCoach(
+  const intro=playPreparedWorkoutCoach(
     'cooldown_started',
     extra,
     'Strength work is done. Let’s cool down with '+(firstCooldown?.name||'the first stretch')+'.',
@@ -4150,7 +4152,7 @@ function startCooldown(){
   );
   const nextCooldown=w.cooldown?.[1];
   if(nextCooldown)prefetchGuidedStageCoach('stretch_started',w,nextCooldown,1,'cooldown');
-  saveStore();render();
+  beginGuidedStageAfterInstruction(w,'cooldown',0,intro);
 }
 function completeTimedStagePhase(w){
   if(w.phase==='warmup'){
@@ -4166,6 +4168,8 @@ function completeTimedStagePhase(w){
   const current=timedStageItems(w)[w.timedStageIndex||0];
   if(current)current.endedAt=now;
   w.timedPhaseStartedAt=null;
+  w.timedStageAwaitingStart=false;
+  w.timedStageStarting=false;
   w.timedPhaseSkippedSeconds=0;
   w.timedStageSide='';
   markPhaseEnd(w,'cooldown',now);
@@ -4199,24 +4203,28 @@ function advanceTimedStage(){
   w.timedStageIndex=index+1;
   const next=items[w.timedStageIndex];
   w.timedStageReps=(next?.mode==='reps'||next?.reps)?Math.max(1,num(next.reps)||8):0;
-  if(next&&!next.startedAt)next.startedAt=now;
   w.timedStageSide=next?.side?'right':'';
-  w.timedPhaseStartedAt=now;
   delete w.reviewPausedTimedStage;
-  fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Next',label:'NEXT'});
-  const extra=coachStageExtra(w,next,w.timedStageIndex,w.phase);
-  const target=extra.stage?.target||'';
-  playPreparedWorkoutCoach(
-    'stretch_started',
-    extra,
-    (next?.name||'Next stretch')+'. '+target+'.',
-    'coach-stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex
-  );
-  const following=items[w.timedStageIndex+1];
-  if(following)prefetchGuidedStageCoach('stretch_started',w,following,w.timedStageIndex+1,w.phase);
+  const auto=guidedAutoStartEnabled(w.phase);
+  w.timedStageAwaitingStart=!auto;
+  w.timedStageStarting=false;
+  w.timedPhaseStartedAt=auto?now:null;
+  if(next&&auto&&!next.startedAt)next.startedAt=now;
+  fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'',label:'NEXT'});
+  const previewKey=guidedPreviewKey(w,w.phase,w.timedStageIndex);
+  if(!timelineWasPlayed(previewKey)){
+    const extra=coachStageExtra(w,next,w.timedStageIndex,w.phase);
+    const target=extra.stage?.target||'';
+    playPreparedWorkoutCoach(
+      'stretch_started',
+      extra,
+      (next?.name||'Next movement')+'. '+target+'.',
+      'coach-stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex
+    );
+  }
+  prefetchGuidedLookahead(w);
   saveStore();render();
 }
-
 function workoutActionKey(w,type,ei,si){return [w?.id,type,ei??'',si??''].join(':');}
 function claimWorkoutAction(w,key){
  if(!w||!key)return false;w.processedActions=w.processedActions||{};
@@ -4236,6 +4244,7 @@ function beginRest(next,seconds){
   w.restLog=Array.isArray(w.restLog)?w.restLog:[];
   w.restLog.push({token:w.restToken,startedAt:now,endedAt:null,plannedSeconds:safeRest,fromExerciseId:w.exercises?.[w.currentExerciseIndex]?.id||'',toExerciseId:w.exercises?.[next.ei]?.id||'',skipped:false});
   if(next.ei!==w.currentExerciseIndex)prefetchExerciseCoach(w.exercises?.[next.ei],next.ei);
+  prepareStrengthTimeline(w,next);
   saveStore();render();
 }
 function closeRestLog(w,token,{skipped=false}={}){
@@ -4459,6 +4468,10 @@ function advanceAfterRest(expectedToken=null){
   closeRestLog(w,w.restToken,{skipped:false});
   const next=w.pendingPosition;if(!next){startCooldown();return;}
   const isNewExercise=next.ei!==w.currentExerciseIndex;
+  const nextEx=w.exercises?.[next.ei];
+  if(nextEx?.loadMode!=='timed'||!workoutCueSettings().autoStartTimedExercise){
+    playTimelineCue('Rest is up. Start when you’re ready.','rest-ready-'+w.id+'-'+next.ei+'-'+next.si,{preview:{type:'rest-complete',ei:next.ei,si:next.si}});
+  }
   if(isNewExercise){
     const current=w.exercises[w.currentExerciseIndex],upcoming=w.exercises[next.ei];
     if(sameDynamicBlock(current,upcoming)){
@@ -4541,7 +4554,15 @@ function resetActiveTimer(){
     w.setStartedAt=now.toISOString();
   }else if(w.phase==='warmup'||w.phase==='cooldown'){
     const snap=timedStageSnapshot(w);if(!snap)return;
-    if(snap.mode==='switch'){
+    if(snap.mode==='ready'){
+    return '<div class="timed-stage runner-guided-stage runner-guided-ready" data-stage-index="'+index+'" data-stage-mode="ready">'+
+      '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
+      '<div class="runner-stage-copy">'+(snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'')+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p></div>'+
+      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?'Coach countdown is running.':'Start this movement when you are set.')+'</strong><small>'+(guidedAutoStartEnabled(w.phase)?'This normally starts after the coach cue.':'Auto-start is off in your coach settings.')+'</small></div>'+
+      '<button class="button primary-action runner-gold-action" data-action="start-guided-stage" '+(w.timedStageStarting?'disabled':'')+'>'+(w.timedStageStarting?'STARTING…':'START MOVEMENT')+'</button>'+
+    '</div>';
+  }
+  if(snap.mode==='switch'){
       const seconds=timedStageSwitchSeconds(timedStageItems(w)[w.timedStageIndex||0]);
       w.timedStageSwitchStartedAt=now.toISOString();
       w.timedStageSwitchEndsAt=new Date(now.getTime()+seconds*1000).toISOString();
@@ -6402,15 +6423,12 @@ function beginWorkoutSession(){
   }
   const sessionToken='session-intro-'+w.id;
   fireWorkoutSignal('go',sessionToken,{voice:'',label:'READY'});
-  const name=displayName()==='there'?'':displayName();
-  const welcome=hasWarmup
-    ?'Alright'+(name?' '+name:'')+'. Warm-up first, then '+w.exercises.length+' strength exercises.'
-    :'Alright'+(name?' '+name:'')+', you ready? '+w.routineName+'. '+w.exercises.length+' exercises today.';
-  emitWorkoutCoach('session_started',{
-    exerciseCount:w.exercises.length,
-    warmupCount:w.warmup?.length||0,
-    warmupMinutes:runnerPhaseMinutes(w.warmup||[])
-  },welcome,'coach-'+sessionToken);
+  playPreparedWorkoutCoach(
+    'session_started',
+    sessionCoachExtra(w),
+    sessionCoachLine(w),
+    'coach-'+sessionToken
+  );
   if(hasWarmup){
     saveStore();render();
   }else{
@@ -6424,18 +6442,22 @@ function startWarmupRoutine(){
   primeCoachCuePack();
   const now=new Date().toISOString();
   const first=w.warmup?.[0];
-  w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=(first?.mode==='reps'||first?.reps)?Math.max(1,num(first.reps)||8):0;w.timedPhaseStartedAt=now;w.warmupStartedAt=now;w.warmupCompletedAt=null;w.timedPhaseSkippedSeconds=0;
+  w.phase='warmup';
+  w.timedStageIndex=0;
+  w.timedStageReps=(first?.mode==='reps'||first?.reps)?Math.max(1,num(first.reps)||8):0;
+  w.warmupStartedAt=now;
+  w.warmupCompletedAt=null;
+  w.timedPhaseSkippedSeconds=0;
   w.timedStageSide=first?.side?'right':'';
-  if(first&&!first.startedAt)first.startedAt=now;
   markPhaseStart(w,'warmup',now);
-  fireWorkoutSignal('go','warmup-start-'+w.id,{voice:'',label:'GO'});
+  fireWorkoutSignal('go','warmup-start-'+w.id,{voice:'',label:'READY'});
   const extra={
     ...coachStageExtra(w,first,0,'warmup'),
     warmupCount:w.warmup?.length||0,
     warmupMinutes:runnerPhaseMinutes(w.warmup||[])
   };
   const target=extra.stage?.target||'';
-  playPreparedWorkoutCoach(
+  const intro=playPreparedWorkoutCoach(
     'warmup_started',
     extra,
     'Warm-up first. '+(first?.name?first.name+'. '+target+'.':''),
@@ -6443,12 +6465,12 @@ function startWarmupRoutine(){
   );
   const next=w.warmup?.[1];
   if(next)prefetchGuidedStageCoach('stretch_started',w,next,1,'warmup');
-  saveStore();render();
+  beginGuidedStageAfterInstruction(w,'warmup',0,intro);
 }
 function completeWarmup(){
   const w=store.activeWorkout;if(!w)return;
   const now=new Date().toISOString();
-  w.phase='warmup-complete';w.warmupCompletedAt=now;w.timedPhaseStartedAt=null;w.timedStageReps=0;w.timedStageSide='';
+  w.phase='warmup-complete';w.warmupCompletedAt=now;w.timedPhaseStartedAt=null;w.timedStageAwaitingStart=false;w.timedStageStarting=false;w.timedStageReps=0;w.timedStageSide='';
   markPhaseEnd(w,'warmup',now);
   fireWorkoutSignal('complete','warmup-complete-'+w.id,{voice:'',label:'READY'});
   const next=w.exercises?.[0];
@@ -7525,9 +7547,15 @@ function updateTimers(){
   if(['warmup','cooldown'].includes(w.phase)){
     const snap=timedStageSnapshot(w);
     if(!snap)return;
+    if(snap.mode==='ready')return;
     if(snap.mode==='reps')return;
     if(snap.mode==='switch'&&snap.remaining<=0){finishTimedStageSideSwitch();return;}
     if(snap.itemComplete){reconcileTimedStage();return;}
+    const preview=guidedUpcomingPreview(w,snap);
+    if(preview&&snap.remaining>3&&!timelineWasPlayed(preview.key)){
+      const lead=coachSpeechLeadSeconds(preview.line);
+      if(snap.remaining<=lead)playTimelineCue(preview.line,preview.key,{preview:{type:w.phase,index:preview.nextIndex}});
+    }
     if(snap.remaining>0&&snap.remaining<=3)fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.mode+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const stageClock=document.querySelector('#stage-clock');
     const fill=document.querySelector('#stage-progress-fill');
@@ -7592,7 +7620,14 @@ function updateTimers(){
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
   if(clock)clock.textContent=formatClock(remaining);
   if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
-  if(remaining>0&&remaining<=3&&!Number.isFinite(w.restPausedRemaining))fireWorkoutSignal('warning','rest-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+  const next=w.pendingPosition;
+  if(next){
+    const line=strengthPreviewLine(w,next),key=strengthPreviewKey(w,next);
+    if(line&&remaining>3&&!timelineWasPlayed(key)){
+      const lead=Math.max(8,coachSpeechLeadSeconds(line)+2);
+      if(remaining<=lead)playTimelineCue(line,key,{preview:{type:'strength',ei:next.ei,si:next.si}});
+    }
+  }
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining))advanceAfterRest(w.restToken);
 }
 
@@ -7800,6 +7835,7 @@ function handleClick(event){
   else if(a==='skip-current-set')skipCurrentSet();
   else if(a==='adjust-set-target')adjustSetTarget(node.dataset.targetType,Number(node.dataset.targetDelta)||0);
   else if(a==='start-set-now')finishPreSet(true);
+  else if(a==='start-guided-stage')startGuidedStageNow();
   else if(a==='end-timed-set')completeTimedSet(true);
   else if(a==='toggle-sound')toggleCueSetting('sound');
   else if(a==='toggle-voice')toggleCueSetting('voice');
