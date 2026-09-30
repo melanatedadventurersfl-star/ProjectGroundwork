@@ -841,7 +841,7 @@ function renderCueControls(){
   const settings=workoutCueSettings();
   const voiceLabel=settings.voice?(settings.aiCoach?'AI coach':'Voice'):'';
   const active=[voiceLabel,settings.sound?'Sound':'',settings.haptics?'Haptics':'',settings.flash?'Flash':''].filter(Boolean);
-  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>Workout cues</strong><small>'+esc(active.join(' · ')||'All cues off')+'</small></div><em>›</em></button>';
+  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>AI Coach & cues</strong><small>'+esc(active.join(' · ')||'All cues off')+'</small></div><em>›</em></button>';
 }
 
 const MOVEMENT_GUIDANCE = {
