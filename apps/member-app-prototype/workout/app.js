@@ -8658,11 +8658,7 @@ function handleClick(event){
     if(!inside||explicit){accountSheetOpen=false;render();return;}
   }
   const cueClose=event.target.closest('[data-action="close-cue-settings"]');
-  if(cueClose){
-    const inside=event.target.closest('[data-cue-settings-panel]');
-    const explicit=event.target.closest('.modal-close');
-    if(!inside||explicit){cueSettingsOpen=false;render();return;}
-  }
+  if(cueClose){requestCloseCueSettings();return;}
   const exerciseActionsClose=event.target.closest('[data-action="close-exercise-actions"]');
   if(exerciseActionsClose){
     const inside=event.target.closest('[data-exercise-actions-panel]');
@@ -8716,7 +8712,7 @@ function handleClick(event){
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
   const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-vibe','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','cycle-next-set-preview','cycle-exercise-instruction','toggle-adaptive-coach','toggle-auto-start-warmup','toggle-auto-start-cooldown','toggle-auto-start-timed','replay-coach','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
-  if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
+  if(store.activeWorkout?.isPaused&&!cueSettingsOpen&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
   }
@@ -8792,7 +8788,53 @@ function handleClick(event){
   else if(a==='onboard-create-account')createOnboardingAccount();
   else if(a==='account-resend-confirmation')resendWorkoutConfirmation();
   else if(a==='account-sign-out')signOutWorkoutAccount();
-  else if(a==='open-cue-settings'){cueSettingsOpen=true;render();}
+  else if(a==='open-cue-settings')openCueSettings();
+  else if(a==='cue-draft-preset')applyCueSettingsPresetDraft(String(node.dataset.coachPreset||''));
+  else if(a==='cue-draft-toggle'){
+    const key=String(node.dataset.settingKey||'');
+    const labels={sound:'Sound',haptics:'Haptics',flash:'Screen cue',voice:'Voice cues',aiCoach:'AI Coach',adaptiveCoach:'Adaptive coaching'};
+    if(['sound','haptics','flash','voice','aiCoach','adaptiveCoach'].includes(key))toggleCueSettingsDraft(key,labels[key]||'Setting');
+  }
+  else if(a==='cue-draft-bool'){
+    const key=String(node.dataset.settingKey||'');
+    if(['autoStartWarmup','autoStartCooldown','autoStartTimedExercise'].includes(key)){
+      const value=String(node.dataset.settingValue)==='true';
+      const names={autoStartWarmup:'Warm-up auto-start',autoStartCooldown:'Cooldown auto-start',autoStartTimedExercise:'Timed exercise auto-start'};
+      setCueSettingsDraft(key,value,{notice:names[key]+' '+(value?'on':'off')+' ✓'});
+    }
+  }
+  else if(a==='cue-draft-set'){
+    const key=String(node.dataset.settingKey||''),value=String(node.dataset.settingValue||'');
+    if(COACH_SETTING_VALUES[key]?.includes(value)){
+      setCueSettingsDraft(key,value,{notice:(COACH_SETTING_LABELS[key]?.[value]||value)+' selected ✓'});
+    }
+  }
+  else if(a==='cue-exercise-help')setCueSettingsHelp(String(node.dataset.help||'quick'));
+  else if(a==='cue-next-preview'){
+    const value=String(node.dataset.preview||'target');
+    if(['off','exercise','target'].includes(value))setCueSettingsDraft('nextSetPreview',value,{notice:(COACH_SETTING_LABELS.nextSetPreview[value]||value)+' ✓'});
+  }
+  else if(a==='cue-reset-behavior'){
+    const guide=COACH_PRESETS.guide;
+    cueSettingsDraft={...cueSettingsCurrent(),coachStyle:guide.coachStyle,coachFrequency:guide.coachFrequency,coachDetail:guide.coachDetail,exerciseInstruction:guide.exerciseInstruction,formCues:guide.formCues,coachPreset:'custom'};
+    cueSettingsSavedPulse=false;refreshCueSettingsView();showCueSettingsNotice('Coach behavior reset ✓');
+  }
+  else if(a==='cue-preview-stage'){cueSettingsPreviewStage=String(node.dataset.stage||'exercise');refreshCueSettingsView();}
+  else if(a==='cue-preview-stage-audio')runCueSettingsCoachPreview({stage:cueSettingsPreviewStage});
+  else if(a==='cue-preview-coach')runCueSettingsCoachPreview({});
+  else if(a==='cue-preview-quick')runCueSettingsCoachPreview({quick:true});
+  else if(a==='cue-test-device')testCueSettingsDevice(String(node.dataset.device||''));
+  else if(a==='cue-flow-detail'){const key=String(node.dataset.flowDetail||'');cueSettingsFlowDetail=cueSettingsFlowDetail===key?'':key;refreshCueSettingsView();}
+  else if(a==='cue-toggle-advanced'){cueSettingsAdvancedOpen=!cueSettingsAdvancedOpen;cueSettingsAdvancedKey='';refreshCueSettingsView();}
+  else if(a==='cue-advanced-row'){const key=String(node.dataset.settingKey||'');cueSettingsAdvancedKey=cueSettingsAdvancedKey===key?'':key;refreshCueSettingsView();}
+  else if(a==='cue-open-voice-picker'){cueSettingsVoicePickerOpen=true;refreshCueSettingsView();}
+  else if(a==='cue-close-voice-picker'){cueSettingsVoicePickerOpen=false;refreshCueSettingsView();}
+  else if(a==='cue-draft-voice')selectCueSettingsVoiceDraft(String(node.dataset.coachVoice||''));
+  else if(a==='cue-preview-voice')runCueSettingsCoachPreview({voice:String(node.dataset.coachVoice||'')});
+  else if(a==='cue-save-settings')saveCueSettingsDraft();
+  else if(a==='cue-save-close')saveCueSettingsDraft({closeAfter:true});
+  else if(a==='cue-keep-editing'){cueSettingsClosePrompt=false;refreshCueSettingsView();}
+  else if(a==='cue-discard-close')discardCueSettingsAndClose();
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
   else if(a==='set-history-filter'){historyFilter=node.dataset.historyFilter||'all';render();}
@@ -8942,6 +8984,10 @@ document.addEventListener('submit',event=>{
   }
 });
 document.addEventListener('input',event=>{
+  if(event.target.id==='coach-frequency-range'){
+    updateCueSettingsFrequencyLive(event.target.value);
+    return;
+  }
   if(event.target.id==='catalog-search'){
     catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}
     return;
@@ -8977,7 +9023,7 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
   if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
-  if(event.key==='Escape'&&cueSettingsOpen){cueSettingsOpen=false;render();return;}
+  if(event.key==='Escape'&&cueSettingsOpen){requestCloseCueSettings();return;}
   if(event.key==='Escape'&&setEditContext){setEditContext=null;render();return;}
   if(event.key==='Escape'&&workoutMapOpen){workoutMapOpen=false;render();return;}
   if(event.key==='Escape'&&readinessContext){readinessContext=null;render();return;}
