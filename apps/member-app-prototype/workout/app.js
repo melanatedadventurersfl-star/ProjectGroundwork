@@ -1271,8 +1271,13 @@ function updateCueSettingsFrequencyLive(value){
     const summary=cueCoachBehaviorSummary(cueSettingsDraft);
     hero.textContent=summary.style+' · '+summary.talk+' · '+summary.instruction;
   }
-  const save=document.querySelector('#coach-save-settings');
-  if(save){save.disabled=false;save.textContent='SAVE SETTINGS';}
+  document.querySelectorAll('[data-action="cue-save-settings"]').forEach(save=>{
+    save.disabled=false;
+    save.classList.add('active');
+    save.textContent=save.id==='coach-save-settings'?'SAVE SETTINGS':'Save';
+  });
+  const status=document.querySelector('.coach-settings-topbar small');
+  if(status)status.textContent='Unsaved changes';
 }
 
 function selectCoachVoice(voice){
@@ -6601,11 +6606,17 @@ function renderCueSettingsSheet(){
     return '<div class="coach-voice-choice '+(selected?'selected':'')+'"><button type="button" data-action="cue-draft-voice" data-coach-voice="'+esc(voice.id)+'"><div><strong>'+esc(voice.label)+'</strong><small>'+(voice.recommended?'Recommended':'AI voice')+'</small></div><em>'+(selected?'✓ Selected':'Choose')+'</em></button><button type="button" class="voice-play" data-action="cue-preview-voice" data-coach-voice="'+esc(voice.id)+'">▶</button></div>';
   }).join('');
   const autoSummary=cueAutoStartSummary(settings);
-  const flowCard=(type,title,imageCopy,auto,guidanceKey)=>'<div class="coach-flow-row"><div class="coach-flow-title"><div class="flow-thumb">'+(demoImage?'<img src="'+esc(demoImage)+'" alt="">':'<span>◌</span>')+'</div><div><strong>'+title+'</strong><button type="button" class="coach-info-button" data-action="cue-flow-detail" data-flow-detail="'+guidanceKey+'" aria-label="Explain '+title+'">ⓘ</button></div></div>'+
-    '<div class="coach-segment two"><button type="button" class="'+(!auto?'selected':'')+'" data-action="cue-draft-bool" data-setting-key="'+type+'" data-setting-value="false">Manual</button><button type="button" class="'+(auto?'selected':'')+'" data-action="cue-draft-bool" data-setting-key="'+type+'" data-setting-value="true">Auto</button></div>'+
-    '<small>'+(auto?'The coach gives the instruction, counts down, and starts this automatically.':'This waits for you to tap Start before the timer begins.')+'</small>'+
-    (cueSettingsFlowDetail===guidanceKey?'<div class="coach-guidance-detail"><span>GUIDANCE DETAIL</span><div class="coach-inline-options">'+COACH_SETTING_VALUES[guidanceKey].map(value=>'<button type="button" class="'+(settings[guidanceKey]===value?'selected':'')+'" data-action="cue-draft-set" data-setting-key="'+guidanceKey+'" data-setting-value="'+value+'">'+esc(COACH_SETTING_LABELS[guidanceKey][value])+'</button>').join('')+'</div></div>':'')+
-  '</div>';
+  const flowCard=(type,title,auto,guidanceKey='')=>{
+    const info=guidanceKey?'<button type="button" class="coach-info-button" data-action="cue-flow-detail" data-flow-detail="'+guidanceKey+'" aria-label="Explain '+title+'">ⓘ</button>':'';
+    const detail=guidanceKey&&cueSettingsFlowDetail===guidanceKey
+      ?'<div class="coach-guidance-detail"><span>GUIDANCE DETAIL</span><div class="coach-inline-options">'+COACH_SETTING_VALUES[guidanceKey].map(value=>'<button type="button" class="'+(settings[guidanceKey]===value?'selected':'')+'" data-action="cue-draft-set" data-setting-key="'+guidanceKey+'" data-setting-value="'+value+'">'+esc(COACH_SETTING_LABELS[guidanceKey][value])+'</button>').join('')+'</div></div>'
+      :'';
+    return '<div class="coach-flow-row"><div class="coach-flow-title"><div class="flow-thumb">'+(demoImage?'<img src="'+esc(demoImage)+'" alt="">':'<span>◌</span>')+'</div><div><strong>'+title+'</strong>'+info+'</div></div>'+
+      '<div class="coach-segment two"><button type="button" class="'+(!auto?'selected':'')+'" data-action="cue-draft-bool" data-setting-key="'+type+'" data-setting-value="false">Manual</button><button type="button" class="'+(auto?'selected':'')+'" data-action="cue-draft-bool" data-setting-key="'+type+'" data-setting-value="true">Auto</button></div>'+
+      '<small>'+(auto?'The coach gives the instruction, counts down, and starts this automatically.':'This waits for you to tap Start before the timer begins.')+'</small>'+
+      detail+
+    '</div>';
+  };
   return '<div class="coach-settings-fullscreen" id="coach-settings-view" data-cue-settings-panel>'+
     '<header class="coach-settings-topbar"><button type="button" class="coach-settings-back" data-action="close-cue-settings">‹</button><div><strong>Workout Coach Settings</strong><small>'+(dirty?'Unsaved changes':'Your coach is up to date')+'</small></div><button type="button" class="coach-settings-top-save '+(dirty?'active':'')+'" data-action="cue-save-settings" '+(!dirty||cueSettingsSaving?'disabled':'')+'>'+(cueSettingsSaving?'Saving…':cueSettingsSavedPulse?'Saved ✓':'Save')+'</button></header>'+
     '<main class="coach-settings-scroll" id="coach-settings-scroll">'+
@@ -6623,9 +6634,9 @@ function renderCueSettingsSheet(){
       '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Next exercise preview</h2><p>Choose what you hear before the next movement.</p></div></div><article class="coach-dark-card"><div class="coach-segment three dark"><button type="button" class="'+(previewMode==='off'?'selected':'')+'" data-action="cue-next-preview" data-preview="off">None</button><button type="button" class="'+(previewMode==='exercise'?'selected':'')+'" data-action="cue-next-preview" data-preview="exercise">Exercise only</button><button type="button" class="'+(previewMode==='target'?'selected':'')+'" data-action="cue-next-preview" data-preview="target">Exercise + target</button></div><div class="coach-speech-example"><div class="coach-mini-avatar">'+renderAvatarFigure(trainingAvatarId(),'settings-coach-avatar')+'</div><p>'+esc(cueNextPreviewCopy(settings))+'</p></div></article></section>'+
       '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>See it in action</h2><p>Preview how your current settings behave through a workout.</p></div></div><article class="coach-action-preview" id="coach-screen-preview"><div class="coach-stage-tabs">'+stages+'</div><div class="coach-action-media">'+(demoImage?'<img src="'+esc(demoImage)+'" alt="">':'')+'<span>'+esc(cueSettingsPreviewStage.toUpperCase())+'</span><div class="coach-action-bubble"><div>'+renderAvatarFigure(trainingAvatarId(),'settings-coach-avatar')+'</div><p>'+esc(cueStagePreviewCopy(cueSettingsPreviewStage,settings))+'</p></div></div><div class="coach-action-controls"><div><span>COUNTDOWN</span><strong>'+esc(settings.countdownMode==='off'?'Off':'3 · 2 · 1 · Go')+'</strong></div><button type="button" data-action="cue-preview-stage-audio">▶</button></div></article></section>'+
       '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Workout flow</h2><p>Choose when your workout waits for you and when it moves automatically.</p></div></div><article class="coach-cream-card coach-flow-card">'+
-        flowCard('autoStartWarmup','Warm-up guidance','Warm-up',settings.autoStartWarmup,'warmupGuidance')+
-        flowCard('autoStartCooldown','Cooldown guidance','Cooldown',settings.autoStartCooldown,'cooldownGuidance')+
-        flowCard('autoStartTimedExercise','Timed exercises','Timed',settings.autoStartTimedExercise,'cooldownGuidance').replace('data-flow-detail="cooldownGuidance"','data-flow-detail=""').replace(/<div class="coach-guidance-detail">[\s\S]*?<\/div><\/div>$/,'</div>')+
+        flowCard('autoStartWarmup','Warm-up guidance',settings.autoStartWarmup,'warmupGuidance')+
+        flowCard('autoStartCooldown','Cooldown guidance',settings.autoStartCooldown,'cooldownGuidance')+
+        flowCard('autoStartTimedExercise','Timed exercises',settings.autoStartTimedExercise)+
       '</article></section>'+
       '<section class="coach-v2-section"><div class="coach-v2-head"><div><h2>Device cues</h2><p>Choose what your phone does during key moments.</p></div></div><article class="coach-device-card">'+
         '<div class="coach-device-row"><span>🔊</span><div><strong>Sound</strong><small>Play cue tones and sound effects.</small></div><button type="button" class="coach-switch '+(settings.sound?'on':'')+'" data-action="cue-draft-toggle" data-setting-key="sound"><i></i></button><button type="button" data-action="cue-test-device" data-device="sound">Test</button></div>'+
@@ -9023,6 +9034,8 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
   if(event.key==='Escape'&&historyMenuId){historyMenuId=null;render();return;}
   if(event.key==='Escape'&&exerciseActionsIndex!==null){exerciseActionsIndex=null;render();return;}
+  if(event.key==='Escape'&&cueSettingsVoicePickerOpen){cueSettingsVoicePickerOpen=false;refreshCueSettingsView();return;}
+  if(event.key==='Escape'&&cueSettingsClosePrompt){cueSettingsClosePrompt=false;refreshCueSettingsView();return;}
   if(event.key==='Escape'&&cueSettingsOpen){requestCloseCueSettings();return;}
   if(event.key==='Escape'&&setEditContext){setEditContext=null;render();return;}
   if(event.key==='Escape'&&workoutMapOpen){workoutMapOpen=false;render();return;}
