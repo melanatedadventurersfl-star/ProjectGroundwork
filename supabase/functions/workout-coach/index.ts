@@ -76,6 +76,16 @@ async function authenticate(authHeader: string, supabaseUrl: string, anonKey: st
   return user?.id ? user : null;
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     const requestedHeaders = req.headers.get("Access-Control-Request-Headers");
@@ -164,7 +174,8 @@ Deno.serve(async (req: Request) => {
 
     if (event !== "test") {
     try {
-      const upstream = await fetch("https://api.openai.com/v1/responses", {
+      const dialogueStarted = Date.now();
+      const upstream = await fetchWithTimeout("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
         body: JSON.stringify({
@@ -175,7 +186,8 @@ Deno.serve(async (req: Request) => {
           max_output_tokens: 100,
           text: { format: { type: "json_schema", name: "workout_coach_line", strict: true, schema: { type: "object", additionalProperties: false, required: ["line"], properties: { line: { type: "string" } } } } },
         }),
-      });
+      }, 2500);
+      console.log("workout-coach dialogue timing", { event, ms: Date.now() - dialogueStarted, ok: upstream.ok });
       const payload = await upstream.json();
       if (upstream.ok) {
         const raw = outputText(payload);
@@ -192,11 +204,13 @@ Deno.serve(async (req: Request) => {
         }
       }
     } catch (error) {
-      console.error("workout-coach dialogue", error);
+      const timedOut = error instanceof DOMException && error.name === "AbortError";
+      console.warn("workout-coach dialogue fallback", { event, reason: timedOut ? "timeout" : String(error) });
     }
     }
 
     try {
+      const speechStarted = Date.now();
       const speech = await fetch("https://api.openai.com/v1/audio/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiKey}` },
@@ -204,7 +218,7 @@ Deno.serve(async (req: Request) => {
       });
       if (speech.ok) {
         const bytes = new Uint8Array(await speech.arrayBuffer());
-        console.log("workout-coach audio ready", { event, voice, source, bytes: bytes.length });
+        console.log("workout-coach audio ready", { event, voice, source, bytes: bytes.length, speechMs: Date.now() - speechStarted });
         return json({ line, source, audioBase64: toBase64(bytes), mimeType: "audio/mpeg" });
       }
       const speechText = await speech.text();
