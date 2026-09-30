@@ -6925,3 +6925,88 @@ button.runner-phase-row{cursor:pointer}
 .runner-block-rest-label strong{
   font-weight:900;
 }
+
+
+/* Timer controls, side switching, and timestamp history */
+.runner-timer-controls{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  width:100%;
+  margin-top:14px;
+}
+.runner-timer-controls button,
+.runner-rest-actions-clean.four button{
+  min-height:44px;
+  border:1px solid rgba(33,58,44,.2);
+  border-radius:12px;
+  background:rgba(255,255,255,.68);
+  font-weight:800;
+  letter-spacing:.04em;
+}
+.runner-rest-actions-clean.four{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+.runner-side-switch,
+.runner-side-switch-stage{
+  text-align:center;
+}
+.runner-side-switch > p,
+.runner-switch-note{
+  opacity:.72;
+}
+.runner-stage-side{
+  display:inline-flex;
+  margin-bottom:8px;
+  padding:5px 9px;
+  border-radius:999px;
+  background:rgba(33,58,44,.1);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.history-phase-times{
+  display:grid;
+  gap:8px;
+  margin:12px 0 16px;
+  padding:12px;
+  border-radius:14px;
+  background:rgba(33,58,44,.06);
+}
+.history-phase-times > div{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+}
+.history-phase-times span,
+.history-set-times small{
+  font-size:11px;
+}
+.history-detail-row.timestamped{
+  display:block;
+}
+.history-detail-row.timestamped > div:first-child{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:3px 12px;
+}
+.history-detail-row.timestamped em{
+  font-style:normal;
+  font-size:11px;
+  opacity:.65;
+}
+.history-set-times{
+  display:grid;
+  gap:4px;
+  margin-top:8px;
+}
+.history-set-times small{
+  opacity:.72;
+}
+@media (max-width:520px){
+  .runner-rest-actions-clean.four{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
