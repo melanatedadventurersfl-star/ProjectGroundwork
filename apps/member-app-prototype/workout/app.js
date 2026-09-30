@@ -1089,7 +1089,7 @@ function formCueKey(w,ei,si){return 'form-cue-'+(w?.id||'')+'-'+ei+'-'+si;}
 function prepareStrengthTimeline(w,next){if(!w||!next)return;const line=strengthPreviewLine(w,next);if(line)prefetchTimelineCue(line,strengthPreviewKey(w,next),{preview:{type:'strength',ei:next.ei,si:next.si}});const ex=w.exercises?.[next.ei],form=exerciseInstructionLine(ex,next.si);if(form)prefetchTimelineCue(form,formCueKey(w,next.ei,next.si),{preview:{type:'form',ei:next.ei,si:next.si}});}
 function playExerciseInstruction(w,ei,si){const ex=w?.exercises?.[ei],line=exerciseInstructionLine(ex,si);if(!line)return Promise.resolve(false);return playTimelineCue(line,formCueKey(w,ei,si),{preview:{type:'form',ei,si}});}
 function guidedPreviewKey(w,phase,index){return 'guided-preview-'+(w?.id||'')+'-'+phase+'-'+index;}
-function guidedUpcomingPreview(w,snap){if(!w||!snap||snap.mode==='switch'||snap.mode==='ready')return null;const items=timedStageItems(w),nextIndex=snap.index+1;if(nextIndex<items.length){const next=items[nextIndex],target=next?.mode==='reps'||next?.reps?String(next.reps||8)+' reps'+(next.side?' each side':''):String(next?.seconds||30)+' seconds';return {key:guidedPreviewKey(w,w.phase,nextIndex),line:'Next up, '+(next?.name||'the next movement')+'. '+target+'.',next,nextIndex};}if(w.phase==='warmup'){const ex=w.exercises?.[0];if(ex){const set=ex.sets?.[0]||{};return {key:guidedPreviewKey(w,'strength',0),line:'Warm-up is almost done. First up is '+ex.name+'. '+spokenTargetForSet(ex,set)+'.',next:null,nextIndex:-1};}}return null;}
+function guidedUpcomingPreview(w,snap){if(!w||!snap||snap.mode==='switch'||snap.mode==='ready')return null;const items=timedStageItems(w),nextIndex=snap.index+1;if(nextIndex<items.length){const next=items[nextIndex],target=next?.mode==='reps'||next?.reps?String(next.reps||8)+' reps'+(next.side?' each side':''):String(next?.seconds||30)+' seconds';return {key:guidedPreviewKey(w,w.phase,nextIndex),line:'Next up, '+(next?.name||'the next movement')+'. '+target+'.',next,nextIndex};}if(w.phase==='warmup'){const ex=w.exercises?.[0];if(ex){const set=ex.sets?.[0]||{};return {key:strengthPreviewKey(w,{ei:0,si:0,type:'exercise'}),line:'Warm-up is almost done. First up is '+ex.name+'. '+spokenTargetForSet(ex,set)+'.',next:null,nextIndex:-1};}}return null;}
 function prefetchGuidedLookahead(w){if(!w||!['warmup','cooldown'].includes(w.phase))return;const snap=timedStageSnapshot(w),p=guidedUpcomingPreview(w,snap);if(p)prefetchTimelineCue(p.line,p.key,{preview:{type:w.phase,index:p.nextIndex}});if(p?.next&&p.nextIndex+1<timedStageItems(w).length){const later=timedStageItems(w)[p.nextIndex+1],target=later?.mode==='reps'||later?.reps?String(later.reps||8)+' reps':String(later?.seconds||30)+' seconds';prefetchTimelineCue('Next up, '+(later?.name||'the next movement')+'. '+target+'.',guidedPreviewKey(w,w.phase,p.nextIndex+1),{preview:{type:w.phase,index:p.nextIndex+1}});}}
 function sessionCoachExtra(w){return {exerciseCount:w?.exercises?.length||0,warmupCount:w?.warmup?.length||0,warmupMinutes:runnerPhaseMinutes(w?.warmup||[])};}
 function sessionCoachLine(w){const name=displayName()==='there'?'':displayName();return w?.warmup?.length?'Alright'+(name?' '+name:'')+'. Warm-up first, then '+(w.exercises?.length||0)+' strength exercises.':'Alright'+(name?' '+name:'')+'. '+(w?.routineName||'Your workout')+'. Let’s get started.';}
@@ -6325,9 +6325,10 @@ function renderPreSet(pos){
   const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
   const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   const timedExercise=ex.loadMode==='timed';
-  const startControl=timedExercise
+  const autoTimed=timedExercise&&workoutCueSettings().autoStartTimedExercise;
+  const startControl=autoTimed
     ? '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACHING':preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>'+(preSet.mode==='coach'?'Countdown starts after the coach finishes the exercise intro.':'Timed exercise starts automatically when the countdown reaches zero.')+'</small></div>'+renderCountdownExercisePreview(pos)+'<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
-    : '<div class="runner-manual-start-note" role="status"><span>'+(preSet.mode==='coach'?'COACHING':'WHEN YOU’RE READY')+'</span><strong>'+(preSet.mode==='coach'?'Listen for the exercise setup.':'You control when this set starts.')+'</strong><small>The coach countdown begins after you tap Start Set.</small></div><button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':'START SET')+'</button>';
+    : '<div class="runner-manual-start-note" role="status"><span>'+(preSet.mode==='coach'?'COACHING':'WHEN YOU’RE READY')+'</span><strong>'+(preSet.mode==='coach'?'Listen for the exercise setup.':'You control when this set starts.')+'</strong><small>The coach countdown begins after you tap Start Set.</small></div><button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':(timedExercise?'START TIMED SET':'START SET'))+'</button>';
   return '<div class="runner-set-ready">'+
     '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
@@ -7307,8 +7308,14 @@ function updateTimers(){
   if(['warmup','cooldown'].includes(w.phase)){
     const snap=timedStageSnapshot(w);
     if(!snap)return;
+    if(snap.mode==='ready')return;
     if(snap.mode==='reps')return;
     if(snap.mode==='switch'&&snap.remaining<=0){finishTimedStageSideSwitch();return;}
+    const guidedPreview=guidedUpcomingPreview(w,snap);
+    if(guidedPreview&&snap.remaining>3&&!timelineWasPlayed(guidedPreview.key)){
+      const lead=coachSpeechLeadSeconds(guidedPreview.line);
+      if(snap.remaining<=lead)playTimelineCue(guidedPreview.line,guidedPreview.key,{preview:{type:w.phase,index:guidedPreview.nextIndex}});
+    }
     if(snap.itemComplete){reconcileTimedStage();return;}
     if(snap.remaining>0&&snap.remaining<=3)fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.mode+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const stageClock=document.querySelector('#stage-clock');
@@ -7373,8 +7380,20 @@ function updateTimers(){
   if(w.phase!=='rest')return;
   const remaining=restRemaining(w),clock=document.querySelector('#rest-clock'),ring=document.querySelector('#timer-ring');
   if(clock)clock.textContent=formatClock(remaining);
-  if(ring)ring.style.setProperty('--timer-progress',`${restProgress(w)}%`);
-  if(remaining>0&&remaining<=3&&!Number.isFinite(w.restPausedRemaining))fireWorkoutSignal('warning','rest-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+  if(ring)ring.style.setProperty('--timer-progress',String(restProgress(w))+'%');
+  const next=w.pendingPosition;
+  if(next){
+    const previewLine=strengthPreviewLine(w,next),previewKey=strengthPreviewKey(w,next);
+    if(previewLine&&remaining>3&&!timelineWasPlayed(previewKey)){
+      const lead=Math.max(8,coachSpeechLeadSeconds(previewLine)+2);
+      if(remaining<=lead)playTimelineCue(previewLine,previewKey,{preview:{type:'strength',ei:next.ei,si:next.si}});
+    }
+    const nextEx=w.exercises?.[next.ei];
+    const autoTimed=Boolean(nextEx?.loadMode==='timed'&&workoutCueSettings().autoStartTimedExercise);
+    if(autoTimed&&remaining>0&&remaining<=3&&!Number.isFinite(w.restPausedRemaining)){
+      fireWorkoutSignal('warning','rest-warning-'+w.id+'-'+next.ei+'-'+next.si+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+    }
+  }
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining))advanceAfterRest(w.restToken);
 }
 
@@ -7449,7 +7468,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-vibe','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','cycle-next-set-preview','cycle-exercise-instruction','toggle-adaptive-coach','toggle-auto-start-warmup','toggle-auto-start-cooldown','toggle-auto-start-timed','replay-coach','start-guided-stage','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-vibe','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','cycle-next-set-preview','cycle-exercise-instruction','toggle-adaptive-coach','toggle-auto-start-warmup','toggle-auto-start-cooldown','toggle-auto-start-timed','replay-coach','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
