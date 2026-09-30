@@ -270,6 +270,11 @@ function evaluatePrediction(prediction,event){
 }
 function updateModel(existing,event,evaluation=null){
   const model=existing?JSON.parse(JSON.stringify(existing)):{exerciseId:event.exerciseId,exerciseName:event.exerciseName,loadMode:event.loadMode||'',exposures:0,plannedSets:0,completedSets:0,targetHits:0,predictionCount:0,weightAbsoluteErrorTotal:0,repsAbsoluteErrorTotal:0,repDropTotal:0,setDurationTotal:0,setDurationCount:0,restTotal:0,restCount:0,targetAdjustedSets:0,feedbackCounts:{},observations:[],firstObservedAt:event.completedAt,currentBest:{weight:0,reps:0}};
+  for(const key of ['exposures','plannedSets','completedSets','targetHits','predictionCount','weightAbsoluteErrorTotal','repsAbsoluteErrorTotal','repDropTotal','setDurationTotal','setDurationCount','restTotal','restCount','targetAdjustedSets'])model[key]=n(model[key]);
+  model.feedbackCounts=model.feedbackCounts&&typeof model.feedbackCounts==='object'?model.feedbackCounts:{};
+  model.observations=Array.isArray(model.observations)?model.observations:[];
+  model.currentBest=model.currentBest&&typeof model.currentBest==='object'?model.currentBest:{weight:0,reps:0};
+  model.interventions=model.interventions&&typeof model.interventions==='object'?model.interventions:{};
   model.exerciseName=event.exerciseName||model.exerciseName;model.exposures+=1;model.plannedSets+=n(event.planned?.sets);model.completedSets+=n(event.actual?.completedSets);model.repDropTotal+=n(event.actual?.repDrop);model.targetAdjustedSets+=n(event.actual?.targetAdjustedSets);
   if(n(event.actual?.averageSetDurationSeconds)>0){model.setDurationTotal+=n(event.actual.averageSetDurationSeconds);model.setDurationCount+=1;}
   if(n(event.actual?.averageRestSeconds)>0){model.restTotal+=n(event.actual.averageRestSeconds);model.restCount+=1;}
