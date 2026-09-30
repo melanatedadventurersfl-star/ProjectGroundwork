@@ -7749,3 +7749,40 @@ button.runner-phase-row{cursor:pointer}
     padding-left:19px;
   }
 }
+
+
+.history-select-filters{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:10px 0 4px;
+}
+.history-select-filters label{
+  display:grid;
+  gap:5px;
+}
+.history-select-filters label > span{
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.1em;
+  opacity:.65;
+}
+.history-select-filters select{
+  width:100%;
+  min-height:42px;
+  padding:0 10px;
+  border:1px solid rgba(167,181,172,.18);
+  border-radius:12px;
+  background:#102018;
+  color:inherit;
+}
+.history-feedback-pattern{
+  margin-top:5px;
+  padding-top:5px;
+  border-top:1px solid rgba(227,189,73,.14);
+}
+@media (max-width:640px){
+  .history-select-filters{
+    grid-template-columns:1fr;
+  }
+}
