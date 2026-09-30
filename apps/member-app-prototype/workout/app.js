@@ -3219,9 +3219,15 @@ function finishPreSet(){
   prepareSetTarget(pos.exercise,pos.set,pos.si);
   const now=new Date().toISOString();
   if(!w.exerciseStartedAt)w.exerciseStartedAt=now;
+  markExerciseStart(w,pos.ei,now);
   pos.set.plannedWeight=String(pos.set.weight??'');
   pos.set.plannedReps=String(pos.set.reps??'');
   pos.set.startedAt=now;
+  if(exerciseNeedsSideSwitch(pos.exercise)){
+    pos.set.activeSide=pos.set.activeSide==='left'?'left':'right';
+    pos.set.sideStartedAt=now;
+    pos.set.sides=pos.set.sides||{};
+  }
   delete w.preSetStartedAt;delete w.preSetSetupSeconds;delete w.preSetCountdownSeconds;delete w.preSetIsNewExercise;
   if(pos.exercise.loadMode==='timed'){
     const seconds=Math.max(1,num(pos.set.reps)||num(pos.exercise.suggestedReps)||recommendedRepCount(pos.exercise.reps)||30);
@@ -3282,14 +3288,18 @@ function startCooldown(){
   const w=store.activeWorkout;if(!w)return;
   recordExerciseDuration(w,w.currentExerciseIndex);
   const now=new Date().toISOString();
+  markExerciseEnd(w,w.currentExerciseIndex,now);
+  markPhaseEnd(w,'strength',now);
+  markPhaseStart(w,'cooldown',now);
   w.phase='cooldown';
   w.exerciseStartedAt=null;
   w.timedStageIndex=0;
   w.timedStageReps=0;
+  w.timedStageSide=w.cooldown?.[0]?.side?'right':'';
   w.timedPhaseStartedAt=now;
   w.timedPhaseSkippedSeconds=0;
   delete w.reviewPausedTimedStage;
-  if(!w.cooldown?.length){openWorkoutReview();return;}
+  if(!w.cooldown?.length){markPhaseEnd(w,'cooldown',now);openWorkoutReview();return;}
   saveStore();render();
 }
 
@@ -3300,8 +3310,11 @@ function completeTimedStagePhase(w){
     completeWarmup();
     return;
   }
+  const now=new Date().toISOString();
   w.timedPhaseStartedAt=null;
   w.timedPhaseSkippedSeconds=0;
+  w.timedStageSide='';
+  markPhaseEnd(w,'cooldown',now);
   fireWorkoutSignal('complete','cooldown-complete-'+w.id,{voice:'Cooldown complete. Review your workout before saving.',label:'DONE'});
   openWorkoutReview();
 }
@@ -4967,31 +4980,47 @@ function renderWorkoutIntro(w){
 }
 function beginWorkoutSession(){
   const w=store.activeWorkout;if(!w||w.phase!=='intro')return;
+  const now=new Date().toISOString();
+  w.startedAt=now;
+  w.trainingStartedAt=now;
+  w.actualStartDate=dateKey();
+  w.totalPausedMs=0;
+  w.pauseLog=[];
   unlockWorkoutCues();
   fireWorkoutSignal('go','session-intro-'+w.id,{voice:w.routineName+'. '+w.exercises.length+' exercises today.',label:'READY'});
   if(w.warmup?.length){
     w.phase='warmup-routine';
     w.timedStageIndex=0;
     w.timedStageReps=0;
+    w.timedStageSide='';
     w.timedPhaseStartedAt=null;
     saveStore();render();
-  }else beginPreSetPosition(0,0,true);
+  }else{
+    markPhaseStart(w,'strength',now);
+    beginPreSetPosition(0,0,true);
+  }
 }
 
 function startWarmupRoutine(){
   const w=store.activeWorkout;if(!w||w.phase!=='warmup-routine')return;
-  w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=0;w.timedPhaseStartedAt=new Date().toISOString();w.warmupStartedAt=w.timedPhaseStartedAt;w.warmupCompletedAt=null;w.timedPhaseSkippedSeconds=0;
+  const now=new Date().toISOString();
+  w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=0;w.timedPhaseStartedAt=now;w.warmupStartedAt=now;w.warmupCompletedAt=null;w.timedPhaseSkippedSeconds=0;
+  w.timedStageSide=w.warmup?.[0]?.side?'right':'';
+  markPhaseStart(w,'warmup',now);
   fireWorkoutSignal('go','warmup-start-'+w.id,{voice:'Warm-up starts now.',label:'GO'});
   saveStore();render();
 }
 function completeWarmup(){
   const w=store.activeWorkout;if(!w)return;
-  w.phase='warmup-complete';w.warmupCompletedAt=new Date().toISOString();w.timedPhaseStartedAt=null;w.timedStageReps=0;
+  const now=new Date().toISOString();
+  w.phase='warmup-complete';w.warmupCompletedAt=now;w.timedPhaseStartedAt=null;w.timedStageReps=0;w.timedStageSide='';
+  markPhaseEnd(w,'warmup',now);
   fireWorkoutSignal('complete','warmup-complete-'+w.id,{voice:'Warm-up complete.',label:'READY'});
   saveStore();render();
 }
 function startStrengthWork(){
   const w=store.activeWorkout;if(!w||w.phase!=='warmup-complete')return;
+  markPhaseStart(w,'strength');
   beginPreSetPosition(0,0,true);
 }
 function addWarmupRep(){
