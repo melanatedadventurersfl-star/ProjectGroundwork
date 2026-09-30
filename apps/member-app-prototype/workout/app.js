@@ -6225,7 +6225,10 @@ function renderSummary(){
   const x=store.history.find(h=>h.id===store.lastSummaryId)||store.history[0];if(!x)return renderHistory();
   const partial=x.completionStatus==='partial';
   const records=workoutRecordClassification(x);
-  return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2><p>'+(partial?'Your completed work is preserved. This scheduled session remains partial.':'History and progression were updated from what you actually logged.')+'</p><div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
+  const motivation=workoutMotivationSummary(x);
+  return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2>'+
+    '<section class="runner-motivation-card post"><span>SESSION COMPLETE</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
+    '<div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
     (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
@@ -6421,11 +6424,7 @@ function handleClick(event){
     if(!inside||explicit){sessionSetupOpen=false;render();return;}
   }
   const historyClose=event.target.closest('[data-action="close-history-menu"]');
-  if(historyClose){
-    const inside=event.target.closest('[data-history-menu-panel]');
-    const explicit=event.target.closest('.modal-close');
-    if(!inside||explicit){historyMenuId=null;render();return;}
-  }
+  if(historyClose){historyMenuId=null;render();return;}
   const setClose=event.target.closest('[data-action="close-set-editor"]');
   if(setClose){
     const inside=event.target.closest('[data-set-edit-panel]');
@@ -6493,7 +6492,8 @@ function handleClick(event){
     progressExerciseId=node.dataset.progressExercise||'';
     const source=catalog.find(item=>item.id===progressExerciseId);
     progressMetric=['bodyweight','timed','band'].includes(source?.loadMode)?'reps':'weight';
-    persistUiState();render();
+    historyMenuId=null;
+    persistUiState();setTab('progress');
   }
   else if(a==='set-progress-metric'){progressMetric=['weight','reps','volume'].includes(node.dataset.progressMetric)?node.dataset.progressMetric:'weight';persistUiState();render();}
   else if(a==='close-progress-exercise'){progressExerciseId='';persistUiState();render();}
@@ -6529,6 +6529,13 @@ function handleClick(event){
   else if(a==='open-exercise-actions'){exerciseActionsIndex=Number(node.dataset.exerciseIndex);render();}
   else if(a==='open-history-menu'||a==='history-details'){historyMenuId=node.dataset.historyId;render();}
   else if(a==='set-history-filter'){historyFilter=node.dataset.historyFilter||'all';render();}
+  else if(a==='set-history-status'){historyStatusFilter=node.dataset.historyStatus||'all';render();}
+  else if(a==='set-history-view'){historyView=node.dataset.historyView==='calendar'?'calendar':'list';render();}
+  else if(a==='history-calendar-prev'){historyCalendarOffset-=1;render();}
+  else if(a==='history-calendar-next'){historyCalendarOffset+=1;render();}
+  else if(a==='undo-history-remove')undoHistoryRemove();
+  else if(a==='save-history-note')saveHistoryNote(node.dataset.historyId);
+  else if(a==='save-history-exercise-note')saveHistoryExerciseNote(node.dataset.historyId,Number(node.dataset.exerciseIndex));
   else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
@@ -6638,7 +6645,15 @@ document.addEventListener('submit',event=>{
     saveProfileFromForm(event.target);
   }
 });
-document.addEventListener('input',event=>{if(event.target.id==='catalog-search'){catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}}});
+document.addEventListener('input',event=>{
+  if(event.target.id==='catalog-search'){
+    catalogQuery=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#catalog-search');if(input){input.focus();input.setSelectionRange(caret,caret);}
+    return;
+  }
+  if(event.target.id==='history-search'){
+    historySearch=event.target.value;const caret=event.target.selectionStart;render();const input=document.querySelector('#history-search');if(input){input.focus();input.setSelectionRange(caret,caret);}
+  }
+});
 document.addEventListener('change',event=>{
   if(event.target.id==='training-days-count'){
     const desired=num(event.target.value)||4;
