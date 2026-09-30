@@ -197,6 +197,9 @@ function volumeExperimentProposal(model,target={},exercise={},context={}){
   if(context.otherApplied){
     return {...shadow,action:'shadow',applied:false,experiment:false,reason:'The volume candidate stays in shadow mode because another learner intervention already changed this movement today. Controlled tests isolate one variable at a time.'};
   }
+  if(gate.rollback){
+    return {...shadow,action:'shadow',applied:false,experiment:false,reason:gate.reason||'Controlled volume testing is paused while the learner rebuilds confidence.'};
+  }
   if(!evidenceReady||shadow.action!=='shadow'||difference===0){
     return {...shadow,action:shadow.action==='shadow'?'shadow':'observe',applied:false,experiment:false,reason:shadow.action==='shadow'?'The set-count idea stays in shadow mode until the movement reaches the controlled-test evidence gate.':shadow.reason};
   }
