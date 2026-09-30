@@ -756,11 +756,13 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
     fallbackSpeak:speakWorkoutCue,
     fallbackLine,
     onError:error=>{
-      if(error?.code==='ai_not_configured'){
+      if(error?.code==='ai_not_configured'||error?.code==='ai_quota_exhausted'){
         const now=Date.now();
         if(!cueRuntime.lastCoachConfigNoticeAt||now-cueRuntime.lastCoachConfigNoticeAt>15000){
           cueRuntime.lastCoachConfigNoticeAt=now;
-          toast('AI voice needs an OpenAI API key in Workout App Supabase.');
+          toast(error.code==='ai_quota_exhausted'
+            ?'AI voice is connected, but the OpenAI API account has no credits remaining.'
+            :'AI voice needs an OpenAI API key in Workout App Supabase.');
         }
       }
     }
@@ -792,7 +794,9 @@ function previewCoachVoice(voice){
     invoke:invokeWorkoutCoach,
     fallbackSpeak:speakWorkoutCue,
     fallbackLine:fallback,
-    onError:error=>toast(error?.code==='ai_not_configured'?'AI voice needs an OpenAI API key in Workout App Supabase.':(error?.message||'Voice preview failed.'))
+    onError:error=>toast(error?.code==='ai_quota_exhausted'
+      ?'AI voice is connected, but the OpenAI API account has no credits remaining.'
+      :(error?.code==='ai_not_configured'?'AI voice needs an OpenAI API key in Workout App Supabase.':(error?.message||'Voice preview failed.')))
   }).catch(error=>console.warn('Voice preview failed',error));
 }
 function feedbackCoachFallback(feedback,result){
