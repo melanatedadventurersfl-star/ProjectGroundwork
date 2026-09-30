@@ -11,6 +11,77 @@
   let audioHoldSource = null;
   let audioHoldGain = null;
   let stopGeneration = 0;
+  let audioUnlocked = false;
+  let recoveryBound = false;
+  let audioSessionBound = false;
+
+  function isAppleMobileWebKit() {
+    try {
+      const ua = navigator.userAgent || '';
+      return /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    } catch {
+      return false;
+    }
+  }
+
+  function configureAudioSession() {
+    try {
+      if (!('audioSession' in navigator) || !navigator.audioSession) return;
+      navigator.audioSession.type = 'playback';
+      if (!audioSessionBound && typeof navigator.audioSession.addEventListener === 'function') {
+        audioSessionBound = true;
+        navigator.audioSession.addEventListener('statechange', () => {
+          if (navigator.audioSession.state === 'interrupted') audioUnlocked = false;
+        });
+      }
+    } catch {}
+  }
+
+  function freshAudioContextForGesture() {
+    const ctx = ensureAudioContext();
+    if (!ctx || !isAppleMobileWebKit() || ctx.state !== 'interrupted') return ctx;
+    try { ctx.close?.(); } catch {}
+    audioContext = null;
+    return ensureAudioContext();
+  }
+
+  function releaseAudioHoldAfterStart() {
+    if (isAppleMobileWebKit()) {
+      setTimeout(() => stopAudioHold(), 450);
+      return;
+    }
+    stopAudioHold();
+  }
+
+  function bindMobileRecovery() {
+    if (recoveryBound || !isAppleMobileWebKit()) return;
+    recoveryBound = true;
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        audioUnlocked = false;
+        stopAudioHold();
+      } else {
+        configureAudioSession();
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      audioUnlocked = false;
+      stopAudioHold();
+    });
+
+    document.addEventListener('pointerdown', () => {
+      const ctx = audioContext;
+      let interrupted = false;
+      try {
+        interrupted = navigator.audioSession?.state === 'interrupted';
+      } catch {}
+      if (!ctx && !persistentAudio) return;
+      if (!audioUnlocked || ctx?.state !== 'running' || interrupted) unlock();
+    }, { capture: true, passive: true });
+  }
 
   function rememberToken(token) {
     if (!token) return true;
@@ -65,19 +136,10 @@
       // immediately authorized media action before the network request begins.
       const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
       audio.src = silentWav;
-      audio.muted = true;
+      audio.muted = false;
+      audio.volume = 1;
       const play = audio.play();
-      if (play && typeof play.then === 'function') {
-        play.then(() => {
-          audio.pause();
-          audio.currentTime = 0;
-          audio.muted = false;
-        }).catch(() => {
-          audio.muted = false;
-        });
-      } else {
-        audio.muted = false;
-      }
+      if (play && typeof play.catch === 'function') play.catch(() => {});
     } catch {}
   }
 
@@ -124,9 +186,28 @@
   }
 
   function unlock() {
-    primeAudioContext();
-    startAudioHold();
+    configureAudioSession();
+    bindMobileRecovery();
+    const ctx = freshAudioContextForGesture();
     primeAudioElement();
+    if (!ctx) return Promise.resolve(false);
+
+    let resume = Promise.resolve();
+    try {
+      if (ctx.state !== 'running' && typeof ctx.resume === 'function') resume = Promise.resolve(ctx.resume());
+    } catch {
+      resume = Promise.resolve();
+    }
+
+    return resume.then(() => {
+      primeAudioContext();
+      startAudioHold();
+      audioUnlocked = ctx.state === 'running';
+      return audioUnlocked;
+    }).catch(() => {
+      audioUnlocked = false;
+      return false;
+    });
   }
 
   async function runningAudioContext() {
@@ -197,7 +278,7 @@
       try {
         const result = audio.play();
         if (result && typeof result.then === 'function') {
-          result.then(() => stopAudioHold()).catch(error => {
+          result.then(() => releaseAudioHoldAfterStart()).catch(error => {
             if (settled) return;
             settled = true;
             clean();
@@ -227,6 +308,7 @@
 
   async function playBase64Audio(base64, mimeType) {
     if (!base64) return false;
+    configureAudioSession();
 
     const ctx = await runningAudioContext();
     if (ctx) {
@@ -243,7 +325,7 @@
               resolve(true);
             };
             source.start(0);
-            stopAudioHold();
+            releaseAudioHoldAfterStart();
           } catch (error) {
             if (activeSource) activeSource = null;
             reject(error);
@@ -315,6 +397,7 @@
   function stop() {
     stopGeneration += 1;
     queue = Promise.resolve();
+    audioUnlocked = false;
     stopAudioHold();
     if (activeSource) {
       try { activeSource.stop(0); } catch {}
