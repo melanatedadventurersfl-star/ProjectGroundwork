@@ -586,6 +586,17 @@ function pauseInteractiveTimers(w){
     );
   }
   if(w.phase==='rest'&&!Number.isFinite(w.restPausedRemaining))w.restPausedRemaining=restRemaining(w);
+  if(w.phase==='side-switch'){
+    const remaining=sideSwitchRemaining(w);
+    const clock=document.querySelector('#side-switch-clock');
+    const ring=document.querySelector('#timer-ring');
+    if(clock)clock.textContent=formatClock(remaining);
+    if(ring)ring.style.setProperty('--timer-progress',`${Math.max(0,Math.min(100,(remaining/Math.max(1,num(w.sideSwitchDuration)||5))*100))}%`);
+    if(remaining>0&&remaining<=3)fireWorkoutSignal('warning','exercise-side-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+    if(remaining<=0)finishExerciseSideSwitch();
+    return;
+  }
+
   if(w.phase==='timed-set'){
     const snap=timedSetSnapshot(w);
     if(snap&&!snap.complete)w.reviewPausedTimedSetRemaining=snap.remainingExact;
@@ -3598,13 +3609,22 @@ function resetActiveTimer(){
     const duration=Math.max(1,num(w.timedSetDuration)||num(getActivePosition()?.set?.reps)||30);
     w.timedSetStartedAt=now.toISOString();
     w.timedSetEndsAt=new Date(now.getTime()+duration*1000).toISOString();
+  }else if(w.phase==='side-switch'){
+    const duration=Math.max(1,num(w.sideSwitchDuration)||exerciseSideSwitchSeconds(getActivePosition()?.exercise)||5);
+    w.sideSwitchStartedAt=now.toISOString();
+    w.sideSwitchEndsAt=new Date(now.getTime()+duration*1000).toISOString();
+    w.sideSwitchPausedRemaining=null;
   }else if(w.phase==='pre-set'){
     w.preSetStartedAt=now.toISOString();
   }else if(w.phase==='work'){
     w.setStartedAt=now.toISOString();
   }else if(w.phase==='warmup'||w.phase==='cooldown'){
     const snap=timedStageSnapshot(w);if(!snap)return;
-    if(snap.mode==='reps')w.timedStageReps=0;
+    if(snap.mode==='switch'){
+      const seconds=timedStageSwitchSeconds(timedStageItems(w)[w.timedStageIndex||0]);
+      w.timedStageSwitchStartedAt=now.toISOString();
+      w.timedStageSwitchEndsAt=new Date(now.getTime()+seconds*1000).toISOString();
+    }else if(snap.mode==='reps')w.timedStageReps=0;
     else w.timedPhaseStartedAt=now.toISOString();
   }else return;
   saveStore();
@@ -5189,16 +5209,24 @@ function renderTimedStage(w){
   const items=timedStageItems(w),snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30,mode:'time'};
   const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1))),item=items[index]||items[0],next=index+1<items.length?items[index+1]:null;
   const image=timedStageImageUrl(item,0);
-  const pct=snap.mode==='reps'?Math.max(0,Math.min(100,(snap.completedReps/Math.max(1,snap.totalReps))*100)):Math.max(0,Math.min(100,((snap.total-snap.remaining)/Math.max(1,snap.total))*100));
+  const pct=snap.mode==='reps'?Math.max(0,Math.min(100,(snap.completedReps/Math.max(1,snap.totalReps))*100)):snap.mode==='switch'?Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100)):Math.max(0,Math.min(100,((snap.total-snap.remaining)/Math.max(1,snap.total))*100));
+  if(snap.mode==='switch'){
+    return '<div class="timed-stage runner-guided-stage runner-side-switch-stage" data-stage-index="'+index+'" data-stage-mode="switch">'+
+      '<div class="runner-stage-copy"><p class="eyebrow">SWITCH SIDES</p><h2>Move to your left side</h2><p>'+esc(item?.name||'Movement')+'</p></div>'+
+      '<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>'+
+      '<div class="runner-stage-progress"><span id="stage-progress-fill" style="width:'+pct+'%"></span></div>'+
+      '<div class="runner-timer-controls three"><button data-action="reset-timer">RESET</button><button data-action="toggle-workout-pause">'+(w.isPaused?'RESUME':'PAUSE')+'</button><button data-action="skip-side-stage-switch">SKIP</button></div>'+
+      '<small class="runner-switch-note">Reposition safely. The left side starts automatically at zero.</small>'+
+    '</div>';
+  }
+  const sideLabel=snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'';
   return '<div class="timed-stage runner-guided-stage" data-stage-index="'+index+'" data-stage-mode="'+esc(snap.mode)+'">'+
     '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
-    '<div class="runner-stage-copy"><h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.cue||'Move through a comfortable range.')+'</p></div>'+
-    (snap.mode==='reps'?'<div class="runner-rep-stepper"><button data-action="warmup-rep-minus" '+(snap.completedReps<=0?'disabled':'')+' aria-label="Remove rep">−</button><div><strong>'+snap.completedReps+' / '+snap.totalReps+'</strong><span>reps'+(item?.side?' · '+esc(item.side):'')+'</span></div><button data-action="warmup-rep" aria-label="Log rep">+</button></div>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
+    '<div class="runner-stage-copy">'+sideLabel+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.cue||'Move through a comfortable range.')+'</p></div>'+
+    (snap.mode==='reps'?'<div class="runner-rep-stepper"><button data-action="warmup-rep-minus" '+(snap.completedReps<=0?'disabled':'')+' aria-label="Remove rep">−</button><div><strong>'+snap.completedReps+' / '+snap.totalReps+'</strong><span>reps'+(item?.side?' · current side':'')+'</span></div><button data-action="warmup-rep" aria-label="Log rep">+</button></div>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
     '<div class="runner-stage-progress"><span id="stage-progress-fill" style="width:'+pct+'%"></span></div>'+
-    '<div class="runner-stage-controls"><button class="runner-stage-skip" data-action="skip-stage"><span>◀|</span><small>Skip</small></button>'+
-      '<button class="runner-stage-pause" data-action="toggle-workout-pause">'+(w.isPaused?'▶':'Ⅱ')+'</button>'+
-      '<button class="runner-stage-next" data-action="skip-stage"><span>|▶</span><small>Next</small></button></div>'+
-    (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' '+next.side:'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
+    '<div class="runner-timer-controls three"><button data-action="reset-timer">RESET</button><button data-action="toggle-workout-pause">'+(w.isPaused?'RESUME':'PAUSE')+'</button><button data-action="skip-stage">SKIP</button></div>'+
+    (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' · each side':'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
   '</div>';
 }
 function exerciseSessionHistory(exerciseRef,limit=4){
@@ -5479,7 +5507,7 @@ function renderRest(pos){
     (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
     '<div class="timer-wrap runner-rest-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
     '<div class="runner-rest-next">'+(nextEx?exerciseImageButton(nextEx,'rest-next-exercise-media'):'')+'<div><span>Up next</span><strong>'+esc(nextName)+'</strong><small>'+(nextSet?'Set '+nextSet+' of '+(nextEx?.sets?.length||pos.exercise.sets.length)+' · ':'')+esc(nextEx?currentPrescriptionLabel(nextEx):next?currentPrescriptionLabel(pos.exercise):'Guided cooldown')+'</small></div></div>'+
-    '<div class="runner-rest-actions-clean three"><button data-action="skip-rest">SKIP REST</button><button data-action="pause-rest">'+(paused?'RESUME':'PAUSE')+'</button><button data-action="add-rest" '+(remaining>=60?'disabled':'')+'>+15 SEC</button></div></div>';
+    '<div class="runner-rest-actions-clean four"><button data-action="reset-timer">RESET</button><button data-action="pause-rest">'+(paused?'RESUME':'PAUSE')+'</button><button data-action="skip-rest">SKIP</button><button data-action="add-rest" '+(remaining>=180?'disabled':'')+'>+15 SEC</button></div></div>';
 }
 
 function renderHistory(){
@@ -5806,8 +5834,9 @@ function updateTimers(){
     const snap=timedStageSnapshot(w);
     if(!snap)return;
     if(snap.mode==='reps')return;
-    if(snap.itemComplete){advanceTimedStage();return;}
-    if(snap.remaining>0&&snap.remaining<=3)fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    if(snap.mode==='switch'&&snap.remaining<=0){finishTimedStageSideSwitch();return;}
+    if(snap.itemComplete){reconcileTimedStage();return;}
+    if(snap.remaining>0&&snap.remaining<=3)fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.mode+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     const stageClock=document.querySelector('#stage-clock');
     const fill=document.querySelector('#stage-progress-fill');
     if(stageClock)stageClock.textContent=formatClock(snap.remaining);
@@ -6065,7 +6094,9 @@ function handleClick(event){
   else if(a==='pause-rest')toggleRestPause();
   else if(a==='skip-rest')skipRest();
   else if(a==='reset-timer')resetActiveTimer();
-  else if(a==='skip-stage')advanceTimedStage();
+  else if(a==='skip-stage')skipTimedStage();
+  else if(a==='skip-side-stage-switch')finishTimedStageSideSwitch();
+  else if(a==='skip-side-switch')skipExerciseSideSwitch();
   else if(a==='finish')finishWorkout(false);
   else if(a==='discard')discardWorkout();
 }
