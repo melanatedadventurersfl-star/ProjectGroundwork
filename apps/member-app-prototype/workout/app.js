@@ -1566,6 +1566,13 @@ function detailedExerciseGuidance(ex){
   const base=exerciseGuidance(ex);
   return {...base,...(EXERCISE_GUIDANCE_OVERRIDES[ex?.id]||{})};
 }
+function renderQuickFormCue(ex,label='FORM CUE'){
+  const guide=detailedExerciseGuidance(ex);
+  return '<section class="runner-quick-form-cue">'+
+    '<div><span>'+esc(label)+'</span><strong>'+esc(guide.cue||'Keep the movement controlled.')+'</strong></div>'+
+    '<button class="text-button" type="button" data-exercise-detail="'+esc(ex.id)+'">VIEW FULL FORM</button>'+
+  '</section>';
+}
 function renderExerciseGuidanceCard(ex,{compact=false,label='FORM'}={}){
   const guide=detailedExerciseGuidance(ex);
   const steps=(guide.steps||[]).slice(0,compact?3:4);
@@ -6757,23 +6764,23 @@ function renderPreSet(pos){
   const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):exerciseWeightDisplay(ex,recommendedWeightTarget(ex));
   const workingWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
   const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
-  const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
+  const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   const timedExercise=ex.loadMode==='timed';
   const autoTimed=timedExercise&&workoutCueSettings().autoStartTimedExercise;
   const startControl=autoTimed
-    ? '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACHING':preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>'+(preSet.mode==='coach'?'Countdown starts after the coach finishes the exercise intro.':'Timed exercise starts automatically when the countdown reaches zero.')+'</small></div>'+renderCountdownExercisePreview(pos)+'<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
-    : '<div class="runner-manual-start-note" role="status"><span>'+(preSet.mode==='coach'?'COACHING':'WHEN YOU’RE READY')+'</span><strong>'+(preSet.mode==='coach'?'Listen for the exercise setup.':'You control when this set starts.')+'</strong><small>The coach countdown begins after you tap Start Set.</small></div><button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':(timedExercise?'START TIMED SET':'START SET'))+'</button>';
-  return '<div class="runner-set-ready">'+
-    '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    ? '<div class="runner-action-dock"><div class="runner-auto-start compact" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACHING':preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>'+(preSet.mode==='coach'?'Coach intro first.':'Starts automatically when the countdown reaches zero.')+'</small></div><button class="button secondary runner-start-now" type="button" data-action="start-set-now">START COUNTDOWN NOW</button></div>'
+    : '<div class="runner-action-dock">'+(preSet.mode==='coach'?'<small class="runner-coach-gate">Coach setup is playing. Start unlocks when it finishes.</small>':'')+'<button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':(timedExercise?'START TIMED SET':'START SET'))+'</button></div>';
+  return '<div class="runner-set-ready runner-set-ready-v3">'+
+    '<div class="runner-set-ready-head"><div><span class="runner-exercise-position">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</span><h2>'+esc(ex.name)+'</h2><div class="runner-set-meta"><strong>SET '+(pos.si+1)+' OF '+ex.sets.length+'</strong>'+(blockLabel?'<span>'+esc(blockLabel)+'</span>':'')+(exerciseRepCountMode(ex)==='per-side'?'<span>EACH SIDE</span>':'')+'</div></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="Exercise options">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
-    '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedReps)+' · Previous: '+esc(previousLabel)+'</small></div>'+
-    renderExerciseGuidanceCard(ex,{compact:true,label:'HOW TO'})+
+    '<div class="runner-set-target-hero"><span>TODAY’S TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+'</small></div>'+
+    startControl+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
       (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
       '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
-    startControl+
-    '<div class="runner-set-links"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">OPTIONS</button></div>'+
+    renderQuickFormCue(ex)+
+    '<div class="runner-target-context"><span>PLAN '+esc(recommendedWeight)+' · '+esc(recommendedReps)+'</span><span>PREVIOUS '+esc(previousLabel)+'</span></div>'+
   '</div>';
 }
 function renderTimedWorkSet(pos){
@@ -6993,20 +7000,18 @@ function renderWorkSet(pos){
   const sideLabel=side?side.toUpperCase()+' SIDE':'';
   const plannedWeight=set.plannedWeight??set.weight??'';
   const plannedReps=set.plannedReps??set.reps??'';
-  const displayLoad=noWeight?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(String(setTargetValue(ex,set,'weight'))+' lb');
-  return '<div class="runner-work-clean">'+
-    '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><strong>'+esc(ex.name)+'</strong><span>Set '+(pos.si+1)+' of '+ex.sets.length+(sideLabel?' · '+esc(sideLabel):'')+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
-    '<div class="runner-active-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
-    renderExerciseGuidanceCard(ex,{compact:true,label:'FORM WHILE YOU WORK'})+
-
-    '<div class="runner-live-plan"><span>PLANNED</span><strong>'+(noWeight?'':esc(plannedWeight||0)+' lb × ')+esc(plannedReps)+' '+repLabel+'</strong></div>'+
-    '<div class="runner-load-focus"><strong>'+esc(displayLoad)+'</strong><span>'+esc(exerciseGuidance(ex).cue||'Keep the movement controlled.')+'</span></div>'+
+  const displayLoad=noWeight?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')));
+  const liveTarget=(noWeight?'':displayLoad+' × ')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
+  return '<div class="runner-work-clean runner-work-clean-v3">'+
+    '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><span class="runner-exercise-position">EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+'</span><strong>'+esc(ex.name)+'</strong><span>SET '+(pos.si+1)+' OF '+ex.sets.length+(sideLabel?' · '+esc(sideLabel):'')+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="runner-live-target-v3"><span>WORKING TARGET</span><strong>'+esc(liveTarget)+'</strong><small>'+(noWeight?'':esc(plannedWeight||0)+' lb × ')+esc(plannedReps)+' '+repLabel+' planned</small></div>'+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+' compact">'+
       (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1">+</button></div></div>':'')+
       '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1">+</button></div></div>'+
     '</div>'+
     '<input id="set-weight" type="hidden" value="'+esc(set.weight??'')+'"><input id="set-reps" type="hidden" value="'+esc(set.reps??'')+'">'+
-    '<section class="runner-live-log"><button class="button primary-action runner-gold-action" data-action="complete-set">'+(sideLabel?'COMPLETE '+esc(sideLabel):'COMPLETE SET')+'</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></section>'+
+    '<section class="runner-live-log runner-live-log-sticky"><button class="button primary-action runner-gold-action" data-action="complete-set">'+(sideLabel?'COMPLETE '+esc(sideLabel):'COMPLETE SET')+'</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></section>'+
+    '<div class="runner-live-support"><div class="runner-active-media runner-active-media-compact '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+renderQuickFormCue(ex,'FORM WHILE YOU WORK')+'</div>'+
   '</div>';
 }
 function renderSideSwitch(pos){
