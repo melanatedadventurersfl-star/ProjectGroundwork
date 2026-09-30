@@ -1,6 +1,6 @@
 (function(global){
 'use strict';
-const VERSION='0.2.0',SCHEMA_VERSION=1;
+const VERSION='0.3.0',SCHEMA_VERSION=1;
 const n=value=>{const v=Number.parseFloat(value);return Number.isFinite(v)?v:0;};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const round=(value,digits=2)=>{const scale=Math.pow(10,digits);return Math.round((n(value)+Number.EPSILON)*scale)/scale;};
@@ -18,8 +18,81 @@ function recommendationGate(model){
   if(exposures>=3&&predictions>=2&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Enough evidence to surface suggestions, but not enough to steer training'};
   return {level:'observe',label:'OBSERVE ONLY',reason:'Collecting evidence before this learner can affect a workout'};
 }
+function variableConfidence(model,variable){
+  const metrics=model?.metrics||{},exposures=n(model?.exposures),predictions=n(model?.predictionCount),completion=n(metrics.setCompletionRate);
+  const observations=model?.observations||[];
+  let evidence=exposures,checks=predictions,supported=true;
+  if(variable==='weight')supported=!['bodyweight','timed','band','assisted'].includes(model?.loadMode||'');
+  if(variable==='rest'){evidence=observations.filter(item=>n(item.averageRestSeconds)>0).length;checks=evidence;}
+  if(variable==='readiness'){evidence=observations.filter(item=>n(item.readinessScore)>0).length;checks=evidence;}
+  if(variable==='volume'){evidence=exposures;checks=Math.min(exposures,6);}
+  if(!supported)return {level:'unavailable',score:0,evidence:0,checks:0,supported:false};
+  const score=Math.round(clamp(evidence/8,0,1)*60+clamp(completion,0,1)*20+clamp(checks/6,0,1)*20);
+  return {level:score>=75?'high':score>=45?'medium':'low',score,evidence,checks,supported:true};
+}
+function interventionStats(model,variable){
+  const item=model?.interventions?.[variable]||{};
+  const applied=n(item.applied),successes=n(item.successes),failures=n(item.failures);
+  return {applied,successes,failures,successRate:applied?successes/applied:null};
+}
+function variableGate(model,variable){
+  const conf=variableConfidence(model,variable),metrics=model?.metrics||{},stats=interventionStats(model,variable);
+  if(!conf.supported)return {level:'unavailable',label:'NOT USED',reason:'This variable is not controlled for this movement type',confidence:conf};
+  if(stats.applied>=3&&stats.successRate!==null&&stats.successRate<.5){
+    return {level:'suggest',label:'ROLLED BACK',reason:'Applied learner changes underperformed in recent outcome checks, so automatic influence is paused',confidence:conf,rollback:true};
+  }
+  const completion=n(metrics.setCompletionRate),hit=metrics.targetHitRate;
+  if(variable==='weight'){
+    const ready=n(model?.exposures)>=6&&n(model?.predictionCount)>=4&&completion>=.8&&(hit===null||hit===undefined||n(hit)>=.65)&&(metrics.averageWeightPredictionError===null||metrics.averageWeightPredictionError===undefined||n(metrics.averageWeightPredictionError)<=5);
+    if(ready)return {level:'influence',label:'READY TO INFLUENCE',reason:'Load evidence is stable enough for conservative guardrails',confidence:conf};
+    if(n(model?.exposures)>=3&&n(model?.predictionCount)>=2&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Load evidence can support suggestions but not automatic changes',confidence:conf};
+  }else if(variable==='reps'){
+    const ready=n(model?.exposures)>=6&&n(model?.predictionCount)>=4&&completion>=.8&&(hit===null||hit===undefined||n(hit)>=.65)&&(metrics.averageRepsPredictionError===null||metrics.averageRepsPredictionError===undefined||n(metrics.averageRepsPredictionError)<=1.5);
+    if(ready)return {level:'influence',label:'READY TO INFLUENCE',reason:'Rep evidence is stable enough for conservative guardrails',confidence:conf};
+    if(n(model?.exposures)>=3&&n(model?.predictionCount)>=2&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Rep evidence can support suggestions but not automatic changes',confidence:conf};
+  }else if(variable==='rest'){
+    if(conf.evidence>=6&&completion>=.8)return {level:'influence',label:'READY TO INFLUENCE',reason:'Rest timing has enough repeated observations to test personalized recovery',confidence:conf};
+    if(conf.evidence>=4&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Rest timing has enough observations for a visible suggestion',confidence:conf};
+  }else if(variable==='volume'){
+    if(n(model?.exposures)>=6&&completion>=.75)return {level:'suggest',label:'SUGGEST ONLY',reason:'Volume is being modeled but cannot change set count yet',confidence:conf};
+  }else if(variable==='readiness'){
+    if(conf.evidence>=6)return {level:'suggest',label:'SUGGEST ONLY',reason:'Readiness-performance patterns are visible but do not control workouts yet',confidence:conf};
+  }
+  return {level:'observe',label:'OBSERVE ONLY',reason:'More variable-specific evidence is required',confidence:conf};
+}
+function variableGates(model){
+  return {
+    weight:variableGate(model,'weight'),
+    reps:variableGate(model,'reps'),
+    rest:variableGate(model,'rest'),
+    volume:variableGate(model,'volume'),
+    readiness:variableGate(model,'readiness')
+  };
+}
+function restProposal(model,target={}){
+  const gate=variableGate(model,'rest'),base=Math.max(30,n(target.restSeconds)||45);
+  const observations=(model?.observations||[]).filter(item=>n(item.averageRestSeconds)>0&&item.completionRate!==undefined).slice(-10);
+  const proposed={restSeconds:base};
+  if(observations.length<4)return {action:'observe',applied:false,changed:false,variable:'rest',gate,base:{restSeconds:base},proposed,reason:'More completed rest observations are needed before personalizing the timer.',evidence:{observations:observations.length}};
+  const sorted=[...observations].sort((a,b)=>n(a.averageRestSeconds)-n(b.averageRestSeconds));
+  const cut=Math.floor(sorted.length/2),short=sorted.slice(0,cut),long=sorted.slice(cut);
+  const shortRest=mean(short.map(item=>item.averageRestSeconds)),longRest=mean(long.map(item=>item.averageRestSeconds));
+  const shortDrop=mean(short.map(item=>item.repDrop)),longDrop=mean(long.map(item=>item.repDrop));
+  const shortCompletion=mean(short.map(item=>item.completionRate)),longCompletion=mean(long.map(item=>item.completionRate));
+  const longerLooksBetter=longRest-shortRest>=10&&longDrop<=shortDrop-.75&&longCompletion>=shortCompletion-.05;
+  if(!longerLooksBetter)return {action:'validate',applied:false,changed:false,variable:'rest',gate,base:{restSeconds:base},proposed,reason:'Longer rest has not shown a consistent enough performance advantage yet.',evidence:{observations:observations.length,shortRest:round(shortRest,1),longRest:round(longRest,1),shortRepDrop:round(shortDrop,2),longRepDrop:round(longDrop,2)}};
+  const candidate=clamp(Math.round(longRest/15)*15,base+15,120);
+  if(candidate<=base)return {action:'validate',applied:false,changed:false,variable:'rest',gate,base:{restSeconds:base},proposed,reason:'Your current timer already matches the stronger rest range.',evidence:{observations:observations.length}};
+  proposed.restSeconds=candidate;
+  const action=gate.level==='influence'?'apply':gate.level==='suggest'?'suggest':'observe';
+  return {
+    action,applied:action==='apply',changed:true,variable:'rest',gate,base:{restSeconds:base},proposed,
+    reason:'Longer observed rests were associated with lower rep drop-off without reducing set completion. The timer moves toward that stronger range.',
+    evidence:{observations:observations.length,shortRest:round(shortRest,1),longRest:round(longRest,1),shortRepDrop:round(shortDrop,2),longRepDrop:round(longDrop,2),shortCompletion:round(shortCompletion,3),longCompletion:round(longCompletion,3)}
+  };
+}
 function targetProposal(model,target={},exercise={}){
-  const gate=model?.gate||recommendationGate(model),mode=String(exercise.loadMode||model?.loadMode||''),base={weight:n(target.weight),reps:n(target.reps),restSeconds:n(target.restSeconds),sets:n(target.sets)};
+  const mode=String(exercise.loadMode||model?.loadMode||''),variable=['bodyweight','timed'].includes(mode)?'reps':'weight',gate=variableGate(model,variable),base={weight:n(target.weight),reps:n(target.reps),restSeconds:n(target.restSeconds),sets:n(target.sets)};
   const recent=(model?.observations||[]).slice(-3),latest=recent[recent.length-1]||null;
   const hardCount=recent.filter(item=>['hard','too-hard','form-off'].includes(item.feedback)).length;
   const misses=recent.filter(item=>item.predictionHit===false).length;
@@ -56,7 +129,7 @@ function targetProposal(model,target={},exercise={}){
   const eligible=gate.level==='influence'&&supported;
   const action=changed?(eligible?'apply':gate.level==='suggest'?'suggest':'observe'):'validate';
   return {
-    action,applied:action==='apply',changed,direction,gate,
+    action,applied:action==='apply',changed,direction,variable,gate,
     base,proposed,
     reason,
     evidence:{exposures:n(model?.exposures),predictions:n(model?.predictionCount),targetHitRate:metrics.targetHitRate??null,averageRepDrop:metrics.averageRepDrop??null,targetAdjustmentRate:metrics.targetAdjustmentRate??null,recentMisses:misses,recentHardSignals:hardCount}
@@ -70,7 +143,7 @@ function addDecision(value,decision){
   learner.updatedAt=new Date().toISOString();
   return learner;
 }
-function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],decisions:[],processedWorkoutIds:[]};}
+function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],decisions:[],outcomes:[],processedWorkoutIds:[]};}
 function normalizeLearner(value){
   const learner=value&&typeof value==='object'?value:emptyLearner();
   learner.schemaVersion=SCHEMA_VERSION;learner.version=VERSION;
@@ -79,8 +152,25 @@ function normalizeLearner(value){
   learner.predictions=Array.isArray(learner.predictions)?learner.predictions:[];
   learner.evaluations=Array.isArray(learner.evaluations)?learner.evaluations:[];
   learner.decisions=Array.isArray(learner.decisions)?learner.decisions:[];
+  learner.outcomes=Array.isArray(learner.outcomes)?learner.outcomes:[];
   learner.processedWorkoutIds=Array.isArray(learner.processedWorkoutIds)?learner.processedWorkoutIds:[];
   learner.createdAt=learner.createdAt||new Date().toISOString();
+  const eventMap=new Map(learner.events.map(event=>[event.workoutId+'::'+event.exerciseId,event]));
+  Object.values(learner.models||{}).forEach(model=>{
+    model.observations=(model.observations||[]).map(observation=>{
+      const event=eventMap.get(observation.workoutId+'::'+model.exerciseId);
+      if(!event)return observation;
+      return {
+        ...observation,
+        averageRestSeconds:observation.averageRestSeconds??event.actual?.averageRestSeconds??null,
+        readinessScore:observation.readinessScore??event.readiness?.score??0,
+        energy:observation.energy??event.readiness?.energy??0,
+        sleep:observation.sleep??event.readiness?.sleep??0,
+        soreness:observation.soreness??event.readiness?.soreness??0
+      };
+    });
+    model.variableGates=variableGates(model);
+  });
   return learner;
 }
 function predictionForExercise(exercise,model,context={}){
@@ -131,11 +221,43 @@ function updateModel(existing,event,evaluation=null){
   const best=event.actual?.best||{weight:0,reps:0};
   if(n(best.weight)>n(model.currentBest?.weight)||(n(best.weight)===n(model.currentBest?.weight)&&n(best.reps)>n(model.currentBest?.reps)))model.currentBest={weight:n(best.weight),reps:n(best.reps)};
   if(evaluation){model.predictionCount+=1;if(evaluation.targetHit)model.targetHits+=1;model.weightAbsoluteErrorTotal+=n(evaluation.weightError);model.repsAbsoluteErrorTotal+=n(evaluation.repsError);}
-  const observation={workoutId:event.workoutId,completedAt:event.completedAt,weight:n(best.weight),reps:n(best.reps),averageWeight:n(event.actual?.averageWeight),averageReps:n(event.actual?.averageReps),completionRate:n(event.actual?.completionRate),repDrop:n(event.actual?.repDrop),feedback:event.feedback||'',predictionHit:evaluation?Boolean(evaluation.targetHit):null};
+  const observation={workoutId:event.workoutId,completedAt:event.completedAt,weight:n(best.weight),reps:n(best.reps),averageWeight:n(event.actual?.averageWeight),averageReps:n(event.actual?.averageReps),completionRate:n(event.actual?.completionRate),repDrop:n(event.actual?.repDrop),averageRestSeconds:event.actual?.averageRestSeconds??null,readinessScore:n(event.readiness?.score),energy:n(event.readiness?.energy),sleep:n(event.readiness?.sleep),soreness:n(event.readiness?.soreness),feedback:event.feedback||'',predictionHit:evaluation?Boolean(evaluation.targetHit):null};
   model.observations=[...(model.observations||[]),observation].slice(-20);model.lastObservedAt=event.completedAt;
   const completionRate=model.plannedSets?model.completedSets/model.plannedSets:0,first=model.observations[0]||observation,latest=model.observations[model.observations.length-1]||observation,gap=Math.max(1,model.exposures-1);
   model.metrics={setCompletionRate:round(completionRate,3),targetHitRate:model.predictionCount?round(model.targetHits/model.predictionCount,3):null,averageRepDrop:round(model.repDropTotal/model.exposures,2),averageSetDurationSeconds:model.setDurationCount?round(model.setDurationTotal/model.setDurationCount,1):null,averageRestSeconds:model.restCount?round(model.restTotal/model.restCount,1):null,targetAdjustmentRate:model.completedSets?round(model.targetAdjustedSets/model.completedSets,3):0,averageWeightPredictionError:model.predictionCount?round(model.weightAbsoluteErrorTotal/model.predictionCount,2):null,averageRepsPredictionError:model.predictionCount?round(model.repsAbsoluteErrorTotal/model.predictionCount,2):null,weightProgressionPerExposure:round((n(latest.weight)-n(first.weight))/gap,2),repsProgressionPerExposure:round((n(latest.reps)-n(first.reps))/gap,2)};
   model.confidence=confidence(model.exposures,completionRate,model.predictionCount);
+  model.variableGates=variableGates(model);
+  model.gate=recommendationGate(model);
+  return model;
+}
+function decisionOutcome(decision,event,modelBefore={}){
+  if(!decision?.applied)return null;
+  const variable=decision.variable||'weight',actual=event.actual||{},proposed=decision.proposed||{},plannedSets=Math.max(1,n(event.planned?.sets)||n(proposed.sets)||1);
+  const weighted=n(proposed.weight)>0,targetCompleted=actual.completedSets>=plannedSets&&(!weighted||n(actual.averageWeight)>=n(proposed.weight))&&n(actual.minReps)>=Math.max(1,n(proposed.reps)||1);
+  const priorDrop=modelBefore?.metrics?.averageRepDrop;
+  let success=targetCompleted,reason=targetCompleted?'The applied target was completed.':'The applied target was not fully completed.';
+  if(variable==='rest'){
+    const dropStable=priorDrop===null||priorDrop===undefined||n(actual.repDrop)<=n(priorDrop)+.25;
+    success=targetCompleted&&dropStable;
+    reason=success?'The longer rest preserved target completion without worsening rep drop-off.':'The rest intervention did not preserve both target completion and rep-drop behavior.';
+  }
+  return {
+    id:'outcome-'+decision.id,decisionId:decision.id,workoutId:event.workoutId,exerciseId:event.exerciseId,exerciseName:event.exerciseName,variable,
+    evaluatedAt:event.completedAt,success,reason,
+    baseline:{repDrop:priorDrop??null},
+    actual:{completedSets:n(actual.completedSets),minReps:n(actual.minReps),averageWeight:n(actual.averageWeight),averageReps:n(actual.averageReps),repDrop:n(actual.repDrop),averageRestSeconds:actual.averageRestSeconds??null}
+  };
+}
+function applyInterventionOutcome(model,outcome){
+  if(!model||!outcome)return model;
+  model.interventions=model.interventions||{};
+  const item=model.interventions[outcome.variable]||{applied:0,successes:0,failures:0,lastOutcomes:[]};
+  item.applied+=1;
+  if(outcome.success)item.successes+=1;else item.failures+=1;
+  item.lastOutcomes=[...(item.lastOutcomes||[]),{evaluatedAt:outcome.evaluatedAt,success:outcome.success,decisionId:outcome.decisionId}].slice(-6);
+  item.successRate=item.applied?round(item.successes/item.applied,3):null;
+  model.interventions[outcome.variable]=item;
+  model.variableGates=variableGates(model);
   model.gate=recommendationGate(model);
   return model;
 }
@@ -152,18 +274,31 @@ function recordWorkout(value,workout){
     const event=eventFromExercise(workout,exercise,index);if(!event)return;
     const prediction=learner.predictions.find(item=>item.workoutId===event.workoutId&&item.exerciseId===event.exerciseId)||null;
     const evaluation=evaluatePrediction(prediction,event);
-    learner.models[event.exerciseId]=updateModel(learner.models[event.exerciseId],event,evaluation);learner.events.push(event);if(evaluation)learner.evaluations.push(evaluation);
-    results.push({event,evaluation,model:learner.models[event.exerciseId]});
+    const before=learner.models[event.exerciseId]||null;
+    let updated=updateModel(before,event,evaluation);
+    const decisions=learner.decisions.filter(item=>item.workoutId===event.workoutId&&item.exerciseId===event.exerciseId&&item.applied&&!item.outcome);
+    for(const decision of decisions){
+      const outcome=decisionOutcome(decision,event,before||{});
+      if(!outcome)continue;
+      decision.outcome=outcome;
+      learner.outcomes.push(outcome);
+      updated=applyInterventionOutcome(updated,outcome);
+    }
+    learner.models[event.exerciseId]=updated;learner.events.push(event);if(evaluation)learner.evaluations.push(evaluation);
+    results.push({event,evaluation,model:updated});
   });
-  learner.events=learner.events.slice(-600);learner.evaluations=learner.evaluations.slice(-300);learner.processedWorkoutIds.push(workout.id);learner.processedWorkoutIds=learner.processedWorkoutIds.slice(-200);learner.updatedAt=workout.completedAt||new Date().toISOString();
+  learner.events=learner.events.slice(-600);learner.evaluations=learner.evaluations.slice(-300);learner.outcomes=learner.outcomes.slice(-300);learner.processedWorkoutIds.push(workout.id);learner.processedWorkoutIds=learner.processedWorkoutIds.slice(-200);learner.updatedAt=workout.completedAt||new Date().toISOString();
   const evaluated=results.filter(item=>item.evaluation),hits=evaluated.filter(item=>item.evaluation.targetHit).length,strongest=results.slice().sort((a,b)=>(b.model?.confidence?.score||0)-(a.model?.confidence?.score||0))[0]||null;
-  return {learner,summary:{exercisesObserved:results.length,predictionsEvaluated:evaluated.length,predictionHits:hits,predictionHitRate:evaluated.length?round(hits/evaluated.length,3):null,strongestExercise:strongest?{exerciseId:strongest.event.exerciseId,name:strongest.event.exerciseName,confidence:strongest.model.confidence}:null}};
+  return {learner,summary:{exercisesObserved:results.length,predictionsEvaluated:evaluated.length,predictionHits:hits,predictionHitRate:evaluated.length?round(hits/evaluated.length,3):null,interventionsEvaluated:learner.outcomes.filter(item=>item.workoutId===workout.id).length,interventionsSuccessful:learner.outcomes.filter(item=>item.workoutId===workout.id&&item.success).length,strongestExercise:strongest?{exerciseId:strongest.event.exerciseId,name:strongest.event.exerciseName,confidence:strongest.model.confidence}:null}};
 }
 function overview(value){
   const learner=normalizeLearner(value),models=Object.values(learner.models||{}),evaluated=learner.evaluations.length,hits=learner.evaluations.filter(item=>item.targetHit).length;
   const recent=learner.evaluations.slice(-20),recentHits=recent.filter(item=>item.targetHit).length;
   const weighted=learner.evaluations.filter(item=>n(item.planned?.weight)>0);
   const gates=models.reduce((acc,model)=>{const gate=model.gate||recommendationGate(model);acc[gate.level]=(acc[gate.level]||0)+1;return acc;},{observe:0,suggest:0,influence:0});
+  const variableGateCounts={weight:{observe:0,suggest:0,influence:0,unavailable:0},reps:{observe:0,suggest:0,influence:0,unavailable:0},rest:{observe:0,suggest:0,influence:0,unavailable:0},volume:{observe:0,suggest:0,influence:0,unavailable:0},readiness:{observe:0,suggest:0,influence:0,unavailable:0}};
+  models.forEach(model=>{const vg=variableGates(model);Object.keys(variableGateCounts).forEach(key=>{const level=vg[key]?.level||'observe';variableGateCounts[key][level]=(variableGateCounts[key][level]||0)+1;});});
+  const outcomes=learner.outcomes||[],successful=outcomes.filter(item=>item.success).length,rollbacks=models.reduce((sum,model)=>sum+Object.values(variableGates(model)).filter(gate=>gate.rollback).length,0);
   return {
     modeledExercises:models.length,
     highConfidence:models.filter(x=>x.confidence?.level==='high').length,
@@ -175,6 +310,10 @@ function overview(value){
     averageRepsPredictionError:evaluated?round(mean(learner.evaluations.map(item=>item.repsError)),2):null,
     averageWeightPredictionError:weighted.length?round(mean(weighted.map(item=>item.weightError)),2):null,
     gateCounts:gates,
+    variableGateCounts,
+    interventionOutcomes:outcomes.length,
+    interventionSuccessRate:outcomes.length?round(successful/outcomes.length,3):null,
+    rollbackCount:rollbacks,
     appliedInfluences:learner.decisions.filter(item=>item.applied).length,
     suggestions:learner.decisions.filter(item=>item.action==='suggest').length,
     decisions:learner.decisions.length,
@@ -182,5 +321,5 @@ function overview(value){
     version:learner.version
   };
 }
-global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,targetProposal,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
+global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,decisionOutcome,applyInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
 })(typeof window!=='undefined'?window:globalThis);
