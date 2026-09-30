@@ -61,7 +61,7 @@ const defaultStore = {
   progression: {},
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
-  trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null},
+  trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null,learner:null},
   cueSettings: {sound:true,voice:true,aiCoach:true,coachPreset:'guide',coachStyle:'balanced',coachVibe:'warm-familiar',coachFrequency:'normal',coachDetail:'short',coachVoice:'cedar',talkSpeed:'normal',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'moderate',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',nextSetPreview:'target',exerciseInstruction:'quick',autoStartWarmup:true,autoStartCooldown:true,autoStartTimedExercise:true,adaptiveCoach:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
@@ -352,6 +352,64 @@ function ensureTrainingProgram(){
   store.trainingProgram.engineVersions=store.trainingProgram.engineVersions||[];
   store.trainingProgram.engineBlockVersion=store.trainingProgram.engineBlockVersion||1;
   return store.trainingProgram;
+}
+function trainingLearnerEngine(){return window.GoWorkoutLearner||null;}
+function ensureTrainingLearner({backfill=true}={}){
+  const training=ensureTrainingProgram(),engine=trainingLearnerEngine();
+  if(!engine)return null;
+  training.learner=engine.normalizeLearner(training.learner);
+  if(backfill){
+    const processed=new Set(training.learner.processedWorkoutIds||[]);
+    const pending=[...(store.history||[])].filter(item=>item?.id&&!processed.has(item.id)).sort((a,b)=>Date.parse(a.completedAt||0)-Date.parse(b.completedAt||0));
+    for(const workout of pending){
+      const result=engine.recordWorkout(training.learner,workout);
+      training.learner=result.learner;
+    }
+  }
+  return training.learner;
+}
+function trainingLearnerOverview(){
+  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner();
+  return engine&&learner?engine.overview(learner):{modeledExercises:0,highConfidence:0,mediumConfidence:0,lowConfidence:0,predictionsEvaluated:0,predictionHitRate:null,events:0,version:''};
+}
+function trainingLearnerModel(exerciseId){
+  const learner=ensureTrainingLearner();
+  return learner?.models?.[exerciseId]||null;
+}
+function registerWorkoutLearningPredictions(workout){
+  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner();
+  if(!engine||!learner||!workout?.id)return [];
+  const context={workoutId:workout.id,createdAt:workout.preparedAt||new Date().toISOString(),scheduledDate:workout.scheduledDate||'',routineName:workout.routineName||''};
+  const predictions=(workout.exercises||[]).map(ex=>engine.predictionForExercise(ex,learner.models?.[ex.id]||null,context));
+  workout.learningPredictions=clone(predictions);
+  ensureTrainingProgram().learner=engine.addPredictions(learner,predictions);
+  return predictions;
+}
+function ingestLearnerWorkout(entry){
+  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner();
+  if(!engine||!learner||!entry?.id)return null;
+  const result=engine.recordWorkout(learner,entry);
+  ensureTrainingProgram().learner=result.learner;
+  return result.summary;
+}
+function learnerConfidenceLabel(model){
+  const confidence=model?.confidence;
+  if(!confidence)return 'LOW';
+  return String(confidence.level||'low').toUpperCase();
+}
+function learnerNextTarget(exerciseId){
+  const learned=store.progression?.[exerciseId];
+  if(!learned)return '';
+  if(learned.label)return learned.label;
+  const ex=catalog.find(item=>item.id===exerciseId);
+  if(!ex)return '';
+  const weight=Number.isFinite(Number(learned.weight))?num(learned.weight):0;
+  const reps=learned.reps||'';
+  if(ex.loadMode==='timed')return reps?reps+' sec':'';
+  if(ex.loadMode==='bodyweight')return reps?'Bodyweight × '+reps:'';
+  if(ex.loadMode==='band')return learned.reason?'Same band unless feedback changes':'';
+  if(ex.loadMode==='dumbbell-pair')return weight?(weight+' lb each'+(reps?' × '+reps:'')):'';
+  return weight?(weight+' lb'+(reps?' × '+reps:'')):(reps?reps+' reps':'');
 }
 function programOriginDate(){
   const created=store.plan?.createdAt?new Date(store.plan.createdAt):new Date();
@@ -3581,6 +3639,7 @@ function createWorkout(day,meta={}){
       };
     })
   };
+  registerWorkoutLearningPredictions(workout);
   return workout;
 }
 
@@ -4805,6 +4864,7 @@ function finalizeWorkout(status='complete'){
     exerciseCount:entry.resolvedExercises,
     newPRs:entry.newPRs
   },'That’s it'+(displayName()==='there'?'':' '+displayName())+'. Workout complete.','workout-complete-'+entry.id);
+  entry.learnerLearning=ingestLearnerWorkout(entry);
   if(entry.engineBacked){ingestEngineWorkout(entry);maybeCreateNextEngineBlock(entry);}
   ['pendingPosition','restEndsAt','restPausedRemaining','restToken','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','preSetCoachPending','preSetManualStart','preSetFinishing','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','timedStageSwitchStartedAt','timedStageSwitchEndsAt','sideSwitchStartedAt','sideSwitchEndsAt','sideSwitchDuration','sideSwitchPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
   if(store.history.some(item=>item.id===entry.id)){store.activeWorkout=null;saveStore();currentTab='summary';render();return;}
@@ -7760,6 +7820,22 @@ function renderProgressChart(summary,metric,compact=false){
     (!compact?'<div class="progress-chart-axis"><span>'+esc(formatDate(series[0].date))+'</span><span>'+esc(formatDate(series[series.length-1].date))+'</span></div>':'')+
   '</div>';
 }
+function renderExerciseLearningDetail(exerciseId){
+  const model=trainingLearnerModel(exerciseId);
+  if(!model)return '';
+  const confidence=model.confidence||{level:'low',score:0,evidence:''};
+  const hit=model.metrics?.targetHitRate;
+  const next=learnerNextTarget(exerciseId);
+  return '<section class="exercise-learning-panel confidence-'+esc(confidence.level||'low')+'">'+
+    '<div class="exercise-learning-head"><div><span>LEARNING PROFILE</span><strong>'+esc(learnerConfidenceLabel(model))+' CONFIDENCE</strong></div><em>'+Math.round(num(confidence.score))+'%</em></div>'+
+    '<div class="exercise-learning-grid">'+
+      '<div><span>EXPOSURES</span><strong>'+num(model.exposures)+'</strong><small>completed sessions</small></div>'+
+      '<div><span>TARGET HIT RATE</span><strong>'+(hit===null||hit===undefined?'LEARNING':Math.round(hit*100)+'%')+'</strong><small>'+(model.predictionCount?model.predictionCount+' predictions checked':'future sessions will test predictions')+'</small></div>'+
+      '<div><span>AVG REP DROP</span><strong>'+Math.round(num(model.metrics?.averageRepDrop)*10)/10+'</strong><small>first set to final set</small></div>'+
+      '<div><span>NEXT TARGET</span><strong>'+esc(next||'Gathering evidence')+'</strong><small>'+esc(store.progression?.[exerciseId]?.reason||confidence.evidence||'More sessions improve confidence')+'</small></div>'+
+    '</div>'+
+  '</section>';
+}
 function renderExerciseProgressDetail(summary){
   if(!summary)return '';
   const metric=progressMetric;
@@ -7773,6 +7849,7 @@ function renderExerciseProgressDetail(summary){
       '<div><span>STARTED AT</span><strong>'+esc(summary.baselineLabel)+'</strong></div>'+
       '<div><span>CHANGE</span><strong>'+esc(summary.changeLabel)+'</strong></div>'+
     '</div>'+
+    renderExerciseLearningDetail(summary.exerciseId)+
     '<div class="progress-metric-tabs" role="tablist" aria-label="Exercise progress metric">'+
       [['weight','Weight'],['reps','Reps'],['volume','Volume']].map(([value,label])=>'<button role="tab" aria-selected="'+(metric===value?'true':'false')+'" class="'+(metric===value?'active':'')+'" data-action="set-progress-metric" data-progress-metric="'+value+'">'+label+'</button>').join('')+
     '</div>'+
@@ -7832,6 +7909,21 @@ function progressMoments(limit=6){
     value:item.weight?item.weight+' lb × '+item.reps:item.reps+' reps'
   }));
 }
+function renderAdaptiveLearningOverview(){
+  const overview=trainingLearnerOverview();
+  if(!overview.modeledExercises)return '';
+  const hit=overview.predictionHitRate===null?'LEARNING':Math.round(overview.predictionHitRate*100)+'%';
+  const strongest=Object.values(ensureTrainingLearner()?.models||{}).sort((a,b)=>(b.confidence?.score||0)-(a.confidence?.score||0))[0]||null;
+  return '<section class="adaptive-learning-overview">'+
+    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is building your training model.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Predictions are stored before a workout and checked against what you actually complete.</p></div>'+
+    '<div class="adaptive-learning-stats">'+
+      '<div><span>MODELED</span><strong>'+overview.modeledExercises+'</strong><small>movements</small></div>'+
+      '<div><span>PREDICTIONS</span><strong>'+overview.predictionsEvaluated+'</strong><small>evaluated</small></div>'+
+      '<div><span>TARGET HIT</span><strong>'+hit+'</strong><small>prediction accuracy signal</small></div>'+
+      '<div><span>BEST CONFIDENCE</span><strong>'+esc(strongest?learnerConfidenceLabel(strongest):'LOW')+'</strong><small>'+esc(strongest?.exerciseName||'More evidence needed')+'</small></div>'+
+    '</div>'+
+  '</section>';
+}
 function renderProgress(){
   const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),records=personalRecords(),calibrated=Object.keys(store.calibration).length;
   const trends=records.slice(0,6);
@@ -7846,6 +7938,7 @@ function renderProgress(){
   if(selected&&!progressExerciseId)progressExerciseId=selected.exerciseId;
   return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See what changed, where you started, and which movements are moving forward.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
+    renderAdaptiveLearningOverview()+
     (trends.length?'<section class="clean-section progress-movements-section"><div class="clean-section-head"><div><p class="eyebrow">MOVEMENT PROGRESS</p><h3>What is changing</h3></div></div><div class="progress-movement-grid">'+trends.map(item=>{
       const metric=item.weighted?'weight':'reps';
       return '<button class="progress-movement-card '+(selected?.exerciseId===item.exerciseId?'selected':'')+'" data-action="progress-exercise" data-progress-exercise="'+esc(item.exerciseId)+'"><div class="progress-movement-copy"><span>'+esc(item.status==='baseline'?'BASELINE':item.status==='improved'?'IMPROVED':'STEADY')+'</span><strong>'+esc(item.name)+'</strong><small>'+esc(item.changeLabel)+'</small></div>'+renderProgressChart(item,metric,true)+'</button>';
@@ -7866,6 +7959,7 @@ function renderSummary(){
     '<div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
     (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
+    (x.learnerLearning?'<section class="clean-panel workout-learning-card learner-session-card"><p class="eyebrow">ADAPTIVE LEARNER</p><h3>'+x.learnerLearning.exercisesObserved+' movement'+(x.learnerLearning.exercisesObserved===1?'':'s')+' added to your model</h3><p>'+(x.learnerLearning.predictionsEvaluated?x.learnerLearning.predictionHits+' of '+x.learnerLearning.predictionsEvaluated+' pre-workout predictions matched the completed target.':'This workout established evidence. Future appearances of these movements will create prediction checks.')+'</p>'+(x.learnerLearning.strongestExercise?'<small>Strongest current evidence: '+esc(x.learnerLearning.strongestExercise.name)+' · '+esc(String(x.learnerLearning.strongestExercise.confidence?.level||'low').toUpperCase())+' confidence</small>':'')+'</section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
     ((x.trainingContext?.temporary||x.trainingContext?.adapted)?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
