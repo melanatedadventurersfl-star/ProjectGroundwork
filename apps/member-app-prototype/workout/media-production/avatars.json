@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "purpose": "Visual identity only. Avatar choice must never change workout programming, load, reps, progression, readiness adjustments, or exercise selection.",
+  "visualSystem": {
+    "style": "Photorealistic instructional fitness imagery",
+    "background": "Warm cream studio with a subtle pale cream circular field",
+    "palette": [
+      "forest green",
+      "black",
+      "cream"
+    ],
+    "branding": "No real-world logos, brand marks, branded shoes, branded equipment, or trademarked symbols",
+    "framing": "Show the full movement and all equipment needed to understand the exercise",
+    "consistency": "Start and end images for an avatar/exercise pair should look like consecutive frames from the same photo shoot"
+  },
+  "avatars": [
+    {
+      "id": "masc-athletic",
+      "name": "Malik",
+      "presentation": "Masculine",
+      "build": "Lean / athletic",
+      "skinTone": "Medium-dark brown",
+      "hair": "Short textured curls",
+      "face": "Trimmed beard",
+      "outfit": "Forest green sleeveless training top, black shorts, unbranded trainers"
+    },
+    {
+      "id": "masc-full",
+      "name": "Drew",
+      "presentation": "Masculine",
+      "build": "Stocky / fuller",
+      "skinTone": "Dark brown",
+      "hair": "Bald",
+      "face": "Full beard",
+      "outfit": "Forest green fitted short-sleeve training shirt, black shorts, unbranded trainers"
+    },
+    {
+      "id": "fem-athletic",
+      "name": "Nia",
+      "presentation": "Feminine",
+      "build": "Lean / athletic",
+      "skinTone": "Medium-dark brown",
+      "hair": "Long braids or locs",
+      "face": "Consistent natural features",
+      "outfit": "Forest green athletic top, black leggings, unbranded trainers"
+    },
+    {
+      "id": "fem-full",
+      "name": "Maya",
+      "presentation": "Feminine",
+      "build": "Curvy / fuller",
+      "skinTone": "Medium-dark brown",
+      "hair": "Natural curls or curly ponytail",
+      "face": "Consistent natural features",
+      "outfit": "Forest green athletic top, black leggings, unbranded trainers"
+    }
+  ]
+}
