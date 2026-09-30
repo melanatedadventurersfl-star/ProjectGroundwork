@@ -483,12 +483,29 @@ function applyLearnerTargetInfluence(exercise,workout){
     }
   }
 
-  if(engine.volumeShadowProposal){
-    const volume=engine.volumeShadowProposal(model,{weight:num(exercise.suggestedWeight),reps:num(exercise.suggestedReps),restSeconds:num(exercise.rest),sets:exercise.sets?.length||0},exercise);
-    exercise.learnerVolumeShadow=clone(volume);
-    if(volume.action==='shadow'){
-      const volumeDecision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,volume,'volume-shadow');
-      exercise.learnerVolumeShadow.decisionId=volumeDecision.id;
+  if(engine.volumeExperimentProposal||engine.volumeShadowProposal){
+    const volumeBase={weight:num(exercise.suggestedWeight),reps:num(exercise.suggestedReps),restSeconds:num(exercise.rest),sets:exercise.sets?.length||0};
+    const volume=engine.volumeExperimentProposal
+      ?engine.volumeExperimentProposal(model,volumeBase,exercise,{readinessScore:num(workout.readiness?.score),alreadyApplied:num(workout.volumeExperimentCount)>=1})
+      :engine.volumeShadowProposal(model,volumeBase,exercise);
+    if(volume.action==='experiment'&&volume.applied){
+      const volumeDecision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,volume,'volume-experiment');
+      exercise.learnerVolumeExperiment={...clone(volume),decisionId:volumeDecision.id};
+      const from=Math.max(1,num(volume.base?.sets)||exercise.sets?.length||1),to=Math.max(1,num(volume.proposed?.sets)||from);
+      if(to===from+1){
+        const template=clone(exercise.sets?.[exercise.sets.length-1]||{weight:'',reps:String(exercise.suggestedReps||''),completed:false,completedAt:null});
+        exercise.sets.push({...template,id:uid('set'),completed:false,completedAt:null,targetPrepared:false,targetSource:'learner-volume-experiment',learnerVolumeExperiment:true});
+      }else if(to===from-1){
+        exercise.sets=exercise.sets.slice(0,to);
+      }
+      workout.volumeExperimentCount=num(workout.volumeExperimentCount)+1;
+      workout.volumeExperimentExerciseId=exercise.id;
+    }else{
+      exercise.learnerVolumeShadow=clone(volume);
+      if(volume.action==='shadow'){
+        const volumeDecision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,volume,'volume-shadow');
+        exercise.learnerVolumeShadow.decisionId=volumeDecision.id;
+      }
     }
   }
 
@@ -523,6 +540,15 @@ function renderLearnerRestAdvice(ex){
   '</div>';
 }
 function renderLearnerVolumeAdvice(ex){
+  const experiment=ex?.learnerVolumeExperiment;
+  if(experiment?.applied){
+    const from=Math.max(1,num(experiment.base?.sets)),to=Math.max(1,num(experiment.proposed?.sets));
+    return '<div class="runner-learner-experiment volume">'+
+      '<span>CONTROLLED VOLUME TEST · ACTIVE</span>'+
+      '<strong>'+from+' → '+to+' working sets</strong>'+
+      '<small>'+esc(experiment.reason||'')+' This test changes only this movement. GoWorkout will check today’s performance and the next exposure before trusting the result.</small>'+
+    '</div>';
+  }
   const shadow=ex?.learnerVolumeShadow;
   if(!shadow||shadow.action!=='shadow')return '';
   const from=Math.max(1,num(shadow.base?.sets)),to=Math.max(1,num(shadow.proposed?.sets));
@@ -547,7 +573,7 @@ function learnerVariableGates(model){
   return engine?.variableGates?.(model)||model?.variableGates||{};
 }
 function variableGateShort(gate){
-  return gate?.label==='SHADOW TESTS'?'SHADOW':gate?.level==='influence'?'INFLUENCE':gate?.level==='suggest'?'SUGGEST':gate?.level==='unavailable'?'N/A':'OBSERVE';
+  return gate?.label==='CONTROLLED TESTS'?'TEST':gate?.label==='DELAYED HOLD'?'HOLD':gate?.label==='SHADOW TESTS'?'SHADOW':gate?.level==='influence'?'INFLUENCE':gate?.level==='suggest'?'SUGGEST':gate?.level==='unavailable'?'N/A':'OBSERVE';
 }
 function renderLearnerVariableGates(model){
   const gates=learnerVariableGates(model);
@@ -8129,15 +8155,18 @@ function learnerDecisionValue(item,key){
   return (num(value.weight)?num(value.weight)+' lb × ':'')+num(value.reps)+' reps';
 }
 function renderLearnerInfluenceHistory(){
-  const learner=ensureTrainingLearner(),decisions=[...(learner?.decisions||[])].filter(item=>['apply','suggest','shadow'].includes(item.action)).slice(-12).reverse();
+  const learner=ensureTrainingLearner(),decisions=[...(learner?.decisions||[])].filter(item=>['apply','suggest','shadow','experiment'].includes(item.action)).slice(-14).reverse();
   if(!decisions.length)return '';
   return '<div class="learner-influence-history"><div class="clean-section-head"><div><p class="eyebrow">LEARNER DECISIONS</p><h3>What changed, what was suggested, and what happened</h3></div></div>'+
     decisions.map(item=>{
       const outcome=item.outcome;
-      return '<div class="learner-influence-row '+(item.applied?'applied':item.action==='shadow'?'shadow':'suggested')+'"><div><span>'+esc(formatDate(item.createdAt))+' · '+esc(String(item.variable||'target').toUpperCase())+'</span><strong>'+esc(item.exerciseName)+'</strong><small>'+esc(item.reason)+'</small></div>'+
+      const delayed=item.delayedOutcome;
+      return '<div class="learner-influence-row '+(item.action==='experiment'?'experiment':item.applied?'applied':item.action==='shadow'?'shadow':'suggested')+'"><div><span>'+esc(formatDate(item.createdAt))+' · '+esc(String(item.variable||'target').toUpperCase())+'</span><strong>'+esc(item.exerciseName)+'</strong><small>'+esc(item.reason)+'</small></div>'+
         '<div><span>RULE TARGET</span><strong>'+esc(learnerDecisionValue(item,'base'))+'</strong></div>'+
-        '<div><span>'+(item.applied?'APPLIED':item.action==='shadow'?'SHADOW':'SUGGESTED')+'</span><strong>'+esc(learnerDecisionValue(item,'proposed'))+'</strong>'+
-        (outcome?'<small class="decision-outcome '+(outcome.success?'success':'miss')+'">'+(outcome.success?'OUTCOME MET':'OUTCOME MISSED')+' · '+esc(outcome.reason)+'</small>':'')+'</div></div>';
+        '<div><span>'+(item.action==='experiment'?'CONTROLLED TEST':item.applied?'APPLIED':item.action==='shadow'?'SHADOW':'SUGGESTED')+'</span><strong>'+esc(learnerDecisionValue(item,'proposed'))+'</strong>'+
+        (outcome?'<small class="decision-outcome '+(outcome.success?'success':'miss')+'">'+(outcome.success?'IMMEDIATE MET':'IMMEDIATE MISSED')+' · '+esc(outcome.reason)+'</small>':'')+
+        (item.action==='experiment'?(delayed?'<small class="decision-outcome delayed '+(delayed.success?'success':'miss')+'">'+(delayed.success?'FOLLOW-UP MET':'FOLLOW-UP MISSED')+' · '+esc(delayed.reason)+'</small>':'<small class="decision-outcome delayed pending">FOLLOW-UP PENDING · The next exposure will be compared with the pre-test baseline.</small>'):'')+
+        '</div></div>';
     }).join('')+
   '</div>';
 }
@@ -8166,6 +8195,8 @@ function renderLearnerDiagnostics(){
       '<div><span>INTERVENTION OUTCOMES</span><strong>'+learnerPercent(overview.interventionSuccessRate)+'</strong><small>'+num(overview.interventionOutcomes)+' applied changes evaluated</small></div>'+
       '<div><span>AUTO ROLLBACKS</span><strong>'+num(overview.rollbackCount)+'</strong><small>variable gates paused after weak outcomes</small></div>'+
       '<div><span>SHADOW TESTS</span><strong>'+num(overview.shadowCandidates)+'</strong><small>'+num(overview.upwardShadowCandidates)+' target · '+num(overview.volumeShadowCandidates)+' volume</small></div>'+
+      '<div><span>VOLUME EXPERIMENTS</span><strong>'+num(overview.volumeExperiments)+'</strong><small>'+num(overview.volumeExperimentsPending)+' waiting for follow-up</small></div>'+
+      '<div><span>DELAYED OUTCOMES</span><strong>'+learnerPercent(overview.delayedOutcomeSuccessRate)+'</strong><small>'+num(overview.delayedOutcomes)+' follow-up checks</small></div>'+
       '<div><span>READINESS LINKS</span><strong>'+num(overview.readinessRelationships)+'</strong><small>movements with enough low vs normal readiness evidence</small></div>'+
     '</div>'+
     renderLearnerVariableOverview(overview)+
@@ -8173,6 +8204,7 @@ function renderLearnerDiagnostics(){
       '<span class="observe"><b>OBSERVE</b> Collect evidence only</span>'+
       '<span class="suggest"><b>SUGGEST</b> Can surface a recommendation</span>'+
       '<span class="suggest"><b>SHADOW</b> Tests a candidate without changing the workout</span>'+
+      '<span class="suggest"><b>CONTROLLED TEST</b> Changes one movement by one set, then checks immediate and next-exposure performance</span>'+
       '<span class="influence"><b>INFLUENCE</b> Can conservatively hold a target when evidence says progression is too aggressive</span>'+
     '</div>'+
     renderLearnerInfluenceHistory()+
@@ -8195,7 +8227,7 @@ function renderAdaptiveLearningOverview(){
   const hit=overview.recentPredictionHitRate===null?'LEARNING':Math.round(overview.recentPredictionHitRate*100)+'%';
   const strongest=Object.values(ensureTrainingLearner()?.models||{}).sort((a,b)=>(b.confidence?.score||0)-(a.confidence?.score||0))[0]||null;
   return '<section class="adaptive-learning-overview">'+
-    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Load, reps, rest, volume, and readiness earn confidence separately. Volume now compares 2, 3, and 4 working-set evidence and creates set-count shadow tests without changing the workout. Rest can personalize upward only when repeated timing data shows lower rep drop-off. Higher load or rep ideas also stay in shadow mode, and weak applied outcomes automatically roll that variable back to suggestion mode.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
+    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Load, reps, rest, volume, and readiness earn confidence separately. Volume compares 2, 3, and 4 working-set evidence, starts in shadow mode, then can run an occasional one-set controlled experiment after stronger evidence. Only one volume experiment can run in a workout, readiness must be adequate, and at least two normal exposures separate tests. Each experiment gets an immediate check and a next-exposure follow-up before the learner trusts it.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
     '<div class="adaptive-learning-stats">'+
       '<div><span>MODELED</span><strong>'+overview.modeledExercises+'</strong><small>movements</small></div>'+
       '<div><span>PREDICTIONS</span><strong>'+overview.predictionsEvaluated+'</strong><small>evaluated</small></div>'+
@@ -8239,12 +8271,13 @@ function renderSummary(){
   const learnerRestAdjusted=(x.exercises||[]).filter(ex=>ex.learnerRest?.applied);
   const learnerShadow=(x.exercises||[]).filter(ex=>ex.learnerUpwardShadow?.action==='shadow');
   const learnerVolumeShadow=(x.exercises||[]).filter(ex=>ex.learnerVolumeShadow?.action==='shadow');
+  const learnerVolumeExperiment=(x.exercises||[]).filter(ex=>ex.learnerVolumeExperiment?.applied);
   return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2>'+
     '<section class="runner-motivation-card post"><span>SESSION COMPLETE</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
     '<div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
     (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
-    (x.learnerLearning?'<section class="clean-panel workout-learning-card learner-session-card"><p class="eyebrow">ADAPTIVE LEARNER</p><h3>'+x.learnerLearning.exercisesObserved+' movement'+(x.learnerLearning.exercisesObserved===1?'':'s')+' added to your model</h3><p>'+(x.learnerLearning.predictionsEvaluated?x.learnerLearning.predictionHits+' of '+x.learnerLearning.predictionsEvaluated+' pre-workout predictions matched the completed target.':'This workout established evidence. Future appearances of these movements will create prediction checks.')+'</p>'+((learnerAdjusted.length||learnerRestAdjusted.length||learnerShadow.length||learnerVolumeShadow.length)?'<small>'+learnerAdjusted.length+' target guardrail'+(learnerAdjusted.length===1?'':'s')+' · '+learnerRestAdjusted.length+' personalized rest change'+(learnerRestAdjusted.length===1?'':'s')+' · '+learnerShadow.length+' upward shadow candidate'+(learnerShadow.length===1?'':'s')+' · '+learnerVolumeShadow.length+' volume shadow test'+(learnerVolumeShadow.length===1?'':'s')+'. '+num(x.learnerLearning.interventionsSuccessful)+' of '+num(x.learnerLearning.interventionsEvaluated)+' applied learner interventions met their outcome check in this workout.</small>':x.learnerLearning.strongestExercise?'<small>Strongest current evidence: '+esc(x.learnerLearning.strongestExercise.name)+' · '+esc(String(x.learnerLearning.strongestExercise.confidence?.level||'low').toUpperCase())+' confidence</small>':'')+'</section>':'')+
+    (x.learnerLearning?'<section class="clean-panel workout-learning-card learner-session-card"><p class="eyebrow">ADAPTIVE LEARNER</p><h3>'+x.learnerLearning.exercisesObserved+' movement'+(x.learnerLearning.exercisesObserved===1?'':'s')+' added to your model</h3><p>'+(x.learnerLearning.predictionsEvaluated?x.learnerLearning.predictionHits+' of '+x.learnerLearning.predictionsEvaluated+' pre-workout predictions matched the completed target.':'This workout established evidence. Future appearances of these movements will create prediction checks.')+'</p>'+((learnerAdjusted.length||learnerRestAdjusted.length||learnerShadow.length||learnerVolumeShadow.length||learnerVolumeExperiment.length)?'<small>'+learnerAdjusted.length+' target guardrail'+(learnerAdjusted.length===1?'':'s')+' · '+learnerRestAdjusted.length+' personalized rest change'+(learnerRestAdjusted.length===1?'':'s')+' · '+learnerShadow.length+' upward shadow candidate'+(learnerShadow.length===1?'':'s')+' · '+learnerVolumeShadow.length+' volume shadow test'+(learnerVolumeShadow.length===1?'':'s')+' · '+learnerVolumeExperiment.length+' controlled volume experiment'+(learnerVolumeExperiment.length===1?'':'s')+'. '+num(x.learnerLearning.interventionsSuccessful)+' of '+num(x.learnerLearning.interventionsEvaluated)+' immediate intervention checks passed. '+num(x.learnerLearning.delayedOutcomesSuccessful)+' of '+num(x.learnerLearning.delayedOutcomesEvaluated)+' prior volume experiments passed their next-exposure follow-up in this workout.</small>':x.learnerLearning.strongestExercise?'<small>Strongest current evidence: '+esc(x.learnerLearning.strongestExercise.name)+' · '+esc(String(x.learnerLearning.strongestExercise.confidence?.level||'low').toUpperCase())+' confidence</small>':'')+'</section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
     ((x.trainingContext?.temporary||x.trainingContext?.adapted)?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
