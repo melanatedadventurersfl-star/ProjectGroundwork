@@ -27,6 +27,7 @@ let cloudHydrating=false;
 let exerciseDetailId = null;
 let swapContext = null;
 let readinessContext = null;
+let trainPreviewContext = null;
 let workoutMapOpen = false;
 let workoutMapView = 'strength';
 let setEditContext = null;
@@ -3105,6 +3106,18 @@ function refreshEngineProgram(profile=store.profile){
   return next;
 }
 function currentEngineProgram(){const e=ensureTrainingProgram().engine;return e?.storageSchema===PROGRAM_ENGINE_STORE_SCHEMA&&e?.program?e:null;}
+function ensureTrainProgramEngineCurrent(){
+  const current=currentEngineProgram();
+  if(!programEngine||!store.profile||store.activeWorkout)return current;
+  if(current?.engineVersion==='1.6.0'&&current?.program?.programModel==='anchor_rotation')return current;
+  const upgraded=buildEngineProgram(store.profile);
+  if(!upgraded)return current;
+  upgraded.migratedFrom=current?.engineVersion||'legacy';
+  upgraded.migratedAt=new Date().toISOString();
+  ensureTrainingProgram().engine=upgraded;
+  saveStore();
+  return upgraded;
+}
 function engineVersionForBlock(blockNumber){
  const training=ensureTrainingProgram(),versions=training.engineVersions||[];
  if(blockNumber<=1)return currentEngineProgram();
@@ -3127,7 +3140,7 @@ function maybeCreateNextEngineBlock(completedEntry){
  training.engineVersions.push(version);training.engineVersions=training.engineVersions.slice(-12);training.engineBlockVersion=nextBlock;
  return version;
 }
-const ENGINE_EXERCISE_TO_CATALOG={db_bench:'db-bench',pushup:'push-up',machine_press:'chest-press-machine',db_shoulder_press:'db-shoulder-press',cable_row:'cable-row',db_row:'one-arm-row',lat_pulldown:'lat-pulldown',goblet_squat:'goblet-squat',leg_press:'leg-press',db_rdl:'db-rdl',reverse_lunge:'reverse-lunge',leg_curl:'leg-curl',lateral_raise:'lateral-raise',db_curl:'biceps-curl',triceps_pressdown:'triceps-pushdown',calf_raise:'calf-raise',dead_bug:'dead-bug',incline_pushup:'push-up',inverted_row:'prone-w-raise',band_pulldown:'band-pulldown',split_squat:'split-squat',glute_bridge:'glute-bridge',pallof_press:'dead-bug',suitcase_carry:'plank'};
+const ENGINE_EXERCISE_TO_CATALOG={db_bench:'db-bench',pushup:'push-up',machine_press:'chest-press-machine',db_shoulder_press:'db-shoulder-press',cable_row:'cable-row',db_row:'one-arm-row',lat_pulldown:'lat-pulldown',goblet_squat:'goblet-squat',leg_press:'leg-press',db_rdl:'db-rdl',reverse_lunge:'reverse-lunge',leg_curl:'leg-curl',lateral_raise:'lateral-raise',band_lateral_raise:'band-lateral-raise',db_curl:'biceps-curl',cable_curl:'cable-curl',triceps_pressdown:'triceps-pushdown',db_triceps_extension:'db-triceps-extension',calf_raise:'calf-raise',calf_extension_machine:'calf-extension-machine',single_leg_calf_raise:'single-leg-db-calf-raise',dead_bug:'dead-bug',sit_up:'sit-up',cable_crunch:'cable-crunch',incline_pushup:'push-up',inverted_row:'prone-w-raise',band_pulldown:'band-pulldown',split_squat:'split-squat',glute_bridge:'glute-bridge',pallof_press:'dead-bug',suitcase_carry:'plank'};
 function engineSessionForDate(date,index){const context=programContext(date),week=engineWeekForContext(context);return week?.sessions?.[index%Math.max(1,week.sessions.length)]||null;}
 function engineCatalogExercise(engineExercise){if(!engineExercise)return null;const mapped=ENGINE_EXERCISE_TO_CATALOG[engineExercise.id];return catalog.find(item=>item.id===mapped)||catalog.find(item=>item.name.toLowerCase()===String(engineExercise.name||'').toLowerCase())||null;}
 const ENGINE_STRETCH_MEDIA={doorway_chest:'Chest_And_Front_Of_Shoulder_Stretch',thread_needle:'Thread_the_Needle',kneeling_lat:'Overhead_Lat',cross_body_shoulder:'Cross_Body_Shoulder_Stretch',triceps_overhead:'Triceps_Stretch',child_lat:'Childs_Pose',hip_flexor:'Kneeling_Hip_Flexor',adductor_rockback:'Adductor',hamstring_fold:'Hamstring_Stretch',figure_four:'IT_Band_and_Glute_Stretch',calf_wall:'Standing_Gastrocnemius_Calf_Stretch','90_90':'90_90_Hamstring'};
@@ -3135,7 +3148,7 @@ function engineStretchToLegacy(stretch){return (stretch?.activities||[]).map(ite
 function engineSubstitutionCatalogIds(ex){return (ex?.engineSubstitutions||[]).map(item=>ENGINE_EXERCISE_TO_CATALOG[item.id]).filter(Boolean);}
 function engineSessionToLegacyDay(session,fallbackDay,index=0,blockNumber=programContext().blockNumber){
   if(!session)return clone(fallbackDay);
-  const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||''};}).filter(Boolean);
+  const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||'',engineProgramRole:item.programRole||'',engineChangedFrom:clone(item.changedFromWeek1||null)};}).filter(Boolean);
   const fallback=clone(fallbackDay||{});if(!exercises.length)return fallback;
   const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBlockNumber:blockNumber,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
   recalculatePlanDay(day);
@@ -5293,74 +5306,186 @@ function renderCompactWeek(schedule){
 }
 
 function renderTrainTabs(){
-  const tabs=[['week','Week'],['program','Program'],['exercises','Exercises']];
-  return '<div class="train-tabs" role="tablist" aria-label="Train sections">'+tabs.map(([id,label])=>
+  const tabs=[['week','Schedule'],['program','Program'],['exercises','Library']];
+  return '<div class="train-tabs train-tabs-v2" role="tablist" aria-label="Train sections">'+tabs.map(([id,label])=>
     '<button type="button" role="tab" aria-selected="'+(trainView===id?'true':'false')+'" class="train-tab '+(trainView===id?'active':'')+'" data-action="set-train-view" data-train-view="'+id+'">'+label+'</button>'
   ).join('')+'</div>';
+}
+function trainPhaseMeta(week){
+  return ({
+    1:{label:'ESTABLISH',copy:'Set your baseline and learn the working targets.'},
+    2:{label:'BUILD',copy:'Repeat anchors and progress where your results support it.'},
+    3:{label:'PUSH',copy:'Highest working demand of the block, with measured progression.'},
+    4:{label:'CONSOLIDATE',copy:'Reduce fatigue while keeping the movements that measure progress.'}
+  })[week]||{label:'BUILD',copy:'Keep progressing through the block.'};
+}
+function trainExerciseNames(day,limit=3){
+  const names=(day?.exercises||[]).map(ex=>ex.name).filter(Boolean);
+  return {shown:names.slice(0,limit),remaining:Math.max(0,names.length-limit)};
+}
+function trainExercisePreviewMarkup(day,limit=3){
+  const names=trainExerciseNames(day,limit);
+  if(!names.shown.length)return '';
+  return '<div class="train-exercise-preview">'+names.shown.map(name=>'<span>'+esc(name)+'</span>').join('')+
+    (names.remaining?'<span class="more">+'+names.remaining+' more</span>':'')+'</div>';
+}
+function trainDayMedia(day){
+  for(const ex of day?.exercises||[]){
+    const spec=exerciseMediaSpec(ex);
+    if(['reference','missing'].includes(spec.status))continue;
+    const src=exerciseMediaFrameUrl(ex,0);
+    if(src)return src;
+  }
+  return '';
+}
+function trainCompletedSessionMarkup(entry){
+  const h=entry.history;
+  if(!h)return '';
+  const timing=historyTimingInfo(h);
+  const result=historyPerformanceHighlight(h);
+  return '<div class="train-completed-result"><span>'+(timing.activeMinutes!==null?timing.activeMinutes+' min':'Completed')+'</span><strong>'+esc(result)+'</strong></div>';
+}
+function trainSessionCard(entry,{primary=false}={}){
+  const planned=entry.adaptedDay||entry.day;
+  const day=entry.status==='complete'&&entry.history
+    ?{...planned,name:entry.history.routineName||planned?.name,exercises:entry.history.exercises?.length?entry.history.exercises:planned?.exercises}
+    :planned;
+  const status=entry.status||'upcoming';
+  const statusLabel=status==='complete'?'COMPLETED':status==='today'?'TODAY':status==='missed'?'AVAILABLE':status==='partial'?'PARTIAL':status==='skipped'?'SKIPPED':'UPCOMING';
+  if(primary){
+    const media=trainDayMedia(day);
+    return '<article class="train-next-session-card status-'+status+(media?' has-media':'')+'">'+
+      (media?'<img class="train-next-session-media" src="'+esc(media)+'" alt="" loading="lazy" decoding="async">':'')+
+      '<div class="train-next-session-shade"></div>'+
+      '<div class="train-next-session-copy"><span>'+statusLabel+'</span><h3>'+esc(day?.name||'Training')+'</h3><p>'+esc(day?.focus||'Training')+'</p>'+
+        '<small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+
+        trainExercisePreviewMarkup(day,3)+
+      '</div>'+
+      '<div class="train-next-session-action">'+(!store.activeWorkout?'<button class="button primary-action" data-action="preview-train-day" data-day-id="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">PREVIEW WORKOUT</button>':'')+'</div>'+
+    '</article>';
+  }
+  return '<article class="train-session-row status-'+status+'">'+
+    '<div class="train-session-node">'+(status==='complete'?'✓':entry.date.getDate())+'</div>'+
+    '<div class="train-session-copy"><span>'+statusLabel+' · '+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+'</span><strong>'+esc(day?.name||'Training')+'</strong>'+
+      (status==='complete'?trainCompletedSessionMarkup(entry):'<small>'+esc(day?.focus||'Training')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+trainExercisePreviewMarkup(day,2))+
+    '</div>'+
+    (status!=='complete'&&!store.activeWorkout?'<button class="text-button" data-action="preview-train-day" data-day-id="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">PREVIEW</button>':'')+
+  '</article>';
+}
+function renderTrainBlockTimeline(context){
+  const labels=['Establish','Build','Push','Consolidate'];
+  return '<section class="train-block-timeline train-block-timeline-v2"><div class="train-block-head"><div><p class="eyebrow">BLOCK '+context.blockNumber+'</p><h3>'+esc(blockPhaseLabel(context.blockWeek))+'</h3></div><span>Week '+context.blockWeek+' of 4</span></div>'+
+    '<div class="train-block-track">'+labels.map((label,index)=>{
+      const week=index+1,state=week<context.blockWeek?'done':week===context.blockWeek?'current':'future';
+      return '<div class="train-block-step '+state+'"><i></i><strong>'+label+'</strong><span>W'+week+'</span></div>';
+    }).join('')+'</div></section>';
 }
 function renderTrainCurrentWeek(){
   const schedule=currentWeekSchedule();
   const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const context=programContext(),phase=trainPhaseMeta(context.blockWeek);
   const start=startOfWeek(new Date()),end=addDays(start,6);
-  return '<section class="train-current-week">'+
-    '<div class="train-week-title"><div><p class="eyebrow">THIS WEEK</p><h3>'+esc(start.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(end.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</h3></div><span>'+completed+'/'+schedule.length+' complete</span></div>'+
-    '<div class="train-week-list">'+schedule.map(entry=>{
-      const day=entry.adaptedDay||entry.day,status=entry.status||'upcoming';
-      const statusLabel=status==='complete'?'COMPLETED':status==='today'?'TODAY':status==='missed'?'AVAILABLE':status==='partial'?'PARTIAL':status==='skipped'?'SKIPPED':'UPCOMING';
-      const action=!store.activeWorkout&&!['complete','skipped'].includes(status)
-        ? '<button class="button '+(status==='today'?'':'secondary')+' small-button" data-start="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">'+(status==='today'?'START':status==='missed'?'DO TODAY':'PREPARE')+'</button>'
-        : status==='complete'?'<span class="train-day-done">✓</span>':'';
-      return '<article class="train-day-card status-'+status+'">'+
-        '<div class="train-day-date"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase())+'</span><strong>'+entry.date.getDate()+'</strong></div>'+
-        '<div class="train-day-copy"><span>'+statusLabel+'</span><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small></div>'+
-        '<div class="train-day-action">'+action+'</div>'+
-      '</article>';
-    }).join('')+'</div>'+
-  '</section>';
+  const primary=schedule.find(entry=>['today','missed','upcoming','partial'].includes(entry.status))||null;
+  return '<div class="train-current-stack">'+
+    renderTrainBlockTimeline(context)+
+    '<section class="train-current-week train-current-week-v2">'+
+      '<div class="train-week-title"><div><p class="eyebrow">THIS WEEK · '+esc(phase.label)+'</p><h3>'+esc(start.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(end.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</h3><small>'+esc(phase.copy)+'</small></div><span>'+completed+'/'+schedule.length+' complete</span></div>'+
+      (primary?trainSessionCard(primary,{primary:true}):'')+
+      '<div class="train-session-list">'+schedule.filter(entry=>entry!==primary).map(entry=>trainSessionCard(entry)).join('')+'</div>'+
+    '</section>'+
+  '</div>';
+}
+function trainPlannedContext(offset){
+  const current=programContext();
+  const weekNumber=current.weekNumber+offset;
+  return {weekNumber,blockNumber:Math.floor((weekNumber-1)/4)+1,blockWeek:((weekNumber-1)%4)+1};
+}
+function trainEngineWeekForOffset(offset){
+  const target=trainPlannedContext(offset);
+  const engine=engineVersionForBlock(target.blockNumber)||currentEngineProgram();
+  return {target,engine,week:engine?.program?.weeks?.[target.blockWeek-1]||null};
+}
+function trainWeekChangeSummary(week){
+  if(week?.changeSummary)return week.changeSummary;
+  const baseline=currentEngineProgram()?.program?.weeks?.[0];
+  const currentSessions=week?.sessions||[];
+  let retained=0,rotated=0,progressed=0,total=0;
+  currentSessions.forEach((session,si)=>{
+    (session.strength||[]).filter(x=>x.exercise).forEach((item,ei)=>{
+      const base=baseline?.sessions?.[si]?.strength?.filter(x=>x.exercise)?.[ei];
+      total++;
+      if(base?.exercise?.id===item.exercise?.id)retained++;
+      else if(base?.exercise&&item.exercise)rotated++;
+      if((num(item.prescription?.sets)||0)>(num(base?.prescription?.sets)||0))progressed++;
+    });
+  });
+  return {retained,rotated,progressed,total};
 }
 function trainFutureWeekData(offset){
   const weekStart=addDays(startOfWeek(new Date()),offset*7);
-  const entries=scheduledEntriesForWeek(weekStart).map(entry=>({...entry,adaptedDay:adaptDayForProgramWeek(entry.day,entry.date)}));
-  return {offset,weekStart,weekEnd:addDays(weekStart,6),entries};
+  const preview=trainEngineWeekForOffset(offset);
+  const preferred=preferredWorkoutDays();
+  const entries=preferred.map((dayId,index)=>{
+    const scheduledDate=addDays(weekStart,dayOffsetFromMonday(dayId));
+    const fallbackDay=store.plan.days[index%store.plan.days.length];
+    const session=preview.week?.sessions?.[index]||null;
+    const day=session?engineSessionToLegacyDay(session,fallbackDay,index,preview.target.blockNumber):clone(fallbackDay);
+    return {dayId,date:scheduledDate,dateKey:dateKey(scheduledDate),day,index,adaptedDay:day,status:'planned',engineBacked:Boolean(session)};
+  });
+  return {offset,weekStart,weekEnd:addDays(weekStart,6),entries,...preview,summary:trainWeekChangeSummary(preview.week)};
 }
 function renderTrainFutureWeek(offset){
   const data=trainFutureWeekData(offset),expanded=trainExpandedWeek===offset;
-  const label=offset===1?'NEXT WEEK':'WEEK '+(offset+1);
+  const phase=trainPhaseMeta(data.target.blockWeek);
   const totalMinutes=data.entries.reduce((sum,entry)=>sum+(entry.adaptedDay?.estimatedMinutes||store.profile?.minutes||45),0);
-  return '<section class="train-future-week '+(expanded?'expanded':'')+'">'+
+  const s=data.summary||{};
+  const changes=[
+    s.rotated? s.rotated+' rotation'+(s.rotated===1?'':'s'):'',
+    s.progressed? s.progressed+' progression'+(s.progressed===1?'':'s'):'',
+    s.retained? s.retained+' retained':''
+  ].filter(Boolean).join(' · ');
+  return '<section class="train-future-week train-future-week-v2 phase-'+data.target.blockWeek+' '+(expanded?'expanded':'')+'">'+
     '<button class="train-future-toggle" type="button" data-action="toggle-train-week" data-week-offset="'+offset+'" aria-expanded="'+(expanded?'true':'false')+'">'+
-      '<div><span>'+label+'</span><strong>'+esc(data.weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(data.weekEnd.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</strong><small>'+data.entries.length+' workouts · ~'+totalMinutes+' min planned</small></div><em>'+((expanded?'−':'+'))+'</em>'+
+      '<div><span>WEEK '+data.target.blockWeek+' · '+esc(phase.label)+' <b>PLANNED</b></span><strong>'+esc(data.weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(data.weekEnd.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</strong><small>'+esc(phase.copy)+'</small><em>'+esc(changes||data.entries.length+' sessions · ~'+totalMinutes+' min')+'</em></div><i>'+(expanded?'−':'+')+'</i>'+
     '</button>'+
     (expanded?'<div class="train-future-list">'+data.entries.map(entry=>{
       const day=entry.adaptedDay||entry.day;
-      return '<div class="train-future-row"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+' '+entry.date.getDate()+'</span><div><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small></div></div>';
-    }).join('')+'</div>':'')+
+      return '<article class="train-future-row train-future-row-v2"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+' '+entry.date.getDate()+'</span><div><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+trainExercisePreviewMarkup(day,3)+'</div></article>';
+    }).join('')+'<p class="train-provisional-note">Planned now. Completed workouts, readiness, equipment changes, and substitutions can refine future targets without rewriting completed weeks.</p></div>':'')+
   '</section>';
 }
 function renderTrainWeekView(){
-  return '<div class="train-view train-week-view">'+
+  return '<div class="train-view train-week-view train-week-view-v2">'+
     renderTrainCurrentWeek()+
-    '<div class="train-future-stack">'+[1,2,3].map(renderTrainFutureWeek).join('')+'</div>'+
+    '<section class="train-future-section"><div class="train-future-head"><p class="eyebrow">COMING UP</p><h3>How this block changes.</h3><p>Anchor lifts stay measurable. Rotation slots add variety when a compatible alternative exists.</p></div>'+
+      '<div class="train-future-stack">'+[1,2,3].map(renderTrainFutureWeek).join('')+'</div>'+
+    '</section>'+
   '</div>';
 }
-function renderTrainBlockTimeline(context){
-  const labels=['Establish','Build','Progress','Consolidate'];
-  return '<section class="train-block-timeline"><div class="train-block-head"><div><p class="eyebrow">CURRENT BLOCK</p><h3>Block '+context.blockNumber+'</h3></div><span>Week '+context.blockWeek+' of 4</span></div>'+
-    '<div class="train-block-track">'+labels.map((label,index)=>{
-      const week=index+1,state=week<context.blockWeek?'done':week===context.blockWeek?'current':'future';
-      return '<div class="train-block-step '+state+'"><i></i><strong>Week '+week+'</strong><span>'+label+'</span></div>';
-    }).join('')+'</div></section>';
+function trainProgramBlockStats(){
+  const engine=currentEngineProgram(),weeks=engine?.program?.weeks||[];
+  const baseline=weeks[0];
+  const anchorIds=new Set(),rotationIds=new Set();
+  for(const session of baseline?.sessions||[])for(const item of session.strength||[]){
+    if(!item.exercise)continue;
+    (item.programRole==='rotation'?rotationIds:anchorIds).add(item.exercise.id);
+  }
+  const rotations=weeks.slice(1).reduce((sum,w)=>sum+(w.changeSummary?.rotated||0),0);
+  return {anchors:anchorIds.size,rotationSlots:rotationIds.size,rotations,sessions:weeks.reduce((sum,w)=>sum+(w.sessions?.length||0),0)};
 }
 function renderTrainProgramView(){
-  const context=programContext(),plan=store.plan;
-  return '<div class="train-view train-program-view">'+
+  const context=programContext(),plan=store.plan,stats=trainProgramBlockStats();
+  return '<div class="train-view train-program-view train-program-view-v2">'+
     renderTrainBlockTimeline(context)+
+    '<section class="train-program-story"><div><p class="eyebrow">HOW YOUR BLOCK WORKS</p><h3>Keep what measures progress. Rotate what does not need to stay fixed.</h3><p>Primary movements act as anchors through the block. Lower-priority slots can rotate when the engine has a compatible option. Future weeks stay provisional until your completed training gives them evidence.</p></div>'+
+      '<div class="train-program-stats"><span><strong>'+stats.anchors+'</strong><small>anchor movements</small></span><span><strong>'+stats.rotations+'</strong><small>planned rotations</small></span><span><strong>'+stats.sessions+'</strong><small>block sessions</small></span></div>'+
+    '</section>'+
     renderEngineProgramSummary()+
     renderProgramEvolution()+
-    '<section class="clean-section train-rotation-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+' workouts</h3></div><button class="text-button" data-action="edit-profile">EDIT PLAN</button></div>'+
+    '<section class="clean-section train-rotation-section train-rotation-section-v2"><div class="clean-section-head"><div><p class="eyebrow">CURRENT ROTATION</p><h3>'+plan.days.length+' workout types</h3></div><button class="text-button" data-action="edit-profile">EDIT PLAN</button></div>'+
       '<div class="train-rotation-list">'+plan.days.map((day,index)=>{
-        const first=day.exercises?.[0];
-        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></article>';
+        const preview=trainFutureWeekData(0).entries[index]?.adaptedDay||day;
+        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises</small>'+trainExercisePreviewMarkup(preview,3)+'</div></article>';
       }).join('')+'</div>'+
     '</section>'+
   '</div>';
@@ -5369,15 +5494,36 @@ function renderTrainExercisesView(){
   const q=catalogQuery.trim().toLowerCase();
   const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty,...(e.equipment||[])].join(' ').toLowerCase().includes(q));
   return '<div class="train-view train-exercises-view">'+
-    '<section class="train-library-head"><div><p class="eyebrow">EXERCISES</p><h3>'+catalog.length+' movements</h3><p>Search by movement, muscle, or equipment. Tap an exercise for form cues and details.</p></div></section>'+
+    '<section class="train-library-head"><div><p class="eyebrow">LIBRARY</p><h3>'+catalog.length+' movements</h3><p>Search by movement, muscle, or equipment. Tap an exercise for form cues and details.</p></div></section>'+
     '<div class="catalog-search train-catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="'+esc(catalogQuery)+'"><span>'+items.length+' shown</span></div>'+
     '<div class="catalog-grid train-catalog-grid">'+items.map(e=>'<article class="catalog-card visual-catalog-card">'+exerciseImageButton(e,'catalog-exercise-media')+'<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(movements[e.movement]||e.movement)+'</span><span>'+esc(e.difficulty)+'</span></div><h3>'+esc(e.name)+'</h3><p>'+e.muscles.map(esc).join(' · ')+'</p><div class="catalog-tags"><span>'+esc(e.style)+'</span><span>'+esc(e.equipment.join(' / '))+'</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="'+esc(e.id)+'">View form & cues</button></div></article>').join('')+'</div>'+
   '</div>';
 }
+function openTrainPreview(dayId,scheduledDate=''){
+  if(store.activeWorkout){currentTab='workout';render();return;}
+  const entry=scheduledEntryFor(dayId,scheduledDate);
+  if(!entry)return;
+  trainPreviewContext={dayId,scheduledDate:scheduledDate||entry.dateKey,entry};
+  render();
+}
+function closeTrainPreview(){trainPreviewContext=null;render();}
+function renderTrainPreviewModal(){
+  if(!trainPreviewContext)return '';
+  const entry=trainPreviewContext.entry;
+  const day=entry.adaptedDay||entry.day;
+  return '<div class="exercise-modal-backdrop train-preview-backdrop" data-action="close-train-preview">'+
+    '<section class="exercise-modal train-preview-modal" role="dialog" aria-modal="true" aria-label="Workout preview" data-train-preview-panel>'+
+      '<button class="modal-close" type="button" data-action="close-train-preview" aria-label="Close workout preview">×</button>'+
+      '<div class="train-preview-head"><p class="eyebrow">'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+'</p><h2>'+esc(day?.name||'Training')+'</h2><p>'+esc(day?.focus||'Training')+' · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</p></div>'+
+      '<div class="train-preview-exercises">'+(day?.exercises||[]).map((ex,index)=>'<div class="train-preview-exercise"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ex.name)+'</strong><small>'+esc(homeExerciseMeta(ex))+'</small></div>'+(ex.engineProgramRole?'<em class="'+esc(ex.engineProgramRole)+'">'+esc(ex.engineProgramRole.toUpperCase())+'</em>':'')+'</div>').join('')+'</div>'+
+      '<div class="train-preview-actions"><button class="button primary-action" data-action="prepare-previewed-workout">SET UP THIS SESSION</button><small>Equipment and readiness choices stay session-specific.</small></div>'+
+    '</section></div>';
+}
 function renderTrain(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
-  return '<div class="clean-page train-reframed">'+
-    '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your training.</h2><p>See what is coming up, understand your program, or find an exercise without scrolling through all three at once.</p></div></div>'+
+  ensureTrainProgramEngineCurrent();
+  return '<div class="clean-page train-reframed train-reframed-v2">'+
+    '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program, in motion.</h2><p>See what is next, what changed, and why each week is different.</p></div></div>'+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     renderTrainTabs()+
     (trainView==='program'?renderTrainProgramView():trainView==='exercises'?renderTrainExercisesView():renderTrainWeekView())+
@@ -7787,6 +7933,7 @@ function render(){
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
   if(swapContext) app.insertAdjacentHTML('beforeend',renderSwapModal());
   if(readinessContext) app.insertAdjacentHTML('beforeend',renderReadinessModal());
+  if(trainPreviewContext) app.insertAdjacentHTML('beforeend',renderTrainPreviewModal());
   if(workoutMapOpen) app.insertAdjacentHTML('beforeend',renderWorkoutMap());
   if(setEditContext) app.insertAdjacentHTML('beforeend',renderSetEditor());
   if(cueSettingsOpen) app.insertAdjacentHTML('beforeend',renderCueSettingsSheet());
@@ -7795,7 +7942,7 @@ function render(){
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
   if(avatarPickerOpen) app.insertAdjacentHTML('beforeend',renderAvatarPickerSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||trainPreviewContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   document.body.classList.toggle('home-mode',currentTab==='home');
   document.body.classList.toggle('train-mode',currentTab==='train');
@@ -7987,6 +8134,16 @@ function handleClick(event){
     if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
     cancelCoachTimeline(true);
     setTab('home');
+  }
+  else if(a==='preview-train-day')openTrainPreview(node.dataset.dayId,node.dataset.scheduledDate||'');
+  else if(a==='close-train-preview'){
+    const inside=event.target.closest('[data-train-preview-panel]');
+    const explicit=event.target.closest('.modal-close');
+    if(!inside||explicit)closeTrainPreview();
+  }
+  else if(a==='prepare-previewed-workout'){
+    const preview=trainPreviewContext;
+    if(preview){trainPreviewContext=null;openReadiness(preview.dayId,preview.scheduledDate||'');}
   }
   else if(a==='train-anywhere-home')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'','bodyweight');
   else if(a==='open-session-setup'){exerciseActionsIndex=null;sessionSetupOpen=true;render();}
