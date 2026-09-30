@@ -442,6 +442,8 @@ function saveMeasurementCheckin(form){
   if(!form)return;
   const data=new FormData(form);
   const progress=bodyProgress();
+  store.profile.weightUnit=String(data.get('checkinWeightUnit')||bodyWeightUnit())==='kg'?'kg':'lb';
+  store.profile.measurementUnit=String(data.get('checkinMeasurementUnit')||bodyMeasurementUnit())==='cm'?'cm':'in';
   const existing=measurementEditId?progress.measurements.find(item=>item.id===measurementEditId):null;
   const record=measurementRecordFromData(data,existing);
   if(!BODY_METRICS.some(metric=>num(record[metric.key]))){toast('Enter at least one measurement.');return;}
@@ -1369,7 +1371,9 @@ function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
   if(style!=='flow')return day;
   const config=pacingConfig(profile);
   let size=Math.max(2,Math.min(4,config.groupSize));
-  if(profile.workoutLimiter==='gym-crowding')size=Math.min(2,size);
+  if(profile.workoutLimiter==='time')size=Math.min(4,size+1);
+  if(profile.workoutLimiter==='equipment'||profile.workoutLimiter==='gym-crowding')size=Math.min(2,size);
+  if(profile.workoutLimiter==='energy')size=2;
   const exercises=day.exercises;
   let cursor=0,blockNumber=1;
   while(cursor<exercises.length){
@@ -1388,11 +1392,13 @@ function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
     const indexes=Array.from({length:count},(_,i)=>cursor+i);
     const type=count===2?'superset':count===3?'tri-set':'circuit';
     const id=(day.id||'session')+'-flow-'+blockNumber++;
+    const transitionRest=profile.workoutLimiter==='time'?Math.max(8,config.transitionRest-5):profile.workoutLimiter==='energy'?Math.max(20,config.transitionRest):config.transitionRest;
+    const roundRest=profile.workoutLimiter==='energy'?Math.max(90,config.roundRest):config.roundRest;
     indexes.forEach((index,order)=>{
       const ex=exercises[index];
-      ex.blockId=id;ex.blockType=type;ex.blockOrder=order;ex.transitionRest=config.transitionRest;ex.blockRest=config.roundRest;
+      ex.blockId=id;ex.blockType=type;ex.blockOrder=order;ex.transitionRest=transitionRest;ex.blockRest=roundRest;
     });
-    day.blocks.push({id,type,exerciseIndexes:indexes,exerciseIds:indexes.map(index=>exercises[index].id),transitionRest:config.transitionRest,roundRest:config.roundRest});
+    day.blocks.push({id,type,exerciseIndexes:indexes,exerciseIds:indexes.map(index=>exercises[index].id),transitionRest,roundRest});
     cursor+=count;
   }
   return day;
@@ -2161,7 +2167,8 @@ const SESSION_SETUP_PRESETS = {
   'bodyweight':{label:'Bodyweight only',shortLabel:'Bodyweight',modes:['bodyweight']},
   'dumbbells':{label:'Dumbbells + bodyweight',shortLabel:'Dumbbells',modes:['dumbbells','bodyweight']},
   'bands':{label:'Bands + bodyweight',shortLabel:'Bands',modes:['bands','bodyweight']},
-  'mixed-home':{label:'Home mix',shortLabel:'Home mix',modes:['mixed-home','dumbbells','bands','bodyweight']},
+  'mixed-home':{label:'Home',shortLabel:'Home',modes:['mixed-home','dumbbells','bands','bodyweight']},
+  'travel':{label:'Travel',shortLabel:'Travel',modes:['bands','bodyweight']},
   'custom':{label:'Custom equipment',shortLabel:'Custom',modes:[]}
 };
 const FLOOR_EXERCISE_IDS=new Set(['push-up','glute-bridge','plank','dead-bug','pike-pushup','prone-w-raise','prone-lat-pull','db-floor-press']);
@@ -2449,10 +2456,10 @@ function applySetupToActiveWorkout(setup){
 function renderSessionSetupOptions(selectedKey=normalSessionSetupKey(),prefix=''){
   const name=prefix+'sessionSetup';
   const saved=[...new Set(store.profile?.savedSetups||[normalSessionSetupKey(),'bodyweight'])].filter(key=>SESSION_SETUP_PRESETS[key]&&key!=='custom');
-  const options=[...saved,...['full-gym','bodyweight','dumbbells','bands','mixed-home'].filter(key=>!saved.includes(key)),'custom'];
+  const options=[...saved,...['full-gym','mixed-home','travel','dumbbells','bands','bodyweight'].filter(key=>!saved.includes(key)),'custom'];
   return '<div class="session-setup-grid">'+options.map(key=>{
     const preset=SESSION_SETUP_PRESETS[key];
-    const copy=key==='full-gym'?'Machines, cables, barbells and more':key==='bodyweight'?'No gym equipment required':key==='dumbbells'?'Dumbbells plus bodyweight':key==='bands'?'Resistance bands plus bodyweight':key==='mixed-home'?'Dumbbells, bands and bodyweight':'Choose what is available';
+    const copy=key==='full-gym'?'Machines, cables, barbells and more':key==='bodyweight'?'No gym equipment required':key==='dumbbells'?'Dumbbells plus bodyweight':key==='bands'?'Resistance bands plus bodyweight':key==='mixed-home'?'Dumbbells, bands and bodyweight':key==='travel'?'Bands and bodyweight for travel':'Choose what is available';
     return '<label class="session-setup-card '+(saved.includes(key)?'saved':'')+'"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+(saved.includes(key)?' · SAVED':'')+'</strong><small>'+copy+'</small></span></label>';
   }).join('')+'</div>';
 }
@@ -2889,9 +2896,11 @@ function saveProfileFromForm(form){
   if(profile.weight<50||profile.weight>700){toast('Enter a valid body weight.');form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
   if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){toast('Enter height feet between 3 and 8, or leave height blank.');return false;}
   if(profile.heightInches<0||profile.heightInches>11){toast('Enter height inches between 0 and 11.');return false;}
+  const existingPlan=store.plan?clone(store.plan):null;
   let plan;
   try{plan=generatePlan(profile);}catch(error){console.error('Workout plan generation failed',error);toast('Could not build the plan. Please reload and try again.');return false;}
   if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');return false;}
+  if(existingPlan){plan.id=existingPlan.id;plan.createdAt=existingPlan.createdAt;}
 
   const previousTraining=store.trainingProgram||{};
   store.profile=profile;
@@ -4232,7 +4241,7 @@ function renderProfileEditor(){
       <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Where are you training?</h3><p>Choose your normal setup and save the alternatives you use.</p></div></div>
         <div class="choice-grid">${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
         <div class="choice-grid three sub-choice">${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
-        <div class="saved-setup-picker"><span>SAVED SETUPS</span><small>Quick choices when the day’s equipment changes.</small><div class="check-row">${[['full-gym','Gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Bands'],['bodyweight','Bodyweight']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="savedSetups" value="${v}" ${savedSetups.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div></div>
+        <div class="saved-setup-picker"><span>SAVED SETUPS</span><small>Quick choices when the day’s equipment changes.</small><div class="check-row">${[['full-gym','Gym'],['mixed-home','Home'],['travel','Travel'],['dumbbells','Dumbbells'],['bands','Bands'],['bodyweight','Bodyweight']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="savedSetups" value="${v}" ${savedSetups.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div></div>
       </section>
 
       <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize.</p></div></div>
@@ -4244,7 +4253,7 @@ function renderProfileEditor(){
       </section>
 
       <section class="form-section progress-pin-section"><div class="form-section-head"><span>10</span><div><h3>What should Progress show first?</h3><p>Pin the body and strength metrics you care about most.</p></div></div>
-        <div class="check-row">${[['weight','Body weight'],['chest','Chest'],['waist','Waist'],['arm','Arms'],['thigh','Thigh'],['bench','Chest strength'],['row','Back strength'],['squat','Leg strength'],['overhead','Shoulder strength'],['hinge','Hinge strength']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="progressPins" value="${v}" ${pins.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
+        <div class="check-row">${[['weight','Body weight'],['chest','Chest'],['waist','Waist'],['hips','Hips'],['arm','Arms'],['thigh','Thigh'],['calf','Calf'],['bench','Chest strength'],['row','Back strength'],['squat','Leg strength'],['overhead','Shoulder strength'],['hinge','Hinge strength']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="progressPins" value="${v}" ${pins.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
       </section>
 
       <section class="form-section"><div class="form-section-head"><span>11</span><div><h3>Movements to leave out</h3><p>These are preference controls. They do not diagnose or treat injuries.</p></div></div>
@@ -5461,7 +5470,7 @@ function renderWorkoutIntro(w){
   const setup=w.trainingContext?sessionSetupLabel(w.trainingContext):(store.profile?.equipment==='full-gym'?'Gym':'Training');
   const motivation=preWorkoutMotivation(w);
   return '<div class="runner-overview">'+
-    '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+'</p></div>'+
+    '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+' · '+esc(workoutStyleLabel(store.profile?.workoutStyle))+' · '+esc(pacingLabel(store.profile?.pacing))+'</p></div>'+
     '<section class="runner-motivation-card pre"><span>TODAY’S FOCUS</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
     '<div class="runner-phase-list">'+
       (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up</strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small></div><em>›</em></button>':'')+
