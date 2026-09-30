@@ -5872,6 +5872,7 @@ function homeWeekStats(schedule){
 function homeWeekMuscleSnapshot(){
   const counts={};
   for(const workout of weeklyHistory()){
+    if(workout.manualWorkoutCompletion||workout.completionStatus==='partial')continue;
     for(const exercise of workout.exercises||[]){
       if(exercise.skipped)continue;
       const source=catalog.find(item=>item.id===exercise.id)||exercise;
