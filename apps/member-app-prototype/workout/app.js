@@ -2844,12 +2844,9 @@ function renderPlanTimedRow(item,type,index){
 function saveProfileFromForm(form){
   if(!form){toast('Plan builder could not find the profile form. Reload this page and try again.');return false;}
   let data;
-  try{
-    data=new FormData(form);
-  }catch{
-    toast('Chrome could not read the plan form. Reload this page and try again.');
-    return false;
-  }
+  try{data=new FormData(form);}catch{toast('Chrome could not read the plan form. Reload this page and try again.');return false;}
+  const weightUnit=String(data.get('weightUnit')||'lb');
+  const measurementUnit=String(data.get('measurementUnit')||'in');
   const profile={
     goal:data.get('goal')||'muscle',
     displayName:String(data.get('displayName')||'').trim(),
@@ -2857,18 +2854,25 @@ function saveProfileFromForm(form){
     gender:data.get('gender')||'',
     pronouns:String(data.get('pronouns')||'').trim(),
     visualAvatarId:String(data.get('visualAvatarId')||''),
-    weight:num(data.get('weight')),
+    weight:lbFromDisplay(data.get('weight'),weightUnit),
+    weightUnit,
+    measurementUnit,
     heightFeet:num(data.get('heightFeet')),
     heightInches:num(data.get('heightInches')),
     ageRange:data.get('ageRange')||'25-34',
     experience:data.get('experience')||'new',
+    workoutStyle:data.get('workoutStyle')||'classic',
+    pacing:data.get('pacing')||'balanced',
+    workoutLimiter:data.get('workoutLimiter')||'none',
     days:num(data.get('days'))||4,
     workoutDays:data.getAll('workoutDays'),
     minutes:num(data.get('minutes'))||45,
     equipment:data.get('equipment')||'full-gym',
+    savedSetups:[...new Set([String(data.get('equipment')||'full-gym'),...data.getAll('savedSetups').map(String),'bodyweight'])],
     style:data.get('style')||'mixed',
     avoid:data.getAll('avoid'),
     priorities:data.getAll('priorities').slice(0,2),
+    progressPins:data.getAll('progressPins').length?data.getAll('progressPins').map(String):['weight','chest','arm','bench','row'],
     lifts:{
       bench:num(data.get('bench')),
       squat:num(data.get('squat')),
@@ -2877,69 +2881,33 @@ function saveProfileFromForm(form){
       row:num(data.get('row'))
     }
   };
-  if(!profile.displayName){
-    toast('Enter the display name you want to use in training and shared workouts.');
-    form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(!profile.gender){
-    toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');
-    form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(!TRAINING_AVATARS.some(item=>item.id===profile.visualAvatarId)){
-    toast('Choose the training avatar you want reflected in your workout visuals.');
-    form.querySelector('.avatar-setup-section')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(profile.workoutDays.length!==profile.days){
-    toast('Choose exactly '+profile.days+' training days for your weekly schedule.');
-    form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-    if(profile.weight<50||profile.weight>700){
-    toast('Enter a body weight between 50 and 700 lb.');
-    form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});
-    return false;
-  }
-  if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){
-    toast('Enter height feet between 3 and 8, or leave height blank.');
-    return false;
-  }
-  if(profile.heightInches<0||profile.heightInches>11){
-    toast('Enter height inches between 0 and 11.');
-    return false;
-  }
+  if(!profile.displayName){toast('Enter the display name you want to use in training and shared workouts.');form.querySelector('[name="displayName"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(!profile.gender){toast('Choose a gender option, including Prefer not to say if you do not want to provide one.');form.querySelector('[name="gender"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(!TRAINING_AVATARS.some(item=>item.id===profile.visualAvatarId)){toast('Choose the training avatar you want reflected in your workout visuals.');form.querySelector('.avatar-setup-section')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(profile.workoutDays.length!==profile.days){toast('Choose exactly '+profile.days+' training days for your weekly schedule.');form.querySelector('.schedule-day-picker')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(profile.weight<50||profile.weight>700){toast('Enter a valid body weight.');form.querySelector('[name="weight"]')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  if(profile.heightFeet&&(profile.heightFeet<3||profile.heightFeet>8)){toast('Enter height feet between 3 and 8, or leave height blank.');return false;}
+  if(profile.heightInches<0||profile.heightInches>11){toast('Enter height inches between 0 and 11.');return false;}
   let plan;
-  try{
-    plan=generatePlan(profile);
-  }catch(error){
-    console.error('Workout plan generation failed',error);
-    toast('Could not build the plan. Please reload and try again.');
-    return false;
-  }
-  if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){
-    toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');
-    return false;
-  }
+  try{plan=generatePlan(profile);}catch(error){console.error('Workout plan generation failed',error);toast('Could not build the plan. Please reload and try again.');return false;}
+  if(!plan?.days?.length||plan.days.every(day=>!day.exercises?.length)){toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');return false;}
+
+  const previousTraining=store.trainingProgram||{};
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null};
+  store.trainingProgram={...previousTraining,scheduleOverrides:{},weekReviews:{},programReviews:previousTraining.programReviews||{},engine:null,bodyProgress:previousTraining.bodyProgress||{measurements:[],weeklyCheckins:{},photos:[]}};
+  ensureTrainingProgram();
+  recordInitialBodyMeasurement(profile,data);
   refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
-    accountSheetOpen=true;
-    currentTab='profile-edit';
-    render();
+    accountSheetOpen=true;currentTab='profile-edit';render();
     setTimeout(()=>toast(store.account?.status==='pending'?'Confirm your email and sign in so this plan can follow you between browsers.':'Create or sign in to your account to finish setup and sync your plan.'),100);
     return true;
   }
-  currentTab='home';
-  render();
-  if(!persisted){
-    setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
-  }
+  currentTab='home';render();
+  if(!persisted)setTimeout(()=>toast('Plan built. Chrome blocked local saving, so keep this tab open to preserve this session.'),100);
   return true;
 }
 
