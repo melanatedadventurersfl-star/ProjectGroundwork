@@ -1336,7 +1336,7 @@ function exerciseImageButton(ex,className='exercise-media',index=0){
   if(!src)return renderExerciseMediaPlaceholder(ex,className,state);
   const media=animate&&second
     ?'<span class="exercise-motion-frames"><img class="motion-frame motion-frame-a" src="'+esc(src)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' demonstration, position 1"><img class="motion-frame motion-frame-b" src="'+esc(second)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' demonstration, position 2"></span>'
-    :'<img src="'+esc(src)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
+    :'<img src="'+esc(src)+'" loading="'+(runnerEager?'eager':'lazy')+'" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
   return '<button class="'+className+' exercise-media'+(animate&&second?' motion-enabled':'')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+media+
     '<span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span><span class="media-hint">VIEW FORM</span></button>';
 }
