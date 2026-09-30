@@ -59,7 +59,7 @@ const defaultStore = {
   lastSummaryId: null
 };
 
-const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup-routine','warmup','warmup-complete','pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
+const RESUMABLE_WORKOUT_PHASES=new Set(['intro','warmup-routine','warmup','warmup-complete','pre-set','work','timed-set','side-switch','rest','calibrate','feedback','exercise-transition','exercise-review','cooldown','review']);
 
 let store = loadStore();
 let clearedLegacyActiveWorkout = false;
@@ -278,6 +278,15 @@ function renderAvatarChoices(selectedId='',inputName='visualAvatarId'){
 }
 function roundTo(value,step=5){ if(!value) return 0; return Math.max(step,Math.round(value/step)*step); }
 function formatClock(seconds){ const s=Math.max(0,Math.floor(seconds)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+function formatTimeStamp(iso){
+  const value=Date.parse(iso||'');
+  if(!Number.isFinite(value))return '';
+  return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(value));
+}
+function formatTimeRange(start,end){
+  const left=formatTimeStamp(start),right=formatTimeStamp(end);
+  return left&&right?left+' – '+right:left||right||'';
+}
 function formatDate(iso){
   const value=typeof iso==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(iso)?dateFromKey(iso):new Date(iso);
   return new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric'}).format(value);
@@ -2742,13 +2751,14 @@ function createWorkout(day,meta={}){
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
     readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
-    startedAt:now,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
-    isPaused:false,pausedAt:null,
-    phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,
+    preparedAt:now,startedAt:now,trainingStartedAt:null,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
+    isPaused:false,pausedAt:null,totalPausedMs:0,pauseLog:[],
+    phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,timedStageSide:'',
     warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
     engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineBlockNumber:day.engineBlockNumber||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
-    exerciseStartedAt:null,exerciseDurations:{},
+    exerciseStartedAt:null,exerciseDurations:{},phaseTimestamps:{},restLog:[],
     restEndsAt:null,restDuration:0,restPausedRemaining:null,restToken:null,pendingPosition:null,
+    sideSwitchStartedAt:null,sideSwitchEndsAt:null,sideSwitchDuration:0,sideSwitchPausedRemaining:null,
     revision:1,processedActions:{},finalizing:false,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
@@ -2853,7 +2863,46 @@ function workoutNowMs(w,nowMs=Date.now()){
   return w?.isPaused&&Number.isFinite(paused)?paused:nowMs;
 }
 function workoutElapsedSeconds(w){
-  return Math.max(0,Math.floor((workoutNowMs(w)-new Date(w.startedAt).getTime())/1000));
+  const started=Date.parse(w?.trainingStartedAt||w?.startedAt||'');
+  if(!Number.isFinite(started))return 0;
+  const activeMs=Math.max(0,workoutNowMs(w)-started-Math.max(0,num(w?.totalPausedMs)));
+  return Math.floor(activeMs/1000);
+}
+function wallClockElapsedSeconds(w,endAt=null){
+  const started=Date.parse(w?.trainingStartedAt||w?.startedAt||'');
+  const ended=Date.parse(endAt||'');
+  const end=Number.isFinite(ended)?ended:Date.now();
+  return Number.isFinite(started)?Math.max(0,Math.floor((end-started)/1000)):0;
+}
+function markPhaseStart(w,key,at=new Date().toISOString()){
+  if(!w)return;
+  w.phaseTimestamps=w.phaseTimestamps||{};
+  w.phaseTimestamps[key]=w.phaseTimestamps[key]||{};
+  if(!w.phaseTimestamps[key].startedAt)w.phaseTimestamps[key].startedAt=at;
+}
+function markPhaseEnd(w,key,at=new Date().toISOString()){
+  if(!w)return;
+  w.phaseTimestamps=w.phaseTimestamps||{};
+  w.phaseTimestamps[key]=w.phaseTimestamps[key]||{};
+  w.phaseTimestamps[key].endedAt=at;
+}
+function markExerciseStart(w,index,at=new Date().toISOString()){
+  const ex=w?.exercises?.[index];if(!ex)return;
+  if(!ex.startedAt)ex.startedAt=at;
+}
+function markExerciseEnd(w,index,at=new Date().toISOString()){
+  const ex=w?.exercises?.[index];if(!ex)return;
+  ex.endedAt=at;
+}
+function exerciseNeedsSideSwitch(ex){
+  return exerciseLaterality(ex)==='unilateral'&&exerciseRepCountMode(ex)==='per-side';
+}
+function exerciseSideSwitchSeconds(ex){
+  if(!exerciseNeedsSideSwitch(ex))return 0;
+  return ['single-leg','squat','hinge','calves'].includes(ex?.movement)?8:5;
+}
+function activeExerciseSide(set){
+  return set?.activeSide==='left'?'left':'right';
 }
 function exerciseElapsedSeconds(w){
   if(!w?.exerciseStartedAt)return 0;
