@@ -353,7 +353,17 @@
           context: options.context || {},
           style: settings.coachStyle || 'balanced',
           frequency: settings.coachFrequency || 'normal',
-          voice: settings.coachVoice || 'cedar'
+          voice: settings.coachVoice || 'cedar',
+          detail: settings.coachDetail || 'short',
+          talkSpeed: settings.talkSpeed || 'normal',
+          nameUsage: settings.nameUsage || 'occasional',
+          formCues: settings.formCues || 'basic',
+          performanceFeedback: settings.performanceFeedback || 'session',
+          motivation: settings.motivation || 'moderate',
+          countdownMode: settings.countdownMode || 'full',
+          warmupGuidance: settings.warmupGuidance || 'guided',
+          cooldownGuidance: settings.cooldownGuidance || 'guided',
+          adaptiveCoach: settings.adaptiveCoach !== false
         }), requestTimeout);
       } catch (error) {
         stopAudioHold();
@@ -394,6 +404,28 @@
     return queue;
   }
 
+  function playClip(base64, mimeType) {
+    if (!base64) return Promise.resolve(false);
+    stopGeneration += 1;
+    queue = Promise.resolve();
+    if (activeSource) {
+      try { activeSource.stop(0); } catch {}
+      activeSource = null;
+    }
+    if (activeAudio) {
+      try {
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+      } catch {}
+      activeAudio = null;
+    }
+    startAudioHold();
+    return playBase64Audio(base64, mimeType || 'audio/mpeg').catch(error => {
+      console.warn('Priority coach cue playback failed', error);
+      return false;
+    });
+  }
+
   function stop() {
     stopGeneration += 1;
     queue = Promise.resolve();
@@ -416,5 +448,5 @@
     }
   }
 
-  window.GoWorkoutCoach = { emit, stop, unlock };
+  window.GoWorkoutCoach = { emit, stop, unlock, playClip };
 })();
