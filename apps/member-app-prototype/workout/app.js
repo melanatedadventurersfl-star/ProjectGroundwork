@@ -46,6 +46,9 @@ let historyStatusFilter = 'all';
 let historyView = 'list';
 let historySearch = '';
 let historyCalendarOffset = 0;
+let historyRoutineFilter = 'all';
+let historyMuscleFilter = 'all';
+let historySetupFilter = 'all';
 let historyLastRemoved = null;
 
 const defaultStore = {
@@ -5833,6 +5836,25 @@ function exerciseBestBeforeHistory(ex,item){
   }
   return best?{...best,when}:null;
 }
+function exerciseFeedbackPattern(ex,item){
+  const identity=exerciseHistoryIdentity(ex);
+  const cutoff=Date.parse(item?.completedAt||'');
+  const values=[];
+  for(const workout of store.history||[]){
+    if(workout.id===item?.id||Date.parse(workout.completedAt||'')>=cutoff)continue;
+    const prior=(workout.exercises||[]).find(candidate=>exerciseMatchesHistory(candidate,identity));
+    if(prior?.feedback)values.push(prior.feedback);
+    if(values.length>=3)break;
+  }
+  if(!ex?.feedback)return null;
+  const same=values.filter(value=>value===ex.feedback).length;
+  if(same<1)return null;
+  const total=same+1;
+  if(ex.feedback==='too-hard'||ex.feedback==='hard')return {tone:'caution',text:feedbackLabel(ex.feedback)+' in '+total+' recent sessions. GoWorkout should avoid progressing this movement automatically.'};
+  if(ex.feedback==='too-easy')return {tone:'progress',text:'Too easy in '+total+' recent sessions. This is a stronger progression signal than a single easy day.'};
+  if(ex.feedback==='form-off')return {tone:'caution',text:'Form concerns repeated across '+total+' recent sessions. Hold progression until the movement feels cleaner.'};
+  return null;
+}
 function historyRestAnalysis(item){
   const rows=(item?.restLog||[]).filter(rest=>rest.endedAt||Number.isFinite(rest.actualSeconds));
   if(!rows.length)return null;
@@ -5861,6 +5883,12 @@ function filteredHistoryItems(){
   if(historyStatusFilter==='manual')items=items.filter(item=>item.manualWorkoutCompletion);
   if(historyStatusFilter==='adapted')items=items.filter(item=>item.trainingContext?.temporary||item.trainingContext?.adapted);
   if(historyStatusFilter==='shared')items=items.filter(item=>item.sharedSession);
+  if(historyRoutineFilter!=='all')items=items.filter(item=>item.routineName===historyRoutineFilter);
+  if(historyMuscleFilter!=='all')items=items.filter(item=>(item.exercises||[]).some(ex=>(ex.muscles||[]).includes(historyMuscleFilter)));
+  if(historySetupFilter!=='all')items=items.filter(item=>{
+    const key=item.trainingContext?.key||'standard';
+    return key===historySetupFilter;
+  });
   const q=historySearch.trim().toLowerCase();
   if(q)items=items.filter(item=>[
     item.routineName,item.note,...historyTags(item),
@@ -5918,11 +5946,15 @@ function renderHistory(){
   for(const item of items){const key=historyMonthKey(item);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item);}
   const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
   const statusFilters=[['all','Any status'],['prs','PRs'],['partial','Partial'],['manual','Manual'],['adapted','Adapted'],['shared','Partner']];
+  const routines=[...new Set((store.history||[]).map(item=>item.routineName).filter(Boolean))].sort();
+  const muscles=[...new Set((store.history||[]).flatMap(item=>(item.exercises||[]).flatMap(ex=>ex.muscles||[])).filter(Boolean))].sort();
+  const setups=[...new Set((store.history||[]).map(item=>item.trainingContext?.key||'standard'))].sort();
   return '<div class="clean-page history-journal-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Your training journal.</h2><p>See what you did, what changed, and what GoWorkout will carry into the next session.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
     (historyLastRemoved?'<button class="history-undo-banner" data-action="undo-history-remove"><strong>Workout removed</strong><span>UNDO</span></button>':'')+
     '<div class="history-toolbar"><label class="history-search"><span>SEARCH</span><input id="history-search" type="search" value="'+esc(historySearch)+'" placeholder="Workout, exercise, note, partner..."></label><div class="history-view-toggle"><button class="'+(historyView==='list'?'active':'')+'" data-action="set-history-view" data-history-view="list">LIST</button><button class="'+(historyView==='calendar'?'active':'')+'" data-action="set-history-view" data-history-view="calendar">CALENDAR</button></div></div>'+
     '<div class="history-filter-row">'+filters.map(([value,label])=>'<button class="'+(historyFilter===value?'active':'')+'" data-action="set-history-filter" data-history-filter="'+value+'">'+label+'</button>').join('')+'</div>'+
     '<div class="history-filter-row secondary">'+statusFilters.map(([value,label])=>'<button class="'+(historyStatusFilter===value?'active':'')+'" data-action="set-history-status" data-history-status="'+value+'">'+label+'</button>').join('')+'</div>'+
+    '<div class="history-select-filters"><label><span>WORKOUT</span><select id="history-routine-filter"><option value="all">All workouts</option>'+routines.map(value=>'<option value="'+esc(value)+'" '+(historyRoutineFilter===value?'selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label><label><span>MUSCLE</span><select id="history-muscle-filter"><option value="all">All muscle groups</option>'+muscles.map(value=>'<option value="'+esc(value)+'" '+(historyMuscleFilter===value?'selected':'')+'>'+esc(value)+'</option>').join('')+'</select></label><label><span>SETUP</span><select id="history-setup-filter"><option value="all">All setups</option>'+setups.map(value=>'<option value="'+esc(value)+'" '+(historySetupFilter===value?'selected':'')+'>'+esc(value==='standard'?'Standard':value)+'</option>').join('')+'</select></label></div>'+
     (historyView==='calendar'?renderHistoryCalendar(items):([...groups.entries()].map(([key,rows])=>renderHistoryMonthGroup(key,rows)).join('')||renderEmpty('No workouts here','Try another filter or complete a workout.')))+
   '</div>';
 }
@@ -5975,7 +6007,8 @@ function renderHistoryExerciseCard(item,ex,index){
     return '<div class="history-set-row"><span>S'+(setIndex+1)+'</span><div><strong>'+esc(performed)+'</strong><small>'+esc(formatTimeRange(set.startedAt,set.endedAt||set.completedAt)||formatTimeStamp(set.completedAt))+'</small>'+(changed?'<em>Planned '+esc(planned)+'</em>':'')+sides+'</div></div>';
   }).join('');
   const compare=best&&previous?'<div class="history-context-line"><span>VS PREVIOUS BEST</span><strong>'+esc(setPerformanceLabel(ex,best))+' now · '+esc(setPerformanceLabel(ex,previous))+' before</strong><small>'+esc(formatDate(previous.when))+'</small></div>':'';
-  const feedback=ex.feedback?'<div class="history-context-line feedback"><span>YOUR FEEDBACK</span><strong>'+esc(feedbackLabel(ex.feedback))+'</strong>'+(next?'<small>Next: '+esc(next.label||progressionLabel(ex,next.weight,next.reps))+(next.reason?' · '+esc(next.reason):'')+'</small>':'')+'</div>':'';
+  const feedbackPattern=exerciseFeedbackPattern(ex,item);
+  const feedback=ex.feedback?'<div class="history-context-line feedback"><span>YOUR FEEDBACK</span><strong>'+esc(feedbackLabel(ex.feedback))+'</strong>'+(next?'<small>Next: '+esc(next.label||progressionLabel(ex,next.weight,next.reps))+(next.reason?' · '+esc(next.reason):'')+'</small>':'')+(feedbackPattern?'<small class="history-feedback-pattern">'+esc(feedbackPattern.text)+'</small>':'')+'</div>':'';
   const range=formatTimeRange(ex.startedAt,ex.endedAt);
   return '<details class="history-exercise-card">'+
     '<summary><div><strong>'+esc(ex.name)+'</strong><span>'+completed.length+'/'+(ex.sets?.length||0)+' sets'+(ex.feedback?' · '+esc(feedbackLabel(ex.feedback)):'')+'</span><small>'+esc(range)+(best?' · Best '+esc(setPerformanceLabel(ex,best)):'')+'</small></div><em>+</em></summary>'+
@@ -6661,6 +6694,12 @@ document.addEventListener('change',event=>{
     document.querySelectorAll('input[name="workoutDays"]').forEach(input=>{input.checked=defaults.includes(input.value);});
     const note=document.querySelector('.schedule-day-head small');
     if(note)note.textContent='Select exactly '+desired+' days. Default days were updated for this schedule.';
+  }else if(event.target.id==='history-routine-filter'){
+    historyRoutineFilter=event.target.value||'all';render();
+  }else if(event.target.id==='history-muscle-filter'){
+    historyMuscleFilter=event.target.value||'all';render();
+  }else if(event.target.id==='history-setup-filter'){
+    historySetupFilter=event.target.value||'all';render();
   }else if(event.target.name==='workoutDays'){
     const desired=num(document.querySelector('#training-days-count')?.value)||4;
     const selected=document.querySelectorAll('input[name="workoutDays"]:checked').length;
