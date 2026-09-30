@@ -539,12 +539,12 @@ function renderLearnerRestAdvice(ex){
     '<small>'+esc(rest.reason||'')+(applied?' The timer will use this rest between normal working sets.':' Your timer stays unchanged until rest confidence passes the influence gate.')+'</small>'+
   '</div>';
 }
-function renderLearnerVolumeAdvice(ex){
+function renderLearnerVolumeAdvice(ex,set=null){
   const experiment=ex?.learnerVolumeExperiment;
   if(experiment?.applied){
     const from=Math.max(1,num(experiment.base?.sets)),to=Math.max(1,num(experiment.proposed?.sets));
     return '<div class="runner-learner-experiment volume">'+
-      '<span>CONTROLLED VOLUME TEST · ACTIVE</span>'+
+      '<span>'+(set?.learnerVolumeExperiment?'CONTROLLED VOLUME TEST · EXPERIMENT SET':'CONTROLLED VOLUME TEST · ACTIVE')+'</span>'+
       '<strong>'+from+' → '+to+' working sets</strong>'+
       '<small>'+esc(experiment.reason||'')+' This test changes only this movement. GoWorkout will check today’s performance and the next exposure before trusting the result.</small>'+
     '</div>';
@@ -7236,7 +7236,7 @@ function renderPreSet(pos){
     '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedRepsDisplay)+' · Previous: '+esc(previousLabel)+'</small></div>'+
     renderLearnerTargetAdvice(ex)+
     renderLearnerRestAdvice(ex)+
-    renderLearnerVolumeAdvice(ex)+
+    renderLearnerVolumeAdvice(ex,set)+
     renderLearnerShadowAdvice(ex)+
     renderExerciseGuidanceCard(ex,{compact:true,label:'HOW TO'})+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
@@ -8232,7 +8232,7 @@ function renderAdaptiveLearningOverview(){
       '<div><span>MODELED</span><strong>'+overview.modeledExercises+'</strong><small>movements</small></div>'+
       '<div><span>PREDICTIONS</span><strong>'+overview.predictionsEvaluated+'</strong><small>evaluated</small></div>'+
       '<div><span>LAST 20 HIT</span><strong>'+hit+'</strong><small>recent target accuracy</small></div>'+
-      '<div><span>REST INFLUENCE</span><strong>'+num(overview.variableGateCounts?.rest?.influence)+'</strong><small>'+num(overview.interventionOutcomes)+' outcomes checked</small></div>'+
+      '<div><span>VOLUME TESTS</span><strong>'+num(overview.volumeExperiments)+'</strong><small>'+num(overview.delayedOutcomes)+' follow-up checks completed</small></div>'+
     '</div>'+
   '</section>';
 }
