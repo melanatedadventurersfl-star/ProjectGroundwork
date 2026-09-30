@@ -752,7 +752,7 @@ function speakWorkoutCue(text,token=''){
 }
 
 function coachEventAllowed(event,frequency){
-  const required=new Set(['test','session_started','warmup_started','stretch_started','warmup_completed','exercise_started','cooldown_started','cooldown_completed','workout_completed']);
+  const required=new Set(['test','session_started','warmup_started','stretch_started','warmup_completed','exercise_started','cooldown_started','cooldown_completed','workout_completed','timeline_cue']);
   if(required.has(event))return true;
   if(frequency==='minimal')return event==='exercise_feedback';
   if(frequency==='normal')return event!=='set_completed';
@@ -3992,13 +3992,42 @@ function reconcileTimedStage(){
 }
 
 function advanceTimedStage(){
-  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;const items=timedStageItems(w);if(!items.length){completeTimedStagePhase(w);return;}
-  const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1)),now=new Date().toISOString();if(items[index])items[index].endedAt=now;delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
-  if(index>=items.length-1){completeTimedStagePhase(w);return;}w.timedStageIndex=index+1;const next=items[w.timedStageIndex];w.timedStageReps=(next?.mode==='reps'||next?.reps)?Math.max(1,num(next.reps)||8):0;w.timedStageSide=next?.side?'right':'';delete w.reviewPausedTimedStage;
-  const previewKey=guidedPreviewKey(w,w.phase,w.timedStageIndex),previewAlreadySpoken=timelineWasPlayed(previewKey),auto=guidedAutoStartEnabled(w.phase);w.timedStageAwaitingStart=!auto;w.timedStageStarting=false;w.timedPhaseStartedAt=auto?now:null;if(next&&auto&&!next.startedAt)next.startedAt=now;
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const items=timedStageItems(w);if(!items.length){completeTimedStagePhase(w);return;}
+  const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
+  const previous=items[index],now=new Date().toISOString();if(previous)previous.endedAt=now;
+  delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
+  if(index>=items.length-1){completeTimedStagePhase(w);return;}
+  w.timedStageIndex=index+1;
+  const next=items[w.timedStageIndex];
+  w.timedStageReps=(next?.mode==='reps'||next?.reps)?Math.max(1,num(next.reps)||8):0;
+  w.timedStageSide=next?.side?'right':'';delete w.reviewPausedTimedStage;
+  const previewKey=guidedPreviewKey(w,w.phase,w.timedStageIndex);
+  const previewAlreadySpoken=timelineWasPlayed(previewKey);
+  const auto=guidedAutoStartEnabled(w.phase);
+  const previousWasRep=Boolean(previous?.mode==='reps'||previous?.reps);
+  w.timedStageAwaitingStart=true;w.timedStageStarting=auto;w.timedPhaseStartedAt=null;
   fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'',label:'NEXT'});
-  if(!previewAlreadySpoken){const extra=coachStageExtra(w,next,w.timedStageIndex,w.phase),target=extra.stage?.target||'';playPreparedWorkoutCoach('stretch_started',extra,(next?.name||'Next stretch')+'. '+target+'.','coach-stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex);}
+  let instruction=Promise.resolve();
+  if(!previewAlreadySpoken){
+    const extra=coachStageExtra(w,next,w.timedStageIndex,w.phase),target=extra.stage?.target||'';
+    instruction=playPreparedWorkoutCoach('stretch_started',extra,(next?.name||'Next stretch')+'. '+target+'.','coach-stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex);
+  }
   prefetchGuidedLookahead(w);saveStore();render();
+  if(!auto)return;
+  Promise.resolve(instruction).finally(()=>{
+    const active=store.activeWorkout;
+    if(!active||active.id!==w.id||active.phase!==w.phase||active.timedStageIndex!==w.timedStageIndex)return;
+    if(previousWasRep){startGuidedStageNow();return;}
+    const workoutId=active.id,phase=active.phase,stageIndex=active.timedStageIndex;
+    fireWorkoutSignal('go','guided-transition-go-'+workoutId+'-'+phase+'-'+stageIndex,{voice:'Go',label:'GO'}).finally(()=>{
+      const current=store.activeWorkout;
+      if(!current||current.id!==workoutId||current.phase!==phase||current.timedStageIndex!==stageIndex)return;
+      current.timedStageAwaitingStart=false;current.timedStageStarting=false;current.timedPhaseStartedAt=new Date().toISOString();
+      const item=timedStageItems(current)[stageIndex];if(item&&!item.startedAt)item.startedAt=current.timedPhaseStartedAt;
+      saveStore();render();
+    });
+  });
 }
 function workoutActionKey(w,type,ei,si){return [w?.id,type,ei??'',si??''].join(':');}
 function claimWorkoutAction(w,key){
