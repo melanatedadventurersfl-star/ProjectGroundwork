@@ -32,6 +32,18 @@ let workoutMapOpen = false;
 let workoutMapView = 'strength';
 let setEditContext = null;
 let cueSettingsOpen = false;
+let cueSettingsDraft = null;
+let cueSettingsInitial = null;
+let cueSettingsNotice = '';
+let cueSettingsNoticeTimer = null;
+let cueSettingsSaving = false;
+let cueSettingsSavedPulse = false;
+let cueSettingsPreviewStage = 'exercise';
+let cueSettingsClosePrompt = false;
+let cueSettingsVoicePickerOpen = false;
+let cueSettingsAdvancedOpen = false;
+let cueSettingsAdvancedKey = '';
+let cueSettingsFlowDetail = '';
 let exerciseActionsIndex = null;
 let historyMenuId = null;
 let accountSheetOpen = false;
@@ -969,6 +981,300 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
     onPlaybackError:()=>toast('AI coach audio arrived, but iPhone blocked playback. Tap AI Coach & cues, then Preview once to unlock audio.')
   }).catch(error=>console.warn('Workout coach event failed',error));
 }
+function cueSettingsCurrent(){
+  return cueSettingsDraft ? cueSettingsDraft : workoutCueSettings();
+}
+function cueSettingsAreDirty(){
+  if(!cueSettingsDraft||!cueSettingsInitial)return false;
+  return JSON.stringify(cueSettingsDraft)!==JSON.stringify(cueSettingsInitial);
+}
+function openCueSettings(){
+  cueSettingsInitial=clone(workoutCueSettings());
+  cueSettingsDraft=clone(cueSettingsInitial);
+  cueSettingsNotice='';
+  cueSettingsSaving=false;
+  cueSettingsSavedPulse=false;
+  cueSettingsPreviewStage='exercise';
+  cueSettingsClosePrompt=false;
+  cueSettingsVoicePickerOpen=false;
+  cueSettingsAdvancedOpen=false;
+  cueSettingsAdvancedKey='';
+  cueSettingsFlowDetail='';
+  cueSettingsOpen=true;
+  render();
+  requestAnimationFrame(()=>document.querySelector('#coach-settings-scroll')?.scrollTo?.({top:0}));
+}
+function closeCueSettingsNow(){
+  cueSettingsOpen=false;
+  cueSettingsDraft=null;
+  cueSettingsInitial=null;
+  cueSettingsNotice='';
+  cueSettingsSaving=false;
+  cueSettingsSavedPulse=false;
+  cueSettingsClosePrompt=false;
+  cueSettingsVoicePickerOpen=false;
+  cueSettingsAdvancedOpen=false;
+  cueSettingsAdvancedKey='';
+  cueSettingsFlowDetail='';
+  render();
+}
+function requestCloseCueSettings(){
+  if(!cueSettingsOpen)return;
+  if(cueSettingsAreDirty()){
+    cueSettingsClosePrompt=true;
+    refreshCueSettingsView();
+    return;
+  }
+  closeCueSettingsNow();
+}
+function showCueSettingsNotice(message){
+  cueSettingsNotice=String(message||'');
+  if(cueSettingsNoticeTimer)clearTimeout(cueSettingsNoticeTimer);
+  const node=document.querySelector('#coach-settings-toast');
+  if(node){
+    node.textContent=cueSettingsNotice;
+    node.classList.add('show');
+  }
+  cueSettingsNoticeTimer=setTimeout(()=>{
+    cueSettingsNotice='';
+    document.querySelector('#coach-settings-toast')?.classList.remove('show');
+  },1800);
+}
+function refreshCueSettingsView({preserveScroll=true}={}){
+  if(!cueSettingsOpen)return;
+  const current=document.querySelector('#coach-settings-view');
+  if(!current){render();return;}
+  const scroller=document.querySelector('#coach-settings-scroll');
+  const scrollTop=preserveScroll?(scroller?.scrollTop||0):0;
+  current.outerHTML=renderCueSettingsSheet();
+  const next=document.querySelector('#coach-settings-scroll');
+  if(next)next.scrollTop=scrollTop;
+}
+function setCueSettingsDraft(key,value,{presetCustom=true,notice='',refresh=true}={}){
+  if(!cueSettingsDraft)cueSettingsDraft=clone(workoutCueSettings());
+  if(presetCustom&&key!=='coachPreset')cueSettingsDraft.coachPreset='custom';
+  cueSettingsDraft={...cueSettingsDraft,[key]:value};
+  cueSettingsSavedPulse=false;
+  if(refresh)refreshCueSettingsView();
+  if(notice)showCueSettingsNotice(notice);
+}
+function toggleCueSettingsDraft(key,label='Setting'){
+  const settings=cueSettingsCurrent();
+  setCueSettingsDraft(key,!settings[key],{notice:label+' '+(!settings[key]?'on':'off')+' ✓'});
+}
+function applyCueSettingsPresetDraft(id){
+  const preset=COACH_PRESETS[id];
+  if(!preset)return;
+  cueSettingsDraft={...cueSettingsCurrent(),...preset,coachPreset:id};
+  cueSettingsSavedPulse=false;
+  refreshCueSettingsView();
+  showCueSettingsNotice((preset.label||'Coach mode')+' applied ✓');
+}
+function setCueSettingsHelp(level){
+  const map={
+    off:{exerciseInstruction:'off',formCues:'off'},
+    quick:{exerciseInstruction:'quick',formCues:'basic'},
+    detailed:{exerciseInstruction:'detailed',formCues:'detailed'}
+  };
+  const next=map[level];
+  if(!next)return;
+  cueSettingsDraft={...cueSettingsCurrent(),...next,coachPreset:'custom'};
+  cueSettingsSavedPulse=false;
+  refreshCueSettingsView();
+  showCueSettingsNotice('Exercise help set to '+(level==='off'?'Off':level==='quick'?'Quick':'Detailed')+' ✓');
+}
+function saveCueSettingsDraft({closeAfter=false}={}){
+  if(!cueSettingsDraft)return;
+  cueSettingsSaving=true;
+  refreshCueSettingsView();
+  const before=coachCuePackCacheKey(workoutCueSettings());
+  store.cueSettings=clone(cueSettingsDraft);
+  const after=coachCuePackCacheKey(workoutCueSettings());
+  if(before!==after)clearCoachCuePack();
+  saveStore();
+  cueSettingsInitial=clone(workoutCueSettings());
+  cueSettingsDraft=clone(cueSettingsInitial);
+  cueSettingsSaving=false;
+  cueSettingsSavedPulse=true;
+  cueSettingsClosePrompt=false;
+  if(after!==before)primeCoachCuePack();
+  if(closeAfter){closeCueSettingsNow();return;}
+  refreshCueSettingsView();
+  showCueSettingsNotice('Coach settings saved ✓');
+  setTimeout(()=>{
+    cueSettingsSavedPulse=false;
+    if(cueSettingsOpen)refreshCueSettingsView();
+  },1400);
+}
+function discardCueSettingsAndClose(){
+  cueSettingsDraft=cueSettingsInitial?clone(cueSettingsInitial):clone(workoutCueSettings());
+  closeCueSettingsNow();
+}
+function cueFrequencyCopy(value){
+  return value==='minimal'
+    ?'Only speaks for essential workout cues and major transitions.'
+    :value==='high'
+      ?'Speaks before exercises, during rests, after sets, and during transitions.'
+      :'Speaks at useful transitions without narrating every action.';
+}
+function cueCoachBehaviorSummary(settings=cueSettingsCurrent()){
+  const style=COACH_SETTING_LABELS.coachStyle[settings.coachStyle]||'Balanced';
+  const talk=settings.coachFrequency==='high'?'Talks often':settings.coachFrequency==='minimal'?'Minimal talk':'Talks normally';
+  const instruction=settings.exerciseInstruction==='detailed'?'Detailed instructions':settings.exerciseInstruction==='off'?'Essential cues only':'Quick instructions';
+  return {style,talk,instruction};
+}
+function cueAutoStartSummary(settings=cueSettingsCurrent()){
+  const values=[settings.autoStartWarmup,settings.autoStartCooldown,settings.autoStartTimedExercise];
+  if(values.every(Boolean))return 'ON';
+  if(values.every(value=>!value))return 'OFF';
+  return 'MIXED';
+}
+function cueExerciseHelpCopy(settings=cueSettingsCurrent()){
+  if(settings.exerciseInstruction==='off'||settings.formCues==='off')return 'Exercise coaching stays quiet. Open Form any time you want technique details.';
+  if(settings.exerciseInstruction==='detailed'||settings.formCues==='detailed')return 'Keep your elbows about 45 degrees from your torso. Lower under control and keep your shoulder blades set.';
+  return 'Set your shoulders, keep the movement controlled, and stop the set if your form breaks.';
+}
+function cueNextPreviewCopy(settings=cueSettingsCurrent()){
+  if(settings.nextSetPreview==='off')return 'No advance announcement';
+  if(settings.nextSetPreview==='exercise')return 'Next is one-arm dumbbell row.';
+  if(settings.nextSetPreview==='full')return 'Next is one-arm dumbbell row. 30 pounds for 10 each side. Get your dumbbell ready.';
+  return 'Next is one-arm dumbbell row. 30 pounds for 10 each side.';
+}
+function cueStagePreviewCopy(stage,settings=cueSettingsCurrent()){
+  if(stage==='warmup')return settings.warmupGuidance==='detailed'
+    ?'Start with arm circles. 30 seconds. Keep your ribs down and move smoothly through the shoulder.'
+    :'Start with arm circles. 30 seconds. Move smoothly.';
+  if(stage==='rest')return settings.nextSetPreview==='off'
+    ?'Rest for 60 seconds. I’ll cue you when it’s time to move.'
+    :cueNextPreviewCopy(settings);
+  if(stage==='next')return cueNextPreviewCopy(settings);
+  if(stage==='cooldown')return settings.cooldownGuidance==='detailed'
+    ?'Slow your breathing. Hold the stretch for 20 seconds and keep the position comfortable.'
+    :'Slow your breathing. Hold this stretch for 20 seconds.';
+  return settings.exerciseInstruction==='detailed'
+    ?'Start your set. 30 pounds for 10 reps. Keep your core tight and control the lowering phase.'
+    :'Start your set. 30 pounds for 10 reps. Keep your core tight.';
+}
+function cueSettingsDemoExercise(){
+  return catalog.find(item=>/one.?arm.*row/i.test(item.name||''))||
+    catalog.find(item=>/dumbbell.*row/i.test(item.name||''))||
+    catalog.find(item=>/bench.*press/i.test(item.name||''))||
+    catalog.find(item=>item?.name)||null;
+}
+function cueSettingsDemoImage(){
+  const ex=cueSettingsDemoExercise();
+  return ex?exerciseImageUrl(ex,0,false):'';
+}
+function speakCueSettingsPreview(text,settings=cueSettingsCurrent()){
+  if(!text||!settings.voice||!('speechSynthesis' in window)||typeof window.SpeechSynthesisUtterance!=='function')return Promise.resolve(false);
+  try{
+    window.speechSynthesis.cancel?.();
+    const utterance=new window.SpeechSynthesisUtterance(String(text));
+    utterance.rate=settings.talkSpeed==='fast'?1.32:settings.talkSpeed==='slow'?.92:1.12;
+    utterance.pitch=1.02;
+    utterance.volume=1;
+    window.speechSynthesis.speak(utterance);
+    return Promise.resolve(true);
+  }catch{return Promise.resolve(false);}
+}
+function runCueSettingsCoachPreview({voice='',stage='',quick=false}={}){
+  const settings={...cueSettingsCurrent(),voice:true,coachVoice:COACH_VOICE_IDS.includes(voice)?voice:cueSettingsCurrent().coachVoice};
+  const line=quick
+    ?'Let’s do this. Three, two, one, go.'
+    :stage
+      ?cueStagePreviewCopy(stage,settings)
+      :'Alright. Your coach setup is ready. Three, two, one, go.';
+  const preview=document.querySelector('#coach-preview-live');
+  if(preview){
+    preview.textContent=line;
+    preview.classList.add('active');
+    setTimeout(()=>preview.classList.remove('active'),1200);
+  }
+  const coach=window.GoWorkoutCoach;
+  if(settings.aiCoach&&store.account?.status==='connected'&&coach?.emit){
+    coach.stop?.();
+    unlockWorkoutCues();
+    coach.emit({
+      event:'test',
+      context:{name:settings.nameUsage==='never'?'':displayName(),preview:true,stage:stage||'settings'},
+      token:'settings-preview-'+Date.now(),
+      settings,
+      invoke:invokeWorkoutCoach,
+      fallbackSpeak:(text)=>speakCueSettingsPreview(text,settings),
+      fallbackLine:line,
+      onError:()=>speakCueSettingsPreview(line,settings),
+      onPlaybackError:()=>showCueSettingsNotice('Tap preview again if iPhone blocks audio.')
+    }).catch(()=>speakCueSettingsPreview(line,settings));
+    return;
+  }
+  speakCueSettingsPreview(line,settings);
+}
+function playCueSettingsTone(){
+  try{
+    const AudioCtor=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtor)return false;
+    if(!workoutAudioContext)workoutAudioContext=new AudioCtor();
+    workoutAudioContext.resume?.();
+    const now=workoutAudioContext.currentTime;
+    const gain=workoutAudioContext.createGain();
+    gain.gain.setValueAtTime(.16,now);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+.24);
+    gain.connect(workoutAudioContext.destination);
+    const osc=workoutAudioContext.createOscillator();
+    osc.type='triangle';osc.frequency.setValueAtTime(880,now);osc.connect(gain);osc.start(now);osc.stop(now+.24);
+    return true;
+  }catch{return false;}
+}
+function testCueSettingsDevice(kind){
+  if(kind==='sound'){
+    if(playCueSettingsTone())showCueSettingsNotice('Sound cue played ✓');
+    else showCueSettingsNotice('Sound preview is not available on this device.');
+    return;
+  }
+  if(kind==='haptics'){
+    if(typeof navigator!=='undefined'&&typeof navigator.vibrate==='function'){
+      try{navigator.vibrate([70,30,100]);showCueSettingsNotice('Haptic cue sent ✓');}catch{showCueSettingsNotice('Haptics are not available here.');}
+    }else showCueSettingsNotice('Haptics are not available in this browser.');
+    return;
+  }
+  const node=document.querySelector('#coach-screen-preview');
+  if(node){
+    node.classList.remove('pulse');
+    requestAnimationFrame(()=>node.classList.add('pulse'));
+    setTimeout(()=>node.classList.remove('pulse'),800);
+    showCueSettingsNotice('Screen cue previewed ✓');
+  }
+}
+function selectCueSettingsVoiceDraft(voice){
+  if(!COACH_VOICE_IDS.includes(voice))return;
+  cueSettingsDraft={...cueSettingsCurrent(),coachVoice:voice,coachPreset:'custom'};
+  cueSettingsVoicePickerOpen=false;
+  cueSettingsSavedPulse=false;
+  refreshCueSettingsView();
+  showCueSettingsNotice('Voice changed to '+coachVoiceLabel(voice)+' ✓');
+}
+function updateCueSettingsFrequencyLive(value){
+  const values=['minimal','normal','high'];
+  const index=Math.max(0,Math.min(2,Number(value)||0));
+  const frequency=values[index];
+  if(!cueSettingsDraft)cueSettingsDraft=clone(workoutCueSettings());
+  cueSettingsDraft={...cueSettingsDraft,coachFrequency:frequency,coachPreset:'custom'};
+  cueSettingsSavedPulse=false;
+  const label=document.querySelector('#coach-frequency-value');
+  const copy=document.querySelector('#coach-frequency-copy');
+  const range=document.querySelector('#coach-frequency-range');
+  const hero=document.querySelector('#coach-hero-behavior');
+  if(label)label.textContent=COACH_SETTING_LABELS.coachFrequency[frequency]||frequency;
+  if(copy)copy.textContent=cueFrequencyCopy(frequency);
+  if(range)range.style.setProperty('--coach-range',String(index*50)+'%');
+  if(hero){
+    const summary=cueCoachBehaviorSummary(cueSettingsDraft);
+    hero.textContent=summary.style+' · '+summary.talk+' · '+summary.instruction;
+  }
+  const save=document.querySelector('#coach-save-settings');
+  if(save){save.disabled=false;save.textContent='SAVE SETTINGS';}
+}
+
 function selectCoachVoice(voice){
   if(!COACH_VOICE_IDS.includes(voice))return;
   store.cueSettings={...workoutCueSettings(),coachVoice:voice,coachPreset:'custom'};
