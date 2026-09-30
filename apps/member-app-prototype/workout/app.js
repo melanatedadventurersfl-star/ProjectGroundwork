@@ -7095,7 +7095,10 @@ function renderPreSet(pos){
   const recommendedReps=bounds.low&&bounds.high&&bounds.low!==bounds.high
     ?(targetReps>bounds.high?(exerciseRepDisplay(ex,targetReps)+' · base '+bounds.low+'–'+bounds.high):(bounds.low+'–'+bounds.high+(exerciseRepCountMode(ex)==='per-side'?' / side':' reps')))
     :exerciseRepDisplay(ex,targetReps);
-  const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):exerciseWeightDisplay(ex,recommendedWeightTarget(ex));
+  const baseWeight=ex.learnerTarget?.applied?num(ex.learnerTarget.base?.weight):recommendedWeightTarget(ex);
+  const baseReps=ex.learnerTarget?.applied?Math.max(1,num(ex.learnerTarget.base?.reps)||targetReps):targetReps;
+  const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):exerciseWeightDisplay(ex,baseWeight);
+  const recommendedRepsDisplay=ex.learnerTarget?.applied?exerciseRepDisplay(ex,baseReps):recommendedReps;
   const workingWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
   const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
   const sourceLabel=set.targetSource==='learner'?'Learner-guarded target':set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
@@ -7107,7 +7110,7 @@ function renderPreSet(pos){
   return '<div class="runner-set-ready">'+
     '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
-    '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedReps)+' · Previous: '+esc(previousLabel)+'</small></div>'+
+    '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedRepsDisplay)+' · Previous: '+esc(previousLabel)+'</small></div>'+
     renderLearnerTargetAdvice(ex)+
     renderExerciseGuidanceCard(ex,{compact:true,label:'HOW TO'})+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
