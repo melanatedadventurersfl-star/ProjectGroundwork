@@ -314,6 +314,7 @@
 
   function stop() {
     stopGeneration += 1;
+    queue = Promise.resolve();
     stopAudioHold();
     if (activeSource) {
       try { activeSource.stop(0); } catch {}
