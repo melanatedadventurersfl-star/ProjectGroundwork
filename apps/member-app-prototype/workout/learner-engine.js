@@ -90,8 +90,8 @@ function predictionForExercise(exercise,model,context={}){
     workoutId:context.workoutId||'',exerciseId:exercise.id||'',exerciseName:exercise.name||'Exercise',loadMode:exercise.loadMode||'',
     createdAt:context.createdAt||new Date().toISOString(),scheduledDate:context.scheduledDate||'',routineName:context.routineName||'',
     target:{weight:n(exercise.suggestedWeight),reps:n(exercise.suggestedReps),restSeconds:n(exercise.rest),sets:Array.isArray(exercise.sets)?exercise.sets.length:n(exercise.sets)},
-    source:exercise.adaptiveLabel?'learned':exercise.engineExerciseId?'program-engine':'plan',
-    reason:exercise.adaptiveReason||exercise.engineReason?.[0]||'Current planned target',confidence:conf
+    source:exercise.learnerTarget?.applied?'adaptive-learner':exercise.adaptiveLabel?'learned':exercise.engineExerciseId?'program-engine':'plan',
+    reason:exercise.learnerTarget?.applied?(exercise.learnerTarget.reason||'Adaptive learner guardrail applied'):exercise.adaptiveReason||exercise.engineReason?.[0]||'Current planned target',confidence:conf
   };
 }
 function eventFromExercise(workout,exercise,index=0){
