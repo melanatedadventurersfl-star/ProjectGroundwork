@@ -265,7 +265,7 @@
     let response = null;
     if (settings.aiCoach !== false && typeof options.invoke === 'function') {
       try {
-        const requestTimeout = options.event === 'test' ? 12000 : 10000;
+        const requestTimeout = options.event === 'test' ? 20000 : 15000;
         response = await timeout(options.invoke({
           event: options.event,
           context: options.context || {},
@@ -280,7 +280,8 @@
           console.warn('AI coach is unavailable', error);
           return;
         }
-        console.warn('AI coach request failed, using local voice fallback', error);
+        console.warn('AI coach request failed', error);
+        return;
       }
     }
 
@@ -293,12 +294,13 @@
         await playBase64Audio(response.audioBase64, response.mimeType || 'audio/mpeg');
         return;
       } catch (error) {
-        console.warn('AI coach audio playback failed, using local voice fallback', error);
+        console.warn('AI coach audio playback failed', error);
         if (typeof options.onPlaybackError === 'function') options.onPlaybackError(error);
+        return;
       }
     }
 
-    if (typeof options.fallbackSpeak === 'function') {
+    if (settings.aiCoach === false && typeof options.fallbackSpeak === 'function') {
       options.fallbackSpeak(line, options.token ? 'coach-fallback-' + options.token : '');
     }
   }
