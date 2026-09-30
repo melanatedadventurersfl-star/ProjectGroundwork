@@ -61,7 +61,7 @@ const defaultStore = {
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
   trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null},
-  cueSettings: {sound:true,voice:true,haptics:true,flash:true},
+  cueSettings: {sound:true,voice:true,aiCoach:true,coachStyle:'balanced',coachFrequency:'normal',coachVoice:'cedar',haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
   lastSummaryId: null
@@ -609,19 +609,35 @@ function announceExercise(ex,prefix='Next exercise'){
   if(!ex)return;
   const target=(ex.sets?.length||0)+' sets of '+String(ex.reps||ex.suggestedReps||'your target');
   const equipment=equipmentRequirement(exerciseSource(ex));
-  fireWorkoutSignal('transition','exercise-announce-'+(store.activeWorkout?.id||'')+'-'+ex.id+'-'+Date.now(),{
-    voice:prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.',
-    label:'NEXT'
-  });
+  const token='exercise-announce-'+(store.activeWorkout?.id||'')+'-'+(store.activeWorkout?.currentExerciseIndex||0)+'-'+ex.id;
+  fireWorkoutSignal('transition',token,{voice:'',label:'NEXT'});
+  emitWorkoutCoach('exercise_started',{
+    exercise:{
+      name:ex.name,
+      setNumber:1,
+      totalSets:ex.sets?.length||0,
+      weight:String(ex.sets?.[0]?.weight||ex.suggestedWeight||''),
+      reps:String(ex.sets?.[0]?.reps||ex.suggestedReps||''),
+      target,
+      loadMode:ex.loadMode||''
+    }
+  },prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.','coach-'+token);
 }
 let workoutAudioContext=null;
 const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null};
 
 function workoutCueSettings(){
   const saved=store.cueSettings||{};
+  const styles=['balanced','calm','hype','tough'];
+  const frequencies=['minimal','normal','talkative'];
+  const voices=['cedar','marin','coral','onyx','nova'];
   return {
     sound:saved.sound!==false,
     voice:saved.voice!==false,
+    aiCoach:saved.aiCoach!==false,
+    coachStyle:styles.includes(saved.coachStyle)?saved.coachStyle:'balanced',
+    coachFrequency:frequencies.includes(saved.coachFrequency)?saved.coachFrequency:'normal',
+    coachVoice:voices.includes(saved.coachVoice)?saved.coachVoice:'cedar',
     haptics:saved.haptics!==false,
     flash:saved.flash!==false
   };
@@ -654,6 +670,70 @@ function speakWorkoutCue(text,token=''){
     utterance.volume=1;
     window.speechSynthesis.speak(utterance);
   }catch{}
+}
+
+function coachEventAllowed(event,frequency){
+  if(event==='test')return true;
+  if(frequency==='minimal')return ['session_started','exercise_feedback','workout_completed'].includes(event);
+  if(frequency==='normal')return event!=='set_completed';
+  return true;
+}
+function coachEventContext(extra={}){
+  const pos=getActivePosition();
+  const ex=pos?.exercise;
+  const set=pos?.set;
+  return {
+    name:displayName(),
+    goal:store.profile?.goal||'',
+    routineName:store.activeWorkout?.routineName||'',
+    exercise:ex?{
+      name:ex.name,
+      setNumber:(pos.si||0)+1,
+      totalSets:ex.sets?.length||0,
+      weight:String(set?.weight||ex.suggestedWeight||''),
+      reps:String(set?.reps||ex.suggestedReps||''),
+      target:currentPrescriptionLabel(ex),
+      loadMode:ex.loadMode||''
+    }:undefined,
+    ...extra
+  };
+}
+async function invokeWorkoutCoach(payload){
+  if(!workoutSupabase||store.account?.status!=='connected')throw new Error('AI coach requires a connected workout account');
+  const {data,error}=await workoutSupabase.functions.invoke('workout-coach',{body:payload});
+  if(error)throw error;
+  if(data?.error)throw new Error(String(data.error));
+  return data||{};
+}
+function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
+  const settings=workoutCueSettings();
+  if(!settings.voice)return;
+  if(!settings.aiCoach){
+    if(fallbackLine)speakWorkoutCue(fallbackLine,'classic-'+token);
+    return;
+  }
+  if(!coachEventAllowed(event,settings.coachFrequency))return;
+  const coach=window.GoWorkoutCoach;
+  if(!coach?.emit){
+    if(fallbackLine)speakWorkoutCue(fallbackLine,'coach-missing-'+token);
+    return;
+  }
+  coach.emit({
+    event,
+    context:coachEventContext(extra),
+    token,
+    settings,
+    invoke:invokeWorkoutCoach,
+    fallbackSpeak:speakWorkoutCue,
+    fallbackLine
+  }).catch(error=>console.warn('Workout coach event failed',error));
+}
+function feedbackCoachFallback(feedback,result){
+  if(feedback==='too-easy')return result?.label?'Looks like I’m taking it easy on you. '+result.label+' next time.':'Looks like I’m taking it easy on you. We’ll bump this up next time.';
+  if(feedback==='too-hard')return 'That was too much today. We’ll back the next target down.';
+  if(feedback==='hard')return 'That made you work. We’ll keep the next target controlled.';
+  if(feedback==='form-off')return 'Keep the target steady. Clean reps come first.';
+  return 'That target looks right. We’ll build from there.';
 }
 function pulseLocalCountdown(label=''){
   const target=document.querySelector('#preset-count, #preset-countdown, #timed-set-clock, #rest-clock, #stage-clock, #side-switch-clock');
@@ -738,18 +818,28 @@ function playWorkoutCue(type,token=''){
   }catch{}
 }
 function toggleCueSetting(key){
-  if(!['sound','voice','haptics','flash'].includes(key))return;
+  if(!['sound','voice','aiCoach','haptics','flash'].includes(key))return;
   store.cueSettings={...workoutCueSettings(),[key]:!workoutCueSettings()[key]};
   saveStore();
   if((key==='sound'||key==='voice')&&store.cueSettings[key])unlockWorkoutCues();
-  if(key==='voice'&&!store.cueSettings.voice&&'speechSynthesis' in window){
-    try{window.speechSynthesis.cancel?.();}catch{}
+  if(key==='voice'&&!store.cueSettings.voice){
+    if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
+    window.GoWorkoutCoach?.stop?.();
   }
+  render();
+}
+function cycleCoachSetting(key,values){
+  const settings=workoutCueSettings();
+  const current=String(settings[key]||'');
+  const index=Math.max(0,values.indexOf(current));
+  store.cueSettings={...settings,[key]:values[(index+1)%values.length]};
+  saveStore();
   render();
 }
 function renderCueControls(){
   const settings=workoutCueSettings();
-  const active=[settings.voice?'Voice':'',settings.sound?'Sound':'',settings.haptics?'Haptics':'',settings.flash?'Flash':''].filter(Boolean);
+  const voiceLabel=settings.voice?(settings.aiCoach?'AI coach':'Voice'):'';
+  const active=[voiceLabel,settings.sound?'Sound':'',settings.haptics?'Haptics':'',settings.flash?'Flash':''].filter(Boolean);
   return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>Workout cues</strong><small>'+esc(active.join(' · ')||'All cues off')+'</small></div><em>›</em></button>';
 }
 
@@ -3578,6 +3668,21 @@ function applyExerciseFeedback(feedback){
   pos.workout.lastProgressionResult=result;
   const next=pos.workout.pendingPosition;
   saveStore();
+  emitWorkoutCoach('exercise_feedback',{
+    feedback,
+    progression:result,
+    exercise:{
+      name:pos.exercise.name,
+      setNumber:pos.exercise.sets?.length||0,
+      totalSets:pos.exercise.sets?.length||0,
+      weight:String(pos.workout.lastCompletedSet?.weight||''),
+      reps:String(pos.workout.lastCompletedSet?.reps||''),
+      target:currentPrescriptionLabel(pos.exercise),
+      loadMode:pos.exercise.loadMode||''
+    },
+    completedSets:(pos.exercise.sets||[]).filter(set=>set.completed).length,
+    performanceInsight:typeof pos.workout.lastSetInsight==='string'?pos.workout.lastSetInsight:''
+  },feedbackCoachFallback(feedback,result),'feedback-'+pos.workout.id+'-'+pos.exercise.id+'-'+Date.now());
   beginRest(next,pos.exercise.rest||45);
 }
 
@@ -3964,6 +4069,12 @@ function finalizeWorkout(status='complete'){
     if(session&&!before)entry.baselines.push({exerciseId:ex.id,name:ex.name,...session});
     else if(session&&(session.weight>before.weight||(session.weight===before.weight&&session.reps>before.reps)))entry.newPRs.push({exerciseId:ex.id,name:ex.name,...session});
   }
+  emitWorkoutCoach('workout_completed',{
+    durationMinutes:entry.durationMinutes,
+    completedSets:entry.completedSets,
+    exerciseCount:entry.resolvedExercises,
+    newPRs:entry.newPRs
+  },'That’s it'+(displayName()==='there'?'':' '+displayName())+'. Workout complete.','workout-complete-'+entry.id);
   if(entry.engineBacked){ingestEngineWorkout(entry);maybeCreateNextEngineBlock(entry);}
   ['pendingPosition','restEndsAt','restPausedRemaining','restToken','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','timedStageSwitchStartedAt','timedStageSwitchEndsAt','sideSwitchStartedAt','sideSwitchEndsAt','sideSwitchDuration','sideSwitchPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
   if(store.history.some(item=>item.id===entry.id)){store.activeWorkout=null;saveStore();currentTab='summary';render();return;}
@@ -5126,9 +5237,17 @@ function renderAccountSheet(){
 }
 function renderCueSettingsSheet(){
   const settings=workoutCueSettings();
-  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Audio & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
-    [['sound','Sound','Timer and completion tones'],['voice','Voice','Exercise names and coaching announcements'],['haptics','Haptics','Supported-device vibration cues'],['flash','Flash','Visual workout cue flash']].map(([key,label,copy])=>'<button data-action="toggle-'+key+'" class="settings-toggle"><div><strong>'+label+'</strong><span>'+copy+'</span></div><em>'+(settings[key]?'ON':'OFF')+'</em></button>').join('')+
-    '</div><button class="button secondary" data-action="test-cues">TEST CUES</button></section></div>';
+  const styleLabel={balanced:'Balanced',calm:'Calm',hype:'Hype',tough:'Tough'}[settings.coachStyle]||'Balanced';
+  const frequencyLabel={minimal:'Minimal',normal:'Normal',talkative:'Talkative'}[settings.coachFrequency]||'Normal';
+  const voiceLabel={cedar:'Cedar',marin:'Marin',coral:'Coral',onyx:'Onyx',nova:'Nova'}[settings.coachVoice]||'Cedar';
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Voice coach & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
+    '<button data-action="toggle-voice" class="settings-toggle"><div><strong>Voice cues</strong><span>Spoken workout guidance</span></div><em>'+(settings.voice?'ON':'OFF')+'</em></button>'+
+    '<button data-action="toggle-ai-coach" class="settings-toggle"><div><strong>AI Coach</strong><span>Natural, context-aware workout dialogue</span></div><em>'+(settings.aiCoach?'ON':'OFF')+'</em></button>'+
+    '<button data-action="cycle-coach-style" class="settings-toggle"><div><strong>Coach style</strong><span>Changes the tone of coaching dialogue</span></div><em>'+esc(styleLabel)+'</em></button>'+
+    '<button data-action="cycle-coach-frequency" class="settings-toggle"><div><strong>Coach frequency</strong><span>Controls how often the coach speaks</span></div><em>'+esc(frequencyLabel)+'</em></button>'+
+    '<button data-action="cycle-coach-voice" class="settings-toggle"><div><strong>AI voice</strong><span>Choose the generated coaching voice</span></div><em>'+esc(voiceLabel)+'</em></button>'+
+    [['sound','Sound','Timer and completion tones'],['haptics','Haptics','Supported-device vibration cues'],['flash','Flash','Visual workout cue flash']].map(([key,label,copy])=>'<button data-action="toggle-'+key+'" class="settings-toggle"><div><strong>'+label+'</strong><span>'+copy+'</span></div><em>'+(settings[key]?'ON':'OFF')+'</em></button>').join('')+
+    '</div><div class="session-setup-warning"><strong>AI VOICE</strong><span>Coach speech is AI-generated. Instant timer and countdown cues may use your device voice so the workout never waits on the network.</span></div><button class="button secondary" data-action="test-cues">TEST VOICE COACH</button></section></div>';
 }
 function renderExerciseActionsSheet(){
   const w=store.activeWorkout,index=exerciseActionsIndex,ex=w?.exercises?.[index];if(!ex)return '';
@@ -5278,7 +5397,11 @@ function beginWorkoutSession(){
   w.totalPausedMs=0;
   w.pauseLog=[];
   unlockWorkoutCues();
-  fireWorkoutSignal('go','session-intro-'+w.id,{voice:w.routineName+'. '+w.exercises.length+' exercises today.',label:'READY'});
+  const sessionToken='session-intro-'+w.id;
+  fireWorkoutSignal('go',sessionToken,{voice:'',label:'READY'});
+  const name=displayName()==='there'?'':displayName();
+  const welcome='Alright'+(name?' '+name:'')+', you ready? '+w.routineName+'. '+w.exercises.length+' exercises today. Let’s get started.';
+  emitWorkoutCoach('session_started',{exerciseCount:w.exercises.length},welcome,'coach-'+sessionToken);
   if(w.warmup?.length){
     w.phase='warmup-routine';
     w.timedStageIndex=0;
@@ -6503,7 +6626,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','cycle-coach-style','cycle-coach-frequency','cycle-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
@@ -6635,11 +6758,18 @@ function handleClick(event){
   else if(a==='end-timed-set')completeTimedSet(true);
   else if(a==='toggle-sound')toggleCueSetting('sound');
   else if(a==='toggle-voice')toggleCueSetting('voice');
+  else if(a==='toggle-ai-coach')toggleCueSetting('aiCoach');
+  else if(a==='cycle-coach-style')cycleCoachSetting('coachStyle',['balanced','calm','hype','tough']);
+  else if(a==='cycle-coach-frequency')cycleCoachSetting('coachFrequency',['minimal','normal','talkative']);
+  else if(a==='cycle-coach-voice')cycleCoachSetting('coachVoice',['cedar','marin','coral','onyx','nova']);
   else if(a==='toggle-flash')toggleCueSetting('flash');
   else if(a==='toggle-haptics')toggleCueSetting('haptics');
   else if(a==='test-cues'){
     unlockWorkoutCues();
-    fireWorkoutSignal('go','cue-test-'+Date.now(),{voice:'Cue test. Ready.',label:'READY'});
+    const token='cue-test-'+Date.now();
+    fireWorkoutSignal('go',token,{voice:'',label:'READY'});
+    const name=displayName()==='there'?'':displayName();
+    emitWorkoutCoach('test',{},'Alright'+(name?' '+name:'')+'. Your voice coach is ready.','coach-'+token);
   }
   else if(a==='add-rest')adjustRest(15);
   else if(a==='pause-rest')toggleRestPause();
