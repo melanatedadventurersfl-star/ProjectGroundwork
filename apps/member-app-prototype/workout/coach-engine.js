@@ -114,9 +114,9 @@
           voice: settings.coachVoice || 'cedar'
         }), 7000);
       } catch (error) {
-        if (error?.code === 'ai_not_configured') {
-          console.warn('AI coach server is not configured', error);
-          if (typeof options.onError === 'function') options.onError(error);
+        if (typeof options.onError === 'function') options.onError(error);
+        if (error?.code === 'ai_not_configured' || error?.code === 'ai_quota_exhausted') {
+          console.warn('AI coach is unavailable', error);
           return;
         }
         console.warn('AI coach request failed, using local voice fallback', error);
