@@ -42,6 +42,11 @@ let accountEntryError = '';
 let accountEntryEmail = '';
 let accountEntryDisplay = '';
 let historyFilter = 'all';
+let historyStatusFilter = 'all';
+let historyView = 'list';
+let historySearch = '';
+let historyCalendarOffset = 0;
+let historyLastRemoved = null;
 
 const defaultStore = {
   profile: null,
@@ -4089,11 +4094,35 @@ function markScheduledWorkoutComplete(dayId,scheduledDate){
   rebuildDerivedTrainingState();saveStore();render();toast(day.name+' marked complete.');
 }
 function removeHistoryWorkout(id){
-  const workout=store.history.find(item=>item.id===id);if(!workout)return;
+  const index=store.history.findIndex(item=>item.id===id);
+  const workout=store.history[index];if(!workout)return;
   if(!confirm('Remove '+workout.routineName+' from history? Weekly status, PR context, and adaptive recommendations will recalculate from the remaining workouts.'))return;
-  store.history=store.history.filter(item=>item.id!==id);
+  historyLastRemoved={workout:clone(workout),index,lastSummaryId:store.lastSummaryId};
+  store.history.splice(index,1);
   if(store.lastSummaryId===id)store.lastSummaryId=null;
-  rebuildDerivedTrainingState();saveStore();render();toast('Workout removed from history.');
+  rebuildDerivedTrainingState();saveStore();historyMenuId=null;render();toast('Workout removed. You can undo it from History.');
+}
+function undoHistoryRemove(){
+  if(!historyLastRemoved?.workout)return;
+  const index=Math.max(0,Math.min(num(historyLastRemoved.index),store.history.length));
+  store.history.splice(index,0,clone(historyLastRemoved.workout));
+  store.lastSummaryId=historyLastRemoved.lastSummaryId||store.lastSummaryId;
+  historyLastRemoved=null;
+  rebuildDerivedTrainingState();saveStore();render();toast('Workout restored.');
+}
+function saveHistoryNote(id){
+  const item=store.history.find(entry=>entry.id===id);if(!item)return;
+  const input=document.querySelector('#history-workout-note');
+  item.note=String(input?.value||'').trim();
+  item.noteUpdatedAt=new Date().toISOString();
+  saveStore();render();toast('Workout note saved.');
+}
+function saveHistoryExerciseNote(id,index){
+  const item=store.history.find(entry=>entry.id===id),ex=item?.exercises?.[index];if(!item||!ex)return;
+  const input=document.querySelector('[data-history-exercise-note="'+index+'"]');
+  ex.note=String(input?.value||'').trim();
+  ex.noteUpdatedAt=new Date().toISOString();
+  saveStore();render();toast('Exercise note saved.');
 }
 
 function scheduleStatusLabel(entry){
@@ -5698,25 +5727,299 @@ function renderRest(pos){
     '<div class="runner-rest-actions-clean four"><button data-action="reset-timer">RESET</button><button data-action="pause-rest">'+(paused?'RESUME':'PAUSE')+'</button><button data-action="skip-rest">SKIP</button><button data-action="add-rest" '+(remaining>=180?'disabled':'')+'>+15 SEC</button></div></div>';
 }
 
-function renderHistory(){
+function historyTimingInfo(item){
+  if(!item)return {manual:false,legacy:true,valid:false,activeMinutes:null,elapsedMinutes:null,sessionRange:'',label:'Timing unavailable'};
+  if(item.manualWorkoutCompletion)return {manual:true,legacy:false,valid:false,activeMinutes:null,elapsedMinutes:null,sessionRange:'',label:'No exercise timing recorded'};
+  const startValue=item.trainingStartedAt||(!item.preparedAt?item.startedAt:'');
+  const endValue=item.endedAt||item.completedAt||'';
+  const start=Date.parse(startValue||''),end=Date.parse(endValue||'');
+  const wallSeconds=Number.isFinite(start)&&Number.isFinite(end)&&end>=start?Math.round((end-start)/1000):0;
+  const newTiming=Boolean(item.trainingStartedAt||item.activeDurationSeconds||item.wallClockSeconds);
+  let activeSeconds=num(item.activeDurationSeconds);
+  if(!activeSeconds&&num(item.durationMinutes)>0&&num(item.durationMinutes)<=300)activeSeconds=num(item.durationMinutes)*60;
+  let elapsedSeconds=num(item.wallClockSeconds);
+  if(!elapsedSeconds&&wallSeconds>0)elapsedSeconds=wallSeconds;
+  const suspicious=wallSeconds>8*3600||activeSeconds>5*3600||elapsedSeconds>8*3600;
+  const validRange=wallSeconds>0&&!suspicious;
+  const activeMinutes=activeSeconds>0&&!suspicious?Math.max(1,Math.round(activeSeconds/60)):null;
+  const elapsedMinutes=elapsedSeconds>0&&!suspicious?Math.max(1,Math.round(elapsedSeconds/60)):activeMinutes;
+  return {
+    manual:false,
+    legacy:!newTiming,
+    valid:Boolean(validRange||activeMinutes),
+    suspicious,
+    activeMinutes,
+    elapsedMinutes,
+    sessionRange:validRange?formatTimeRange(startValue,endValue):'',
+    label:suspicious?'Legacy timing · duration unavailable':(!newTiming?'Legacy timing':'Complete timing')
+  };
+}
+function historyActualDate(item){
+  return item?.actualCompletedDate||item?.actualStartDate||(item?.completedAt?dateKey(new Date(item.completedAt)):'');
+}
+function historyStatusBadges(item){
+  const timing=historyTimingInfo(item),badges=[];
+  if(item?.manualWorkoutCompletion)badges.push('MANUAL');
+  else if(item?.completionStatus==='partial')badges.push('PARTIAL');
+  else badges.push('COMPLETED');
+  const records=workoutRecordClassification(item||{});
+  if(records.prs?.length)badges.push(records.prs.length+' PR'+(records.prs.length===1?'':'s'));
+  if(item?.trainingContext?.temporary||item?.trainingContext?.adapted)badges.push('ADAPTED');
+  if(item?.sharedSession)badges.push('PARTNER');
+  if(timing.legacy)badges.push('LEGACY');
+  return badges;
+}
+function historyTags(item){
+  const tags=[];
+  if(item?.trainingContext)tags.push(sessionSetupLabel(item.trainingContext));
+  else if(item?.manualWorkoutCompletion)tags.push('Manual');
+  if(item?.sharedSession?.partnerName)tags.push('With '+item.sharedSession.partnerName);
+  if(item?.readiness?.energy&&num(item.readiness.energy)<=2)tags.push('Low energy');
+  if(item?.completionStatus==='partial')tags.push('Partial');
+  if((item?.exercises||[]).some(ex=>ex.swappedFrom))tags.push('Substitutions');
+  return [...new Set(tags.filter(Boolean))];
+}
+function historyPerformanceHighlight(item){
+  if(item?.manualWorkoutCompletion)return 'No exercise data recorded.';
+  const records=workoutRecordClassification(item||{});
+  if(records.prs?.length){
+    const first=records.prs[0];
+    return records.prs.length===1?(first.name+' improved'):records.prs.length+' personal records improved';
+  }
+  const swaps=(item?.exercises||[]).filter(ex=>ex.swappedFrom).length;
+  if(swaps)return swaps+' exercise substitution'+(swaps===1?'':'s')+' recorded';
+  const skipped=(item?.exercises||[]).filter(ex=>ex.skipped).length;
+  if(skipped)return skipped+' exercise'+(skipped===1?'':'s')+' skipped with context saved';
+  const tooEasy=(item?.exercises||[]).filter(ex=>ex.feedback==='too-easy').length;
+  if(tooEasy)return tooEasy+' movement'+(tooEasy===1?'':'s')+' ready for progression review';
+  const completed=(item?.exercises||[]).filter(ex=>exerciseCountsAsResolved(ex)).length;
+  const total=(item?.exercises||[]).length;
+  return total&&completed===total?'Full workout completed':'Training data saved';
+}
+function previousComparableWorkout(item){
+  const currentTime=Date.parse(item?.completedAt||'');
+  return (store.history||[])
+    .filter(candidate=>candidate.id!==item?.id&&candidate.routineName===item?.routineName&&Date.parse(candidate.completedAt||'')<currentTime&&!candidate.manualWorkoutCompletion)
+    .sort((a,b)=>Date.parse(b.completedAt)-Date.parse(a.completedAt))[0]||null;
+}
+function signedMetric(value,suffix=''){
+  const n=Math.round(value*10)/10;
+  return (n>0?'+':'')+n+suffix;
+}
+function historyComparison(item){
+  const previous=previousComparableWorkout(item);
+  if(!previous)return null;
+  const currentTiming=historyTimingInfo(item),previousTiming=historyTimingInfo(previous);
+  return {
+    previous,
+    sets:num(item.completedSets)-num(previous.completedSets),
+    volume:num(item.totalVolume)-num(previous.totalVolume),
+    minutes:currentTiming.activeMinutes!==null&&previousTiming.activeMinutes!==null?currentTiming.activeMinutes-previousTiming.activeMinutes:null
+  };
+}
+function exerciseBestBeforeHistory(ex,item){
+  const identity=exerciseHistoryIdentity(ex);
+  const cutoff=Date.parse(item?.completedAt||'');
+  let best=null,when='';
+  for(const workout of store.history||[]){
+    if(workout.id===item?.id||Date.parse(workout.completedAt||'')>=cutoff)continue;
+    const prior=(workout.exercises||[]).find(candidate=>exerciseMatchesHistory(candidate,identity));
+    if(!prior)continue;
+    for(const set of prior.sets||[]){
+      if(!set.completed)continue;
+      const current={weight:num(set.weight),reps:num(set.reps)};
+      if(!best||current.weight>best.weight||(current.weight===best.weight&&current.reps>best.reps)){best=current;when=workout.completedAt;}
+    }
+  }
+  return best?{...best,when}:null;
+}
+function historyRestAnalysis(item){
+  const rows=(item?.restLog||[]).filter(rest=>rest.endedAt||Number.isFinite(rest.actualSeconds));
+  if(!rows.length)return null;
+  const actual=rows.reduce((sum,row)=>sum+Math.max(0,num(row.actualSeconds)),0)/rows.length;
+  const planned=rows.reduce((sum,row)=>sum+Math.max(0,num(row.plannedSeconds)),0)/rows.length;
+  const skipped=rows.filter(row=>row.skipped).length;
+  return {count:rows.length,actual:Math.round(actual),planned:Math.round(planned),skipped};
+}
+function historyMonthKey(item){
+  const d=new Date(item?.completedAt||item?.actualCompletedDate||Date.now());
+  return Number.isFinite(d.getTime())?[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0')].join('-'):'unknown';
+}
+function historyMonthLabel(key){
+  if(key==='unknown')return 'Unknown date';
+  const [year,month]=key.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(new Date(year,month-1,1));
+}
+function filteredHistoryItems(){
   const context=programContext();
   const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
-  let items=[...store.history];
+  let items=[...(store.history||[])];
   if(historyFilter==='block')items=items.filter(item=>item.programContext?.blockNumber===context.blockNumber);
   if(historyFilter==='30')items=items.filter(item=>new Date(item.completedAt)>=cutoff);
-  const rows=items.map(x=>{
-    const scheduled=x.scheduledDate||'';
-    const actual=x.actualCompletedDate||x.actualStartDate||dateKey(new Date(x.completedAt));
-    const timing=x.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled?(scheduled===actual?formatDate(actual):formatDate(scheduled)+' · trained '+formatDate(actual)):formatDate(x.completedAt);
-    const status=x.completionStatus==='partial'?'PARTIAL':x.manualWorkoutCompletion?'MANUAL':'';
-    const timeRange=formatTimeRange(x.trainingStartedAt||x.startedAt,x.endedAt||x.completedAt);
-    return '<article class="history-card clean-history-card"><button class="history-main" data-action="history-details" data-history-id="'+esc(x.id)+'"><div><div class="history-title-line"><h3>'+esc(x.routineName)+'</h3>'+(status?'<span>'+status+'</span>':'')+(x.newPRs?.length?'<em>'+x.newPRs.length+' PR'+(x.newPRs.length===1?'':'s')+'</em>':'')+'</div><p>'+esc(timing)+(timeRange?' · '+esc(timeRange):'')+'</p><small>'+x.durationMinutes+' active min'+(x.elapsedMinutes&&x.elapsedMinutes!==x.durationMinutes?' · '+x.elapsedMinutes+' clock min':'')+' · '+x.completedSets+' sets · '+formatVolume(x.totalVolume||0)+((x.trainingContext?.temporary||x.trainingContext?.adapted)?' · '+esc(sessionSetupLabel(x.trainingContext))+' adaptation':'')+'</small></div><strong>›</strong></button><button class="history-more" data-action="open-history-menu" data-history-id="'+esc(x.id)+'" aria-label="Workout options">•••</button></article>';
-  }).join('');
-  const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
-  return '<div class="clean-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Workout history.</h2><p>Every session stays tied to the day it was scheduled and the day you actually trained.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
-    '<div class="history-filter-row">'+filters.map(([value,label])=>'<button class="'+(historyFilter===value?'active':'')+'" data-action="set-history-filter" data-history-filter="'+value+'">'+label+'</button>').join('')+'</div>'+
-    '<div class="history-list clean-history-list">'+(rows||renderEmpty('No workouts here','Try another filter or complete a workout.'))+'</div></div>';
+  if(historyStatusFilter==='prs')items=items.filter(item=>workoutRecordClassification(item).prs?.length);
+  if(historyStatusFilter==='partial')items=items.filter(item=>item.completionStatus==='partial');
+  if(historyStatusFilter==='manual')items=items.filter(item=>item.manualWorkoutCompletion);
+  if(historyStatusFilter==='adapted')items=items.filter(item=>item.trainingContext?.temporary||item.trainingContext?.adapted);
+  if(historyStatusFilter==='shared')items=items.filter(item=>item.sharedSession);
+  const q=historySearch.trim().toLowerCase();
+  if(q)items=items.filter(item=>[
+    item.routineName,item.note,...historyTags(item),
+    ...(item.exercises||[]).flatMap(ex=>[ex.name,ex.note,ex.swapReason,ex.swappedFrom?.name])
+  ].filter(Boolean).join(' ').toLowerCase().includes(q));
+  return items.sort((a,b)=>Date.parse(b.completedAt||0)-Date.parse(a.completedAt||0));
 }
+function renderHistoryCard(item){
+  const timing=historyTimingInfo(item),badges=historyStatusBadges(item),tags=historyTags(item);
+  const scheduled=item.scheduledDate||'',actual=historyActualDate(item);
+  const dateCopy=item.manualWorkoutCompletion&&scheduled?'Marked complete for '+formatDate(scheduled):scheduled&&scheduled!==actual?formatDate(scheduled)+' · trained '+formatDate(actual):formatDate(item.completedAt);
+  const duration=timing.manual?'No exercise data':timing.activeMinutes!==null?(timing.activeMinutes+' active min'):'Duration unavailable';
+  const range=timing.sessionRange?' · '+timing.sessionRange:'';
+  return '<article class="history-card history-journal-card">'+
+    '<button class="history-main" data-action="history-details" data-history-id="'+esc(item.id)+'">'+
+      '<div class="history-card-top"><div><h3>'+esc(item.routineName)+'</h3><div class="history-badge-row">'+badges.map(badge=>'<span>'+esc(badge)+'</span>').join('')+'</div></div><em>›</em></div>'+
+      '<p>'+esc(dateCopy)+range+'</p>'+
+      '<div class="history-card-stats"><strong>'+esc(duration)+'</strong>'+(item.manualWorkoutCompletion?'':'<span>'+num(item.completedSets)+' sets</span><span>'+formatVolume(item.totalVolume||0)+'</span>')+'</div>'+
+      '<small class="history-highlight">'+esc(historyPerformanceHighlight(item))+'</small>'+
+      (tags.length?'<div class="history-tag-row">'+tags.map(tag=>'<span>'+esc(tag)+'</span>').join('')+'</div>':'')+
+    '</button>'+
+    '<button class="history-more compact" data-action="open-history-menu" data-history-id="'+esc(item.id)+'" aria-label="Workout options">•••</button>'+
+  '</article>';
+}
+function renderHistoryMonthGroup(key,items){
+  const totalSets=items.reduce((sum,item)=>sum+num(item.completedSets),0);
+  const totalVolume=items.reduce((sum,item)=>sum+num(item.totalVolume),0);
+  return '<section class="history-month-group"><div class="history-month-head"><div><span>'+esc(historyMonthLabel(key))+'</span><strong>'+items.length+' workout'+(items.length===1?'':'s')+'</strong></div><small>'+totalSets+' sets · '+formatVolume(totalVolume)+'</small></div>'+
+    '<div class="history-list clean-history-list">'+items.map(renderHistoryCard).join('')+'</div></section>';
+}
+function renderHistoryCalendar(items){
+  const base=new Date();base.setDate(1);base.setMonth(base.getMonth()+historyCalendarOffset);base.setHours(0,0,0,0);
+  const year=base.getFullYear(),month=base.getMonth();
+  const firstDay=new Date(year,month,1),lastDay=new Date(year,month+1,0);
+  const mondayOffset=(firstDay.getDay()+6)%7;
+  const byDate=new Map();
+  for(const item of items){
+    const key=historyActualDate(item);
+    if(!byDate.has(key))byDate.set(key,[]);
+    byDate.get(key).push(item);
+  }
+  const cells=[];
+  for(let i=0;i<mondayOffset;i++)cells.push('<div class="history-calendar-day empty"></div>');
+  for(let day=1;day<=lastDay.getDate();day++){
+    const key=dateKey(new Date(year,month,day)),matches=byDate.get(key)||[];
+    cells.push('<button class="history-calendar-day '+(matches.length?'has-workout':'')+'" '+(matches.length?'data-action="history-details" data-history-id="'+esc(matches[0].id)+'"':'disabled')+'><span>'+day+'</span>'+(matches.length?'<strong>'+esc(matches[0].routineName)+'</strong><small>'+matches.length+' session'+(matches.length===1?'':'s')+'</small>':'')+'</button>');
+  }
+  return '<section class="history-calendar"><div class="history-calendar-head"><button data-action="history-calendar-prev">‹</button><h3>'+esc(new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(base))+'</h3><button data-action="history-calendar-next">›</button></div>'+
+    '<div class="history-calendar-weekdays">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day=>'<span>'+day+'</span>').join('')+'</div>'+
+    '<div class="history-calendar-grid">'+cells.join('')+'</div></section>';
+}
+function renderHistory(){
+  const items=filteredHistoryItems();
+  const groups=new Map();
+  for(const item of items){const key=historyMonthKey(item);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item);}
+  const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
+  const statusFilters=[['all','Any status'],['prs','PRs'],['partial','Partial'],['manual','Manual'],['adapted','Adapted'],['shared','Partner']];
+  return '<div class="clean-page history-journal-page"><div class="clean-page-head"><div><p class="eyebrow">HISTORY</p><h2>Your training journal.</h2><p>See what you did, what changed, and what GoWorkout will carry into the next session.</p></div><button class="text-button" data-action="progress">PROGRESS</button></div>'+
+    (historyLastRemoved?'<button class="history-undo-banner" data-action="undo-history-remove"><strong>Workout removed</strong><span>UNDO</span></button>':'')+
+    '<div class="history-toolbar"><label class="history-search"><span>SEARCH</span><input id="history-search" type="search" value="'+esc(historySearch)+'" placeholder="Workout, exercise, note, partner..."></label><div class="history-view-toggle"><button class="'+(historyView==='list'?'active':'')+'" data-action="set-history-view" data-history-view="list">LIST</button><button class="'+(historyView==='calendar'?'active':'')+'" data-action="set-history-view" data-history-view="calendar">CALENDAR</button></div></div>'+
+    '<div class="history-filter-row">'+filters.map(([value,label])=>'<button class="'+(historyFilter===value?'active':'')+'" data-action="set-history-filter" data-history-filter="'+value+'">'+label+'</button>').join('')+'</div>'+
+    '<div class="history-filter-row secondary">'+statusFilters.map(([value,label])=>'<button class="'+(historyStatusFilter===value?'active':'')+'" data-action="set-history-status" data-history-status="'+value+'">'+label+'</button>').join('')+'</div>'+
+    (historyView==='calendar'?renderHistoryCalendar(items):([...groups.entries()].map(([key,rows])=>renderHistoryMonthGroup(key,rows)).join('')||renderEmpty('No workouts here','Try another filter or complete a workout.')))+
+  '</div>';
+}
+
+function renderHistoryGuidedPhase(label,items=[]){
+  if(!items.length)return '';
+  const rows=items.map(item=>{
+    const status=item.skippedAt?'Skipped':item.endedAt?'Completed':'Recorded';
+    const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' each side':'')):(formatClock(item.seconds||30)+(item.side?' each side':''));
+    return '<div class="history-phase-movement"><div><strong>'+esc(item.name)+'</strong><span>'+esc(status)+' · '+esc(target)+'</span></div><small>'+esc(formatTimeRange(item.startedAt,item.endedAt))+'</small></div>';
+  }).join('');
+  return '<details class="history-guided-phase"><summary><strong>'+esc(label)+'</strong><span>'+items.length+' movements</span></summary><div>'+rows+'</div></details>';
+}
+function renderHistoryTimeline(item){
+  const events=[],phases=item.phaseTimestamps||{};
+  for(const [label,key] of [['Warm-up','warmup'],['Strength','strength'],['Cooldown','cooldown']]){
+    const phase=phases[key];if(phase?.startedAt||phase?.endedAt)events.push({label,start:phase.startedAt,end:phase.endedAt,type:'phase'});
+  }
+  for(const ex of item.exercises||[]){
+    if(ex.startedAt||ex.endedAt)events.push({label:ex.name,start:ex.startedAt,end:ex.endedAt,type:'exercise'});
+  }
+  events.sort((a,b)=>Date.parse(a.start||0)-Date.parse(b.start||0));
+  const rest=historyRestAnalysis(item);
+  return '<section class="history-timeline-section"><div class="history-section-head"><span>SESSION TIMELINE</span><strong>How the workout moved</strong></div>'+
+    '<div class="history-timeline">'+events.map(event=>'<div class="history-timeline-event '+event.type+'"><i></i><div><strong>'+esc(event.label)+'</strong><small>'+esc(formatTimeRange(event.start,event.end)||formatTimeStamp(event.start))+'</small></div></div>').join('')+'</div>'+
+    (rest?'<div class="history-rest-analysis"><span>REST ANALYSIS</span><strong>Average '+rest.actual+' sec</strong><small>Planned '+rest.planned+' sec · '+rest.count+' rests'+(rest.skipped?' · '+rest.skipped+' skipped early':'')+'</small></div>':'')+
+  '</section>';
+}
+function renderHistoryComparison(item){
+  const comparison=historyComparison(item);if(!comparison)return '';
+  const previous=comparison.previous;
+  return '<section class="history-comparison-card"><div class="history-section-head"><span>COMPARE TO PREVIOUS</span><strong>'+esc(formatDate(previous.completedAt))+'</strong></div>'+
+    '<div class="history-comparison-grid"><div><span>SETS</span><strong>'+esc(signedMetric(comparison.sets))+'</strong></div><div><span>VOLUME</span><strong>'+esc(signedMetric(Math.round(comparison.volume),' lb'))+'</strong></div><div><span>ACTIVE TIME</span><strong>'+(comparison.minutes===null?'N/A':esc(signedMetric(comparison.minutes,' min')))+'</strong></div></div>'+
+  '</section>';
+}
+function renderHistoryExerciseCard(item,ex,index){
+  const completed=(ex.sets||[]).filter(set=>set.completed);
+  const best=completed.reduce((current,set)=>!current||num(set.weight)>num(current.weight)||(num(set.weight)===num(current.weight)&&num(set.reps)>num(current.reps))?set:current,null);
+  const previous=exerciseBestBeforeHistory(ex,item);
+  const next=ex.nextRecommendation||store.progression?.[ex.id]||null;
+  const substitution=ex.swappedFrom?'<div class="history-context-line"><span>SUBSTITUTION</span><strong>'+esc(ex.swappedFrom.name)+' → '+esc(ex.name)+'</strong><small>'+esc(swapReasonLabel(ex.swapReason))+'</small></div>':'';
+  const skipped=ex.skipped?'<div class="history-context-line warning"><span>SKIPPED</span><strong>'+esc(ex.skipReason||'Skipped during workout')+'</strong></div>':'';
+  const sets=(ex.sets||[]).map((set,setIndex)=>{
+    if(set.skipped)return '<div class="history-set-row skipped"><span>S'+(setIndex+1)+'</span><strong>Skipped</strong><small>'+esc(set.skipReason||'')+'</small></div>';
+    if(!set.completed)return '<div class="history-set-row incomplete"><span>S'+(setIndex+1)+'</span><strong>Not completed</strong></div>';
+    const planned=((set.plannedWeight?exerciseWeightDisplay(ex,set.plannedWeight)+' × ':'')+exerciseRepDisplay(ex,set.plannedReps||set.reps));
+    const performed=setPerformanceLabel(ex,set);
+    const changed=planned!==performed;
+    const sides=set.sides?Object.entries(set.sides).map(([side,data])=>'<div class="history-side-row"><b>'+esc(side.toUpperCase())+'</b><span>'+esc((data.weight?exerciseWeightDisplay(ex,data.weight)+' × ':'')+exerciseRepDisplay(ex,data.reps))+'</span><small>'+esc(formatTimeRange(data.startedAt,data.endedAt))+'</small></div>').join(''):'';
+    return '<div class="history-set-row"><span>S'+(setIndex+1)+'</span><div><strong>'+esc(performed)+'</strong><small>'+esc(formatTimeRange(set.startedAt,set.endedAt||set.completedAt)||formatTimeStamp(set.completedAt))+'</small>'+(changed?'<em>Planned '+esc(planned)+'</em>':'')+sides+'</div></div>';
+  }).join('');
+  const compare=best&&previous?'<div class="history-context-line"><span>VS PREVIOUS BEST</span><strong>'+esc(setPerformanceLabel(ex,best))+' now · '+esc(setPerformanceLabel(ex,previous))+' before</strong><small>'+esc(formatDate(previous.when))+'</small></div>':'';
+  const feedback=ex.feedback?'<div class="history-context-line feedback"><span>YOUR FEEDBACK</span><strong>'+esc(feedbackLabel(ex.feedback))+'</strong>'+(next?'<small>Next: '+esc(next.label||progressionLabel(ex,next.weight,next.reps))+(next.reason?' · '+esc(next.reason):'')+'</small>':'')+'</div>':'';
+  const range=formatTimeRange(ex.startedAt,ex.endedAt);
+  return '<details class="history-exercise-card">'+
+    '<summary><div><strong>'+esc(ex.name)+'</strong><span>'+completed.length+'/'+(ex.sets?.length||0)+' sets'+(ex.feedback?' · '+esc(feedbackLabel(ex.feedback)):'')+'</span><small>'+esc(range)+(best?' · Best '+esc(setPerformanceLabel(ex,best)):'')+'</small></div><em>+</em></summary>'+
+    '<div class="history-exercise-body">'+substitution+skipped+compare+feedback+
+      '<div class="history-set-list">'+sets+'</div>'+
+      '<div class="history-exercise-actions"><button class="text-button" data-action="progress-exercise" data-progress-exercise="'+esc(ex.id)+'">VIEW EXERCISE HISTORY</button></div>'+
+      '<label class="history-note-field"><span>EXERCISE NOTE</span><textarea data-history-exercise-note="'+index+'" placeholder="Machine, form, setup, how it felt...">'+esc(ex.note||'')+'</textarea></label>'+
+      '<button class="button secondary compact-button" data-action="save-history-exercise-note" data-history-id="'+esc(item.id)+'" data-exercise-index="'+index+'">SAVE NOTE</button>'+
+    '</div>'+
+  '</details>';
+}
+function renderHistoryMenuSheet(){
+  const item=store.history.find(entry=>entry.id===historyMenuId);if(!item)return '';
+  const timing=historyTimingInfo(item),motivation=workoutMotivationSummary(item),records=workoutRecordClassification(item);
+  const sessionDate=item.manualWorkoutCompletion&&item.scheduledDate?formatDate(item.scheduledDate):formatDate(item.completedAt);
+  const stats=item.manualWorkoutCompletion
+    ?'<div class="history-detail-summary manual"><div><span>STATUS</span><strong>Manual completion</strong></div><div><span>EXERCISE DATA</span><strong>Not recorded</strong></div></div>'
+    :'<div class="history-detail-summary"><div><span>ACTIVE</span><strong>'+(timing.activeMinutes===null?'N/A':timing.activeMinutes+' min')+'</strong></div><div><span>CLOCK</span><strong>'+(timing.elapsedMinutes===null?'N/A':timing.elapsedMinutes+' min')+'</strong></div><div><span>SETS</span><strong>'+num(item.completedSets)+'</strong></div><div><span>VOLUME</span><strong>'+formatVolume(item.totalVolume||0)+'</strong></div></div>';
+  const prs=(records.prs||[]).map(pr=>{
+    const before=exerciseBestBeforeHistory({id:pr.exerciseId,name:pr.name},item);
+    return '<div class="history-improvement-row"><div><strong>'+esc(pr.name)+'</strong><span>'+esc(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</span></div><small>'+(before?'Previous '+esc(before.weight?before.weight+' lb × '+before.reps:before.reps+' reps')+' · '+esc(formatDate(before.when)):'First recorded best')+'</small></div>';
+  }).join('');
+  const tags=historyTags(item);
+  const exercises=(item.exercises||[]).map((ex,index)=>renderHistoryExerciseCard(item,ex,index)).join('');
+  return '<div class="history-detail-overlay" data-history-menu-panel>'+
+    '<header class="history-detail-header"><button class="history-detail-back" data-action="close-history-menu">‹</button><div><span>WORKOUT DETAILS</span><strong>'+esc(item.routineName)+'</strong></div><details class="history-detail-options"><summary>•••</summary><button class="danger-text" data-action="remove-history" data-history-id="'+esc(item.id)+'">Remove from history</button></details></header>'+
+    '<main class="history-detail-page">'+
+      '<section class="history-detail-hero"><p>'+esc(sessionDate)+(timing.sessionRange?' · '+esc(timing.sessionRange):'')+'</p><div class="history-badge-row">'+historyStatusBadges(item).map(b=>'<span>'+esc(b)+'</span>').join('')+'</div><small>'+esc(timing.label)+'</small></section>'+
+      '<section class="runner-motivation-card post"><span>SESSION READOUT</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
+      stats+
+      (tags.length?'<div class="history-tag-row detail">'+tags.map(tag=>'<span>'+esc(tag)+'</span>').join('')+'</div>':'')+
+      (prs?'<section class="history-improvements"><div class="history-section-head"><span>IMPROVEMENTS</span><strong>'+records.prs.length+' personal record'+(records.prs.length===1?'':'s')+'</strong></div>'+prs+'</section>':'')+
+      renderHistoryComparison(item)+
+      (!item.manualWorkoutCompletion?renderHistoryTimeline(item):'')+
+      renderHistoryGuidedPhase('Warm-up',item.warmup||[])+
+      '<section class="history-exercise-section"><div class="history-section-head"><span>EXERCISE LOG</span><strong>'+((item.exercises||[]).length)+' movements</strong></div>'+exercises+'</section>'+
+      renderHistoryGuidedPhase('Cooldown',item.cooldown||[])+
+      ((item.trainingContext?.temporary||item.trainingContext?.adapted)?'<section class="history-training-context">'+renderTrainingContextSummary(item.trainingContext,false)+'</section>':'')+
+      (item.sharedSession?'<section class="history-context-line"><span>PARTNER WORKOUT</span><strong>With '+esc(item.sharedSession.partnerName||'Partner')+'</strong></section>':'')+
+      '<section class="history-notes-section"><div class="history-section-head"><span>WORKOUT NOTE</span><strong>Searchable later</strong></div><textarea id="history-workout-note" placeholder="What should you remember about this session?">'+esc(item.note||'')+'</textarea><button class="button secondary compact-button" data-action="save-history-note" data-history-id="'+esc(item.id)+'">SAVE NOTE</button></section>'+
+    '</main>'+
+  '</div>';
+}
+
 
 function exerciseProgressSeries(exerciseId){
   const sessions=[];
