@@ -102,7 +102,10 @@ Deno.serve(async (req: Request) => {
     const context = body?.context && typeof body.context === "object" ? body.context : {};
     const fallback = fallbackLine(event, context);
 
-    if (!openAiKey) return json({ line: fallback, source: "fallback", audioBase64: "", mimeType: "" });
+    if (!openAiKey) return json({
+      error: "AI voice is not configured on the Workout App server yet.",
+      code: "ai_not_configured"
+    }, 503);
 
     const safeContext = JSON.stringify({
       event,

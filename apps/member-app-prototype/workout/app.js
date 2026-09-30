@@ -624,7 +624,7 @@ function announceExercise(ex,prefix='Next exercise'){
   },prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.','coach-'+token);
 }
 let workoutAudioContext=null;
-const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null};
+const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0};
 
 const COACH_VOICES=[
   {id:'marin',label:'Marin',recommended:true},
@@ -720,8 +720,18 @@ function coachEventContext(extra={}){
 async function invokeWorkoutCoach(payload){
   if(!workoutSupabase||store.account?.status!=='connected')throw new Error('AI coach requires a connected workout account');
   const {data,error}=await workoutSupabase.functions.invoke('workout-coach',{body:payload});
-  if(error)throw error;
-  if(data?.error)throw new Error(String(data.error));
+  if(error){
+    let detail=null;
+    try{detail=await error.context?.json?.();}catch{}
+    const coachError=new Error(String(detail?.error||error.message||'AI coach request failed'));
+    if(detail?.code)coachError.code=String(detail.code);
+    throw coachError;
+  }
+  if(data?.error){
+    const coachError=new Error(String(data.error));
+    if(data?.code)coachError.code=String(data.code);
+    throw coachError;
+  }
   return data||{};
 }
 function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
@@ -744,7 +754,16 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
     settings,
     invoke:invokeWorkoutCoach,
     fallbackSpeak:speakWorkoutCue,
-    fallbackLine
+    fallbackLine,
+    onError:error=>{
+      if(error?.code==='ai_not_configured'){
+        const now=Date.now();
+        if(!cueRuntime.lastCoachConfigNoticeAt||now-cueRuntime.lastCoachConfigNoticeAt>15000){
+          cueRuntime.lastCoachConfigNoticeAt=now;
+          toast('AI voice needs an OpenAI API key in Workout App Supabase.');
+        }
+      }
+    }
   }).catch(error=>console.warn('Workout coach event failed',error));
 }
 function selectCoachVoice(voice){
@@ -772,7 +791,8 @@ function previewCoachVoice(voice){
     settings,
     invoke:invokeWorkoutCoach,
     fallbackSpeak:speakWorkoutCue,
-    fallbackLine:fallback
+    fallbackLine:fallback,
+    onError:error=>toast(error?.code==='ai_not_configured'?'AI voice needs an OpenAI API key in Workout App Supabase.':(error?.message||'Voice preview failed.'))
   }).catch(error=>console.warn('Voice preview failed',error));
 }
 function feedbackCoachFallback(feedback,result){
