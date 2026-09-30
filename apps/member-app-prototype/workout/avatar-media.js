@@ -17,3 +17,29 @@
  *   fem-full       Maya
  */
 window.EXERCISE_AVATAR_MEDIA = {};
+
+window.EXERCISE_AVATAR_LIBRARY = {
+  version: 1,
+  usage: 'library-thumbnail',
+  spriteUrl: './assets/avatar-library/batch-01.webp',
+  columns: 5,
+  rows: 4,
+  exercises: {
+    'db-bench': 0,
+    'one-arm-row': 1,
+    'db-shoulder-press': 2,
+    'lat-pulldown': 3,
+    'lateral-raise': 4
+  },
+  avatars: {
+    'masc-athletic': 0,
+    'masc-full': 1,
+    'fem-athletic': 2,
+    'fem-full': 3
+  },
+  review: {
+    status: 'approved-for-library',
+    scope: 'Thumbnail use only. Active exercise demonstrations continue to use the existing direct exercise media until higher-resolution avatar position pairs are reviewed.',
+    branding: 'Unbranded clothing and footwear only.'
+  }
+};
