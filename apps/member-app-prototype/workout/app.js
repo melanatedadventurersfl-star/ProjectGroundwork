@@ -6186,16 +6186,18 @@ function renderWorkoutIntro(w){
     '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+'</p></div>'+
     '<section class="runner-motivation-card pre"><span>TODAY’S FOCUS</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
     '<div class="runner-phase-list">'+
-      (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up</strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small></div><em>›</em></button>':'')+
+      (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up <b class="runner-recommended-chip">RECOMMENDED</b></strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small></div><em>›</em></button>':'')+
       '<div class="runner-phase-row"><span class="runner-phase-icon">▰</span><div><strong>Strength</strong><small>'+w.exercises.length+' exercises · ~'+strengthMinutes+' minutes</small></div></div>'+
       (coolCount?'<div class="runner-phase-row"><span class="runner-phase-icon">✦</span><div><strong>Cooldown</strong><small>'+coolCount+' movements · '+runnerPhaseMinutes(w.cooldown)+' minutes</small></div></div>':'')+
     '</div>'+
     (w.trainingContext?.changes?.length?'<div class="runner-overview-note"><span>TODAY’S ADAPTATION</span><strong>'+w.trainingContext.changes.length+' movement'+(w.trainingContext.changes.length===1?'':'s')+' adjusted for '+esc(sessionSetupLabel(w.trainingContext))+'</strong></div>':'')+
-    '<button class="button primary-action runner-gold-action" data-action="begin-session">START WORKOUT</button>'+
+    '<div class="runner-session-start-actions"><button class="button primary-action runner-gold-action" data-action="begin-session">'+(warmCount?'START WARM-UP':'START WORKOUT')+'</button>'+
+      (warmCount?'<button class="text-button runner-skip-warmup" data-action="skip-warmup" data-skip-source="intro">SKIP WARM-UP</button>':'')+
+    '</div>'+
     '<button class="text-button runner-map-link" data-action="open-workout-map">VIEW WORKOUT MAP</button>'+
   '</div>';
 }
-function beginWorkoutSession(){
+function beginWorkoutSession(skipWarmup=false){
   const w=store.activeWorkout;if(!w||w.phase!=='intro')return;
   const now=new Date().toISOString();
   w.startedAt=now;
@@ -6206,7 +6208,15 @@ function beginWorkoutSession(){
   unlockWorkoutCues();
   primeCoachCuePack();
   const hasWarmup=Boolean(w.warmup?.length);
-  if(hasWarmup){
+  const willWarmup=hasWarmup&&!skipWarmup;
+  if(skipWarmup&&hasWarmup){
+    w.warmupSkipped=true;
+    w.warmupSkippedAt=now;
+    w.warmupSkipSource='intro';
+    w.warmupPartiallyCompleted=false;
+    for(const item of w.warmup||[])if(!item.endedAt)item.skippedAt=now;
+  }
+  if(willWarmup){
     w.phase='warmup-routine';
     w.timedStageIndex=0;
     w.timedStageReps=0;
@@ -6218,20 +6228,62 @@ function beginWorkoutSession(){
   const sessionToken='session-intro-'+w.id;
   fireWorkoutSignal('go',sessionToken,{voice:'',label:'READY'});
   const name=displayName()==='there'?'':displayName();
-  const welcome=hasWarmup
-    ?'Alright'+(name?' '+name:'')+'. Warm-up first, then '+w.exercises.length+' strength exercises.'
-    :'Alright'+(name?' '+name:'')+', you ready? '+w.routineName+'. '+w.exercises.length+' exercises today.';
-  emitWorkoutCoach('session_started',{
-    exerciseCount:w.exercises.length,
-    warmupCount:w.warmup?.length||0,
-    warmupMinutes:runnerPhaseMinutes(w.warmup||[])
-  },welcome,'coach-'+sessionToken);
-  if(hasWarmup){
+  if(willWarmup){
+    emitWorkoutCoach('session_started',{
+      exerciseCount:w.exercises.length,
+      warmupCount:w.warmup?.length||0,
+      warmupMinutes:runnerPhaseMinutes(w.warmup||[]),
+      warmupSkipped:false
+    },'Alright'+(name?' '+name:'')+'. Warm-up first, then '+w.exercises.length+' strength exercises.','coach-'+sessionToken);
     saveStore();render();
-  }else{
-    markPhaseStart(w,'strength',now);
-    beginPreSetPosition(0,0,true);
+    return;
   }
+  if(!skipWarmup||!hasWarmup){
+    emitWorkoutCoach('session_started',{
+      exerciseCount:w.exercises.length,
+      warmupCount:0,
+      warmupMinutes:0,
+      warmupSkipped:false
+    },'Alright'+(name?' '+name:'')+', you ready? '+w.routineName+'. '+w.exercises.length+' exercises today.','coach-'+sessionToken);
+  }
+  markPhaseStart(w,'strength',now);
+  beginPreSetPosition(0,0,true);
+  if(skipWarmup&&hasWarmup)toast('Warm-up skipped for this session.');
+}
+function cancelWarmupCoachPlayback(){
+  if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
+  window.GoWorkoutCoach?.stop?.();
+}
+function skipWorkoutWarmup(source='intro'){
+  const w=store.activeWorkout;if(!w)return;
+  if(w.phase==='intro'){beginWorkoutSession(true);return;}
+  if(!['warmup-routine','warmup'].includes(w.phase))return;
+  const now=new Date().toISOString();
+  const wasActive=w.phase==='warmup';
+  w.warmupSkipped=true;
+  w.warmupSkippedAt=now;
+  w.warmupSkipSource=source||((wasActive)?'active':'routine');
+  w.warmupPartiallyCompleted=Boolean(wasActive);
+  const startIndex=wasActive?Math.max(0,Number(w.timedStageIndex)||0):0;
+  for(let index=startIndex;index<(w.warmup?.length||0);index++){
+    const item=w.warmup[index];
+    if(!item)continue;
+    if(index===startIndex&&wasActive&&!item.endedAt)item.endedAt=now;
+    item.skippedAt=now;
+  }
+  if(wasActive)markPhaseEnd(w,'warmup',now);
+  w.timedPhaseStartedAt=null;
+  w.timedPhaseSkippedSeconds=0;
+  w.timedStageReps=0;
+  w.timedStageSide='';
+  delete w.timedStageSwitchStartedAt;
+  delete w.timedStageSwitchEndsAt;
+  delete w.reviewPausedTimedStage;
+  cancelWarmupCoachPlayback();
+  fireWorkoutSignal('transition','warmup-skip-'+w.id,{voice:'',label:'SKIPPED'});
+  markPhaseStart(w,'strength',now);
+  beginPreSetPosition(0,0,true);
+  toast(wasActive?'Remaining warm-up skipped.':'Warm-up skipped for this session.');
 }
 function startWarmupRoutine(){
   const w=store.activeWorkout;if(!w||w.phase!=='warmup-routine')return;
@@ -6312,7 +6364,7 @@ function renderWarmupRoutine(w){
       const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' '+item.side:'')):(formatClock(item.seconds||30)+(item.side?' each side':''));
       return '<div class="runner-routine-row"><div class="runner-routine-thumb">'+(image?'<img src="'+esc(image)+'" alt="">':'<span>'+String(index+1).padStart(2,'0')+'</span>')+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div><em>≡</em></div>';
     }).join('')+'</div>'+
-    '<button class="button primary-action runner-gold-action" data-action="start-warmup">START WARM-UP</button>'+
+    '<div class="runner-warmup-actions"><button class="button primary-action runner-gold-action" data-action="start-warmup">START WARM-UP</button><button class="text-button runner-skip-warmup" data-action="skip-warmup" data-skip-source="routine">SKIP WARM-UP</button></div>'+
   '</div>';
 }
 function renderWarmupComplete(w){
@@ -6409,6 +6461,7 @@ function renderTimedStage(w){
     (snap.mode==='reps'?'<div class="runner-rep-selected"><span>ACTUAL REPS</span><div class="runner-rep-stepper"><button data-action="warmup-rep-minus" '+(snap.completedReps<=1?'disabled':'')+' aria-label="Decrease reps">−</button><div><strong>'+snap.completedReps+'</strong><span>of '+snap.totalReps+' target'+(item?.side?' · this side':'')+'</span></div><button data-action="warmup-rep" aria-label="Increase reps">+</button></div><button class="button primary-action runner-gold-action" data-action="complete-stage-reps">COMPLETE MOVEMENT</button></div>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
     (snap.mode==='reps'?'<small class="runner-rep-instruction">Adjust the number only if you completed more or fewer reps, then tap Complete Movement.</small>':'<div class="runner-stage-progress"><span id="stage-progress-fill" style="width:'+pct+'%"></span></div>')+
     '<div class="runner-timer-controls three"><button data-action="reset-timer">RESET</button><button data-action="toggle-workout-pause">'+(w.isPaused?'RESUME':'PAUSE')+'</button><button data-action="skip-stage">SKIP</button></div>'+
+    (w.phase==='warmup'?'<button class="text-button runner-skip-warmup runner-skip-remaining" data-action="skip-warmup" data-skip-source="active">SKIP REMAINING WARM-UP</button>':'')+
     (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' · each side':'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
   '</div>';
 }
@@ -7567,6 +7620,7 @@ function handleClick(event){
   else if(a==='remove-history'){historyMenuId=null;removeHistoryWorkout(node.dataset.historyId);}
   else if(a==='begin-workout')startPreparedWorkout();
   else if(a==='begin-session')beginWorkoutSession();
+  else if(a==='skip-warmup')skipWorkoutWarmup(node.dataset.skipSource||'intro');
   else if(a==='start-warmup')startWarmupRoutine();
   else if(a==='start-strength')startStrengthWork();
   else if(a==='warmup-rep')addWarmupRep();
