@@ -1090,7 +1090,19 @@ function prepareStrengthTimeline(w,next){if(!w||!next)return;const line=strength
 function playExerciseInstruction(w,ei,si){const ex=w?.exercises?.[ei],line=exerciseInstructionLine(ex,si);if(!line)return Promise.resolve(false);return playTimelineCue(line,formCueKey(w,ei,si),{preview:{type:'form',ei,si}});}
 function guidedPreviewKey(w,phase,index){return 'guided-preview-'+(w?.id||'')+'-'+phase+'-'+index;}
 function guidedUpcomingPreview(w,snap){if(!w||!snap||snap.mode==='switch'||snap.mode==='ready')return null;const items=timedStageItems(w),nextIndex=snap.index+1;if(nextIndex<items.length){const next=items[nextIndex],target=next?.mode==='reps'||next?.reps?String(next.reps||8)+' reps'+(next.side?' each side':''):String(next?.seconds||30)+' seconds';return {key:guidedPreviewKey(w,w.phase,nextIndex),line:'Next up, '+(next?.name||'the next movement')+'. '+target+'.',next,nextIndex};}if(w.phase==='warmup'){const ex=w.exercises?.[0];if(ex){const set=ex.sets?.[0]||{};return {key:strengthPreviewKey(w,{ei:0,si:0,type:'exercise'}),line:'Warm-up is almost done. First up is '+ex.name+'. '+spokenTargetForSet(ex,set)+'.',next:null,nextIndex:-1};}}return null;}
-function prefetchGuidedLookahead(w){if(!w||!['warmup','cooldown'].includes(w.phase))return;const snap=timedStageSnapshot(w),p=guidedUpcomingPreview(w,snap);if(p)prefetchTimelineCue(p.line,p.key,{preview:{type:w.phase,index:p.nextIndex}});if(p?.next&&p.nextIndex+1<timedStageItems(w).length){const later=timedStageItems(w)[p.nextIndex+1],target=later?.mode==='reps'||later?.reps?String(later.reps||8)+' reps':String(later?.seconds||30)+' seconds';prefetchTimelineCue('Next up, '+(later?.name||'the next movement')+'. '+target+'.',guidedPreviewKey(w,w.phase,p.nextIndex+1),{preview:{type:w.phase,index:p.nextIndex+1}});}}
+function prefetchGuidedLookahead(w){
+  if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const snap=timedStageSnapshot(w),p=guidedUpcomingPreview(w,snap);
+  if(p)prefetchTimelineCue(p.line,p.key,{preview:{type:w.phase,index:p.nextIndex}});
+  if(w.phase==='warmup'&&p?.nextIndex===-1){
+    const ex=w.exercises?.[0],form=exerciseInstructionLine(ex,0);
+    if(form)prefetchTimelineCue(form,formCueKey(w,0,0),{preview:{type:'form',ei:0,si:0}});
+  }
+  if(p?.next&&p.nextIndex+1<timedStageItems(w).length){
+    const later=timedStageItems(w)[p.nextIndex+1],target=later?.mode==='reps'||later?.reps?String(later.reps||8)+' reps':String(later?.seconds||30)+' seconds';
+    prefetchTimelineCue('Next up, '+(later?.name||'the next movement')+'. '+target+'.',guidedPreviewKey(w,w.phase,p.nextIndex+1),{preview:{type:w.phase,index:p.nextIndex+1}});
+  }
+}
 function sessionCoachExtra(w){return {exerciseCount:w?.exercises?.length||0,warmupCount:w?.warmup?.length||0,warmupMinutes:runnerPhaseMinutes(w?.warmup||[])};}
 function sessionCoachLine(w){const name=displayName()==='there'?'':displayName();return w?.warmup?.length?'Alright'+(name?' '+name:'')+'. Warm-up first, then '+(w.exercises?.length||0)+' strength exercises.':'Alright'+(name?' '+name:'')+'. '+(w?.routineName||'Your workout')+'. Let’s get started.';}
 function prefetchWorkoutOpeningCoach(w){if(!w)return;prefetchWorkoutCoach('session_started',sessionCoachExtra(w));const first=w.warmup?.[0];if(first)prefetchGuidedStageCoach('warmup_started',w,first,0,'warmup');}
@@ -6258,13 +6270,23 @@ function beginGuidedStageAfterInstruction(w,phase,index,instructionPromise){cons
 function completeWarmup(){
   const w=store.activeWorkout;if(!w)return;
   const now=new Date().toISOString();
-  w.phase='warmup-complete';w.warmupCompletedAt=now;w.timedPhaseStartedAt=null;w.timedStageReps=0;w.timedStageSide='';
+  w.phase='warmup-complete';w.warmupCompletedAt=now;w.timedPhaseStartedAt=null;w.timedStageAwaitingStart=false;w.timedStageStarting=false;w.timedStageReps=0;w.timedStageSide='';
   markPhaseEnd(w,'warmup',now);
   fireWorkoutSignal('complete','warmup-complete-'+w.id,{voice:'',label:'READY'});
   const next=w.exercises?.[0];
-  emitWorkoutCoach('warmup_completed',{
-    nextExercise:next?{name:next.name,target:currentPrescriptionLabel(next)}:undefined
-  },'Warm-up complete.'+(next?' First exercise is '+next.name+'.':''),'coach-warmup-complete-'+w.id);
+  if(next){
+    const previewKey=strengthPreviewKey(w,{ei:0,si:0,type:'exercise'});
+    if(timelineWasPlayed(previewKey)){
+      playTimelineCue('Warm-up done. Start when you’re ready.','warmup-done-'+w.id,{preview:{type:'warmup-complete'}});
+    }else{
+      const set=next.sets?.[0]||{};
+      playTimelineCue('Warm-up complete. First up is '+next.name+'. '+spokenTargetForSet(next,set)+'.',previewKey,{preview:{type:'strength',ei:0,si:0}});
+    }
+    const form=exerciseInstructionLine(next,0);
+    if(form)prefetchTimelineCue(form,formCueKey(w,0,0),{preview:{type:'form',ei:0,si:0}});
+  }else{
+    playTimelineCue('Warm-up done.','warmup-done-'+w.id,{preview:{type:'warmup-complete'}});
+  }
   saveStore();render();
 }
 function startStrengthWork(){
