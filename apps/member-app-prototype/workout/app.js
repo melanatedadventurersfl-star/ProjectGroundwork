@@ -6324,42 +6324,99 @@ function renderHomeCompletionVisual(history){
     (prs?'<div><strong>'+prs+'</strong><small>improvement'+(prs===1?'':'s')+'</small></div>':'')+
   '</div></div>';
 }
-function renderHomeRecoveryVisual(x){
+function homeEntryFirstExercise(entry){
+  const day=entry?.adaptedDay||entry?.day;
+  const planned=day?.exercises?.[0];
+  if(!planned)return null;
+  const source=catalog.find(item=>item.id===planned.id);
+  return source?{...source,...planned}:planned;
+}
+function homeHistoryFirstExercise(history){
+  const planned=history?.exercises?.[0];
+  if(!planned)return null;
+  const source=catalog.find(item=>item.id===planned.id);
+  return source?{...source,...planned}:planned;
+}
+function homeHeroExercise(x){
+  if(x.state==='active')return homeWorkoutExercise(x);
+  if(x.history)return homeHistoryFirstExercise(x.history);
+  if(x.entry)return homeEntryFirstExercise(x.entry);
+  const next=homeNextScheduledEntry(x.schedule);
+  return homeEntryFirstExercise(next);
+}
+function homeHeroMediaSource(x){
+  const candidates=[];
+  const first=homeHeroExercise(x);
+  if(first)candidates.push(first);
   const entry=x.entry||homeNextScheduledEntry(x.schedule);
   const day=entry?.adaptedDay||entry?.day;
-  if(!entry||!day)return '<div class="home-rest-visual"><span class="home-rest-mark">○</span><strong>Recovery</strong><small>Your next training week will appear here.</small></div>';
-  return '<div class="home-rest-visual"><span class="home-rest-mark">○</span><div><span>NEXT TRAINING</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · ~'+esc(day.estimatedMinutes||store.profile?.minutes||45)+' min</small></div></div>';
+  for(const planned of day?.exercises||[]){
+    if(first?.id===planned.id)continue;
+    const source=catalog.find(item=>item.id===planned.id);
+    candidates.push(source?{...source,...planned}:planned);
+  }
+  if(x.history){
+    for(const planned of x.history.exercises||[]){
+      if(first?.id===planned.id)continue;
+      const source=catalog.find(item=>item.id===planned.id);
+      candidates.push(source?{...source,...planned}:planned);
+    }
+  }
+  for(const ex of candidates){
+    const spec=exerciseMediaSpec(ex);
+    if(['reference','missing'].includes(spec.status))continue;
+    const src=exerciseMediaFrameUrl(ex,0);
+    if(src)return {src,exercise:ex};
+  }
+  return {src:'',exercise:first||null};
 }
-function renderHomeHeroVisual(x){
-  if(x.state==='completed-fresh'&&x.history)return renderHomeCompletionVisual(x.history);
-  if(['rest','week-complete','completed'].includes(x.state))return renderHomeRecoveryVisual(x);
-  const exercise=homeWorkoutExercise(x);
+function renderHomeHeroBackdrop(x){
+  const media=homeHeroMediaSource(x);
+  const stateClass=['rest','completed','week-complete'].includes(x.state)?'quiet':'training';
+  return '<div class="home-hero-backdrop-v4 '+stateClass+'">'+
+    (media.src?'<img src="'+esc(media.src)+'" alt="" loading="eager" decoding="async">':'<div class="home-hero-backdrop-fallback"></div>')+
+    '<div class="home-hero-shade-v4"></div>'+
+  '</div>';
+}
+function renderHomeHeroAccessory(x){
+  if(x.state==='completed-fresh'&&x.history){
+    const timing=historyTimingInfo(x.history);
+    const prs=x.history?.newPRs?.length||0;
+    return '<div class="home-hero-result-v4"><span>SESSION SAVED</span><strong>'+esc(x.history.routineName||x.title)+'</strong><small>'+
+      [timing.activeMinutes!==null?timing.activeMinutes+' active min':'',x.history?.completedSets?x.history.completedSets+' sets':'',prs?prs+' improvement'+(prs===1?'':'s'):''].filter(Boolean).join(' · ')+
+    '</small></div>';
+  }
+  if(['rest','completed','week-complete'].includes(x.state)){
+    const entry=x.state==='rest'?(x.entry||homeNextScheduledEntry(x.schedule)):homeNextScheduledEntry(x.schedule);
+    const day=entry?.adaptedDay||entry?.day;
+    if(!entry||!day)return '';
+    return '<div class="home-hero-next-v4 quiet"><span>NEXT TRAINING</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long'}))+' · ~'+esc(day.estimatedMinutes||store.profile?.minutes||45)+' min</small></div>';
+  }
+  const ex=homeWorkoutExercise(x);
   const progress=x.state==='active'&&store.activeWorkout
     ?{done:workoutResolvedCount(store.activeWorkout),total:store.activeWorkout.exercises?.length||0}
     :{done:0,total:(x.entry?.adaptedDay||x.entry?.day)?.exercises?.length||0};
   const pct=progress.total?Math.round((progress.done/progress.total)*100):0;
-  const spec=exercise?exerciseMediaSpec(exercise):null;
-  const src=exercise&&spec&&!['reference','missing'].includes(spec.status)?exerciseMediaFrameUrl(exercise,0):'';
-  const nextLabel=x.state==='active'?'UP NEXT':'STARTS WITH';
-  const visual=src
-    ?'<button class="home-hero-photo" type="button" data-exercise-detail="'+esc(exercise.id)+'" aria-label="View '+esc(exercise.name)+'"><img src="'+esc(src)+'" alt="'+esc(exercise.name)+' exercise demonstration"></button>'
-    :'<div class="home-hero-fallback"><span>TRAINING</span><strong>'+esc(homeExerciseFocus((x.entry?.adaptedDay||x.entry?.day)?.exercises)||'Workout ready')+'</strong></div>';
-  return '<div class="home-hero-visual">'+visual+
-    (progress.total?'<div class="home-session-ring" style="--home-progress:'+pct+'"><div><strong>'+progress.done+'/'+progress.total+'</strong><span>complete</span></div></div>':'')+
-    (exercise?'<div class="home-next-exercise"><span>'+nextLabel+'</span><strong>'+esc(exercise.name)+'</strong><small>'+esc(homeExerciseMeta(exercise))+'</small></div>':'')+
-  '</div>';
+  return (progress.total?'<div class="home-session-ring home-session-ring-v4" style="--home-progress:'+pct+'"><div><strong>'+progress.done+'/'+progress.total+'</strong><span>complete</span></div></div>':'')+
+    (ex?'<button class="home-hero-next-v4" type="button" data-exercise-detail="'+esc(ex.id)+'"><span>'+(x.state==='active'?'UP NEXT':'STARTS WITH')+'</span><strong>'+esc(ex.name)+'</strong><small>'+esc(homeExerciseMeta(ex))+'</small></button>':'');
 }
 function renderHomeWeekPulse(schedule){
   const context=programContext();
   const todayKey=dateKey();
-  return '<div class="home-week-pulse home-week-pulse-v3">'+TRAINING_DAYS.map(dayDef=>{
+  return '<div class="home-training-path-v4" aria-label="This week training path">'+TRAINING_DAYS.map(dayDef=>{
     const entry=schedule.find(item=>item.dayId===dayDef.id);
     const date=addDays(context.weekStart,dayOffsetFromMonday(dayDef.id));
     const status=entry?.status||'rest';
     const isToday=dateKey(date)===todayKey;
-    const code=entry?homeWorkoutCode((entry.adaptedDay||entry.day)?.name):'';
+    const day=entry?.adaptedDay||entry?.day;
+    const workoutName=day?.name||((isToday&&status==='rest')?'Recovery':'');
     const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'•':status==='upcoming'?'○':'';
-    return '<div class="home-pulse-day status-'+status+(isToday?' calendar-today':'')+'"><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><i>'+marker+'</i><small>'+esc(code)+'</small></div>';
+    return '<div class="home-path-day status-'+status+(isToday?' is-today':'')+'">'+
+      '<span class="home-path-weekday">'+esc(dayDef.label)+'</span>'+
+      '<i class="home-path-node">'+marker+'</i>'+
+      '<strong>'+esc(workoutName)+'</strong>'+
+      '<small>'+date.getDate()+'</small>'+
+    '</div>';
   }).join('')+'</div>';
 }
 function bodyHeatClass(level){
@@ -6369,7 +6426,7 @@ function renderHomeBodySnapshot(){
   const snapshot=homeWeekMuscleSnapshot();
   if(!snapshot.top.length)return '';
   const top=snapshot.top.map(item=>'<span><strong>'+esc(item.label)+'</strong><small>'+item.value+' touch'+(item.value===1?'':'es')+'</small></span>').join('');
-  return '<section class="home-body-card home-training-load">'+
+  return '<section class="home-body-card home-training-load home-training-load-v4">'+
     '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p><h3>Where your work landed.</h3></div><button class="text-button" data-action="progress">VIEW PROGRESS</button></div>'+
     '<div class="home-body-layout"><div class="home-body-pair" aria-label="Muscle groups trained this week">'+
       '<div class="home-body-figure"><span>FRONT</span><svg viewBox="0 0 120 210" aria-hidden="true">'+
@@ -6415,18 +6472,24 @@ function renderHome(){
   const shared=sharedTrainingState();
   const name=homeFirstName();
   const greeting=name?'Hey, '+esc(name)+'.':'Your training.';
-  return '<div class="clean-page home-clean home-contextual home-contextual-v3">'+
-    '<section class="home-intro-v2"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
+  const activeMeta=x.state==='active'
+    ?'<b id="home-elapsed-clock">'+esc(formatClock(workoutElapsedSeconds(store.activeWorkout)))+'</b> elapsed · '+esc(homeActivePhaseLabel(store.activeWorkout?.phase))
+    :esc(x.meta);
+  return '<div class="clean-page home-clean home-contextual home-contextual-v3 home-contextual-v4">'+
+    '<section class="home-intro-v2 home-intro-v4"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
     renderHomeProgramJourney(context)+
-    '<section class="home-state-hero home-state-hero-v2 home-state-hero-v3 state-'+esc(x.state)+'">'+
-      '<div class="home-hero-grid"><div class="home-state-copy home-state-copy-v2"><span>'+esc(x.eyebrow)+(x.state==='active'?'<i class="home-live-dot"></i>':'')+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+(x.state==='active'?'<b id="home-elapsed-clock">'+esc(formatClock(workoutElapsedSeconds(store.activeWorkout)))+'</b> elapsed · '+esc(homeActivePhaseLabel(store.activeWorkout?.phase)):esc(x.meta))+'</small></div>'+
-      renderHomeHeroVisual(x)+'</div>'+
-      '<div class="home-hero-actions">'+renderHomePrimaryAction(x)+
+    '<section class="home-state-hero home-state-hero-v4 state-'+esc(x.state)+'">'+
+      renderHomeHeroBackdrop(x)+
+      '<div class="home-hero-content-v4">'+
+        '<div class="home-state-copy home-state-copy-v4"><span>'+esc(x.eyebrow)+(x.state==='active'?'<i class="home-live-dot"></i>':'')+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+activeMeta+'</small></div>'+
+        renderHomeHeroAccessory(x)+
+      '</div>'+
+      '<div class="home-hero-actions home-hero-actions-v4">'+renderHomePrimaryAction(x)+
         (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
       '</div>'+
-      (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
+      (x.state==='active'?'<div class="home-state-secondary home-state-secondary-v4"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
-    '<section class="clean-section home-week-section home-week-section-v3"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
+    '<section class="clean-section home-week-section home-week-section-v3 home-week-section-v4"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
       renderHomeWeekPulse(schedule)+
       '<div class="home-week-progress" aria-label="'+stats.completed+' of '+stats.planned+' workouts complete"><span style="width:'+Math.round((stats.completed/Math.max(1,stats.planned))*100)+'%"></span></div>'+
