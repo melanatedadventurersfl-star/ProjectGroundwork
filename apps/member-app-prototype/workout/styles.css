@@ -6865,3 +6865,12 @@ button.runner-phase-row{cursor:pointer}
   font-style:normal;
   font-weight:700;
 }
+
+
+.runner-set-ready-media.compact-fallback,
+.runner-transition-media.compact-fallback,
+.runner-first-strength .compact-fallback,
+.runner-rest-next .compact-fallback{
+  animation:none;
+  background-image:none;
+}
