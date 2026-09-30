@@ -1479,13 +1479,13 @@ function adjustSetTarget(type,delta){
 }
 function setElapsedSeconds(w){
   if(!w||w.phase!=='work')return 0;
-  const start=Date.parse(w.setStartedAt||'');
+  const start=Date.parse(w.setStartedAt||w.exerciseStartedAt||'');
   if(!Number.isFinite(start))return 0;
   return Math.max(0,Math.floor((workoutNowMs(w)-start)/1000));
 }
 function warmupElapsedSeconds(w){
   if(!w)return 0;
-  const started=Date.parse(w.warmupStartedAt||'');
+  const started=Date.parse(w.warmupStartedAt||w.startedAt||'');
   if(!Number.isFinite(started))return 0;
   const ended=Date.parse(w.warmupCompletedAt||'');
   const end=Number.isFinite(ended)?ended:workoutNowMs(w);
