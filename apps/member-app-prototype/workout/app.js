@@ -54,6 +54,8 @@ let measurementCheckinOpen = false;
 let measurementEditId = '';
 let measurementPhotoDraft = {};
 let programReviewOpen = false;
+let bodyProgressMetric = 'weightLb';
+let bodyProgressRange = '3m';
 
 const defaultStore = {
   profile: null,
@@ -449,6 +451,8 @@ function saveMeasurementCheckin(form){
   if(!BODY_METRICS.some(metric=>num(record[metric.key]))){toast('Enter at least one measurement.');return;}
   if(existing)Object.assign(existing,record);
   else progress.measurements.push(record);
+  const photoRecords=[...progress.measurements].filter(item=>item.photos&&Object.values(item.photos).some(Boolean)).sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0));
+  for(const stale of photoRecords.slice(20))delete stale.photos;
   if(!existing)progress.weeklyCheckins[weekKey()]={status:'saved',at:new Date().toISOString(),measurementId:record.id};
   if(record.weightLb)store.profile.weight=record.weightLb;
   measurementPhotoDraft={};measurementEditId='';measurementCheckinOpen=false;
@@ -2481,6 +2485,7 @@ function renderTrainingContextSummary(context,compact=false){
 }
 function equipmentAllows(exercise,equipment){
   if (equipment === 'full-gym') return exercise.equipment.includes('full-gym');
+  if (equipment === 'travel') return exercise.equipment.includes('bodyweight')||exercise.equipment.includes('bands');
   return exercise.equipment.includes(equipment);
 }
 
@@ -2627,7 +2632,7 @@ function buildDay(blueprint,profile,index){
 
 function engineGoal(goal){return ({muscle:'hypertrophy',strength:'strength','fat-loss':'general_fitness',general:'general_fitness'})[goal]||'general_fitness';}
 function engineEquipment(equipment){
-  const map={'full-gym':['dumbbell','bench','cable','machine','band'],'dumbbells':['dumbbell','bench'],'bodyweight':['bodyweight'],'bands':['band'],'mixed-home':['dumbbell','bench','band']};
+  const map={'full-gym':['dumbbell','bench','cable','machine','band'],'dumbbells':['dumbbell','bench'],'bodyweight':['bodyweight'],'bands':['band'],'mixed-home':['dumbbell','bench','band'],'travel':['bodyweight','band']};
   return map[equipment]||['bodyweight'];
 }
 function engineExperience(experience){return experience==='new'?'beginner':(experience||'beginner');}
@@ -2818,7 +2823,7 @@ function planGoalLabel(goal){
   return ({muscle:'Build muscle',strength:'Get stronger','fat-loss':'Fat loss + conditioning',general:'General fitness'})[goal] || goal;
 }
 function experienceLabel(v){ return ({new:'New to lifting',beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'})[v]||v; }
-function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home mix'})[v]||v; }
+function equipmentLabel(v){ return ({'full-gym':'Full gym',dumbbells:'Dumbbells',bodyweight:'Bodyweight',bands:'Resistance bands','mixed-home':'Home',travel:'Travel'})[v]||v; }
 
 function nextPlanDay(){
   return nextScheduledSession()?.adaptedDay||store.plan?.days?.[0]||null;
@@ -6493,10 +6498,54 @@ function renderPinnedProgress(records){
   }
   return '<section class="clean-section pinned-progress-section"><div class="clean-section-head"><div><p class="eyebrow">PINNED PROGRESS</p><h3>Start → current</h3></div><button class="text-button" data-action="edit-profile">EDIT PINS</button></div><div class="pinned-progress-grid">'+cards.join('')+'</div></section>';
 }
+function bodyRangeDays(range){
+  return ({'4w':28,'3m':92,'6m':184,all:0})[range]??92;
+}
+function bodyTrendRecords(metricKey=bodyProgressMetric,range=bodyProgressRange){
+  const days=bodyRangeDays(range),cutoff=days?Date.now()-days*86400000:0;
+  return [...bodyProgress().measurements]
+    .filter(item=>num(item[metricKey])&&(!cutoff||Date.parse(item.recordedAt||0)>=cutoff))
+    .sort((a,b)=>Date.parse(a.recordedAt||0)-Date.parse(b.recordedAt||0));
+}
+function bodyTrendDisplayValue(record,key){
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const raw=num(record?.[key]);
+  return metric?.kind==='weight'?lbToDisplay(raw,bodyWeightUnit()):inchesToDisplay(raw,bodyMeasurementUnit());
+}
+function bodyTrendChartPath(records,key,width=320,height=110){
+  if(!records.length)return {path:'',points:[]};
+  const values=records.map(item=>bodyTrendDisplayValue(item,key));
+  const min=Math.min(...values),max=Math.max(...values),range=Math.max(.1,max-min);
+  const left=10,right=width-10,top=10,bottom=height-18;
+  const points=values.map((value,index)=>{
+    const x=records.length===1?(left+right)/2:left+(right-left)*(index/(records.length-1));
+    const y=bottom-((value-min)/range)*(bottom-top);
+    return {x:Math.round(x*10)/10,y:Math.round(y*10)/10,value};
+  });
+  return {path:points.map((point,index)=>(index?'L':'M')+point.x+' '+point.y).join(' '),points};
+}
+function renderBodyTrendChart(){
+  const available=BODY_METRICS.filter(metric=>bodyProgress().measurements.some(item=>num(item[metric.key])));
+  if(!available.length)return '';
+  if(!available.some(metric=>metric.key===bodyProgressMetric))bodyProgressMetric=available[0].key;
+  const metric=BODY_METRICS.find(item=>item.key===bodyProgressMetric)||available[0];
+  const records=bodyTrendRecords(metric.key,bodyProgressRange);
+  const chart=bodyTrendChartPath(records,metric.key);
+  const latest=records[records.length-1],first=records[0];
+  const latestValue=latest?displayBodyMetric(latest,metric.key):'';
+  const startValue=first?displayBodyMetric(first,metric.key):'';
+  return '<section class="body-trend-card"><div class="body-trend-head"><div><span>BODY TREND</span><strong>'+esc(metric.label)+'</strong><small>'+(latestValue?esc(startValue)+' → '+esc(latestValue):'Not enough data yet')+'</small></div><button class="button secondary compact-button" data-action="open-measurement-checkin">UPDATE</button></div>'+
+    '<div class="body-trend-metrics">'+available.map(item=>'<button class="'+(item.key===metric.key?'active':'')+'" data-action="set-body-progress-metric" data-body-metric="'+esc(item.key)+'">'+esc(item.label)+'</button>').join('')+'</div>'+
+    (records.length?'<svg class="body-trend-chart" viewBox="0 0 320 110" role="img" aria-label="'+esc(metric.label)+' trend"><path d="'+chart.path+'"></path>'+chart.points.map(point=>'<circle cx="'+point.x+'" cy="'+point.y+'" r="3"></circle>').join('')+'</svg>':'<div class="progress-chart-empty"><strong>Not enough data in this range</strong><span>Choose a longer range or save another weekly check-in.</span></div>')+
+    '<div class="body-trend-ranges">'+[['4w','4 weeks'],['3m','3 months'],['6m','6 months'],['all','All']].map(([value,label])=>'<button class="'+(bodyProgressRange===value?'active':'')+'" data-action="set-body-progress-range" data-body-range="'+value+'">'+label+'</button>').join('')+'</div>'+
+  '</section>';
+}
+
 function renderBodyMeasurementHistory(){
   const rows=[...bodyProgress().measurements].sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0)).slice(0,12);
   if(!rows.length)return '<section class="clean-panel body-progress-empty"><span>BODY PROGRESS</span><strong>No measurements yet</strong><p>Add a baseline from your weekly check-in.</p><button class="button secondary" data-action="open-measurement-checkin">ADD MEASUREMENTS</button></section>';
-  return '<section class="clean-section body-progress-history"><div class="clean-section-head"><div><p class="eyebrow">BODY PROGRESS</p><h3>Dated measurements</h3></div><button class="button secondary compact-button" data-action="open-measurement-checkin">UPDATE</button></div>'+
+  return '<section class="clean-section body-progress-history"><div class="clean-section-head"><div><p class="eyebrow">BODY PROGRESS</p><h3>Dated measurements</h3></div></div>'+
+    renderBodyTrendChart()+
     '<div class="body-measurement-list">'+rows.map((record,index)=>{
       const values=BODY_METRICS.filter(metric=>num(record[metric.key])).map(metric=>'<span><b>'+esc(metric.label)+'</b> '+esc(displayBodyMetric(record,metric.key))+'</span>').join('');
       const photos=record.photos?Object.values(record.photos).filter(Boolean):[];
@@ -6791,6 +6840,8 @@ function handleClick(event){
   else if(a==='save-measurement-checkin')saveMeasurementCheckin(document.querySelector('#measurement-form'));
   else if(a==='edit-measurement')openMeasurementCheckin(node.dataset.measurementId||'');
   else if(a==='remove-measurement')removeMeasurementRecord(node.dataset.measurementId||'');
+  else if(a==='set-body-progress-metric'){bodyProgressMetric=node.dataset.bodyMetric||'weightLb';render();}
+  else if(a==='set-body-progress-range'){bodyProgressRange=['4w','3m','6m','all'].includes(node.dataset.bodyRange)?node.dataset.bodyRange:'3m';render();}
   else if(a==='open-program-review'){programReviewOpen=true;render();}
   else if(a==='close-program-review'){programReviewOpen=false;render();}
   else if(a==='save-program-review')saveProgramReview(document.querySelector('#program-review-form'));
