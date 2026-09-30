@@ -7182,7 +7182,10 @@ function render(){
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
   if(avatarPickerOpen) app.insertAdjacentHTML('beforeend',renderAvatarPickerSheet());
   document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
-  document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));\n  document.body.classList.toggle('home-mode',currentTab==='home');\n  document.body.classList.toggle('train-mode',currentTab==='train');\n  document.body.classList.toggle('progress-mode',currentTab==='progress');
+  document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
+  document.body.classList.toggle('home-mode',currentTab==='home');
+  document.body.classList.toggle('train-mode',currentTab==='train');
+  document.body.classList.toggle('progress-mode',currentTab==='progress');
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
   prefetchUpcomingWorkoutMedia();
 }
@@ -7194,7 +7197,9 @@ function updateTimers(){
 
   const elapsed=document.querySelector('#elapsed-clock');
   const exerciseClock=document.querySelector('#exercise-clock');
-  if(elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));\n  const homeElapsed=document.querySelector('#home-elapsed-clock');\n  if(homeElapsed)homeElapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  if(elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  const homeElapsed=document.querySelector('#home-elapsed-clock');
+  if(homeElapsed)homeElapsed.textContent=formatClock(workoutElapsedSeconds(w));
   const warmupElapsed=document.querySelector('#warmup-elapsed-clock');
   if(warmupElapsed&&w.phase==='warmup')warmupElapsed.textContent=formatClock(warmupElapsedSeconds(w));
   if(exerciseClock&&['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase))exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
