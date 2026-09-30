@@ -1604,8 +1604,9 @@ function planPrescriptionHtml(ex){
   if(adaptive){
     return '<small class="adaptive-plan-note"><strong>NEXT: '+esc(adaptive.label)+'</strong><em>'+esc(adaptive.reason)+'</em></small>';
   }
-  const calibrated=store.calibration[ex.id]?.weight;
-  const start=calibrated?((ex.loadMode==='dumbbell-pair'?calibrated+' lb each':calibrated+' lb')+' · calibrated'):ex.startLabel;
+  const calibrated=store.calibration[ex.id];
+  const calibratedWeight=num(calibrated?.weight);
+  const start=calibratedWeight?((ex.loadMode==='dumbbell-pair'?calibratedWeight+' lb each':calibratedWeight+' lb')+' · calibrated'):ex.startLabel;
   return '<small>Start: '+esc(start)+' × '+esc(ex.startReps||recommendedRepCount(ex.reps))+'</small>';
 }
 
@@ -3631,20 +3632,51 @@ function skipRest(){
  const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
  const token=w.restToken;closeRestLog(w,token,{skipped:true});w.restEndsAt=new Date().toISOString();w.restPausedRemaining=null;saveStore();advanceAfterRest(token);
 }
+function calibrationRecommendation(ex,rir){
+  const first=ex?.sets?.[0]||{};
+  const actualWeight=num(first.weight)||num(ex?.suggestedWeight);
+  const actualReps=Math.max(1,num(first.reps)||num(ex?.suggestedReps)||recommendedRepTarget(ex));
+  const increment=Math.max(1,num(ex?.increment)||5);
+  const weighted=!['bodyweight','timed','band'].includes(ex?.loadMode);
+  const multiplier=rir==='5+'?1.12:rir==='3-4'?1.06:rir==='2'?1:rir==='1'?.95:.90;
+  let weight=weighted?roundTo(actualWeight*multiplier,increment):actualWeight;
+  let reps=actualReps;
+  let reason='Keep the current target.';
+  if(rir==='5+'){
+    if(weight<=actualWeight){weight=actualWeight;reps=actualReps+2;reason='The load increment is too large for a safe automatic jump, so reps increase first.';}
+    else reason='Plenty of clean reps remained, so the next set can use more load.';
+  }else if(rir==='3-4'){
+    if(weight<=actualWeight){weight=actualWeight;reps=actualReps+1;reason='A small rep increase is more appropriate than forcing a full weight jump.';}
+    else reason='You had several clean reps available, so the next set can progress slightly.';
+  }else if(rir==='2'){
+    weight=actualWeight;reps=actualReps;reason='Two clean reps left is on target, so the working prescription stays here.';
+  }else if(rir==='1'){
+    if(weight>=actualWeight){weight=actualWeight;reps=Math.max(1,actualReps-1);reason='The set was close to the limit, so the next target eases slightly.';}
+    else reason='The set was very hard, so the next load comes down slightly.';
+  }else{
+    if(weight>=actualWeight){weight=actualWeight;reps=Math.max(1,actualReps-2);reason='The set reached max effort, so reps come down before another hard attempt.';}
+    else reason='Max effort is a signal to reduce the next load.';
+  }
+  return {weight,reps,rir,reason,label:progressionLabel(ex,weight,reps)};
+}
 function applyCalibration(rir){
   const pos=getActivePosition(); if(!pos||pos.workout.phase!=='calibrate')return;
-  const actual=num(pos.exercise.sets[0].weight)||num(pos.exercise.suggestedWeight);
-  const multiplier=rir==='5+'?1.12:rir==='3-4'?1.06:rir==='2'?1:rir==='1'?.95:.90;
-  const adjusted=roundTo(actual*multiplier,pos.exercise.increment||5);
-  store.calibration[pos.exercise.id]={weight:adjusted,updatedAt:new Date().toISOString(),rir};
-  pos.exercise.suggestedWeight=adjusted;pos.exercise.calibrationRequired=false;
+  const recommendation=calibrationRecommendation(pos.exercise,rir);
+  store.calibration[pos.exercise.id]={weight:recommendation.weight,reps:recommendation.reps,updatedAt:new Date().toISOString(),rir,reason:recommendation.reason};
+  pos.exercise.suggestedWeight=recommendation.weight;
+  pos.exercise.suggestedReps=String(recommendation.reps);
+  pos.exercise.calibrationRequired=false;
+  pos.exercise.calibrationResult=recommendation;
   const next=pos.workout.pendingPosition;
   if(next && next.ei===pos.ei){
     const nextSet=pos.exercise.sets[next.si];
-    nextSet.weight=String(adjusted||'');
-    nextSet.reps=pos.exercise.sets[0].reps||pos.exercise.suggestedReps||'';
+    nextSet.weight=['bodyweight','timed','band'].includes(pos.exercise.loadMode)?'':String(recommendation.weight||'');
+    nextSet.reps=String(recommendation.reps);
+    nextSet.targetPrepared=true;
+    nextSet.targetSource='calibration';
   }
   saveStore();
+  toast('Next target: '+recommendation.label);
   if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
@@ -5578,14 +5610,12 @@ function renderSideSwitch(pos){
 
 function renderCalibration(pos){
   const first=pos.exercise.sets[0];
-  return `<div class="calibration-stage"><p class="eyebrow">QUICK CALIBRATION</p><h3>How much did you have left?</h3><p>You completed ${esc(first.reps)} reps at ${first.weight?esc(first.weight)+' lb':'your chosen resistance'}. Estimate how many clean reps you could still have done. We’ll adjust the next sets and remember it.</p>
-    <div class="rir-grid">
-      <button data-rir="5+"><strong>5+</strong><span>Very easy</span></button>
-      <button data-rir="3-4"><strong>3–4</strong><span>Easy</span></button>
-      <button data-rir="2"><strong>2</strong><span>Right on target</span></button>
-      <button data-rir="1"><strong>1</strong><span>Very hard</span></button>
-      <button data-rir="0"><strong>0</strong><span>Max effort</span></button>
-    </div><small class="calibration-note">This is a training estimate, not a strength test. Stop if a movement causes pain or feels unsafe.</small></div>`;
+  const options=[
+    ['5+','Very easy'],['3-4','Easy'],['2','Right on target'],['1','Very hard'],['0','Max effort']
+  ];
+  return '<div class="calibration-stage"><p class="eyebrow">QUICK CALIBRATION</p><h3>How much did you have left?</h3><p>You completed '+esc(first.reps)+' reps at '+(first.weight?esc(first.weight)+' lb':'your chosen resistance')+'. Pick the closest answer. GoWorkout will show and apply the next target immediately.</p>'+
+    '<div class="rir-grid">'+options.map(([value,label])=>{const rec=calibrationRecommendation(pos.exercise,value);return '<button data-rir="'+value+'"><strong>'+esc(value==='3-4'?'3–4':value)+'</strong><span>'+esc(label)+'</span><small>Next: '+esc(rec.label)+'</small></button>';}).join('')+'</div>'+
+    '<small class="calibration-note">This calibration establishes a working target. Later sessions rely on your completed sets and exercise feedback instead of asking every time.</small></div>';
 }
 
 function renderExerciseFeedback(pos){
