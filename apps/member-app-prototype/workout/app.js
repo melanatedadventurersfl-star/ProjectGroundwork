@@ -61,7 +61,7 @@ const defaultStore = {
   progressionLog: [],
   exercisePreferences: {excluded:[],swapHistory:[]},
   trainingProgram: {scheduleOverrides:{},weekReviews:{},engine:null},
-  cueSettings: {sound:true,voice:true,aiCoach:true,coachPreset:'guide',coachStyle:'balanced',coachFrequency:'normal',coachDetail:'short',coachVoice:'cedar',talkSpeed:'normal',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'moderate',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',adaptiveCoach:true,haptics:true,flash:true},
+  cueSettings: {sound:true,voice:true,aiCoach:true,coachPreset:'guide',coachStyle:'balanced',coachVibe:'warm-familiar',coachFrequency:'normal',coachDetail:'short',coachVoice:'cedar',talkSpeed:'normal',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'moderate',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',adaptiveCoach:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
   lastSummaryId: null
@@ -611,22 +611,19 @@ function announceExercise(ex,prefix='Next exercise'){
   const equipment=equipmentRequirement(exerciseSource(ex));
   const exerciseIndex=store.activeWorkout?.currentExerciseIndex||0;
   const token='exercise-announce-'+(store.activeWorkout?.id||'')+'-'+exerciseIndex+'-'+ex.id;
+  const settings=workoutCueSettings();
+  const extra=coachExerciseExtra(ex,exerciseIndex);
+  const key=coachPrefetchKey('exercise_started',extra,settings);
   fireWorkoutSignal('transition',token,{voice:'',label:'NEXT'});
-  return emitWorkoutCoach('exercise_started',{
-    exerciseIndex,
-    exercise:{
-      name:ex.name,
-      setNumber:1,
-      totalSets:ex.sets?.length||0,
-      weight:String(ex.sets?.[0]?.weight||ex.suggestedWeight||''),
-      reps:String(ex.sets?.[0]?.reps||ex.suggestedReps||''),
-      target,
-      loadMode:ex.loadMode||''
-    }
-  },prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.','coach-'+token);
+  const prepared=cueRuntime.coachPrefetchCache.get(key);
+  if(prepared?.audioBase64){
+    cueRuntime.coachPrefetchCache.delete(key);
+    return window.GoWorkoutCoach?.playClip?.(prepared.audioBase64,prepared.mimeType||'audio/wav')||Promise.resolve();
+  }
+  return emitWorkoutCoach('exercise_started',extra,prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.','coach-'+token);
 }
 let workoutAudioContext=null;
-const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0,coachCuePack:null,coachCuePackKey:'',coachCuePackPromise:null,recentSignalTokens:new Map()};
+const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0,coachCuePack:null,coachCuePackKey:'',coachCuePackPromise:null,coachPrefetchCache:new Map(),coachPrefetchPending:new Map(),recentSignalTokens:new Map()};
 
 const COACH_VOICES=[
   {id:'marin',label:'Marin',recommended:true},
@@ -645,14 +642,15 @@ const COACH_VOICES=[
 ];
 const COACH_VOICE_IDS=COACH_VOICES.map(item=>item.id);
 const COACH_PRESETS={
-  guide:{label:'Just Guide Me',coachStyle:'balanced',coachFrequency:'normal',coachDetail:'short',talkSpeed:'normal',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'moderate',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',adaptiveCoach:true},
-  hype:{label:'Hype Me Up',coachStyle:'energetic',coachFrequency:'high',coachDetail:'standard',talkSpeed:'fast',nameUsage:'often',formCues:'basic',performanceFeedback:'history',motivation:'high',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',adaptiveCoach:true},
-  coach:{label:'Coach Me',coachStyle:'technical',coachFrequency:'normal',coachDetail:'detailed',talkSpeed:'normal',nameUsage:'occasional',formCues:'detailed',performanceFeedback:'history',motivation:'moderate',countdownMode:'full',warmupGuidance:'detailed',cooldownGuidance:'guided',adaptiveCoach:true},
-  quiet:{label:'Keep It Quiet',coachStyle:'direct',coachFrequency:'minimal',coachDetail:'short',talkSpeed:'normal',nameUsage:'never',formCues:'off',performanceFeedback:'off',motivation:'low',countdownMode:'compact',warmupGuidance:'simple',cooldownGuidance:'simple',adaptiveCoach:false},
-  recovery:{label:'Recovery',coachStyle:'calm',coachFrequency:'normal',coachDetail:'standard',talkSpeed:'slow',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'low',countdownMode:'full',warmupGuidance:'detailed',cooldownGuidance:'detailed',adaptiveCoach:true}
+  guide:{label:'Just Guide Me',coachStyle:'balanced',coachVibe:'warm-familiar',coachFrequency:'normal',coachDetail:'short',talkSpeed:'normal',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'moderate',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',adaptiveCoach:true},
+  hype:{label:'Hype Me Up',coachStyle:'energetic',coachVibe:'gym-partner',coachFrequency:'high',coachDetail:'standard',talkSpeed:'fast',nameUsage:'often',formCues:'basic',performanceFeedback:'history',motivation:'high',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',adaptiveCoach:true},
+  coach:{label:'Coach Me',coachStyle:'technical',coachVibe:'warm-familiar',coachFrequency:'normal',coachDetail:'detailed',talkSpeed:'normal',nameUsage:'occasional',formCues:'detailed',performanceFeedback:'history',motivation:'moderate',countdownMode:'full',warmupGuidance:'detailed',cooldownGuidance:'guided',adaptiveCoach:true},
+  quiet:{label:'Keep It Quiet',coachStyle:'direct',coachVibe:'neutral',coachFrequency:'minimal',coachDetail:'short',talkSpeed:'normal',nameUsage:'never',formCues:'off',performanceFeedback:'off',motivation:'low',countdownMode:'compact',warmupGuidance:'simple',cooldownGuidance:'simple',adaptiveCoach:false},
+  recovery:{label:'Recovery',coachStyle:'calm',coachVibe:'soulful',coachFrequency:'normal',coachDetail:'standard',talkSpeed:'slow',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'low',countdownMode:'full',warmupGuidance:'detailed',cooldownGuidance:'detailed',adaptiveCoach:true}
 };
 const COACH_SETTING_VALUES={
   coachStyle:['balanced','direct','supportive','energetic','calm','technical'],
+  coachVibe:['warm-familiar','gym-partner','southern-warmth','east-coast-direct','west-coast-smooth','soulful','neutral'],
   coachFrequency:['minimal','normal','high'],
   coachDetail:['short','standard','detailed'],
   talkSpeed:['slow','normal','fast'],
@@ -666,6 +664,7 @@ const COACH_SETTING_VALUES={
 };
 const COACH_SETTING_LABELS={
   coachStyle:{balanced:'Balanced',direct:'Direct',supportive:'Supportive',energetic:'Energetic',calm:'Calm',technical:'Technical'},
+  coachVibe:{'warm-familiar':'Warm & Familiar','gym-partner':'Gym Partner','southern-warmth':'Southern Warmth','east-coast-direct':'East Coast Direct','west-coast-smooth':'West Coast Smooth',soulful:'Soulful',neutral:'Neutral'},
   coachFrequency:{minimal:'Minimal',normal:'Normal',high:'High'},
   coachDetail:{short:'Short',standard:'Standard',detailed:'Detailed'},
   talkSpeed:{slow:'Slow',normal:'Normal',fast:'Fast'},
@@ -694,6 +693,7 @@ function workoutCueSettings(){
     aiCoach:saved.aiCoach!==false,
     coachPreset:COACH_PRESETS[saved.coachPreset]?saved.coachPreset:(saved.coachPreset==='custom'?'custom':'guide'),
     coachStyle:normalizeCoachSetting('coachStyle',legacyStyle,'balanced'),
+    coachVibe:normalizeCoachSetting('coachVibe',saved.coachVibe,'warm-familiar'),
     coachFrequency:normalizeCoachSetting('coachFrequency',legacyFrequency,'normal'),
     coachDetail:normalizeCoachSetting('coachDetail',saved.coachDetail,'short'),
     coachVoice:COACH_VOICE_IDS.includes(saved.coachVoice)?saved.coachVoice:'cedar',
@@ -979,13 +979,16 @@ function clearCoachCuePack(){
   cueRuntime.coachCuePack=null;
   cueRuntime.coachCuePackKey='';
   cueRuntime.coachCuePackPromise=null;
+  cueRuntime.coachPrefetchCache.clear();
+  cueRuntime.coachPrefetchPending.clear();
 }
 function coachCuePackCacheKey(settings=workoutCueSettings()){
-  return [settings.coachVoice,settings.coachStyle,settings.talkSpeed].join('|');
+  return [settings.coachVoice,settings.coachStyle,settings.coachVibe,settings.talkSpeed].join('|');
 }
 function coachPayloadSettings(settings=workoutCueSettings()){
   return {
     style:settings.coachStyle,
+    vibe:settings.coachVibe,
     frequency:settings.coachFrequency,
     voice:settings.coachVoice,
     detail:settings.coachDetail,
@@ -999,6 +1002,61 @@ function coachPayloadSettings(settings=workoutCueSettings()){
     cooldownGuidance:settings.cooldownGuidance,
     adaptiveCoach:settings.adaptiveCoach
   };
+}
+function coachPrefetchKey(event,extra={},settings=workoutCueSettings()){
+  const exercise=extra?.exercise||{};
+  return [
+    event,
+    store.activeWorkout?.id||'',
+    extra?.exerciseIndex??'',
+    exercise.id||exercise.name||'',
+    settings.coachVoice,
+    settings.coachStyle,
+    settings.coachVibe,
+    settings.coachDetail,
+    settings.talkSpeed,
+    settings.nameUsage
+  ].join('|');
+}
+function coachExerciseExtra(ex,index){
+  if(!ex)return {};
+  return {
+    exerciseIndex:index,
+    exercise:{
+      id:ex.id||'',
+      name:ex.name,
+      setNumber:1,
+      totalSets:ex.sets?.length||0,
+      weight:String(ex.sets?.[0]?.weight||ex.suggestedWeight||''),
+      reps:String(ex.sets?.[0]?.reps||ex.suggestedReps||''),
+      target:(ex.sets?.length||0)+' sets of '+String(ex.reps||ex.suggestedReps||'your target'),
+      loadMode:ex.loadMode||''
+    }
+  };
+}
+function prefetchWorkoutCoach(event,extra={}){
+  const settings=workoutCueSettings();
+  if(!settings.voice||!settings.aiCoach||store.account?.status!=='connected'||!coachEventAllowed(event,settings.coachFrequency))return Promise.resolve(null);
+  const key=coachPrefetchKey(event,extra,settings);
+  if(cueRuntime.coachPrefetchCache.has(key))return Promise.resolve(cueRuntime.coachPrefetchCache.get(key));
+  if(cueRuntime.coachPrefetchPending.has(key))return cueRuntime.coachPrefetchPending.get(key);
+  const promise=invokeWorkoutCoach({
+    event,
+    context:coachEventContext(event,settings,extra),
+    ...coachPayloadSettings(settings)
+  }).then(data=>{
+    if(data?.audioBase64)cueRuntime.coachPrefetchCache.set(key,data);
+    return data||null;
+  }).catch(error=>{
+    console.warn('Coach prefetch failed',event,error);
+    return null;
+  }).finally(()=>cueRuntime.coachPrefetchPending.delete(key));
+  cueRuntime.coachPrefetchPending.set(key,promise);
+  return promise;
+}
+function prefetchExerciseCoach(ex,index){
+  if(!ex)return Promise.resolve(null);
+  return prefetchWorkoutCoach('exercise_started',coachExerciseExtra(ex,index));
 }
 function primeCoachCuePack(){
   const settings=workoutCueSettings();
@@ -1071,7 +1129,7 @@ function toggleCueSetting(key){
 function updateCoachPreference(key,value){
   const settings=workoutCueSettings();
   if(!COACH_SETTING_VALUES[key]?.includes(value))return;
-  const audioIdentity=['coachStyle','talkSpeed'].includes(key);
+  const audioIdentity=['coachStyle','coachVibe','talkSpeed'].includes(key);
   store.cueSettings={...settings,[key]:value,coachPreset:'custom'};
   if(audioIdentity)clearCoachCuePack();
   saveStore();
@@ -1106,8 +1164,8 @@ function renderCueControls(){
   const settings=workoutCueSettings();
   const voiceLabel=settings.voice?(settings.aiCoach?coachVoiceLabel(settings.coachVoice):'Device voice'):'Voice off';
   const style=COACH_SETTING_LABELS.coachStyle[settings.coachStyle]||'Balanced';
-  const frequency=COACH_SETTING_LABELS.coachFrequency[settings.coachFrequency]||'Normal';
-  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>AI Coach & cues</strong><small>'+esc(voiceLabel+' · '+style+' · '+frequency)+'</small></div><em>›</em></button>';
+  const vibe=COACH_SETTING_LABELS.coachVibe[settings.coachVibe]||'Warm & Familiar';
+  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>AI Coach & cues</strong><small>'+esc(voiceLabel+' · '+style+' · '+vibe)+'</small></div><em>›</em></button>';
 }
 
 const MOVEMENT_GUIDANCE = {
@@ -3934,6 +3992,7 @@ function beginRest(next,seconds){
   w.restPausedRemaining=null;w.restToken=newTimerToken('rest',w);w.pendingPosition=next;
   w.restLog=Array.isArray(w.restLog)?w.restLog:[];
   w.restLog.push({token:w.restToken,startedAt:now,endedAt:null,plannedSeconds:safeRest,fromExerciseId:w.exercises?.[w.currentExerciseIndex]?.id||'',toExerciseId:w.exercises?.[next.ei]?.id||'',skipped:false});
+  if(next.ei!==w.currentExerciseIndex)prefetchExerciseCoach(w.exercises?.[next.ei],next.ei);
   saveStore();render();
 }
 function closeRestLog(w,token,{skipped=false}={}){
@@ -5595,6 +5654,7 @@ function renderCueSettingsSheet(){
   }).join('');
   const behaviorRows=[
     ['cycle-coach-style','Coach style','Personality and wording',label('coachStyle')],
+    ['cycle-coach-vibe','Voice vibe','Cadence, rhythm, and conversational feel',label('coachVibe')],
     ['cycle-coach-frequency','Coach frequency','Optional coaching frequency',label('coachFrequency')],
     ['cycle-coach-detail','Coach detail','How much the coach says when speaking',label('coachDetail')],
     ['cycle-talk-speed','Talk speed','Voice delivery speed',label('talkSpeed')],
@@ -5614,7 +5674,7 @@ function renderCueSettingsSheet(){
       behaviorRows+
       '<button data-action="toggle-adaptive-coach" class="settings-toggle"><div><strong>Adaptive coach</strong><span>Adjust delivery to readiness and workout phase</span></div><em>'+(settings.adaptiveCoach?'ON':'OFF')+'</em></button>'+
     '</div>'+
-    '<div class="coach-voice-section"><div class="coach-voice-heading"><div><strong>AI voice</strong><span>Preview uses your selected style, detail, speed, and countdown behavior.</span></div><em>'+esc(coachVoiceLabel(settings.coachVoice))+'</em></div>'+
+    '<div class="coach-voice-section"><div class="coach-voice-heading"><div><strong>AI voice</strong><span>Preview uses your selected style, voice vibe, detail, speed, and countdown behavior.</span></div><em>'+esc(coachVoiceLabel(settings.coachVoice))+'</em></div>'+
       '<div class="coach-voice-grid">'+voiceCards+'</div>'+
     '</div>'+
     '<div class="settings-toggle-list">'+
@@ -7145,7 +7205,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','toggle-adaptive-coach','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-vibe','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','toggle-adaptive-coach','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
   if(store.activeWorkout?.isPaused&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
@@ -7284,6 +7344,7 @@ function handleClick(event){
   else if(a==='toggle-ai-coach')toggleCueSetting('aiCoach');
   else if(a==='apply-coach-preset')applyCoachPreset(String(node.dataset.coachPreset||''));
   else if(a==='cycle-coach-style')cycleCoachSetting('coachStyle');
+  else if(a==='cycle-coach-vibe')cycleCoachSetting('coachVibe');
   else if(a==='cycle-coach-frequency')cycleCoachSetting('coachFrequency');
   else if(a==='cycle-coach-detail')cycleCoachSetting('coachDetail');
   else if(a==='cycle-talk-speed')cycleCoachSetting('talkSpeed');
