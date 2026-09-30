@@ -461,6 +461,7 @@ function saveMeasurementCheckin(form){
 function markMeasurementNoChanges(){
   const latest=latestBodyMeasurement();if(!latest){measurementCheckinOpen=true;render();return;}
   const copy={...clone(latest),id:uid('measure'),recordedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),weekKey:weekKey(),source:'unchanged'};
+  delete copy.photos;
   bodyProgress().measurements.push(copy);
   bodyProgress().weeklyCheckins[weekKey()]={status:'unchanged',at:copy.recordedAt,measurementId:copy.id};
   saveStore();render();toast('No changes recorded for this week.');
@@ -1387,8 +1388,10 @@ function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
       const prior=day.blocks[day.blocks.length-1];
       if(prior.exerciseIndexes.length<4){
         const index=cursor,ex=exercises[index],order=prior.exerciseIndexes.length;
-        ex.blockId=prior.id;ex.blockType=prior.type==='superset'?'tri-set':'circuit';ex.blockOrder=order;ex.transitionRest=config.transitionRest;ex.blockRest=config.roundRest;
-        prior.exerciseIndexes.push(index);prior.exerciseIds.push(ex.id);prior.type=ex.blockType;
+        const expandedType=prior.type==='superset'?'tri-set':'circuit';
+        ex.blockId=prior.id;ex.blockType=expandedType;ex.blockOrder=order;ex.transitionRest=config.transitionRest;ex.blockRest=config.roundRest;
+        prior.exerciseIndexes.push(index);prior.exerciseIds.push(ex.id);prior.type=expandedType;
+        for(const peerIndex of prior.exerciseIndexes)exercises[peerIndex].blockType=expandedType;
         cursor+=1;continue;
       }
     }
@@ -3479,7 +3482,8 @@ function renderWorkoutMap(){
   const strengthRows=w.exercises.map((ex,index)=>{
     const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
     const status=state==='complete'?'✓':state==='completed-manually'?'✓':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIP':'';
-    return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(!['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase)?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1)+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+(ex.suggestedWeight?' · '+esc(ex.suggestedWeight)+' lb':'')+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'">•••</button></article>';
+    const block=ex.blockId?(ex.blockType==='superset'?'SUPERSET':ex.blockType==='tri-set'?'TRI-SET':'FLOW BLOCK')+' · '+(num(ex.blockOrder)+1):'';
+    return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(!['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase)?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1)+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+(ex.suggestedWeight?' · '+esc(ex.suggestedWeight)+' lb':'')+(block?' · '+esc(block):'')+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'">•••</button></article>';
   }).join('');
   const body=workoutMapView==='warmup'?warmRows:workoutMapView==='cooldown'?coolRows:strengthRows;
   return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal runner-map-modal" data-workout-map-panel role="dialog" aria-modal="true"><button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><h2>'+esc(w.routineName)+'</h2></div><div class="runner-map-tabs">'+tabs.map(([id,label])=>'<button class="'+(workoutMapView===id?'active':'')+'" data-action="set-workout-map-view" data-map-view="'+id+'">'+label+'</button>').join('')+'</div><div class="workout-map-list">'+body+'</div></section></div>';
@@ -4716,13 +4720,15 @@ function renderTrainBlockTimeline(context){
 function renderTrainProgramView(){
   const context=programContext(),plan=store.plan;
   return '<div class="train-view train-program-view">'+
+    '<section class="program-style-summary"><div><span>WORKOUT STYLE</span><strong>'+esc(workoutStyleLabel(store.profile?.workoutStyle))+'</strong><small>'+esc(pacingLabel(store.profile?.pacing))+' pacing · '+esc(workoutLimiterLabel(store.profile?.workoutLimiter))+'</small></div>'+(store.profile?.workoutStyle==='flow'?'<p>Flow groups each workout into 2–4 exercise blocks. Quick rest happens between movements, then a full rest after the round.</p>':'<p>Classic completes the prescribed sets for one exercise before moving to the next.</p>')+'</section>'+
     renderTrainBlockTimeline(context)+
     renderEngineProgramSummary()+
     renderProgramEvolution()+
     '<section class="clean-section train-rotation-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT ROTATION</p><h3>'+plan.days.length+' workouts</h3></div><button class="text-button" data-action="edit-profile">EDIT PLAN</button></div>'+
       '<div class="train-rotation-list">'+plan.days.map((day,index)=>{
         const first=day.exercises?.[0];
-        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></article>';
+        const flow=day.blocks?.length?' · '+day.blocks.length+' Flow block'+(day.blocks.length===1?'':'s'):'';
+        return '<article class="train-rotation-row"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(day.name)+'</strong><small>'+esc(day.focus)+' · '+day.exercises.length+' exercises'+flow+' · ~'+day.estimatedMinutes+' min'+(first?' · starts '+esc(first.name):'')+'</small></div></article>';
       }).join('')+'</div>'+
     '</section>'+
   '</div>';
