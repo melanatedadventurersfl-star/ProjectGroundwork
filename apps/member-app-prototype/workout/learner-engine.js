@@ -189,6 +189,9 @@ function volumeExperimentProposal(model,target={},exercise={},context={}){
   if(context.alreadyApplied){
     return {...shadow,action:'shadow',applied:false,experiment:false,reason:'Only one controlled volume experiment runs in a workout so its result is easier to interpret.'};
   }
+  if(context.otherApplied){
+    return {...shadow,action:'shadow',applied:false,experiment:false,reason:'The volume candidate stays in shadow mode because another learner intervention already changed this movement today. Controlled tests isolate one variable at a time.'};
+  }
   if(!evidenceReady||shadow.action!=='shadow'||Math.abs(difference)!==1){
     return {...shadow,action:shadow.action==='shadow'?'shadow':'observe',applied:false,experiment:false,reason:shadow.action==='shadow'?'The set-count idea stays in shadow mode until the movement reaches the controlled-test evidence gate.':shadow.reason};
   }
@@ -372,6 +375,7 @@ function eventFromExercise(workout,exercise,index=0){
   const sets=Array.isArray(exercise.sets)?exercise.sets:[],completed=sets.filter(set=>set?.completed);
   if(!completed.length)return null;
   const weights=completed.map(set=>n(set.weight)),reps=completed.map(set=>n(set.reps)),durations=completed.map(set=>n(set.durationSeconds)).filter(Boolean);
+  const experimentalSets=completed.filter(set=>set.learnerVolumeExperiment).map(set=>({weight:n(set.weight),reps:n(set.reps),durationSeconds:n(set.durationSeconds),completedAt:set.completedAt||null}));
   const plannedWeights=completed.filter(set=>set.plannedWeight!==undefined&&set.plannedWeight!==null&&set.plannedWeight!=='').map(set=>n(set.plannedWeight));
   const plannedReps=completed.filter(set=>set.plannedReps!==undefined&&set.plannedReps!==null&&set.plannedReps!=='').map(set=>n(set.plannedReps));
   const rests=(workout.restLog||[]).filter(item=>item?.fromExerciseId===exercise.id&&item.endedAt);
@@ -384,7 +388,7 @@ function eventFromExercise(workout,exercise,index=0){
     context:{exerciseOrder:index+1,warmupSkipped:Boolean(workout.warmupSkipped),setupKey:workout.trainingContext?.key||'',sessionDurationMinutes:n(workout.durationMinutes),activeDurationSeconds:n(workout.activeDurationSeconds)},
     volumeExperiment:exercise.learnerVolumeExperiment?.applied?{applied:true,decisionId:exercise.learnerVolumeExperiment.decisionId||'',baseSets:n(exercise.learnerVolumeExperiment.base?.sets),proposedSets:n(exercise.learnerVolumeExperiment.proposed?.sets),direction:exercise.learnerVolumeExperiment.direction||''}:null,
     planned:{sets:sets.length,weight:plannedWeights.length?mean(plannedWeights):n(exercise.suggestedWeight),reps:plannedReps.length?mean(plannedReps):n(exercise.suggestedReps),restSeconds:n(exercise.rest)},
-    actual:{completedSets:completed.length,completionRate:sets.length?completed.length/sets.length:0,averageWeight:round(mean(weights),2),averageReps:round(mean(reps),2),minReps:reps.length?Math.min(...reps):0,maxReps:reps.length?Math.max(...reps):0,repDrop:Math.max(0,(reps[0]||0)-(reps[reps.length-1]||0)),averageSetDurationSeconds:round(mean(durations),1),averageRestSeconds:actualRests.length?round(mean(actualRests),1):null,skippedRests:rests.filter(item=>item.skipped).length,targetAdjustedSets:completed.filter(set=>set.targetAdjusted).length,best:best||{weight:0,reps:0}}
+    actual:{completedSets:completed.length,completionRate:sets.length?completed.length/sets.length:0,averageWeight:round(mean(weights),2),averageReps:round(mean(reps),2),minReps:reps.length?Math.min(...reps):0,maxReps:reps.length?Math.max(...reps):0,repDrop:Math.max(0,(reps[0]||0)-(reps[reps.length-1]||0)),averageSetDurationSeconds:round(mean(durations),1),averageRestSeconds:actualRests.length?round(mean(actualRests),1):null,skippedRests:rests.filter(item=>item.skipped).length,targetAdjustedSets:completed.filter(set=>set.targetAdjusted).length,experimentalSets,best:best||{weight:0,reps:0}}
   };
 }
 function evaluatePrediction(prediction,event){
@@ -458,7 +462,7 @@ function decisionOutcome(decision,event,modelBefore={}){
   return {
     id:'outcome-'+decision.id,decisionId:decision.id,workoutId:event.workoutId,exerciseId:event.exerciseId,exerciseName:event.exerciseName,variable,phase:'immediate',
     evaluatedAt:event.completedAt,success,reason,baseline,
-    actual:{completedSets:n(actual.completedSets),completionRate:n(actual.completionRate),minReps:n(actual.minReps),averageWeight:n(actual.averageWeight),averageReps:n(actual.averageReps),repDrop:n(actual.repDrop),averageRestSeconds:actual.averageRestSeconds??null}
+    actual:{completedSets:n(actual.completedSets),completionRate:n(actual.completionRate),minReps:n(actual.minReps),averageWeight:n(actual.averageWeight),averageReps:n(actual.averageReps),repDrop:n(actual.repDrop),averageRestSeconds:actual.averageRestSeconds??null,experimentalSets:Array.isArray(actual.experimentalSets)?actual.experimentalSets:[]}
   };
 }
 function delayedVolumeOutcome(decision,event){
