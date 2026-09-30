@@ -178,7 +178,9 @@ function volumeExperimentProposal(model,target={},exercise={},context={}){
   const lastExperimentIndex=observations.map(item=>Boolean(item.volumeExperiment?.applied)).lastIndexOf(true);
   const exposuresSinceExperiment=lastExperimentIndex<0?observations.length:Math.max(0,observations.length-1-lastExperimentIndex);
   const immediate=interventionStats(model,'volume'),delayed=delayedInterventionStats(model,'volume');
-  const difference=Math.round(n(proposed.sets)-n(base.sets));
+  const rawBaseSets=Math.round(n(target.sets));
+  const rawDifference=Math.round(n(proposed.sets)-n(base.sets));
+  const difference=rawDifference===0?0:(rawDifference>0?1:-1);
   const evidenceReady=gate.label==='CONTROLLED TESTS'&&!gate.rollback;
   const readinessReady=readiness>=3;
   const cooldownReady=lastExperimentIndex<0||exposuresSinceExperiment>=2;
@@ -186,13 +188,16 @@ function volumeExperimentProposal(model,target={},exercise={},context={}){
   if(exercise?.blockId){
     return {...shadow,action:'shadow',applied:false,experiment:false,reason:'Circuit and superset volume stays under the block plan. Controlled volume experiments only run on standalone movements.'};
   }
+  if(rawBaseSets<2||rawBaseSets>4||rawBaseSets!==Math.round(n(base.sets))){
+    return {...shadow,action:'shadow',applied:false,experiment:false,reason:'Controlled volume experiments are limited to movements already programmed for 2 to 4 working sets.'};
+  }
   if(context.alreadyApplied){
     return {...shadow,action:'shadow',applied:false,experiment:false,reason:'Only one controlled volume experiment runs in a workout so its result is easier to interpret.'};
   }
   if(context.otherApplied){
     return {...shadow,action:'shadow',applied:false,experiment:false,reason:'The volume candidate stays in shadow mode because another learner intervention already changed this movement today. Controlled tests isolate one variable at a time.'};
   }
-  if(!evidenceReady||shadow.action!=='shadow'||Math.abs(difference)!==1){
+  if(!evidenceReady||shadow.action!=='shadow'||difference===0){
     return {...shadow,action:shadow.action==='shadow'?'shadow':'observe',applied:false,experiment:false,reason:shadow.action==='shadow'?'The set-count idea stays in shadow mode until the movement reaches the controlled-test evidence gate.':shadow.reason};
   }
   if(!readinessReady){
