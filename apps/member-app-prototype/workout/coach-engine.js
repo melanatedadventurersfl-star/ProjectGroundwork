@@ -3,6 +3,8 @@
 
   const playedTokens = new Set();
   let queue = Promise.resolve();
+  let audioContext = null;
+  let activeSource = null;
   let activeAudio = null;
 
   function rememberToken(token) {
@@ -24,12 +26,53 @@
     return Promise.race([promise, timer]).finally(() => clearTimeout(handle));
   }
 
-  function playBase64Audio(base64, mimeType) {
-    return new Promise((resolve, reject) => {
-      if (!base64) {
-        resolve(false);
-        return;
-      }
+  function ensureAudioContext() {
+    try {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtor) return null;
+      if (!audioContext) audioContext = new AudioCtor();
+      if (audioContext.state === 'suspended') audioContext.resume?.();
+      return audioContext;
+    } catch {
+      return null;
+    }
+  }
+
+  function unlock() {
+    ensureAudioContext();
+  }
+
+  function decodeBase64(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  async function playBase64Audio(base64, mimeType) {
+    if (!base64) return false;
+    const ctx = ensureAudioContext();
+    if (ctx) {
+      const buffer = await ctx.decodeAudioData(decodeBase64(base64));
+      return await new Promise((resolve, reject) => {
+        try {
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(ctx.destination);
+          activeSource = source;
+          source.onended = () => {
+            if (activeSource === source) activeSource = null;
+            resolve(true);
+          };
+          source.start(0);
+        } catch (error) {
+          if (activeSource) activeSource = null;
+          reject(error);
+        }
+      });
+    }
+
+    return await new Promise((resolve, reject) => {
       try {
         const audio = new Audio('data:' + (mimeType || 'audio/mpeg') + ';base64,' + base64);
         activeAudio = audio;
@@ -43,7 +86,12 @@
           reject(new Error('AI coach audio could not play'));
         };
         const result = audio.play();
-        if (result && typeof result.catch === 'function') result.catch(reject);
+        if (result && typeof result.catch === 'function') {
+          result.catch(error => {
+            if (activeAudio === audio) activeAudio = null;
+            reject(error);
+          });
+        }
       } catch (error) {
         reject(error);
       }
@@ -93,6 +141,10 @@
   }
 
   function stop() {
+    if (activeSource) {
+      try { activeSource.stop(0); } catch {}
+      activeSource = null;
+    }
     if (activeAudio) {
       try {
         activeAudio.pause();
@@ -102,5 +154,5 @@
     }
   }
 
-  window.GoWorkoutCoach = { emit, stop };
+  window.GoWorkoutCoach = { emit, stop, unlock };
 })();
