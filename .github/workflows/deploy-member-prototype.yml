@@ -48,6 +48,7 @@ jobs:
       - name: Validate standalone workout scripts
         run: |
           node --check apps/member-app-prototype/workout/catalog.js
+          node --check apps/member-app-prototype/workout/coach-engine.js
           node --check apps/member-app-prototype/workout/app.js
 
       - name: Install application dependencies
@@ -85,14 +86,14 @@ jobs:
           # The build query busts normal caches while allowing an older cached
           # index to fall back to the current stable asset path.
           root_html = source_html
-          for asset in ('styles.css', 'catalog.js', 'app.js'):
+          for asset in ('styles.css', 'catalog.js', 'coach-engine.js', 'app.js'):
               root_html = root_html.replace(f'./{asset}', f'./{asset}?v={build}')
           (workout / 'index.html').write_text(root_html, encoding='utf-8')
 
           release = workout / 'releases' / build
           release.mkdir(parents=True, exist_ok=True)
           release_html = source_html
-          for asset in ('styles.css', 'catalog.js', 'app.js'):
+          for asset in ('styles.css', 'catalog.js', 'coach-engine.js', 'app.js'):
               shutil.copy2(workout / asset, release / asset)
           (release / 'index.html').write_text(release_html, encoding='utf-8')
 
