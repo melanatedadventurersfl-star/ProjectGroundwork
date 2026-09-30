@@ -160,7 +160,16 @@ Deno.serve(async (req: Request) => {
         const raw = outputText(payload);
         const generated = clean(raw ? JSON.parse(raw)?.line : "", 260);
         if (generated) { line = generated; source = "ai"; }
-      } else console.error("workout-coach dialogue upstream", payload);
+      } else {
+        console.error("workout-coach dialogue upstream", payload);
+        const code = clean(payload?.error?.code, 80);
+        if (code === "credit_balance_exhausted" || code === "insufficient_quota") {
+          return json({
+            error: "OpenAI API credits are exhausted. Add API credits before testing AI Coach.",
+            code: "ai_quota_exhausted"
+          }, 402);
+        }
+      }
     } catch (error) {
       console.error("workout-coach dialogue", error);
     }
@@ -175,7 +184,14 @@ Deno.serve(async (req: Request) => {
         const bytes = new Uint8Array(await speech.arrayBuffer());
         return json({ line, source, audioBase64: toBase64(bytes), mimeType: "audio/mpeg" });
       }
-      console.error("workout-coach speech upstream", await speech.text());
+      const speechText = await speech.text();
+      console.error("workout-coach speech upstream", speechText);
+      if (speech.status === 429 || /credit_balance_exhausted|insufficient_quota|no credits remaining/i.test(speechText)) {
+        return json({
+          error: "OpenAI API credits are exhausted. Add API credits before testing AI Coach.",
+          code: "ai_quota_exhausted"
+        }, 402);
+      }
     } catch (error) {
       console.error("workout-coach speech", error);
     }
