@@ -752,7 +752,7 @@ function speakWorkoutCue(text,token=''){
 }
 
 function coachEventAllowed(event,frequency){
-  const required=new Set(['test','session_started','warmup_started','stretch_started','warmup_completed','exercise_started','cooldown_started','cooldown_completed','workout_completed']);
+  const required=new Set(['test','session_started','warmup_started','stretch_started','warmup_completed','exercise_started','cooldown_started','cooldown_completed','workout_completed','timeline_cue']);
   if(required.has(event))return true;
   if(frequency==='minimal')return event==='exercise_feedback';
   if(frequency==='normal')return event!=='set_completed';
