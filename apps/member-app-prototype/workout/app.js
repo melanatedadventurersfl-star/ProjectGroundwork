@@ -426,31 +426,38 @@ function learnerTargetLabel(ex,target){
   if(ex.loadMode==='dumbbell-pair')return weight+' lb each × '+String(reps||recommendedRepCount(ex.reps));
   return weight?weight+' lb × '+String(reps||recommendedRepCount(ex.reps)):String(reps||recommendedRepCount(ex.reps))+' reps';
 }
+function storeLearnerDecision(engine,learner,exercise,workout,proposal,prefix){
+  const decision={
+    id:prefix+'-'+workout.id+'-'+exercise.id,
+    workoutId:workout.id,
+    scheduledDate:workout.scheduledDate||'',
+    exerciseId:exercise.id,
+    exerciseName:exercise.name,
+    variable:proposal.variable||'weight',
+    createdAt:workout.preparedAt||new Date().toISOString(),
+    action:proposal.action,
+    applied:Boolean(proposal.applied),
+    direction:proposal.direction||'',
+    gate:clone(proposal.gate||{}),
+    base:clone(proposal.base||{}),
+    proposed:clone(proposal.proposed||{}),
+    reason:proposal.reason||'',
+    evidence:clone(proposal.evidence||{})
+  };
+  ensureTrainingProgram().learner=engine.addDecision(learner,decision);
+  return decision;
+}
 function applyLearnerTargetInfluence(exercise,workout){
   const engine=trainingLearnerEngine(),learner=ensureTrainingLearner();
   if(!engine?.targetProposal||!learner||!exercise||!workout)return exercise;
   const model=learner.models?.[exercise.id];
   if(!model)return exercise;
+
   const base={weight:num(exercise.suggestedWeight),reps:num(exercise.suggestedReps),restSeconds:num(exercise.rest),sets:exercise.sets?.length||0};
   const proposal=engine.targetProposal(model,base,exercise);
-  const decision={
-    id:'target-'+workout.id+'-'+exercise.id,
-    workoutId:workout.id,
-    scheduledDate:workout.scheduledDate||'',
-    exerciseId:exercise.id,
-    exerciseName:exercise.name,
-    createdAt:workout.preparedAt||new Date().toISOString(),
-    action:proposal.action,
-    applied:Boolean(proposal.applied),
-    direction:proposal.direction,
-    gate:clone(proposal.gate||{}),
-    base:clone(proposal.base||base),
-    proposed:clone(proposal.proposed||base),
-    reason:proposal.reason||'',
-    evidence:clone(proposal.evidence||{})
-  };
-  ensureTrainingProgram().learner=engine.addDecision(learner,decision);
+  const decision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,proposal,'target');
   exercise.learnerTarget={...clone(proposal),label:learnerTargetLabel(exercise,proposal.proposed||base),decisionId:decision.id};
+
   if(proposal.applied){
     exercise.suggestedWeight=num(proposal.proposed?.weight);
     exercise.suggestedReps=String(Math.max(1,num(proposal.proposed?.reps)||num(exercise.suggestedReps)||recommendedRepCount(exercise.reps)));
@@ -464,6 +471,17 @@ function applyLearnerTargetInfluence(exercise,workout){
       set.targetSource='learner';
     }
   }
+
+  if(engine.restProposal&&!exercise.blockId){
+    const rest=engine.restProposal(model,{restSeconds:num(exercise.rest)});
+    if(['apply','suggest'].includes(rest.action)){
+      const restDecision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,rest,'rest');
+      exercise.learnerRest={...clone(rest),decisionId:restDecision.id};
+      if(rest.applied)exercise.rest=Math.max(30,Math.min(120,num(rest.proposed?.restSeconds)||num(exercise.rest)||45));
+    }else{
+      exercise.learnerRest=clone(rest);
+    }
+  }
   return exercise;
 }
 function renderLearnerTargetAdvice(ex){
@@ -475,6 +493,31 @@ function renderLearnerTargetAdvice(ex){
     '<strong>'+esc(target.label||currentPrescriptionLabel(ex))+'</strong>'+
     '<small>'+esc(target.reason||'')+(applied?' The target remains editable before you start the set.':' The suggestion is visible only and does not change this workout yet.')+'</small>'+
   '</div>';
+}
+function renderLearnerRestAdvice(ex){
+  const rest=ex?.learnerRest;
+  if(!rest||!['apply','suggest'].includes(rest.action))return '';
+  const applied=rest.action==='apply',seconds=num(rest.proposed?.restSeconds)||num(ex.rest);
+  return '<div class="runner-learner-rest '+(applied?'applied':'suggestion')+'">'+
+    '<span>'+(applied?'PERSONALIZED REST APPLIED':'REST SUGGESTION')+'</span>'+
+    '<strong>'+seconds+' sec</strong>'+
+    '<small>'+esc(rest.reason||'')+(applied?' The timer will use this rest between normal working sets.':' Your timer stays unchanged until rest confidence passes the influence gate.')+'</small>'+
+  '</div>';
+}
+function learnerVariableGates(model){
+  const engine=trainingLearnerEngine();
+  return engine?.variableGates?.(model)||model?.variableGates||{};
+}
+function variableGateShort(gate){
+  return gate?.level==='influence'?'INFLUENCE':gate?.level==='suggest'?'SUGGEST':gate?.level==='unavailable'?'N/A':'OBSERVE';
+}
+function renderLearnerVariableGates(model){
+  const gates=learnerVariableGates(model);
+  const labels=[['weight','LOAD'],['reps','REPS'],['rest','REST'],['volume','VOLUME'],['readiness','READINESS']];
+  return '<div class="learner-variable-gates">'+labels.map(([key,label])=>{
+    const gate=gates[key]||{level:'observe',label:'OBSERVE ONLY',reason:'More evidence required',confidence:{score:0}};
+    return '<div class="variable-gate '+esc(gate.level||'observe')+'" title="'+esc(gate.reason||'')+'"><span>'+label+'</span><strong>'+esc(variableGateShort(gate))+'</strong><small>'+Math.round(num(gate.confidence?.score))+'%</small></div>';
+  }).join('')+'</div>';
 }
 function programOriginDate(){
   const created=store.plan?.createdAt?new Date(store.plan.createdAt):new Date();
@@ -7112,6 +7155,7 @@ function renderPreSet(pos){
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
     '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedRepsDisplay)+' · Previous: '+esc(previousLabel)+'</small></div>'+
     renderLearnerTargetAdvice(ex)+
+    renderLearnerRestAdvice(ex)+
     renderExerciseGuidanceCard(ex,{compact:true,label:'HOW TO'})+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
       (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
@@ -7453,6 +7497,7 @@ function renderRest(pos){
   return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>'+(sameBlockNext?(blockRound?'Round complete.':'Quick transition.'):'Great set.')+'</h2><p>'+esc(completed)+'</p>'+
     (sameBlockNext?'<div class="runner-block-rest-label"><span>'+esc(dynamicBlockPositionLabel(pos.workout,pos.exercise))+'</span><strong>'+(blockRound?'FULL REST':'QUICK REST')+'</strong></div>':'')+
     (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
+    (pos.exercise.learnerRest?.applied?'<div class="runner-rest-learning"><span>PERSONALIZED REST</span><strong>'+num(pos.exercise.rest)+' sec</strong><small>'+esc(pos.exercise.learnerRest.reason||'Learner-adjusted rest timer')+'</small></div>':'')+
     '<div class="timer-wrap runner-rest-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
     '<div class="runner-rest-next">'+(nextEx?exerciseImageButton(nextEx,'rest-next-exercise-media'):'')+'<div><span>Up next</span><strong>'+esc(nextName)+'</strong><small>'+(nextSet?'Set '+nextSet+' of '+(nextEx?.sets?.length||pos.exercise.sets.length)+' · ':'')+esc(nextEx?currentPrescriptionLabel(nextEx):next?currentPrescriptionLabel(pos.exercise):'Guided cooldown')+'</small></div></div>'+
     '<div class="runner-rest-actions-clean four"><button data-action="reset-timer">RESET</button><button data-action="pause-rest">'+(paused?'RESUME':'PAUSE')+'</button><button data-action="skip-rest">SKIP</button><button data-action="add-rest" '+(remaining>=180?'disabled':'')+'>+15 SEC</button></div></div>';
@@ -7911,7 +7956,9 @@ function renderExerciseLearningDetail(exerciseId){
       '<div><span>AVG REP DROP</span><strong>'+Math.round(num(model.metrics?.averageRepDrop)*10)/10+'</strong><small>first set to final set</small></div>'+
       '<div><span>NEXT TARGET</span><strong>'+esc(next||'Gathering evidence')+'</strong><small>'+esc(store.progression?.[exerciseId]?.reason||confidence.evidence||'More sessions improve confidence')+'</small></div>'+
     '</div>'+
-    '<div class="exercise-learning-gate"><span>CONTROL GATE</span><strong class="gate-'+esc(gate.level)+'">'+esc(gate.label)+'</strong><small>'+esc(gate.reason)+'</small></div>'+
+    '<div class="exercise-learning-variable-title"><span>VARIABLE CONFIDENCE</span><small>Each decision type earns control separately.</small></div>'+
+    renderLearnerVariableGates(model)+
+    '<div class="exercise-learning-gate"><span>LEGACY SUMMARY GATE</span><strong class="gate-'+esc(gate.level)+'">'+esc(gate.label)+'</strong><small>'+esc(gate.reason)+'</small></div>'+
   '</section>';
 }
 function renderExerciseProgressDetail(summary){
@@ -8003,12 +8050,33 @@ function learnerErrorLabel(model){
   if(metrics.averageRepsPredictionError!==null&&metrics.averageRepsPredictionError!==undefined)parts.push(Math.round(num(metrics.averageRepsPredictionError)*10)/10+' reps');
   return parts.join(' · ')||'Not enough checks';
 }
+function learnerDecisionValue(item,key){
+  const value=item?.[key]||{};
+  if(item?.variable==='rest')return num(value.restSeconds)+' sec';
+  if(item?.variable==='volume')return num(value.sets)+' sets';
+  if(item?.variable==='reps')return num(value.reps)+' reps';
+  return (num(value.weight)?num(value.weight)+' lb × ':'')+num(value.reps)+' reps';
+}
 function renderLearnerInfluenceHistory(){
-  const learner=ensureTrainingLearner(),decisions=[...(learner?.decisions||[])].filter(item=>['apply','suggest'].includes(item.action)).slice(-8).reverse();
+  const learner=ensureTrainingLearner(),decisions=[...(learner?.decisions||[])].filter(item=>['apply','suggest'].includes(item.action)).slice(-10).reverse();
   if(!decisions.length)return '';
-  return '<div class="learner-influence-history"><div class="clean-section-head"><div><p class="eyebrow">TARGET DECISIONS</p><h3>What the learner changed or suggested</h3></div></div>'+
-    decisions.map(item=>'<div class="learner-influence-row '+(item.applied?'applied':'suggested')+'"><div><span>'+esc(formatDate(item.createdAt))+'</span><strong>'+esc(item.exerciseName)+'</strong><small>'+esc(item.reason)+'</small></div><div><span>RULE TARGET</span><strong>'+esc((num(item.base?.weight)?num(item.base.weight)+' lb × ':'')+num(item.base?.reps)+' reps')+'</strong></div><div><span>'+(item.applied?'APPLIED':'SUGGESTED')+'</span><strong>'+esc((num(item.proposed?.weight)?num(item.proposed.weight)+' lb × ':'')+num(item.proposed?.reps)+' reps')+'</strong></div></div>').join('')+
+  return '<div class="learner-influence-history"><div class="clean-section-head"><div><p class="eyebrow">LEARNER DECISIONS</p><h3>What changed, what was suggested, and what happened</h3></div></div>'+
+    decisions.map(item=>{
+      const outcome=item.outcome;
+      return '<div class="learner-influence-row '+(item.applied?'applied':'suggested')+'"><div><span>'+esc(formatDate(item.createdAt))+' · '+esc(String(item.variable||'target').toUpperCase())+'</span><strong>'+esc(item.exerciseName)+'</strong><small>'+esc(item.reason)+'</small></div>'+
+        '<div><span>RULE TARGET</span><strong>'+esc(learnerDecisionValue(item,'base'))+'</strong></div>'+
+        '<div><span>'+(item.applied?'APPLIED':'SUGGESTED')+'</span><strong>'+esc(learnerDecisionValue(item,'proposed'))+'</strong>'+
+        (outcome?'<small class="decision-outcome '+(outcome.success?'success':'miss')+'">'+(outcome.success?'OUTCOME MET':'OUTCOME MISSED')+' · '+esc(outcome.reason)+'</small>':'')+'</div></div>';
+    }).join('')+
   '</div>';
+}
+function renderLearnerVariableOverview(overview){
+  const counts=overview.variableGateCounts||{};
+  const labels=[['weight','LOAD'],['reps','REPS'],['rest','REST'],['volume','VOLUME'],['readiness','READINESS']];
+  return '<div class="learner-variable-overview">'+labels.map(([key,label])=>{
+    const item=counts[key]||{};
+    return '<div><span>'+label+'</span><strong>'+num(item.influence)+' influence</strong><small>'+num(item.suggest)+' suggest · '+num(item.observe)+' observe</small></div>';
+  }).join('')+'</div>';
 }
 function renderLearnerDiagnostics(){
   if(!learnerDiagnosticsOpen)return '';
@@ -8024,9 +8092,10 @@ function renderLearnerDiagnostics(){
     '<div class="learner-diagnostics-scorecard">'+
       '<div><span>LAST 20 TARGET HIT</span><strong>'+learnerPercent(overview.recentPredictionHitRate)+'</strong><small>'+overview.predictionsEvaluated+' predictions evaluated total</small></div>'+
       '<div><span>AVG REP ERROR</span><strong>'+(overview.averageRepsPredictionError===null?'—':Math.round(num(overview.averageRepsPredictionError)*10)/10)+'</strong><small>reps away from prediction</small></div>'+
-      '<div><span>AVG LOAD ERROR</span><strong>'+(overview.averageWeightPredictionError===null?'—':Math.round(num(overview.averageWeightPredictionError)*10)/10+' lb')+'</strong><small>weighted exercises only</small></div>'+
-      '<div><span>CONTROL GATES</span><strong>'+num(overview.gateCounts?.influence)+' / '+overview.modeledExercises+'</strong><small>'+num(overview.appliedInfluences)+' applied guardrails</small></div>'+
+      '<div><span>INTERVENTION OUTCOMES</span><strong>'+learnerPercent(overview.interventionSuccessRate)+'</strong><small>'+num(overview.interventionOutcomes)+' applied changes evaluated</small></div>'+
+      '<div><span>AUTO ROLLBACKS</span><strong>'+num(overview.rollbackCount)+'</strong><small>variable gates paused after weak outcomes</small></div>'+
     '</div>'+
+    renderLearnerVariableOverview(overview)+
     '<div class="learner-gate-legend">'+
       '<span class="observe"><b>OBSERVE</b> Collect evidence only</span>'+
       '<span class="suggest"><b>SUGGEST</b> Can surface a recommendation</span>'+
@@ -8035,11 +8104,11 @@ function renderLearnerDiagnostics(){
     renderLearnerInfluenceHistory()+
     (models.length?'<div class="learner-model-table"><div class="learner-model-row header"><span>Movement</span><span>Evidence</span><span>Accuracy</span><span>Gate</span></div>'+
       models.map(model=>{
-        const gate=learnerGateLabel(model),hit=model.metrics?.targetHitRate;
+        const hit=model.metrics?.targetHitRate;
         return '<div class="learner-model-row"><div><strong>'+esc(model.exerciseName||model.exerciseId)+'</strong><small>'+esc(String(model.loadMode||'training'))+'</small></div>'+
           '<div><strong>'+num(model.exposures)+' sessions</strong><small>'+num(model.predictionCount)+' predictions checked</small></div>'+
           '<div><strong>'+learnerPercent(hit)+'</strong><small>'+esc(learnerErrorLabel(model))+'</small></div>'+
-          '<div><em class="gate-'+esc(gate.level)+'">'+esc(gate.label)+'</em><small>'+esc(gate.reason)+'</small></div></div>';
+          '<div class="learner-model-variable-cell">'+renderLearnerVariableGates(model)+'</div></div>';
       }).join('')+'</div>':'<div class="clean-empty-inline">Complete workouts to build learner diagnostics.</div>')+
     (recent.length?'<div class="learner-recent-predictions"><div class="clean-section-head"><div><p class="eyebrow">RECENT PREDICTION CHECKS</p><h3>Expected vs completed</h3></div></div>'+
       recent.map(item=>'<div class="learner-prediction-row '+(item.targetHit?'hit':'miss')+'"><div><span>'+esc(formatDate(item.evaluatedAt))+'</span><strong>'+esc(item.exerciseName)+'</strong></div><div><small>PREDICTED</small><strong>'+esc((num(item.planned?.weight)?num(item.planned.weight)+' lb × ':'')+num(item.planned?.reps)+' reps')+'</strong></div><div><small>ACTUAL</small><strong>'+esc((num(item.actual?.averageWeight)?Math.round(num(item.actual.averageWeight)*10)/10+' lb × ':'')+Math.round(num(item.actual?.averageReps)*10)/10+' avg reps')+'</strong></div><em>'+(item.targetHit?'HIT':'MISS')+'</em></div>').join('')+
@@ -8052,12 +8121,12 @@ function renderAdaptiveLearningOverview(){
   const hit=overview.recentPredictionHitRate===null?'LEARNING':Math.round(overview.recentPredictionHitRate*100)+'%';
   const strongest=Object.values(ensureTrainingLearner()?.models||{}).sort((a,b)=>(b.confidence?.score||0)-(a.confidence?.score||0))[0]||null;
   return '<section class="adaptive-learning-overview">'+
-    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Most movements stay observation-first. Only influence-gated movements can conservatively hold a target when recent evidence says the planned progression is too aggressive.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
+    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Load, reps, rest, volume, and readiness now earn confidence separately. Rest can personalize upward only when repeated timing data shows lower rep drop-off, and weak intervention outcomes automatically roll that variable back to suggestion mode.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
     '<div class="adaptive-learning-stats">'+
       '<div><span>MODELED</span><strong>'+overview.modeledExercises+'</strong><small>movements</small></div>'+
       '<div><span>PREDICTIONS</span><strong>'+overview.predictionsEvaluated+'</strong><small>evaluated</small></div>'+
       '<div><span>LAST 20 HIT</span><strong>'+hit+'</strong><small>recent target accuracy</small></div>'+
-      '<div><span>READY TO INFLUENCE</span><strong>'+num(overview.gateCounts?.influence)+'</strong><small>gated movements</small></div>'+
+      '<div><span>REST INFLUENCE</span><strong>'+num(overview.variableGateCounts?.rest?.influence)+'</strong><small>'+num(overview.interventionOutcomes)+' outcomes checked</small></div>'+
     '</div>'+
   '</section>';
 }
@@ -8093,12 +8162,13 @@ function renderSummary(){
   const records=workoutRecordClassification(x);
   const motivation=workoutMotivationSummary(x);
   const learnerAdjusted=(x.exercises||[]).filter(ex=>ex.learnerTarget?.applied);
+  const learnerRestAdjusted=(x.exercises||[]).filter(ex=>ex.learnerRest?.applied);
   return '<div class="summary-hero clean-summary"><div class="summary-check">'+(partial?'◐':'✓')+'</div><p class="eyebrow">'+(partial?'PARTIAL WORKOUT SAVED':'WORKOUT COMPLETE')+'</p><h2>'+esc(x.routineName)+'</h2>'+
     '<section class="runner-motivation-card post"><span>SESSION COMPLETE</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
     '<div class="summary-grid"><div class="summary-card"><strong>'+x.durationMinutes+'</strong><span>Minutes</span></div><div class="summary-card"><strong>'+x.completedSets+'</strong><span>Sets</span></div><div class="summary-card"><strong>'+formatVolume(x.totalVolume||0)+'</strong><span>Volume</span></div></div>'+
     (records.baselines.length?'<section class="clean-panel summary-prs baseline-summary"><p class="eyebrow">BASELINES ESTABLISHED</p><div class="pr-list">'+records.baselines.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
     (records.prs.length?'<section class="clean-panel summary-prs"><p class="eyebrow">NEW PERSONAL RECORDS</p><div class="pr-list">'+records.prs.map(pr=>'<div class="pr-row"><span>'+esc(pr.name)+'</span><strong>'+(pr.weight?pr.weight+' lb × '+pr.reps:pr.reps+' reps')+'</strong></div>').join('')+'</div></section>':'')+
-    (x.learnerLearning?'<section class="clean-panel workout-learning-card learner-session-card"><p class="eyebrow">ADAPTIVE LEARNER</p><h3>'+x.learnerLearning.exercisesObserved+' movement'+(x.learnerLearning.exercisesObserved===1?'':'s')+' added to your model</h3><p>'+(x.learnerLearning.predictionsEvaluated?x.learnerLearning.predictionHits+' of '+x.learnerLearning.predictionsEvaluated+' pre-workout predictions matched the completed target.':'This workout established evidence. Future appearances of these movements will create prediction checks.')+'</p>'+(learnerAdjusted.length?'<small>'+learnerAdjusted.length+' target'+(learnerAdjusted.length===1?' was':'s were')+' conservatively held by the learner before this session. Manual changes still remained available.</small>':x.learnerLearning.strongestExercise?'<small>Strongest current evidence: '+esc(x.learnerLearning.strongestExercise.name)+' · '+esc(String(x.learnerLearning.strongestExercise.confidence?.level||'low').toUpperCase())+' confidence</small>':'')+'</section>':'')+
+    (x.learnerLearning?'<section class="clean-panel workout-learning-card learner-session-card"><p class="eyebrow">ADAPTIVE LEARNER</p><h3>'+x.learnerLearning.exercisesObserved+' movement'+(x.learnerLearning.exercisesObserved===1?'':'s')+' added to your model</h3><p>'+(x.learnerLearning.predictionsEvaluated?x.learnerLearning.predictionHits+' of '+x.learnerLearning.predictionsEvaluated+' pre-workout predictions matched the completed target.':'This workout established evidence. Future appearances of these movements will create prediction checks.')+'</p>'+((learnerAdjusted.length||learnerRestAdjusted.length)?'<small>'+learnerAdjusted.length+' target guardrail'+(learnerAdjusted.length===1?'':'s')+' · '+learnerRestAdjusted.length+' personalized rest change'+(learnerRestAdjusted.length===1?'':'s')+'. '+num(x.learnerLearning.interventionsSuccessful)+' of '+num(x.learnerLearning.interventionsEvaluated)+' applied learner interventions met their outcome check in this workout.</small>':x.learnerLearning.strongestExercise?'<small>Strongest current evidence: '+esc(x.learnerLearning.strongestExercise.name)+' · '+esc(String(x.learnerLearning.strongestExercise.confidence?.level||'low').toUpperCase())+' confidence</small>':'')+'</section>':'')+
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
     ((x.trainingContext?.temporary||x.trainingContext?.adapted)?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
