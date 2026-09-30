@@ -3638,6 +3638,7 @@ function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(
 function navigateToExercise(index,{announce=true}={}){
   const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
   discardCoachTimeline();
+  unlockWorkoutCues();
   index=Math.max(0,Math.min(index,w.exercises.length-1));
   pauseInteractiveTimers(w);
   const previous=w.currentExerciseIndex||0;
@@ -4322,6 +4323,7 @@ function toggleWorkoutPause(){
   const w=store.activeWorkout;if(!w)return;
   if(!w.isPaused){
     discardCoachTimeline();
+    unlockWorkoutCues();
     const now=new Date().toISOString();
     w.isPaused=true;
     w.pausedAt=now;
