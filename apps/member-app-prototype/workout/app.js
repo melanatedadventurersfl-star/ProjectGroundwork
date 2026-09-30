@@ -2448,11 +2448,12 @@ function applySetupToActiveWorkout(setup){
 }
 function renderSessionSetupOptions(selectedKey=normalSessionSetupKey(),prefix=''){
   const name=prefix+'sessionSetup';
-  const options=['full-gym','bodyweight','dumbbells','bands','mixed-home','custom'];
+  const saved=[...new Set(store.profile?.savedSetups||[normalSessionSetupKey(),'bodyweight'])].filter(key=>SESSION_SETUP_PRESETS[key]&&key!=='custom');
+  const options=[...saved,...['full-gym','bodyweight','dumbbells','bands','mixed-home'].filter(key=>!saved.includes(key)),'custom'];
   return '<div class="session-setup-grid">'+options.map(key=>{
     const preset=SESSION_SETUP_PRESETS[key];
     const copy=key==='full-gym'?'Machines, cables, barbells and more':key==='bodyweight'?'No gym equipment required':key==='dumbbells'?'Dumbbells plus bodyweight':key==='bands'?'Resistance bands plus bodyweight':key==='mixed-home'?'Dumbbells, bands and bodyweight':'Choose what is available';
-    return '<label class="session-setup-card"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+'</strong><small>'+copy+'</small></span></label>';
+    return '<label class="session-setup-card '+(saved.includes(key)?'saved':'')+'"><input type="radio" name="'+name+'" value="'+key+'" '+(key===selectedKey?'checked':'')+'><span><strong>'+esc(preset.label)+(saved.includes(key)?' · SAVED':'')+'</strong><small>'+copy+'</small></span></label>';
   }).join('')+'</div>';
 }
 function renderSessionSetupExtras(context={}){
@@ -6605,7 +6606,9 @@ function render(){
   if(historyMenuId) app.insertAdjacentHTML('beforeend',renderHistoryMenuSheet());
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
   if(avatarPickerOpen) app.insertAdjacentHTML('beforeend',renderAvatarPickerSheet());
-  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
+  if(measurementCheckinOpen) app.insertAdjacentHTML('beforeend',renderMeasurementCheckin());
+  if(programReviewOpen) app.insertAdjacentHTML('beforeend',renderProgramReview());
+  document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen||measurementCheckinOpen||programReviewOpen));
   document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
   prefetchUpcomingWorkoutMedia();
@@ -6692,6 +6695,10 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const measurementClose=event.target.closest('[data-action="close-measurement-checkin"]');
+  if(measurementClose){measurementCheckinOpen=false;measurementEditId='';measurementPhotoDraft={};render();return;}
+  const programReviewClose=event.target.closest('[data-action="close-program-review"]');
+  if(programReviewClose){programReviewOpen=false;render();return;}
   const avatarClose=event.target.closest('[data-action="close-avatar-picker"]');
   if(avatarClose){
     const inside=event.target.closest('[data-avatar-picker-panel]');
@@ -6768,6 +6775,16 @@ function handleClick(event){
     return;
   }
   if(a==='go-home'||a==='home')setTab('home');
+  else if(a==='open-measurement-checkin')openMeasurementCheckin();
+  else if(a==='close-measurement-checkin'){measurementCheckinOpen=false;measurementEditId='';measurementPhotoDraft={};render();}
+  else if(a==='measurement-no-changes')markMeasurementNoChanges();
+  else if(a==='skip-measurement-checkin')skipMeasurementCheckin();
+  else if(a==='save-measurement-checkin')saveMeasurementCheckin(document.querySelector('#measurement-form'));
+  else if(a==='edit-measurement')openMeasurementCheckin(node.dataset.measurementId||'');
+  else if(a==='remove-measurement')removeMeasurementRecord(node.dataset.measurementId||'');
+  else if(a==='open-program-review'){programReviewOpen=true;render();}
+  else if(a==='close-program-review'){programReviewOpen=false;render();}
+  else if(a==='save-program-review')saveProgramReview(document.querySelector('#program-review-form'));
   else if(a==='train-anywhere-home')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'','bodyweight');
   else if(a==='open-session-setup'){exerciseActionsIndex=null;sessionSetupOpen=true;render();}
   else if(a==='apply-session-setup'){
@@ -6973,8 +6990,21 @@ document.addEventListener('change',event=>{
     if(note)note.textContent=selected+' of '+desired+' days selected.';
   }
 });
+document.addEventListener('change',async event=>{
+  const photoInput=event.target.closest?.('[data-progress-photo]');
+  if(!photoInput)return;
+  const file=photoInput.files?.[0];if(!file)return;
+  try{
+    const value=await compressProgressPhoto(file);
+    measurementPhotoDraft[photoInput.dataset.progressPhoto]=value;
+    render();
+    toast(photoInput.dataset.progressPhoto+' progress photo added.');
+  }catch(error){toast(error?.message||'Could not add that photo.');}
+});
 document.addEventListener('keydown',event=>{
   if(event.key==='Enter'&&store.account?.status!=='connected'&&document.activeElement?.matches?.('#entry-email,#entry-password,#entry-display-name')){event.preventDefault();if(accountEntryMode==='create')createEntryAccount();else signInEntryAccount();return;}
+  if(event.key==='Escape'&&measurementCheckinOpen){measurementCheckinOpen=false;measurementEditId='';measurementPhotoDraft={};render();return;}
+  if(event.key==='Escape'&&programReviewOpen){programReviewOpen=false;render();return;}
   if(event.key==='Escape'&&accountSheetOpen){accountSheetOpen=false;render();return;}
   if(event.key==='Escape'&&avatarPickerOpen){avatarPickerOpen=false;render();return;}
   if(event.key==='Escape'&&sessionSetupOpen){sessionSetupOpen=false;render();return;}
