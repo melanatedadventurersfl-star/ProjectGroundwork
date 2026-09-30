@@ -5759,6 +5759,8 @@ function historyTags(item){
   if(item?.readiness?.energy&&num(item.readiness.energy)<=2)tags.push('Low energy');
   if(item?.completionStatus==='partial')tags.push('Partial');
   if((item?.exercises||[]).some(ex=>ex.swappedFrom))tags.push('Substitutions');
+  const timing=historyTimingInfo(item);
+  if(timing.activeMinutes!==null&&timing.activeMinutes<=30)tags.push('Short session');
   return [...new Set(tags.filter(Boolean))];
 }
 function historyPerformanceHighlight(item){
@@ -5853,10 +5855,12 @@ function historyMonthLabel(key){
 }
 function filteredHistoryItems(){
   const context=programContext();
-  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
   let items=[...(store.history||[])];
   if(historyFilter==='block')items=items.filter(item=>item.programContext?.blockNumber===context.blockNumber);
-  if(historyFilter==='30')items=items.filter(item=>new Date(item.completedAt)>=cutoff);
+  if(['7','30','90'].includes(historyFilter)){
+    const rangeStart=new Date();rangeStart.setDate(rangeStart.getDate()-Number(historyFilter));
+    items=items.filter(item=>new Date(item.completedAt)>=rangeStart);
+  }
   if(historyStatusFilter==='prs')items=items.filter(item=>workoutRecordClassification(item).prs?.length);
   if(historyStatusFilter==='partial')items=items.filter(item=>item.completionStatus==='partial');
   if(historyStatusFilter==='manual')items=items.filter(item=>item.manualWorkoutCompletion);
@@ -5923,7 +5927,7 @@ function renderHistory(){
   const items=filteredHistoryItems();
   const groups=new Map();
   for(const item of items){const key=historyMonthKey(item);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item);}
-  const filters=[['all','All'],['block','This Block'],['30','Last 30 Days']];
+  const filters=[['all','All'],['block','This Block'],['7','7 Days'],['30','30 Days'],['90','90 Days']];
   const statusFilters=[['all','Any status'],['prs','PRs'],['partial','Partial'],['manual','Manual'],['adapted','Adapted'],['shared','Partner']];
   const routines=[...new Set((store.history||[]).map(item=>item.routineName).filter(Boolean))].sort();
   const muscles=[...new Set((store.history||[]).flatMap(item=>(item.exercises||[]).flatMap(ex=>ex.muscles||[])).filter(Boolean))].sort();
@@ -5954,6 +5958,12 @@ function renderHistoryTimeline(item){
   }
   for(const ex of item.exercises||[]){
     if(ex.startedAt||ex.endedAt)events.push({label:ex.name,start:ex.startedAt,end:ex.endedAt,type:'exercise'});
+  }
+  for(const restEntry of item.restLog||[]){
+    if(restEntry.startedAt||restEntry.endedAt)events.push({label:restEntry.skipped?'Rest skipped early':'Rest',start:restEntry.startedAt,end:restEntry.endedAt,type:'rest'});
+  }
+  for(const pause of item.pauseLog||[]){
+    if(pause.startedAt||pause.endedAt)events.push({label:'Workout paused',start:pause.startedAt,end:pause.endedAt,type:'pause'});
   }
   events.sort((a,b)=>Date.parse(a.start||0)-Date.parse(b.start||0));
   const rest=historyRestAnalysis(item);
