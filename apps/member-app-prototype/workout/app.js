@@ -1714,18 +1714,20 @@ function computeProgression(ex,feedback){
 function timedStageEstimateSeconds(item){
   if(!item)return 0;
   const transition=8;
+  const sides=item.side?2:1;
+  const switchSeconds=item.side?timedStageSwitchSeconds(item):0;
   if(item.mode==='reps'||item.reps){
     const reps=Math.max(1,Number(item.reps)||8);
-    const sides=item.side?2:1;
-    return Math.max(25,reps*sides*3)+transition;
+    return Math.max(25,reps*sides*3)+switchSeconds+transition;
   }
-  return Math.max(1,Number(item.seconds)||30)+transition;
+  return Math.max(1,Number(item.seconds)||30)*sides+switchSeconds+transition;
 }
 
 function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
   if(!items.length)return items;
   const target=Math.max(minSeconds,Math.min(maxSeconds,targetSeconds));
-  const each=Math.max(20,Math.round(target/items.length/5)*5);
+  const units=items.reduce((sum,item)=>sum+(item.side?2:1),0);
+  const each=Math.max(15,Math.round(target/Math.max(1,units)/5)*5);
   return items.map(item=>({...item,seconds:each}));
 }
 function buildWarmup(exercises){
@@ -2873,7 +2875,8 @@ function workoutNowMs(w,nowMs=Date.now()){
   return w?.isPaused&&Number.isFinite(paused)?paused:nowMs;
 }
 function workoutElapsedSeconds(w){
-  const started=Date.parse(w?.trainingStartedAt||w?.startedAt||'');
+  const startValue=w?.trainingStartedAt||(!w?.preparedAt?w?.startedAt:'');
+  const started=Date.parse(startValue||'');
   if(!Number.isFinite(started))return 0;
   const activeMs=Math.max(0,workoutNowMs(w)-started-Math.max(0,num(w?.totalPausedMs)));
   return Math.floor(activeMs/1000);
@@ -3286,6 +3289,7 @@ function completeTimedSet(early=false){
   const endedAt=new Date().toISOString();
   pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
   pos.set.durationSeconds=num(pos.set.reps);
+  if((pos.exercise.sets||[]).every(set=>setIsResolved(set)))markExerciseEnd(w,pos.ei,endedAt);
   w.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight:String(pos.set.weight||''),reps:String(pos.set.reps||''),durationSeconds:pos.set.durationSeconds,plannedWeight:String(pos.set.plannedWeight||''),plannedReps:String(pos.set.plannedReps||duration)};
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
   pos.set.performanceInsight=insight;
@@ -3322,6 +3326,9 @@ function startCooldown(){
 
 function completeTimedStagePhase(w){
   if(w.phase==='warmup'){
+    const now=new Date().toISOString();
+    const current=timedStageItems(w)[w.timedStageIndex||0];
+    if(current)current.endedAt=now;
     w.timedPhaseStartedAt=null;
     w.timedPhaseSkippedSeconds=0;
     completeWarmup();
@@ -3503,6 +3510,7 @@ function completeCurrentSet(){
     delete pos.workout.setStartedAt;
   }
   pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
+  if((pos.exercise.sets||[]).every(set=>setIsResolved(set)))markExerciseEnd(pos.workout,pos.ei,endedAt);
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
   pos.set.performanceInsight=insight;
   pos.workout.lastSetInsight=insight;
@@ -5188,7 +5196,7 @@ function renderWarmupRoutine(w){
     '<div class="runner-routine-head"><h2>'+esc(w.routineName)+' Warm-up</h2><p>'+runnerPhaseMinutes(w.warmup)+' minutes · '+w.warmup.length+' movements</p><small>Get your body ready for today’s workout with dynamic movement and mobility.</small></div>'+
     '<div class="runner-routine-list">'+w.warmup.map((item,index)=>{
       const image=timedStageImageUrl(item,0);
-      const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' '+item.side:'')):formatClock(item.seconds||30);
+      const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' '+item.side:'')):(formatClock(item.seconds||30)+(item.side?' each side':''));
       return '<div class="runner-routine-row"><div class="runner-routine-thumb">'+(image?'<img src="'+esc(image)+'" alt="">':'<span>'+String(index+1).padStart(2,'0')+'</span>')+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div><em>≡</em></div>';
     }).join('')+'</div>'+
     '<button class="button primary-action runner-gold-action" data-action="start-warmup">START WARM-UP</button>'+
