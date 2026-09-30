@@ -1802,6 +1802,8 @@ function buildCooldown(exercises){
   if(muscles.has('Quads')) items.push({
     name:'Standing quad stretch',
     seconds:30,
+    side:'each side',
+    sideSwitchSeconds:7,
     description:'Stand tall and gently bend one knee to stretch the front of the thigh without pulling aggressively.',
     cue:'Keep knees close and posture tall.',
     why:'Gives the quads a gentle post-workout stretch.',
@@ -1810,6 +1812,8 @@ function buildCooldown(exercises){
   if(muscles.has('Hamstrings')) items.push({
     name:'Hamstring stretch',
     seconds:30,
+    side:'each side',
+    sideSwitchSeconds:7,
     description:'Hinge forward gently with a long spine until you feel a mild stretch through the back of the thigh.',
     cue:'Hinge gently until you feel light tension.',
     why:'Helps the hamstrings relax after hinges and leg work.',
@@ -1818,6 +1822,8 @@ function buildCooldown(exercises){
   if(muscles.has('Glutes')) items.push({
     name:'Glute stretch',
     seconds:30,
+    side:'each side',
+    sideSwitchSeconds:7,
     description:'Settle into a comfortable hip position that creates a gentle stretch through the glutes without forcing the joint.',
     cue:'Stay relaxed and avoid forcing the hip.',
     why:'Releases the glutes after squats, hinges, and lunges.',
@@ -1826,6 +1832,8 @@ function buildCooldown(exercises){
   if(muscles.has('Calves')) items.push({
     name:'Calf stretch',
     seconds:30,
+    side:'each side',
+    sideSwitchSeconds:6,
     description:'Keep the heel planted while leaning into a gentle calf stretch, using steady breathing instead of bouncing.',
     cue:'Keep the heel down and breathe steadily.',
     why:'Lets the calf settle after standing and lower-body work.',
@@ -2968,6 +2976,7 @@ function beginTimedStageSideSwitch(w){
   const item=timedStageItems(w)[w.timedStageIndex||0];
   if(!item?.side||w.timedStageSide==='left'){advanceTimedStage();return;}
   const now=new Date().toISOString(),seconds=timedStageSwitchSeconds(item);
+  item.rightEndedAt=now;
   w.timedStageSwitchStartedAt=now;
   w.timedStageSwitchEndsAt=new Date(Date.now()+seconds*1000).toISOString();
   w.timedStageReps=0;
@@ -2976,9 +2985,12 @@ function beginTimedStageSideSwitch(w){
 }
 function finishTimedStageSideSwitch(){
   const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase)||!w.timedStageSwitchEndsAt)return;
+  const now=new Date().toISOString();
   w.timedStageSide='left';
   w.timedStageReps=0;
-  w.timedPhaseStartedAt=new Date().toISOString();
+  const item=timedStageItems(w)[w.timedStageIndex||0];
+  if(item)item.leftStartedAt=now;
+  w.timedPhaseStartedAt=now;
   delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
   fireWorkoutSignal('go','side-go-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Left side. Go.',label:'GO'});
   saveStore();render();
@@ -3309,6 +3321,7 @@ function startCooldown(){
   w.timedStageIndex=0;
   w.timedStageReps=0;
   w.timedStageSide=w.cooldown?.[0]?.side?'right':'';
+  if(w.cooldown?.[0]&&!w.cooldown[0].startedAt)w.cooldown[0].startedAt=now;
   w.timedPhaseStartedAt=now;
   w.timedPhaseSkippedSeconds=0;
   delete w.reviewPausedTimedStage;
@@ -3324,6 +3337,8 @@ function completeTimedStagePhase(w){
     return;
   }
   const now=new Date().toISOString();
+  const current=timedStageItems(w)[w.timedStageIndex||0];
+  if(current)current.endedAt=now;
   w.timedPhaseStartedAt=null;
   w.timedPhaseSkippedSeconds=0;
   w.timedStageSide='';
@@ -3351,13 +3366,16 @@ function advanceTimedStage(){
   const items=timedStageItems(w);
   if(!items.length){completeTimedStagePhase(w);return;}
   const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
+  const now=new Date().toISOString();
+  if(items[index])items[index].endedAt=now;
   delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
   if(index>=items.length-1){completeTimedStagePhase(w);return;}
   w.timedStageIndex=index+1;
   w.timedStageReps=0;
   const next=items[w.timedStageIndex];
+  if(next&&!next.startedAt)next.startedAt=now;
   w.timedStageSide=next?.side?'right':'';
-  w.timedPhaseStartedAt=new Date().toISOString();
+  w.timedPhaseStartedAt=now;
   delete w.reviewPausedTimedStage;
   fireWorkoutSignal('transition','stage-'+w.id+'-'+w.phase+'-'+w.timedStageIndex,{voice:'Next',label:'NEXT'});
   saveStore();render();
@@ -5111,6 +5129,7 @@ function startWarmupRoutine(){
   const now=new Date().toISOString();
   w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=0;w.timedPhaseStartedAt=now;w.warmupStartedAt=now;w.warmupCompletedAt=null;w.timedPhaseSkippedSeconds=0;
   w.timedStageSide=w.warmup?.[0]?.side?'right':'';
+  if(w.warmup?.[0]&&!w.warmup[0].startedAt)w.warmup[0].startedAt=now;
   markPhaseStart(w,'warmup',now);
   fireWorkoutSignal('go','warmup-start-'+w.id,{voice:'Warm-up starts now.',label:'GO'});
   saveStore();render();
