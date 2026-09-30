@@ -3663,10 +3663,10 @@ function advanceAfterRest(expectedToken=null){
       beginPreSetPosition(next.ei,next.si,true,0);
       return;
     }
-    w.phase='exercise-transition';
     w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
     announceExercise(upcoming,'Next exercise');
-    saveStore();render();return;
+    beginPreSetPosition(next.ei,next.si,true,5);
+    return;
   }
   beginPreSetPosition(next.ei,next.si,false);
 }
@@ -5336,11 +5336,13 @@ function renderPreSet(pos){
     '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
     '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedReps)+' · Previous: '+esc(previousLabel)+'</small></div>'+
-    '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
+    renderExerciseGuidanceCard(ex,{compact:true,label:'HOW TO'})+
+    '<div class="runner-target-steppers '+(noWeight?'single':'')+'">+
       (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
       '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
     '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+preSet.remaining+'</strong><small>Starts automatically when the countdown reaches zero.</small></div>'+
+    renderCountdownExercisePreview(pos)+
     '<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START NOW</button>'+
     '<div class="runner-set-links"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">OPTIONS</button></div>'+
   '</div>';
@@ -5354,7 +5356,7 @@ function renderTimedWorkSet(pos){
     '<div class="clean-timed-media '+(exerciseMediaSpec(pos.exercise).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(pos.exercise,'timed-work-exercise-media')+'</div>'+
     '<div class="timed-work-clock clean-timed-clock" id="timed-set-clock">'+formatClock(snap.remaining)+'</div>'+
     '<div class="stage-progress"><span id="timed-set-progress" style="width:'+pct+'%"></span></div>'+
-    '<p class="preset-cue">'+esc(exerciseGuidance(pos.exercise).cue)+'</p>'+
+    renderExerciseGuidanceCard(pos.exercise,{compact:true,label:'FORM WHILE YOU WORK'})+
     '<button class="button secondary" data-action="end-timed-set">END SET EARLY</button>'+
     '<div class="preset-tertiary"><button class="text-button" data-exercise-detail="'+esc(pos.exercise.id)+'">Form</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">Options</button><button class="text-button muted" data-action="reset-timer">Reset</button></div>'+
   '</div>';
@@ -5376,8 +5378,8 @@ function renderTimedStage(w){
   const sideLabel=snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'';
   return '<div class="timed-stage runner-guided-stage" data-stage-index="'+index+'" data-stage-mode="'+esc(snap.mode)+'">'+
     '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
-    '<div class="runner-stage-copy">'+sideLabel+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.cue||'Move through a comfortable range.')+'</p></div>'+
-    (snap.mode==='reps'?'<div class="runner-rep-stepper"><button data-action="warmup-rep-minus" '+(snap.completedReps<=0?'disabled':'')+' aria-label="Remove rep">−</button><div><strong>'+snap.completedReps+' / '+snap.totalReps+'</strong><span>reps'+(item?.side?' · current side':'')+'</span></div><button data-action="warmup-rep" aria-label="Log rep">+</button></div>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
+    '<div class="runner-stage-copy">'+sideLabel+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p>'+(item?.cue?'<small class="runner-stage-form-tip"><b>FORM TIP</b> '+esc(item.cue)+'</small>':'')+'</div>'+
+    (snap.mode==='reps'?'<div class="runner-rep-selected"><span>ACTUAL REPS</span><div class="runner-rep-stepper"><button data-action="warmup-rep-minus" '+(snap.completedReps<=1?'disabled':'')+' aria-label="Decrease reps">−</button><div><strong>'+snap.completedReps+'</strong><span>of '+snap.totalReps+' target'+(item?.side?' · this side':'')+'</span></div><button data-action="warmup-rep" aria-label="Increase reps">+</button></div><button class="button primary-action runner-gold-action" data-action="complete-stage-reps">COMPLETE MOVEMENT</button></div>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
     '<div class="runner-stage-progress"><span id="stage-progress-fill" style="width:'+pct+'%"></span></div>'+
     '<div class="runner-timer-controls three"><button data-action="reset-timer">RESET</button><button data-action="toggle-workout-pause">'+(w.isPaused?'RESUME':'PAUSE')+'</button><button data-action="skip-stage">SKIP</button></div>'+
     (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' · each side':'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
@@ -5547,6 +5549,8 @@ function renderWorkSet(pos){
   const displayLoad=noWeight?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(String(setTargetValue(ex,set,'weight'))+' lb');
   return '<div class="runner-work-clean">'+
     '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><strong>'+esc(ex.name)+'</strong><span>Set '+(pos.si+1)+' of '+ex.sets.length+(sideLabel?' · '+esc(sideLabel):'')+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="runner-active-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    renderExerciseGuidanceCard(ex,{compact:true,label:'FORM WHILE YOU WORK'})+
     '<div class="runner-target-ring runner-set-timer"><strong id="set-clock">'+formatClock(setElapsedSeconds(pos.workout))+'</strong><span>set time</span></div>'+
     '<div class="runner-live-plan"><span>PLANNED</span><strong>'+(noWeight?'':esc(plannedWeight||0)+' lb × ')+esc(plannedReps)+' '+repLabel+'</strong></div>'+
     '<div class="runner-load-focus"><strong>'+esc(displayLoad)+'</strong><span>'+esc(exerciseGuidance(ex).cue||'Keep the movement controlled.')+'</span></div>'+
@@ -6205,6 +6209,7 @@ function handleClick(event){
   else if(a==='start-strength')startStrengthWork();
   else if(a==='warmup-rep')addWarmupRep();
   else if(a==='warmup-rep-minus')removeWarmupRep();
+  else if(a==='complete-stage-reps')completeRepStage();
   else if(a==='set-workout-map-view'){workoutMapView=['warmup','strength','cooldown'].includes(node.dataset.mapView)?node.dataset.mapView:'strength';render();}
   else if(a==='open-workout-map'){workoutMapView=['warmup-routine','warmup'].includes(store.activeWorkout?.phase)?'warmup':store.activeWorkout?.phase==='cooldown'?'cooldown':'strength';workoutMapOpen=true;render();}
   else if(a==='previous-exercise')navigateExercise(-1);
