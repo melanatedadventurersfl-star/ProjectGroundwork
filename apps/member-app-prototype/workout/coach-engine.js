@@ -381,6 +381,9 @@
     if (generation !== stopGeneration) return;
     const line = String(response?.line || options.fallbackLine || '').trim();
     if (!line) return;
+    if (typeof options.onLine === 'function') {
+      try { options.onLine(line, response || null); } catch {}
+    }
 
     if (response?.audioBase64) {
       try {
