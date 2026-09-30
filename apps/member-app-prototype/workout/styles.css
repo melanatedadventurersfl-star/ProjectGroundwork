@@ -9323,3 +9323,60 @@ body.workout-mode .runner-v2-header{
 }
 
 
+
+
+/* Coach timeline controls */
+.coach-live-line{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:9px;
+  margin:8px 14px 0;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel-2);
+}
+.coach-live-line[hidden]{display:none}
+.coach-live-line span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.coach-live-line p{
+  margin:0;
+  color:var(--text);
+  font-size:9px;
+  line-height:1.4;
+}
+.coach-live-line button{
+  width:30px;
+  height:30px;
+  border:1px solid var(--line);
+  border-radius:50%;
+  background:transparent;
+  color:var(--text);
+  font-size:16px;
+}
+.runner-guided-ready-card{
+  display:grid;
+  gap:4px;
+  padding:12px 13px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--panel);
+  text-align:left;
+}
+.runner-guided-ready-card span{
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.runner-guided-ready-card strong{font-size:12px}
+.runner-guided-ready-card small{
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.4;
+}
