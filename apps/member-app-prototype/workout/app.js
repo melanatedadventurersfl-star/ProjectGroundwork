@@ -1208,9 +1208,9 @@ function guidedUpcomingPreview(w,snap){
       :String(next?.seconds||30)+' seconds';
     return {key:guidedPreviewKey(w,w.phase,nextIndex),line:'Next up, '+(next?.name||'the next movement')+'. '+target+'.',next,nextIndex};
   }
-  if(w.phase==='warmup'){
+  if(w.phase==='warmup'&&workoutCueSettings().nextSetPreview!=='off'){
     const ex=w.exercises?.[0],set=ex?.sets?.[0];
-    if(ex&&set)return {key:guidedPreviewKey(w,'strength',0),line:'Warm-up is almost done. First up is '+ex.name+'. '+spokenTargetForSet(ex,set)+'.',next:null,nextIndex:-1};
+    if(ex&&set)return {key:strengthPreviewKey(w,{ei:0,si:0,type:'exercise'}),line:'Warm-up is almost done. First up is '+ex.name+'. '+spokenTargetForSet(ex,set)+'.',next:null,nextIndex:-1};
   }
   return null;
 }
@@ -1219,6 +1219,22 @@ function prefetchGuidedLookahead(w){
   const snap=timedStageSnapshot(w);
   const preview=guidedUpcomingPreview(w,snap);
   if(preview)prefetchTimelineCue(preview.line,preview.key,{preview:{type:w.phase,index:preview.nextIndex}});
+
+  if(w.phase==='warmup'&&preview?.nextIndex===-1){
+    const firstStrength=w.exercises?.[0];
+    const form=exerciseInstructionLine(firstStrength,0);
+    if(form)prefetchTimelineCue(form,formCueKey(w,0,0),{preview:{type:'form',ei:0,si:0}});
+  }
+
+  if(preview?.next&&preview.nextIndex+1<timedStageItems(w).length){
+    const laterIndex=preview.nextIndex+1;
+    const later=timedStageItems(w)[laterIndex];
+    const target=later?.mode==='reps'||later?.reps
+      ?String(later.reps||8)+' reps'+(later.side?' each side':'')
+      :String(later?.seconds||30)+' seconds';
+    const line='Next up, '+(later?.name||'the next movement')+'. '+target+'.';
+    prefetchTimelineCue(line,guidedPreviewKey(w,w.phase,laterIndex),{preview:{type:w.phase,index:laterIndex}});
+  }
 }
 function sessionCoachExtra(w){
   return {exerciseCount:w?.exercises?.length||0,warmupCount:w?.warmup?.length||0,warmupMinutes:runnerPhaseMinutes(w?.warmup||[])};
@@ -6500,8 +6516,14 @@ function beginWorkoutSession(skipWarmup=false){
   if(skipWarmup&&hasWarmup){
     const first=w.exercises?.[0];
     const name=displayName()==='there'?'':displayName();
-    const line='Alright'+(name?' '+name:'')+'. Warm-up skipped.'+(first?' First up is '+first.name+'.':'');
-    playTimelineCue(line,'session-skip-warmup-'+w.id,{preview:{type:'session',warmupSkipped:true}});
+    const previewEnabled=workoutCueSettings().nextSetPreview!=='off';
+    const line='Alright'+(name?' '+name:'')+'. Warm-up skipped.'+(first&&previewEnabled?' First up is '+first.name+'.':'');
+    const key=first&&previewEnabled?strengthPreviewKey(w,{ei:0,si:0,type:'exercise'}):'session-skip-warmup-'+w.id;
+    playTimelineCue(line,key,{preview:{type:'session',warmupSkipped:true}});
+    if(first){
+      const form=exerciseInstructionLine(first,0);
+      if(form)prefetchTimelineCue(form,formCueKey(w,0,0),{preview:{type:'form',ei:0,si:0}});
+    }
   }else{
     playPreparedWorkoutCoach(
       'session_started',
@@ -6633,9 +6655,20 @@ function completeWarmup(){
   markPhaseEnd(w,'warmup',now);
   fireWorkoutSignal('complete','warmup-complete-'+w.id,{voice:'',label:'READY'});
   const next=w.exercises?.[0];
-  emitWorkoutCoach('warmup_completed',{
-    nextExercise:next?{name:next.name,target:currentPrescriptionLabel(next)}:undefined
-  },'Warm-up complete.'+(next?' First exercise is '+next.name+'.':''),'coach-warmup-complete-'+w.id);
+  const previewEnabled=workoutCueSettings().nextSetPreview!=='off';
+  if(next&&previewEnabled){
+    const previewKey=strengthPreviewKey(w,{ei:0,si:0,type:'exercise'});
+    if(timelineWasPlayed(previewKey)){
+      playTimelineCue('Warm-up done. Start when you’re ready.','warmup-done-'+w.id,{preview:{type:'warmup-complete'}});
+    }else{
+      const set=next.sets?.[0]||{};
+      playTimelineCue('Warm-up complete. First up is '+next.name+'. '+spokenTargetForSet(next,set)+'.',previewKey,{preview:{type:'strength',ei:0,si:0}});
+    }
+    const form=exerciseInstructionLine(next,0);
+    if(form)prefetchTimelineCue(form,formCueKey(w,0,0),{preview:{type:'form',ei:0,si:0}});
+  }else{
+    playTimelineCue('Warm-up done. Start when you’re ready.','warmup-done-'+w.id,{preview:{type:'warmup-complete'}});
+  }
   saveStore();render();
 }
 function startStrengthWork(){
@@ -6726,9 +6759,10 @@ function renderPreSet(pos){
   const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
   const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   const timedExercise=ex.loadMode==='timed';
-  const startControl=timedExercise
+  const autoTimed=timedExercise&&workoutCueSettings().autoStartTimedExercise;
+  const startControl=autoTimed
     ? '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACHING':preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>'+(preSet.mode==='coach'?'Countdown starts after the coach finishes the exercise intro.':'Timed exercise starts automatically when the countdown reaches zero.')+'</small></div>'+renderCountdownExercisePreview(pos)+'<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
-    : '<div class="runner-manual-start-note" role="status"><span>'+(preSet.mode==='coach'?'COACHING':'WHEN YOU’RE READY')+'</span><strong>'+(preSet.mode==='coach'?'Listen for the exercise setup.':'You control when this set starts.')+'</strong><small>The coach countdown begins after you tap Start Set.</small></div><button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':'START SET')+'</button>';
+    : '<div class="runner-manual-start-note" role="status"><span>'+(preSet.mode==='coach'?'COACHING':'WHEN YOU’RE READY')+'</span><strong>'+(preSet.mode==='coach'?'Listen for the exercise setup.':'You control when this set starts.')+'</strong><small>The coach countdown begins after you tap Start Set.</small></div><button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':(timedExercise?'START TIMED SET':'START SET'))+'</button>';
   return '<div class="runner-set-ready">'+
     '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
