@@ -11,10 +11,10 @@ const corsHeaders = {
 };
 const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
-const EVENTS = new Set(["session_started","warmup_started","stretch_started","warmup_completed","exercise_started","set_completed","exercise_feedback","cooldown_started","cooldown_completed","workout_completed","test","cue_pack"]);
+const EVENTS = new Set(["session_started","warmup_started","stretch_started","warmup_completed","exercise_started","set_completed","exercise_feedback","cooldown_started","cooldown_completed","workout_completed","test","cue_pack","timeline_cue"]);
 const STYLES = new Set(["balanced","direct","supportive","energetic","calm","technical"]);
 const VIBES = new Set(["warm-familiar","gym-partner","southern-warmth","east-coast-direct","west-coast-smooth","soulful","neutral"]);
-const FAST_DIALOGUE_EVENTS = new Set(["warmup_started","stretch_started","warmup_completed","exercise_started","cooldown_started","cooldown_completed"]);
+const FAST_DIALOGUE_EVENTS = new Set(["session_started","warmup_started","stretch_started","warmup_completed","exercise_started","cooldown_started","cooldown_completed","timeline_cue"]);
 const FREQUENCIES = new Set(["minimal","normal","high"]);
 const DETAILS = new Set(["short","standard","detailed"]);
 const TALK_SPEEDS = new Set(["slow","normal","fast"]);
@@ -86,6 +86,7 @@ function fallbackLine(event: string, context: any, vibe = "warm-familiar") {
   const stageName = clean(stage?.name, 90);
   const stageTarget = clean(stage?.target, 80);
   const nextExercise = clean(context?.nextExercise?.name, 90);
+  if (event === "timeline_cue") return clean(context?.line, 260);
   if (event === "session_started") {
     if (Number(context?.warmupCount) > 0) return `Alright${who}. Warm-up first, then ${Number(context?.exerciseCount) || 0} strength exercises.`;
     return `Alright${who}, you ready? ${routine ? routine + ". " : ""}Let's get started.`;

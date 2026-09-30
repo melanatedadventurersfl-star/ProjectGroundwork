@@ -381,6 +381,9 @@
     if (generation !== stopGeneration) return;
     const line = String(response?.line || options.fallbackLine || '').trim();
     if (!line) return;
+    if (typeof options.onLine === 'function') {
+      try { options.onLine(line, response || null); } catch {}
+    }
 
     if (response?.audioBase64) {
       try {
@@ -421,6 +424,27 @@
     return queue;
   }
 
+  function cancel() {
+    stopGeneration += 1;
+    queue = Promise.resolve();
+    stopAudioHold();
+    if (activeSource) {
+      try { activeSource.stop(0); } catch {}
+      activeSource = null;
+    }
+    if (activeAudio) {
+      try {
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+      } catch {}
+      activeAudio = null;
+    }
+    if (persistentAudioUrl) {
+      try { URL.revokeObjectURL(persistentAudioUrl); } catch {}
+      persistentAudioUrl = '';
+    }
+  }
+
   function stop() {
     stopGeneration += 1;
     queue = Promise.resolve();
@@ -443,5 +467,5 @@
     }
   }
 
-  window.GoWorkoutCoach = { emit, stop, unlock, playClip };
+  window.GoWorkoutCoach = { emit, stop, unlock, playClip, cancel };
 })();
