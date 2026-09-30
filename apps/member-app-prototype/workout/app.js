@@ -6387,7 +6387,7 @@ function renderHomeHeroAccessory(x){
     '</small></div>';
   }
   if(['rest','completed','week-complete'].includes(x.state)){
-    const entry=x.entry||homeNextScheduledEntry(x.schedule);
+    const entry=x.state==='rest'?(x.entry||homeNextScheduledEntry(x.schedule)):homeNextScheduledEntry(x.schedule);
     const day=entry?.adaptedDay||entry?.day;
     if(!entry||!day)return '';
     return '<div class="home-hero-next-v4 quiet"><span>NEXT TRAINING</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long'}))+' · ~'+esc(day.estimatedMinutes||store.profile?.minutes||45)+' min</small></div>';
