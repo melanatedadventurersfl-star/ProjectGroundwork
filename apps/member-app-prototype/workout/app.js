@@ -654,6 +654,7 @@ function ensureWorkoutAudio(){
 }
 function unlockWorkoutCues(){
   ensureWorkoutAudio();
+  window.GoWorkoutCoach?.unlock?.();
   if(workoutCueSettings().voice&&'speechSynthesis' in window){
     try{window.speechSynthesis.resume?.();}catch{}
   }
