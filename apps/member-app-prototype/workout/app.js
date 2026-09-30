@@ -5654,6 +5654,36 @@ function daysSince(iso,date=new Date()){
   const then=new Date(value);then.setHours(0,0,0,0);
   return Math.max(0,Math.floor((today-then)/86400000));
 }
+function homeActivePhaseLabel(phase){
+  return ({
+    intro:'Ready',
+    'warmup-routine':'Warm-up',
+    warmup:'Warm-up',
+    'warmup-complete':'Warm-up complete',
+    'pre-set':'Set prep',
+    work:'Working set',
+    'timed-set':'Timed set',
+    'side-switch':'Switching sides',
+    rest:'Rest',
+    calibrate:'Calibration',
+    feedback:'Exercise feedback',
+    'exercise-transition':'Exercise transition',
+    'exercise-review':'Exercise review',
+    cooldown:'Cooldown',
+    review:'Final review'
+  })[phase]||'Session active';
+}
+function homeTitleCase(value){
+  return String(value||'').replace(/_/g,' ').replace(/\b\w/g,char=>char.toUpperCase());
+}
+function homeExerciseFocus(exercises){
+  const counts={};
+  for(const ex of exercises||[]){
+    const source=catalog.find(item=>item.id===ex.id)||ex;
+    for(const muscle of source.muscles||[])counts[muscle]=(counts[muscle]||0)+1;
+  }
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([name])=>homeTitleCase(name)).join(' · ');
+}
 function getHomeExperience(date=new Date()){
   const schedule=currentWeekSchedule(date);
   const todayKey=dateKey(date);
@@ -5666,38 +5696,133 @@ function getHomeExperience(date=new Date()){
   const context=programContext(date);
   if(store.activeWorkout){
     const w=store.activeWorkout;
-    const resolved=workoutResolvedCount(w);
-    return {state:'active',context,schedule,eyebrow:'WORKOUT IN PROGRESS',title:w.routineName||'Current workout',copy:resolved+' of '+(w.exercises?.length||0)+' exercises resolved',meta:workoutElapsedSeconds(w)>60?formatClock(workoutElapsedSeconds(w))+' elapsed':'Ready when you are',primaryLabel:'RESUME WORKOUT',primaryAction:'resume',entry:null,last};
+    const focus=w.focus||homeExerciseFocus(w.exercises)||'Your planned training session';
+    const elapsed=workoutElapsedSeconds(w);
+    return {
+      state:'active',
+      context,
+      schedule,
+      eyebrow:'SESSION ACTIVE',
+      title:w.routineName||'Current workout',
+      copy:focus,
+      meta:(elapsed?formatClock(elapsed)+' elapsed · ':'')+homeActivePhaseLabel(w.phase),
+      primaryLabel:'RESUME WORKOUT',
+      primaryAction:'resume',
+      entry:null,
+      last
+    };
   }
   if(completedToday){
     const history=completedToday.history||last;
-    const improvements=(history?.newPRs?.length||0);
-    return {state:'completed',context,schedule,eyebrow:'YOU’RE DONE FOR TODAY',title:history?.routineName||completedToday.day?.name||'Workout complete',copy:(history?.durationMinutes?history.durationMinutes+' min · ':'')+(history?.completedSets||0)+' sets completed',meta:improvements?improvements+' improvement'+(improvements===1?'':'s')+' recorded':'Your work is saved',primaryLabel:'SEE YOUR WORKOUT',primaryAction:'history',entry:completedToday,last};
+    const completedMs=Date.parse(history?.completedAt||'');
+    const fresh=Number.isFinite(completedMs)&&Date.now()-completedMs>=0&&Date.now()-completedMs<=90*60*1000;
+    const timing=historyTimingInfo(history);
+    const outcome=history?historyPerformanceHighlight(history):'Your work is saved';
+    return {
+      state:fresh?'completed-fresh':'completed',
+      context,
+      schedule,
+      eyebrow:fresh?'WORKOUT COMPLETE':'DONE FOR TODAY',
+      title:history?.routineName||completedToday.day?.name||'Workout complete',
+      copy:outcome,
+      meta:[
+        timing.activeMinutes!==null?timing.activeMinutes+' active min':'',
+        history?.completedSets?history.completedSets+' sets':'',
+        history?.newPRs?.length?history.newPRs.length+' improvement'+(history.newPRs.length===1?'':'s'):''
+      ].filter(Boolean).join(' · ')||'Your work is saved',
+      primaryLabel:fresh?'SEE RESULTS':'VIEW WORKOUT',
+      primaryAction:'history',
+      entry:completedToday,
+      history,
+      last
+    };
   }
   if(awayDays!==null&&awayDays>=7){
     const entry=today||missed||upcoming||null;
     const day=entry?.adaptedDay||entry?.day;
-    return {state:'returning',context,schedule,eyebrow:'WELCOME BACK',title:day?.name||'Your program is ready',copy:'It’s been '+awayDays+' days since your last workout.',meta:day?'~'+(day.estimatedMinutes||store.profile?.minutes||45)+' min · '+day.exercises.length+' exercises':'Pick up from your current program',primaryLabel:entry&&(entry.status==='missed'||entry.status==='today')?(entry.status==='missed'?'START COMEBACK WORKOUT':'START WORKOUT'):'VIEW NEXT WORKOUT',primaryAction:entry&&(entry.status==='missed'||entry.status==='today')?'start':'train',entry,last};
+    return {
+      state:'returning',
+      context,
+      schedule,
+      eyebrow:'WELCOME BACK',
+      title:day?.name||'Your program is ready',
+      copy:day?.focus||('It’s been '+awayDays+' days since your last workout.'),
+      meta:day?'~'+(day.estimatedMinutes||store.profile?.minutes||45)+' min · '+day.exercises.length+' exercises':'Pick up from your current program',
+      primaryLabel:entry&&(entry.status==='missed'||entry.status==='today')?(entry.status==='missed'?'START COMEBACK WORKOUT':'START WORKOUT'):'VIEW NEXT WORKOUT',
+      primaryAction:entry&&(entry.status==='missed'||entry.status==='today')?'start':'train',
+      entry,
+      last
+    };
   }
   if(missed){
     const day=missed.adaptedDay||missed.day;
-    return {state:'missed',context,schedule,eyebrow:'STILL AVAILABLE',title:day?.name||'Missed workout',copy:'This session can move with you. You do not have to abandon the week.',meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises',primaryLabel:'DO IT TODAY',primaryAction:'start',entry:missed,last};
+    return {
+      state:'missed',
+      context,
+      schedule,
+      eyebrow:'STILL AVAILABLE',
+      title:day?.name||'Missed workout',
+      copy:day?.focus||'This session can move with you.',
+      meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises',
+      primaryLabel:'DO IT TODAY',
+      primaryAction:'start',
+      entry:missed,
+      last
+    };
   }
   if(today){
     const day=today.adaptedDay||today.day;
     const previous=(store.history||[]).find(item=>item.routineName===day?.name);
-    return {state:'today',context,schedule,eyebrow:'TODAY',title:day?.name||'Today’s workout',copy:day?.focus||'Your planned training session',meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises'+(previous?' · last done '+(daysSince(previous.completedAt,date)||0)+' days ago':''),primaryLabel:'START WORKOUT',primaryAction:'start',entry:today,last};
+    return {
+      state:'today',
+      context,
+      schedule,
+      eyebrow:'TODAY',
+      title:day?.name||'Today’s workout',
+      copy:day?.focus||'Your planned training session',
+      meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises'+(previous?' · last done '+(daysSince(previous.completedAt,date)||0)+' days ago':''),
+      primaryLabel:'START WORKOUT',
+      primaryAction:'start',
+      entry:today,
+      last
+    };
   }
   if(upcoming){
     const day=upcoming.adaptedDay||upcoming.day;
     const when=upcoming.date.toLocaleDateString(undefined,{weekday:'long'});
-    return {state:'rest',context,schedule,eyebrow:'RECOVERY DAY',title:'No workout scheduled today',copy:'Your next session is '+day?.name+' on '+when+'.',meta:'Rest is part of the program.',primaryLabel:'VIEW NEXT WORKOUT',primaryAction:'train',entry:upcoming,last};
+    return {
+      state:'rest',
+      context,
+      schedule,
+      eyebrow:'RECOVERY DAY',
+      title:'No workout scheduled today',
+      copy:'Recover today. Your next session is '+day?.name+' on '+when+'.',
+      meta:'Next training day · '+when,
+      primaryLabel:'VIEW NEXT WORKOUT',
+      primaryAction:'train',
+      entry:upcoming,
+      last
+    };
   }
-  return {state:'week-complete',context,schedule,eyebrow:'WEEK COMPLETE',title:'Your planned sessions are done',copy:'Your next training week will build from what you completed.',meta:'Block '+context.blockNumber+' · Week '+context.blockWeek,primaryLabel:'VIEW PROGRESS',primaryAction:'progress',entry:null,last};
+  return {
+    state:'week-complete',
+    context,
+    schedule,
+    eyebrow:'WEEK COMPLETE',
+    title:'Your planned sessions are done',
+    copy:'Your next training week will build from what you completed.',
+    meta:'Block '+context.blockNumber+' · Week '+context.blockWeek,
+    primaryLabel:'VIEW PROGRESS',
+    primaryAction:'progress',
+    entry:null,
+    last
+  };
 }
 function renderHomePrimaryAction(x){
-  if(x.primaryAction==='start'&&x.entry)return '<button class="button primary-action home-state-cta" data-start="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">'+esc(x.primaryLabel)+'</button>';
-  return '<button class="button primary-action home-state-cta" data-action="'+esc(x.primaryAction)+'">'+esc(x.primaryLabel)+'</button>';
+  const quiet=['rest','completed','week-complete'].includes(x.state);
+  const buttonClass='button '+(quiet?'secondary ':'primary-action ')+'home-state-cta'+(quiet?' quiet':'');
+  if(x.primaryAction==='start'&&x.entry)return '<button class="'+buttonClass+'" data-start="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">'+esc(x.primaryLabel)+'</button>';
+  return '<button class="'+buttonClass+'" data-action="'+esc(x.primaryAction)+'">'+esc(x.primaryLabel)+'</button>';
 }
 function homeFirstName(){
   const value=String(displayName()==='there'?'':displayName()).trim();
@@ -5705,6 +5830,13 @@ function homeFirstName(){
 }
 function homeDateLabel(date=new Date()){
   return date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}).toUpperCase();
+}
+function homeWorkoutCode(name){
+  const clean=String(name||'').trim();
+  if(!clean)return '';
+  const known={'Upper A':'UA','Upper B':'UB','Lower A':'LA','Lower B':'LB','Full Body A':'FA','Full Body B':'FB','Full Body C':'FC'};
+  if(known[clean])return known[clean];
+  return clean.split(/\s+/).slice(0,2).map(part=>part[0]||'').join('').toUpperCase();
 }
 function homeWorkoutExercise(x){
   if(store.activeWorkout?.exercises?.length){
@@ -5723,103 +5855,170 @@ function homeExerciseMeta(ex){
   if(!ex)return '';
   const catalogItem=catalog.find(item=>item.id===ex.id)||ex;
   const sets=Array.isArray(ex.sets)?ex.sets.length:num(ex.sets);
-  const muscles=(catalogItem.muscles||[]).slice(0,2).map(value=>String(value).replace(/_/g,' '));
+  const muscles=(catalogItem.muscles||[]).slice(0,2).map(homeTitleCase);
   return [sets?sets+' set'+(sets===1?'':'s'):'',...muscles].filter(Boolean).join(' · ');
 }
 function homeWeekStats(schedule){
-  const completed=schedule.filter(entry=>entry.status==='complete').length;
-  const minutes=schedule.reduce((sum,entry)=>sum+num(entry.history?.durationMinutes),0);
+  const completedEntries=schedule.filter(entry=>entry.status==='complete');
+  const timings=completedEntries.map(entry=>historyTimingInfo(entry.history)).filter(item=>item.activeMinutes!==null);
   return {
-    completed,
+    completed:completedEntries.length,
     planned:schedule.length,
-    minutes,
-    remaining:Math.max(0,schedule.length-completed)
+    minutes:timings.reduce((sum,item)=>sum+item.activeMinutes,0),
+    minutesKnown:timings.length>0,
+    remaining:Math.max(0,schedule.length-completedEntries.length)
   };
 }
-function homeWeeklyMuscleSnapshot(){
+function homeWeekMuscleSnapshot(){
   const counts={};
   for(const workout of weeklyHistory()){
     for(const exercise of workout.exercises||[]){
+      if(exercise.skipped)continue;
       const source=catalog.find(item=>item.id===exercise.id)||exercise;
       for(const muscle of source.muscles||[])counts[muscle]=(counts[muscle]||0)+1;
     }
   }
-  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-  const group=(keys)=>keys.reduce((sum,key)=>sum+(counts[key]||0),0);
+  const max=Math.max(1,...Object.values(counts));
+  const levelFor=(keys)=>{
+    const value=keys.reduce((sum,key)=>sum+(counts[key]||0),0);
+    if(!value)return 0;
+    const ratio=value/max;
+    return ratio>=1.5?4:ratio>=1?3:ratio>=.5?2:1;
+  };
   return {
-    top:sorted.slice(0,4).map(([key,value])=>({key,label:key.replace(/_/g,' '),value})),
-    push:group(['chest','anterior_delts','lateral_delts','triceps']),
-    pull:group(['lats','upper_back','rear_delts','biceps']),
-    lower:group(['quads','hamstrings','glutes','calves','adductors']),
-    core:group(['core','hip_flexors'])
+    counts,
+    top:Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([key,value])=>({key,label:homeTitleCase(key),value})),
+    front:{
+      chest:levelFor(['chest']),
+      shoulders:levelFor(['anterior_delts','lateral_delts']),
+      biceps:levelFor(['biceps']),
+      core:levelFor(['core','hip_flexors']),
+      quads:levelFor(['quads','adductors'])
+    },
+    back:{
+      back:levelFor(['lats','upper_back','rear_delts']),
+      triceps:levelFor(['triceps']),
+      glutes:levelFor(['glutes']),
+      hamstrings:levelFor(['hamstrings']),
+      calves:levelFor(['calves'])
+    }
   };
 }
+function homeNextScheduledEntry(schedule,date=new Date()){
+  const today=dateKey(date);
+  const current=(schedule||[]).filter(entry=>entry.dateKey>today&&entry.status==='upcoming').sort((a,b)=>a.date-b.date)[0];
+  if(current)return current;
+  const future=currentWeekSchedule(addDays(startOfWeek(date),7));
+  return future.find(entry=>entry.status==='upcoming'||entry.status==='today')||future[0]||null;
+}
 function renderHomeProgramJourney(context){
-  const phases=['ESTABLISH','BUILD','PUSH','CONSOLIDATE'];
+  const phases=[
+    ['ESTABLISH','Set your working baseline'],
+    ['BUILD','Add repeatable work'],
+    ['PUSH','Raise working intensity'],
+    ['CONSOLIDATE','Lock in the block']
+  ];
   return '<div class="home-program-journey" aria-label="Block '+context.blockNumber+' progress">'+
-    phases.map((phase,index)=>{
+    phases.map(([phase,meaning],index)=>{
       const week=index+1;
       const state=week<context.blockWeek?'done':week===context.blockWeek?'current':'future';
-      return '<div class="home-program-step '+state+'"><i></i><span>'+phase+'</span><small>W'+week+'</small></div>';
+      return '<button type="button" class="home-program-step '+state+'" data-action="train-program" aria-label="'+esc(phase)+', week '+week+'. '+esc(meaning)+'"><i></i><span>'+phase+'</span><small>W'+week+'</small></button>';
     }).join('')+
   '</div>';
 }
+function renderHomeCompletionVisual(history){
+  const timing=historyTimingInfo(history);
+  const prs=history?.newPRs?.length||0;
+  return '<div class="home-complete-visual"><div class="home-complete-check">✓</div><span>SESSION SAVED</span><div class="home-complete-stats">'+
+    '<div><strong>'+(timing.activeMinutes!==null?timing.activeMinutes:'—')+'</strong><small>active min</small></div>'+
+    '<div><strong>'+num(history?.completedSets)+'</strong><small>sets</small></div>'+
+    '<div><strong>'+formatVolume(history?.totalVolume||0)+'</strong><small>volume</small></div>'+
+    (prs?'<div><strong>'+prs+'</strong><small>improvement'+(prs===1?'':'s')+'</small></div>':'')+
+  '</div></div>';
+}
+function renderHomeRecoveryVisual(x){
+  const entry=x.entry||homeNextScheduledEntry(x.schedule);
+  const day=entry?.adaptedDay||entry?.day;
+  if(!entry||!day)return '<div class="home-rest-visual"><span class="home-rest-mark">○</span><strong>Recovery</strong><small>Your next training week will appear here.</small></div>';
+  return '<div class="home-rest-visual"><span class="home-rest-mark">○</span><div><span>NEXT TRAINING</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · ~'+esc(day.estimatedMinutes||store.profile?.minutes||45)+' min</small></div></div>';
+}
 function renderHomeHeroVisual(x){
+  if(x.state==='completed-fresh'&&x.history)return renderHomeCompletionVisual(x.history);
+  if(['rest','week-complete','completed'].includes(x.state))return renderHomeRecoveryVisual(x);
   const exercise=homeWorkoutExercise(x);
   const progress=x.state==='active'&&store.activeWorkout
     ?{done:workoutResolvedCount(store.activeWorkout),total:store.activeWorkout.exercises?.length||0}
-    :{done:x.state==='completed'?(x.entry?.day?.exercises?.length||0):0,total:(x.entry?.adaptedDay||x.entry?.day)?.exercises?.length||0};
+    :{done:0,total:(x.entry?.adaptedDay||x.entry?.day)?.exercises?.length||0};
   const pct=progress.total?Math.round((progress.done/progress.total)*100):0;
   const spec=exercise?exerciseMediaSpec(exercise):null;
-  const src=exercise&&spec?.status==='avatar'?exerciseMediaFrameUrl(exercise,0):'';
-  const nextLabel=x.state==='active'?'UP NEXT':x.state==='completed'?'LAST FOCUS':'STARTS WITH';
+  const src=exercise&&spec&&!['reference','missing'].includes(spec.status)?exerciseMediaFrameUrl(exercise,0):'';
+  const nextLabel=x.state==='active'?'UP NEXT':'STARTS WITH';
   const visual=src
     ?'<button class="home-hero-photo" type="button" data-exercise-detail="'+esc(exercise.id)+'" aria-label="View '+esc(exercise.name)+'"><img src="'+esc(src)+'" alt="'+esc(exercise.name)+' exercise demonstration"></button>'
-    :'<div class="home-hero-figure" aria-hidden="true"><svg viewBox="0 0 180 220"><circle cx="90" cy="36" r="22"/><path d="M62 72Q90 55 118 72L128 128Q120 151 112 170L104 210H84L80 171Q75 151 52 129Z"/><path d="M62 80 30 128M118 80l32 48"/><path d="M80 171 58 214M108 171l22 43"/></svg><span class="home-figure-glow"></span></div>';
+    :'<div class="home-hero-fallback"><span>TRAINING</span><strong>'+esc(homeExerciseFocus((x.entry?.adaptedDay||x.entry?.day)?.exercises)||'Workout ready')+'</strong></div>';
   return '<div class="home-hero-visual">'+visual+
-    (progress.total?'<div class="home-session-ring" style="--home-progress:'+pct+'"><div><strong>'+progress.done+'/'+progress.total+'</strong><span>'+(x.state==='active'?'done':'exercises')+'</span></div></div>':'')+
+    (progress.total?'<div class="home-session-ring" style="--home-progress:'+pct+'"><div><strong>'+progress.done+'/'+progress.total+'</strong><span>complete</span></div></div>':'')+
     (exercise?'<div class="home-next-exercise"><span>'+nextLabel+'</span><strong>'+esc(exercise.name)+'</strong><small>'+esc(homeExerciseMeta(exercise))+'</small></div>':'')+
   '</div>';
 }
 function renderHomeWeekPulse(schedule){
   const context=programContext();
   const todayKey=dateKey();
-  return '<div class="home-week-pulse home-week-pulse-v2">'+TRAINING_DAYS.map(dayDef=>{
+  return '<div class="home-week-pulse home-week-pulse-v3">'+TRAINING_DAYS.map(dayDef=>{
     const entry=schedule.find(item=>item.dayId===dayDef.id);
     const date=addDays(context.weekStart,dayOffsetFromMonday(dayDef.id));
     const status=entry?.status||'rest';
-    const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'•':status==='upcoming'?'○':'';
     const isToday=dateKey(date)===todayKey;
-    return '<div class="home-pulse-day status-'+status+(isToday?' calendar-today':'')+'"><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><i>'+marker+'</i></div>';
+    const code=entry?homeWorkoutCode((entry.adaptedDay||entry.day)?.name):'';
+    const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'•':status==='upcoming'?'○':'';
+    return '<div class="home-pulse-day status-'+status+(isToday?' calendar-today':'')+'"><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><i>'+marker+'</i><small>'+esc(code)+'</small></div>';
   }).join('')+'</div>';
 }
+function bodyHeatClass(level){
+  return level?' heat-'+Math.max(1,Math.min(4,level)):'';
+}
 function renderHomeBodySnapshot(){
-  const snapshot=homeWeeklyMuscleSnapshot();
+  const snapshot=homeWeekMuscleSnapshot();
   if(!snapshot.top.length)return '';
-  const top=snapshot.top.map(item=>'<span>'+esc(item.label)+'</span>').join('');
-  return '<section class="home-body-card">'+
-    '<div class="home-body-visual" aria-hidden="true"><svg viewBox="0 0 120 210">'+
-      '<circle class="body-base" cx="60" cy="24" r="16"/>'+
-      '<path class="body-base" d="M42 48Q60 39 78 48L84 105 74 132 70 194H52L48 132 36 105Z"/>'+
-      '<path class="body-base" d="M42 55 18 111M78 55l24 56"/>'+
-      '<path class="body-base" d="M49 131 35 200M71 131l14 69"/>'+
-      '<ellipse class="body-zone push '+(snapshot.push?'active':'')+'" cx="60" cy="67" rx="21" ry="14"/>'+
-      '<ellipse class="body-zone pull '+(snapshot.pull?'active':'')+'" cx="60" cy="87" rx="23" ry="15"/>'+
-      '<ellipse class="body-zone core '+(snapshot.core?'active':'')+'" cx="60" cy="111" rx="16" ry="17"/>'+
-      '<ellipse class="body-zone lower '+(snapshot.lower?'active':'')+'" cx="60" cy="151" rx="22" ry="31"/>'+
-    '</svg></div>'+
-    '<div class="home-body-copy"><p class="eyebrow">THIS WEEK’S TRAINING</p><h3>Your work, at a glance.</h3><p>Highlighted areas reflect muscles recorded in completed workouts this week.</p><div class="home-muscle-chips">'+top+'</div><button class="text-button" data-action="progress">VIEW PROGRESS →</button></div>'+
+  const top=snapshot.top.map(item=>'<span><strong>'+esc(item.label)+'</strong><small>'+item.value+' touch'+(item.value===1?'':'es')+'</small></span>').join('');
+  return '<section class="home-body-card home-training-load">'+
+    '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p><h3>Where your work landed.</h3></div><button class="text-button" data-action="progress">VIEW PROGRESS</button></div>'+
+    '<div class="home-body-layout"><div class="home-body-pair" aria-label="Muscle groups trained this week">'+
+      '<div class="home-body-figure"><span>FRONT</span><svg viewBox="0 0 120 210" aria-hidden="true">'+
+        '<circle class="body-base" cx="60" cy="24" r="16"/><path class="body-base" d="M42 48Q60 39 78 48L84 105 74 132 70 194H52L48 132 36 105Z"/><path class="body-base" d="M42 55 18 111M78 55l24 56"/><path class="body-base" d="M49 131 35 200M71 131l14 69"/>'+
+        '<ellipse class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" cx="60" cy="66" rx="20" ry="12"/>'+
+        '<ellipse class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" cx="60" cy="55" rx="28" ry="9"/>'+
+        '<ellipse class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" cx="34" cy="88" rx="7" ry="21"/><ellipse class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" cx="86" cy="88" rx="7" ry="21"/>'+
+        '<ellipse class="body-zone core'+bodyHeatClass(snapshot.front.core)+'" cx="60" cy="103" rx="15" ry="23"/>'+
+        '<ellipse class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" cx="50" cy="153" rx="11" ry="31"/><ellipse class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" cx="70" cy="153" rx="11" ry="31"/>'+
+      '</svg></div>'+
+      '<div class="home-body-figure"><span>BACK</span><svg viewBox="0 0 120 210" aria-hidden="true">'+
+        '<circle class="body-base" cx="60" cy="24" r="16"/><path class="body-base" d="M42 48Q60 39 78 48L84 105 74 132 70 194H52L48 132 36 105Z"/><path class="body-base" d="M42 55 18 111M78 55l24 56"/><path class="body-base" d="M49 131 35 200M71 131l14 69"/>'+
+        '<ellipse class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" cx="60" cy="76" rx="23" ry="28"/>'+
+        '<ellipse class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" cx="34" cy="88" rx="7" ry="21"/><ellipse class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" cx="86" cy="88" rx="7" ry="21"/>'+
+        '<ellipse class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" cx="60" cy="126" rx="18" ry="14"/>'+
+        '<ellipse class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" cx="50" cy="157" rx="10" ry="29"/><ellipse class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" cx="70" cy="157" rx="10" ry="29"/>'+
+        '<ellipse class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" cx="47" cy="191" rx="7" ry="16"/><ellipse class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" cx="73" cy="191" rx="7" ry="16"/>'+
+      '</svg></div>'+
+    '</div><div class="home-body-copy"><p>This reflects muscles recorded in completed workouts. It is training load, not a body-change measurement.</p><div class="home-muscle-chips">'+top+'</div></div></div>'+
   '</section>';
 }
 function renderHomeLastWorkout(last){
   if(!last)return '';
-  const volume=num(last.totalVolume);
-  const improvements=last.newPRs?.length||0;
+  const timing=historyTimingInfo(last);
+  const highlight=historyPerformanceHighlight(last);
   return '<button class="home-continuity-card home-last-card" data-action="history">'+
     '<div class="home-last-icon"><span>✓</span></div>'+
-    '<div class="home-last-main"><span>LAST WORKOUT</span><strong>'+esc(last.routineName||'Workout')+'</strong><small>'+esc(formatDate(last.completedAt))+(last.durationMinutes?' · '+last.durationMinutes+' min':'')+'</small></div>'+
-    '<div class="home-last-stats">'+(volume?'<span><strong>'+esc(formatVolume(volume))+'</strong><small>volume</small></span>':'')+(improvements?'<span><strong>'+improvements+'</strong><small>improvement'+(improvements===1?'':'s')+'</small></span>':'')+'<em>VIEW →</em></div>'+
+    '<div class="home-last-main"><span>LAST WORKOUT</span><strong>'+esc(last.routineName||'Workout')+'</strong><small>'+esc(formatDate(last.completedAt))+(timing.activeMinutes!==null?' · '+timing.activeMinutes+' active min':'')+'</small><em>'+esc(highlight)+'</em></div>'+
+    '<div class="home-last-stats"><span><strong>'+num(last.completedSets)+'</strong><small>sets</small></span><span><strong>'+esc(formatVolume(last.totalVolume||0))+'</strong><small>volume</small></span><b>VIEW →</b></div>'+
   '</button>';
+}
+function renderHomeNextSession(schedule,state){
+  if(state==='rest')return '';
+  const entry=homeNextScheduledEntry(schedule);
+  const day=entry?.adaptedDay||entry?.day;
+  if(!entry||!day)return '';
+  return '<button class="home-next-session" data-action="train"><div><span>WHAT’S NEXT</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · '+esc(day.focus||'Training')+'</small></div><em>'+homeWorkoutCode(day.name)+' →</em></button>';
 }
 function renderHome(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
@@ -5828,24 +6027,25 @@ function renderHome(){
   const shared=sharedTrainingState();
   const name=homeFirstName();
   const greeting=name?'Hey, '+esc(name)+'.':'Your training.';
-  return '<div class="clean-page home-clean home-contextual home-contextual-v2">'+
+  return '<div class="clean-page home-clean home-contextual home-contextual-v3">'+
     '<section class="home-intro-v2"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
     renderHomeProgramJourney(context)+
-    '<section class="home-state-hero home-state-hero-v2 state-'+esc(x.state)+'">'+
-      '<div class="home-hero-grid"><div class="home-state-copy home-state-copy-v2"><span>'+esc(x.eyebrow)+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+esc(x.meta)+'</small></div>'+
+    '<section class="home-state-hero home-state-hero-v2 home-state-hero-v3 state-'+esc(x.state)+'">'+
+      '<div class="home-hero-grid"><div class="home-state-copy home-state-copy-v2"><span>'+esc(x.eyebrow)+(x.state==='active'?'<i class="home-live-dot"></i>':'')+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+(x.state==='active'?'<b id="home-elapsed-clock">'+esc(formatClock(workoutElapsedSeconds(store.activeWorkout)))+'</b> elapsed · '+esc(homeActivePhaseLabel(store.activeWorkout?.phase)):esc(x.meta))+'</small></div>'+
       renderHomeHeroVisual(x)+'</div>'+
       '<div class="home-hero-actions">'+renderHomePrimaryAction(x)+
         (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
       '</div>'+
       (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
-    '<section class="clean-section home-week-section home-week-section-v2"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
-      '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>workouts</span></div><div><strong>'+stats.minutes+'</strong><span>minutes</span></div><div><strong>'+stats.remaining+'</strong><span>remaining</span></div></div>'+
+    '<section class="clean-section home-week-section home-week-section-v3"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
+      '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
       renderHomeWeekPulse(schedule)+
       '<div class="home-week-progress" aria-label="'+stats.completed+' of '+stats.planned+' workouts complete"><span style="width:'+Math.round((stats.completed/Math.max(1,stats.planned))*100)+'%"></span></div>'+
     '</section>'+
     renderHomeBodySnapshot()+
-    (x.last&&x.state!=='completed'?renderHomeLastWorkout(x.last):'')+
+    renderHomeNextSession(schedule,x.state)+
+    (x.last&&x.state!=='completed-fresh'?renderHomeLastWorkout(x.last):'')+
     (shared.draft?'<button class="shared-home-card" data-action="together"><div class="shared-avatar-stack small"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((shared.draft.partnerName[0]||'P').toUpperCase())+'</div></div><div><span>SHARED WORKOUT</span><strong>'+esc(shared.draft.routineName)+' with '+esc(shared.draft.partnerName)+'</strong><small>'+esc(shared.draft.partnerStatus==='ready'?'Both ready':'Invite pending')+'</small></div><em>→</em></button>':'')+
   '</div>';
 }
@@ -6958,7 +7158,7 @@ function renderAccountEntry(){
 function render(){
   const app=document.querySelector('#app');if(!app)return;
   if(!authReady){app.innerHTML='<div class="clean-page empty-workout-page"><p class="eyebrow">WORKOUT</p><h2>Loading your training account…</h2></div>';return;}
-  if(store.account?.status!=='connected'){app.innerHTML=renderAccountEntry();document.body.classList.remove('modal-open','workout-mode');return;}
+  if(store.account?.status!=='connected'){app.innerHTML=renderAccountEntry();document.body.classList.remove('modal-open','workout-mode','home-mode','train-mode','progress-mode');return;}
   if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
   else if(currentTab==='profile')app.innerHTML=renderProfileHub();
   else if(currentTab==='home')app.innerHTML=renderHome();
@@ -6982,7 +7182,7 @@ function render(){
   if(accountSheetOpen) app.insertAdjacentHTML('beforeend',renderAccountSheet());
   if(avatarPickerOpen) app.insertAdjacentHTML('beforeend',renderAvatarPickerSheet());
   document.body.classList.toggle('modal-open',Boolean(exerciseDetailId||swapContext||readinessContext||workoutMapOpen||setEditContext||cueSettingsOpen||exerciseActionsIndex!==null||sessionSetupOpen||historyMenuId||accountSheetOpen||avatarPickerOpen));
-  document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));
+  document.body.classList.toggle('workout-mode',currentTab==='workout'&&Boolean(store.activeWorkout));\n  document.body.classList.toggle('home-mode',currentTab==='home');\n  document.body.classList.toggle('train-mode',currentTab==='train');\n  document.body.classList.toggle('progress-mode',currentTab==='progress');
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
   prefetchUpcomingWorkoutMedia();
 }
@@ -6994,7 +7194,7 @@ function updateTimers(){
 
   const elapsed=document.querySelector('#elapsed-clock');
   const exerciseClock=document.querySelector('#exercise-clock');
-  if(elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));
+  if(elapsed)elapsed.textContent=formatClock(workoutElapsedSeconds(w));\n  const homeElapsed=document.querySelector('#home-elapsed-clock');\n  if(homeElapsed)homeElapsed.textContent=formatClock(workoutElapsedSeconds(w));
   const warmupElapsed=document.querySelector('#warmup-elapsed-clock');
   if(warmupElapsed&&w.phase==='warmup')warmupElapsed.textContent=formatClock(warmupElapsedSeconds(w));
   if(exerciseClock&&['work','rest','calibrate','feedback','pre-set','timed-set'].includes(w.phase))exerciseClock.textContent=formatClock(exerciseElapsedSeconds(w));
