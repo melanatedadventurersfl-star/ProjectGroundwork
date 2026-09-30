@@ -406,24 +406,18 @@
 
   function playClip(base64, mimeType) {
     if (!base64) return Promise.resolve(false);
-    stopGeneration += 1;
-    queue = Promise.resolve();
-    if (activeSource) {
-      try { activeSource.stop(0); } catch {}
-      activeSource = null;
-    }
-    if (activeAudio) {
+    const generation = stopGeneration;
+    queue = queue.catch(() => {}).then(async () => {
+      if (generation !== stopGeneration) return false;
+      startAudioHold();
       try {
-        activeAudio.pause();
-        activeAudio.currentTime = 0;
-      } catch {}
-      activeAudio = null;
-    }
-    startAudioHold();
-    return playBase64Audio(base64, mimeType || 'audio/mpeg').catch(error => {
-      console.warn('Priority coach cue playback failed', error);
-      return false;
+        return await playBase64Audio(base64, mimeType || 'audio/mpeg');
+      } catch (error) {
+        console.warn('Coach cue playback failed', error);
+        return false;
+      }
     });
+    return queue;
   }
 
   function stop() {
