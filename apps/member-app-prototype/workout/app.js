@@ -1605,12 +1605,13 @@ function computeProgression(ex,feedback){
 
 function timedStageEstimateSeconds(item){
   if(!item)return 0;
+  const transition=8;
   if(item.mode==='reps'||item.reps){
     const reps=Math.max(1,Number(item.reps)||8);
     const sides=item.side?2:1;
-    return Math.max(20,reps*sides*2.5);
+    return Math.max(25,reps*sides*3)+transition;
   }
-  return Math.max(1,Number(item.seconds)||30);
+  return Math.max(1,Number(item.seconds)||30)+transition;
 }
 
 function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
