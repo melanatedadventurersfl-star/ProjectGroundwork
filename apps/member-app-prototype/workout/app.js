@@ -3042,7 +3042,8 @@ function navigateExercise(delta){
 }
 function markExerciseManual(index){
   const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
-  ex.manualComplete=true;ex.manualCompletedAt=new Date().toISOString();ex.skipped=false;ex.skipReason='';
+  const now=new Date().toISOString();
+  ex.manualComplete=true;ex.manualCompletedAt=now;ex.endedAt=now;ex.skipped=false;ex.skipReason='';
   if(w.phase==='intro'){saveStore();render();return;}
   if(w.phase==='exercise-transition'&&w.pendingPosition?.ei===index){
     const next=nextUnresolvedExerciseIndex(w,index);
@@ -3065,7 +3066,7 @@ function undoManualExercise(index){
 }
 function skipExercise(index,reason='Skipped by user'){
   const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
-  ex.skipped=true;ex.skipReason=reason;ex.manualComplete=false;ex.manualCompletedAt=null;
+  ex.skipped=true;ex.skipReason=reason;ex.manualComplete=false;ex.manualCompletedAt=null;ex.endedAt=new Date().toISOString();
   if(w.phase==='intro'){saveStore();render();return;}
   if(w.phase==='exercise-transition'&&w.pendingPosition?.ei===index){
     const next=nextUnresolvedExerciseIndex(w,index);
@@ -3279,7 +3280,8 @@ function completeTimedSet(early=false){
     pos.set.reps=String(duration);
   }
   pos.set.plannedReps=String(pos.set.plannedReps??duration);
-  pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
+  const endedAt=new Date().toISOString();
+  pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
   pos.set.durationSeconds=num(pos.set.reps);
   w.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight:String(pos.set.weight||''),reps:String(pos.set.reps||''),durationSeconds:pos.set.durationSeconds,plannedWeight:String(pos.set.plannedWeight||''),plannedReps:String(pos.set.plannedReps||duration)};
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
@@ -3374,8 +3376,19 @@ function beginRest(next,seconds){
   if(!w)return;
   if(!next){ startCooldown();return; }
   const safeRest=Math.max(5,Math.min(180,seconds||45));
+  const now=new Date().toISOString();
   w.phase='rest';w.restDuration=safeRest;w.restEndsAt=new Date(Date.now()+safeRest*1000).toISOString();
-  w.restPausedRemaining=null;w.restToken=newTimerToken('rest',w);w.pendingPosition=next;saveStore();render();
+  w.restPausedRemaining=null;w.restToken=newTimerToken('rest',w);w.pendingPosition=next;
+  w.restLog=Array.isArray(w.restLog)?w.restLog:[];
+  w.restLog.push({token:w.restToken,startedAt:now,endedAt:null,plannedSeconds:safeRest,fromExerciseId:w.exercises?.[w.currentExerciseIndex]?.id||'',toExerciseId:w.exercises?.[next.ei]?.id||'',skipped:false});
+  saveStore();render();
+}
+function closeRestLog(w,token,{skipped=false}={}){
+  const entry=[...(w?.restLog||[])].reverse().find(item=>item.token===token&&!item.endedAt);
+  if(!entry)return;
+  entry.endedAt=new Date().toISOString();
+  entry.actualSeconds=Math.max(0,Math.round((Date.parse(entry.endedAt)-Date.parse(entry.startedAt))/1000));
+  entry.skipped=Boolean(skipped);
 }
 
 function startExerciseFeedback(next){
@@ -3518,7 +3531,7 @@ function skipCurrentSet(reason='Skipped by user'){
 }
 function skipRest(){
  const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
- const token=w.restToken;w.restEndsAt=new Date().toISOString();w.restPausedRemaining=null;saveStore();advanceAfterRest(token);
+ const token=w.restToken;closeRestLog(w,token,{skipped:true});w.restEndsAt=new Date().toISOString();w.restPausedRemaining=null;saveStore();advanceAfterRest(token);
 }
 function applyCalibration(rir){
   const pos=getActivePosition(); if(!pos||pos.workout.phase!=='calibrate')return;
@@ -3541,6 +3554,7 @@ function applyCalibration(rir){
 function advanceAfterRest(expectedToken=null){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
   if(expectedToken&&w.restToken!==expectedToken)return;
+  closeRestLog(w,w.restToken,{skipped:false});
   const next=w.pendingPosition;if(!next){startCooldown();return;}
   const isNewExercise=next.ei!==w.currentExerciseIndex;
   if(isNewExercise){
@@ -3580,8 +3594,11 @@ function shiftWorkoutTimestamp(w,key,deltaMs){
 function toggleWorkoutPause(){
   const w=store.activeWorkout;if(!w)return;
   if(!w.isPaused){
+    const now=new Date().toISOString();
     w.isPaused=true;
-    w.pausedAt=new Date().toISOString();
+    w.pausedAt=now;
+    w.pauseLog=Array.isArray(w.pauseLog)?w.pauseLog:[];
+    w.pauseLog.push({startedAt:now,endedAt:null,durationSeconds:0});
     if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
     saveStore();
     fireWorkoutSignal('transition','workout-paused-'+w.id+'-'+Date.now(),{voice:'Workout paused',label:'PAUSED'});
@@ -3589,8 +3606,12 @@ function toggleWorkoutPause(){
     return;
   }
   const pausedMs=Date.parse(w.pausedAt||'');
-  const delta=Math.max(0,Date.now()-(Number.isFinite(pausedMs)?pausedMs:Date.now()));
-  ['startedAt','exerciseStartedAt','setStartedAt','warmupStartedAt','timedPhaseStartedAt','preSetStartedAt','timedSetStartedAt','timedSetEndsAt','restEndsAt'].forEach(key=>shiftWorkoutTimestamp(w,key,delta));
+  const nowMs=Date.now();
+  const delta=Math.max(0,nowMs-(Number.isFinite(pausedMs)?pausedMs:nowMs));
+  w.totalPausedMs=Math.max(0,num(w.totalPausedMs))+delta;
+  const pause=[...(w.pauseLog||[])].reverse().find(item=>!item.endedAt);
+  if(pause){pause.endedAt=new Date(nowMs).toISOString();pause.durationSeconds=Math.max(0,Math.round(delta/1000));}
+  ['exerciseStartedAt','setStartedAt','timedPhaseStartedAt','preSetStartedAt','timedSetStartedAt','timedSetEndsAt','restEndsAt','timedStageSwitchEndsAt','sideSwitchEndsAt'].forEach(key=>shiftWorkoutTimestamp(w,key,delta));
   w.isPaused=false;
   w.pausedAt=null;
   saveStore();
