@@ -5,7 +5,7 @@ const TTS_MODEL = "gpt-4o-mini-tts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://melanatedadventurersfl-star.github.io",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-api-version",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Vary": "Origin",
 };
@@ -77,7 +77,19 @@ async function authenticate(authHeader: string, supabaseUrl: string, anonKey: st
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    const requestedHeaders = req.headers.get("Access-Control-Request-Headers");
+    const origin = req.headers.get("Origin") || corsHeaders["Access-Control-Allow-Origin"];
+    return new Response("ok", {
+      headers: {
+        ...corsHeaders,
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Headers": requestedHeaders || corsHeaders["Access-Control-Allow-Headers"],
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin, Access-Control-Request-Headers",
+      },
+    });
+  }
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const authHeader = req.headers.get("Authorization") || "";
