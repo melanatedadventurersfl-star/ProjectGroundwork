@@ -85,6 +85,7 @@ let trainExpandedWeek=[1,2,3].includes(Number(restoredUiState.trainExpandedWeek)
 let programWhyOpen=Boolean(restoredUiState.programWhyOpen);
 let progressExerciseId=String(restoredUiState.progressExerciseId||'');
 let progressMetric=['weight','reps','volume'].includes(restoredUiState.progressMetric)?restoredUiState.progressMetric:'weight';
+let learnerDiagnosticsOpen=Boolean(restoredUiState.learnerDiagnosticsOpen);
 let catalogQuery = '';
 let tickHandle = null;
 
@@ -131,6 +132,7 @@ function persistUiState(){
       programWhyOpen,
       progressExerciseId,
       progressMetric,
+      learnerDiagnosticsOpen,
       savedAt:new Date().toISOString()
     }));
   }catch{}
@@ -7828,6 +7830,7 @@ function renderExerciseLearningDetail(exerciseId){
   const model=trainingLearnerModel(exerciseId);
   if(!model)return '';
   const confidence=model.confidence||{level:'low',score:0,evidence:''};
+  const gate=learnerGateLabel(model);
   const hit=model.metrics?.targetHitRate;
   const next=learnerNextTarget(exerciseId);
   return '<section class="exercise-learning-panel confidence-'+esc(confidence.level||'low')+'">'+
@@ -7838,6 +7841,7 @@ function renderExerciseLearningDetail(exerciseId){
       '<div><span>AVG REP DROP</span><strong>'+Math.round(num(model.metrics?.averageRepDrop)*10)/10+'</strong><small>first set to final set</small></div>'+
       '<div><span>NEXT TARGET</span><strong>'+esc(next||'Gathering evidence')+'</strong><small>'+esc(store.progression?.[exerciseId]?.reason||confidence.evidence||'More sessions improve confidence')+'</small></div>'+
     '</div>'+
+    '<div class="exercise-learning-gate"><span>CONTROL GATE</span><strong class="gate-'+esc(gate.level)+'">'+esc(gate.label)+'</strong><small>'+esc(gate.reason)+'</small></div>'+
   '</section>';
 }
 function renderExerciseProgressDetail(summary){
@@ -7913,18 +7917,69 @@ function progressMoments(limit=6){
     value:item.weight?item.weight+' lb × '+item.reps:item.reps+' reps'
   }));
 }
+function learnerGateLabel(model){
+  const engine=trainingLearnerEngine();
+  const gate=model?.gate||engine?.recommendationGate?.(model)||{level:'observe',label:'OBSERVE ONLY',reason:'Collecting evidence'};
+  return gate;
+}
+function learnerPercent(value){
+  return value===null||value===undefined?'—':Math.round(num(value)*100)+'%';
+}
+function learnerErrorLabel(model){
+  const metrics=model?.metrics||{};
+  const weighted=!['bodyweight','timed','band'].includes(model?.loadMode||'');
+  const parts=[];
+  if(weighted&&metrics.averageWeightPredictionError!==null&&metrics.averageWeightPredictionError!==undefined)parts.push(Math.round(num(metrics.averageWeightPredictionError)*10)/10+' lb');
+  if(metrics.averageRepsPredictionError!==null&&metrics.averageRepsPredictionError!==undefined)parts.push(Math.round(num(metrics.averageRepsPredictionError)*10)/10+' reps');
+  return parts.join(' · ')||'Not enough checks';
+}
+function renderLearnerDiagnostics(){
+  if(!learnerDiagnosticsOpen)return '';
+  const learner=ensureTrainingLearner(),overview=trainingLearnerOverview();
+  const models=Object.values(learner?.models||{}).sort((a,b)=>{
+    const order={influence:0,suggest:1,observe:2};
+    const ga=learnerGateLabel(a),gb=learnerGateLabel(b);
+    return (order[ga.level]??3)-(order[gb.level]??3)||(b.confidence?.score||0)-(a.confidence?.score||0)||String(a.exerciseName).localeCompare(String(b.exerciseName));
+  });
+  const recent=[...(learner?.evaluations||[])].slice(-8).reverse();
+  return '<section class="learner-diagnostics">'+
+    '<div class="learner-diagnostics-head"><div><p class="eyebrow">LEARNER DIAGNOSTICS</p><h3>Is the model getting better?</h3><p>These numbers measure the learner itself. Suggestions stay separate from workout control until enough evidence passes the gate.</p></div><button class="text-button" data-action="toggle-learner-diagnostics">CLOSE</button></div>'+
+    '<div class="learner-diagnostics-scorecard">'+
+      '<div><span>LAST 20 TARGET HIT</span><strong>'+learnerPercent(overview.recentPredictionHitRate)+'</strong><small>'+overview.predictionsEvaluated+' predictions evaluated total</small></div>'+
+      '<div><span>AVG REP ERROR</span><strong>'+(overview.averageRepsPredictionError===null?'—':Math.round(num(overview.averageRepsPredictionError)*10)/10)+'</strong><small>reps away from prediction</small></div>'+
+      '<div><span>AVG LOAD ERROR</span><strong>'+(overview.averageWeightPredictionError===null?'—':Math.round(num(overview.averageWeightPredictionError)*10)/10+' lb')+'</strong><small>weighted exercises only</small></div>'+
+      '<div><span>CONTROL GATES</span><strong>'+num(overview.gateCounts?.influence)+' / '+overview.modeledExercises+'</strong><small>ready to influence</small></div>'+
+    '</div>'+
+    '<div class="learner-gate-legend">'+
+      '<span class="observe"><b>OBSERVE</b> Collect evidence only</span>'+
+      '<span class="suggest"><b>SUGGEST</b> Can surface a recommendation</span>'+
+      '<span class="influence"><b>INFLUENCE</b> Eligible to affect selected variables later</span>'+
+    '</div>'+
+    (models.length?'<div class="learner-model-table"><div class="learner-model-row header"><span>Movement</span><span>Evidence</span><span>Accuracy</span><span>Gate</span></div>'+
+      models.map(model=>{
+        const gate=learnerGateLabel(model),hit=model.metrics?.targetHitRate;
+        return '<div class="learner-model-row"><div><strong>'+esc(model.exerciseName||model.exerciseId)+'</strong><small>'+esc(String(model.loadMode||'training'))+'</small></div>'+
+          '<div><strong>'+num(model.exposures)+' sessions</strong><small>'+num(model.predictionCount)+' predictions checked</small></div>'+
+          '<div><strong>'+learnerPercent(hit)+'</strong><small>'+esc(learnerErrorLabel(model))+'</small></div>'+
+          '<div><em class="gate-'+esc(gate.level)+'">'+esc(gate.label)+'</em><small>'+esc(gate.reason)+'</small></div></div>';
+      }).join('')+'</div>':'<div class="clean-empty-inline">Complete workouts to build learner diagnostics.</div>')+
+    (recent.length?'<div class="learner-recent-predictions"><div class="clean-section-head"><div><p class="eyebrow">RECENT PREDICTION CHECKS</p><h3>Expected vs completed</h3></div></div>'+
+      recent.map(item=>'<div class="learner-prediction-row '+(item.targetHit?'hit':'miss')+'"><div><span>'+esc(formatDate(item.evaluatedAt))+'</span><strong>'+esc(item.exerciseName)+'</strong></div><div><small>PREDICTED</small><strong>'+esc((num(item.planned?.weight)?num(item.planned.weight)+' lb × ':'')+num(item.planned?.reps)+' reps')+'</strong></div><div><small>ACTUAL</small><strong>'+esc((num(item.actual?.averageWeight)?Math.round(num(item.actual.averageWeight)*10)/10+' lb × ':'')+Math.round(num(item.actual?.averageReps)*10)/10+' avg reps')+'</strong></div><em>'+(item.targetHit?'HIT':'MISS')+'</em></div>').join('')+
+    '</div>':'')+
+  '</section>';
+}
 function renderAdaptiveLearningOverview(){
   const overview=trainingLearnerOverview();
   if(!overview.modeledExercises)return '';
-  const hit=overview.predictionHitRate===null?'LEARNING':Math.round(overview.predictionHitRate*100)+'%';
+  const hit=overview.recentPredictionHitRate===null?'LEARNING':Math.round(overview.recentPredictionHitRate*100)+'%';
   const strongest=Object.values(ensureTrainingLearner()?.models||{}).sort((a,b)=>(b.confidence?.score||0)-(a.confidence?.score||0))[0]||null;
   return '<section class="adaptive-learning-overview">'+
-    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is building your training model.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Predictions are stored before a workout and checked against what you actually complete.</p></div>'+
+    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. The learner remains observation-first while prediction accuracy and confidence build.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
     '<div class="adaptive-learning-stats">'+
       '<div><span>MODELED</span><strong>'+overview.modeledExercises+'</strong><small>movements</small></div>'+
       '<div><span>PREDICTIONS</span><strong>'+overview.predictionsEvaluated+'</strong><small>evaluated</small></div>'+
-      '<div><span>TARGET HIT</span><strong>'+hit+'</strong><small>prediction accuracy signal</small></div>'+
-      '<div><span>BEST CONFIDENCE</span><strong>'+esc(strongest?learnerConfidenceLabel(strongest):'LOW')+'</strong><small>'+esc(strongest?.exerciseName||'More evidence needed')+'</small></div>'+
+      '<div><span>LAST 20 HIT</span><strong>'+hit+'</strong><small>recent target accuracy</small></div>'+
+      '<div><span>READY TO INFLUENCE</span><strong>'+num(overview.gateCounts?.influence)+'</strong><small>gated movements</small></div>'+
     '</div>'+
   '</section>';
 }
@@ -7943,6 +7998,7 @@ function renderProgress(){
   return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See what changed, where you started, and which movements are moving forward.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
     renderAdaptiveLearningOverview()+
+    renderLearnerDiagnostics()+
     (trends.length?'<section class="clean-section progress-movements-section"><div class="clean-section-head"><div><p class="eyebrow">MOVEMENT PROGRESS</p><h3>What is changing</h3></div></div><div class="progress-movement-grid">'+trends.map(item=>{
       const metric=item.weighted?'weight':'reps';
       return '<button class="progress-movement-card '+(selected?.exerciseId===item.exerciseId?'selected':'')+'" data-action="progress-exercise" data-progress-exercise="'+esc(item.exerciseId)+'"><div class="progress-movement-copy"><span>'+esc(item.status==='baseline'?'BASELINE':item.status==='improved'?'IMPROVED':'STEADY')+'</span><strong>'+esc(item.name)+'</strong><small>'+esc(item.changeLabel)+'</small></div>'+renderProgressChart(item,metric,true)+'</button>';
@@ -8270,6 +8326,7 @@ function handleClick(event){
     persistUiState();setTab('progress');
   }
   else if(a==='set-progress-metric'){progressMetric=['weight','reps','volume'].includes(node.dataset.progressMetric)?node.dataset.progressMetric:'weight';persistUiState();render();}
+  else if(a==='toggle-learner-diagnostics'){learnerDiagnosticsOpen=!learnerDiagnosticsOpen;persistUiState();render();}
   else if(a==='close-progress-exercise'){progressExerciseId='';persistUiState();render();}
   else if(a==='profile')setTab('profile');
   else if(a==='open-avatar-picker'){avatarPickerOpen=true;render();}
