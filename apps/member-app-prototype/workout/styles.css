@@ -7786,3 +7786,16 @@ button.runner-phase-row{cursor:pointer}
     grid-template-columns:1fr;
   }
 }
+
+
+.history-timeline-event.rest i{
+  background:rgba(244,239,226,.45);
+}
+.history-timeline-event.pause i{
+  background:rgba(226,132,113,.75);
+}
+.history-timeline-event.rest strong,
+.history-timeline-event.pause strong{
+  font-size:12px;
+  opacity:.76;
+}
