@@ -1,0 +1,1045 @@
+{
+  "version": 1,
+  "source": "apps/member-app-prototype/workout/catalog.js",
+  "generatedFromCatalogCount": 49,
+  "defaultRules": {
+    "canvas": "One avatar, one position, one image. Never use collages.",
+    "positions": "Create exactly one start and one end image per avatar unless an exercise is a timed hold.",
+    "text": "No text or labels baked into production artwork.",
+    "branding": "No real-world branding.",
+    "review": "Movement accuracy takes priority over visual polish."
+  },
+  "exercises": [
+    {
+      "id": "goblet-squat",
+      "name": "Goblet Squat",
+      "movement": "squat",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "dumbbells",
+        "full-gym",
+        "mixed-home"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall holding one dumbbell vertically at chest height, feet about shoulder width.",
+      "endPosition": "Sit hips down and back until thighs reach a comfortable squat depth, knees tracking over toes.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Keep chest tall, heels planted, knees tracking with toes."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "back-squat",
+      "name": "Barbell Back Squat",
+      "movement": "squat",
+      "muscles": [
+        "Quads",
+        "Glutes",
+        "Core"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand under bar with it secured across upper back, feet about shoulder width.",
+      "endPosition": "Descend into squat with hips and knees flexed, then show bottom position with heels planted.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Neutral spine, knees track over toes, bar stays balanced over mid-foot."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "leg-press",
+      "name": "Leg Press",
+      "movement": "squat",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit fully supported with feet shoulder width on platform and knees bent.",
+      "endPosition": "Press platform away until legs are nearly straight without locking knees.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Back and hips stay against pad, knees track with toes, no knee lockout."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "seated-leg-press",
+      "name": "Seated Leg Press",
+      "movement": "squat",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit upright with back against pad, feet on platform, knees flexed.",
+      "endPosition": "Extend knees and hips to press platform away, stopping short of knee lockout.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Keep pelvis and back against pad, feet flat, knees aligned with toes."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "45-leg-press",
+      "name": "45° Leg Press",
+      "movement": "squat",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Recline in 45-degree sled with feet shoulder width and knees bent toward torso.",
+      "endPosition": "Drive sled upward until legs are nearly straight without locking knees.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Keep hips against pad, control depth, knees aligned with toes."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "bodyweight-squat",
+      "name": "Bodyweight Squat",
+      "movement": "squat",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "bands",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Stand tall with feet about shoulder width and arms relaxed or forward.",
+      "endPosition": "Lower into a controlled squat with thighs near parallel and heels down.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Chest tall, heels planted, knees track over toes."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "romanian-deadlift",
+      "name": "Romanian Deadlift",
+      "movement": "hinge",
+      "muscles": [
+        "Hamstrings",
+        "Glutes",
+        "Back"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall holding bar at thighs with soft knees.",
+      "endPosition": "Hinge hips back while bar travels close to legs to around mid-shin, torso angled forward.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Neutral spine, hips travel back, slight knee bend, bar stays close."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "db-rdl",
+      "name": "Dumbbell Romanian Deadlift",
+      "movement": "hinge",
+      "muscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall holding two dumbbells in front of thighs with soft knees.",
+      "endPosition": "Hinge hips back and lower dumbbells along legs to around mid-shin.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Neutral spine, slight knee bend, dumbbells stay close to legs."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "hip-thrust",
+      "name": "Hip Thrust",
+      "movement": "hinge",
+      "muscles": [
+        "Glutes",
+        "Hamstrings"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Sit with upper back against bench, bar across hips, feet planted, hips lowered.",
+      "endPosition": "Drive hips upward until torso and thighs form a straight line.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Chin tucked, ribs down, shins near vertical at top, no lower-back overextension."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "glute-bridge",
+      "name": "Glute Bridge",
+      "movement": "hinge",
+      "muscles": [
+        "Glutes",
+        "Hamstrings"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "bands",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Lie on back with knees bent, feet planted, hips resting on floor.",
+      "endPosition": "Lift hips until shoulders, hips, and knees form a straight line.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Drive through feet, ribs down, avoid arching lower back."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "split-squat",
+      "name": "Bulgarian Split Squat",
+      "movement": "single-leg",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Rear foot elevated on bench, front foot planted, torso upright.",
+      "endPosition": "Lower rear knee toward floor while front knee bends, keeping balance over front foot.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Front heel stays planted, knee tracks over toes, hips stay square."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "reverse-lunge",
+      "name": "Reverse Lunge",
+      "movement": "single-leg",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall with feet under hips.",
+      "endPosition": "Step one foot back and lower both knees until rear knee nears floor.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Front heel planted, torso controlled, front knee tracks over toes."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "step-up",
+      "name": "Step-Up",
+      "movement": "single-leg",
+      "muscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand facing a stable box or bench with one foot placed fully on top.",
+      "endPosition": "Drive through elevated foot to stand tall on box with hips and knee extended.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Whole foot on platform, avoid pushing excessively from trailing leg."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "bench-press",
+      "name": "Barbell Bench Press",
+      "movement": "horizontal-push",
+      "muscles": [
+        "Chest",
+        "Triceps",
+        "Front Delts"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Lie on flat bench holding bar above chest with arms extended.",
+      "endPosition": "Lower bar under control toward mid-chest with elbows bent.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Feet planted, shoulder blades set, wrists stacked, bar path controlled."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "db-bench",
+      "name": "Dumbbell Bench Press",
+      "movement": "horizontal-push",
+      "muscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Lie on flat bench with dumbbells above chest and arms extended.",
+      "endPosition": "Lower dumbbells beside chest with elbows bent and forearms near vertical.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Feet planted, shoulders stable, wrists stacked over elbows."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "db-floor-press",
+      "name": "Dumbbell Floor Press",
+      "movement": "horizontal-push",
+      "muscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Lie on floor with knees bent, dumbbells above chest, arms extended.",
+      "endPosition": "Lower upper arms until triceps contact floor, elbows bent.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Wrists stacked, ribs controlled, upper arms stop on floor."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "chest-press-machine",
+      "name": "Chest Press Machine",
+      "movement": "horizontal-push",
+      "muscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit with back against pad, handles at chest height, elbows bent.",
+      "endPosition": "Press handles forward until arms are nearly straight.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Shoulders stay down and back, wrists neutral, no elbow lockout."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "push-up",
+      "name": "Push-Up",
+      "movement": "horizontal-push",
+      "muscles": [
+        "Chest",
+        "Triceps",
+        "Core"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "bands",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "High plank with hands under shoulders, body in straight line.",
+      "endPosition": "Lower chest toward floor with elbows bending while body stays rigid.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Head, hips, and heels stay aligned, elbows controlled."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "cable-row",
+      "name": "Seated Cable Row",
+      "movement": "horizontal-pull",
+      "muscles": [
+        "Back",
+        "Biceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit at cable row with torso upright, arms extended toward handle.",
+      "endPosition": "Pull handle toward lower ribs with elbows traveling back.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Avoid leaning back, keep shoulders down, squeeze shoulder blades."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "chest-row",
+      "name": "Chest-Supported Row",
+      "movement": "horizontal-pull",
+      "muscles": [
+        "Back",
+        "Biceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Lie or sit chest-supported with arms extended holding handles or dumbbells.",
+      "endPosition": "Row elbows back until weights reach sides of torso.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Chest stays supported, no torso swing, shoulders remain controlled."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "one-arm-row",
+      "name": "One-Arm Dumbbell Row",
+      "movement": "horizontal-pull",
+      "muscles": [
+        "Back",
+        "Biceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Brace one hand and knee on bench, opposite foot grounded, dumbbell hanging from straight arm.",
+      "endPosition": "Pull dumbbell toward ribs with elbow traveling back beside torso.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Back stays flat, hips square, avoid torso rotation."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "band-row",
+      "name": "Band Row",
+      "movement": "horizontal-pull",
+      "muscles": [
+        "Back",
+        "Biceps"
+      ],
+      "equipment": [
+        "bands",
+        "mixed-home"
+      ],
+      "style": "band",
+      "startPosition": "Anchor band in front, stand or sit tall with arms extended.",
+      "endPosition": "Pull band handles toward ribs with elbows moving back.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Torso stays still, shoulders down, control band tension."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "lat-pulldown",
+      "name": "Lat Pulldown",
+      "movement": "vertical-pull",
+      "muscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit at pulldown with thighs secured, arms extended overhead on bar.",
+      "endPosition": "Pull bar toward upper chest with elbows driving down.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Avoid excessive lean, shoulders stay down, do not pull behind neck."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "assisted-pullup",
+      "name": "Assisted Pull-Up",
+      "movement": "vertical-pull",
+      "muscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Begin hanging on assisted pull-up machine with arms extended and knees or feet supported.",
+      "endPosition": "Pull body upward until chin approaches bar level.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Keep ribs controlled, elbows drive down, avoid swinging."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "pull-up",
+      "name": "Pull-Up",
+      "movement": "vertical-pull",
+      "muscles": [
+        "Lats",
+        "Biceps",
+        "Core"
+      ],
+      "equipment": [
+        "bodyweight",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Hang from bar with arms extended and body controlled.",
+      "endPosition": "Pull body upward until chin reaches or passes bar height.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Avoid kipping, shoulders stay active, control ascent."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "band-pulldown",
+      "name": "Band Lat Pulldown",
+      "movement": "vertical-pull",
+      "muscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "equipment": [
+        "bands",
+        "mixed-home"
+      ],
+      "style": "band",
+      "startPosition": "Anchor band overhead, arms extended with band tension.",
+      "endPosition": "Pull elbows down toward ribs while bringing handles toward upper chest.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Torso stays tall, shoulders down, avoid excessive arch."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "shoulder-press-machine",
+      "name": "Shoulder Press Machine",
+      "movement": "vertical-push",
+      "muscles": [
+        "Shoulders",
+        "Triceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit with back against pad, handles near shoulder height.",
+      "endPosition": "Press handles overhead until arms are nearly straight.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Back stays against pad, wrists neutral, avoid shrugging."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "db-shoulder-press",
+      "name": "Dumbbell Shoulder Press",
+      "movement": "vertical-push",
+      "muscles": [
+        "Shoulders",
+        "Triceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Sit or stand with dumbbells at shoulder height.",
+      "endPosition": "Press dumbbells overhead until arms are nearly straight.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Ribs down, wrists stacked, avoid excessive back arch."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "overhead-press",
+      "name": "Barbell Overhead Press",
+      "movement": "vertical-push",
+      "muscles": [
+        "Shoulders",
+        "Triceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand with bar at upper chest and hands just outside shoulders.",
+      "endPosition": "Press bar overhead until arms are extended and bar is over mid-foot.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Glutes and core braced, bar clears face, avoid leaning back."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "pike-pushup",
+      "name": "Pike Push-Up",
+      "movement": "vertical-push",
+      "muscles": [
+        "Shoulders",
+        "Triceps"
+      ],
+      "equipment": [
+        "bodyweight",
+        "mixed-home"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Begin in inverted-V position with hips high and hands on floor.",
+      "endPosition": "Bend elbows and lower head toward floor between hands.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Keep hips high, elbows controlled, head travels forward and down."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "leg-curl",
+      "name": "Leg Curl",
+      "movement": "hamstring-accessory",
+      "muscles": [
+        "Hamstrings"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Lie face down with knees aligned to machine pivot and roller above heels, legs nearly straight.",
+      "endPosition": "Curl heels toward glutes by bending knees while hips stay down.",
+      "camera": "side/rear three-quarter",
+      "formRules": [
+        "Hips and thighs stay against pad, control roller, no hip lift."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "leg-extension",
+      "name": "Leg Extension",
+      "movement": "quad-accessory",
+      "muscles": [
+        "Quads"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit with back against pad, knees bent, roller above ankles.",
+      "endPosition": "Extend knees until legs are nearly straight.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Back stays against pad, align knees with machine pivot, avoid snapping lockout."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "lateral-raise",
+      "name": "Dumbbell Lateral Raise",
+      "movement": "shoulder-accessory",
+      "muscles": [
+        "Shoulders"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall with dumbbells at sides, elbows slightly bent.",
+      "endPosition": "Raise arms out to sides to about shoulder height.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Lead with elbows, shoulders down, avoid swinging."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "band-lateral-raise",
+      "name": "Band Lateral Raise",
+      "movement": "shoulder-accessory",
+      "muscles": [
+        "Shoulders"
+      ],
+      "equipment": [
+        "bands",
+        "mixed-home"
+      ],
+      "style": "band",
+      "startPosition": "Stand on or anchor band with hands at sides.",
+      "endPosition": "Raise arms out to sides against band tension to about shoulder height.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Keep torso still, shoulders down, control tension."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "biceps-curl",
+      "name": "Dumbbell Curl",
+      "movement": "biceps",
+      "muscles": [
+        "Biceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall with dumbbells at sides and palms forward or neutral.",
+      "endPosition": "Curl dumbbells toward shoulders while elbows remain close to torso.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Keep elbows near sides, no torso swing, wrists neutral."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "cable-curl",
+      "name": "Cable Curl",
+      "movement": "biceps",
+      "muscles": [
+        "Biceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Stand facing cable with arms extended down holding handle.",
+      "endPosition": "Curl handle toward shoulders while elbows stay near sides.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Keep torso still, elbows fixed, control cable."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "triceps-pushdown",
+      "name": "Triceps Pushdown",
+      "movement": "triceps",
+      "muscles": [
+        "Triceps"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Stand at cable with elbows bent and tucked, bar or rope near lower chest.",
+      "endPosition": "Extend elbows to press attachment down until arms are straight.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Upper arms stay close to torso, wrists neutral, no shoulder swing."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "db-triceps-extension",
+      "name": "Overhead Dumbbell Triceps Extension",
+      "movement": "triceps",
+      "muscles": [
+        "Triceps"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand or sit holding one dumbbell overhead with elbows bent.",
+      "endPosition": "Extend elbows to raise dumbbell overhead until arms are nearly straight.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Keep elbows pointed forward, ribs down, avoid back arch."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "calf-raise",
+      "name": "Standing Dumbbell Calf Raise",
+      "movement": "calves",
+      "muscles": [
+        "Calves"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand tall holding dumbbells at sides with feet flat.",
+      "endPosition": "Rise onto balls of feet by lifting heels as high as controlled.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Keep knees softly extended, ankles track straight, pause at top."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "calf-extension-machine",
+      "name": "Calf Extension Machine",
+      "movement": "calves",
+      "muscles": [
+        "Calves"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit or stand in calf machine with feet on platform and heels lowered.",
+      "endPosition": "Press through balls of feet to raise heels and plantar-flex ankles.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Move through ankles, keep knees stable, avoid bouncing."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "leg-press-calf-raise",
+      "name": "Leg Press Calf Raise",
+      "movement": "calves",
+      "muscles": [
+        "Calves"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Sit in leg press with legs nearly straight and balls of feet on platform, heels slightly lowered.",
+      "endPosition": "Press through forefeet to point ankles and raise heels away from platform edge.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Knees remain softly extended and stable, movement comes from ankles."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "single-leg-db-calf-raise",
+      "name": "Single-Leg Dumbbell Calf Raise",
+      "movement": "calves",
+      "muscles": [
+        "Calves"
+      ],
+      "equipment": [
+        "dumbbells",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "free",
+      "startPosition": "Stand on one foot holding dumbbell, heel slightly lowered from step if available.",
+      "endPosition": "Rise onto ball of working foot to full controlled calf contraction.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Keep ankle aligned, knee stable, use support only for balance."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "plank",
+      "name": "Plank",
+      "movement": "core",
+      "muscles": [
+        "Core"
+      ],
+      "equipment": [
+        "bodyweight",
+        "dumbbells",
+        "bands",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Forearms on floor, elbows under shoulders, body straight from head to heels.",
+      "endPosition": "Hold the same rigid plank position for the prescribed time.",
+      "camera": "side",
+      "formRules": [
+        "Ribs down, glutes engaged, hips neither sag nor pike."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "sit-up",
+      "name": "Sit-Up",
+      "movement": "core",
+      "muscles": [
+        "Core"
+      ],
+      "equipment": [
+        "bodyweight",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Lie on back with knees bent and feet planted.",
+      "endPosition": "Curl torso upward toward thighs under control.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Avoid jerking neck, keep feet planted, control descent."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "dead-bug",
+      "name": "Dead Bug",
+      "movement": "core",
+      "muscles": [
+        "Core"
+      ],
+      "equipment": [
+        "bodyweight",
+        "mixed-home",
+        "full-gym"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Lie on back with hips and knees at 90 degrees and arms toward ceiling.",
+      "endPosition": "Extend opposite arm and leg away from torso while lower back stays controlled.",
+      "camera": "top/side three-quarter",
+      "formRules": [
+        "Keep lower back gently pressed down, move slowly, alternate sides."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "cable-crunch",
+      "name": "Cable Crunch",
+      "movement": "core",
+      "muscles": [
+        "Core"
+      ],
+      "equipment": [
+        "full-gym"
+      ],
+      "style": "machine",
+      "startPosition": "Kneel facing cable with rope by sides of head, torso upright.",
+      "endPosition": "Flex spine and bring ribs toward pelvis while keeping hips mostly fixed.",
+      "camera": "side three-quarter",
+      "formRules": [
+        "Crunch through trunk, avoid pulling only with arms, hips stay controlled."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "prone-w-raise",
+      "name": "Prone W Raise",
+      "movement": "horizontal-pull",
+      "muscles": [
+        "Upper Back",
+        "Rear Delts"
+      ],
+      "equipment": [
+        "bodyweight",
+        "bands",
+        "mixed-home"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Lie face down with arms bent into a W shape and hands off floor or lightly touching.",
+      "endPosition": "Lift elbows and hands slightly while squeezing shoulder blades down and back.",
+      "camera": "rear three-quarter",
+      "formRules": [
+        "Keep neck neutral, movement small, avoid shrugging."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "prone-lat-pull",
+      "name": "Prone Lat Pull-Down",
+      "movement": "vertical-pull",
+      "muscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "equipment": [
+        "bodyweight",
+        "bands",
+        "mixed-home"
+      ],
+      "style": "bodyweight",
+      "startPosition": "Lie face down with arms extended overhead.",
+      "endPosition": "Sweep elbows down toward ribs while lifting arms slightly off floor.",
+      "camera": "rear three-quarter",
+      "formRules": [
+        "Keep neck neutral, ribs controlled, squeeze lats without excessive back arch."
+      ],
+      "specStatus": "ready"
+    },
+    {
+      "id": "band-overhead-press",
+      "name": "Band Overhead Press",
+      "movement": "vertical-push",
+      "muscles": [
+        "Shoulders",
+        "Triceps"
+      ],
+      "equipment": [
+        "bands",
+        "mixed-home"
+      ],
+      "style": "band",
+      "startPosition": "Stand on band with handles at shoulder height.",
+      "endPosition": "Press handles overhead until arms are nearly straight.",
+      "camera": "front three-quarter",
+      "formRules": [
+        "Ribs down, wrists stacked, control band tension."
+      ],
+      "specStatus": "ready"
+    }
+  ]
+}
