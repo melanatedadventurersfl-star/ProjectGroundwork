@@ -4555,25 +4555,23 @@ function resetActiveTimer(){
   }else if(w.phase==='warmup'||w.phase==='cooldown'){
     const snap=timedStageSnapshot(w);if(!snap)return;
     if(snap.mode==='ready'){
-    return '<div class="timed-stage runner-guided-stage runner-guided-ready" data-stage-index="'+index+'" data-stage-mode="ready">'+
-      '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
-      '<div class="runner-stage-copy">'+(snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'')+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p></div>'+
-      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?'Coach countdown is running.':'Start this movement when you are set.')+'</strong><small>'+(guidedAutoStartEnabled(w.phase)?'This normally starts after the coach cue.':'Auto-start is off in your coach settings.')+'</small></div>'+
-      '<button class="button primary-action runner-gold-action" data-action="start-guided-stage" '+(w.timedStageStarting?'disabled':'')+'>'+(w.timedStageStarting?'STARTING…':'START MOVEMENT')+'</button>'+
-    '</div>';
-  }
-  if(snap.mode==='switch'){
+      w.timedStageAwaitingStart=true;
+      w.timedStageStarting=false;
+      w.timedPhaseStartedAt=null;
+    }else if(snap.mode==='switch'){
       const seconds=timedStageSwitchSeconds(timedStageItems(w)[w.timedStageIndex||0]);
       w.timedStageSwitchStartedAt=now.toISOString();
       w.timedStageSwitchEndsAt=new Date(now.getTime()+seconds*1000).toISOString();
-    }else if(snap.mode==='reps')w.timedStageReps=Math.max(1,num(timedStageItems(w)[w.timedStageIndex||0]?.reps)||snap.totalReps||8);
-    else w.timedPhaseStartedAt=now.toISOString();
+    }else if(snap.mode==='reps'){
+      w.timedStageReps=Math.max(1,num(timedStageItems(w)[w.timedStageIndex||0]?.reps)||snap.totalReps||8);
+    }else{
+      w.timedPhaseStartedAt=now.toISOString();
+    }
   }else return;
   saveStore();
   fireWorkoutSignal('transition','timer-reset-'+w.id+'-'+w.phase+'-'+Date.now(),{voice:'Timer reset',label:'RESET'});
   render();
 }
-
 
 function previousBest(exerciseId,exclude=null){
   let best=null;
@@ -6599,7 +6597,21 @@ function renderTimedStage(w){
   const items=timedStageItems(w),snap=timedStageSnapshot(w)||{index:0,remaining:0,total:30,mode:'time'};
   const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1))),item=items[index]||items[0],next=index+1<items.length?items[index+1]:null;
   const image=timedStageImageUrl(item,0);
-  const pct=snap.mode==='reps'?Math.max(0,Math.min(100,(snap.completedReps/Math.max(1,snap.totalReps))*100)):snap.mode==='switch'?Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100)):Math.max(0,Math.min(100,((snap.total-snap.remaining)/Math.max(1,snap.total))*100));
+  const pct=snap.mode==='reps'
+    ?Math.max(0,Math.min(100,(snap.completedReps/Math.max(1,snap.totalReps))*100))
+    :snap.mode==='switch'
+      ?Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100))
+      :Math.max(0,Math.min(100,((snap.total-snap.remaining)/Math.max(1,snap.total))*100));
+
+  if(snap.mode==='ready'){
+    return '<div class="timed-stage runner-guided-stage runner-guided-ready" data-stage-index="'+index+'" data-stage-mode="ready">'+
+      '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
+      '<div class="runner-stage-copy">'+(snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'')+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p></div>'+
+      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?'Coach countdown is running.':'Start this movement when you are set.')+'</strong><small>'+(guidedAutoStartEnabled(w.phase)?'This normally starts after the coach cue.':'Auto-start is off in your coach settings.')+'</small></div>'+
+      '<button class="button primary-action runner-gold-action" data-action="start-guided-stage" '+(w.timedStageStarting?'disabled':'')+'>'+(w.timedStageStarting?'STARTING…':'START MOVEMENT')+'</button>'+
+    '</div>';
+  }
+
   if(snap.mode==='switch'){
     return '<div class="timed-stage runner-guided-stage runner-side-switch-stage" data-stage-index="'+index+'" data-stage-mode="switch">'+
       '<div class="runner-stage-copy"><p class="eyebrow">SWITCH SIDES</p><h2>Move to your left side</h2><p>'+esc(item?.name||'Movement')+'</p></div>'+
@@ -6609,6 +6621,7 @@ function renderTimedStage(w){
       '<small class="runner-switch-note">Reposition safely. The left side starts automatically at zero.</small>'+
     '</div>';
   }
+
   const sideLabel=snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'';
   return '<div class="timed-stage runner-guided-stage" data-stage-index="'+index+'" data-stage-mode="'+esc(snap.mode)+'">'+
     '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
@@ -6619,6 +6632,7 @@ function renderTimedStage(w){
     (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' · each side':'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
   '</div>';
 }
+
 function exerciseSessionHistory(exerciseRef,limit=4){
   const rows=[];
   const identity=exerciseHistoryIdentity(exerciseRef);
