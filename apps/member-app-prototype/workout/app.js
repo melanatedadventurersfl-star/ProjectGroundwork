@@ -5261,7 +5261,7 @@ function renderProfileHub(){
   const p=store.profile;if(!p)return renderProfileEditor();
   const context=programContext(),shared=sharedTrainingState(),avatar=trainingAvatar(p);
   const name=displayName()==='there'?'Your profile':displayName();
-  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
+  return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(workoutStyleLabel(p.workoutStyle))+' · '+esc(pacingLabel(p.pacing))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
@@ -6440,6 +6440,60 @@ function progressMoments(limit=6){
     value:item.weight?item.weight+' lb × '+item.reps:item.reps+' reps'
   }));
 }
+function strengthPinMovements(pin){
+  return ({
+    bench:['horizontal-push'],
+    row:['horizontal-pull','vertical-pull'],
+    squat:['squat','single-leg','quad-accessory'],
+    overhead:['vertical-push','shoulder-accessory'],
+    hinge:['hinge','hamstring-accessory']
+  })[pin]||[];
+}
+function strengthPinSummary(pin,records=personalRecords()){
+  const movements=strengthPinMovements(pin);
+  const candidates=records.filter(summary=>{
+    const ex=catalog.find(item=>item.id===summary.exerciseId)||(store.history||[]).flatMap(item=>item.exercises||[]).find(item=>item.id===summary.exerciseId);
+    return movements.includes(ex?.movement);
+  });
+  return candidates.sort((a,b)=>b.sessions-a.sessions)[0]||null;
+}
+function progressBodyPinKey(pin){
+  return ({weight:'weightLb',chest:'chestIn',waist:'waistIn',hips:'hipsIn',arm:'armIn',thigh:'thighIn',calf:'calfIn'})[pin]||'';
+}
+function signedBodyChange(key,value){
+  if(value===null)return 'No change data';
+  const metric=BODY_METRICS.find(item=>item.key===key);
+  const unit=metric?.kind==='weight'?bodyWeightUnit():bodyMeasurementUnit();
+  return (value>0?'+':'')+roundMeasure(value)+' '+unit+' from start';
+}
+function renderPinnedProgress(records){
+  const pins=store.profile?.progressPins||['weight','chest','arm','bench','row'];
+  const first=startingBodyMeasurement(),latest=latestBodyMeasurement();
+  const cards=[];
+  for(const pin of pins){
+    const bodyKey=progressBodyPinKey(pin);
+    if(bodyKey){
+      const metric=BODY_METRICS.find(item=>item.key===bodyKey);
+      const start=displayBodyMetric(first,bodyKey),current=displayBodyMetric(latest,bodyKey),change=bodyMetricChange(bodyKey);
+      cards.push('<article class="pinned-progress-card body"><span>'+esc(metric?.label||pin)+'</span><strong>'+(current?esc(current):'Not logged')+'</strong><small>'+(start?'Started '+esc(start)+' · '+esc(signedBodyChange(bodyKey,change)):'Add a baseline in the weekly check-in')+'</small></article>');
+      continue;
+    }
+    const summary=strengthPinSummary(pin,records);
+    cards.push('<article class="pinned-progress-card strength"><span>'+esc(STRENGTH_PIN_LABELS[pin]||pin)+'</span><strong>'+(summary?esc(summary.bestLabel):'Baseline pending')+'</strong><small>'+(summary?'Started '+esc(summary.baselineLabel)+' · '+esc(summary.changeLabel):'Your first completed working sets will establish this automatically.')+'</small></article>');
+  }
+  return '<section class="clean-section pinned-progress-section"><div class="clean-section-head"><div><p class="eyebrow">PINNED PROGRESS</p><h3>Start → current</h3></div><button class="text-button" data-action="edit-profile">EDIT PINS</button></div><div class="pinned-progress-grid">'+cards.join('')+'</div></section>';
+}
+function renderBodyMeasurementHistory(){
+  const rows=[...bodyProgress().measurements].sort((a,b)=>Date.parse(b.recordedAt||0)-Date.parse(a.recordedAt||0)).slice(0,12);
+  if(!rows.length)return '<section class="clean-panel body-progress-empty"><span>BODY PROGRESS</span><strong>No measurements yet</strong><p>Add a baseline from your weekly check-in.</p><button class="button secondary" data-action="open-measurement-checkin">ADD MEASUREMENTS</button></section>';
+  return '<section class="clean-section body-progress-history"><div class="clean-section-head"><div><p class="eyebrow">BODY PROGRESS</p><h3>Dated measurements</h3></div><button class="button secondary compact-button" data-action="open-measurement-checkin">UPDATE</button></div>'+
+    '<div class="body-measurement-list">'+rows.map((record,index)=>{
+      const values=BODY_METRICS.filter(metric=>num(record[metric.key])).map(metric=>'<span><b>'+esc(metric.label)+'</b> '+esc(displayBodyMetric(record,metric.key))+'</span>').join('');
+      const photos=record.photos?Object.values(record.photos).filter(Boolean):[];
+      return '<article class="body-measurement-row '+(record.source==='baseline'?'baseline':'')+'"><button data-action="edit-measurement" data-measurement-id="'+esc(record.id)+'"><div><strong>'+(record.source==='baseline'?'Starting baseline':record.source==='unchanged'?'No changes logged':'Weekly check-in')+'</strong><small>'+esc(formatDate(record.recordedAt))+'</small></div><em>EDIT</em></button><div class="body-measurement-values">'+values+'</div>'+(photos.length?'<div class="body-photo-thumbs">'+photos.map(src=>'<img src="'+esc(src)+'" alt="Progress photo thumbnail">').join('')+'</div>':'')+'</article>';
+    }).join('')+'</div></section>';
+}
+
 function renderProgress(){
   const week=weeklyHistory(),allVolume=store.history.reduce((sum,item)=>sum+(item.totalVolume||0),0),records=personalRecords(),calibrated=Object.keys(store.calibration).length;
   const trends=records.slice(0,6);
@@ -6452,7 +6506,9 @@ function renderProgress(){
   if(progressExerciseId&&!records.some(item=>item.exerciseId===progressExerciseId))progressExerciseId='';
   const selected=(progressExerciseId?records.find(item=>item.exerciseId===progressExerciseId):null)||trends[0]||null;
   if(selected&&!progressExerciseId)progressExerciseId=selected.exerciseId;
-  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See what changed, where you started, and which movements are moving forward.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+  return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See body changes, strength baselines, and what moved forward from where you started.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+    renderPinnedProgress(records)+
+    renderBodyMeasurementHistory()+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
     (trends.length?'<section class="clean-section progress-movements-section"><div class="clean-section-head"><div><p class="eyebrow">MOVEMENT PROGRESS</p><h3>What is changing</h3></div></div><div class="progress-movement-grid">'+trends.map(item=>{
       const metric=item.weighted?'weight':'reps';
