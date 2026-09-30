@@ -1309,6 +1309,7 @@ const TIMED_STAGE_WHY = {
 };
 
 function timedStageImageUrl(item,index=0){
+  if(item?.mediaStatus==='none')return '';
   const mediaId=item?.mediaId||TIMED_STAGE_MEDIA[item?.name];
   return mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(mediaId)+'/'+index+'.jpg':'';
 }
@@ -1631,18 +1632,18 @@ function buildWarmup(exercises){
     description:'March in place while the arms swing naturally.',
     cue:'Raise your temperature. Keep your shoulders loose.',
     why:'Gently raises body temperature before training.',
-    mediaId:'Arm_Circles'
+    mediaStatus:'none'
   }];
   if(lower){
     items.push(
-      {name:'Ankle rocks',mode:'reps',reps:8,side:'each side',description:'Drive the knee forward over the toes while the heel stays down.',cue:'Keep the heel planted and move through a comfortable range.',why:'Prepares the ankles for squats, lunges, and leg work.',mediaId:'Standing_Gastrocnemius_Calf_Stretch'},
+      {name:'Ankle rocks',mode:'reps',reps:8,side:'each side',description:'Drive the knee forward over the toes while the heel stays down.',cue:'Keep the heel planted and move through a comfortable range.',why:'Prepares the ankles for squats, lunges, and leg work.',mediaStatus:'none'},
       {name:'Bodyweight squat',mode:'reps',reps:8,description:'Sit between the hips and stand tall without load.',cue:'Keep your knees tracking over your toes.',why:'Warms the squat pattern before loaded lower-body work.',mediaId:'Bodyweight_Squat'}
     );
     if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))){
       items.push({name:'Hip hinge reach',mode:'reps',reps:8,description:'Reach the hips back with soft knees, then return tall.',cue:'Keep your spine long and feel the hamstrings load lightly.',why:'Primes the hinge pattern without external load.'});
     }
     items.push(
-      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',description:'Step back into a controlled reverse lunge with an easy reach.',cue:'Stay tall and use a comfortable range.',why:'Adds single-leg motion and opens the hips.',mediaId:'Crossover_Reverse_Lunge'},
+      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',description:'Step back into a controlled reverse lunge with an easy reach.',cue:'Stay tall and use a comfortable range.',why:'Adds single-leg motion and opens the hips.',mediaStatus:'none'},
       {name:'Glute bridge',mode:'reps',reps:8,description:'Press through the feet and lift the hips under control.',cue:'Squeeze the glutes without arching the lower back.',why:'Turns on the glutes before loaded lower-body work.'}
     );
   }else if(upper){
