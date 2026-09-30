@@ -1309,6 +1309,7 @@ const TIMED_STAGE_WHY = {
 };
 
 function timedStageImageUrl(item,index=0){
+  if(item?.mediaStatus==='none')return '';
   const mediaId=item?.mediaId||TIMED_STAGE_MEDIA[item?.name];
   return mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(mediaId)+'/'+index+'.jpg':'';
 }
@@ -1335,7 +1336,7 @@ function exerciseImageButton(ex,className='exercise-media',index=0){
   if(!src)return renderExerciseMediaPlaceholder(ex,className,state);
   const media=animate&&second
     ?'<span class="exercise-motion-frames"><img class="motion-frame motion-frame-a" src="'+esc(src)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' demonstration, position 1"><img class="motion-frame motion-frame-b" src="'+esc(second)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' demonstration, position 2"></span>'
-    :'<img src="'+esc(src)+'" loading="lazy" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
+    :'<img src="'+esc(src)+'" loading="'+(runnerEager?'eager':'lazy')+'" decoding="async" alt="'+esc(ex.name)+' exercise demonstration">';
   return '<button class="'+className+' exercise-media'+(animate&&second?' motion-enabled':'')+'" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+media+
     '<span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span><span class="media-hint">VIEW FORM</span></button>';
 }
@@ -1605,12 +1606,13 @@ function computeProgression(ex,feedback){
 
 function timedStageEstimateSeconds(item){
   if(!item)return 0;
+  const transition=8;
   if(item.mode==='reps'||item.reps){
     const reps=Math.max(1,Number(item.reps)||8);
     const sides=item.side?2:1;
-    return Math.max(20,reps*sides*2.5);
+    return Math.max(25,reps*sides*3)+transition;
   }
-  return Math.max(1,Number(item.seconds)||30);
+  return Math.max(1,Number(item.seconds)||30)+transition;
 }
 
 function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
@@ -1630,18 +1632,18 @@ function buildWarmup(exercises){
     description:'March in place while the arms swing naturally.',
     cue:'Raise your temperature. Keep your shoulders loose.',
     why:'Gently raises body temperature before training.',
-    mediaId:'Arm_Circles'
+    mediaStatus:'none'
   }];
   if(lower){
     items.push(
-      {name:'Ankle rocks',mode:'reps',reps:8,side:'each side',description:'Drive the knee forward over the toes while the heel stays down.',cue:'Keep the heel planted and move through a comfortable range.',why:'Prepares the ankles for squats, lunges, and leg work.',mediaId:'Standing_Gastrocnemius_Calf_Stretch'},
+      {name:'Ankle rocks',mode:'reps',reps:8,side:'each side',description:'Drive the knee forward over the toes while the heel stays down.',cue:'Keep the heel planted and move through a comfortable range.',why:'Prepares the ankles for squats, lunges, and leg work.',mediaStatus:'none'},
       {name:'Bodyweight squat',mode:'reps',reps:8,description:'Sit between the hips and stand tall without load.',cue:'Keep your knees tracking over your toes.',why:'Warms the squat pattern before loaded lower-body work.',mediaId:'Bodyweight_Squat'}
     );
     if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))){
       items.push({name:'Hip hinge reach',mode:'reps',reps:8,description:'Reach the hips back with soft knees, then return tall.',cue:'Keep your spine long and feel the hamstrings load lightly.',why:'Primes the hinge pattern without external load.'});
     }
     items.push(
-      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',description:'Step back into a controlled reverse lunge with an easy reach.',cue:'Stay tall and use a comfortable range.',why:'Adds single-leg motion and opens the hips.',mediaId:'Crossover_Reverse_Lunge'},
+      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',description:'Step back into a controlled reverse lunge with an easy reach.',cue:'Stay tall and use a comfortable range.',why:'Adds single-leg motion and opens the hips.',mediaStatus:'none'},
       {name:'Glute bridge',mode:'reps',reps:8,description:'Press through the feet and lift the hips under control.',cue:'Squeeze the glutes without arching the lower back.',why:'Turns on the glutes before loaded lower-body work.'}
     );
   }else if(upper){
@@ -5670,6 +5672,12 @@ function handleClick(event){
   else if(a==='discard')discardWorkout();
 }
 document.addEventListener('click',handleClick);
+document.addEventListener('load',event=>{
+  const img=event.target?.closest?.('img');
+  if(!img)return;
+  const shell=img.closest('.runner-set-ready-media,.runner-transition-media,.runner-first-strength,.runner-rest-next .exercise-media,.runner-stage-media');
+  if(shell)shell.classList.add('media-loaded');
+},true);
 document.addEventListener('error',event=>{
   const img=event.target.closest?.('img');
   if(!img)return;

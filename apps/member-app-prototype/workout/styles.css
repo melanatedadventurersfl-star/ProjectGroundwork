@@ -6704,11 +6704,11 @@ button.runner-phase-row{cursor:pointer}
   background-size:220% 100%;
   animation:runner-media-load 1.35s ease-in-out infinite;
 }
-.runner-set-ready-media:has(img),
-.runner-transition-media:has(img),
-.runner-first-strength:has(img),
-.runner-rest-next .exercise-media:has(img),
-.runner-stage-media:has(img){
+.runner-set-ready-media.media-loaded,
+.runner-transition-media.media-loaded,
+.runner-first-strength.media-loaded,
+.runner-rest-next .exercise-media.media-loaded,
+.runner-stage-media.media-loaded{
   animation:none;
   background-image:none;
 }
@@ -6864,4 +6864,13 @@ button.runner-phase-row{cursor:pointer}
   font-size:7px;
   font-style:normal;
   font-weight:700;
+}
+
+
+.runner-set-ready-media.compact-fallback,
+.runner-transition-media.compact-fallback,
+.runner-first-strength .compact-fallback,
+.runner-rest-next .compact-fallback{
+  animation:none;
+  background-image:none;
 }
