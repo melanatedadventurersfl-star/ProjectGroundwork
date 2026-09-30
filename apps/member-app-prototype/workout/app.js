@@ -548,8 +548,11 @@ function workoutResolvedCount(w){
 function workoutIsFullyResolved(w){
   return Boolean(w?.exercises?.length)&&w.exercises.every(exerciseCountsAsResolved);
 }
+function setIsResolved(set){
+  return Boolean(set?.completed||set?.skipped);
+}
 function firstIncompleteSetIndex(ex){
-  const index=(ex?.sets||[]).findIndex(set=>!set.completed);
+  const index=(ex?.sets||[]).findIndex(set=>!setIsResolved(set));
   return index<0?Math.max(0,(ex?.sets?.length||1)-1):index;
 }
 function nextUnresolvedExerciseIndex(w,from=-1){
@@ -1050,7 +1053,41 @@ function workoutExerciseFromCandidate(candidate,template,setCount){
 }
 function estimatePlanExerciseSeconds(ex){
   const setSeconds=goalSettings(store.profile?.goal||'muscle',ex.movement,store.profile?.experience||'beginner').setSeconds||40;
-  return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*(ex.rest||45)+35;
+  const between=ex.blockId?(ex.transitionRest||15):(ex.rest||45);
+  return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*between+35;
+}
+function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
+  if(!day?.exercises?.length)return day;
+  for(const ex of day.exercises){
+    delete ex.blockId;delete ex.blockType;delete ex.blockOrder;delete ex.transitionRest;delete ex.blockRest;
+  }
+  const exactIds=['push-up','sit-up','pull-up'];
+  const exact=exactIds.map(id=>day.exercises.findIndex(ex=>ex.id===id));
+  let indexes=[];
+  if(exact.every(index=>index>=0))indexes=exact;
+  else{
+    const accessory=new Set(['core','biceps','triceps','shoulder-accessory','calves','horizontal-push','horizontal-pull','vertical-pull']);
+    const candidates=day.exercises.map((ex,index)=>({ex,index}))
+      .filter(({ex})=>accessory.has(ex.movement)&&(num(ex.setup)||25)<=35)
+      .map(item=>item.index);
+    const wanted=['general','fat-loss'].includes(profile.goal)?3:2;
+    if(candidates.length>=wanted)indexes=candidates.slice(-wanted);
+  }
+  if(indexes.length<2)return day;
+  const ordered=[...new Set(indexes)].sort((a,b)=>a-b);
+  const blockType=ordered.length>=3?'tri-set':'superset';
+  const blockId=(day.id||'session')+'-'+blockType+'-1';
+  const roundRest=blockType==='tri-set'?75:60;
+  ordered.forEach((index,order)=>{
+    const ex=day.exercises[index];
+    ex.blockId=blockId;
+    ex.blockType=blockType;
+    ex.blockOrder=order;
+    ex.transitionRest=15;
+    ex.blockRest=roundRest;
+  });
+  day.blocks=[{id:blockId,type:blockType,exerciseIds:ordered.map(index=>day.exercises[index].id),transitionRest:15,roundRest}];
+  return day;
 }
 function recalculatePlanDay(day){
   if(!day)return;
@@ -2425,7 +2462,7 @@ function generatePlan(profile){
     daysPerWeek:profile.days,
     workoutDays:preferredWorkoutDays(profile),
     minutes:profile.minutes,
-    days:blueprints.map((b,i)=>buildDay(b,profile,i))
+    days:blueprints.map((b,i)=>assignDynamicWorkoutBlocks(buildDay(b,profile,i),profile))
   };
 }
 
@@ -2691,6 +2728,7 @@ async function startPreparedWorkout(){
 }
 
 function createWorkout(day,meta={}){
+  day=assignDynamicWorkoutBlocks(clone(day),store.profile||{});
   const now=new Date().toISOString();
   const workout={
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
@@ -2742,13 +2780,59 @@ function getActivePosition(){
   if(!set)return null;
   return {workout:w,ei,si,exercise:ex,set};
 }
+function blockExerciseIndexes(w,blockId){
+  if(!blockId)return [];
+  return (w?.exercises||[]).map((ex,index)=>({ex,index}))
+    .filter(item=>item.ex.blockId===blockId)
+    .sort((a,b)=>(num(a.ex.blockOrder)-num(b.ex.blockOrder))||(a.index-b.index))
+    .map(item=>item.index);
+}
+function sameDynamicBlock(a,b){
+  return Boolean(a?.blockId&&b?.blockId&&a.blockId===b.blockId);
+}
+function nextDynamicBlockPosition(w,ei,si){
+  const ex=w?.exercises?.[ei];
+  if(!ex?.blockId)return null;
+  const peers=blockExerciseIndexes(w,ex.blockId);
+  const peerPosition=peers.indexOf(ei);
+  if(peerPosition<0)return null;
+  for(let p=peerPosition+1;p<peers.length;p++){
+    const index=peers[p],set=w.exercises[index]?.sets?.[si];
+    if(set&&!setIsResolved(set))return {ei:index,si,type:'block-transition',blockId:ex.blockId};
+  }
+  const maxSets=Math.max(...peers.map(index=>w.exercises[index]?.sets?.length||0),0);
+  for(let round=si+1;round<maxSets;round++){
+    for(const index of peers){
+      const set=w.exercises[index]?.sets?.[round];
+      if(set&&!setIsResolved(set))return {ei:index,si:round,type:'block-round',blockId:ex.blockId};
+    }
+  }
+  const lastPeer=Math.max(...peers);
+  for(let index=lastPeer+1;index<w.exercises.length;index++){
+    if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
+  }
+  for(let index=0;index<w.exercises.length;index++){
+    if(peers.includes(index))continue;
+    if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
+  }
+  return null;
+}
 function nextPosition(w,ei,si){
   const ex=w.exercises[ei];
-  for(let setIndex=si+1;setIndex<(ex.sets||[]).length;setIndex++)if(!ex.sets[setIndex].completed)return {ei,si:setIndex,type:'set'};
+  if(ex?.blockId)return nextDynamicBlockPosition(w,ei,si);
+  for(let setIndex=si+1;setIndex<(ex.sets||[]).length;setIndex++)if(!setIsResolved(ex.sets[setIndex]))return {ei,si:setIndex,type:'set'};
   for(let index=ei+1;index<w.exercises.length;index++){
     if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
   }
   return null;
+}
+function blockRestSeconds(w,fromEi,next){
+  const from=w?.exercises?.[fromEi],to=next?w.exercises?.[next.ei]:null;
+  if(!sameDynamicBlock(from,to))return null;
+  const peers=blockExerciseIndexes(w,from.blockId);
+  const first=peers[0];
+  const startsNewRound=next.type==='block-round'||next.ei===first&&next.si>num(w.currentSetIndex);
+  return startsNewRound?Math.max(30,num(from.blockRest)||75):Math.max(5,num(from.transitionRest)||15);
 }
 function workoutNowMs(w,nowMs=Date.now()){
   const paused=Date.parse(w?.pausedAt||'');
@@ -2985,7 +3069,7 @@ function renderWorkoutMap(){
   return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal runner-map-modal" data-workout-map-panel role="dialog" aria-modal="true"><button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><h2>'+esc(w.routineName)+'</h2></div><div class="runner-map-tabs">'+tabs.map(([id,label])=>'<button class="'+(workoutMapView===id?'active':'')+'" data-action="set-workout-map-view" data-map-view="'+id+'">'+label+'</button>').join('')+'</div><div class="workout-map-list">'+body+'</div></section></div>';
 }
 
-function beginPreSetPosition(ei,si,isNewExercise=true){
+function beginPreSetPosition(ei,si,isNewExercise=true,setupSeconds=null){
   const w=store.activeWorkout;if(!w)return;
   const previousIndex=w.currentExerciseIndex||0;
   if(isNewExercise&&w.exerciseStartedAt&&previousIndex!==ei)recordExerciseDuration(w,previousIndex);
@@ -2995,7 +3079,7 @@ function beginPreSetPosition(ei,si,isNewExercise=true){
   prepareSetTarget(w.exercises[ei],w.exercises[ei]?.sets?.[si],si);
   w.phase='pre-set';
   w.preSetStartedAt=new Date().toISOString();
-  w.preSetSetupSeconds=isNewExercise?5:0;
+  w.preSetSetupSeconds=setupSeconds===null?(isNewExercise?5:0):Math.max(0,num(setupSeconds));
   w.preSetCountdownSeconds=3;
   w.preSetIsNewExercise=Boolean(isNewExercise);
   w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
@@ -3084,6 +3168,9 @@ function completeTimedSet(early=false){
   delete w.timedSetStartedAt;delete w.timedSetDuration;delete w.timedSetEndsAt;
   fireWorkoutSignal('complete','complete-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Done',label:'DONE'});
   const next=nextPosition(w,pos.ei,pos.si);
+  if(next&&sameDynamicBlock(pos.exercise,w.exercises[next.ei])){
+    beginRest(next,blockRestSeconds(w,pos.ei,next)||15);return;
+  }
   if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
@@ -3152,7 +3239,7 @@ function beginRest(next,seconds){
   const w=store.activeWorkout;
   if(!w)return;
   if(!next){ startCooldown();return; }
-  const safeRest=Math.max(30,Math.min(60,seconds||45));
+  const safeRest=Math.max(5,Math.min(180,seconds||45));
   w.phase='rest';w.restDuration=safeRest;w.restEndsAt=new Date(Date.now()+safeRest*1000).toISOString();
   w.restPausedRemaining=null;w.restToken=newTimerToken('rest',w);w.pendingPosition=next;saveStore();render();
 }
@@ -3212,6 +3299,9 @@ function completeCurrentSet(){
   if(pos.si===0 && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
     pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
   }
+  if(next&&sameDynamicBlock(pos.exercise,pos.workout.exercises[next.ei])){
+    beginRest(next,blockRestSeconds(pos.workout,pos.ei,next)||15);return;
+  }
   if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
@@ -3222,6 +3312,9 @@ function skipCurrentSet(reason='Skipped by user'){
  pos.set.skipped=true;pos.set.skipReason=reason;pos.set.completed=false;pos.set.completedAt=null;
  delete pos.workout.setStartedAt;
  const next=nextPosition(pos.workout,pos.ei,pos.si);
+ if(next&&sameDynamicBlock(pos.exercise,pos.workout.exercises[next.ei])){
+   beginRest(next,blockRestSeconds(pos.workout,pos.ei,next)||15);return;
+ }
  if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
  beginRest(next,Math.min(30,pos.exercise.rest||30));
 }
@@ -3253,9 +3346,16 @@ function advanceAfterRest(expectedToken=null){
   const next=w.pendingPosition;if(!next){startCooldown();return;}
   const isNewExercise=next.ei!==w.currentExerciseIndex;
   if(isNewExercise){
+    const current=w.exercises[w.currentExerciseIndex],upcoming=w.exercises[next.ei];
+    if(sameDynamicBlock(current,upcoming)){
+      w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
+      announceExercise(upcoming,next.type==='block-round'?'Next round':'Next exercise');
+      beginPreSetPosition(next.ei,next.si,true,0);
+      return;
+    }
     w.phase='exercise-transition';
     w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
-    announceExercise(w.exercises[next.ei],'Next exercise');
+    announceExercise(upcoming,'Next exercise');
     saveStore();render();return;
   }
   beginPreSetPosition(next.ei,next.si,false);
@@ -3263,10 +3363,10 @@ function advanceAfterRest(expectedToken=null){
 function adjustRest(delta){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
   const current=restRemaining(w);
-  const nextRemaining=Math.max(30,Math.min(60,current+delta));
+  const nextRemaining=Math.max(5,Math.min(180,current+delta));
   if(Number.isFinite(w.restPausedRemaining)) w.restPausedRemaining=nextRemaining;
   else w.restEndsAt=new Date(Date.now()+nextRemaining*1000).toISOString();
-  w.restDuration=Math.max(30,Math.min(60,Math.max(w.restDuration||30,nextRemaining)));
+  w.restDuration=Math.max(5,Math.min(180,Math.max(w.restDuration||5,nextRemaining)));
   saveStore();updateTimers();
 }
 function toggleRestPause(){
