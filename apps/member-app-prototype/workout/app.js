@@ -626,18 +626,36 @@ function announceExercise(ex,prefix='Next exercise'){
 let workoutAudioContext=null;
 const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null};
 
+const COACH_VOICES=[
+  {id:'marin',label:'Marin',recommended:true},
+  {id:'cedar',label:'Cedar',recommended:true},
+  {id:'alloy',label:'Alloy'},
+  {id:'ash',label:'Ash'},
+  {id:'ballad',label:'Ballad'},
+  {id:'coral',label:'Coral'},
+  {id:'echo',label:'Echo'},
+  {id:'fable',label:'Fable'},
+  {id:'nova',label:'Nova'},
+  {id:'onyx',label:'Onyx'},
+  {id:'sage',label:'Sage'},
+  {id:'shimmer',label:'Shimmer'},
+  {id:'verse',label:'Verse'}
+];
+const COACH_VOICE_IDS=COACH_VOICES.map(item=>item.id);
+function coachVoiceLabel(id){
+  return COACH_VOICES.find(item=>item.id===id)?.label||'Cedar';
+}
 function workoutCueSettings(){
   const saved=store.cueSettings||{};
   const styles=['balanced','calm','hype','tough'];
   const frequencies=['minimal','normal','talkative'];
-  const voices=['cedar','marin','coral','onyx','nova'];
   return {
     sound:saved.sound!==false,
     voice:saved.voice!==false,
     aiCoach:saved.aiCoach!==false,
     coachStyle:styles.includes(saved.coachStyle)?saved.coachStyle:'balanced',
     coachFrequency:frequencies.includes(saved.coachFrequency)?saved.coachFrequency:'normal',
-    coachVoice:voices.includes(saved.coachVoice)?saved.coachVoice:'cedar',
+    coachVoice:COACH_VOICE_IDS.includes(saved.coachVoice)?saved.coachVoice:'cedar',
     haptics:saved.haptics!==false,
     flash:saved.flash!==false
   };
@@ -728,6 +746,34 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
     fallbackSpeak:speakWorkoutCue,
     fallbackLine
   }).catch(error=>console.warn('Workout coach event failed',error));
+}
+function selectCoachVoice(voice){
+  if(!COACH_VOICE_IDS.includes(voice))return;
+  store.cueSettings={...workoutCueSettings(),coachVoice:voice};
+  saveStore();
+  render();
+}
+function previewCoachVoice(voice){
+  if(!COACH_VOICE_IDS.includes(voice))return;
+  unlockWorkoutCues();
+  const coach=window.GoWorkoutCoach;
+  const name=displayName()==='there'?'':displayName();
+  const fallback='Alright'+(name?' '+name:'')+'. This is '+coachVoiceLabel(voice)+'. Your AI coach is ready.';
+  if(!coach?.emit){
+    speakWorkoutCue(fallback,'voice-preview-local-'+voice+'-'+Date.now());
+    return;
+  }
+  coach.stop?.();
+  const settings={...workoutCueSettings(),voice:true,aiCoach:true,coachVoice:voice};
+  coach.emit({
+    event:'test',
+    context:coachEventContext({previewVoice:voice}),
+    token:'voice-preview-'+voice+'-'+Date.now(),
+    settings,
+    invoke:invokeWorkoutCoach,
+    fallbackSpeak:speakWorkoutCue,
+    fallbackLine:fallback
+  }).catch(error=>console.warn('Voice preview failed',error));
 }
 function feedbackCoachFallback(feedback,result){
   if(feedback==='too-easy')return result?.label?'Looks like I’m taking it easy on you. '+result.label+' next time.':'Looks like I’m taking it easy on you. We’ll bump this up next time.';
@@ -5240,15 +5286,28 @@ function renderCueSettingsSheet(){
   const settings=workoutCueSettings();
   const styleLabel={balanced:'Balanced',calm:'Calm',hype:'Hype',tough:'Tough'}[settings.coachStyle]||'Balanced';
   const frequencyLabel={minimal:'Minimal',normal:'Normal',talkative:'Talkative'}[settings.coachFrequency]||'Normal';
-  const voiceLabel={cedar:'Cedar',marin:'Marin',coral:'Coral',onyx:'Onyx',nova:'Nova'}[settings.coachVoice]||'Cedar';
-  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Voice coach & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
+  const voiceCards=COACH_VOICES.map(voice=>{
+    const selected=settings.coachVoice===voice.id;
+    return '<div class="coach-voice-card '+(selected?'selected':'')+'">'+
+      '<button type="button" class="coach-voice-select" data-action="select-coach-voice" data-coach-voice="'+esc(voice.id)+'" aria-pressed="'+(selected?'true':'false')+'">'+
+        '<span><strong>'+esc(voice.label)+'</strong><small>'+(voice.recommended?'Recommended for best quality':'Built-in AI voice')+'</small></span>'+
+        '<em>'+(selected?'SELECTED':'CHOOSE')+'</em>'+
+      '</button>'+
+      '<button type="button" class="coach-voice-preview" data-action="preview-coach-voice" data-coach-voice="'+esc(voice.id)+'" aria-label="Preview '+esc(voice.label)+' voice">▶ PREVIEW</button>'+
+    '</div>';
+  }).join('');
+  return '<div class="exercise-modal-backdrop sheet-backdrop" data-action="close-cue-settings"><section class="bottom-sheet coach-settings-sheet" data-cue-settings-panel><div class="sheet-handle"></div><div class="sheet-head"><div><p class="eyebrow">WORKOUT SETTINGS</p><h2>Voice coach & cues</h2></div><button class="modal-close" data-action="close-cue-settings">×</button></div><div class="settings-toggle-list">'+
     '<button data-action="toggle-voice" class="settings-toggle"><div><strong>Voice cues</strong><span>Spoken workout guidance</span></div><em>'+(settings.voice?'ON':'OFF')+'</em></button>'+
     '<button data-action="toggle-ai-coach" class="settings-toggle"><div><strong>AI Coach</strong><span>Natural, context-aware workout dialogue</span></div><em>'+(settings.aiCoach?'ON':'OFF')+'</em></button>'+
-    '<button data-action="cycle-coach-style" class="settings-toggle"><div><strong>Coach style</strong><span>Changes the tone of coaching dialogue</span></div><em>'+esc(styleLabel)+'</em></button>'+
+    '<button data-action="cycle-coach-style" class="settings-toggle"><div><strong>Coach style</strong><span>Changes delivery without changing the selected voice</span></div><em>'+esc(styleLabel)+'</em></button>'+
     '<button data-action="cycle-coach-frequency" class="settings-toggle"><div><strong>Coach frequency</strong><span>Controls how often the coach speaks</span></div><em>'+esc(frequencyLabel)+'</em></button>'+
-    '<button data-action="cycle-coach-voice" class="settings-toggle"><div><strong>AI voice</strong><span>Choose the generated coaching voice</span></div><em>'+esc(voiceLabel)+'</em></button>'+
-    [['sound','Sound','Timer and completion tones'],['haptics','Haptics','Supported-device vibration cues'],['flash','Flash','Visual workout cue flash']].map(([key,label,copy])=>'<button data-action="toggle-'+key+'" class="settings-toggle"><div><strong>'+label+'</strong><span>'+copy+'</span></div><em>'+(settings[key]?'ON':'OFF')+'</em></button>').join('')+
-    '</div><div class="session-setup-warning"><strong>AI VOICE</strong><span>Coach speech is AI-generated. Instant timer and countdown cues may use your device voice so the workout never waits on the network.</span></div><button class="button secondary" data-action="test-cues">TEST VOICE COACH</button></section></div>';
+    '</div>'+
+    '<div class="coach-voice-section"><div class="coach-voice-heading"><div><strong>AI voice</strong><span>Choose a voice, then preview it before your workout.</span></div><em>'+esc(coachVoiceLabel(settings.coachVoice))+'</em></div>'+
+      '<div class="coach-voice-grid">'+voiceCards+'</div>'+
+    '</div>'+
+    '<div class="settings-toggle-list">'+
+      [['sound','Sound','Timer and completion tones'],['haptics','Haptics','Supported-device vibration cues'],['flash','Flash','Visual workout cue flash']].map(([key,label,copy])=>'<button data-action="toggle-'+key+'" class="settings-toggle"><div><strong>'+label+'</strong><span>'+copy+'</span></div><em>'+(settings[key]?'ON':'OFF')+'</em></button>').join('')+
+    '</div><div class="session-setup-warning"><strong>AI VOICE</strong><span>Coach speech is AI-generated. Marin and Cedar are recommended for best quality. Instant timer and countdown cues may use your device voice so the workout never waits on the network.</span></div><button class="button secondary" data-action="test-cues">TEST SELECTED VOICE</button></section></div>';
 }
 function renderExerciseActionsSheet(){
   const w=store.activeWorkout,index=exerciseActionsIndex,ex=w?.exercises?.[index];if(!ex)return '';
@@ -6763,7 +6822,8 @@ function handleClick(event){
   else if(a==='toggle-ai-coach')toggleCueSetting('aiCoach');
   else if(a==='cycle-coach-style')cycleCoachSetting('coachStyle',['balanced','calm','hype','tough']);
   else if(a==='cycle-coach-frequency')cycleCoachSetting('coachFrequency',['minimal','normal','talkative']);
-  else if(a==='cycle-coach-voice')cycleCoachSetting('coachVoice',['cedar','marin','coral','onyx','nova']);
+  else if(a==='select-coach-voice')selectCoachVoice(String(node.dataset.coachVoice||''));
+  else if(a==='preview-coach-voice')previewCoachVoice(String(node.dataset.coachVoice||''));
   else if(a==='toggle-flash')toggleCueSetting('flash');
   else if(a==='toggle-haptics')toggleCueSetting('haptics');
   else if(a==='test-cues'){

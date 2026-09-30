@@ -3072,6 +3072,27 @@ button:focus-visible, input:focus-visible {
 .sheet-action-list .danger-sheet-action strong,
 .danger-text{color:var(--danger)}
 
+
+.coach-voice-section{display:grid;gap:10px;margin:4px 0 14px}
+.coach-voice-heading{display:flex;justify-content:space-between;gap:12px;align-items:flex-end;padding:2px 2px 0}
+.coach-voice-heading strong{display:block;font-size:11px}
+.coach-voice-heading span{display:block;margin-top:3px;color:var(--muted);font-size:9px}
+.coach-voice-heading em{font-style:normal;color:var(--accent-2);font-size:9px}
+.coach-voice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.coach-voice-card{display:grid;grid-template-columns:1fr auto;align-items:stretch;border:1px solid var(--line);border-radius:13px;background:var(--panel-2);overflow:hidden}
+.coach-voice-card.selected{border-color:rgba(216,180,92,.62);background:rgba(216,180,92,.07)}
+.coach-voice-select{min-width:0;display:flex;justify-content:space-between;gap:8px;align-items:center;padding:12px;border:0;background:transparent;color:var(--text);text-align:left}
+.coach-voice-select span{min-width:0}
+.coach-voice-select strong{display:block;font-size:11px}
+.coach-voice-select small{display:block;margin-top:3px;color:var(--muted);font-size:8px}
+.coach-voice-select em{font-style:normal;color:var(--accent-2);font-size:7px;white-space:nowrap}
+.coach-voice-preview{min-width:70px;padding:0 10px;border:0;border-left:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--accent-2);font-size:7px;font-weight:800;letter-spacing:.07em}
+.coach-voice-card.selected .coach-voice-preview{border-left-color:rgba(216,180,92,.28)}
+@media(max-width:520px){
+  .coach-voice-grid{grid-template-columns:1fr}
+  .coach-voice-preview{min-width:82px}
+}
+
 /* Focused workout */
 body.workout-mode .topbar,
 body.workout-mode .bottom-nav{display:none}

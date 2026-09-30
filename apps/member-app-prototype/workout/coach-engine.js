@@ -6,6 +6,7 @@
   let audioContext = null;
   let activeSource = null;
   let activeAudio = null;
+  let stopGeneration = 0;
 
   function rememberToken(token) {
     if (!token) return true;
@@ -98,7 +99,7 @@
     });
   }
 
-  async function run(options) {
+  async function run(options, generation) {
     const settings = options.settings || {};
     if (settings.voice === false) return;
 
@@ -117,6 +118,7 @@
       }
     }
 
+    if (generation !== stopGeneration) return;
     const line = String(response?.line || options.fallbackLine || '').trim();
     if (!line) return;
 
@@ -136,11 +138,13 @@
 
   function emit(options) {
     if (!options || !rememberToken(options.token || '')) return Promise.resolve();
-    queue = queue.catch(() => {}).then(() => run(options));
+    const generation = stopGeneration;
+    queue = queue.catch(() => {}).then(() => generation === stopGeneration ? run(options, generation) : undefined);
     return queue;
   }
 
   function stop() {
+    stopGeneration += 1;
     if (activeSource) {
       try { activeSource.stop(0); } catch {}
       activeSource = null;

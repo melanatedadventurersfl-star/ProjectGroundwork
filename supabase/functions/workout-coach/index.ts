@@ -14,7 +14,7 @@ const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 const EVENTS = new Set(["session_started","exercise_started","set_completed","exercise_feedback","workout_completed","test"]);
 const STYLES = new Set(["balanced","calm","hype","tough"]);
 const FREQUENCIES = new Set(["minimal","normal","talkative"]);
-const VOICES = new Set(["cedar","marin","coral","onyx","nova"]);
+const VOICES = new Set(["alloy","ash","ballad","coral","echo","fable","nova","onyx","sage","shimmer","verse","marin","cedar"]);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
