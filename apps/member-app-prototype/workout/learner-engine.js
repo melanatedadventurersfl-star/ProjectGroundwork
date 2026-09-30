@@ -36,14 +36,18 @@ function eventFromExercise(workout,exercise,index=0){
   const sets=Array.isArray(exercise.sets)?exercise.sets:[],completed=sets.filter(set=>set?.completed);
   if(!completed.length)return null;
   const weights=completed.map(set=>n(set.weight)),reps=completed.map(set=>n(set.reps)),durations=completed.map(set=>n(set.durationSeconds)).filter(Boolean);
-  const plannedWeights=completed.map(set=>n(set.plannedWeight)),plannedReps=completed.map(set=>n(set.plannedReps));
+  const plannedWeights=completed.filter(set=>set.plannedWeight!==undefined&&set.plannedWeight!==null&&set.plannedWeight!=='').map(set=>n(set.plannedWeight));
+  const plannedReps=completed.filter(set=>set.plannedReps!==undefined&&set.plannedReps!==null&&set.plannedReps!=='').map(set=>n(set.plannedReps));
+  const rests=(workout.restLog||[]).filter(item=>item?.fromExerciseId===exercise.id&&item.endedAt);
+  const actualRests=rests.map(item=>n(item.actualSeconds)).filter(Boolean);
   const best=completed.reduce((winner,set)=>{const candidate={weight:n(set.weight),reps:n(set.reps)};return !winner||candidate.weight>winner.weight||(candidate.weight===winner.weight&&candidate.reps>winner.reps)?candidate:winner;},null);
   return {
     id:'event-'+String(workout.id||'workout')+'-'+String(exercise.id||index),workoutId:workout.id||'',exerciseId:exercise.id||'',exerciseName:exercise.name||'Exercise',
     routineName:workout.routineName||'',completedAt:workout.completedAt||new Date().toISOString(),scheduledDate:workout.scheduledDate||'',exerciseIndex:index,loadMode:exercise.loadMode||'',feedback:exercise.feedback||'',
     readiness:{score:n(workout.readiness?.score),energy:n(workout.readiness?.energy),sleep:n(workout.readiness?.sleep),soreness:n(workout.readiness?.soreness)},
+    context:{exerciseOrder:index+1,warmupSkipped:Boolean(workout.warmupSkipped),setupKey:workout.trainingContext?.key||'',sessionDurationMinutes:n(workout.durationMinutes),activeDurationSeconds:n(workout.activeDurationSeconds)},
     planned:{sets:sets.length,weight:plannedWeights.length?mean(plannedWeights):n(exercise.suggestedWeight),reps:plannedReps.length?mean(plannedReps):n(exercise.suggestedReps),restSeconds:n(exercise.rest)},
-    actual:{completedSets:completed.length,completionRate:sets.length?completed.length/sets.length:0,averageWeight:round(mean(weights),2),averageReps:round(mean(reps),2),minReps:reps.length?Math.min(...reps):0,maxReps:reps.length?Math.max(...reps):0,repDrop:Math.max(0,(reps[0]||0)-(reps[reps.length-1]||0)),averageSetDurationSeconds:round(mean(durations),1),best:best||{weight:0,reps:0}}
+    actual:{completedSets:completed.length,completionRate:sets.length?completed.length/sets.length:0,averageWeight:round(mean(weights),2),averageReps:round(mean(reps),2),minReps:reps.length?Math.min(...reps):0,maxReps:reps.length?Math.max(...reps):0,repDrop:Math.max(0,(reps[0]||0)-(reps[reps.length-1]||0)),averageSetDurationSeconds:round(mean(durations),1),averageRestSeconds:actualRests.length?round(mean(actualRests),1):null,skippedRests:rests.filter(item=>item.skipped).length,targetAdjustedSets:completed.filter(set=>set.targetAdjusted).length,best:best||{weight:0,reps:0}}
   };
 }
 function evaluatePrediction(prediction,event){
@@ -57,9 +61,10 @@ function evaluatePrediction(prediction,event){
   };
 }
 function updateModel(existing,event,evaluation=null){
-  const model=existing?JSON.parse(JSON.stringify(existing)):{exerciseId:event.exerciseId,exerciseName:event.exerciseName,loadMode:event.loadMode||'',exposures:0,plannedSets:0,completedSets:0,targetHits:0,predictionCount:0,weightAbsoluteErrorTotal:0,repsAbsoluteErrorTotal:0,repDropTotal:0,setDurationTotal:0,setDurationCount:0,feedbackCounts:{},observations:[],firstObservedAt:event.completedAt,currentBest:{weight:0,reps:0}};
-  model.exerciseName=event.exerciseName||model.exerciseName;model.exposures+=1;model.plannedSets+=n(event.planned?.sets);model.completedSets+=n(event.actual?.completedSets);model.repDropTotal+=n(event.actual?.repDrop);
+  const model=existing?JSON.parse(JSON.stringify(existing)):{exerciseId:event.exerciseId,exerciseName:event.exerciseName,loadMode:event.loadMode||'',exposures:0,plannedSets:0,completedSets:0,targetHits:0,predictionCount:0,weightAbsoluteErrorTotal:0,repsAbsoluteErrorTotal:0,repDropTotal:0,setDurationTotal:0,setDurationCount:0,restTotal:0,restCount:0,targetAdjustedSets:0,feedbackCounts:{},observations:[],firstObservedAt:event.completedAt,currentBest:{weight:0,reps:0}};
+  model.exerciseName=event.exerciseName||model.exerciseName;model.exposures+=1;model.plannedSets+=n(event.planned?.sets);model.completedSets+=n(event.actual?.completedSets);model.repDropTotal+=n(event.actual?.repDrop);model.targetAdjustedSets+=n(event.actual?.targetAdjustedSets);
   if(n(event.actual?.averageSetDurationSeconds)>0){model.setDurationTotal+=n(event.actual.averageSetDurationSeconds);model.setDurationCount+=1;}
+  if(n(event.actual?.averageRestSeconds)>0){model.restTotal+=n(event.actual.averageRestSeconds);model.restCount+=1;}
   if(event.feedback){model.feedbackCounts[event.feedback]=(model.feedbackCounts[event.feedback]||0)+1;model.lastFeedback=event.feedback;}
   const best=event.actual?.best||{weight:0,reps:0};
   if(n(best.weight)>n(model.currentBest?.weight)||(n(best.weight)===n(model.currentBest?.weight)&&n(best.reps)>n(model.currentBest?.reps)))model.currentBest={weight:n(best.weight),reps:n(best.reps)};
@@ -67,7 +72,7 @@ function updateModel(existing,event,evaluation=null){
   const observation={workoutId:event.workoutId,completedAt:event.completedAt,weight:n(best.weight),reps:n(best.reps),averageWeight:n(event.actual?.averageWeight),averageReps:n(event.actual?.averageReps),completionRate:n(event.actual?.completionRate),repDrop:n(event.actual?.repDrop),feedback:event.feedback||'',predictionHit:evaluation?Boolean(evaluation.targetHit):null};
   model.observations=[...(model.observations||[]),observation].slice(-20);model.lastObservedAt=event.completedAt;
   const completionRate=model.plannedSets?model.completedSets/model.plannedSets:0,first=model.observations[0]||observation,latest=model.observations[model.observations.length-1]||observation,gap=Math.max(1,model.exposures-1);
-  model.metrics={setCompletionRate:round(completionRate,3),targetHitRate:model.predictionCount?round(model.targetHits/model.predictionCount,3):null,averageRepDrop:round(model.repDropTotal/model.exposures,2),averageSetDurationSeconds:model.setDurationCount?round(model.setDurationTotal/model.setDurationCount,1):null,averageWeightPredictionError:model.predictionCount?round(model.weightAbsoluteErrorTotal/model.predictionCount,2):null,averageRepsPredictionError:model.predictionCount?round(model.repsAbsoluteErrorTotal/model.predictionCount,2):null,weightProgressionPerExposure:round((n(latest.weight)-n(first.weight))/gap,2),repsProgressionPerExposure:round((n(latest.reps)-n(first.reps))/gap,2)};
+  model.metrics={setCompletionRate:round(completionRate,3),targetHitRate:model.predictionCount?round(model.targetHits/model.predictionCount,3):null,averageRepDrop:round(model.repDropTotal/model.exposures,2),averageSetDurationSeconds:model.setDurationCount?round(model.setDurationTotal/model.setDurationCount,1):null,averageRestSeconds:model.restCount?round(model.restTotal/model.restCount,1):null,targetAdjustmentRate:model.completedSets?round(model.targetAdjustedSets/model.completedSets,3):0,averageWeightPredictionError:model.predictionCount?round(model.weightAbsoluteErrorTotal/model.predictionCount,2):null,averageRepsPredictionError:model.predictionCount?round(model.repsAbsoluteErrorTotal/model.predictionCount,2):null,weightProgressionPerExposure:round((n(latest.weight)-n(first.weight))/gap,2),repsProgressionPerExposure:round((n(latest.reps)-n(first.reps))/gap,2)};
   model.confidence=confidence(model.exposures,completionRate,model.predictionCount);
   return model;
 }
