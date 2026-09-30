@@ -1535,10 +1535,13 @@ function prepareSetTarget(ex,set,setIndex=0){
   }else{
     const previousSession=exerciseSessionHistory(ex,1)[0];
     const previousSet=previousSession?.sets?.[setIndex]||previousSession?.sets?.[previousSession.sets.length-1]||null;
-    if(previousSet){
-      if(!['bodyweight','timed','band'].includes(ex.loadMode))set.weight=String(previousSet.weight||recommendedWeightTarget(ex)||'');
-      set.reps=String(previousSet.reps||recommendedRepTarget(ex));
-      set.targetSource='history';
+    const learned=adaptivePrescription(ex);
+    if(previousSet||learned){
+      if(!['bodyweight','timed','band'].includes(ex.loadMode)){
+        set.weight=String((learned&&Number.isFinite(Number(learned.weight))?learned.weight:previousSet?.weight)||recommendedWeightTarget(ex)||'');
+      }
+      set.reps=String(learned?.reps||previousSet?.reps||recommendedRepTarget(ex));
+      set.targetSource=learned?'learned':'history';
     }else{
       if(!['bodyweight','timed','band'].includes(ex.loadMode))set.weight=String(recommendedWeightTarget(ex)||'');
       set.reps=String(ex.loadMode==='timed'?(num(set.reps)||num(ex.suggestedReps)||recommendedRepTarget(ex)):recommendedRepTarget(ex));
@@ -4962,7 +4965,7 @@ function renderPreSet(pos){
   const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):exerciseWeightDisplay(ex,recommendedWeightTarget(ex));
   const workingWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
   const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
-  const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
+  const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   return '<div class="runner-set-ready">'+
     '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
