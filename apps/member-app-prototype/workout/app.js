@@ -4203,80 +4203,83 @@ function renderProfileEditor(){
   const checked=(field,value)=>p[field]===value?'checked':'';
   const av=v=>(p.avoid||[]).includes(v)?'checked':'';
   const scheduledDays=preferredWorkoutDays(p);
+  const savedSetups=p.savedSetups||[p.equipment||'full-gym','bodyweight'];
+  const pins=p.progressPins||['weight','chest','arm','bench','row'];
   return `
   <div class="onboard-shell">
-    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Your actual performance drives progression. Profile details help personalize scheduling, presentation, exercise selection, and future shared workouts without assuming strength from identity.</p></div></div>
+    <div class="page-head"><div><p class="eyebrow">GET STARTED</p><h2 class="page-title">Build your training profile.</h2><p class="page-copy">Choose how you want to train, what equipment you have, and what progress you want GoWorkout to remember.</p></div></div>
     <form id="profile-form" class="intake-form" novalidate>
-      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and rest periods.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>01</span><div><h3>What do you want to accomplish?</h3><p>This changes reps, sets and recovery.</p></div></div>
         <div class="choice-grid">
           ${[['muscle','Build muscle','Moderate reps + progressive overload'],['strength','Get stronger','Heavier work + longer recovery'],['fat-loss','Fat loss + conditioning','Higher reps + shorter recovery'],['general','General fitness','Balanced strength and work capacity']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="goal" value="${v}" ${checked('goal',v)||(!p.goal&&v==='muscle'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Identity and body information stay separate from performance. Gender is stored for profile personalization and future relevant context, not used to guess your strength.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>02</span><div><h3>About you</h3><p>Body information helps track progress. It does not determine your starting strength.</p></div></div>
         <div class="form-grid two identity-grid">
           <label class="field"><span>DISPLAY NAME</span><input name="displayName" autocomplete="name" value="${esc(store.account?.displayName||p.displayName||'')}" placeholder="How you want to appear"></label>
-          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for future account sign-in"></label>
+          <label class="field"><span>EMAIL</span><input name="email" type="email" autocomplete="email" value="${esc(store.account?.email||p.email||'')}" placeholder="Used for account sign-in"></label>
           <label class="field"><span>GENDER</span><select name="gender">${[['','Choose'],['woman','Woman'],['man','Man'],['nonbinary','Nonbinary'],['another','Another identity'],['prefer-not','Prefer not to say']].map(([v,label])=>`<option value="${v}" ${p.gender===v?'selected':''}>${label}</option>`).join('')}</select></label>
           <label class="field"><span>PRONOUNS <em>OPTIONAL</em></span><input name="pronouns" value="${esc(p.pronouns||'')}" placeholder="e.g. he/him"></label>
         </div>
         <div class="form-grid three body-grid">
-          <label class="field"><span>BODY WEIGHT (LB)</span><input name="weight" type="number" min="50" max="700" value="${esc(p.weight||'')}" required placeholder="180"></label>
+          <label class="field"><span>BODY WEIGHT</span><div class="inline-inputs unit-pair"><input name="weight" type="number" min="20" max="700" step=".1" value="${esc(p.weight?roundMeasure(lbToDisplay(p.weight,p.weightUnit||'lb')):'')}" required placeholder="180"><select name="weightUnit"><option value="lb" ${(p.weightUnit||'lb')==='lb'?'selected':''}>lb</option><option value="kg" ${p.weightUnit==='kg'?'selected':''}>kg</option></select></div></label>
           <label class="field"><span>HEIGHT</span><div class="inline-inputs"><input name="heightFeet" type="number" min="3" max="8" value="${esc(p.heightFeet||'')}" placeholder="5"><input name="heightInches" type="number" min="0" max="11" value="${esc(p.heightInches||'')}" placeholder="10"></div></label>
           <label class="field"><span>AGE RANGE</span><select name="ageRange">${['18-24','25-34','35-44','45-54','55-64','65+'].map(v=>`<option ${p.ageRange===v?'selected':''}>${v}</option>`).join('')}</select></label>
         </div>
-        <div class="profile-privacy-note"><strong>Private training data stays private by default.</strong><span>Shared workout partners only need session status and whatever current-session data you choose to expose.</span></div>
+        <div class="starting-measurements">
+          <div class="starting-measurements-head"><div><strong>Starting measurements <em>optional</em></strong><span>Your first saved values stay as the original baseline. Weekly updates create new dated records.</span></div><label class="field compact-unit"><span>UNIT</span><select name="measurementUnit"><option value="in" ${(p.measurementUnit||'in')==='in'?'selected':''}>in</option><option value="cm" ${p.measurementUnit==='cm'?'selected':''}>cm</option></select></label></div>
+          <div class="form-grid three">${[['chest','Chest'],['waist','Waist'],['hips','Hips'],['arm','Upper arm'],['thigh','Thigh'],['calf','Calf']].map(([key,label])=>`<label class="field"><span>${label.toUpperCase()}</span><input name="${key}" type="number" min="0" step=".1" placeholder="Optional"></label>`).join('')}</div>
+        </div>
+        <div class="profile-privacy-note"><strong>Private by default.</strong><span>Measurements, progress photos, readiness, notes, and full training history are not exposed to workout partners.</span></div>
       </section>
 
-      <section class="form-section avatar-setup-section"><div class="form-section-head"><span>03</span><div><h3>Choose your training avatar</h3><p>Your avatar changes workout and exercise visuals only. It never changes your weights, difficulty, progression, or exercise recommendations.</p></div></div>
+      <section class="form-section avatar-setup-section"><div class="form-section-head"><span>03</span><div><h3>Choose your training avatar</h3><p>Your avatar changes workout visuals only.</p></div></div>
         ${renderAvatarChoices(p.visualAvatarId||'')}
-        <div class="avatar-setup-note"><strong>VISUAL PREFERENCE ONLY</strong><span>Exercise performance stays tied to your training history, not the avatar you choose.</span></div>
       </section>
 
-      <section class="form-section account-first-section"><div class="form-section-head"><span>ACCOUNT</span><div><h3>Training account connected</h3><p>${esc(store.account?.email||'Signed in')} · Your setup and training state sync through this account.</p></div></div>
-        <div class="profile-privacy-note"><strong>CONNECTED</strong><span>You can manage or sign out from your profile account controls after setup.</span></div>
-      </section>
       <section class="form-section"><div class="form-section-head"><span>04</span><div><h3>Training experience</h3><p>This affects exercise complexity and initial volume.</p></div></div>
-        <div class="choice-grid four">
-          ${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        <div class="choice-grid four">${[['new','New','Little or no lifting'],['beginner','Beginner','Under ~1 year'],['intermediate','Intermediate','Consistent 1–3 years'],['advanced','Advanced','3+ consistent years']].map(([v,t,d])=>`<label class="choice-card"><input type="radio" name="experience" value="${v}" ${checked('experience',v)||(!p.experience&&v==='new'?'checked':'')}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}</div>
+      </section>
+
+      <section class="form-section workout-style-section"><div class="form-section-head"><span>05</span><div><h3>How should your workouts flow?</h3><p>This changes session structure without changing your goal.</p></div></div>
+        <div class="choice-grid two workout-style-grid">
+          ${[['classic','Classic','Finish the prescribed sets for one exercise before moving to the next.'],['flow','Flow','Move through blocks of 2–4 exercises with quick transitions and a full rest after each round.']].map(([v,t,d])=>`<label class="choice-card workout-style-card"><input type="radio" name="workoutStyle" value="${v}" ${(p.workoutStyle||'classic')===v?'checked':''}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        </div>
+        <div class="form-grid two">
+          <label class="field"><span>PACING</span><select name="pacing">${[['relaxed','Relaxed'],['balanced','Balanced'],['fast','Fast-paced']].map(([v,l])=>`<option value="${v}" ${(p.pacing||'balanced')===v?'selected':''}>${l}</option>`).join('')}</select><small>Flow uses this to choose block size and recovery.</small></label>
+          <label class="field"><span>WHAT USUALLY LIMITS YOUR WORKOUT?</span><select name="workoutLimiter">${[['none','No usual limiter'],['time','Time'],['equipment','Equipment'],['energy','Energy'],['gym-crowding','Gym crowding']].map(([v,l])=>`<option value="${v}" ${(p.workoutLimiter||'none')===v?'selected':''}>${l}</option>`).join('')}</select><small>Gym crowding keeps Flow blocks smaller and easier to execute.</small></label>
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>05</span><div><h3>Your real schedule</h3><p>Choose how many days you train, which days they actually are, and how long you normally have.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Your real schedule</h3><p>Choose how many days you train and how long you usually have.</p></div></div>
         <div class="form-grid two">
           <label class="field"><span>DAYS PER WEEK</span><select name="days" id="training-days-count">${[2,3,4,5].map(v=>`<option value="${v}" ${num(p.days||4)===v?'selected':''}>${v} days</option>`).join('')}</select></label>
           <label class="field"><span>MINUTES PER WORKOUT</span><select name="minutes">${[20,30,45,60,75].map(v=>`<option value="${v}" ${num(p.minutes||45)===v?'selected':''}>${v} minutes</option>`).join('')}</select></label>
         </div>
-        <div class="schedule-day-picker">
-          <div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days. You can change them later.</small></div>
-          <div class="weekday-pills">
-            ${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}
-          </div>
-        </div>
+        <div class="schedule-day-picker"><div class="schedule-day-head"><span>TRAINING DAYS</span><small>Select exactly ${num(p.days||4)} days.</small></div><div class="weekday-pills">${TRAINING_DAYS.map(day=>`<label class="weekday-pill"><input type="checkbox" name="workoutDays" value="${day.id}" ${scheduledDays.includes(day.id)?'checked':''}><span><strong>${day.label}</strong><small>${day.name}</small></span></label>`).join('')}</div></div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>06</span><div><h3>Where are you training?</h3><p>We only choose exercises your setup supports.</p></div></div>
-        <div class="choice-grid">
-          ${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
-        </div>
-        <div class="choice-grid three sub-choice">
-          ${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}
-        </div>
+      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Where are you training?</h3><p>Choose your normal setup and save the alternatives you use.</p></div></div>
+        <div class="choice-grid">${[['full-gym','Full gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Resistance bands'],['bodyweight','Bodyweight only']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="equipment" value="${v}" ${checked('equipment',v)||(!p.equipment&&v==='full-gym'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
+        <div class="choice-grid three sub-choice">${[['mixed','Mixed'],['machines','Prefer machines'],['free','Prefer free weights']].map(([v,t])=>`<label class="choice-card compact"><input type="radio" name="style" value="${v}" ${checked('style',v)||(!p.style&&v==='mixed'?'checked':'')}><span><strong>${t}</strong></span></label>`).join('')}</div>
+        <div class="saved-setup-picker"><span>SAVED SETUPS</span><small>Quick choices when the day’s equipment changes.</small><div class="check-row">${[['full-gym','Gym'],['dumbbells','Dumbbells'],['mixed-home','Home mix'],['bands','Bands'],['bodyweight','Bodyweight']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="savedSetups" value="${v}" ${savedSetups.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div></div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize.</p></div></div>
         <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
       </section>
-      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
-        <div class="form-grid five">
-          ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
-        </div>
+
+      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Recent working weights <em>optional</em></h3><p>Use these only if you know them. Otherwise your first completed sessions establish the strength baseline.</p></div></div>
+        <div class="form-grid five">${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}</div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
-        <div class="check-row">
-          ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
-        </div>
+      <section class="form-section progress-pin-section"><div class="form-section-head"><span>10</span><div><h3>What should Progress show first?</h3><p>Pin the body and strength metrics you care about most.</p></div></div>
+        <div class="check-row">${[['weight','Body weight'],['chest','Chest'],['waist','Waist'],['arm','Arms'],['thigh','Thigh'],['bench','Chest strength'],['row','Back strength'],['squat','Leg strength'],['overhead','Shoulder strength'],['hinge','Hinge strength']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="progressPins" value="${v}" ${pins.includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>11</span><div><h3>Movements to leave out</h3><p>These are preference controls. They do not diagnose or treat injuries.</p></div></div>
+        <div class="check-row">${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}</div>
       </section>
       <div class="form-actions"><button type="button" class="button large" data-action="build-plan">${store.profile?'REBUILD MY PLAN':'BUILD MY PLAN'}</button>${store.profile?'<button type="button" class="button secondary large" data-action="home">CANCEL</button>':''}</div>
     </form>
