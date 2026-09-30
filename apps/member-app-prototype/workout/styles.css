@@ -734,6 +734,16 @@ button:focus-visible, input:focus-visible {
   border-bottom:1px solid var(--line);
   border-radius:0;
 }
+.avatar-library-media{background:#f6efdd}
+.avatar-library-sprite{
+  position:absolute;
+  inset:0;
+  display:block;
+  background-repeat:no-repeat;
+  background-color:#f6efdd;
+}
+.avatar-library-media .media-status{z-index:2}
+.avatar-library-media .media-hint{z-index:2}
 .catalog-card-copy{
   padding:17px;
 }
