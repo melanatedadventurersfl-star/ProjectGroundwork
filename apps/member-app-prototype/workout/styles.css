@@ -7799,3 +7799,357 @@ button.runner-phase-row{cursor:pointer}
   font-size:12px;
   opacity:.76;
 }
+
+
+/* Program style, weekly measurements, and body progress */
+.workout-style-grid{
+  margin-bottom:14px;
+}
+.workout-style-card > span{
+  min-height:118px;
+}
+.workout-style-card strong{
+  font-size:17px;
+}
+.workout-style-card small{
+  line-height:1.4;
+}
+.starting-measurements,
+.saved-setup-picker{
+  margin-top:16px;
+  padding:14px;
+  border:1px solid rgba(167,181,172,.16);
+  border-radius:16px;
+  background:rgba(255,255,255,.025);
+}
+.starting-measurements-head{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:end;
+  margin-bottom:12px;
+}
+.starting-measurements-head > div{
+  display:grid;
+  gap:4px;
+}
+.starting-measurements-head strong{
+  font-size:14px;
+}
+.starting-measurements-head strong em{
+  font-style:normal;
+  font-weight:500;
+  opacity:.58;
+}
+.starting-measurements-head span,
+.saved-setup-picker > small{
+  font-size:11px;
+  line-height:1.35;
+  opacity:.68;
+}
+.saved-setup-picker > span{
+  display:block;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.saved-setup-picker .check-row{
+  margin-top:10px;
+}
+.compact-unit{
+  min-width:95px;
+}
+.unit-pair{
+  grid-template-columns:minmax(0,1fr) 78px;
+}
+.unit-pair select{
+  min-width:0;
+}
+.session-setup-card.saved{
+  border-color:rgba(227,189,73,.38);
+}
+.session-setup-card.saved strong{
+  color:#e3bd49;
+}
+
+.home-checkin-card,
+.home-program-review{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:16px;
+  align-items:center;
+  margin:14px 0;
+  padding:16px;
+  border:1px solid rgba(167,181,172,.16);
+  border-radius:18px;
+  background:rgba(255,255,255,.025);
+}
+.home-checkin-card{
+  border-color:rgba(227,189,73,.28);
+  background:rgba(227,189,73,.07);
+}
+.home-checkin-card > div:first-child,
+.home-program-review > div:first-child{
+  display:grid;
+  gap:4px;
+}
+.home-checkin-card span,
+.home-program-review span{
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.12em;
+  opacity:.72;
+}
+.home-checkin-card strong,
+.home-program-review strong{
+  font-size:16px;
+}
+.home-checkin-card p,
+.home-program-review p{
+  margin:0;
+  font-size:12px;
+  line-height:1.4;
+  opacity:.68;
+}
+.home-checkin-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:7px;
+}
+
+.measurement-sheet,
+.program-review-sheet{
+  max-height:min(90vh,900px);
+  overflow:auto;
+}
+.measurement-units{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+.measurement-units label{
+  display:grid;
+  gap:5px;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.measurement-units select{
+  min-height:42px;
+}
+.measurement-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.progress-photo-section{
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid rgba(167,181,172,.14);
+}
+.progress-photo-section > div:first-child{
+  display:grid;
+  gap:3px;
+}
+.progress-photo-section > div:first-child > span{
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.progress-photo-section em{
+  font-style:normal;
+  opacity:.55;
+}
+.progress-photo-section small{
+  font-size:11px;
+  opacity:.66;
+}
+.progress-photo-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.progress-photo-slot{
+  position:relative;
+  min-height:112px;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  border:1px dashed rgba(167,181,172,.28);
+  border-radius:13px;
+  background:rgba(255,255,255,.025);
+  cursor:pointer;
+}
+.progress-photo-slot span{
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.progress-photo-slot img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.progress-photo-slot input{
+  position:absolute;
+  inset:0;
+  opacity:0;
+  cursor:pointer;
+}
+.measurement-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:16px;
+}
+.program-review-form{
+  display:grid;
+  gap:12px;
+}
+
+.pinned-progress-section{
+  margin-top:18px;
+}
+.pinned-progress-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.pinned-progress-card{
+  min-height:116px;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  gap:5px;
+  padding:14px;
+  border:1px solid rgba(167,181,172,.16);
+  border-radius:16px;
+  background:rgba(255,255,255,.025);
+}
+.pinned-progress-card.body{
+  background:rgba(227,189,73,.055);
+}
+.pinned-progress-card span{
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.1em;
+  opacity:.64;
+}
+.pinned-progress-card strong{
+  font-size:20px;
+}
+.pinned-progress-card small{
+  line-height:1.35;
+  opacity:.66;
+}
+.body-progress-history{
+  margin-top:22px;
+}
+.body-measurement-list{
+  display:grid;
+  gap:10px;
+}
+.body-measurement-row{
+  padding:13px;
+  border:1px solid rgba(167,181,172,.14);
+  border-radius:15px;
+  background:rgba(255,255,255,.02);
+}
+.body-measurement-row.baseline{
+  border-color:rgba(227,189,73,.3);
+}
+.body-measurement-row > button{
+  width:100%;
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+}
+.body-measurement-row > button > div{
+  display:grid;
+  gap:2px;
+}
+.body-measurement-row > button small{
+  opacity:.58;
+}
+.body-measurement-row > button em{
+  font-size:10px;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.body-measurement-values{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px 12px;
+  margin-top:10px;
+}
+.body-measurement-values span{
+  font-size:11px;
+  opacity:.76;
+}
+.body-measurement-values b{
+  font-weight:800;
+}
+.body-photo-thumbs{
+  display:flex;
+  gap:6px;
+  margin-top:10px;
+}
+.body-photo-thumbs img{
+  width:52px;
+  height:64px;
+  object-fit:cover;
+  border-radius:9px;
+}
+.body-progress-empty{
+  margin:18px 0;
+}
+.body-progress-empty > span{
+  display:block;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.body-progress-empty > strong{
+  display:block;
+  margin-top:5px;
+  font-size:17px;
+}
+.body-progress-empty p{
+  margin:5px 0 12px;
+  opacity:.68;
+}
+
+@media (max-width:640px){
+  .starting-measurements-head{
+    align-items:start;
+    flex-direction:column;
+  }
+  .home-checkin-card,
+  .home-program-review{
+    grid-template-columns:1fr;
+  }
+  .home-checkin-actions{
+    justify-content:flex-start;
+  }
+  .measurement-grid,
+  .pinned-progress-grid{
+    grid-template-columns:1fr 1fr;
+  }
+}
+@media (max-width:420px){
+  .measurement-grid{
+    grid-template-columns:1fr;
+  }
+  .pinned-progress-grid{
+    grid-template-columns:1fr;
+  }
+}
