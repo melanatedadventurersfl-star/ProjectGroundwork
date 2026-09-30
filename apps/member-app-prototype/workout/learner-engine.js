@@ -1,6 +1,6 @@
 (function(global){
 'use strict';
-const VERSION='0.4.0',SCHEMA_VERSION=1;
+const VERSION='0.5.0',SCHEMA_VERSION=1;
 const n=value=>{const v=Number.parseFloat(value);return Number.isFinite(v)?v:0;};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const round=(value,digits=2)=>{const scale=Math.pow(10,digits);return Math.round((n(value)+Number.EPSILON)*scale)/scale;};
@@ -54,7 +54,7 @@ function variableGate(model,variable){
     if(conf.evidence>=6&&completion>=.8)return {level:'influence',label:'READY TO INFLUENCE',reason:'Rest timing has enough repeated observations to test personalized recovery',confidence:conf};
     if(conf.evidence>=4&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Rest timing has enough observations for a visible suggestion',confidence:conf};
   }else if(variable==='volume'){
-    if(n(model?.exposures)>=6&&completion>=.75)return {level:'suggest',label:'SUGGEST ONLY',reason:'Volume is being modeled but cannot change set count yet',confidence:conf};
+    if(n(model?.exposures)>=6&&completion>=.75)return {level:'suggest',label:'SHADOW TESTS',reason:'Volume has enough evidence to test 2, 3, or 4 working-set candidates in shadow mode. Set count stays unchanged.',confidence:conf};
   }else if(variable==='readiness'){
     if(conf.evidence>=6)return {level:'suggest',label:'SUGGEST ONLY',reason:'Readiness-performance patterns are visible but do not control workouts yet',confidence:conf};
   }
@@ -89,6 +89,75 @@ function restProposal(model,target={}){
     action,applied:action==='apply',changed:true,variable:'rest',gate,base:{restSeconds:base},proposed,
     reason:'Longer observed rests were associated with lower rep drop-off without reducing set completion. The timer moves toward that stronger range.',
     evidence:{observations:observations.length,shortRest:round(shortRest,1),longRest:round(longRest,1),shortRepDrop:round(shortDrop,2),longRepDrop:round(longDrop,2),shortCompletion:round(shortCompletion,3),longCompletion:round(longCompletion,3)}
+  };
+}
+function volumeProfile(model){
+  const observations=(model?.observations||[]).filter(item=>n(item.plannedSets)>0);
+  const buckets={2:[],3:[],4:[]};
+  for(const item of observations){
+    const sets=Math.round(n(item.plannedSets));
+    if(buckets[sets])buckets[sets].push(item);
+  }
+  const summarize=items=>{
+    if(!items.length)return {sessions:0,completion:null,repDrop:null,targetHitRate:null,hardRate:null,quality:null};
+    const completion=mean(items.map(item=>n(item.completionRate)));
+    const repDrop=mean(items.map(item=>n(item.repDrop)));
+    const hard=items.filter(item=>['hard','too-hard','form-off'].includes(item.feedback)).length/items.length;
+    const checked=items.filter(item=>item.predictionHit!==null&&item.predictionHit!==undefined);
+    const hit=checked.length?checked.filter(item=>item.predictionHit).length/checked.length:null;
+    const quality=completion-clamp(repDrop/10,0,.3)-hard*.15+(hit===null?0:hit*.05);
+    return {sessions:items.length,completion:round(completion,3),repDrop:round(repDrop,2),targetHitRate:hit===null?null:round(hit,3),hardRate:round(hard,3),quality:round(quality,3)};
+  };
+  const bySetCount={2:summarize(buckets[2]),3:summarize(buckets[3]),4:summarize(buckets[4])};
+  const testedSetCounts=[2,3,4].filter(sets=>bySetCount[sets].sessions>0);
+  const comparable=testedSetCounts.filter(sets=>bySetCount[sets].sessions>=2);
+  const bestSetCount=comparable.length>=2?comparable.slice().sort((a,b)=>n(bySetCount[b].quality)-n(bySetCount[a].quality))[0]:null;
+  return {observations:observations.length,testedSetCounts,comparableSetCounts:comparable,bestSetCount,bySetCount};
+}
+function volumeShadowProposal(model,target={},exercise={}){
+  const gate=variableGate(model,'volume');
+  const profile=volumeProfile(model);
+  const baseSets=clamp(Math.round(n(target.sets)||n(model?.observations?.[model.observations.length-1]?.plannedSets)||3),2,4);
+  const base={sets:baseSets,weight:n(target.weight),reps:n(target.reps),restSeconds:n(target.restSeconds)};
+  const proposed={...base};
+  if(exercise?.blockId){
+    return {action:'observe',applied:false,changed:false,variable:'volume',gate,base,proposed,profile,direction:'hold',reason:'Circuit and superset volume stays under the block plan while movement-level volume learning is in shadow mode.'};
+  }
+  if(!['suggest','influence'].includes(gate.level)){
+    return {action:'observe',applied:false,changed:false,variable:'volume',gate,base,proposed,profile,direction:'hold',reason:'More completed exposures are needed before testing a different working-set count.'};
+  }
+  const recent=(model?.observations||[]).filter(item=>n(item.plannedSets)>0).slice(-3);
+  const stable=recent.length>=3&&recent.every(item=>n(item.completionRate)>=.9&&n(item.repDrop)<=1.5&&!['hard','too-hard','form-off'].includes(item.feedback));
+  const fatigueSignals=recent.filter(item=>n(item.completionRate)<.85||n(item.repDrop)>=2.5||['hard','too-hard','form-off'].includes(item.feedback)).length;
+  let candidate=baseSets,direction='hold',reason='Current set count remains the strongest shadow baseline.';
+  const best=profile.bestSetCount;
+  const bestStats=best?profile.bySetCount[best]:null;
+  const baseStats=profile.bySetCount[baseSets];
+  const comparativeAdvantage=best&&best!==baseSets&&bestStats?.sessions>=2&&baseStats?.sessions>=2&&n(bestStats.quality)>=n(baseStats.quality)+.05;
+  if(comparativeAdvantage){
+    candidate=best;
+    direction=candidate>baseSets?'test-more':'test-less';
+    reason=candidate+' working sets have produced the stronger combination of completion, rep stability, and feedback in repeated observations. GoWorkout will shadow-test that set count without changing this workout.';
+  }else if(fatigueSignals>=2&&baseSets>2){
+    candidate=baseSets-1;
+    direction='test-less';
+    reason='Recent sessions show repeated fatigue signals. GoWorkout will shadow-test whether one fewer working set would preserve performance without changing this workout.';
+  }else if(stable&&baseSets<4){
+    candidate=baseSets+1;
+    direction='test-more';
+    reason='Recent sessions are stable enough to test whether one additional working set may be tolerated. The extra set stays hypothetical until more evidence is collected.';
+  }else if(stable&&baseSets===4&&profile.bySetCount[3].sessions<2){
+    candidate=3;
+    direction='test-less';
+    reason='Four sets are stable, but the learner lacks a comparable three-set sample. It will shadow-test three sets to improve the 2 vs 3 vs 4 comparison.';
+  }
+  proposed.sets=candidate;
+  if(candidate===baseSets){
+    return {action:'validate',applied:false,changed:false,variable:'volume',gate,base,proposed,profile,direction,reason,evidence:{recent:recent.length,fatigueSignals,stable,testedSetCounts:profile.testedSetCounts}};
+  }
+  return {
+    action:'shadow',applied:false,changed:true,variable:'volume',gate,base,proposed,profile,direction,reason,
+    evidence:{recent:recent.length,fatigueSignals,stable,testedSetCounts:profile.testedSetCounts,baseStats,bestSetCount:best,bestStats}
   };
 }
 function upwardShadowProposal(model,target={},exercise={}){
@@ -218,6 +287,8 @@ function normalizeLearner(value){
       return {
         ...observation,
         averageRestSeconds:observation.averageRestSeconds??event.actual?.averageRestSeconds??null,
+        plannedSets:observation.plannedSets??event.planned?.sets??0,
+        completedSets:observation.completedSets??event.actual?.completedSets??0,
         readinessScore:observation.readinessScore??event.readiness?.score??0,
         energy:observation.energy??event.readiness?.energy??0,
         sleep:observation.sleep??event.readiness?.sleep??0,
@@ -226,6 +297,7 @@ function normalizeLearner(value){
     });
     model.variableGates=variableGates(model);
     model.readinessRelationship=readinessRelationship(model);
+    model.volumeProfile=volumeProfile(model);
   });
   return learner;
 }
@@ -282,13 +354,14 @@ function updateModel(existing,event,evaluation=null){
   const best=event.actual?.best||{weight:0,reps:0};
   if(n(best.weight)>n(model.currentBest?.weight)||(n(best.weight)===n(model.currentBest?.weight)&&n(best.reps)>n(model.currentBest?.reps)))model.currentBest={weight:n(best.weight),reps:n(best.reps)};
   if(evaluation){model.predictionCount+=1;if(evaluation.targetHit)model.targetHits+=1;model.weightAbsoluteErrorTotal+=n(evaluation.weightError);model.repsAbsoluteErrorTotal+=n(evaluation.repsError);}
-  const observation={workoutId:event.workoutId,completedAt:event.completedAt,weight:n(best.weight),reps:n(best.reps),averageWeight:n(event.actual?.averageWeight),averageReps:n(event.actual?.averageReps),completionRate:n(event.actual?.completionRate),repDrop:n(event.actual?.repDrop),averageRestSeconds:event.actual?.averageRestSeconds??null,readinessScore:n(event.readiness?.score),energy:n(event.readiness?.energy),sleep:n(event.readiness?.sleep),soreness:n(event.readiness?.soreness),feedback:event.feedback||'',predictionHit:evaluation?Boolean(evaluation.targetHit):null};
+  const observation={workoutId:event.workoutId,completedAt:event.completedAt,weight:n(best.weight),reps:n(best.reps),averageWeight:n(event.actual?.averageWeight),averageReps:n(event.actual?.averageReps),completionRate:n(event.actual?.completionRate),repDrop:n(event.actual?.repDrop),averageRestSeconds:event.actual?.averageRestSeconds??null,plannedSets:n(event.planned?.sets),completedSets:n(event.actual?.completedSets),readinessScore:n(event.readiness?.score),energy:n(event.readiness?.energy),sleep:n(event.readiness?.sleep),soreness:n(event.readiness?.soreness),feedback:event.feedback||'',predictionHit:evaluation?Boolean(evaluation.targetHit):null};
   model.observations=[...(model.observations||[]),observation].slice(-20);model.lastObservedAt=event.completedAt;
   const completionRate=model.plannedSets?model.completedSets/model.plannedSets:0,first=model.observations[0]||observation,latest=model.observations[model.observations.length-1]||observation,gap=Math.max(1,model.exposures-1);
   model.metrics={setCompletionRate:round(completionRate,3),targetHitRate:model.predictionCount?round(model.targetHits/model.predictionCount,3):null,averageRepDrop:round(model.repDropTotal/model.exposures,2),averageSetDurationSeconds:model.setDurationCount?round(model.setDurationTotal/model.setDurationCount,1):null,averageRestSeconds:model.restCount?round(model.restTotal/model.restCount,1):null,targetAdjustmentRate:model.completedSets?round(model.targetAdjustedSets/model.completedSets,3):0,averageWeightPredictionError:model.predictionCount?round(model.weightAbsoluteErrorTotal/model.predictionCount,2):null,averageRepsPredictionError:model.predictionCount?round(model.repsAbsoluteErrorTotal/model.predictionCount,2):null,weightProgressionPerExposure:round((n(latest.weight)-n(first.weight))/gap,2),repsProgressionPerExposure:round((n(latest.reps)-n(first.reps))/gap,2)};
   model.confidence=confidence(model.exposures,completionRate,model.predictionCount);
   model.variableGates=variableGates(model);
   model.readinessRelationship=readinessRelationship(model);
+  model.volumeProfile=volumeProfile(model);
   model.gate=recommendationGate(model);
   return model;
 }
@@ -376,7 +449,9 @@ function overview(value){
     interventionOutcomes:outcomes.length,
     interventionSuccessRate:outcomes.length?round(successful/outcomes.length,3):null,
     rollbackCount:rollbacks,
-    upwardShadowCandidates:learner.decisions.filter(item=>item.action==='shadow').length,
+    upwardShadowCandidates:learner.decisions.filter(item=>item.action==='shadow'&&item.variable!=='volume').length,
+    volumeShadowCandidates:learner.decisions.filter(item=>item.action==='shadow'&&item.variable==='volume').length,
+    shadowCandidates:learner.decisions.filter(item=>item.action==='shadow').length,
     readinessRelationships:models.filter(model=>model.readinessRelationship?.available).length,
     appliedInfluences:learner.decisions.filter(item=>item.applied).length,
     suggestions:learner.decisions.filter(item=>item.action==='suggest').length,
@@ -385,5 +460,5 @@ function overview(value){
     version:learner.version
   };
 }
-global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,upwardShadowProposal,readinessRelationship,decisionOutcome,applyInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
+global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,volumeProfile,volumeShadowProposal,upwardShadowProposal,readinessRelationship,decisionOutcome,applyInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
 })(typeof window!=='undefined'?window:globalThis);
