@@ -1,6 +1,6 @@
 (function(global){
 'use strict';
-const VERSION='0.1.0',SCHEMA_VERSION=1;
+const VERSION='0.2.0',SCHEMA_VERSION=1;
 const n=value=>{const v=Number.parseFloat(value);return Number.isFinite(v)?v:0;};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const round=(value,digits=2)=>{const scale=Math.pow(10,digits);return Math.round((n(value)+Number.EPSILON)*scale)/scale;};
@@ -18,7 +18,59 @@ function recommendationGate(model){
   if(exposures>=3&&predictions>=2&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Enough evidence to surface suggestions, but not enough to steer training'};
   return {level:'observe',label:'OBSERVE ONLY',reason:'Collecting evidence before this learner can affect a workout'};
 }
-function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],processedWorkoutIds:[]};}
+function targetProposal(model,target={},exercise={}){
+  const gate=model?.gate||recommendationGate(model),mode=String(exercise.loadMode||model?.loadMode||''),base={weight:n(target.weight),reps:n(target.reps),restSeconds:n(target.restSeconds),sets:n(target.sets)};
+  const recent=(model?.observations||[]).slice(-3),latest=recent[recent.length-1]||null;
+  const hardCount=recent.filter(item=>['hard','too-hard','form-off'].includes(item.feedback)).length;
+  const misses=recent.filter(item=>item.predictionHit===false).length;
+  const metrics=model?.metrics||{};
+  const conservative=hardCount>=2||misses>=2||n(metrics.averageRepDrop)>=2.5||n(metrics.targetAdjustmentRate)>=.35;
+  const stable=recent.length>=2&&recent.every(item=>n(item.completionRate)>=.9&&item.predictionHit!==false&&!['too-hard','form-off'].includes(item.feedback))&&n(metrics.averageRepDrop)<=1.5;
+  const supported=!['band','assisted'].includes(mode);
+  const proposed={...base};
+  let changed=false,direction='validate',reason='Learner evidence supports the existing rule-based target.';
+  if(!supported){
+    reason='This movement type stays under the rule-based progression system in the first influence rollout.';
+  }else if(conservative){
+    if(!['bodyweight','timed'].includes(mode)){
+      const bestWeight=n(model?.currentBest?.weight);
+      const bestReps=n(model?.currentBest?.reps);
+      if(bestWeight>0&&base.weight>bestWeight){
+        proposed.weight=bestWeight;
+        if(bestReps>0&&base.reps>bestReps)proposed.reps=bestReps;
+        changed=true;direction='hold';
+        reason='Recent misses, rep drop-off, or manual target changes make the planned load look aggressive. Hold at the demonstrated best instead of advancing.';
+      }
+    }else{
+      const demonstrated=Math.max(1,Math.round(n(latest?.averageReps)||n(model?.currentBest?.reps)||base.reps));
+      if(base.reps>demonstrated){
+        proposed.reps=demonstrated;changed=true;direction='hold';
+        reason='Recent performance does not support the higher rep or time target yet. Hold at the demonstrated level.';
+      }
+    }
+  }else if(stable){
+    reason='Recent completion and prediction accuracy support the existing progression target. No extra increase is added.';
+  }else{
+    reason='Evidence is mixed, so the learner leaves the existing progression target unchanged.';
+  }
+  const eligible=gate.level==='influence'&&supported;
+  const action=changed?(eligible?'apply':gate.level==='suggest'?'suggest':'observe'):'validate';
+  return {
+    action,applied:action==='apply',changed,direction,gate,
+    base,proposed,
+    reason,
+    evidence:{exposures:n(model?.exposures),predictions:n(model?.predictionCount),targetHitRate:metrics.targetHitRate??null,averageRepDrop:metrics.averageRepDrop??null,targetAdjustmentRate:metrics.targetAdjustmentRate??null,recentMisses:misses,recentHardSignals:hardCount}
+  };
+}
+function addDecision(value,decision){
+  const learner=normalizeLearner(value);
+  learner.decisions=Array.isArray(learner.decisions)?learner.decisions:[];
+  learner.decisions.push(decision);
+  learner.decisions=learner.decisions.slice(-300);
+  learner.updatedAt=new Date().toISOString();
+  return learner;
+}
+function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],decisions:[],processedWorkoutIds:[]};}
 function normalizeLearner(value){
   const learner=value&&typeof value==='object'?value:emptyLearner();
   learner.schemaVersion=SCHEMA_VERSION;learner.version=VERSION;
@@ -26,6 +78,7 @@ function normalizeLearner(value){
   learner.events=Array.isArray(learner.events)?learner.events:[];
   learner.predictions=Array.isArray(learner.predictions)?learner.predictions:[];
   learner.evaluations=Array.isArray(learner.evaluations)?learner.evaluations:[];
+  learner.decisions=Array.isArray(learner.decisions)?learner.decisions:[];
   learner.processedWorkoutIds=Array.isArray(learner.processedWorkoutIds)?learner.processedWorkoutIds:[];
   learner.createdAt=learner.createdAt||new Date().toISOString();
   return learner;
@@ -37,8 +90,8 @@ function predictionForExercise(exercise,model,context={}){
     workoutId:context.workoutId||'',exerciseId:exercise.id||'',exerciseName:exercise.name||'Exercise',loadMode:exercise.loadMode||'',
     createdAt:context.createdAt||new Date().toISOString(),scheduledDate:context.scheduledDate||'',routineName:context.routineName||'',
     target:{weight:n(exercise.suggestedWeight),reps:n(exercise.suggestedReps),restSeconds:n(exercise.rest),sets:Array.isArray(exercise.sets)?exercise.sets.length:n(exercise.sets)},
-    source:exercise.adaptiveLabel?'learned':exercise.engineExerciseId?'program-engine':'plan',
-    reason:exercise.adaptiveReason||exercise.engineReason?.[0]||'Current planned target',confidence:conf
+    source:exercise.learnerTarget?.applied?'adaptive-learner':exercise.adaptiveLabel?'learned':exercise.engineExerciseId?'program-engine':'plan',
+    reason:exercise.learnerTarget?.applied?(exercise.learnerTarget.reason||'Adaptive learner guardrail applied'):exercise.adaptiveReason||exercise.engineReason?.[0]||'Current planned target',confidence:conf
   };
 }
 function eventFromExercise(workout,exercise,index=0){
@@ -122,9 +175,12 @@ function overview(value){
     averageRepsPredictionError:evaluated?round(mean(learner.evaluations.map(item=>item.repsError)),2):null,
     averageWeightPredictionError:weighted.length?round(mean(weighted.map(item=>item.weightError)),2):null,
     gateCounts:gates,
+    appliedInfluences:learner.decisions.filter(item=>item.applied).length,
+    suggestions:learner.decisions.filter(item=>item.action==='suggest').length,
+    decisions:learner.decisions.length,
     events:learner.events.length,
     version:learner.version
   };
 }
-global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
+global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,targetProposal,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
 })(typeof window!=='undefined'?window:globalThis);
