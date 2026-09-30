@@ -137,9 +137,10 @@ export default function WorkoutLabScreen() {
   const [store, setStore] = useState<WorkoutStore>({ history: [], activeWorkout: null });
   const [hydrated, setHydrated] = useState(false);
   const [previewRoutine, setPreviewRoutine] = useState<WorkoutRoutine | null>(null);
-  const [clockNow, setClockNow] = useState(Date.now());
+  const [clockNow, setClockNow] = useState(0);
 
   useEffect(() => {
+    setClockNow(Date.now());
     const timer = setInterval(() => setClockNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
