@@ -9,6 +9,15 @@ function confidence(exposures,setCompletionRate=0,predictionCount=0){
   const score=Math.round(clamp(exposures/8,0,1)*60+clamp(setCompletionRate,0,1)*20+clamp(predictionCount/6,0,1)*20);
   return {level:score>=75?'high':score>=45?'medium':'low',score,evidence:exposures+' session'+(exposures===1?'':'s')+(predictionCount?' · '+predictionCount+' prediction'+(predictionCount===1?'':'s')+' checked':'')};
 }
+function recommendationGate(model){
+  const exposures=n(model?.exposures),predictions=n(model?.predictionCount),metrics=model?.metrics||{};
+  const completion=n(metrics.setCompletionRate),hit=metrics.targetHitRate,repError=metrics.averageRepsPredictionError,weightError=metrics.averageWeightPredictionError;
+  const weighted=!['bodyweight','timed','band'].includes(model?.loadMode||'');
+  const influenceReady=exposures>=6&&predictions>=4&&completion>=.8&&(hit===null||hit===undefined||n(hit)>=.65)&&(repError===null||repError===undefined||n(repError)<=1.5)&&(!weighted||weightError===null||weightError===undefined||n(weightError)<=5);
+  if(influenceReady)return {level:'influence',label:'READY TO INFLUENCE',reason:'6+ exposures, 4+ checked predictions, stable completion, and acceptable prediction error'};
+  if(exposures>=3&&predictions>=2&&completion>=.7)return {level:'suggest',label:'SUGGEST ONLY',reason:'Enough evidence to surface suggestions, but not enough to steer training'};
+  return {level:'observe',label:'OBSERVE ONLY',reason:'Collecting evidence before this learner can affect a workout'};
+}
 function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],processedWorkoutIds:[]};}
 function normalizeLearner(value){
   const learner=value&&typeof value==='object'?value:emptyLearner();
@@ -74,6 +83,7 @@ function updateModel(existing,event,evaluation=null){
   const completionRate=model.plannedSets?model.completedSets/model.plannedSets:0,first=model.observations[0]||observation,latest=model.observations[model.observations.length-1]||observation,gap=Math.max(1,model.exposures-1);
   model.metrics={setCompletionRate:round(completionRate,3),targetHitRate:model.predictionCount?round(model.targetHits/model.predictionCount,3):null,averageRepDrop:round(model.repDropTotal/model.exposures,2),averageSetDurationSeconds:model.setDurationCount?round(model.setDurationTotal/model.setDurationCount,1):null,averageRestSeconds:model.restCount?round(model.restTotal/model.restCount,1):null,targetAdjustmentRate:model.completedSets?round(model.targetAdjustedSets/model.completedSets,3):0,averageWeightPredictionError:model.predictionCount?round(model.weightAbsoluteErrorTotal/model.predictionCount,2):null,averageRepsPredictionError:model.predictionCount?round(model.repsAbsoluteErrorTotal/model.predictionCount,2):null,weightProgressionPerExposure:round((n(latest.weight)-n(first.weight))/gap,2),repsProgressionPerExposure:round((n(latest.reps)-n(first.reps))/gap,2)};
   model.confidence=confidence(model.exposures,completionRate,model.predictionCount);
+  model.gate=recommendationGate(model);
   return model;
 }
 function addPredictions(value,predictions){
@@ -98,7 +108,23 @@ function recordWorkout(value,workout){
 }
 function overview(value){
   const learner=normalizeLearner(value),models=Object.values(learner.models||{}),evaluated=learner.evaluations.length,hits=learner.evaluations.filter(item=>item.targetHit).length;
-  return {modeledExercises:models.length,highConfidence:models.filter(x=>x.confidence?.level==='high').length,mediumConfidence:models.filter(x=>x.confidence?.level==='medium').length,lowConfidence:models.filter(x=>x.confidence?.level==='low').length,predictionsEvaluated:evaluated,predictionHitRate:evaluated?round(hits/evaluated,3):null,events:learner.events.length,version:learner.version};
+  const recent=learner.evaluations.slice(-20),recentHits=recent.filter(item=>item.targetHit).length;
+  const weighted=learner.evaluations.filter(item=>n(item.planned?.weight)>0);
+  const gates=models.reduce((acc,model)=>{const gate=model.gate||recommendationGate(model);acc[gate.level]=(acc[gate.level]||0)+1;return acc;},{observe:0,suggest:0,influence:0});
+  return {
+    modeledExercises:models.length,
+    highConfidence:models.filter(x=>x.confidence?.level==='high').length,
+    mediumConfidence:models.filter(x=>x.confidence?.level==='medium').length,
+    lowConfidence:models.filter(x=>x.confidence?.level==='low').length,
+    predictionsEvaluated:evaluated,
+    predictionHitRate:evaluated?round(hits/evaluated,3):null,
+    recentPredictionHitRate:recent.length?round(recentHits/recent.length,3):null,
+    averageRepsPredictionError:evaluated?round(mean(learner.evaluations.map(item=>item.repsError)),2):null,
+    averageWeightPredictionError:weighted.length?round(mean(weighted.map(item=>item.weightError)),2):null,
+    gateCounts:gates,
+    events:learner.events.length,
+    version:learner.version
+  };
 }
-global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
+global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
 })(typeof window!=='undefined'?window:globalThis);
