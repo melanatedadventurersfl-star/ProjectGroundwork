@@ -21,15 +21,18 @@ window.EXERCISE_AVATAR_MEDIA = {};
 window.EXERCISE_AVATAR_LIBRARY = {
   version: 1,
   usage: 'library-thumbnail',
-  spriteUrl: './assets/avatar-library/batch-01.webp',
-  columns: 5,
   rows: 4,
   exercises: {
-    'db-bench': 0,
-    'one-arm-row': 1,
-    'db-shoulder-press': 2,
-    'lat-pulldown': 3,
-    'lateral-raise': 4
+    'db-bench': {spriteUrl:'./assets/avatar-library/batch-01.webp',column:0,columns:5},
+    'one-arm-row': {spriteUrl:'./assets/avatar-library/batch-01.webp',column:1,columns:5},
+    'db-shoulder-press': {spriteUrl:'./assets/avatar-library/batch-01.webp',column:2,columns:5},
+    'lat-pulldown': {spriteUrl:'./assets/avatar-library/batch-01.webp',column:3,columns:5},
+    'lateral-raise': {spriteUrl:'./assets/avatar-library/batch-01.webp',column:4,columns:5},
+    'biceps-curl': {spriteUrl:'./assets/avatar-library/batch-02.webp',column:0,columns:5},
+    'triceps-pushdown': {spriteUrl:'./assets/avatar-library/batch-02.webp',column:1,columns:5},
+    'goblet-squat': {spriteUrl:'./assets/avatar-library/batch-02.webp',column:2,columns:5},
+    'leg-press': {spriteUrl:'./assets/avatar-library/batch-02.webp',column:3,columns:5},
+    'romanian-deadlift': {spriteUrl:'./assets/avatar-library/batch-02.webp',column:4,columns:5}
   },
   avatars: {
     'masc-athletic': 0,
@@ -39,6 +42,7 @@ window.EXERCISE_AVATAR_LIBRARY = {
   },
   review: {
     status: 'approved-for-library',
+    coverage: '10 exercises x 4 avatars',
     scope: 'Thumbnail use only. Active exercise demonstrations continue to use the existing direct exercise media until higher-resolution avatar position pairs are reviewed.',
     branding: 'Unbranded clothing and footwear only.'
   }
