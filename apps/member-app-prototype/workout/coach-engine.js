@@ -352,6 +352,7 @@
           event: options.event,
           context: options.context || {},
           style: settings.coachStyle || 'balanced',
+          vibe: settings.coachVibe || 'warm-familiar',
           frequency: settings.coachFrequency || 'normal',
           voice: settings.coachVoice || 'cedar',
           detail: settings.coachDetail || 'short',
