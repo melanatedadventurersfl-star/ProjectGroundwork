@@ -540,7 +540,9 @@ function exerciseStateLabel(ex){
   })[exerciseState(ex)]||'Not started';
 }
 function exerciseCountsAsResolved(ex){
-  return ['complete','completed-manually','skipped'].includes(exerciseState(ex));
+  if(['complete','completed-manually','skipped'].includes(exerciseState(ex)))return true;
+  const sets=ex?.sets||[];
+  return Boolean(sets.length&&sets.every(setIsResolved));
 }
 function workoutResolvedCount(w){
   return (w?.exercises||[]).filter(exerciseCountsAsResolved).length;
@@ -1064,7 +1066,8 @@ function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
   const exactIds=['push-up','sit-up','pull-up'];
   const exact=exactIds.map(id=>day.exercises.findIndex(ex=>ex.id===id));
   let indexes=[];
-  if(exact.every(index=>index>=0))indexes=exact;
+  const exactMatch=exact.every(index=>index>=0);
+  if(exactMatch)indexes=exact;
   else{
     const accessory=new Set(['core','biceps','triceps','shoulder-accessory','calves','horizontal-push','horizontal-pull','vertical-pull']);
     const candidates=day.exercises.map((ex,index)=>({ex,index}))
@@ -1074,7 +1077,7 @@ function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
     if(candidates.length>=wanted)indexes=candidates.slice(-wanted);
   }
   if(indexes.length<2)return day;
-  const ordered=[...new Set(indexes)].sort((a,b)=>a-b);
+  const ordered=exactMatch?[...new Set(indexes)]:[...new Set(indexes)].sort((a,b)=>a-b);
   const blockType=ordered.length>=3?'tri-set':'superset';
   const blockId=(day.id||'session')+'-'+blockType+'-1';
   const roundRest=blockType==='tri-set'?75:60;
@@ -2833,6 +2836,13 @@ function blockRestSeconds(w,fromEi,next){
   const first=peers[0];
   const startsNewRound=next.type==='block-round'||next.ei===first&&next.si>num(w.currentSetIndex);
   return startsNewRound?Math.max(30,num(from.blockRest)||75):Math.max(5,num(from.transitionRest)||15);
+}
+function dynamicBlockPositionLabel(w,ex){
+  if(!ex?.blockId)return '';
+  const peers=blockExerciseIndexes(w,ex.blockId);
+  const index=peers.indexOf(w.exercises.indexOf(ex));
+  const type=ex.blockType==='tri-set'?'TRI-SET':ex.blockType==='superset'?'SUPERSET':'CIRCUIT';
+  return type+(index>=0?' · '+(index+1)+' OF '+peers.length:'');
 }
 function workoutNowMs(w,nowMs=Date.now()){
   const paused=Date.parse(w?.pausedAt||'');
@@ -4940,6 +4950,8 @@ function renderWorkout(){
 function renderPreSet(pos){
   const ex=pos.exercise,set=prepareSetTarget(ex,pos.set,pos.si),previous=previousSetForPosition(ex,pos.si);
   const previousLabel=previous.set?setPerformanceLabel(ex,previous.set):'No previous set';
+  const preSet=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
+  const blockLabel=dynamicBlockPositionLabel(pos.workout,ex);
   const bounds=repBounds(ex.reps);
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
   const repLabel=ex.loadMode==='timed'?'sec':(exerciseRepCountMode(ex)==='per-side'?'reps / side':'reps');
@@ -4952,14 +4964,15 @@ function renderPreSet(pos){
   const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
   const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   return '<div class="runner-set-ready">'+
-    '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
     '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedReps)+' · Previous: '+esc(previousLabel)+'</small></div>'+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
       (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
       '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
-    '<button class="button primary-action runner-gold-action" type="button" data-action="start-set-now">START NOW</button>'+
+    '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+preSet.remaining+'</strong><small>Starts automatically when the countdown reaches zero.</small></div>'+
+    '<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START NOW</button>'+
     '<div class="runner-set-links"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">OPTIONS</button></div>'+
   '</div>';
 }
@@ -5238,6 +5251,8 @@ function nextExercisePreview(w,currentExerciseIndex){
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
+  const sameBlockNext=Boolean(nextEx&&sameDynamicBlock(pos.exercise,nextEx));
+  const blockRound=Boolean(sameBlockNext&&next?.type==='block-round');
   const nextName=changingExercise?(nextEx?.name||'Next exercise'):next?pos.exercise.name:'Cooldown';
   const nextSet=changingExercise?1:next?(next.si+1):0;
   const last=pos.workout.lastCompletedSet;
@@ -5248,7 +5263,8 @@ function renderRest(pos){
     ?((last.plannedWeight?last.plannedWeight+' lb × ':'')+last.plannedReps+' reps')
     :'';
   const changed=Boolean(planned&&completed&&!completed.startsWith(planned));
-  return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>Great set.</h2><p>'+esc(completed)+'</p>'+
+  return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>'+(sameBlockNext?(blockRound?'Round complete.':'Quick transition.'):'Great set.')+'</h2><p>'+esc(completed)+'</p>'+
+    (sameBlockNext?'<div class="runner-block-rest-label"><span>'+esc(dynamicBlockPositionLabel(pos.workout,pos.exercise))+'</span><strong>'+(blockRound?'FULL REST':'QUICK REST')+'</strong></div>':'')+
     (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
     '<div class="timer-wrap runner-rest-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
     '<div class="runner-rest-next">'+(nextEx?exerciseImageButton(nextEx,'rest-next-exercise-media'):'')+'<div><span>Up next</span><strong>'+esc(nextName)+'</strong><small>'+(nextSet?'Set '+nextSet+' of '+(nextEx?.sets?.length||pos.exercise.sets.length)+' · ':'')+esc(nextEx?currentPrescriptionLabel(nextEx):next?currentPrescriptionLabel(pos.exercise):'Guided cooldown')+'</small></div></div>'+
@@ -5588,7 +5604,19 @@ function updateTimers(){
     return;
   }
 
-  if(w.phase==='pre-set')return;
+  if(w.phase==='pre-set'){
+    const snap=preSetSnapshot(w);
+    if(!snap)return;
+    if(snap.complete){finishPreSet();return;}
+    if(snap.mode==='countdown'&&snap.remaining>0&&snap.remaining<=3){
+      fireWorkoutSignal('warning','preset-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    }
+    const countdown=document.querySelector('#preset-countdown');
+    const label=document.querySelector('#preset-phase-label');
+    if(countdown)countdown.textContent=String(snap.remaining);
+    if(label)label.textContent=snap.mode==='setup'?'GET READY':'AUTO START';
+    return;
+  }
 
   if(w.phase==='work'){
     const setClock=document.querySelector('#set-clock');
