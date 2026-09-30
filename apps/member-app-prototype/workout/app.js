@@ -4342,6 +4342,7 @@ function toggleWorkoutPause(){
   ['exerciseStartedAt','setStartedAt','timedPhaseStartedAt','preSetStartedAt','timedSetStartedAt','timedSetEndsAt','restEndsAt','timedStageSwitchEndsAt','sideSwitchEndsAt'].forEach(key=>shiftWorkoutTimestamp(w,key,delta));
   w.isPaused=false;
   w.pausedAt=null;
+  unlockWorkoutCues();
   saveStore();
   fireWorkoutSignal('transition','workout-resumed-'+w.id+'-'+Date.now(),{voice:'Resume',label:'RESUME'});
   render();
@@ -4369,16 +4370,8 @@ function resetActiveTimer(){
     w.setStartedAt=now.toISOString();
   }else if(w.phase==='warmup'||w.phase==='cooldown'){
     const snap=timedStageSnapshot(w);if(!snap)return;
-    if(snap.mode==='ready'){
-    return '<div class="timed-stage runner-guided-stage runner-guided-ready" data-stage-index="'+index+'" data-stage-mode="ready">'+
-      '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
-      '<div class="runner-stage-copy">'+(snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'')+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p></div>'+
-      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?'Coach countdown is running.':'Start this movement when you are set.')+'</strong><small>'+(guidedAutoStartEnabled(w.phase)?'This normally starts after the coach cue.':'Auto-start is off in your coach settings.')+'</small></div>'+
-      '<button class="button primary-action runner-gold-action" data-action="start-guided-stage" '+(w.timedStageStarting?'disabled':'')+'>'+(w.timedStageStarting?'STARTING…':'START MOVEMENT')+'</button>'+
-      (w.phase==='warmup'?'<button class="text-button runner-skip-warmup runner-skip-remaining" data-action="skip-warmup" data-skip-source="active">SKIP REMAINING WARM-UP</button>':'')+
-    '</div>';
-  }
-  if(snap.mode==='switch'){
+    if(snap.mode==='ready')return;
+    if(snap.mode==='switch'){
       const seconds=timedStageSwitchSeconds(timedStageItems(w)[w.timedStageIndex||0]);
       w.timedStageSwitchStartedAt=now.toISOString();
       w.timedStageSwitchEndsAt=new Date(now.getTime()+seconds*1000).toISOString();
@@ -6233,7 +6226,8 @@ function beginWorkoutSession(skipWarmup=false){
   if(skipWarmup&&hasWarmup){
     w.warmupSkipped=true;w.warmupSkippedAt=now;w.warmupSkipSource='intro';w.warmupPartiallyCompleted=false;
     for(const item of w.warmup||[])if(!item.endedAt)item.skippedAt=now;
-    discardCoachTimeline();
+    discardCoachTimeline({clearCaption:true});
+    unlockWorkoutCues();
   }
   if(willWarmup){
     w.phase='warmup-routine';w.timedStageIndex=0;w.timedStageReps=0;w.timedStageSide='';w.timedPhaseStartedAt=null;
@@ -6251,7 +6245,7 @@ function beginWorkoutSession(skipWarmup=false){
 }
 function cancelWarmupCoachPlayback(){
   if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
-  discardCoachTimeline();
+  discardCoachTimeline({clearCaption:true});
 }
 function skipWorkoutWarmup(source='intro'){
   const w=store.activeWorkout;if(!w)return;
@@ -6269,6 +6263,7 @@ function skipWorkoutWarmup(source='intro'){
   w.timedPhaseStartedAt=null;w.timedStageAwaitingStart=false;w.timedStageStarting=false;w.timedPhaseSkippedSeconds=0;w.timedStageReps=0;w.timedStageSide='';
   delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;delete w.reviewPausedTimedStage;
   cancelWarmupCoachPlayback();
+  unlockWorkoutCues();
   fireWorkoutSignal('transition','warmup-skip-'+w.id,{voice:'',label:'SKIPPED'});
   markPhaseStart(w,'strength',now);beginPreSetPosition(0,0,true);
   toast(wasActive?'Remaining warm-up skipped.':'Warm-up skipped for this session.');
@@ -6434,6 +6429,15 @@ function renderTimedStage(w){
   const index=Math.max(0,Math.min(snap.index||0,Math.max(0,items.length-1))),item=items[index]||items[0],next=index+1<items.length?items[index+1]:null;
   const image=timedStageImageUrl(item,0);
   const pct=snap.mode==='reps'?Math.max(0,Math.min(100,(snap.completedReps/Math.max(1,snap.totalReps))*100)):snap.mode==='switch'?Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100)):Math.max(0,Math.min(100,((snap.total-snap.remaining)/Math.max(1,snap.total))*100));
+  if(snap.mode==='ready'){
+    return '<div class="timed-stage runner-guided-stage runner-guided-ready" data-stage-index="'+index+'" data-stage-mode="ready">'+
+      '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
+      '<div class="runner-stage-copy">'+(snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'')+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p></div>'+
+      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?'Coach countdown is running.':'Start this movement when you are set.')+'</strong><small>'+(guidedAutoStartEnabled(w.phase)?'This movement is queued after the coach cue.':'Auto-start is off in your coach settings.')+'</small></div>'+
+      '<button class="button primary-action runner-gold-action" data-action="start-guided-stage" '+(w.timedStageStarting?'disabled':'')+'>'+(w.timedStageStarting?'STARTING…':'START MOVEMENT')+'</button>'+
+      (w.phase==='warmup'?'<button class="text-button runner-skip-warmup runner-skip-remaining" data-action="skip-warmup" data-skip-source="active">SKIP REMAINING WARM-UP</button>':'')+
+    '</div>';
+  }
   if(snap.mode==='switch'){
     return '<div class="timed-stage runner-guided-stage runner-side-switch-stage" data-stage-index="'+index+'" data-stage-mode="switch">'+
       '<div class="runner-stage-copy"><p class="eyebrow">SWITCH SIDES</p><h2>Move to your left side</h2><p>'+esc(item?.name||'Movement')+'</p></div>'+
