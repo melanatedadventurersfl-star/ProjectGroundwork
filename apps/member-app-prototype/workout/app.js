@@ -847,6 +847,87 @@ function exerciseGuidance(ex){
   return {...base,setup:loadNote?base.setup+' '+loadNote:base.setup};
 }
 
+const EXERCISE_GUIDANCE_OVERRIDES = {
+  'one-arm-row':{
+    setup:'Support one hand and knee on a bench or stable surface. Keep your back flat and let the working arm hang below the shoulder.',
+    steps:['Brace your torso before pulling.','Drive the working elbow toward your hip.','Pause briefly near the top, then lower the dumbbell under control.'],
+    cue:'Keep your chest facing the floor and pull the elbow toward your hip.',
+    mistake:'Do not twist your torso upward to move the weight.'
+  },
+  'db-rdl':{
+    setup:'Stand tall with a dumbbell in each hand, feet stable, and knees softly bent.',
+    steps:['Brace and push your hips backward.','Keep the dumbbells close to your legs as you lower.','Stop when the hamstrings are loaded, then drive the hips forward to stand.'],
+    cue:'Send the hips back. Keep the weights close.',
+    mistake:'Do not chase depth by rounding your lower back.'
+  },
+  'reverse-lunge':{
+    setup:'Stand tall with enough space behind you. Keep your front foot planted.',
+    steps:['Step one leg back and lower under control.','Keep most of your balance over the front leg.','Push through the front foot to return to standing.'],
+    cue:'Stay tall and control the back step.',
+    mistake:'Avoid letting the front knee collapse inward.'
+  },
+  'push-up':{
+    setup:'Place your hands slightly wider than shoulder width and create a straight line from head to heels.',
+    steps:['Brace your trunk before lowering.','Lower your chest under control while the elbows track naturally.','Press the floor away and return to a strong plank.'],
+    cue:'Move your chest and hips together.',
+    mistake:'Avoid letting the hips sag or the shoulders shrug toward the ears.'
+  },
+  'lat-pulldown':{
+    setup:'Secure your thighs under the pad, take a comfortable grip, and keep your chest tall.',
+    steps:['Begin with the arms long overhead.','Drive your elbows down toward your ribs.','Return the bar slowly until the arms are long again.'],
+    cue:'Pull with your elbows, not your hands.',
+    mistake:'Avoid swinging backward to create momentum.'
+  },
+  'leg-curl':{
+    setup:'Align your knee with the machine pivot and place the pad comfortably above the heel.',
+    steps:['Brace against the pad or bench.','Curl the lower leg through a controlled range.','Lower the resistance slowly without letting the stack drop.'],
+    cue:'Squeeze the hamstrings and control the return.',
+    mistake:'Avoid lifting the hips or throwing the weight.'
+  }
+};
+function detailedExerciseGuidance(ex){
+  const base=exerciseGuidance(ex);
+  return {...base,...(EXERCISE_GUIDANCE_OVERRIDES[ex?.id]||{})};
+}
+function renderExerciseGuidanceCard(ex,{compact=false,label='FORM'}={}){
+  const guide=detailedExerciseGuidance(ex);
+  const steps=(guide.steps||[]).slice(0,compact?3:4);
+  return '<section class="runner-form-guide '+(compact?'compact':'')+'">'+
+    '<div class="runner-form-guide-head"><span>'+esc(label)+'</span><strong>'+esc(guide.cue||'Stay controlled.')+'</strong></div>'+
+    '<div class="runner-form-setup"><small>SETUP</small><p>'+esc(guide.setup||exerciseDescription(ex))+'</p></div>'+
+    '<ol>'+steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol>'+
+    '<div class="runner-form-tip"><small>FORM TIP</small><p>'+esc(guide.mistake||'Use a controlled range and avoid momentum.')+'</p></div>'+
+  '</section>';
+}
+function nextUnresolvedExerciseAfter(w,index){
+  if(!w)return null;
+  for(let i=index+1;i<(w.exercises||[]).length;i++){
+    if(!exerciseCountsAsResolved(w.exercises[i]))return {index:i,exercise:w.exercises[i]};
+  }
+  return null;
+}
+function renderCountdownExercisePreview(pos){
+  const next=nextUnresolvedExerciseAfter(pos.workout,pos.ei);
+  if(!next)return '';
+  return '<div class="runner-countdown-next"><span>COMING NEXT</span><strong>'+esc(next.exercise.name)+'</strong><small>'+esc(currentPrescriptionLabel(next.exercise))+'</small></div>';
+}
+function preWorkoutMotivation(w){
+  const readiness=w?.readiness||{};
+  if(num(readiness.energy)&&num(readiness.energy)<=2)return {title:'Meet today where it is.',copy:'Keep the reps clean and finish the work you can control. The session is already adjusted around today’s readiness.'};
+  if(w?.trainingContext?.adapted||w?.trainingContext?.temporary)return {title:'Make this setup work for you.',copy:'The movements changed. The goal did not. Stay controlled and let today’s equipment do its job.'};
+  if((store.history||[]).length===0)return {title:'Set the baseline.',copy:'Clean reps first. Today gives GoWorkout the starting point it needs to make the next session smarter.'};
+  return {title:'Own the next set.',copy:'Start with the target, keep the form clean, and adjust only when your actual reps say you should.'};
+}
+function workoutMotivationSummary(item){
+  const completed=(item?.exercises||[]).filter(ex=>exerciseCountsAsResolved(ex)).length;
+  const total=(item?.exercises||[]).length;
+  const records=workoutRecordClassification(item||{});
+  if(item?.completionStatus==='partial')return {title:'The work you did still counts.',copy:completed+' of '+total+' exercises were resolved. Your completed sets stay in history and the next plan can build from them.'};
+  if(records.prs?.length)return {title:'Progress showed up today.',copy:records.prs.length+' personal record'+(records.prs.length===1?'':'s')+' moved forward. The next targets will use what you logged here.'};
+  if(completed===total&&total)return {title:'Full session logged.',copy:'You completed the planned exercise list. The next workout now has a cleaner picture of your working loads and feedback.'};
+  return {title:'Session saved.',copy:'Your actual sets, feedback, substitutions, and timing are now part of the next recommendation.'};
+}
+
 function exerciseDescription(ex){
   if(!ex)return 'A controlled movement used in today’s workout.';
   const muscleText=(ex.muscles||[]).slice(0,2).join(' and ').toLowerCase();
@@ -2981,8 +3062,8 @@ function finishTimedStageSideSwitch(){
   const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase)||!w.timedStageSwitchEndsAt)return;
   const now=new Date().toISOString();
   w.timedStageSide='left';
-  w.timedStageReps=0;
   const item=timedStageItems(w)[w.timedStageIndex||0];
+  w.timedStageReps=(item?.mode==='reps'||item?.reps)?Math.max(1,num(item.reps)||8):0;
   if(item)item.leftStartedAt=now;
   w.timedPhaseStartedAt=now;
   delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
@@ -3369,8 +3450,8 @@ function advanceTimedStage(){
   delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
   if(index>=items.length-1){completeTimedStagePhase(w);return;}
   w.timedStageIndex=index+1;
-  w.timedStageReps=0;
   const next=items[w.timedStageIndex];
+  w.timedStageReps=(next?.mode==='reps'||next?.reps)?Math.max(1,num(next.reps)||8):0;
   if(next&&!next.startedAt)next.startedAt=now;
   w.timedStageSide=next?.side?'right':'';
   w.timedPhaseStartedAt=now;
@@ -3662,7 +3743,7 @@ function resetActiveTimer(){
       const seconds=timedStageSwitchSeconds(timedStageItems(w)[w.timedStageIndex||0]);
       w.timedStageSwitchStartedAt=now.toISOString();
       w.timedStageSwitchEndsAt=new Date(now.getTime()+seconds*1000).toISOString();
-    }else if(snap.mode==='reps')w.timedStageReps=0;
+    }else if(snap.mode==='reps')w.timedStageReps=Math.max(1,num(timedStageItems(w)[w.timedStageIndex||0]?.reps)||snap.totalReps||8);
     else w.timedPhaseStartedAt=now.toISOString();
   }else return;
   saveStore();
@@ -5113,8 +5194,10 @@ function renderWorkoutIntro(w){
   const warmCount=w.warmup?.length||0,coolCount=w.cooldown?.length||0;
   const strengthMinutes=Math.max(1,(w.readiness?.timeAvailable||store.profile?.minutes||45)-runnerPhaseMinutes(w.warmup)-runnerPhaseMinutes(w.cooldown));
   const setup=w.trainingContext?sessionSetupLabel(w.trainingContext):(store.profile?.equipment==='full-gym'?'Gym':'Training');
+  const motivation=preWorkoutMotivation(w);
   return '<div class="runner-overview">'+
     '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.readiness?.timeAvailable||store.profile?.minutes||45)+' minutes · '+esc(setup)+'</p></div>'+
+    '<section class="runner-motivation-card pre"><span>TODAY’S FOCUS</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
     '<div class="runner-phase-list">'+
       (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up</strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small></div><em>›</em></button>':'')+
       '<div class="runner-phase-row"><span class="runner-phase-icon">▰</span><div><strong>Strength</strong><small>'+w.exercises.length+' exercises · ~'+strengthMinutes+' minutes</small></div></div>'+
@@ -5151,9 +5234,10 @@ function beginWorkoutSession(){
 function startWarmupRoutine(){
   const w=store.activeWorkout;if(!w||w.phase!=='warmup-routine')return;
   const now=new Date().toISOString();
-  w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=0;w.timedPhaseStartedAt=now;w.warmupStartedAt=now;w.warmupCompletedAt=null;w.timedPhaseSkippedSeconds=0;
-  w.timedStageSide=w.warmup?.[0]?.side?'right':'';
-  if(w.warmup?.[0]&&!w.warmup[0].startedAt)w.warmup[0].startedAt=now;
+  const first=w.warmup?.[0];
+  w.phase='warmup';w.timedStageIndex=0;w.timedStageReps=(first?.mode==='reps'||first?.reps)?Math.max(1,num(first.reps)||8):0;w.timedPhaseStartedAt=now;w.warmupStartedAt=now;w.warmupCompletedAt=null;w.timedPhaseSkippedSeconds=0;
+  w.timedStageSide=first?.side?'right':'';
+  if(first&&!first.startedAt)first.startedAt=now;
   markPhaseStart(w,'warmup',now);
   fireWorkoutSignal('go','warmup-start-'+w.id,{voice:'Warm-up starts now.',label:'GO'});
   saveStore();render();
@@ -5172,21 +5256,27 @@ function startStrengthWork(){
   beginPreSetPosition(0,0,true);
 }
 function addWarmupRep(){
-  const w=store.activeWorkout;if(!w||w.phase!=='warmup')return;
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
   const snap=timedStageSnapshot(w);if(!snap||snap.mode!=='reps')return;
-  w.timedStageReps=Math.min(snap.totalReps,(Number(w.timedStageReps)||0)+1);
-  if(w.timedStageReps>=snap.totalReps){
-    fireWorkoutSignal('complete','warmup-reps-'+w.id+'-'+snap.index+'-'+(w.timedStageSide||'both'),{voice:'Done',label:'DONE'});
-    const item=timedStageItems(w)[snap.index];
-    if(item?.side&&w.timedStageSide!=='left'){beginTimedStageSideSwitch(w);return;}
-    advanceTimedStage();return;
-  }
+  w.timedStageReps=Math.max(1,(Number(w.timedStageReps)||snap.totalReps)+1);
   saveStore();render();
 }
 function removeWarmupRep(){
-  const w=store.activeWorkout;if(!w||w.phase!=='warmup')return;
-  w.timedStageReps=Math.max(0,(Number(w.timedStageReps)||0)-1);
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const snap=timedStageSnapshot(w);if(!snap||snap.mode!=='reps')return;
+  w.timedStageReps=Math.max(1,(Number(w.timedStageReps)||snap.totalReps)-1);
   saveStore();render();
+}
+function completeRepStage(){
+  const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
+  const snap=timedStageSnapshot(w);if(!snap||snap.mode!=='reps')return;
+  const item=timedStageItems(w)[snap.index];
+  item.actualReps=item.actualReps||{};
+  const side=item?.side?(w.timedStageSide||'right'):'both';
+  item.actualReps[side]=Math.max(1,num(w.timedStageReps)||snap.totalReps);
+  fireWorkoutSignal('complete','guided-reps-'+w.id+'-'+w.phase+'-'+snap.index+'-'+side,{voice:'Done',label:'DONE'});
+  if(item?.side&&w.timedStageSide!=='left'){beginTimedStageSideSwitch(w);return;}
+  advanceTimedStage();
 }
 function runnerPhaseMinutes(items=[]){
   return Math.max(1,Math.round(items.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60));
