@@ -707,6 +707,7 @@ function adaptDayForProgramWeek(baseDay,date=new Date()){
   if(decision.reduceAccessories){
     for(const ex of day.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
   }
+  assignDynamicWorkoutBlocks(day,store.profile||{});
   recalculatePlanDay(day);
   const cap=Math.max(20,num(store.profile?.minutes)||45)*1.03;
   for(let i=day.exercises.length-1;i>=0&&day.estimatedMinutes>cap;i--){
@@ -1352,39 +1353,48 @@ function estimatePlanExerciseSeconds(ex){
   const between=ex.blockId?(ex.transitionRest||15):(ex.rest||45);
   return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*between+35;
 }
+function pacingConfig(profile=store.profile||{}){
+  const pacing=profile.pacing||'balanced';
+  if(pacing==='relaxed')return {groupSize:2,transitionRest:20,roundRest:90};
+  if(pacing==='fast')return {groupSize:4,transitionRest:10,roundRest:60};
+  return {groupSize:3,transitionRest:15,roundRest:75};
+}
 function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
   if(!day?.exercises?.length)return day;
-  if(day.exercises.some(ex=>ex.blockId))return day;
   for(const ex of day.exercises){
     delete ex.blockId;delete ex.blockType;delete ex.blockOrder;delete ex.transitionRest;delete ex.blockRest;
   }
-  const exactIds=['push-up','sit-up','pull-up'];
-  const exact=exactIds.map(id=>day.exercises.findIndex(ex=>ex.id===id));
-  let indexes=[];
-  const exactMatch=exact.every(index=>index>=0);
-  if(exactMatch)indexes=exact;
-  else{
-    const accessory=new Set(['core','biceps','triceps','shoulder-accessory','calves','horizontal-push','horizontal-pull','vertical-pull']);
-    const candidates=day.exercises.map((ex,index)=>({ex,index}))
-      .filter(({ex})=>accessory.has(ex.movement)&&(num(ex.setup)||25)<=35)
-      .map(item=>item.index);
-    const wanted=['general','fat-loss'].includes(profile.goal)?3:2;
-    if(candidates.length>=wanted)indexes=candidates.slice(-wanted);
+  day.blocks=[];
+  const style=profile.workoutStyle||'classic';
+  if(style!=='flow')return day;
+  const config=pacingConfig(profile);
+  let size=Math.max(2,Math.min(4,config.groupSize));
+  if(profile.workoutLimiter==='gym-crowding')size=Math.min(2,size);
+  const exercises=day.exercises;
+  let cursor=0,blockNumber=1;
+  while(cursor<exercises.length){
+    const remaining=exercises.length-cursor;
+    let count=Math.min(size,remaining);
+    if(count===1&&day.blocks.length){
+      const prior=day.blocks[day.blocks.length-1];
+      if(prior.exerciseIndexes.length<4){
+        const index=cursor,ex=exercises[index],order=prior.exerciseIndexes.length;
+        ex.blockId=prior.id;ex.blockType=prior.type==='superset'?'tri-set':'circuit';ex.blockOrder=order;ex.transitionRest=config.transitionRest;ex.blockRest=config.roundRest;
+        prior.exerciseIndexes.push(index);prior.exerciseIds.push(ex.id);prior.type=ex.blockType;
+        cursor+=1;continue;
+      }
+    }
+    if(count<2){cursor+=1;continue;}
+    const indexes=Array.from({length:count},(_,i)=>cursor+i);
+    const type=count===2?'superset':count===3?'tri-set':'circuit';
+    const id=(day.id||'session')+'-flow-'+blockNumber++;
+    indexes.forEach((index,order)=>{
+      const ex=exercises[index];
+      ex.blockId=id;ex.blockType=type;ex.blockOrder=order;ex.transitionRest=config.transitionRest;ex.blockRest=config.roundRest;
+    });
+    day.blocks.push({id,type,exerciseIndexes:indexes,exerciseIds:indexes.map(index=>exercises[index].id),transitionRest:config.transitionRest,roundRest:config.roundRest});
+    cursor+=count;
   }
-  if(indexes.length<2)return day;
-  const ordered=exactMatch?[...new Set(indexes)]:[...new Set(indexes)].sort((a,b)=>a-b);
-  const blockType=ordered.length>=3?'tri-set':'superset';
-  const blockId=(day.id||'session')+'-'+blockType+'-1';
-  const roundRest=blockType==='tri-set'?75:60;
-  ordered.forEach((index,order)=>{
-    const ex=day.exercises[index];
-    ex.blockId=blockId;
-    ex.blockType=blockType;
-    ex.blockOrder=order;
-    ex.transitionRest=15;
-    ex.blockRest=roundRest;
-  });
-  day.blocks=[{id:blockId,type:blockType,exerciseIds:ordered.map(index=>day.exercises[index].id),transitionRest:15,roundRest}];
   return day;
 }
 function recalculatePlanDay(day){
