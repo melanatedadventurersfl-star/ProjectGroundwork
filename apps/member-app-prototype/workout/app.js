@@ -540,7 +540,9 @@ function exerciseStateLabel(ex){
   })[exerciseState(ex)]||'Not started';
 }
 function exerciseCountsAsResolved(ex){
-  return ['complete','completed-manually','skipped'].includes(exerciseState(ex));
+  if(['complete','completed-manually','skipped'].includes(exerciseState(ex)))return true;
+  const sets=ex?.sets||[];
+  return Boolean(sets.length&&sets.every(setIsResolved));
 }
 function workoutResolvedCount(w){
   return (w?.exercises||[]).filter(exerciseCountsAsResolved).length;
@@ -548,8 +550,11 @@ function workoutResolvedCount(w){
 function workoutIsFullyResolved(w){
   return Boolean(w?.exercises?.length)&&w.exercises.every(exerciseCountsAsResolved);
 }
+function setIsResolved(set){
+  return Boolean(set?.completed||set?.skipped);
+}
 function firstIncompleteSetIndex(ex){
-  const index=(ex?.sets||[]).findIndex(set=>!set.completed);
+  const index=(ex?.sets||[]).findIndex(set=>!setIsResolved(set));
   return index<0?Math.max(0,(ex?.sets?.length||1)-1):index;
 }
 function nextUnresolvedExerciseIndex(w,from=-1){
@@ -915,6 +920,45 @@ function equipmentRequirement(ex){
 function exerciseSource(ex){
   return catalog.find(item=>item.id===ex?.id)||ex;
 }
+function normalizedExerciseName(value){
+  return String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+function exerciseHistoryIdentity(exerciseOrId){
+  const source=typeof exerciseOrId==='string'
+    ?(catalog.find(item=>item.id===exerciseOrId)||{id:exerciseOrId,name:''})
+    :(exerciseSource(exerciseOrId)||exerciseOrId||{});
+  const ids=new Set([source.id,source.historyKey,...(source.historyAliases||[])].filter(Boolean));
+  const names=new Set([source.name,...(source.historyNames||[])].map(normalizedExerciseName).filter(Boolean));
+  return {source,ids,names};
+}
+function exerciseMatchesHistory(item,identity){
+  if(!item||!identity)return false;
+  if(identity.ids.has(item.id)||identity.ids.has(item.historyKey))return true;
+  return identity.names.has(normalizedExerciseName(item.name));
+}
+function exerciseLaterality(ex){
+  const source=exerciseSource(ex)||ex||{};
+  if(source.laterality)return source.laterality;
+  if(source.movement==='single-leg')return 'unilateral';
+  if(/one-arm|single-arm|single-leg/i.test(source.name||''))return 'unilateral';
+  if(/alternating/i.test(source.name||''))return 'alternating';
+  return 'bilateral';
+}
+function exerciseRepCountMode(ex){
+  const source=exerciseSource(ex)||ex||{};
+  return source.repCountMode||(exerciseLaterality(source)==='bilateral'?'total':'per-side');
+}
+function exerciseRepDisplay(ex,value,{unit=true}={}){
+  const amount=String(value??'');
+  if(ex?.loadMode==='timed')return amount+(unit?' sec':'');
+  if(exerciseRepCountMode(ex)==='per-side')return amount+(unit?' / side':'');
+  return amount+(unit?' reps':'');
+}
+function exerciseWeightDisplay(ex,value){
+  const weight=num(value);
+  if(!weight)return '';
+  return String(weight)+' lb'+(ex?.loadMode==='dumbbell-pair'?' each':'');
+}
 function exerciseDifficultyRank(value){
   return ({beginner:0,intermediate:1,advanced:2})[value]??1;
 }
@@ -946,13 +990,15 @@ function swapCandidates(ex,{includeOtherEquipment=true,limit=7,setup=null}={}){
     .filter(candidate=>candidate.id!==source.id&&!excluded.has(candidate.id))
     .map(candidate=>{
       const sameMovement=candidate.movement===source.movement;
+      const sameVariant=Boolean(source.variantGroup&&candidate.variantGroup&&source.variantGroup===candidate.variantGroup);
+      const sameEquipmentClass=Boolean(source.equipmentClass&&candidate.equipmentClass&&source.equipmentClass===candidate.equipmentClass);
       const overlap=muscleOverlap(source,candidate);
       const available=swapCandidateAvailable(candidate,setup);
       const difficultyGap=Math.abs(exerciseDifficultyRank(source.difficulty)-exerciseDifficultyRank(candidate.difficulty));
       const setupGap=Math.abs((candidate.setup||25)-(source.setup||25));
       const duplicatePenalty=(activeIds.has(candidate.id)||planIds.has(candidate.id))?6:0;
-      const score=(sameMovement?60:0)+(overlap*12)+(available?24:0)+(candidate.style===source.style?4:0)-difficultyGap*5-Math.min(8,setupGap/10)-duplicatePenalty;
-      const tier=sameMovement&&overlap?'Same movement + muscles':sameMovement?'Same movement':'Similar training purpose';
+      const score=(sameVariant?38:0)+(sameMovement?60:0)+(overlap*12)+(available?24:0)+(sameEquipmentClass?6:0)+(candidate.style===source.style?4:0)-difficultyGap*5-Math.min(8,setupGap/10)-duplicatePenalty;
+      const tier=sameVariant?'Closest equipment variant':sameMovement&&overlap?'Same movement + muscles':sameMovement?'Same movement':'Similar training purpose';
       return {exercise:candidate,available,score,tier,setupGap};
     })
     .filter(item=>item.score>18&&(includeOtherEquipment||item.available))
@@ -972,7 +1018,9 @@ function planSlotFromCandidate(candidate,template){
   const reps=adaptive?.reps||settings.reps;
   return {
     id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
+    laterality:candidate.laterality||'',repCountMode:candidate.repCountMode||'',variantGroup:candidate.variantGroup||'',equipmentClass:candidate.equipmentClass||'',
     sets:template.sets,reps:reps,startReps:recommendedRepCount(reps),rest:Math.max(30,Math.min(60,template.rest||settings.rest)),
+    blockId:template.blockId||'',blockType:template.blockType||'',blockOrder:template.blockOrder??null,transitionRest:template.transitionRest||0,blockRest:template.blockRest||0,
     setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
     startWeight:adaptive?.weight??calibrated??start.weight,startLabel:adaptive?.label||start.label,startSource:adaptive?'learned progression':start.source||'',
     calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
@@ -993,7 +1041,8 @@ function workoutExerciseFromCandidate(candidate,template,setCount){
   const weightValue=noWeight?'':(candidate.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
   return {
     id:candidate.id,name:candidate.name,movement:candidate.movement,muscles:candidate.muscles,loadMode:candidate.loadMode,
-    reps:settings.reps,rest,setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
+    laterality:candidate.laterality||'',repCountMode:candidate.repCountMode||'',variantGroup:candidate.variantGroup||'',equipmentClass:candidate.equipmentClass||'',
+    reps:settings.reps,rest,blockId:template.blockId||'',blockType:template.blockType||'',blockOrder:template.blockOrder??null,transitionRest:template.transitionRest||0,blockRest:template.blockRest||0,setup:template.setup||candidate.setup||25,increment:candidate.increment||5,
     suggestedWeight,suggestedReps,
     adaptiveLabel:adaptive?.label||'',adaptiveReason:adaptive?.reason||'',
     calibrationRequired:Boolean(start.calibrate&&!calibrated&&!adaptive),
@@ -1006,7 +1055,43 @@ function workoutExerciseFromCandidate(candidate,template,setCount){
 }
 function estimatePlanExerciseSeconds(ex){
   const setSeconds=goalSettings(store.profile?.goal||'muscle',ex.movement,store.profile?.experience||'beginner').setSeconds||40;
-  return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*(ex.rest||45)+35;
+  const between=ex.blockId?(ex.transitionRest||15):(ex.rest||45);
+  return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*between+35;
+}
+function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
+  if(!day?.exercises?.length)return day;
+  if(day.exercises.some(ex=>ex.blockId))return day;
+  for(const ex of day.exercises){
+    delete ex.blockId;delete ex.blockType;delete ex.blockOrder;delete ex.transitionRest;delete ex.blockRest;
+  }
+  const exactIds=['push-up','sit-up','pull-up'];
+  const exact=exactIds.map(id=>day.exercises.findIndex(ex=>ex.id===id));
+  let indexes=[];
+  const exactMatch=exact.every(index=>index>=0);
+  if(exactMatch)indexes=exact;
+  else{
+    const accessory=new Set(['core','biceps','triceps','shoulder-accessory','calves','horizontal-push','horizontal-pull','vertical-pull']);
+    const candidates=day.exercises.map((ex,index)=>({ex,index}))
+      .filter(({ex})=>accessory.has(ex.movement)&&(num(ex.setup)||25)<=35)
+      .map(item=>item.index);
+    const wanted=['general','fat-loss'].includes(profile.goal)?3:2;
+    if(candidates.length>=wanted)indexes=candidates.slice(-wanted);
+  }
+  if(indexes.length<2)return day;
+  const ordered=exactMatch?[...new Set(indexes)]:[...new Set(indexes)].sort((a,b)=>a-b);
+  const blockType=ordered.length>=3?'tri-set':'superset';
+  const blockId=(day.id||'session')+'-'+blockType+'-1';
+  const roundRest=blockType==='tri-set'?75:60;
+  ordered.forEach((index,order)=>{
+    const ex=day.exercises[index];
+    ex.blockId=blockId;
+    ex.blockType=blockType;
+    ex.blockOrder=order;
+    ex.transitionRest=15;
+    ex.blockRest=roundRest;
+  });
+  day.blocks=[{id:blockId,type:blockType,exerciseIds:ordered.map(index=>day.exercises[index].id),transitionRest:15,roundRest}];
+  return day;
 }
 function recalculatePlanDay(day){
   if(!day)return;
@@ -1449,9 +1534,20 @@ function prepareSetTarget(ex,set,setIndex=0){
     set.reps=prior.reps??set.reps;
     set.targetSource='previous-set';
   }else{
-    if(!['bodyweight','timed','band'].includes(ex.loadMode))set.weight=String(recommendedWeightTarget(ex)||'');
-    set.reps=String(ex.loadMode==='timed'?(num(set.reps)||num(ex.suggestedReps)||recommendedRepTarget(ex)):recommendedRepTarget(ex));
-    set.targetSource='recommended-max';
+    const previousSession=exerciseSessionHistory(ex,1)[0];
+    const previousSet=previousSession?.sets?.[setIndex]||previousSession?.sets?.[previousSession.sets.length-1]||null;
+    const learned=adaptivePrescription(ex);
+    if(previousSet||learned){
+      if(!['bodyweight','timed','band'].includes(ex.loadMode)){
+        set.weight=String((learned&&Number.isFinite(Number(learned.weight))?learned.weight:previousSet?.weight)||recommendedWeightTarget(ex)||'');
+      }
+      set.reps=String(learned?.reps||previousSet?.reps||recommendedRepTarget(ex));
+      set.targetSource=learned?'learned':'history';
+    }else{
+      if(!['bodyweight','timed','band'].includes(ex.loadMode))set.weight=String(recommendedWeightTarget(ex)||'');
+      set.reps=String(ex.loadMode==='timed'?(num(set.reps)||num(ex.suggestedReps)||recommendedRepTarget(ex)):recommendedRepTarget(ex));
+      set.targetSource='recommended-max';
+    }
   }
   set.targetPrepared=true;
   return set;
@@ -1526,7 +1622,7 @@ function prefetchUpcomingWorkoutMedia(){
 
 function currentPrescriptionLabel(ex){
   if(ex.adaptiveLabel)return ex.adaptiveLabel;
-  return suggestedLabel(ex)+' × '+String(ex.suggestedReps||recommendedRepCount(ex.reps))+' reps';
+  return suggestedLabel(ex)+' × '+exerciseRepDisplay(ex,ex.suggestedReps||recommendedRepCount(ex.reps));
 }
 function progressionLabel(ex,weight,reps,labelOverride){
   if(labelOverride)return labelOverride;
@@ -2179,6 +2275,7 @@ function buildDay(blueprint,profile,index){
     estimatedMinutes:Math.max(10,Math.ceil(estimatedSeconds/60)),
     exercises:selected.map(e=>({
       id:e.id,name:e.name,movement:e.movement,muscles:e.muscles,loadMode:e.loadMode,
+      laterality:e.laterality||'',repCountMode:e.repCountMode||'',variantGroup:e.variantGroup||'',equipmentClass:e.equipmentClass||'',
       sets:e.settings.sets,reps:e.settings.reps,startReps:recommendedRepCount(e.settings.reps),rest:Math.max(30,Math.min(60,e.settings.rest)),
       setup:e.setup||25,increment:e.increment||5,
       startWeight:e.start.weight,startLabel:e.start.label,startSource:e.start.source||'',
@@ -2372,7 +2469,7 @@ function generatePlan(profile){
     daysPerWeek:profile.days,
     workoutDays:preferredWorkoutDays(profile),
     minutes:profile.minutes,
-    days:blueprints.map((b,i)=>buildDay(b,profile,i))
+    days:blueprints.map((b,i)=>assignDynamicWorkoutBlocks(buildDay(b,profile,i),profile))
   };
 }
 
@@ -2638,6 +2735,7 @@ async function startPreparedWorkout(){
 }
 
 function createWorkout(day,meta={}){
+  day=assignDynamicWorkoutBlocks(clone(day),store.profile||{});
   const now=new Date().toISOString();
   const workout={
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
@@ -2689,13 +2787,66 @@ function getActivePosition(){
   if(!set)return null;
   return {workout:w,ei,si,exercise:ex,set};
 }
+function blockExerciseIndexes(w,blockId){
+  if(!blockId)return [];
+  return (w?.exercises||[]).map((ex,index)=>({ex,index}))
+    .filter(item=>item.ex.blockId===blockId)
+    .sort((a,b)=>(num(a.ex.blockOrder)-num(b.ex.blockOrder))||(a.index-b.index))
+    .map(item=>item.index);
+}
+function sameDynamicBlock(a,b){
+  return Boolean(a?.blockId&&b?.blockId&&a.blockId===b.blockId);
+}
+function nextDynamicBlockPosition(w,ei,si){
+  const ex=w?.exercises?.[ei];
+  if(!ex?.blockId)return null;
+  const peers=blockExerciseIndexes(w,ex.blockId);
+  const peerPosition=peers.indexOf(ei);
+  if(peerPosition<0)return null;
+  for(let p=peerPosition+1;p<peers.length;p++){
+    const index=peers[p],set=w.exercises[index]?.sets?.[si];
+    if(set&&!setIsResolved(set))return {ei:index,si,type:'block-transition',blockId:ex.blockId};
+  }
+  const maxSets=Math.max(...peers.map(index=>w.exercises[index]?.sets?.length||0),0);
+  for(let round=si+1;round<maxSets;round++){
+    for(const index of peers){
+      const set=w.exercises[index]?.sets?.[round];
+      if(set&&!setIsResolved(set))return {ei:index,si:round,type:'block-round',blockId:ex.blockId};
+    }
+  }
+  const lastPeer=Math.max(...peers);
+  for(let index=lastPeer+1;index<w.exercises.length;index++){
+    if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
+  }
+  for(let index=0;index<w.exercises.length;index++){
+    if(peers.includes(index))continue;
+    if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
+  }
+  return null;
+}
 function nextPosition(w,ei,si){
   const ex=w.exercises[ei];
-  for(let setIndex=si+1;setIndex<(ex.sets||[]).length;setIndex++)if(!ex.sets[setIndex].completed)return {ei,si:setIndex,type:'set'};
+  if(ex?.blockId)return nextDynamicBlockPosition(w,ei,si);
+  for(let setIndex=si+1;setIndex<(ex.sets||[]).length;setIndex++)if(!setIsResolved(ex.sets[setIndex]))return {ei,si:setIndex,type:'set'};
   for(let index=ei+1;index<w.exercises.length;index++){
     if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
   }
   return null;
+}
+function blockRestSeconds(w,fromEi,next){
+  const from=w?.exercises?.[fromEi],to=next?w.exercises?.[next.ei]:null;
+  if(!sameDynamicBlock(from,to))return null;
+  const peers=blockExerciseIndexes(w,from.blockId);
+  const first=peers[0];
+  const startsNewRound=next.type==='block-round'||next.ei===first&&next.si>num(w.currentSetIndex);
+  return startsNewRound?Math.max(30,num(from.blockRest)||75):Math.max(5,num(from.transitionRest)||15);
+}
+function dynamicBlockPositionLabel(w,ex){
+  if(!ex?.blockId)return '';
+  const peers=blockExerciseIndexes(w,ex.blockId);
+  const index=peers.indexOf(w.exercises.indexOf(ex));
+  const type=ex.blockType==='tri-set'?'TRI-SET':ex.blockType==='superset'?'SUPERSET':'CIRCUIT';
+  return type+(index>=0?' · '+(index+1)+' OF '+peers.length:'');
 }
 function workoutNowMs(w,nowMs=Date.now()){
   const paused=Date.parse(w?.pausedAt||'');
@@ -2932,7 +3083,7 @@ function renderWorkoutMap(){
   return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal runner-map-modal" data-workout-map-panel role="dialog" aria-modal="true"><button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><h2>'+esc(w.routineName)+'</h2></div><div class="runner-map-tabs">'+tabs.map(([id,label])=>'<button class="'+(workoutMapView===id?'active':'')+'" data-action="set-workout-map-view" data-map-view="'+id+'">'+label+'</button>').join('')+'</div><div class="workout-map-list">'+body+'</div></section></div>';
 }
 
-function beginPreSetPosition(ei,si,isNewExercise=true){
+function beginPreSetPosition(ei,si,isNewExercise=true,setupSeconds=null){
   const w=store.activeWorkout;if(!w)return;
   const previousIndex=w.currentExerciseIndex||0;
   if(isNewExercise&&w.exerciseStartedAt&&previousIndex!==ei)recordExerciseDuration(w,previousIndex);
@@ -2942,7 +3093,7 @@ function beginPreSetPosition(ei,si,isNewExercise=true){
   prepareSetTarget(w.exercises[ei],w.exercises[ei]?.sets?.[si],si);
   w.phase='pre-set';
   w.preSetStartedAt=new Date().toISOString();
-  w.preSetSetupSeconds=isNewExercise?5:0;
+  w.preSetSetupSeconds=setupSeconds===null?(isNewExercise?5:0):Math.max(0,num(setupSeconds));
   w.preSetCountdownSeconds=3;
   w.preSetIsNewExercise=Boolean(isNewExercise);
   w.restEndsAt=null;w.restDuration=0;w.restPausedRemaining=null;w.pendingPosition=null;
@@ -3031,6 +3182,9 @@ function completeTimedSet(early=false){
   delete w.timedSetStartedAt;delete w.timedSetDuration;delete w.timedSetEndsAt;
   fireWorkoutSignal('complete','complete-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Done',label:'DONE'});
   const next=nextPosition(w,pos.ei,pos.si);
+  if(next&&sameDynamicBlock(pos.exercise,w.exercises[next.ei])){
+    beginRest(next,blockRestSeconds(w,pos.ei,next)||15);return;
+  }
   if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
 }
@@ -3099,7 +3253,7 @@ function beginRest(next,seconds){
   const w=store.activeWorkout;
   if(!w)return;
   if(!next){ startCooldown();return; }
-  const safeRest=Math.max(30,Math.min(60,seconds||45));
+  const safeRest=Math.max(5,Math.min(180,seconds||45));
   w.phase='rest';w.restDuration=safeRest;w.restEndsAt=new Date(Date.now()+safeRest*1000).toISOString();
   w.restPausedRemaining=null;w.restToken=newTimerToken('rest',w);w.pendingPosition=next;saveStore();render();
 }
@@ -3156,8 +3310,11 @@ function completeCurrentSet(){
     nextSet.targetPrepared=true;
     nextSet.targetSource='previous-set';
   }
-  if(pos.si===0 && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
+  if(pos.si===0 && !pos.exercise.blockId && pos.exercise.calibrationRequired && !['bodyweight','timed','band','assisted'].includes(pos.exercise.loadMode)){
     pos.workout.phase='calibrate';pos.workout.pendingPosition=next;saveStore();render();return;
+  }
+  if(next&&sameDynamicBlock(pos.exercise,pos.workout.exercises[next.ei])){
+    beginRest(next,blockRestSeconds(pos.workout,pos.ei,next)||15);return;
   }
   if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
   beginRest(next,pos.exercise.rest||45);
@@ -3169,6 +3326,9 @@ function skipCurrentSet(reason='Skipped by user'){
  pos.set.skipped=true;pos.set.skipReason=reason;pos.set.completed=false;pos.set.completedAt=null;
  delete pos.workout.setStartedAt;
  const next=nextPosition(pos.workout,pos.ei,pos.si);
+ if(next&&sameDynamicBlock(pos.exercise,pos.workout.exercises[next.ei])){
+   beginRest(next,blockRestSeconds(pos.workout,pos.ei,next)||15);return;
+ }
  if(!next||next.ei!==pos.ei){startExerciseFeedback(next);return;}
  beginRest(next,Math.min(30,pos.exercise.rest||30));
 }
@@ -3200,9 +3360,16 @@ function advanceAfterRest(expectedToken=null){
   const next=w.pendingPosition;if(!next){startCooldown();return;}
   const isNewExercise=next.ei!==w.currentExerciseIndex;
   if(isNewExercise){
+    const current=w.exercises[w.currentExerciseIndex],upcoming=w.exercises[next.ei];
+    if(sameDynamicBlock(current,upcoming)){
+      w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
+      announceExercise(upcoming,next.type==='block-round'?'Next round':'Next exercise');
+      beginPreSetPosition(next.ei,next.si,true,0);
+      return;
+    }
     w.phase='exercise-transition';
     w.restEndsAt=null;w.restPausedRemaining=null;w.restDuration=0;
-    announceExercise(w.exercises[next.ei],'Next exercise');
+    announceExercise(upcoming,'Next exercise');
     saveStore();render();return;
   }
   beginPreSetPosition(next.ei,next.si,false);
@@ -3210,10 +3377,10 @@ function advanceAfterRest(expectedToken=null){
 function adjustRest(delta){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
   const current=restRemaining(w);
-  const nextRemaining=Math.max(30,Math.min(60,current+delta));
+  const nextRemaining=Math.max(5,Math.min(180,current+delta));
   if(Number.isFinite(w.restPausedRemaining)) w.restPausedRemaining=nextRemaining;
   else w.restEndsAt=new Date(Date.now()+nextRemaining*1000).toISOString();
-  w.restDuration=Math.max(30,Math.min(60,Math.max(w.restDuration||30,nextRemaining)));
+  w.restDuration=Math.max(5,Math.min(180,Math.max(w.restDuration||5,nextRemaining)));
   saveStore();updateTimers();
 }
 function toggleRestPause(){
@@ -3275,9 +3442,10 @@ function resetActiveTimer(){
 
 function previousBest(exerciseId,exclude=null){
   let best=null;
+  const identity=exerciseHistoryIdentity(exerciseId);
   for(const w of store.history){
     if(w.id===exclude)continue;
-    const ex=w.exercises.find(e=>e.id===exerciseId);if(!ex)continue;
+    const ex=(w.exercises||[]).find(e=>exerciseMatchesHistory(e,identity));if(!ex)continue;
     for(const s of ex.sets){if(!s.completed)continue;const c={weight:num(s.weight),reps:num(s.reps)};
       if(!best||c.weight>best.weight||(c.weight===best.weight&&c.reps>best.reps))best=c;
     }
@@ -3287,9 +3455,9 @@ function previousBest(exerciseId,exclude=null){
 function bestLabel(exerciseId){
   const b=previousBest(exerciseId);if(!b)return 'No previous sets';
   const ex=catalog.find(e=>e.id===exerciseId);
-  if(ex?.loadMode==='timed')return `${b.reps} sec`;
-  if(!b.weight)return `${b.reps} reps`;
-  return `${b.weight} lb × ${b.reps}`;
+  if(ex?.loadMode==='timed')return String(b.reps)+' sec';
+  if(!b.weight)return exerciseRepDisplay(ex,b.reps);
+  return exerciseWeightDisplay(ex,b.weight)+' × '+exerciseRepDisplay(ex,b.reps);
 }
 
 function renderWorkoutReview(w){
@@ -4786,23 +4954,29 @@ function renderWorkout(){
 function renderPreSet(pos){
   const ex=pos.exercise,set=prepareSetTarget(ex,pos.set,pos.si),previous=previousSetForPosition(ex,pos.si);
   const previousLabel=previous.set?setPerformanceLabel(ex,previous.set):'No previous set';
+  const preSet=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
+  const blockLabel=dynamicBlockPositionLabel(pos.workout,ex);
   const bounds=repBounds(ex.reps);
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
-  const repLabel=ex.loadMode==='timed'?'sec':'reps';
+  const repLabel=ex.loadMode==='timed'?'sec':(exerciseRepCountMode(ex)==='per-side'?'reps / side':'reps');
   const targetReps=recommendedRepTarget(ex);
   const recommendedReps=bounds.low&&bounds.high&&bounds.low!==bounds.high
-    ?(targetReps>bounds.high?(targetReps+' reps · base '+bounds.low+'–'+bounds.high):(bounds.low+'–'+bounds.high+' reps'))
-    :(targetReps+' '+repLabel);
-  const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):(recommendedWeightTarget(ex)+' lb');
+    ?(targetReps>bounds.high?(exerciseRepDisplay(ex,targetReps)+' · base '+bounds.low+'–'+bounds.high):(bounds.low+'–'+bounds.high+(exerciseRepCountMode(ex)==='per-side'?' / side':' reps')))
+    :exerciseRepDisplay(ex,targetReps);
+  const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):exerciseWeightDisplay(ex,recommendedWeightTarget(ex));
+  const workingWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
+  const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
+  const sourceLabel=set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   return '<div class="runner-set-ready">'+
-    '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
-    '<div class="runner-recommended-line"><span>RECOMMENDED</span><strong>'+esc(recommendedWeight)+' · '+esc(recommendedReps)+'</strong><small>Previous: '+esc(previousLabel)+'</small></div>'+
+    '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedReps)+' · Previous: '+esc(previousLabel)+'</small></div>'+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
-      (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(setTargetValue(ex,set,'weight'))+' lb</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
-      '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(setTargetValue(ex,set,'reps'))+' '+repLabel+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
+      (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
+      '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
-    '<button class="button primary-action runner-gold-action" type="button" data-action="start-set-now">START SET</button>'+
+    '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+preSet.remaining+'</strong><small>Starts automatically when the countdown reaches zero.</small></div>'+
+    '<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START NOW</button>'+
     '<div class="runner-set-links"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">OPTIONS</button></div>'+
   '</div>';
 }
@@ -4836,10 +5010,11 @@ function renderTimedStage(w){
     (next?'<div class="runner-up-next"><span>Up next</span><div class="runner-routine-thumb">'+(timedStageImageUrl(next,0)?'<img src="'+esc(timedStageImageUrl(next,0))+'" alt="">':'<b>'+String(index+2).padStart(2,'0')+'</b>')+'</div><div><strong>'+esc(next.name)+'</strong><small>'+(next.mode==='reps'||next.reps?esc(next.reps+' reps'+(next.side?' '+next.side:'')):formatClock(next.seconds||30))+'</small></div></div>':'')+
   '</div>';
 }
-function exerciseSessionHistory(exerciseId,limit=4){
+function exerciseSessionHistory(exerciseRef,limit=4){
   const rows=[];
+  const identity=exerciseHistoryIdentity(exerciseRef);
   for(const workout of store.history){
-    const ex=(workout.exercises||[]).find(item=>item.id===exerciseId);
+    const ex=(workout.exercises||[]).find(item=>exerciseMatchesHistory(item,identity));
     if(!ex)continue;
     const sets=(ex.sets||[]).filter(set=>set.completed);
     if(!sets.length)continue;
@@ -4876,8 +5051,9 @@ function exerciseTrend(ex){
 }
 function setPerformanceLabel(ex,set){
   if(ex.loadMode==='timed')return String(set.reps)+' sec';
-  if(!set.weight)return String(set.reps)+' reps';
-  return String(set.weight)+' lb × '+String(set.reps);
+  const reps=exerciseRepDisplay(ex,set.reps);
+  if(!set.weight)return reps;
+  return exerciseWeightDisplay(ex,set.weight)+' × '+reps;
 }
 function renderExerciseHistoryPanel(ex){
   const history=exerciseSessionHistory(ex.id,3);
@@ -4990,7 +5166,7 @@ function renderSetPerformanceInsight(insight,compact=false){
 function renderWorkSet(pos){
   const ex=pos.exercise,set=pos.set;
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
-  const repLabel=ex.loadMode==='timed'?'sec':'reps';
+  const repLabel=ex.loadMode==='timed'?'sec':(exerciseRepCountMode(ex)==='per-side'?'reps / side':'reps');
   const plannedWeight=set.plannedWeight??set.weight??'';
   const plannedReps=set.plannedReps??set.reps??'';
   const displayLoad=noWeight?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(String(setTargetValue(ex,set,'weight'))+' lb');
@@ -5000,8 +5176,8 @@ function renderWorkSet(pos){
     '<div class="runner-live-plan"><span>PLANNED</span><strong>'+(noWeight?'':esc(plannedWeight||0)+' lb × ')+esc(plannedReps)+' '+repLabel+'</strong></div>'+
     '<div class="runner-load-focus"><strong>'+esc(displayLoad)+'</strong><span>'+esc(exerciseGuidance(ex).cue||'Keep the movement controlled.')+'</span></div>'+
     '<div class="runner-target-steppers '+(noWeight?'single':'')+' compact">'+
-      (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1">−</button><strong>'+esc(setTargetValue(ex,set,'weight'))+' lb</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1">+</button></div></div>':'')+
-      '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1">−</button><strong>'+esc(setTargetValue(ex,set,'reps'))+' '+repLabel+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1">+</button></div></div>'+
+      (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1">+</button></div></div>':'')+
+      '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1">+</button></div></div>'+
     '</div>'+
     '<input id="set-weight" type="hidden" value="'+esc(set.weight??'')+'"><input id="set-reps" type="hidden" value="'+esc(set.reps??'')+'">'+
     '<section class="runner-live-log"><button class="button primary-action runner-gold-action" data-action="complete-set">COMPLETE SET</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></section>'+
@@ -5079,6 +5255,8 @@ function nextExercisePreview(w,currentExerciseIndex){
 function renderRest(pos){
   const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
+  const sameBlockNext=Boolean(nextEx&&sameDynamicBlock(pos.exercise,nextEx));
+  const blockRound=Boolean(sameBlockNext&&next?.type==='block-round');
   const nextName=changingExercise?(nextEx?.name||'Next exercise'):next?pos.exercise.name:'Cooldown';
   const nextSet=changingExercise?1:next?(next.si+1):0;
   const last=pos.workout.lastCompletedSet;
@@ -5089,7 +5267,8 @@ function renderRest(pos){
     ?((last.plannedWeight?last.plannedWeight+' lb × ':'')+last.plannedReps+' reps')
     :'';
   const changed=Boolean(planned&&completed&&!completed.startsWith(planned));
-  return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>Great set.</h2><p>'+esc(completed)+'</p>'+
+  return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>'+(sameBlockNext?(blockRound?'Round complete.':'Quick transition.'):'Great set.')+'</h2><p>'+esc(completed)+'</p>'+
+    (sameBlockNext?'<div class="runner-block-rest-label"><span>'+esc(dynamicBlockPositionLabel(pos.workout,pos.exercise))+'</span><strong>'+(blockRound?'FULL REST':'QUICK REST')+'</strong></div>':'')+
     (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
     '<div class="timer-wrap runner-rest-ring" id="timer-ring" style="--timer-progress:'+restProgress(pos.workout)+'%"><div><div class="timer-value" id="rest-clock">'+formatClock(remaining)+'</div><div class="timer-sub">'+(paused?'PAUSED':'REST')+'</div></div></div>'+
     '<div class="runner-rest-next">'+(nextEx?exerciseImageButton(nextEx,'rest-next-exercise-media'):'')+'<div><span>Up next</span><strong>'+esc(nextName)+'</strong><small>'+(nextSet?'Set '+nextSet+' of '+(nextEx?.sets?.length||pos.exercise.sets.length)+' · ':'')+esc(nextEx?currentPrescriptionLabel(nextEx):next?currentPrescriptionLabel(pos.exercise):'Guided cooldown')+'</small></div></div>'+
@@ -5429,7 +5608,19 @@ function updateTimers(){
     return;
   }
 
-  if(w.phase==='pre-set')return;
+  if(w.phase==='pre-set'){
+    const snap=preSetSnapshot(w);
+    if(!snap)return;
+    if(snap.complete){finishPreSet();return;}
+    if(snap.mode==='countdown'&&snap.remaining>0&&snap.remaining<=3){
+      fireWorkoutSignal('warning','preset-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    }
+    const countdown=document.querySelector('#preset-countdown');
+    const label=document.querySelector('#preset-phase-label');
+    if(countdown)countdown.textContent=String(snap.remaining);
+    if(label)label.textContent=snap.mode==='setup'?'GET READY':'AUTO START';
+    return;
+  }
 
   if(w.phase==='work'){
     const setClock=document.querySelector('#set-clock');
