@@ -5415,37 +5415,153 @@ function renderHomePrimaryAction(x){
   if(x.primaryAction==='start'&&x.entry)return '<button class="button primary-action home-state-cta" data-start="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">'+esc(x.primaryLabel)+'</button>';
   return '<button class="button primary-action home-state-cta" data-action="'+esc(x.primaryAction)+'">'+esc(x.primaryLabel)+'</button>';
 }
+function homeFirstName(){
+  const value=String(displayName()==='there'?'':displayName()).trim();
+  return value?value.split(/\s+/)[0]:'';
+}
+function homeDateLabel(date=new Date()){
+  return date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}).toUpperCase();
+}
+function homeWorkoutExercise(x){
+  if(store.activeWorkout?.exercises?.length){
+    const w=store.activeWorkout;
+    const from=Math.max(-1,(Number.isInteger(w.currentExerciseIndex)?w.currentExerciseIndex:0)-1);
+    const index=nextUnresolvedExerciseIndex(w,from);
+    return w.exercises[index>=0?index:0]||null;
+  }
+  const day=x?.entry?.adaptedDay||x?.entry?.day;
+  const planned=day?.exercises?.[0]||null;
+  if(!planned)return null;
+  const catalogItem=catalog.find(item=>item.id===planned.id);
+  return catalogItem?{...catalogItem,...planned}:planned;
+}
+function homeExerciseMeta(ex){
+  if(!ex)return '';
+  const catalogItem=catalog.find(item=>item.id===ex.id)||ex;
+  const sets=Array.isArray(ex.sets)?ex.sets.length:num(ex.sets);
+  const muscles=(catalogItem.muscles||[]).slice(0,2).map(value=>String(value).replace(/_/g,' '));
+  return [sets?sets+' set'+(sets===1?'':'s'):'',...muscles].filter(Boolean).join(' · ');
+}
+function homeWeekStats(schedule){
+  const completed=schedule.filter(entry=>entry.status==='complete').length;
+  const minutes=schedule.reduce((sum,entry)=>sum+num(entry.history?.durationMinutes),0);
+  return {
+    completed,
+    planned:schedule.length,
+    minutes,
+    remaining:Math.max(0,schedule.length-completed)
+  };
+}
+function homeWeeklyMuscleSnapshot(){
+  const counts={};
+  for(const workout of weeklyHistory()){
+    for(const exercise of workout.exercises||[]){
+      const source=catalog.find(item=>item.id===exercise.id)||exercise;
+      for(const muscle of source.muscles||[])counts[muscle]=(counts[muscle]||0)+1;
+    }
+  }
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const group=(keys)=>keys.reduce((sum,key)=>sum+(counts[key]||0),0);
+  return {
+    top:sorted.slice(0,4).map(([key,value])=>({key,label:key.replace(/_/g,' '),value})),
+    push:group(['chest','anterior_delts','lateral_delts','triceps']),
+    pull:group(['lats','upper_back','rear_delts','biceps']),
+    lower:group(['quads','hamstrings','glutes','calves','adductors']),
+    core:group(['core','hip_flexors'])
+  };
+}
+function renderHomeProgramJourney(context){
+  const phases=['ESTABLISH','BUILD','PUSH','CONSOLIDATE'];
+  return '<div class="home-program-journey" aria-label="Block '+context.blockNumber+' progress">'+
+    phases.map((phase,index)=>{
+      const week=index+1;
+      const state=week<context.blockWeek?'done':week===context.blockWeek?'current':'future';
+      return '<div class="home-program-step '+state+'"><i></i><span>'+phase+'</span><small>W'+week+'</small></div>';
+    }).join('')+
+  '</div>';
+}
+function renderHomeHeroVisual(x){
+  const exercise=homeWorkoutExercise(x);
+  const progress=x.state==='active'&&store.activeWorkout
+    ?{done:workoutResolvedCount(store.activeWorkout),total:store.activeWorkout.exercises?.length||0}
+    :{done:x.state==='completed'?(x.entry?.day?.exercises?.length||0):0,total:(x.entry?.adaptedDay||x.entry?.day)?.exercises?.length||0};
+  const pct=progress.total?Math.round((progress.done/progress.total)*100):0;
+  const spec=exercise?exerciseMediaSpec(exercise):null;
+  const src=exercise&&spec?.status==='avatar'?exerciseMediaFrameUrl(exercise,0):'';
+  const nextLabel=x.state==='active'?'UP NEXT':x.state==='completed'?'LAST FOCUS':'STARTS WITH';
+  const visual=src
+    ?'<button class="home-hero-photo" type="button" data-exercise-detail="'+esc(exercise.id)+'" aria-label="View '+esc(exercise.name)+'"><img src="'+esc(src)+'" alt="'+esc(exercise.name)+' exercise demonstration"></button>'
+    :'<div class="home-hero-figure" aria-hidden="true"><svg viewBox="0 0 180 220"><circle cx="90" cy="36" r="22"/><path d="M62 72Q90 55 118 72L128 128Q120 151 112 170L104 210H84L80 171Q75 151 52 129Z"/><path d="M62 80 30 128M118 80l32 48"/><path d="M80 171 58 214M108 171l22 43"/></svg><span class="home-figure-glow"></span></div>';
+  return '<div class="home-hero-visual">'+visual+
+    (progress.total?'<div class="home-session-ring" style="--home-progress:'+pct+'"><div><strong>'+progress.done+'/'+progress.total+'</strong><span>'+(x.state==='active'?'done':'exercises')+'</span></div></div>':'')+
+    (exercise?'<div class="home-next-exercise"><span>'+nextLabel+'</span><strong>'+esc(exercise.name)+'</strong><small>'+esc(homeExerciseMeta(exercise))+'</small></div>':'')+
+  '</div>';
+}
 function renderHomeWeekPulse(schedule){
   const context=programContext();
-  return '<div class="home-week-pulse">'+TRAINING_DAYS.map(dayDef=>{
+  const todayKey=dateKey();
+  return '<div class="home-week-pulse home-week-pulse-v2">'+TRAINING_DAYS.map(dayDef=>{
     const entry=schedule.find(item=>item.dayId===dayDef.id);
     const date=addDays(context.weekStart,dayOffsetFromMonday(dayDef.id));
     const status=entry?.status||'rest';
     const marker=status==='complete'?'✓':status==='partial'?'½':status==='missed'?'!':status==='today'?'•':status==='upcoming'?'○':'';
-    return '<div class="home-pulse-day status-'+status+'"><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><em>'+marker+'</em></div>';
+    const isToday=dateKey(date)===todayKey;
+    return '<div class="home-pulse-day status-'+status+(isToday?' calendar-today':'')+'"><span>'+esc(dayDef.label)+'</span><strong>'+date.getDate()+'</strong><i>'+marker+'</i></div>';
   }).join('')+'</div>';
+}
+function renderHomeBodySnapshot(){
+  const snapshot=homeWeeklyMuscleSnapshot();
+  if(!snapshot.top.length)return '';
+  const top=snapshot.top.map(item=>'<span>'+esc(item.label)+'</span>').join('');
+  return '<section class="home-body-card">'+
+    '<div class="home-body-visual" aria-hidden="true"><svg viewBox="0 0 120 210">'+
+      '<circle class="body-base" cx="60" cy="24" r="16"/>'+
+      '<path class="body-base" d="M42 48Q60 39 78 48L84 105 74 132 70 194H52L48 132 36 105Z"/>'+
+      '<path class="body-base" d="M42 55 18 111M78 55l24 56"/>'+
+      '<path class="body-base" d="M49 131 35 200M71 131l14 69"/>'+
+      '<ellipse class="body-zone push '+(snapshot.push?'active':'')+'" cx="60" cy="67" rx="21" ry="14"/>'+
+      '<ellipse class="body-zone pull '+(snapshot.pull?'active':'')+'" cx="60" cy="87" rx="23" ry="15"/>'+
+      '<ellipse class="body-zone core '+(snapshot.core?'active':'')+'" cx="60" cy="111" rx="16" ry="17"/>'+
+      '<ellipse class="body-zone lower '+(snapshot.lower?'active':'')+'" cx="60" cy="151" rx="22" ry="31"/>'+
+    '</svg></div>'+
+    '<div class="home-body-copy"><p class="eyebrow">THIS WEEK’S TRAINING</p><h3>Your work, at a glance.</h3><p>Highlighted areas reflect muscles recorded in completed workouts this week.</p><div class="home-muscle-chips">'+top+'</div><button class="text-button" data-action="progress">VIEW PROGRESS →</button></div>'+
+  '</section>';
+}
+function renderHomeLastWorkout(last){
+  if(!last)return '';
+  const volume=num(last.totalVolume);
+  const improvements=last.newPRs?.length||0;
+  return '<button class="home-continuity-card home-last-card" data-action="history">'+
+    '<div class="home-last-icon"><span>✓</span></div>'+
+    '<div class="home-last-main"><span>LAST WORKOUT</span><strong>'+esc(last.routineName||'Workout')+'</strong><small>'+esc(formatDate(last.completedAt))+(last.durationMinutes?' · '+last.durationMinutes+' min':'')+'</small></div>'+
+    '<div class="home-last-stats">'+(volume?'<span><strong>'+esc(formatVolume(volume))+'</strong><small>volume</small></span>':'')+(improvements?'<span><strong>'+improvements+'</strong><small>improvement'+(improvements===1?'':'s')+'</small></span>':'')+'<em>VIEW →</em></div>'+
+  '</button>';
 }
 function renderHome(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
   const x=getHomeExperience(),schedule=x.schedule,context=x.context;
-  const completed=schedule.filter(entry=>entry.status==='complete').length;
-  const planned=schedule.length;
+  const stats=homeWeekStats(schedule);
   const shared=sharedTrainingState();
-  const name=displayName()==='there'?'':displayName();
-  const todayLabel=name?'Hey, '+esc(name)+'.':'Your training.';
-  return '<div class="clean-page home-clean home-contextual">'+
-    '<section class="home-greeting contextual-greeting"><div><p class="eyebrow">GOWORKOUT</p><h2>'+todayLabel+'</h2><p>'+esc(blockPhaseLabel(context.blockWeek))+' · Block '+context.blockNumber+', Week '+context.blockWeek+'</p></div></section>'+
-    '<section class="home-state-hero state-'+esc(x.state)+'">'+
-      '<div class="home-state-copy"><span>'+esc(x.eyebrow)+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+esc(x.meta)+'</small></div>'+
-      renderHomePrimaryAction(x)+
-      (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
+  const name=homeFirstName();
+  const greeting=name?'Hey, '+esc(name)+'.':'Your training.';
+  return '<div class="clean-page home-clean home-contextual home-contextual-v2">'+
+    '<section class="home-intro-v2"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
+    renderHomeProgramJourney(context)+
+    '<section class="home-state-hero home-state-hero-v2 state-'+esc(x.state)+'">'+
+      '<div class="home-hero-grid"><div class="home-state-copy home-state-copy-v2"><span>'+esc(x.eyebrow)+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+esc(x.meta)+'</small></div>'+
+      renderHomeHeroVisual(x)+'</div>'+
+      '<div class="home-hero-actions">'+renderHomePrimaryAction(x)+
+        (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
+      '</div>'+
       (x.state==='active'?'<div class="home-state-secondary"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
-    '<section class="clean-section home-week-section"><div class="clean-section-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+completed+' of '+planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
+    '<section class="clean-section home-week-section home-week-section-v2"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
+      '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>workouts</span></div><div><strong>'+stats.minutes+'</strong><span>minutes</span></div><div><strong>'+stats.remaining+'</strong><span>remaining</span></div></div>'+
       renderHomeWeekPulse(schedule)+
-      '<div class="home-week-progress" aria-label="'+completed+' of '+planned+' workouts complete"><span style="width:'+Math.round((completed/Math.max(1,planned))*100)+'%"></span></div>'+
+      '<div class="home-week-progress" aria-label="'+stats.completed+' of '+stats.planned+' workouts complete"><span style="width:'+Math.round((stats.completed/Math.max(1,stats.planned))*100)+'%"></span></div>'+
     '</section>'+
-    (x.last&&x.state!=='completed'?'<button class="home-continuity-card" data-action="history"><div><span>LAST WORKOUT</span><strong>'+esc(x.last.routineName||'Workout')+'</strong><small>'+esc(formatDate(x.last.completedAt))+(x.last.durationMinutes?' · '+x.last.durationMinutes+' min':'')+'</small></div><em>VIEW →</em></button>':'')+
+    renderHomeBodySnapshot()+
+    (x.last&&x.state!=='completed'?renderHomeLastWorkout(x.last):'')+
     (shared.draft?'<button class="shared-home-card" data-action="together"><div class="shared-avatar-stack small"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((shared.draft.partnerName[0]||'P').toUpperCase())+'</div></div><div><span>SHARED WORKOUT</span><strong>'+esc(shared.draft.routineName)+' with '+esc(shared.draft.partnerName)+'</strong><small>'+esc(shared.draft.partnerStatus==='ready'?'Both ready':'Invite pending')+'</small></div><em>→</em></button>':'')+
   '</div>';
 }
