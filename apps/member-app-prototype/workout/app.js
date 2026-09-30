@@ -1737,6 +1737,15 @@ function progressionLabel(ex,weight,reps,labelOverride){
 function feedbackLabel(value){
   return ({'too-easy':'Too easy',good:'Good',hard:'Hard, completed','too-hard':'Too hard','form-off':'Form felt off'})[value]||value||'Feedback';
 }
+function recentExerciseFeedbacks(ex,limit=3){
+  const identity=exerciseHistoryIdentity(ex);
+  return [...(store.history||[])]
+    .sort((a,b)=>Date.parse(b.completedAt||0)-Date.parse(a.completedAt||0))
+    .map(workout=>(workout.exercises||[]).find(candidate=>exerciseMatchesHistory(candidate,identity)))
+    .filter(candidate=>candidate?.feedback)
+    .slice(0,limit)
+    .map(candidate=>candidate.feedback);
+}
 function computeProgression(ex,feedback){
   const stats=completedExerciseStats(ex);
   const previous=store.progression?.[ex.id]||{};
@@ -1747,7 +1756,13 @@ function computeProgression(ex,feedback){
   let nextRest=Math.max(30,Math.min(60,num(ex.rest)||45));
   let labelOverride='';
   let reason='';
-  const hardStreak=feedback==='hard'?(num(previous.hardStreak)+1):0;
+  const recentFeedback=recentExerciseFeedbacks(ex,3);
+  const matchingRecent=recentFeedback.filter(value=>value===feedback).length;
+  const feedbackStreak=1+matchingRecent;
+  const repeatedHard=['hard','too-hard'].includes(feedback)&&recentFeedback.some(value=>['hard','too-hard'].includes(value));
+  const repeatedEasy=feedback==='too-easy'&&recentFeedback.includes('too-easy');
+  const repeatedForm=feedback==='form-off'&&recentFeedback.includes('form-off');
+  const hardStreak=feedback==='hard'?Math.max(num(previous.hardStreak)+1,feedbackStreak):0;
 
   if(stats.repDrop>=3&&nextRest<60)nextRest=Math.min(60,nextRest+15);
 
@@ -1787,16 +1802,19 @@ function computeProgression(ex,feedback){
     if(feedback==='too-easy'){nextWeight=roundTo(baseWeight+increment,increment);nextReps=String(stats.low||num(nextReps)||1);reason='You rated the exercise too easy, so the next session moves up one load increment and resets to the bottom of the rep range.';}
     else if(feedback==='good'&&stats.allAtTop){nextWeight=roundTo(baseWeight+increment,increment);nextReps=String(stats.low||num(nextReps)||1);reason='You reached the top of the rep range on every completed set, so the next session moves up one increment and resets to the bottom of the range.';}
     else if(feedback==='too-hard'){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));nextReps=String(stats.low||num(nextReps)||1);reason='You rated the exercise too hard, so the next session drops one load increment and targets the bottom of the rep range.';}
-    else if(feedback==='hard'&&hardStreak>=2&&stats.missedLow>=2){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));nextReps=String(stats.low||num(nextReps)||1);reason='This has been hard across repeated sessions and reps fell below target, so the next session backs off one increment and resets to the bottom of the range.';}
-    else if(feedback==='form-off'){reason='Keeping the same load while you clean up technique before progressing.';}
-    else if(feedback==='hard'){reason='Hard but completed is not a failure. Keep the same load and try to make the reps cleaner next time.';}
+    else if(feedback==='hard'&&repeatedHard&&stats.missedLow>=1){nextWeight=Math.max(minLoad,roundTo(Math.max(minLoad,baseWeight-increment),increment));nextReps=String(stats.low||num(nextReps)||1);reason='This has been hard across repeated sessions and reps are slipping below target, so the next session backs off one increment.';}
+    else if(feedback==='form-off'){reason=repeatedForm?'Form concerns have repeated across sessions, so load stays fixed until the movement is cleaner.':'Keeping the same load while you clean up technique before progressing.';}
+    else if(feedback==='hard'){reason=repeatedHard?'This has felt hard more than once. Keep the load steady unless reps fall below range, then GoWorkout will back it off.':'Hard but completed is not a failure. Keep the same load and try to make the reps cleaner next time.';}
     else{reason=stats.allAtLeastLow?'You completed the target range. Keep this load until every set reaches the top of the range.':'Keep the same load and build the reps into the target range.';}
   }
 
   if(stats.repDrop>=3&&nextRest>num(ex.rest||45))reason+=' Rest moves to '+String(nextRest)+'s because reps dropped across sets.';
+  if(repeatedEasy)reason+=' This is a repeated easy-session signal, so progression is supported by more than one workout.';
+  if(feedback==='too-hard'&&repeatedHard)reason+=' Similar hard feedback appeared recently, so the reduction is reinforced by session history.';
   return {
     exerciseId:ex.id,name:ex.name,feedback:feedback,weight:nextWeight,reps:nextReps,rest:nextRest,
     label:progressionLabel(ex,nextWeight,nextReps,labelOverride),reason:reason,hardStreak:hardStreak,
+    feedbackStreak,feedbackPattern:repeatedEasy?'repeated-easy':repeatedHard?'repeated-hard':repeatedForm?'repeated-form':'',
     updatedAt:new Date().toISOString(),session:{reps:stats.reps,weights:stats.weights}
   };
 }
