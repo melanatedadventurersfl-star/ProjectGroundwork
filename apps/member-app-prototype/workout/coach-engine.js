@@ -8,6 +8,8 @@
   let activeAudio = null;
   let persistentAudio = null;
   let persistentAudioUrl = '';
+  let audioHoldSource = null;
+  let audioHoldGain = null;
   let stopGeneration = 0;
 
   function rememberToken(token) {
@@ -92,8 +94,38 @@
     } catch {}
   }
 
+  function startAudioHold() {
+    const ctx = ensureAudioContext();
+    if (!ctx || audioHoldSource) return;
+    try {
+      if (ctx.state === 'suspended') ctx.resume?.();
+      const source = ctx.createOscillator();
+      const gain = ctx.createGain();
+      source.frequency.value = 20;
+      gain.gain.value = 0.00001;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      source.start(0);
+      audioHoldSource = source;
+      audioHoldGain = gain;
+    } catch {}
+  }
+
+  function stopAudioHold() {
+    if (audioHoldSource) {
+      try { audioHoldSource.stop(0); } catch {}
+      try { audioHoldSource.disconnect(); } catch {}
+      audioHoldSource = null;
+    }
+    if (audioHoldGain) {
+      try { audioHoldGain.disconnect(); } catch {}
+      audioHoldGain = null;
+    }
+  }
+
   function unlock() {
     primeAudioContext();
+    startAudioHold();
     primeAudioElement();
   }
 
@@ -164,7 +196,18 @@
       };
       try {
         const result = audio.play();
-        if (result && typeof result.catch === 'function') {
+        if (result && typeof result.then === 'function') {
+          result.then(() => stopAudioHold()).catch(error => {
+            if (settled) return;
+            settled = true;
+            clean();
+            if (activeAudio === audio) activeAudio = null;
+            reject(error);
+          });
+        } else {
+          stopAudioHold();
+        }
+        if (result && typeof result.catch === 'function' && typeof result.then !== 'function') {
           result.catch(error => {
             if (settled) return;
             settled = true;
@@ -200,6 +243,7 @@
               resolve(true);
             };
             source.start(0);
+            stopAudioHold();
           } catch (error) {
             if (activeSource) activeSource = null;
             reject(error);
@@ -221,14 +265,16 @@
     let response = null;
     if (settings.aiCoach !== false && typeof options.invoke === 'function') {
       try {
+        const requestTimeout = options.event === 'test' ? 12000 : 10000;
         response = await timeout(options.invoke({
           event: options.event,
           context: options.context || {},
           style: settings.coachStyle || 'balanced',
           frequency: settings.coachFrequency || 'normal',
           voice: settings.coachVoice || 'cedar'
-        }), 7000);
+        }), requestTimeout);
       } catch (error) {
+        stopAudioHold();
         if (typeof options.onError === 'function') options.onError(error);
         if (error?.code === 'ai_not_configured' || error?.code === 'ai_quota_exhausted') {
           console.warn('AI coach is unavailable', error);
@@ -266,6 +312,7 @@
 
   function stop() {
     stopGeneration += 1;
+    stopAudioHold();
     if (activeSource) {
       try { activeSource.stop(0); } catch {}
       activeSource = null;
