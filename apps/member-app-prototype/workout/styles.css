@@ -8586,3 +8586,52 @@ button.runner-phase-row{cursor:pointer}
   }
 }
 
+
+
+/* Compact workout timing */
+.runner-header-timers{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:5px 10px;
+  margin-top:4px;
+  color:#aeb9b1;
+  font-size:8px;
+}
+.runner-header-timers span{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  margin:0;
+}
+.runner-header-timers b{
+  color:#f7f1e3;
+  font-variant-numeric:tabular-nums;
+  font-weight:850;
+}
+.runner-manual-start-note{
+  display:grid;
+  gap:4px;
+  padding:12px 13px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--panel);
+  text-align:left;
+}
+.runner-manual-start-note span{
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.runner-manual-start-note strong{font-size:12px}
+.runner-manual-start-note small{
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.4;
+}
+.runner-start-now:disabled{
+  opacity:.58;
+  cursor:wait;
+}
