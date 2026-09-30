@@ -11016,3 +11016,98 @@ body.home-mode .bottom-nav:before{
   }
 }
 
+
+/* Adaptive learner target influence V1 */
+.runner-learner-target{
+  display:grid;
+  gap:3px;
+  margin-top:8px;
+  padding:9px 11px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.06);
+  background:rgba(255,255,255,.02);
+}
+.runner-learner-target span{
+  font-size:6px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.runner-learner-target strong{
+  font-size:10px;
+}
+.runner-learner-target small{
+  font-size:6.5px;
+  line-height:1.4;
+  color:#7e8b83;
+}
+.runner-learner-target.applied{
+  border-color:rgba(120,176,132,.16);
+  background:rgba(120,176,132,.055);
+}
+.runner-learner-target.applied span,
+.runner-learner-target.applied strong{
+  color:#a8d1ae;
+}
+.runner-learner-target.suggestion{
+  border-color:rgba(216,180,92,.14);
+  background:rgba(216,180,92,.045);
+}
+.runner-learner-target.suggestion span,
+.runner-learner-target.suggestion strong{
+  color:#e0c36f;
+}
+.learner-influence-history{
+  display:grid;
+  gap:0;
+  padding-top:4px;
+  border-top:1px solid rgba(255,255,255,.055);
+}
+.learner-influence-history .clean-section-head{
+  margin-bottom:7px;
+}
+.learner-influence-row{
+  display:grid;
+  grid-template-columns:minmax(180px,1.4fr) minmax(110px,.7fr) minmax(110px,.7fr);
+  gap:12px;
+  align-items:center;
+  padding:11px 2px;
+  border-top:1px solid rgba(255,255,255,.04);
+}
+.learner-influence-row:first-of-type{
+  border-top:0;
+}
+.learner-influence-row>div{
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+.learner-influence-row span{
+  color:#748078;
+  font-size:6px;
+  font-weight:800;
+}
+.learner-influence-row strong{
+  color:#dce5dd;
+  font-size:8px;
+}
+.learner-influence-row small{
+  color:#718077;
+  font-size:6px;
+  line-height:1.35;
+}
+.learner-influence-row.applied>div:last-child strong{
+  color:#a8d1ae;
+}
+.learner-influence-row.suggested>div:last-child strong{
+  color:#e0c36f;
+}
+@media(max-width:620px){
+  .learner-influence-row{
+    grid-template-columns:1fr 1fr;
+    gap:7px;
+  }
+  .learner-influence-row>div:first-child{
+    grid-column:1 / -1;
+  }
+}
+
