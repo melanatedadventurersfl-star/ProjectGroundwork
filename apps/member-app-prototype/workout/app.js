@@ -6178,6 +6178,14 @@ function beginWorkoutSession(skipWarmup=false){
     saveStore();render();
     return;
   }
+  if(!skipWarmup||!hasWarmup){
+    emitWorkoutCoach('session_started',{
+      exerciseCount:w.exercises.length,
+      warmupCount:0,
+      warmupMinutes:0,
+      warmupSkipped:false
+    },'Alright'+(name?' '+name:'')+', you ready? '+w.routineName+'. '+w.exercises.length+' exercises today.','coach-'+sessionToken);
+  }
   markPhaseStart(w,'strength',now);
   beginPreSetPosition(0,0,true);
   if(skipWarmup&&hasWarmup)toast('Warm-up skipped for this session.');
@@ -6195,13 +6203,13 @@ function skipWorkoutWarmup(source='intro'){
   w.warmupSkipped=true;
   w.warmupSkippedAt=now;
   w.warmupSkipSource=source||((wasActive)?'active':'routine');
-  w.warmupPartiallyCompleted=Boolean(wasActive&&(w.timedStageIndex||0)>0);
+  w.warmupPartiallyCompleted=Boolean(wasActive);
   const startIndex=wasActive?Math.max(0,Number(w.timedStageIndex)||0):0;
   for(let index=startIndex;index<(w.warmup?.length||0);index++){
     const item=w.warmup[index];
     if(!item)continue;
     if(index===startIndex&&wasActive&&!item.endedAt)item.endedAt=now;
-    if(!item.endedAt||index>startIndex)item.skippedAt=now;
+    item.skippedAt=now;
   }
   if(wasActive)markPhaseEnd(w,'warmup',now);
   w.timedPhaseStartedAt=null;
