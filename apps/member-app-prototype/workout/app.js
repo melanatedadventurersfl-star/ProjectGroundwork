@@ -9,6 +9,7 @@ const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
 const avatarExerciseMedia = window.EXERCISE_AVATAR_MEDIA || {};
+const avatarLibraryMedia = window.EXERCISE_AVATAR_LIBRARY || null;
 const TRAINING_AVATARS = [
   {id:'masc-athletic',name:'Malik',presentation:'Masculine',build:'Lean / athletic',tone:'medium-dark',hair:'short textured curls'},
   {id:'masc-full',name:'Drew',presentation:'Masculine',build:'Stocky / fuller',tone:'dark',hair:'bald / clean head'},
@@ -1184,6 +1185,25 @@ function renderSwapModal(){
     '</section></div>';
 }
 
+function avatarLibraryMediaSpec(ex){
+  if(!ex||!avatarLibraryMedia?.spriteUrl)return null;
+  const column=avatarLibraryMedia.exercises?.[ex.id];
+  const row=avatarLibraryMedia.avatars?.[trainingAvatarId()];
+  const columns=Number(avatarLibraryMedia.columns)||0;
+  const rows=Number(avatarLibraryMedia.rows)||0;
+  if(!Number.isInteger(column)||!Number.isInteger(row)||columns<1||rows<1)return null;
+  const x=columns===1?0:(column/(columns-1))*100;
+  const y=rows===1?0:(row/(rows-1))*100;
+  return {spriteUrl:avatarLibraryMedia.spriteUrl,columns,rows,x,y,avatarId:trainingAvatarId()};
+}
+function renderAvatarLibraryMedia(ex,className='catalog-exercise-media'){
+  const spec=avatarLibraryMediaSpec(ex);
+  if(!spec)return '';
+  const style='background-image:url('+JSON.stringify(spec.spriteUrl)+');background-size:'+(spec.columns*100)+'% '+(spec.rows*100)+'%;background-position:'+spec.x+'% '+spec.y+'%;';
+  return '<button class="'+className+' exercise-media avatar-library-media" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' instructions">'+
+    '<span class="avatar-library-sprite" style="'+esc(style)+'" aria-hidden="true"></span>'+
+    '<span class="media-status direct avatar">YOUR AVATAR</span><span class="media-hint">VIEW FORM</span></button>';
+}
 function avatarExerciseMediaSpec(ex){
   if(!ex)return null;
   const avatarId=trainingAvatarId();
@@ -1299,6 +1319,10 @@ function timedStageDescription(item){
 }
 
 function exerciseImageButton(ex,className='exercise-media',index=0){
+  if(/catalog-exercise-media/.test(className)){
+    const avatarLibrary=renderAvatarLibraryMedia(ex,className);
+    if(avatarLibrary)return avatarLibrary;
+  }
   const spec=exerciseMediaSpec(ex);
   const state=exerciseMediaState(ex);
   const src=exerciseMediaFrameUrl(ex,index);
