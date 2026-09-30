@@ -533,8 +533,9 @@ function saveProgramReview(form){
   store.profile.days=num(data.get('reviewDays'))||store.profile.days||4;
   store.profile.minutes=num(data.get('reviewMinutes'))||store.profile.minutes||45;
   store.profile.equipment=String(data.get('reviewEquipment')||store.profile.equipment||'full-gym');
-  store.profile.workoutDays=defaultWorkoutDays(store.profile.days);
-  ensureTrainingProgram().programReviews[context.blockNumber]={at:new Date().toISOString(),blockNumber:context.blockNumber,workoutStyle:store.profile.workoutStyle,pacing:store.profile.pacing,goal:store.profile.goal,days:store.profile.days,minutes:store.profile.minutes,equipment:store.profile.equipment};
+  const reviewedDays=data.getAll('reviewWorkoutDays').map(String);
+  store.profile.workoutDays=reviewedDays.length===store.profile.days?reviewedDays:defaultWorkoutDays(store.profile.days);
+  ensureTrainingProgram().programReviews[context.blockNumber]={at:new Date().toISOString(),blockNumber:context.blockNumber,workoutStyle:store.profile.workoutStyle,pacing:store.profile.pacing,goal:store.profile.goal,days:store.profile.days,workoutDays:clone(store.profile.workoutDays),minutes:store.profile.minutes,equipment:store.profile.equipment};
   rebuildPlanKeepingOrigin(store.profile);
   programReviewOpen=false;saveStore();render();toast('Block settings updated.');
 }
@@ -545,7 +546,8 @@ function renderProgramReview(){
     '<label class="field"><span>WORKOUT STYLE</span><select name="reviewWorkoutStyle"><option value="classic" '+((p.workoutStyle||'classic')==='classic'?'selected':'')+'>Classic</option><option value="flow" '+(p.workoutStyle==='flow'?'selected':'')+'>Flow</option></select></label>'+
     '<label class="field"><span>PACING</span><select name="reviewPacing"><option value="relaxed" '+(p.pacing==='relaxed'?'selected':'')+'>Relaxed</option><option value="balanced" '+((p.pacing||'balanced')==='balanced'?'selected':'')+'>Balanced</option><option value="fast" '+(p.pacing==='fast'?'selected':'')+'>Fast-paced</option></select></label>'+
     '<label class="field"><span>GOAL</span><select name="reviewGoal">'+[['muscle','Build muscle'],['strength','Get stronger'],['fat-loss','Fat loss + conditioning'],['general','General fitness']].map(([v,l])=>'<option value="'+v+'" '+(p.goal===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
-    '<div class="form-grid two"><label class="field"><span>DAYS/WEEK</span><select name="reviewDays">'+[2,3,4,5].map(v=>'<option value="'+v+'" '+(num(p.days)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="field"><span>MINUTES</span><select name="reviewMinutes">'+[20,30,45,60,75].map(v=>'<option value="'+v+'" '+(num(p.minutes)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+
+    '<div class="form-grid two"><label class="field"><span>DAYS/WEEK</span><select name="reviewDays" id="review-days-count">'+[2,3,4,5].map(v=>'<option value="'+v+'" '+(num(p.days)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="field"><span>MINUTES</span><select name="reviewMinutes">'+[20,30,45,60,75].map(v=>'<option value="'+v+'" '+(num(p.minutes)===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label></div>'+
+    '<div class="schedule-day-picker review-day-picker"><div class="schedule-day-head"><span>TRAINING DAYS</span><small>Choose the days that fit this block.</small></div><div class="weekday-pills">'+TRAINING_DAYS.map(day=>'<label class="weekday-pill"><input type="checkbox" name="reviewWorkoutDays" value="'+day.id+'" '+(preferredWorkoutDays(p).includes(day.id)?'checked':'')+'><span><strong>'+day.label+'</strong><small>'+day.name+'</small></span></label>').join('')+'</div></div>'+
     '<label class="field"><span>PRIMARY SETUP</span><select name="reviewEquipment">'+Object.entries(SESSION_SETUP_PRESETS).filter(([key])=>key!=='custom').map(([key,val])=>'<option value="'+key+'" '+(p.equipment===key?'selected':'')+'>'+esc(val.label)+'</option>').join('')+'</select></label>'+
     '<button type="button" class="button" data-action="save-program-review">SAVE BLOCK SETTINGS</button></form></section></div>';
 }
@@ -7037,7 +7039,11 @@ document.addEventListener('input',event=>{
   }
 });
 document.addEventListener('change',event=>{
-  if(event.target.id==='training-days-count'){
+  if(event.target.id==='review-days-count'){
+    const desired=num(event.target.value)||4;
+    const defaults=defaultWorkoutDays(desired);
+    document.querySelectorAll('input[name="reviewWorkoutDays"]').forEach(input=>{input.checked=defaults.includes(input.value);});
+  }else if(event.target.id==='training-days-count'){
     const desired=num(event.target.value)||4;
     const defaults=defaultWorkoutDays(desired);
     document.querySelectorAll('input[name="workoutDays"]').forEach(input=>{input.checked=defaults.includes(input.value);});
