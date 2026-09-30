@@ -3370,10 +3370,49 @@ function beginRest(next,seconds){
 function startExerciseFeedback(next){
   const w=store.activeWorkout;
   if(!w)return;
+  markExerciseEnd(w,w.currentExerciseIndex);
   w.phase='feedback';
   w.pendingPosition=next;
   saveStore();
   render();
+}
+function sideSwitchRemaining(w){
+  if(!w||w.phase!=='side-switch')return 0;
+  if(Number.isFinite(w.sideSwitchPausedRemaining))return Math.max(0,Math.ceil(w.sideSwitchPausedRemaining));
+  const end=Date.parse(w.sideSwitchEndsAt||'');
+  if(!Number.isFinite(end))return 0;
+  return Math.max(0,Math.ceil((end-workoutNowMs(w))/1000));
+}
+function beginExerciseSideSwitch(pos){
+  const w=pos?.workout,set=pos?.set,ex=pos?.exercise;
+  if(!w||!set||!ex)return;
+  const seconds=exerciseSideSwitchSeconds(ex)||5;
+  const now=new Date().toISOString();
+  set.activeSide='switch';
+  set.sideSwitchStartedAt=now;
+  w.phase='side-switch';
+  w.sideSwitchStartedAt=now;
+  w.sideSwitchDuration=seconds;
+  w.sideSwitchEndsAt=new Date(Date.now()+seconds*1000).toISOString();
+  w.sideSwitchPausedRemaining=null;
+  fireWorkoutSignal('transition','exercise-side-switch-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Switch sides',label:'SWITCH'});
+  saveStore();render();
+}
+function finishExerciseSideSwitch(){
+  const pos=getActivePosition();if(!pos||pos.workout.phase!=='side-switch')return;
+  const now=new Date().toISOString();
+  pos.set.activeSide='left';
+  pos.set.sideStartedAt=now;
+  pos.set.sideSwitchEndedAt=now;
+  pos.workout.phase='work';
+  pos.workout.setStartedAt=now;
+  delete pos.workout.sideSwitchStartedAt;delete pos.workout.sideSwitchEndsAt;delete pos.workout.sideSwitchDuration;delete pos.workout.sideSwitchPausedRemaining;
+  fireWorkoutSignal('go','exercise-left-side-'+pos.workout.id+'-'+pos.ei+'-'+pos.si,{voice:'Left side. Go.',label:'GO'});
+  saveStore();render();
+}
+function skipExerciseSideSwitch(){
+  const w=store.activeWorkout;if(!w||w.phase!=='side-switch')return;
+  finishExerciseSideSwitch();
 }
 
 function applyExerciseFeedback(feedback){
@@ -3399,17 +3438,42 @@ function completeCurrentSet(){
   const weight=String(pos.set.weight??document.querySelector('#set-weight')?.value??'').trim().replace(/[^0-9.]/g,'');
   const reps=String(pos.set.reps??document.querySelector('#set-reps')?.value??'').trim().replace(/[^0-9.]/g,'');
   if(num(reps)<=0){toast(pos.exercise.loadMode==='timed'?'Enter the seconds completed.':'Enter the reps completed.');return;}
-  const actionKey=workoutActionKey(pos.workout,'complete-set',pos.ei,pos.si);
-  if(!claimWorkoutAction(pos.workout,actionKey)){toast('That set is already logged.');return;}
+  const unilateral=exerciseNeedsSideSwitch(pos.exercise);
+  const side=unilateral?activeExerciseSide(pos.set):'both';
+  const actionKey=workoutActionKey(pos.workout,'complete-set-'+side,pos.ei,pos.si);
+  if(!claimWorkoutAction(pos.workout,actionKey)){toast('That side is already logged.');return;}
+  const endedAt=new Date().toISOString();
   pos.set.plannedWeight=String(pos.set.plannedWeight??weight);
   pos.set.plannedReps=String(pos.set.plannedReps??reps);
-  pos.set.weight=weight;pos.set.reps=reps;pos.set.completed=true;pos.set.completedAt=new Date().toISOString();
-  pos.set.durationSeconds=Math.max(1,setElapsedSeconds(pos.workout));
-  delete pos.workout.setStartedAt;
+  pos.set.weight=weight;pos.set.reps=reps;
+  if(unilateral){
+    pos.set.sides=pos.set.sides||{};
+    pos.set.sides[side]={
+      weight,reps,
+      startedAt:pos.set.sideStartedAt||pos.set.startedAt||endedAt,
+      endedAt,
+      durationSeconds:Math.max(1,setElapsedSeconds(pos.workout))
+    };
+    delete pos.workout.setStartedAt;
+    if(side==='right'){
+      fireWorkoutSignal('complete','complete-side-'+pos.workout.id+'-'+pos.ei+'-'+pos.si+'-right',{voice:'Right side complete',label:'DONE'});
+      beginExerciseSideSwitch(pos);
+      return;
+    }
+    const right=pos.set.sides.right||{};
+    pos.set.reps=String(Math.min(num(right.reps)||num(reps),num(reps)));
+    pos.set.weight=weight||String(right.weight||'');
+    pos.set.durationSeconds=Math.max(1,num(right.durationSeconds)+num(pos.set.sides.left.durationSeconds));
+    pos.set.activeSide='done';
+  }else{
+    pos.set.durationSeconds=Math.max(1,setElapsedSeconds(pos.workout));
+    delete pos.workout.setStartedAt;
+  }
+  pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
   pos.set.performanceInsight=insight;
   pos.workout.lastSetInsight=insight;
-  pos.workout.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight,reps,durationSeconds:pos.set.durationSeconds,plannedWeight:pos.set.plannedWeight,plannedReps:pos.set.plannedReps};
+  pos.workout.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight:pos.set.weight,reps:pos.set.reps,durationSeconds:pos.set.durationSeconds,plannedWeight:pos.set.plannedWeight,plannedReps:pos.set.plannedReps};
   fireWorkoutSignal('complete','complete-'+pos.workout.id+'-'+pos.ei+'-'+pos.si,{voice:'Set complete',label:'DONE'});
   const next=nextPosition(pos.workout,pos.ei,pos.si);
   if(next && next.ei===pos.ei){
@@ -3432,7 +3496,7 @@ function completeCurrentSet(){
 function skipCurrentSet(reason='Skipped by user'){
  const pos=getActivePosition();if(!pos||pos.workout.phase!=='work')return;
  const key=workoutActionKey(pos.workout,'skip-set',pos.ei,pos.si);if(!claimWorkoutAction(pos.workout,key))return;
- pos.set.skipped=true;pos.set.skipReason=reason;pos.set.completed=false;pos.set.completedAt=null;
+ pos.set.skipped=true;pos.set.skipReason=reason;pos.set.completed=false;pos.set.completedAt=null;pos.set.endedAt=new Date().toISOString();
  delete pos.workout.setStartedAt;
  const next=nextPosition(pos.workout,pos.ei,pos.si);
  if(next&&sameDynamicBlock(pos.exercise,pos.workout.exercises[next.ei])){
@@ -5065,7 +5129,7 @@ function renderWorkout(){
   const pos=getActivePosition();
   if(!pos)return '<div class="clean-page empty-workout-page"><p class="eyebrow">TRAIN</p><h2>No active session.</h2><p>Start today’s workout from Home or Train.</p><button class="button" data-action="home">GO HOME</button></div>';
   const w=pos.workout,guided=['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase);
-  const activeStrength=['pre-set','work','timed-set','rest','calibrate','feedback','exercise-transition','exercise-review'].includes(w.phase);
+  const activeStrength=['pre-set','work','timed-set','side-switch','rest','calibrate','feedback','exercise-transition','exercise-review'].includes(w.phase);
   const warmSnap=w.phase==='warmup'?timedStageSnapshot(w):null;
   const headerTitle=w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.routineName;
   const headerProgress=w.phase==='warmup'&&warmSnap?(warmSnap.index+1)+' of '+(w.warmup?.length||0):activeStrength?(pos.ei+1)+' of '+w.exercises.length:'';
@@ -5074,7 +5138,7 @@ function renderWorkout(){
     '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+'<small>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b>'+warmElapsed+'</small></div><button class="circle-action" data-action="open-workout-map" aria-label="Workout map">•••</button></header>'+
     (w.phase==='warmup'?'<div class="runner-top-progress"><span style="width:'+(((warmSnap?.index||0)+1)/Math.max(1,w.warmup.length)*100)+'%"></span></div>':activeStrength?'<div class="runner-top-progress"><span style="width:'+((pos.ei+1)/Math.max(1,w.exercises.length)*100)+'%"></span></div>':'')+
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
-    '<section class="exercise-stage runner-v2-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='warmup-routine'?renderWarmupRoutine(w):w.phase==='warmup-complete'?renderWarmupComplete(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
+    '<section class="exercise-stage runner-v2-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='warmup-routine'?renderWarmupRoutine(w):w.phase==='warmup-complete'?renderWarmupComplete(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='side-switch'?renderSideSwitch(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
     (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet"><button class="text-button" data-action="open-workout-map">WORKOUT MAP</button><button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+'</div>';
 }
 
@@ -5294,11 +5358,13 @@ function renderWorkSet(pos){
   const ex=pos.exercise,set=pos.set;
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
   const repLabel=ex.loadMode==='timed'?'sec':(exerciseRepCountMode(ex)==='per-side'?'reps / side':'reps');
+  const side=exerciseNeedsSideSwitch(ex)?activeExerciseSide(set):'';
+  const sideLabel=side?side.toUpperCase()+' SIDE':'';
   const plannedWeight=set.plannedWeight??set.weight??'';
   const plannedReps=set.plannedReps??set.reps??'';
   const displayLoad=noWeight?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(String(setTargetValue(ex,set,'weight'))+' lb');
   return '<div class="runner-work-clean">'+
-    '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><strong>'+esc(ex.name)+'</strong><span>Set '+(pos.si+1)+' of '+ex.sets.length+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
+    '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><strong>'+esc(ex.name)+'</strong><span>Set '+(pos.si+1)+' of '+ex.sets.length+(sideLabel?' · '+esc(sideLabel):'')+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
     '<div class="runner-target-ring runner-set-timer"><strong id="set-clock">'+formatClock(setElapsedSeconds(pos.workout))+'</strong><span>set time</span></div>'+
     '<div class="runner-live-plan"><span>PLANNED</span><strong>'+(noWeight?'':esc(plannedWeight||0)+' lb × ')+esc(plannedReps)+' '+repLabel+'</strong></div>'+
     '<div class="runner-load-focus"><strong>'+esc(displayLoad)+'</strong><span>'+esc(exerciseGuidance(ex).cue||'Keep the movement controlled.')+'</span></div>'+
@@ -5307,9 +5373,23 @@ function renderWorkSet(pos){
       '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1">+</button></div></div>'+
     '</div>'+
     '<input id="set-weight" type="hidden" value="'+esc(set.weight??'')+'"><input id="set-reps" type="hidden" value="'+esc(set.reps??'')+'">'+
-    '<section class="runner-live-log"><button class="button primary-action runner-gold-action" data-action="complete-set">COMPLETE SET</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></section>'+
+    '<section class="runner-live-log"><button class="button primary-action runner-gold-action" data-action="complete-set">'+(sideLabel?'COMPLETE '+esc(sideLabel):'COMPLETE SET')+'</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></section>'+
   '</div>';
 }
+function renderSideSwitch(pos){
+  const remaining=sideSwitchRemaining(pos.workout);
+  const duration=Math.max(1,num(pos.workout.sideSwitchDuration)||exerciseSideSwitchSeconds(pos.exercise)||5);
+  const pct=Math.max(0,Math.min(100,(remaining/duration)*100));
+  return '<div class="runner-side-switch">'+
+    '<p class="eyebrow">SET '+(pos.si+1)+' · SWITCH SIDES</p>'+
+    '<h2>Switch to your left side</h2>'+
+    '<p>'+esc(pos.exercise.name)+' · '+exerciseRepDisplay(pos.exercise,pos.set.reps)+'</p>'+
+    '<div class="timer-wrap runner-rest-ring" id="timer-ring" style="--timer-progress:'+pct+'%"><div><div class="timer-value" id="side-switch-clock">'+formatClock(remaining)+'</div><div class="timer-sub">SWITCH</div></div></div>'+
+    '<div class="runner-timer-controls three"><button data-action="reset-timer">RESET</button><button data-action="toggle-workout-pause">'+(pos.workout.isPaused?'RESUME':'PAUSE')+'</button><button data-action="skip-side-switch">SKIP</button></div>'+
+    '<small>Use this time to reposition your grip, stance, bench, or weight safely.</small>'+
+  '</div>';
+}
+
 function renderCalibration(pos){
   const first=pos.exercise.sets[0];
   return `<div class="calibration-stage"><p class="eyebrow">QUICK CALIBRATION</p><h3>How much did you have left?</h3><p>You completed ${esc(first.reps)} reps at ${first.weight?esc(first.weight)+' lb':'your chosen resistance'}. Estimate how many clean reps you could still have done. We’ll adjust the next sets and remember it.</p>
