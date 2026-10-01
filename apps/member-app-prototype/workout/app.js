@@ -2799,7 +2799,7 @@ function exerciseMediaPresentation(ex,className=''){
   else if(['horizontal-pull','hinge'].includes(movement))focusY=58;
   else if(['single-leg','squat','calves'].includes(movement))focusY=54;
   const context=/catalog-exercise-media/.test(className)?'library':/active-exercise-media|pre-set-exercise-media|timed-work-exercise-media/.test(className)?'workout':'support';
-  const scale=context==='library'?1.08:context==='workout'?1.03:1;
+  const scale=context==='library'?1.01:context==='workout'?1.03:1;
   return {focusX,focusY,scale,context};
 }
 function exerciseImageButton(ex,className='exercise-media',index=0){
@@ -2830,8 +2830,9 @@ function renderExerciseModal(){
   if(!ex)return '';
   const guide=exerciseGuidance(ex),spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex);
   const primary=exerciseMediaFrameUrl(ex,0),secondary=exerciseMediaFrameUrl(ex,1);
+  const endLabel=ex.movement==='squat'?'BOTTOM':ex.movement==='hinge'?'END':ex.movement==='horizontal-push'?'LOWERED':ex.movement==='vertical-pull'?'PULLED':'END';
   const media=primary
-    ?'<div class="runner-detail-positions"><figure><img src="'+esc(primary)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' position 1"></figure>'+(secondary?'<figure><img src="'+esc(secondary)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' position 2"></figure>':'')+'</div>'
+    ?'<div class="runner-detail-positions"><figure><div class="runner-detail-frame"><img src="'+esc(primary)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' start position"></div><figcaption><span>START</span><small>Position 1</small></figcaption></figure>'+(secondary?'<figure><div class="runner-detail-frame"><img src="'+esc(secondary)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' end position"></div><figcaption><span>'+esc(endLabel)+'</span><small>Position 2</small></figcaption></figure>':'')+'</div>'
     :'<div class="exercise-modal-placeholder"><span>'+esc(state.label)+'</span><strong>'+esc(ex.name)+'</strong><p>'+esc(state.note)+'</p></div>';
   return '<div class="exercise-modal-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise instructions" data-modal-panel>'+
     '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise instructions">×</button>'+
