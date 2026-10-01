@@ -16423,3 +16423,392 @@ body.home-mode .bottom-nav:before{
     grid-template-columns:1fr;
   }
 }
+
+
+/* Program-locked workout structure V2 */
+.program-structure-summary-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:16px;
+  align-items:center;
+  padding:18px;
+  margin-bottom:16px;
+  border:1px solid rgba(216,180,92,.18);
+  border-radius:18px;
+  background:linear-gradient(145deg,rgba(26,42,31,.95),rgba(11,22,16,.96));
+}
+.program-structure-summary-card h3{
+  margin:3px 0 6px;
+  color:var(--text);
+  font-size:20px;
+}
+.program-structure-summary-card p{
+  margin:0;
+  color:#c9d2cb;
+  font-size:9px;
+  line-height:1.45;
+}
+.program-structure-summary-card small{
+  display:block;
+  margin-top:7px;
+  color:var(--muted);
+  font-size:7.5px;
+  line-height:1.45;
+}
+.program-structure-summary-card .button{
+  min-width:150px;
+}
+.program-structure-sheet{
+  max-height:min(88vh,760px);
+  overflow:auto;
+}
+.program-structure-choice-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  padding:0 18px 16px;
+}
+.program-structure-choice{
+  position:relative;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  min-height:88px;
+  padding:13px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  background:rgba(255,255,255,.025);
+  color:var(--text);
+  text-align:left;
+}
+.program-structure-choice strong,
+.program-structure-choice small{
+  display:block;
+}
+.program-structure-choice strong{
+  font-size:11px;
+}
+.program-structure-choice small{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:7.5px;
+  line-height:1.4;
+}
+.program-structure-choice em{
+  flex:none;
+  padding:4px 6px;
+  border-radius:999px;
+  background:rgba(216,180,92,.15);
+  color:var(--accent-2);
+  font-size:6px;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.program-structure-choice.selected{
+  border-color:rgba(216,180,92,.72);
+  background:rgba(216,180,92,.09);
+}
+.program-structure-note{
+  display:grid;
+  gap:4px;
+  margin:0 18px 18px;
+  padding:12px 13px;
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+}
+.program-structure-note strong{
+  color:var(--accent-2);
+  font-size:7px;
+  letter-spacing:.1em;
+}
+.program-structure-note span{
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.45;
+}
+.preflight-programmed-structure{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:3px 10px;
+  align-items:center;
+  padding:12px 13px;
+  border:1px solid rgba(216,180,92,.18);
+  border-radius:13px;
+  background:rgba(216,180,92,.055);
+}
+.preflight-programmed-structure span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.preflight-programmed-structure strong{
+  justify-self:end;
+  color:var(--text);
+  font-size:11px;
+}
+.preflight-programmed-structure small{
+  grid-column:1/-1;
+  color:var(--muted);
+  font-size:7.5px;
+  line-height:1.4;
+}
+.structured-workout-roadmap{
+  display:grid;
+  gap:10px;
+  width:100%;
+}
+.roadmap-block{
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;
+  background:rgba(255,255,255,.018);
+}
+.roadmap-block>header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:9px 11px;
+  background:rgba(255,255,255,.035);
+}
+.roadmap-block>header span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.roadmap-block>header strong{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:800;
+}
+.roadmap-exercises{
+  display:grid;
+}
+.roadmap-exercise{
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) auto;
+  gap:9px;
+  align-items:center;
+  min-height:52px;
+  padding:8px 10px;
+  border-top:1px solid rgba(255,255,255,.055);
+}
+.roadmap-exercise:first-child{
+  border-top:0;
+}
+.roadmap-exercise>b{
+  width:25px;
+  height:25px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:rgba(255,255,255,.05);
+  color:#aab4ad;
+  font-size:7px;
+}
+.roadmap-exercise strong,
+.roadmap-exercise small{
+  display:block;
+}
+.roadmap-exercise strong{
+  color:var(--text);
+  font-size:9px;
+}
+.roadmap-exercise small{
+  margin-top:3px;
+  color:var(--muted);
+  font-size:7px;
+}
+.roadmap-exercise em{
+  padding:4px 6px;
+  border-radius:999px;
+  background:rgba(216,180,92,.16);
+  color:var(--accent-2);
+  font-size:6px;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.roadmap-exercise.current{
+  background:rgba(216,180,92,.065);
+}
+.roadmap-exercise.current>b{
+  background:var(--accent-2);
+  color:#162016;
+}
+.roadmap-exercise.resolved{
+  opacity:.58;
+}
+.train-preview-phase.structured{
+  padding-bottom:12px;
+}
+.train-preview-phase.structured .structured-workout-roadmap{
+  margin-top:2px;
+}
+.prepared-workout-roadmap{
+  display:grid;
+  gap:9px;
+  padding:13px;
+  border:1px solid #ded7c8;
+  border-radius:15px;
+  background:#fbf8f0;
+}
+.prepared-roadmap-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.prepared-roadmap-head span{
+  color:#8a6920;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.prepared-roadmap-head strong{
+  color:#294735;
+  font-size:9px;
+}
+.prepared-workout-roadmap .roadmap-block{
+  border-color:#e3dccd;
+  background:#f6f1e7;
+}
+.prepared-workout-roadmap .roadmap-block>header{
+  background:#eee7d8;
+}
+.prepared-workout-roadmap .roadmap-block>header span{
+  color:#7c601e;
+}
+.prepared-workout-roadmap .roadmap-block>header strong,
+.prepared-workout-roadmap .roadmap-exercise small{
+  color:#707871;
+}
+.prepared-workout-roadmap .roadmap-exercise{
+  border-color:#e3dccd;
+}
+.prepared-workout-roadmap .roadmap-exercise strong{
+  color:#1e3327;
+}
+.prepared-workout-roadmap .roadmap-exercise>b{
+  background:#e8e1d4;
+  color:#526057;
+}
+.prepared-workout-roadmap .structured-workout-roadmap.compact{
+  gap:7px;
+}
+.prepared-workout-roadmap .structured-workout-roadmap.compact .roadmap-exercise{
+  min-height:44px;
+  padding:7px 9px;
+}
+.runner-block-strip{
+  display:grid;
+  gap:7px;
+  padding:9px 10px;
+  border:1px solid #dcd4c5;
+  border-radius:12px;
+  background:#f2ecdf;
+}
+.runner-block-strip>header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.runner-block-strip>header span{
+  color:#80621c;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.runner-block-strip>header strong{
+  color:#56635b;
+  font-size:7px;
+}
+.runner-block-strip>div{
+  display:flex;
+  gap:5px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.runner-block-strip>div::-webkit-scrollbar{
+  display:none;
+}
+.runner-block-strip button{
+  flex:1 0 105px;
+  min-width:0;
+  display:grid;
+  gap:3px;
+  padding:7px 8px;
+  border:1px solid #ddd5c5;
+  border-radius:9px;
+  background:#fbf8f0;
+  color:#26382d;
+  text-align:left;
+}
+.runner-block-strip button b{
+  color:#7d897f;
+  font-size:5.8px;
+  letter-spacing:.08em;
+}
+.runner-block-strip button span{
+  overflow:hidden;
+  font-size:7px;
+  font-weight:800;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.runner-block-strip button.now{
+  border-color:#d3ad4f;
+  background:#f6e8bd;
+}
+.runner-block-strip button.now b{
+  color:#73520b;
+}
+.runner-block-strip button.done{
+  opacity:.55;
+}
+.workout-preview-section .structured-workout-roadmap{
+  padding:0 12px 12px;
+}
+.workout-preview-section .roadmap-block{
+  border-color:#ded7c8;
+  background:#fbf8f0;
+}
+.workout-preview-section .roadmap-block>header{
+  background:#eee7d8;
+}
+.workout-preview-section .roadmap-block>header span{
+  color:#7c601e;
+}
+.workout-preview-section .roadmap-block>header strong,
+.workout-preview-section .roadmap-exercise small{
+  color:#707871;
+}
+.workout-preview-section .roadmap-exercise{
+  border-color:#e3dccd;
+}
+.workout-preview-section .roadmap-exercise strong{
+  color:#1e3327;
+}
+.workout-preview-section .roadmap-exercise>b{
+  background:#e8e1d4;
+  color:#526057;
+}
+@media(max-width:620px){
+  .program-structure-summary-card{
+    grid-template-columns:1fr;
+  }
+  .program-structure-summary-card .button{
+    width:100%;
+  }
+  .program-structure-choice-grid{
+    grid-template-columns:1fr;
+  }
+  .runner-block-strip button{
+    flex-basis:96px;
+  }
+}
