@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GoWorkout Anatomy Mask Studio</title>
+<link rel="stylesheet" href="./mask-studio.css">
+</head>
+<body>
+<main class="studio">
+  <header class="studio-head">
+    <div>
+      <p class="eyebrow">ANATOMY ASSET FACTORY</p>
+      <h1>Mask Studio</h1>
+      <p>Paint one master lighting mask per body region. The studio generates levels 1 through 4 from that single mask.</p>
+    </div>
+    <div class="canvas-badge">1000 × 1800</div>
+  </header>
+
+  <section class="toolbar card">
+    <label>View
+      <select id="viewSelect">
+        <option value="front">Front</option>
+        <option value="back">Back</option>
+      </select>
+    </label>
+    <label>Region
+      <select id="regionSelect"></select>
+    </label>
+    <label>Preview
+      <select id="levelSelect">
+        <option value="0">Mask only</option>
+        <option value="1">1 · Light</option>
+        <option value="2">2 · Moderate</option>
+        <option value="3" selected>3 · High</option>
+        <option value="4">4 · Very high</option>
+      </select>
+    </label>
+    <label>Brush
+      <input id="brushSize" type="range" min="10" max="180" value="72">
+      <output id="brushSizeOut">72</output>
+    </label>
+    <label>Feather
+      <input id="feather" type="range" min="0" max="100" value="38">
+      <output id="featherOut">38</output>
+    </label>
+  </section>
+
+  <section class="workbench">
+    <aside class="panel card">
+      <h2>Base image</h2>
+      <p>The default silhouette is only a placeholder. Load the final front or back artwork here when it is approved.</p>
+      <label class="file-button">Load base image
+        <input id="baseUpload" type="file" accept="image/*">
+      </label>
+
+      <h2>Lit reference</h2>
+      <p>If the lit image uses the exact same base pose, the studio can isolate the changed pixels and turn them into a master mask.</p>
+      <label class="file-button secondary">Load lit reference
+        <input id="litUpload" type="file" accept="image/*">
+      </label>
+      <label class="range-control">Difference threshold
+        <input id="diffThreshold" type="range" min="5" max="120" value="32">
+        <output id="diffThresholdOut">32</output>
+      </label>
+      <button id="extractMaskBtn" class="secondary" type="button">Extract mask from difference</button>
+
+      <h2>Paint mask</h2>
+      <div class="segmented">
+        <button id="paintBtn" class="active" type="button">Paint</button>
+        <button id="eraseBtn" type="button">Erase</button>
+      </div>
+      <button id="clearBtn" class="secondary" type="button">Clear current region</button>
+
+      <h2>Mask files</h2>
+      <label class="file-button secondary">Import master mask
+        <input id="maskUpload" type="file" accept="image/png,image/webp,image/*">
+      </label>
+      <button id="saveMaskBtn" class="secondary" type="button">Save mask in browser</button>
+      <button id="exportMaskBtn" class="secondary" type="button">Export master mask</button>
+
+      <h2>Generated overlays</h2>
+      <button id="exportLevelsBtn" class="primary" type="button">Export levels 1–4</button>
+      <button id="exportAllBtn" class="secondary" type="button">Export all saved regions</button>
+      <button id="exportManifestBtn" class="secondary" type="button">Export manifest</button>
+
+      <div class="status" id="status">Ready.</div>
+    </aside>
+
+    <section class="canvas-card card">
+      <div class="canvas-topline">
+        <span id="canvasTitle">MALE · FRONT · CHEST</span>
+        <span id="modeLabel">PAINT</span>
+      </div>
+      <div class="canvas-shell">
+        <canvas id="displayCanvas" width="1000" height="1800"></canvas>
+      </div>
+      <p class="canvas-help">Paint directly over the body. White mask pixels become the illuminated area. Erase to trim edges.</p>
+    </section>
+
+    <aside class="preview-panel card">
+      <h2>Intensity previews</h2>
+      <div class="preview-grid">
+        <figure><canvas data-preview="1" width="250" height="450"></canvas><figcaption>1 · Light</figcaption></figure>
+        <figure><canvas data-preview="2" width="250" height="450"></canvas><figcaption>2 · Moderate</figcaption></figure>
+        <figure><canvas data-preview="3" width="250" height="450"></canvas><figcaption>3 · High</figcaption></figure>
+        <figure><canvas data-preview="4" width="250" height="450"></canvas><figcaption>4 · Very high</figcaption></figure>
+      </div>
+      <h2>Saved regions</h2>
+      <div id="savedRegions" class="saved-regions"></div>
+    </aside>
+  </section>
+</main>
+
+<script src="../config/anatomy-regions.js"></script>
+<script src="./mask-studio.js"></script>
+</body>
+</html>
