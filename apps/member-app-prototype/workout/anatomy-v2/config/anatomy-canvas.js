@@ -1,0 +1,22 @@
+(function(){
+  window.GoWorkoutAnatomyCanvas={
+    width:1000,
+    height:1800,
+    baseline:1747,
+    variant:'male',
+    landmarks:{
+      headCenter:{x:500,y:170},
+      shoulderLine:388,
+      hipLine:975,
+      kneeLine:1290,
+      ankleLine:1670,
+      footLine:1747
+    },
+    assets:{
+      male:{
+        front:'./anatomy-v2/male/front/male-front-base.svg',
+        back:'./anatomy-v2/male/back/male-back-base.svg'
+      }
+    }
+  };
+})();
