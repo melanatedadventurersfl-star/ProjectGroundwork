@@ -15736,3 +15736,31 @@ body.home-mode .bottom-nav:before{
     max-height:252px;
   }
 }
+
+
+/* Training Load text-only summary: anatomy visuals intentionally removed */
+.home-training-load-v5 .home-training-load-summary{
+  display:grid;
+  gap:12px;
+  padding:16px 18px;
+  border:1px solid rgba(216,180,92,.10);
+  border-radius:20px;
+  background:
+    radial-gradient(circle at 18% 20%,rgba(164,213,100,.055),transparent 28%),
+    linear-gradient(145deg,rgba(17,34,23,.92),rgba(8,17,12,.92));
+}
+.home-training-load-v5 .home-training-load-summary .home-load-info{
+  text-align:left;
+}
+.home-training-load-v5 .home-training-load-summary .home-muscle-load-list{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+@media(max-width:390px){
+  .home-training-load-v5 .home-training-load-summary{
+    padding:14px;
+  }
+  .home-training-load-v5 .home-training-load-summary .home-muscle-load-list{
+    grid-template-columns:1fr;
+  }
+}
