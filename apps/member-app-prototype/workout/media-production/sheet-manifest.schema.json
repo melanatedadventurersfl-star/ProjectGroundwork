@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GoWorkout generation sheet manifest",
+  "type": "object",
+  "required": ["version", "name", "source", "grid", "cells"],
+  "properties": {
+    "version": {"const": 1},
+    "name": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "grid": {
+      "type": "object",
+      "required": ["rows", "columns"],
+      "properties": {
+        "rows": {"type": "integer", "minimum": 1},
+        "columns": {"type": "integer", "minimum": 1},
+        "outerMarginPx": {"type": "integer", "minimum": 0},
+        "gutterPx": {"type": "integer", "minimum": 0},
+        "cellInsetPx": {"type": "integer", "minimum": 0}
+      }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "format": {"const": "webp"},
+        "quality": {"type": "integer", "minimum": 1, "maximum": 100},
+        "maxEdge": {"type": "integer", "minimum": 128},
+        "squareCrop": {"type": "boolean"}
+      }
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["row", "column", "exerciseId", "avatarId", "position"],
+        "properties": {
+          "row": {"type": "integer", "minimum": 0},
+          "column": {"type": "integer", "minimum": 0},
+          "exerciseId": {"type": "string", "minLength": 1},
+          "avatarId": {"type": "string", "minLength": 1},
+          "position": {"enum": ["start", "end"]}
+        }
+      }
+    }
+  }
+}
