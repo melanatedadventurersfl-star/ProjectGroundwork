@@ -7,11 +7,12 @@ This folder separates anatomy artwork from workout-data logic.
 1. Lock one front base image and one back base image on the shared 1000 × 1800 canvas.
 2. Open `dev/mask-studio.html`.
 3. Pick a view and body region.
-4. Paint one master mask over the approved base image.
-5. Save the master mask in the browser.
-6. Export intensity levels 1 through 4.
-7. Place the generated transparent PNG files under `generated/male/front` or `generated/male/back`.
-8. Enable the runtime overlay renderer only after the generated assets are committed and reviewed.
+4. Either paint the master mask manually, or load an aligned lit reference image and use Difference Extraction to isolate the illuminated pixels.
+5. Paint or erase the extracted mask to clean its edges.
+6. Save the master mask in the browser.
+7. Export intensity levels 1 through 4. The studio creates every color variation from the single master mask.
+8. Place the generated transparent PNG files under `generated/male/front` or `generated/male/back`.
+9. Enable the runtime overlay renderer only after the generated assets are committed and reviewed.
 
 ## File naming
 
