@@ -15890,3 +15890,55 @@ body.home-mode .bottom-nav:before{
   .stretch-detail-media{min-height:190px}
   .stretch-detail-facts{grid-template-columns:1fr}
 }
+
+
+/* GoWorkout workout preview phase breakdown */
+.train-preview-phase{
+  display:grid;
+  gap:8px;
+  margin-top:15px;
+  padding:12px 13px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(255,255,255,.018);
+}
+.train-preview-phase-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.train-preview-phase-head span{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.train-preview-phase-head strong{
+  color:var(--muted);
+  font-size:8px;
+}
+.train-preview-phase>div:last-child:not(.train-preview-exercises){
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.train-preview-phase>div:last-child:not(.train-preview-exercises)>span{
+  padding:6px 8px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:999px;
+  background:rgba(255,255,255,.025);
+  color:var(--text);
+  font-size:8px;
+}
+.train-preview-phase.strength{
+  padding-bottom:0;
+}
+.train-preview-phase.strength .train-preview-exercises{
+  margin-top:0;
+}
+@media(max-width:620px){
+  .train-preview-phase{padding:10px 11px}
+  .train-preview-phase-head{align-items:flex-start}
+  .train-preview-phase-head strong{text-align:right}
+}

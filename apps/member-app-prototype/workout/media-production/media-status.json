@@ -5,11 +5,11 @@
   "positionsPerAvatar": 2,
   "summary": {
     "totalExercises": 49,
-    "approvedExercises": 16,
-    "pendingExercises": 33,
+    "approvedExercises": 38,
+    "pendingExercises": 11,
     "totalRequiredImages": 392,
-    "approvedImages": 128,
-    "remainingImages": 264
+    "approvedImages": 304,
+    "remainingImages": 88
   },
   "statuses": [
     "missing",
@@ -71,42 +71,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/back-squat/fem-full/position-2.webp"
           }
         }
       }
@@ -163,42 +163,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/seated-leg-press/fem-full/position-2.webp"
           }
         }
       }
@@ -209,42 +209,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/45-leg-press/fem-full/position-2.webp"
           }
         }
       }
@@ -255,42 +255,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bodyweight-squat/fem-full/position-2.webp"
           }
         }
       }
@@ -301,42 +301,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/romanian-deadlift/fem-full/position-2.webp"
           }
         }
       }
@@ -393,42 +393,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/hip-thrust/fem-full/position-2.webp"
           }
         }
       }
@@ -439,42 +439,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/glute-bridge/fem-full/position-2.webp"
           }
         }
       }
@@ -485,42 +485,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/split-squat/fem-full/position-2.webp"
           }
         }
       }
@@ -531,42 +531,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/reverse-lunge/fem-full/position-2.webp"
           }
         }
       }
@@ -577,42 +577,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/step-up/fem-full/position-2.webp"
           }
         }
       }
@@ -623,42 +623,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/bench-press/fem-full/position-2.webp"
           }
         }
       }
@@ -715,42 +715,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-floor-press/fem-full/position-2.webp"
           }
         }
       }
@@ -761,42 +761,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/chest-press-machine/fem-full/position-2.webp"
           }
         }
       }
@@ -807,42 +807,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/push-up/fem-full/position-2.webp"
           }
         }
       }
@@ -1451,42 +1451,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-extension/fem-full/position-2.webp"
           }
         }
       }
@@ -1497,42 +1497,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/lateral-raise/fem-full/position-2.webp"
           }
         }
       }
@@ -1589,42 +1589,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/biceps-curl/fem-full/position-2.webp"
           }
         }
       }
@@ -1727,42 +1727,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/db-triceps-extension/fem-full/position-2.webp"
           }
         }
       }
@@ -1773,42 +1773,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-raise/fem-full/position-2.webp"
           }
         }
       }
@@ -1819,42 +1819,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/calf-extension-machine/fem-full/position-2.webp"
           }
         }
       }
@@ -1865,42 +1865,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/leg-press-calf-raise/fem-full/position-2.webp"
           }
         }
       }
@@ -1911,42 +1911,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/single-leg-db-calf-raise/fem-full/position-2.webp"
           }
         }
       }

@@ -478,5 +478,665 @@ window.EXERCISE_AVATAR_MEDIA = {
         "./assets/exercises/band-pulldown/fem-full/position-2.webp"
       ]
     }
+  },
+  "45-leg-press": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/45-leg-press/masc-athletic/position-1.webp",
+        "./assets/exercises/45-leg-press/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/45-leg-press/masc-full/position-1.webp",
+        "./assets/exercises/45-leg-press/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/45-leg-press/fem-athletic/position-1.webp",
+        "./assets/exercises/45-leg-press/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/45-leg-press/fem-full/position-1.webp",
+        "./assets/exercises/45-leg-press/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "back-squat": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/back-squat/masc-athletic/position-1.webp",
+        "./assets/exercises/back-squat/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/back-squat/masc-full/position-1.webp",
+        "./assets/exercises/back-squat/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/back-squat/fem-athletic/position-1.webp",
+        "./assets/exercises/back-squat/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/back-squat/fem-full/position-1.webp",
+        "./assets/exercises/back-squat/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "bench-press": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bench-press/masc-athletic/position-1.webp",
+        "./assets/exercises/bench-press/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bench-press/masc-full/position-1.webp",
+        "./assets/exercises/bench-press/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bench-press/fem-athletic/position-1.webp",
+        "./assets/exercises/bench-press/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bench-press/fem-full/position-1.webp",
+        "./assets/exercises/bench-press/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "biceps-curl": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/biceps-curl/masc-athletic/position-1.webp",
+        "./assets/exercises/biceps-curl/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/biceps-curl/masc-full/position-1.webp",
+        "./assets/exercises/biceps-curl/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/biceps-curl/fem-athletic/position-1.webp",
+        "./assets/exercises/biceps-curl/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/biceps-curl/fem-full/position-1.webp",
+        "./assets/exercises/biceps-curl/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "bodyweight-squat": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bodyweight-squat/masc-athletic/position-1.webp",
+        "./assets/exercises/bodyweight-squat/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bodyweight-squat/masc-full/position-1.webp",
+        "./assets/exercises/bodyweight-squat/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bodyweight-squat/fem-athletic/position-1.webp",
+        "./assets/exercises/bodyweight-squat/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/bodyweight-squat/fem-full/position-1.webp",
+        "./assets/exercises/bodyweight-squat/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "calf-extension-machine": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-extension-machine/masc-athletic/position-1.webp",
+        "./assets/exercises/calf-extension-machine/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-extension-machine/masc-full/position-1.webp",
+        "./assets/exercises/calf-extension-machine/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-extension-machine/fem-athletic/position-1.webp",
+        "./assets/exercises/calf-extension-machine/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-extension-machine/fem-full/position-1.webp",
+        "./assets/exercises/calf-extension-machine/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "calf-raise": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-raise/masc-athletic/position-1.webp",
+        "./assets/exercises/calf-raise/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-raise/masc-full/position-1.webp",
+        "./assets/exercises/calf-raise/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-raise/fem-athletic/position-1.webp",
+        "./assets/exercises/calf-raise/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/calf-raise/fem-full/position-1.webp",
+        "./assets/exercises/calf-raise/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "chest-press-machine": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/chest-press-machine/masc-athletic/position-1.webp",
+        "./assets/exercises/chest-press-machine/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/chest-press-machine/masc-full/position-1.webp",
+        "./assets/exercises/chest-press-machine/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/chest-press-machine/fem-athletic/position-1.webp",
+        "./assets/exercises/chest-press-machine/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/chest-press-machine/fem-full/position-1.webp",
+        "./assets/exercises/chest-press-machine/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "db-floor-press": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-floor-press/masc-athletic/position-1.webp",
+        "./assets/exercises/db-floor-press/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-floor-press/masc-full/position-1.webp",
+        "./assets/exercises/db-floor-press/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-floor-press/fem-athletic/position-1.webp",
+        "./assets/exercises/db-floor-press/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-floor-press/fem-full/position-1.webp",
+        "./assets/exercises/db-floor-press/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "db-triceps-extension": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-triceps-extension/masc-athletic/position-1.webp",
+        "./assets/exercises/db-triceps-extension/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-triceps-extension/masc-full/position-1.webp",
+        "./assets/exercises/db-triceps-extension/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-triceps-extension/fem-athletic/position-1.webp",
+        "./assets/exercises/db-triceps-extension/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/db-triceps-extension/fem-full/position-1.webp",
+        "./assets/exercises/db-triceps-extension/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "glute-bridge": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/glute-bridge/masc-athletic/position-1.webp",
+        "./assets/exercises/glute-bridge/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/glute-bridge/masc-full/position-1.webp",
+        "./assets/exercises/glute-bridge/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/glute-bridge/fem-athletic/position-1.webp",
+        "./assets/exercises/glute-bridge/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/glute-bridge/fem-full/position-1.webp",
+        "./assets/exercises/glute-bridge/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "hip-thrust": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/hip-thrust/masc-athletic/position-1.webp",
+        "./assets/exercises/hip-thrust/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/hip-thrust/masc-full/position-1.webp",
+        "./assets/exercises/hip-thrust/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/hip-thrust/fem-athletic/position-1.webp",
+        "./assets/exercises/hip-thrust/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/hip-thrust/fem-full/position-1.webp",
+        "./assets/exercises/hip-thrust/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "lateral-raise": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/lateral-raise/masc-athletic/position-1.webp",
+        "./assets/exercises/lateral-raise/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/lateral-raise/masc-full/position-1.webp",
+        "./assets/exercises/lateral-raise/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/lateral-raise/fem-athletic/position-1.webp",
+        "./assets/exercises/lateral-raise/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/lateral-raise/fem-full/position-1.webp",
+        "./assets/exercises/lateral-raise/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "leg-extension": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-extension/masc-athletic/position-1.webp",
+        "./assets/exercises/leg-extension/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-extension/masc-full/position-1.webp",
+        "./assets/exercises/leg-extension/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-extension/fem-athletic/position-1.webp",
+        "./assets/exercises/leg-extension/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-extension/fem-full/position-1.webp",
+        "./assets/exercises/leg-extension/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "leg-press-calf-raise": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-press-calf-raise/masc-athletic/position-1.webp",
+        "./assets/exercises/leg-press-calf-raise/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-press-calf-raise/masc-full/position-1.webp",
+        "./assets/exercises/leg-press-calf-raise/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-press-calf-raise/fem-athletic/position-1.webp",
+        "./assets/exercises/leg-press-calf-raise/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/leg-press-calf-raise/fem-full/position-1.webp",
+        "./assets/exercises/leg-press-calf-raise/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "push-up": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/push-up/masc-athletic/position-1.webp",
+        "./assets/exercises/push-up/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/push-up/masc-full/position-1.webp",
+        "./assets/exercises/push-up/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/push-up/fem-athletic/position-1.webp",
+        "./assets/exercises/push-up/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/push-up/fem-full/position-1.webp",
+        "./assets/exercises/push-up/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "reverse-lunge": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/reverse-lunge/masc-athletic/position-1.webp",
+        "./assets/exercises/reverse-lunge/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/reverse-lunge/masc-full/position-1.webp",
+        "./assets/exercises/reverse-lunge/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/reverse-lunge/fem-athletic/position-1.webp",
+        "./assets/exercises/reverse-lunge/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/reverse-lunge/fem-full/position-1.webp",
+        "./assets/exercises/reverse-lunge/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "romanian-deadlift": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/romanian-deadlift/masc-athletic/position-1.webp",
+        "./assets/exercises/romanian-deadlift/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/romanian-deadlift/masc-full/position-1.webp",
+        "./assets/exercises/romanian-deadlift/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/romanian-deadlift/fem-athletic/position-1.webp",
+        "./assets/exercises/romanian-deadlift/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/romanian-deadlift/fem-full/position-1.webp",
+        "./assets/exercises/romanian-deadlift/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "seated-leg-press": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/seated-leg-press/masc-athletic/position-1.webp",
+        "./assets/exercises/seated-leg-press/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/seated-leg-press/masc-full/position-1.webp",
+        "./assets/exercises/seated-leg-press/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/seated-leg-press/fem-athletic/position-1.webp",
+        "./assets/exercises/seated-leg-press/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/seated-leg-press/fem-full/position-1.webp",
+        "./assets/exercises/seated-leg-press/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "single-leg-db-calf-raise": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/single-leg-db-calf-raise/masc-athletic/position-1.webp",
+        "./assets/exercises/single-leg-db-calf-raise/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/single-leg-db-calf-raise/masc-full/position-1.webp",
+        "./assets/exercises/single-leg-db-calf-raise/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/single-leg-db-calf-raise/fem-athletic/position-1.webp",
+        "./assets/exercises/single-leg-db-calf-raise/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/single-leg-db-calf-raise/fem-full/position-1.webp",
+        "./assets/exercises/single-leg-db-calf-raise/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "split-squat": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/split-squat/masc-athletic/position-1.webp",
+        "./assets/exercises/split-squat/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/split-squat/masc-full/position-1.webp",
+        "./assets/exercises/split-squat/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/split-squat/fem-athletic/position-1.webp",
+        "./assets/exercises/split-squat/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/split-squat/fem-full/position-1.webp",
+        "./assets/exercises/split-squat/fem-full/position-2.webp"
+      ]
+    }
+  },
+  "step-up": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/step-up/masc-athletic/position-1.webp",
+        "./assets/exercises/step-up/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/step-up/masc-full/position-1.webp",
+        "./assets/exercises/step-up/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/step-up/fem-athletic/position-1.webp",
+        "./assets/exercises/step-up/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/step-up/fem-full/position-1.webp",
+        "./assets/exercises/step-up/fem-full/position-2.webp"
+      ]
+    }
   }
 };
