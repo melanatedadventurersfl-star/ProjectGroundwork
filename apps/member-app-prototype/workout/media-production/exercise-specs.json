@@ -3,7 +3,7 @@
   "source": "apps/member-app-prototype/workout/catalog.js",
   "generatedFromCatalogCount": 49,
   "defaultRules": {
-    "canvas": "One avatar, one position, one image. Never use collages.",
+    "canvas": "Final app assets must contain one avatar and one position per image. Multi-cell contact sheets are allowed only as a generation intermediary and must be cropped into separate assets before review or use.",
     "positions": "Create exactly one start and one end image per avatar unless an exercise is a timed hold.",
     "text": "No text or labels baked into production artwork.",
     "branding": "No real-world branding.",
