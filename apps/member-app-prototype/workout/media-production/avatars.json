@@ -3,15 +3,15 @@
   "purpose": "Visual identity only. Avatar choice must never change workout programming, load, reps, progression, readiness adjustments, or exercise selection.",
   "visualSystem": {
     "style": "Photorealistic instructional fitness imagery",
-    "background": "Warm cream studio with a subtle pale cream circular field",
+    "background": "GoWorkout training studio: warm cream wall, dark charcoal rubber floor, one restrained forest-green architectural panel, soft warm directional light, no crowd, no mirrors, no posters, no decorative clutter",
     "palette": [
       "forest green",
       "black",
       "cream"
     ],
     "branding": "No real-world logos, brand marks, branded shoes, branded equipment, or trademarked symbols",
-    "framing": "Show the full movement and all equipment needed to understand the exercise",
-    "consistency": "Start and end images for an avatar/exercise pair should look like consecutive frames from the same photo shoot"
+    "framing": "Fill the cell with the athlete and required equipment. Standing movements should use roughly 80–88% of image height with only small head and foot clearance. Horizontal or bench-based movements should use roughly 80–90% of image width. Keep the entire movement readable while avoiding large unused wall or floor areas.",
+    "consistency": "Every exercise should look photographed in the same GoWorkout studio. Each avatar keeps the same face, hair, body type, primary outfit, and footwear across the V1 library. Start and end frames should look like consecutive frames from the same photo shoot."
   },
   "avatars": [
     {
