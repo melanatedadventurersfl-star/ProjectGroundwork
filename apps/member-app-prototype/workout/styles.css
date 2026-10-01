@@ -15043,3 +15043,61 @@ body.home-mode .bottom-nav:before{
     drop-shadow(0 0 5px rgba(240,200,93,.60))
     drop-shadow(0 0 10px rgba(240,200,93,.30));
 }
+
+
+/* GoWorkout truth and timing fixes V1 */
+.ui-icon{width:1.25em;height:1.25em;display:inline-block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.preflight-location-option>span>.ui-icon{width:23px;height:23px;stroke-width:1.7}
+.preflight-readiness-copy>.ui-icon{width:24px;height:24px;color:#173f2a;justify-self:center}
+.ready-setup-card>div>.ui-icon{width:18px;height:18px;color:#285139}
+.ready-coach-card>.ui-icon{width:32px;height:32px;padding:7px;border-radius:9px;background:#315a42;color:#fff;box-sizing:border-box}
+.prepared-ready-check>.ui-icon{width:42px;height:42px;stroke-width:2.2}
+.preflight-build-ring>.ui-icon{width:52px;height:52px;color:#fffaf0}
+.preflight-build-step>b>.ui-icon{width:16px;height:16px;stroke-width:2.4}
+.readiness-dot-option{width:28px;height:34px}
+.readiness-dot-option span{width:11px;height:11px}
+.metric-soreness:has(input[value="3"]:checked){--soreness-fill:#d7a23a}
+.metric-soreness:has(input[value="4"]:checked){--soreness-fill:#d77b3f}
+.metric-soreness:has(input[value="5"]:checked){--soreness-fill:#c95e4f}
+.metric-soreness .readiness-dot-option:has(input:checked) span,
+.metric-soreness .readiness-dot-option:has(~ .readiness-dot-option input:checked) span{background:var(--soreness-fill,#d7a23a)}
+.metric-soreness .readiness-dot-option:has(input:checked) span{box-shadow:0 0 0 3px color-mix(in srgb,var(--soreness-fill,#d7a23a) 18%,transparent)}
+.preflight-equipment-details .session-setup-extras input[type="checkbox"],
+.session-setup-sheet .session-setup-extras input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;display:grid;place-items:center;flex:0 0 18px;margin:0;border:1px solid rgba(229,236,230,.38);border-radius:5px;background:rgba(7,24,14,.44)}
+.preflight-equipment-details .session-setup-extras input[type="checkbox"]:checked,
+.session-setup-sheet .session-setup-extras input[type="checkbox"]:checked{border-color:#e7bd4c;background:#e7bd4c}
+.preflight-equipment-details .session-setup-extras input[type="checkbox"]:checked:after,
+.session-setup-sheet .session-setup-extras input[type="checkbox"]:checked:after{content:'✓';color:#132018;font-size:11px;font-weight:900}
+.preflight-build-button{position:sticky;bottom:max(8px,env(safe-area-inset-bottom));z-index:5;box-shadow:0 14px 34px rgba(5,15,9,.38)}
+.prepared-ready-visual{height:100px}
+.prepared-ready-title{padding-top:12px}
+.prepared-ready-title small{color:#657269;font-size:8px;font-weight:700}
+.ready-setup-card>div{min-height:32px}
+.prepared-preview-button{border-color:#e8c257!important;background:rgba(232,194,87,.09)!important;color:#f1d47c!important;font-weight:900}
+.prepared-adjust-link{color:#f1d47c!important;font-weight:800}
+.prepared-primary-actions{position:sticky;bottom:0;z-index:4;padding:8px 0 max(8px,env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(10,28,18,0),rgba(10,28,18,.96) 22%,rgba(10,28,18,.99))}
+.timed-stage-illustration{position:relative;width:100%;height:100%;min-height:100%;display:grid;place-items:center;background:radial-gradient(circle at 50% 42%,rgba(235,197,101,.24),transparent 45%),linear-gradient(180deg,#f2ead7,#e5dcc7);color:#254c35}
+.timed-stage-illustration svg{width:min(78%,210px);height:min(78%,210px);fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.timed-stage-illustration small{position:absolute;right:10px;bottom:8px;width:28px;height:28px;display:grid;place-items:center;border-radius:999px;background:#294f39;color:#fffaf0;font-size:8px;font-weight:900}
+.runner-routine-thumb .timed-stage-illustration small{display:none}
+.runner-routine-row>em{color:#879087;font-size:7px;font-style:normal;font-weight:900;letter-spacing:.06em}
+.runner-guided-ready-card strong{font-variant-numeric:tabular-nums}
+.runner-guided-ready[data-stage-mode="ready"] .runner-guided-ready-card strong{font-size:clamp(24px,7vw,38px);line-height:1}
+.runner-guided-ready[data-stage-mode="ready"] .runner-guided-ready-card small{margin-top:5px}
+.runner-cue-access{display:flex;justify-content:flex-end;min-height:0;padding:6px 12px 0}
+.workout-cue-mini{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(216,180,92,.23);border-radius:11px;background:rgba(216,180,92,.045);color:var(--accent-2)}
+.workout-cue-mini .ui-icon{width:18px;height:18px}
+.phase-intro .runner-cue-access{display:none}
+.coach-live-line{margin-top:4px}
+.runner-header-timers{display:flex!important;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap}
+.runner-header-timers i{color:rgba(226,232,227,.35);font-style:normal}
+.preflight-workout-head>span>.ui-icon{width:18px;height:18px}
+.workout-preview-summary>small{grid-column:1/-1;color:rgba(244,247,244,.68);font-size:7px}
+@media(max-width:560px){
+  .prepared-ready-visual{height:88px}
+  .ready-setup-card{padding-top:9px;padding-bottom:9px}
+  .ready-setup-card>div{min-height:29px}
+  .preflight-readiness-row{grid-template-columns:minmax(0,1fr) auto}
+  .readiness-dot-option{width:25px}
+}
