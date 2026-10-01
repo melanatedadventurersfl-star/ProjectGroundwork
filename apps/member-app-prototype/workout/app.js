@@ -2826,7 +2826,7 @@ function exerciseImageButton(ex,className='exercise-media',index=0){
 
 function beginExerciseDetailReview(){
   const w=store.activeWorkout;
-  if(!w||w.phase!=='work'||w.detailReviewStartedAt)return;
+  if(!w||w.phase!=='work'||w.isPaused||w.detailReviewStartedAt)return;
   w.detailReviewStartedAt=new Date().toISOString();
   saveStore();
 }
