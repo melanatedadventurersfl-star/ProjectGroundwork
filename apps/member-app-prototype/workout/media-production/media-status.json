@@ -5,11 +5,11 @@
   "positionsPerAvatar": 2,
   "summary": {
     "totalExercises": 49,
-    "approvedExercises": 5,
-    "pendingExercises": 44,
+    "approvedExercises": 6,
+    "pendingExercises": 43,
     "totalRequiredImages": 392,
-    "approvedImages": 40,
-    "remainingImages": 352
+    "approvedImages": 48,
+    "remainingImages": 344
   },
   "statuses": [
     "missing",
@@ -25,42 +25,42 @@
       "avatars": {
         "masc-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/masc-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/masc-athletic/position-2.webp"
           }
         },
         "masc-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/masc-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/masc-full/position-2.webp"
           }
         },
         "fem-athletic": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/fem-athletic/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/fem-athletic/position-2.webp"
           }
         },
         "fem-full": {
           "start": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/fem-full/position-1.webp"
           },
           "end": {
-            "status": "missing",
-            "assetPath": ""
+            "status": "approved",
+            "assetPath": "./assets/exercises/goblet-squat/fem-full/position-2.webp"
           }
         }
       }
