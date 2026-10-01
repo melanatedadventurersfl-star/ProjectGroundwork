@@ -54,6 +54,17 @@
         <input id="baseUpload" type="file" accept="image/*">
       </label>
 
+      <h2>Lit reference</h2>
+      <p>If the lit image uses the exact same base pose, the studio can isolate the changed pixels and turn them into a master mask.</p>
+      <label class="file-button secondary">Load lit reference
+        <input id="litUpload" type="file" accept="image/*">
+      </label>
+      <label class="range-control">Difference threshold
+        <input id="diffThreshold" type="range" min="5" max="120" value="32">
+        <output id="diffThresholdOut">32</output>
+      </label>
+      <button id="extractMaskBtn" class="secondary" type="button">Extract mask from difference</button>
+
       <h2>Paint mask</h2>
       <div class="segmented">
         <button id="paintBtn" class="active" type="button">Paint</button>
