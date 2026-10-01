@@ -7161,7 +7161,7 @@ function homeWeekMuscleSnapshot(){
     const value=keys.reduce((sum,key)=>sum+(counts[key]||0),0);
     if(!value)return 0;
     const ratio=value/max;
-    return ratio>=1.5?4:ratio>=1?3:ratio>=.5?2:1;
+    return ratio>=.85?4:ratio>=.6?3:ratio>=.3?2:1;
   };
   return {
     counts,
