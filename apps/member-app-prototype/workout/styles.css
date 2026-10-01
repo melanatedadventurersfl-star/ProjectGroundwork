@@ -15649,3 +15649,62 @@ body.home-mode .bottom-nav:before{
     justify-self:start;
   }
 }
+
+
+/* Male anatomy artwork V4 */
+.home-anatomy-svg.anatomy-v3 .anatomy-muscle-base{
+  stroke:rgba(219,229,222,.11);
+  stroke-width:.34;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-1{
+  opacity:.30;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-2{
+  opacity:.43;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-3{
+  opacity:.57;
+  filter:
+    drop-shadow(0 0 3px rgba(169,223,89,.34))
+    drop-shadow(0 0 6px rgba(121,190,75,.14));
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-4{
+  opacity:.67;
+  filter:
+    drop-shadow(0 0 4px rgba(240,200,93,.46))
+    drop-shadow(0 0 8px rgba(240,200,93,.18));
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-detail-fine{
+  stroke:rgba(237,243,239,.18);
+  stroke-width:.43;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-scapula,
+.home-anatomy-svg.anatomy-v3 .anatomy-glute-fold{
+  fill:none;
+  stroke:rgba(231,239,233,.16);
+  stroke-width:.46;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-glute-fold{
+  stroke:rgba(235,241,237,.20);
+  stroke-width:.52;
+}
+.home-anatomy-svg.anatomy-v3 .region-quads .anatomy-muscle-base,
+.home-anatomy-svg.anatomy-v3 .region-hamstrings .anatomy-muscle-base,
+.home-anatomy-svg.anatomy-v3 .region-glutes .anatomy-muscle-base,
+.home-anatomy-svg.anatomy-v3 .region-calves .anatomy-muscle-base{
+  stroke:rgba(224,234,227,.10);
+}
+@media(max-width:620px){
+  .home-anatomy-svg.anatomy-v3 .anatomy-scapula,
+  .home-anatomy-svg.anatomy-v3 .anatomy-glute-fold{
+    opacity:.78;
+  }
+}
+@media(max-width:390px){
+  .home-anatomy-svg.anatomy-v3 .anatomy-scapula{
+    opacity:.46;
+  }
+}
