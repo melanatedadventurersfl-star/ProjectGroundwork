@@ -1,6 +1,6 @@
 (function(global){
 'use strict';
-const VERSION='0.6.0',SCHEMA_VERSION=1;
+const VERSION='0.7.0',SCHEMA_VERSION=1;
 const n=value=>{const v=Number.parseFloat(value);return Number.isFinite(v)?v:0;};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const round=(value,digits=2)=>{const scale=Math.pow(10,digits);return Math.round((n(value)+Number.EPSILON)*scale)/scale;};
@@ -332,7 +332,7 @@ function addDecision(value,decision){
   learner.updatedAt=new Date().toISOString();
   return learner;
 }
-function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],decisions:[],outcomes:[],delayedOutcomes:[],processedWorkoutIds:[]};}
+function emptyLearner(){return {schemaVersion:SCHEMA_VERSION,version:VERSION,createdAt:new Date().toISOString(),updatedAt:null,models:{},events:[],predictions:[],evaluations:[],decisions:[],outcomes:[],delayedOutcomes:[],processedWorkoutIds:[],structureProfile:{observations:[],stats:{},preferredStructure:'',updatedAt:null}};}
 function normalizeLearner(value){
   const learner=value&&typeof value==='object'?value:emptyLearner();
   learner.schemaVersion=SCHEMA_VERSION;learner.version=VERSION;
@@ -344,6 +344,10 @@ function normalizeLearner(value){
   learner.outcomes=Array.isArray(learner.outcomes)?learner.outcomes:[];
   learner.delayedOutcomes=Array.isArray(learner.delayedOutcomes)?learner.delayedOutcomes:[];
   learner.processedWorkoutIds=Array.isArray(learner.processedWorkoutIds)?learner.processedWorkoutIds:[];
+  learner.structureProfile=learner.structureProfile&&typeof learner.structureProfile==='object'?learner.structureProfile:{observations:[],stats:{},preferredStructure:'',updatedAt:null};
+  learner.structureProfile.observations=Array.isArray(learner.structureProfile.observations)?learner.structureProfile.observations:[];
+  learner.structureProfile.stats=learner.structureProfile.stats&&typeof learner.structureProfile.stats==='object'?learner.structureProfile.stats:{};
+  learner.structureProfile.preferredStructure=String(learner.structureProfile.preferredStructure||'');
   learner.createdAt=learner.createdAt||new Date().toISOString();
   const eventMap=new Map(learner.events.map(event=>[event.workoutId+'::'+event.exerciseId,event]));
   Object.values(learner.models||{}).forEach(model=>{
@@ -524,9 +528,89 @@ function addPredictions(value,predictions){
   for(const item of predictions||[])if(item?.id&&!ids.has(item.id)){learner.predictions.push(item);ids.add(item.id);}
   learner.predictions=learner.predictions.slice(-300);learner.updatedAt=new Date().toISOString();return learner;
 }
+
+function inferWorkoutStructure(workout){
+  const explicit=String(workout?.trainingStructure?.applied||'');
+  if(explicit)return explicit;
+  const exercises=Array.isArray(workout?.exercises)?workout.exercises:[];
+  const blockTypes=[...new Set(exercises.map(ex=>String(ex?.blockType||'')).filter(Boolean))];
+  const hasUngrouped=exercises.some(ex=>!ex?.blockId);
+  if(!blockTypes.length)return 'straight';
+  if(hasUngrouped||blockTypes.length>1)return 'hybrid';
+  return blockTypes[0]||'straight';
+}
+function structureObservation(workout){
+  if(!workout?.id)return null;
+  const exercises=Array.isArray(workout.exercises)?workout.exercises:[];
+  const plannedSets=exercises.reduce((sum,ex)=>sum+(Array.isArray(ex?.sets)?ex.sets.length:0),0);
+  const completedSets=exercises.reduce((sum,ex)=>sum+(Array.isArray(ex?.sets)?ex.sets.filter(set=>set?.completed).length:0),0);
+  const skippedExercises=exercises.filter(ex=>ex?.skipped).length;
+  const requested=String(workout.trainingStructure?.requested||workout.readiness?.trainingStructure||'');
+  const applied=inferWorkoutStructure(workout);
+  return {
+    workoutId:String(workout.id),
+    routineName:String(workout.routineName||''),
+    focus:String(workout.focus||''),
+    requested,
+    recommended:String(workout.trainingStructure?.recommended||''),
+    applied,
+    reason:String(workout.trainingStructure?.reason||''),
+    completedAt:workout.completedAt||new Date().toISOString(),
+    setupKey:String(workout.trainingContext?.key||''),
+    timeAvailable:n(workout.readiness?.timeAvailable),
+    readinessScore:n(workout.readiness?.score),
+    plannedSets,
+    completedSets,
+    completionRate:plannedSets?round(completedSets/plannedSets,3):0,
+    skippedExercises,
+    skipRate:exercises.length?round(skippedExercises/exercises.length,3):0,
+    durationMinutes:n(workout.durationMinutes)||round(n(workout.activeDurationSeconds)/60,1)
+  };
+}
+function updateStructureProfile(existing,workout){
+  const profile=existing&&typeof existing==='object'?JSON.parse(JSON.stringify(existing)):{observations:[],stats:{},preferredStructure:'',updatedAt:null};
+  profile.observations=Array.isArray(profile.observations)?profile.observations:[];
+  const observation=structureObservation(workout);
+  if(!observation)return profile;
+  if(!profile.observations.some(item=>item?.workoutId===observation.workoutId))profile.observations.push(observation);
+  profile.observations=profile.observations.slice(-100);
+  const buckets={};
+  for(const item of profile.observations){
+    const id=String(item?.applied||'straight');
+    const bucket=buckets[id]||(buckets[id]={sessions:0,completionTotal:0,skipTotal:0,durationTotal:0,durationCount:0,selectedCount:0,adaptiveCount:0,lastUsedAt:null});
+    bucket.sessions+=1;
+    bucket.completionTotal+=n(item.completionRate);
+    bucket.skipTotal+=n(item.skipRate);
+    if(n(item.durationMinutes)>0){bucket.durationTotal+=n(item.durationMinutes);bucket.durationCount+=1;}
+    if(item.requested===id)bucket.selectedCount+=1;
+    if(item.requested==='adaptive')bucket.adaptiveCount+=1;
+    bucket.lastUsedAt=item.completedAt||bucket.lastUsedAt;
+  }
+  profile.stats={};
+  for(const [id,bucket] of Object.entries(buckets)){
+    profile.stats[id]={
+      sessions:bucket.sessions,
+      completionRate:round(bucket.completionTotal/Math.max(1,bucket.sessions),3),
+      skipRate:round(bucket.skipTotal/Math.max(1,bucket.sessions),3),
+      averageDurationMinutes:bucket.durationCount?round(bucket.durationTotal/bucket.durationCount,1):null,
+      selectedCount:bucket.selectedCount,
+      adaptiveCount:bucket.adaptiveCount,
+      lastUsedAt:bucket.lastUsedAt
+    };
+  }
+  const eligible=Object.entries(profile.stats).filter(([id,item])=>id!=='adaptive'&&n(item.sessions)>=2);
+  eligible.sort((a,b)=>{
+    const score=item=>n(item.completionRate)*100-n(item.skipRate)*25+Math.min(10,n(item.sessions));
+    return score(b[1])-score(a[1]);
+  });
+  profile.preferredStructure=eligible[0]?.[0]||'';
+  profile.updatedAt=observation.completedAt;
+  return profile;
+}
 function recordWorkout(value,workout){
   const learner=normalizeLearner(value);
   if(!workout?.id||learner.processedWorkoutIds.includes(workout.id))return {learner,summary:null};
+  learner.structureProfile=updateStructureProfile(learner.structureProfile,workout);
   const results=[];
   (workout.exercises||[]).forEach((exercise,index)=>{
     const event=eventFromExercise(workout,exercise,index);if(!event)return;
@@ -589,6 +673,7 @@ function overview(value){
     delayedOutcomes:delayedOutcomes.length,
     delayedOutcomeSuccessRate:delayedOutcomes.length?round(delayedSuccessful/delayedOutcomes.length,3):null,
     readinessRelationships:models.filter(model=>model.readinessRelationship?.available).length,
+    structureProfile:{totalSessions:learner.structureProfile?.observations?.length||0,preferredStructure:learner.structureProfile?.preferredStructure||'',stats:learner.structureProfile?.stats||{}},
     appliedInfluences:learner.decisions.filter(item=>item.applied).length,
     suggestions:learner.decisions.filter(item=>item.action==='suggest').length,
     decisions:learner.decisions.length,
@@ -596,5 +681,5 @@ function overview(value){
     version:learner.version
   };
 }
-global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,volumeProfile,volumeShadowProposal,volumeExperimentProposal,upwardShadowProposal,readinessRelationship,recentPerformanceBaseline,decisionOutcome,delayedVolumeOutcome,applyInterventionOutcome,applyDelayedInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,recordWorkout,overview};
+global.GoWorkoutLearner={VERSION,SCHEMA_VERSION,emptyLearner,normalizeLearner,confidence,recommendationGate,variableConfidence,variableGate,variableGates,targetProposal,restProposal,volumeProfile,volumeShadowProposal,volumeExperimentProposal,upwardShadowProposal,readinessRelationship,recentPerformanceBaseline,decisionOutcome,delayedVolumeOutcome,applyInterventionOutcome,applyDelayedInterventionOutcome,addDecision,predictionForExercise,eventFromExercise,evaluatePrediction,updateModel,addPredictions,inferWorkoutStructure,structureObservation,updateStructureProfile,recordWorkout,overview};
 })(typeof window!=='undefined'?window:globalThis);
