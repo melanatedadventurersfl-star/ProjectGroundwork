@@ -270,6 +270,17 @@ def exercise_id_from_archive_name(member_name: str, lookup: dict[str, str]) -> s
     }
     if len(matches) == 1:
         return next(iter(matches))
+
+    stem_tokens = set(stem.split())
+    token_matches = {
+        exercise_id
+        for key, exercise_id in lookup.items()
+        if stem_tokens
+        and stem_tokens.issubset(set(key.split()))
+        and len(set(key.split()) - stem_tokens) <= 1
+    }
+    if len(token_matches) == 1:
+        return next(iter(token_matches))
     return None
 
 
@@ -335,9 +346,21 @@ def process_zip(zip_path: Path, status: dict, args) -> tuple[list[Path], list[di
 
         if unmatched:
             names = "\n  - ".join(unmatched)
+            message = (
+                "Could not map these ZIP images to exercises in exercise-specs.json:\n  - "
+                + names
+            )
+            if args.strict_zip:
+                raise ValueError(message)
+            print(f"WARNING: {message}", file=sys.stderr)
+            print(
+                "WARNING: Unmatched images will be skipped. Use --strict-zip to fail instead.",
+                file=sys.stderr,
+            )
+
+        if not mappings:
             raise ValueError(
-                "Could not map these ZIP images to exercise names. Rename each image to the "
-                "exercise name or exercise ID before retrying:\n  - " + names
+                "ZIP contains images, but none could be mapped to exercises in exercise-specs.json"
             )
 
         for info, exercise_id in mappings:
@@ -383,6 +406,11 @@ def main():
         "--update-status",
         action="store_true",
         help="Mark successfully written outputs as generated in media-status.json",
+    )
+    parser.add_argument(
+        "--strict-zip",
+        action="store_true",
+        help="Fail ZIP processing if any image filename cannot be mapped to an exercise",
     )
     parser.add_argument("--dry-run", action="store_true", help="Validate and print outputs only")
     args = parser.parse_args()
