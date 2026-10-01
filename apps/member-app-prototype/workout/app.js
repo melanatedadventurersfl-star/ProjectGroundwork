@@ -9289,7 +9289,7 @@ function handleClick(event){
   }
   else if(a==='train-anywhere-home')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'','bodyweight');
   else if(a==='edit-prepared-workout')editPreparedWorkout();
-  else if(a==='open-session-setup'){exerciseActionsIndex=null;sessionSetupOpen=true;render();}
+  else if(a==='open-session-setup'){exerciseActionsIndex=null;workoutMapOpen=false;sessionSetupOpen=true;render();}
   else if(a==='apply-session-setup'){
     const form=document.querySelector('#session-setup-form');
     const setup=sessionSetupFromForm(form,store.activeWorkout?.trainingContext?.key||normalSessionSetupKey());
@@ -9559,6 +9559,16 @@ document.addEventListener('change',event=>{
     const form=event.target.closest('form');
     const customRow=form?.querySelector('[data-custom-equipment-row]');
     if(customRow)customRow.hidden=event.target.value!=='custom';
+    if(form?.id==='readiness-form'){
+      const defaults=buildSessionSetup(String(event.target.value||normalSessionSetupKey()));
+      const floor=form.querySelector('[name="sessionFloor"]');
+      const chair=form.querySelector('[name="sessionChair"]');
+      const pullup=form.querySelector('[name="sessionPullupBar"]');
+      if(floor)floor.checked=defaults.floor!==false;
+      if(chair)chair.checked=Boolean(defaults.chair);
+      if(pullup)pullup.checked=Boolean(defaults.pullupBar);
+      form.querySelectorAll('input[name="customEquipment"]').forEach(input=>{input.checked=(defaults.modes||['bodyweight']).includes(input.value);});
+    }
   }
   if(event.target.closest?.('#readiness-form'))updateReadinessPreview();
   if(event.target.id==='training-days-count'){
