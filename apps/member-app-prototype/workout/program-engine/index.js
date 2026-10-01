@@ -313,6 +313,13 @@ function stageCompatible(item,label){
  const compatible=item.compatible||['full_body'];
  return compatible.includes(wanted)||compatible.includes('full_body')||wanted==='full_body';
 }
+function stageCompatibilityScore(item,label){
+ const wanted=String(label||'').startsWith('upper')?'upper':String(label||'').startsWith('lower')?'lower':'full_body';
+ const compatible=item.compatible||['full_body'];
+ if(compatible.includes(wanted))return 40;
+ if(compatible.includes('full_body'))return 12;
+ return 0;
+}
 function stageTypeScore(item,placement){
  if(placement==='warmup'){
    if(item.type==='dynamic')return 70;
@@ -354,8 +361,8 @@ function buildMovementSession(seconds,label,p,options){
    );
  }
  pool=pool.slice().sort((a,b)=>{
-   const aScore=stretchScore(a,targets,trainedMuscles)+stageTypeScore(a,placement);
-   const bScore=stretchScore(b,targets,trainedMuscles)+stageTypeScore(b,placement);
+   const aScore=stretchScore(a,targets,trainedMuscles)+stageTypeScore(a,placement)+stageCompatibilityScore(a,label);
+   const bScore=stretchScore(b,targets,trainedMuscles)+stageTypeScore(b,placement)+stageCompatibilityScore(b,label);
    return bScore-aScore||a.id.localeCompare(b.id);
  });
  const activities=[];
