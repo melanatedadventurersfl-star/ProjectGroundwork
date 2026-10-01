@@ -158,10 +158,11 @@ ZIP mode automatically:
 - preserves approved-asset protection unless `--replace-approved` is supplied
 - supports `--overwrite`, `--replace-approved`, `--update-status`, and `--dry-run`
 - rejects duplicate sheets for the same exercise
-- stops when an image filename cannot be mapped instead of guessing
+- skips image filenames that cannot be mapped instead of guessing
+- supports `--strict-zip` when you want any unmatched image to fail the whole archive
 - ignores macOS metadata folders and non-image files
 
-If a ZIP contains generic filenames such as `imagegen.png`, rename them to the exercise name before running the cropper. The script intentionally refuses ambiguous filenames so an image cannot be assigned to the wrong exercise.
+If a ZIP contains generic filenames such as `imagegen.png`, rename them to the exercise name before running the cropper. Unmatched images are reported and skipped by default. Use `--strict-zip` to make unmatched files fail the run. The script never guesses an ambiguous exercise assignment.
 
 ## Review rule
 
