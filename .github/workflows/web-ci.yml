@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'apps/mobile/**'
+      - 'apps/member-app-prototype/workout/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/web-ci.yml'
@@ -13,6 +14,7 @@ on:
       - main
     paths:
       - 'apps/mobile/**'
+      - 'apps/member-app-prototype/workout/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/web-ci.yml'
@@ -41,6 +43,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - name: Validate standalone workout scripts
+        run: |
+          node --check apps/member-app-prototype/workout/catalog.js
+          node --check apps/member-app-prototype/workout/coach-engine.js
+          node --check apps/member-app-prototype/workout/app.js
+          node --check apps/member-app-prototype/workout/performance.js
 
       - name: Install exact dependencies
         run: npm ci
