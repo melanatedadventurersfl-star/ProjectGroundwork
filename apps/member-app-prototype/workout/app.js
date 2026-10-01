@@ -5,6 +5,7 @@ const ACTIVE_WORKOUT_SCHEMA = 4;
 const PROGRAM_ENGINE_STORE_SCHEMA = 1;
 const programEngine = window.GoWorkoutProgramEngine || null;
 const catalog = window.EXERCISE_CATALOG || [];
+const stretchCatalog = Array.isArray(programEngine?.STRETCHES)?programEngine.STRETCHES:[];
 const movements = window.EXERCISE_MOVEMENTS || {};
 const exerciseMedia = window.EXERCISE_MEDIA || {};
 const exerciseMediaFallbacks = window.EXERCISE_MEDIA_FALLBACKS || {};
@@ -100,7 +101,8 @@ let progressExerciseId=String(restoredUiState.progressExerciseId||'');
 let progressMetric=['weight','reps','volume'].includes(restoredUiState.progressMetric)?restoredUiState.progressMetric:'weight';
 let learnerDiagnosticsOpen=Boolean(restoredUiState.learnerDiagnosticsOpen);
 let catalogQuery = '';
-let catalogMovementFilter = ['all','upper','lower','core'].includes(restoredUiState.catalogMovementFilter)?restoredUiState.catalogMovementFilter:'all';
+let catalogMovementFilter = ['all','upper','lower','core','full'].includes(restoredUiState.catalogMovementFilter)?restoredUiState.catalogMovementFilter:'all';
+let catalogTypeFilter = ['all','strength','stretch','mobility'].includes(restoredUiState.catalogTypeFilter)?restoredUiState.catalogTypeFilter:'all';
 let tickHandle = null;
 
 const BLUEPRINTS = {
@@ -148,6 +150,7 @@ function persistUiState(){
       progressMetric,
       learnerDiagnosticsOpen,
       catalogMovementFilter,
+      catalogTypeFilter,
       savedAt:new Date().toISOString()
     }));
   }catch{}
@@ -2841,8 +2844,39 @@ function endExerciseDetailReview(){
   saveStore();
 }
 
+function renderStretchModal(item){
+  const kind=item?.type==='mobility'?'MOBILITY':'STRETCH';
+  const placements=(item?.placements||[]).map(libraryTitleCase).join(' · ')||'Cooldown';
+  const equipment=(item?.equipment||['bodyweight']).map(libraryTitleCase).join(' · ');
+  const muscles=(item?.muscles||item?.regions||[]).map(libraryTitleCase).join(' · ');
+  const cue=(item?.cues||[])[0]||'Move slowly through a comfortable range.';
+  const steps=(item?.cues||[]).length?item.cues:['Move slowly through a comfortable range.'];
+  const mistakes=(item?.mistakes||[]).join(' ');
+  const media='<div class="stretch-detail-media">'+
+    '<div class="stretch-detail-symbol" aria-hidden="true"><i></i><i></i><i></i></div>'+
+    '<span>'+kind+'</span><strong>'+esc(libraryTitleCase(item.bodyArea||item.regions?.[0]||'Full body'))+'</strong>'+
+    '<small>Production image queued · '+esc(item.imageKey||item.id)+'</small></div>';
+  return '<div class="exercise-modal-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail stretch-detail-modal" role="dialog" aria-modal="true" aria-label="'+esc(item.name)+' instructions" data-modal-panel>'+
+    '<button class="modal-close" type="button" data-action="close-details" aria-label="Close stretch instructions">×</button>'+
+    '<div class="runner-detail-head"><p class="eyebrow">'+kind+'</p><h2>'+esc(item.name)+'</h2><p>'+esc(muscles)+'</p></div>'+
+    '<div class="exercise-modal-media runner-detail-media">'+media+'</div>'+
+    '<div class="stretch-detail-facts"><div><span>TIME</span><strong>'+esc(stretchDurationLabel(item))+'</strong></div><div><span>SIDES</span><strong>'+esc(stretchSideLabel(item))+'</strong></div><div><span>POSITION</span><strong>'+esc(libraryTitleCase(item.position||'Any'))+'</strong></div></div>'+
+    '<div class="runner-detail-body"><div class="runner-detail-cue"><span>COACHING CUE</span><strong>'+esc(cue)+'</strong></div>'+
+      '<section><span>HOW TO MOVE</span><ol>'+steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></section>'+
+      '<section><span>WHAT YOU SHOULD FEEL</span><p>'+esc(item.feel||'A comfortable stretch through the target area without sharp pain.')+'</p></section>'+
+      '<section class="watch"><span>WATCH FOR</span><p>'+esc(mistakes||'Do not force the movement beyond a comfortable range.')+'</p></section>'+
+      '<section><span>MODIFICATION</span><p>'+esc(item.modification||'Reduce the range or choose a supported position.')+'</p></section>'+
+      '<section><span>BEST USED</span><p>'+esc(placements)+'</p></section>'+
+      '<section><span>EQUIPMENT</span><p>'+esc(equipment)+'</p></section>'+
+    '</div></section></div>';
+}
 function renderExerciseModal(){
   if(!exerciseDetailId)return '';
+  if(String(exerciseDetailId).startsWith('stretch:')){
+    const stretchId=String(exerciseDetailId).slice(8);
+    const stretch=stretchCatalog.find(item=>item.id===stretchId);
+    return stretch?renderStretchModal(stretch):'';
+  }
   const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
   if(!ex)return '';
   const guide=exerciseGuidance(ex),spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex);
@@ -6507,27 +6541,96 @@ function renderTrainProgramView(){
     '</section>'+
   '</div>';
 }
+function libraryTitleCase(value){
+  return String(value||'').replace(/[_-]+/g,' ').replace(/\b\w/g,char=>char.toUpperCase());
+}
+function libraryEntryType(entry){
+  if(entry?.libraryKind)return entry.libraryKind;
+  if(entry?.stretchType==='mobility'||entry?.type==='mobility')return 'mobility';
+  if(entry?.stretchType||entry?.placements)return 'stretch';
+  return 'strength';
+}
+function libraryCatalogEntries(){
+  const strength=catalog.map(item=>({...item,libraryKind:'strength',libraryId:item.id}));
+  const recovery=stretchCatalog.map(item=>({...item,libraryKind:item.type==='mobility'?'mobility':'stretch',stretchType:item.type,libraryId:'stretch:'+item.id}));
+  return strength.concat(recovery);
+}
 function libraryMovementGroup(ex){
-  const movement=String(ex?.movement||'');
-  if(['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory','biceps','triceps'].includes(movement))return 'upper';
-  if(['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'].includes(movement))return 'lower';
-  if(movement==='core')return 'core';
-  return 'other';
+  if(libraryEntryType(ex)==='strength'){
+    const movement=String(ex?.movement||'');
+    if(['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory','biceps','triceps'].includes(movement))return 'upper';
+    if(['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'].includes(movement))return 'lower';
+    if(movement==='core')return 'core';
+    return 'other';
+  }
+  const values=new Set([ex?.bodyArea,...(ex?.regions||[]),...(ex?.muscles||[])].map(value=>String(value||'').toLowerCase()));
+  if(values.has('full_body'))return 'full';
+  const upper=['neck','upper_traps','shoulders','chest','upper_back','thoracic_spine','back','arms','forearms','wrists','lats','triceps','biceps','rear_delts','anterior_delts','rotator_cuff'];
+  const lower=['lower_back','hips','groin','glutes','quads','hamstrings','calves','ankles','feet','legs','hip_flexors','adductors'];
+  const core=['core','spine','obliques','side_body'];
+  const hasUpper=upper.some(value=>values.has(value));
+  const hasLower=lower.some(value=>values.has(value));
+  if(hasUpper&&hasLower)return 'full';
+  if(hasUpper)return 'upper';
+  if(hasLower)return 'lower';
+  if(core.some(value=>values.has(value)))return 'core';
+  return 'full';
+}
+function librarySearchText(entry){
+  return [
+    entry?.name,entry?.movement,entry?.bodyArea,entry?.type,entry?.stretchType,entry?.position,entry?.style,entry?.difficulty,
+    ...(entry?.muscles||[]),...(entry?.regions||[]),...(entry?.equipment||[]),...(entry?.tags||[]),...(entry?.placements||[])
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+function stretchDurationLabel(item){
+  const seconds=Math.max(1,Number(item?.defaultSeconds)||Number(item?.minSeconds)||20);
+  return item?.side==='per_side'?seconds+' sec / side':seconds+' sec';
+}
+function stretchSideLabel(item){
+  return ({per_side:'Left + right',alternating:'Alternating',both:'Both sides'})[item?.side]||libraryTitleCase(item?.side||'Both');
+}
+function stretchLibraryMedia(item,className='catalog-exercise-media'){
+  const kind=item?.type==='mobility'?'MOBILITY':'STRETCH';
+  return '<button class="'+className+' stretch-library-media" type="button" data-exercise-detail="stretch:'+esc(item.id)+'" aria-label="View '+esc(item.name)+' instructions">'+
+    '<span class="stretch-media-grid" aria-hidden="true"><i></i><i></i><i></i></span>'+
+    '<span class="stretch-media-type">'+kind+'</span>'+
+    '<strong>'+esc(libraryTitleCase(item.bodyArea||item.regions?.[0]||'Full body'))+'</strong>'+
+    '<small>'+esc(stretchDurationLabel(item))+'</small>'+
+    '<span class="media-hint">VIEW CUES</span>'+
+  '</button>';
+}
+function renderLibraryCard(entry){
+  if(libraryEntryType(entry)==='strength'){
+    return '<article class="catalog-card visual-catalog-card studio-catalog-card library-strength-card">'+exerciseImageButton(entry,'catalog-exercise-media')+'<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(movements[entry.movement]||entry.movement)+'</span><span>'+esc(entry.difficulty)+'</span></div><h3>'+esc(entry.name)+'</h3><p>'+(entry.muscles||[]).map(esc).join(' · ')+'</p><div class="catalog-tags"><span>'+esc(entry.style)+'</span><span>'+esc((entry.equipment||[]).slice(0,2).join(' / '))+'</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="'+esc(entry.id)+'">View form & cues</button></div></article>';
+  }
+  const kind=libraryEntryType(entry);
+  return '<article class="catalog-card visual-catalog-card studio-catalog-card stretch-catalog-card '+kind+'">'+stretchLibraryMedia(entry)+
+    '<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(kind==='mobility'?'Mobility':'Stretch')+'</span><span>Level '+esc(entry.difficulty||1)+'</span></div>'+
+    '<h3>'+esc(entry.name)+'</h3><p>'+(entry.muscles||entry.regions||[]).slice(0,3).map(value=>esc(libraryTitleCase(value))).join(' · ')+'</p>'+
+    '<div class="catalog-tags"><span>'+esc(libraryTitleCase(entry.position||'Any'))+'</span><span>'+esc((entry.equipment||['bodyweight']).map(libraryTitleCase).slice(0,2).join(' / '))+'</span></div>'+
+    '<button class="text-button catalog-details" type="button" data-exercise-detail="stretch:'+esc(entry.id)+'">View cues & details</button></div></article>';
 }
 function renderTrainExercisesView(){
   const q=catalogQuery.trim().toLowerCase();
-  const filters=[['all','All'],['upper','Upper'],['lower','Lower'],['core','Core']];
-  const items=catalog.filter(e=>{
-    const matchesSearch=!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty,...(e.equipment||[])].join(' ').toLowerCase().includes(q);
-    const matchesGroup=catalogMovementFilter==='all'||libraryMovementGroup(e)===catalogMovementFilter;
-    return matchesSearch&&matchesGroup;
+  const typeFilters=[['all','All'],['strength','Strength'],['stretch','Stretch'],['mobility','Mobility']];
+  const bodyFilters=[['all','All body'],['upper','Upper'],['lower','Lower'],['core','Core'],['full','Full body']];
+  const allItems=libraryCatalogEntries();
+  const items=allItems.filter(entry=>{
+    const matchesSearch=!q||librarySearchText(entry).includes(q);
+    const matchesType=catalogTypeFilter==='all'||libraryEntryType(entry)===catalogTypeFilter;
+    const matchesGroup=catalogMovementFilter==='all'||libraryMovementGroup(entry)===catalogMovementFilter;
+    return matchesSearch&&matchesType&&matchesGroup;
   });
+  const strengthCount=catalog.length,stretchCount=stretchCatalog.filter(item=>item.type!=='mobility').length,mobilityCount=stretchCatalog.filter(item=>item.type==='mobility').length;
   return '<div class="train-view train-exercises-view library-v2">'+
-    '<section class="train-library-head"><div><p class="eyebrow">LIBRARY</p><h3>'+catalog.length+' movements</h3><p>Search by movement, muscle, or equipment. Tap an exercise for form cues and details.</p></div></section>'+
-    '<div class="catalog-search train-catalog-search"><input id="catalog-search" type="search" placeholder="Search exercises, muscles, or equipment..." value="'+esc(catalogQuery)+'"><span>'+items.length+' shown</span></div>'+
-    '<div class="library-filter-row" role="group" aria-label="Filter exercise library">'+filters.map(([id,label])=>'<button type="button" class="library-filter '+(catalogMovementFilter===id?'active':'')+'" data-action="set-library-filter" data-library-filter="'+id+'" aria-pressed="'+(catalogMovementFilter===id?'true':'false')+'">'+label+'</button>').join('')+'</div>'+
-    '<div class="catalog-grid train-catalog-grid">'+items.map(e=>'<article class="catalog-card visual-catalog-card studio-catalog-card">'+exerciseImageButton(e,'catalog-exercise-media')+'<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(movements[e.movement]||e.movement)+'</span><span>'+esc(e.difficulty)+'</span></div><h3>'+esc(e.name)+'</h3><p>'+e.muscles.map(esc).join(' · ')+'</p><div class="catalog-tags"><span>'+esc(e.style)+'</span><span>'+esc((e.equipment||[]).slice(0,2).join(' / '))+'</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="'+esc(e.id)+'">View form & cues</button></div></article>').join('')+'</div>'+
-    (!items.length?'<div class="library-empty"><strong>No exercises match this view.</strong><span>Try another category or search term.</span></div>':'')+
+    '<section class="train-library-head"><div><p class="eyebrow">LIBRARY</p><h3>'+allItems.length+' movements</h3><p>'+strengthCount+' strength · '+stretchCount+' stretch · '+mobilityCount+' mobility. Search the same catalog GoWorkout uses to build your sessions.</p></div></section>'+
+    '<div class="catalog-search train-catalog-search"><input id="catalog-search" type="search" placeholder="Search movements, muscles, body areas, or equipment..." value="'+esc(catalogQuery)+'"><span>'+items.length+' shown</span></div>'+
+    '<div class="library-filter-stack">'+
+      '<div class="library-filter-row library-type-filters" role="group" aria-label="Filter library by movement type">'+typeFilters.map(([id,label])=>'<button type="button" class="library-filter '+(catalogTypeFilter===id?'active':'')+'" data-action="set-library-type-filter" data-library-type-filter="'+id+'" aria-pressed="'+(catalogTypeFilter===id?'true':'false')+'">'+label+'</button>').join('')+'</div>'+
+      '<div class="library-filter-row library-body-filters" role="group" aria-label="Filter library by body area">'+bodyFilters.map(([id,label])=>'<button type="button" class="library-filter secondary '+(catalogMovementFilter===id?'active':'')+'" data-action="set-library-filter" data-library-filter="'+id+'" aria-pressed="'+(catalogMovementFilter===id?'true':'false')+'">'+label+'</button>').join('')+'</div>'+
+    '</div>'+
+    '<div class="catalog-grid train-catalog-grid">'+items.map(renderLibraryCard).join('')+'</div>'+
+    (!items.length?'<div class="library-empty"><strong>No movements match this view.</strong><span>Try another movement type, body area, or search term.</span></div>':'')+
   '</div>';
 }
 function openTrainPreview(dayId,scheduledDate=''){
@@ -7752,12 +7855,7 @@ function renderHome(){
   '</div>';
 }
 function renderCatalog(){
-  const q=catalogQuery.trim().toLowerCase();
-  const items=catalog.filter(e=>!q||[e.name,e.movement,...e.muscles,e.style,e.difficulty].join(' ').toLowerCase().includes(q));
-  return `
-    <div class="page-head"><div><p class="eyebrow">EXERCISE LIBRARY</p><h2 class="page-title">${catalog.length} movements.</h2><p class="page-copy">This catalog powers plan generation, equipment matching, starting-load estimates and progression.</p></div></div>
-    <div class="catalog-search"><input id="catalog-search" type="search" placeholder="Search chest, squat, dumbbell..." value="${esc(catalogQuery)}"><span>${items.length} shown</span></div>
-    <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><p class="catalog-description">${esc(exerciseDescription(e))}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
+  return '<div class="clean-page train-reframed train-reframed-v2 standalone-library">'+renderTrainExercisesView()+'</div>';
 }
 
 function preparedWorkoutStatus(w){
@@ -9511,7 +9609,8 @@ function handleClick(event){
   else if(a==='toggle-program-why'){programWhyOpen=!programWhyOpen;persistUiState();render();}
   else if(a==='train-program'){trainView='program';programWhyOpen=true;persistUiState();setTab('train');}
   else if(a==='set-train-view'){trainView=['week','program','exercises'].includes(node.dataset.trainView)?node.dataset.trainView:'week';persistUiState();render();}
-  else if(a==='set-library-filter'){catalogMovementFilter=['all','upper','lower','core'].includes(node.dataset.libraryFilter)?node.dataset.libraryFilter:'all';persistUiState();render();}
+  else if(a==='set-library-type-filter'){catalogTypeFilter=['all','strength','stretch','mobility'].includes(node.dataset.libraryTypeFilter)?node.dataset.libraryTypeFilter:'all';persistUiState();render();}
+  else if(a==='set-library-filter'){catalogMovementFilter=['all','upper','lower','core','full'].includes(node.dataset.libraryFilter)?node.dataset.libraryFilter:'all';persistUiState();render();}
   else if(a==='toggle-train-week'){const offset=Number(node.dataset.weekOffset);trainExpandedWeek=trainExpandedWeek===offset?0:offset;persistUiState();render();}
   else if(a==='train')setTab('train');
   else if(a==='together')setTab('together');
