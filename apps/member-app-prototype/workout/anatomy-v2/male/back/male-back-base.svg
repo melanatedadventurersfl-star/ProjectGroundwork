@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1800" role="img" aria-labelledby="title desc">
+  <title id="title">Male back anatomy base silhouette</title>
+  <desc id="desc">Neutral athletic male back silhouette for the GoWorkout anatomy system.</desc>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3e5246"/>
+      <stop offset=".48" stop-color="#2a3d32"/>
+      <stop offset="1" stop-color="#17261e"/>
+    </linearGradient>
+    <radialGradient id="head" cx=".48" cy=".28" r=".78">
+      <stop offset="0" stop-color="#485a4f"/>
+      <stop offset=".55" stop-color="#2c3f34"/>
+      <stop offset="1" stop-color="#17251e"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-10%" width="140%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity=".24"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <ellipse cx="500" cy="170" rx="92" ry="108" fill="url(#head)"/>
+    <path fill="url(#body)" d="M436 252
+      C442 286 438 315 416 339
+      C379 349 338 362 298 388
+      C249 420 221 470 204 530
+      C188 586 178 649 168 711
+      L133 873
+      C127 900 139 922 163 934
+      L199 944
+      C221 948 239 936 247 914
+      L291 780
+      C306 735 318 691 330 649
+      C332 706 330 759 326 812
+      C321 871 327 926 342 974
+      C355 1016 362 1054 358 1094
+      L344 1290
+      C340 1360 344 1436 355 1518
+      L372 1670
+      C375 1698 396 1714 424 1714
+      L451 1714
+      C475 1714 492 1699 495 1676
+      L514 1489
+      C521 1412 527 1345 532 1288
+      C538 1345 544 1412 551 1489
+      L570 1676
+      C573 1699 590 1714 614 1714
+      L641 1714
+      C669 1714 690 1698 693 1670
+      L710 1518
+      C721 1436 725 1360 721 1290
+      L707 1094
+      C703 1054 710 1016 723 974
+      C738 926 744 871 739 812
+      C735 759 733 706 735 649
+      C747 691 759 735 774 780
+      L818 914
+      C826 936 844 948 866 944
+      L902 934
+      C926 922 938 900 932 873
+      L897 711
+      C887 649 877 586 861 530
+      C844 470 816 420 767 388
+      C727 362 686 349 649 339
+      C627 315 623 286 629 252
+      C598 282 555 298 532 300
+      C509 298 467 282 436 252 Z"/>
+    <path fill="url(#body)" d="M376 1680
+      C351 1693 328 1720 319 1747
+      C352 1765 397 1769 449 1762
+      C465 1757 476 1746 480 1729
+      L479 1708
+      C445 1701 406 1692 376 1680 Z"/>
+    <path fill="url(#body)" d="M688 1680
+      C713 1693 736 1720 745 1747
+      C712 1765 667 1769 615 1762
+      C599 1757 588 1746 584 1729
+      L585 1708
+      C619 1701 658 1692 688 1680 Z"/>
+    <path fill="url(#body)" d="M138 907
+      C108 922 91 949 92 978
+      C95 1001 111 1023 132 1035
+      L148 1021 159 1042 173 1027 183 1049 198 1034 207 1013 199 944 Z"/>
+    <path fill="url(#body)" d="M927 907
+      C957 922 974 949 973 978
+      C970 1001 954 1023 933 1035
+      L917 1021 906 1042 892 1027 882 1049 867 1034 858 1013 866 944 Z"/>
+  </g>
+</svg>
