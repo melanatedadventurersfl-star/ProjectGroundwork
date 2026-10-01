@@ -6248,6 +6248,7 @@ function renderTrainCurrentWeek(){
     renderTrainBlockTimeline(context)+
     '<section class="train-current-week train-current-week-v2">'+
       '<div class="train-week-title"><div><p class="eyebrow">THIS WEEK · '+esc(phase.label)+'</p><h3>'+esc(start.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+' – '+esc(end.toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</h3><small>'+esc(phase.copy)+'</small></div><span>'+completed+'/'+schedule.length+' complete</span></div>'+
+      '<div class="train-week-path-v6">'+renderHomeWeekPulse(schedule)+'</div>'+
       (primary?trainSessionCard(primary,{primary:true}):'')+
       '<div class="train-session-list">'+schedule.filter(entry=>entry!==primary).map(entry=>trainSessionCard(entry)).join('')+'</div>'+
     '</section>'+
@@ -7309,13 +7310,126 @@ function homeExerciseMeta(ex){
 function homeWeekStats(schedule){
   const completedEntries=schedule.filter(entry=>entry.status==='complete');
   const timings=completedEntries.map(entry=>historyTimingInfo(entry.history)).filter(item=>item.activeMinutes!==null);
+  const history=weeklyHistory().filter(item=>!item.manualWorkoutCompletion&&item.completionStatus!=='partial');
+  const previous=weeklyHistory(addDays(new Date(),-7)).filter(item=>!item.manualWorkoutCompletion&&item.completionStatus!=='partial');
+  const exerciseIds=new Set();
+  for(const workout of history){
+    for(const exercise of workout.exercises||[]){
+      if(!exercise.skipped&&exercise.id)exerciseIds.add(exercise.id);
+    }
+  }
+  const currentVolume=history.reduce((sum,item)=>sum+num(item.totalVolume),0);
+  const previousVolume=previous.reduce((sum,item)=>sum+num(item.totalVolume),0);
+  const volumeChangePct=previousVolume>0?Math.round(((currentVolume-previousVolume)/previousVolume)*100):null;
   return {
     completed:completedEntries.length,
     planned:schedule.length,
     minutes:timings.reduce((sum,item)=>sum+item.activeMinutes,0),
     minutesKnown:timings.length>0,
-    remaining:Math.max(0,schedule.length-completedEntries.length)
+    remaining:Math.max(0,schedule.length-completedEntries.length),
+    exercises:exerciseIds.size,
+    currentVolume,
+    previousVolume,
+    volumeChangePct
   };
+}
+function homeMinutesLabel(minutes,known=true){
+  if(!known)return '—';
+  const total=Math.max(0,Math.round(num(minutes)));
+  const hours=Math.floor(total/60),mins=total%60;
+  if(hours&&mins)return hours+'h '+mins+'m';
+  if(hours)return hours+'h';
+  return total+'m';
+}
+function homeWeekComparisonLabel(stats){
+  if(stats.volumeChangePct===null)return {value:'—',tone:'neutral'};
+  const value=num(stats.volumeChangePct);
+  return {value:(value>0?'+':'')+value+'%',tone:value>0?'up':value<0?'down':'neutral'};
+}
+function homeHeroEntry(x,schedule){
+  if(store.activeWorkout){
+    const matched=(schedule||[]).find(entry=>entry.dateKey===store.activeWorkout.scheduledDate||entry.day?.id===store.activeWorkout.dayId);
+    return matched||x.entry||null;
+  }
+  if(x.entry&&['today','missed','returning','partial'].includes(x.state))return x.entry;
+  return homeNextScheduledEntry(schedule);
+}
+function homeHeroDay(x,schedule){
+  if(store.activeWorkout){
+    return {
+      id:store.activeWorkout.dayId||'active-workout',
+      name:store.activeWorkout.routineName||'Workout',
+      focus:store.activeWorkout.focus||'Training',
+      estimatedMinutes:store.profile?.minutes||45,
+      exercises:store.activeWorkout.exercises||[]
+    };
+  }
+  const entry=homeHeroEntry(x,schedule);
+  return entry?.adaptedDay||entry?.day||null;
+}
+function homeHeroPreferredMediaIds(day){
+  const text=((day?.name||'')+' '+(day?.focus||'')).toLowerCase();
+  if(/recovery|mobility|restore/.test(text))return ['dead-bug','glute-bridge','bodyweight-squat'];
+  if(/lower|leg|glute|hamstring|quad/.test(text))return ['leg-press','goblet-squat','db-rdl','hip-thrust','split-squat'];
+  if(/back/.test(text)&&/chest/.test(text))return ['db-bench','one-arm-row','lat-pulldown','db-shoulder-press'];
+  if(/upper|chest|shoulder/.test(text))return ['db-shoulder-press','db-bench','one-arm-row','lat-pulldown'];
+  if(/arm|bicep|tricep/.test(text))return ['biceps-curl','triceps-pushdown','db-triceps-extension'];
+  if(/full|total/.test(text))return ['goblet-squat','db-bench','one-arm-row','db-rdl'];
+  return ['db-shoulder-press','goblet-squat','db-bench','one-arm-row'];
+}
+function homeWorkoutHeroMedia(day){
+  const planned=(day?.exercises||[]).map(ex=>ex.id).filter(Boolean);
+  const ordered=[...homeHeroPreferredMediaIds(day),...planned];
+  const seen=new Set();
+  for(const id of ordered){
+    if(seen.has(id))continue;
+    seen.add(id);
+    const plannedExercise=(day?.exercises||[]).find(ex=>ex.id===id);
+    const source=catalog.find(item=>item.id===id);
+    const exercise=source?{...source,...(plannedExercise||{})}:plannedExercise;
+    if(!exercise)continue;
+    const spec=exerciseMediaSpec(exercise);
+    if(['reference','missing'].includes(spec.status))continue;
+    const media=exerciseMediaFrameUrl(exercise,0);
+    if(media)return {src:media,exercise};
+  }
+  return {src:'',exercise:null};
+}
+function renderHomeWorkoutHero(x,schedule){
+  const entry=homeHeroEntry(x,schedule);
+  const day=homeHeroDay(x,schedule);
+  if(!day)return '<section class="home-workout-hero-v6 empty"><div class="home-workout-hero-copy"><span>NEXT WORKOUT</span><h1>Your plan is ready.</h1><p>Open Train to review your next session.</p><button type="button" data-action="train">VIEW TRAINING →</button></div></section>';
+  const media=homeWorkoutHeroMedia(day);
+  const active=Boolean(store.activeWorkout);
+  const date=entry?.date||new Date();
+  const dateLabel=active
+    ?'Workout in progress'
+    :date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
+  const meta=active
+    ?esc(homeActivePhaseLabel(store.activeWorkout?.phase))+' · '+esc(formatClock(workoutElapsedSeconds(store.activeWorkout)))+' elapsed'
+    :esc(day.focus||'Training')+' · ~'+esc(day.estimatedMinutes||store.profile?.minutes||45)+' min';
+  const action=active
+    ?'<button type="button" data-action="resume">RESUME WORKOUT →</button>'
+    :entry
+      ?'<button type="button" data-action="home-start-workout" data-day-id="'+esc(entry.day?.id||day.id)+'" data-scheduled-date="'+esc(entry.dateKey||dateKey(date))+'">START WORKOUT →</button>'
+      :'<button type="button" data-action="train">VIEW TRAINING →</button>';
+  return '<section class="home-workout-hero-v6 '+(media.src?'has-media':'')+'">'+
+    (media.src?'<img class="home-workout-hero-media" src="'+esc(media.src)+'" alt="" loading="eager" decoding="async">':'')+
+    '<div class="home-workout-hero-shade"></div>'+
+    '<div class="home-workout-hero-copy"><span>'+(active?'WORKOUT IN PROGRESS':'NEXT WORKOUT')+'</span><h1>'+esc(day.name||'Workout')+'</h1><p>'+esc(dateLabel)+' · '+meta+'</p>'+action+'</div>'+
+  '</section>';
+}
+function renderHomeWeekSummary(schedule){
+  const stats=homeWeekStats(schedule),comparison=homeWeekComparisonLabel(stats);
+  return '<section class="home-week-summary-v6">'+
+    '<div class="home-week-summary-title">THIS WEEK</div>'+
+    '<div class="home-week-summary-grid">'+
+      '<div><strong>'+stats.completed+' / '+stats.planned+'</strong><span>Workouts</span></div>'+
+      '<div><strong>'+esc(homeMinutesLabel(stats.minutes,stats.minutesKnown))+'</strong><span>Total time</span></div>'+
+      '<div><strong>'+stats.exercises+'</strong><span>Exercises</span></div>'+
+      '<div class="comparison '+comparison.tone+'"><strong>'+esc(comparison.value)+'</strong><span>vs. last week</span></div>'+
+    '</div>'+
+  '</section>';
 }
 function homeWeekMuscleSnapshot(){
   const counts={};
@@ -7484,40 +7598,44 @@ function bodyHeatClass(level){
   return level?' heat-'+Math.max(1,Math.min(4,level)):'';
 }
 function renderHomeFrontAnatomy(snapshot){
-  return '<svg class="home-anatomy-svg front" viewBox="0 0 180 360" role="img" aria-label="Front muscle training load">'+
-    '<defs><filter id="frontHeatGlow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'+
-    '<circle class="anatomy-base" cx="90" cy="31" r="18"/>'+
-    '<path class="anatomy-base" d="M82 48 78 61 62 67 47 78 39 105 31 146 39 151 52 112 61 91 64 149 57 194 62 230 58 283 61 344 78 344 83 285 90 235 97 285 102 344 119 344 122 283 118 230 123 194 116 149 119 91 128 112 141 151 149 146 141 105 133 78 118 67 102 61 98 48Z"/>'+
-    '<path class="anatomy-detail" d="M90 51V145M65 70Q90 82 115 70M66 99Q90 110 114 99M71 121Q90 128 109 121M72 148Q90 156 108 148M90 157V226M64 194Q76 204 90 202M116 194Q104 204 90 202M63 232Q73 243 82 246M117 232Q107 243 98 246"/>'+
-    '<path class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" d="M62 67Q50 71 45 82L53 96Q59 86 69 82L77 71Z"/>'+
-    '<path class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" d="M118 67Q130 71 135 82L127 96Q121 86 111 82L103 71Z"/>'+
-    '<path class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" d="M69 76Q79 70 89 73V103Q74 103 63 94L65 81Z"/>'+
-    '<path class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" d="M111 76Q101 70 91 73V103Q106 103 117 94L115 81Z"/>'+
-    '<path class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" d="M49 91Q42 103 40 124L47 131Q54 113 57 96Z"/>'+
-    '<path class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" d="M131 91Q138 103 140 124L133 131Q126 113 123 96Z"/>'+
-    '<path class="body-zone core'+bodyHeatClass(snapshot.front.core)+'" d="M72 107Q90 113 108 107L109 151Q104 177 90 189 76 177 71 151Z"/>'+
-    '<path class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" d="M64 194Q74 196 84 203L82 249 73 280 62 267 61 230Z"/>'+
-    '<path class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" d="M116 194Q106 196 96 203L98 249 107 280 118 267 119 230Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M62 276Q72 285 77 302L73 335 62 335 59 302Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M118 276Q108 285 103 302L107 335 118 335 121 302Z"/>'+
+  const chest=bodyHeatClass(snapshot.front.chest),shoulders=bodyHeatClass(snapshot.front.shoulders),biceps=bodyHeatClass(snapshot.front.biceps),core=bodyHeatClass(snapshot.front.core),quads=bodyHeatClass(snapshot.front.quads),calves=bodyHeatClass(snapshot.back.calves);
+  return '<svg class="home-anatomy-svg anatomy-v6 front" viewBox="0 0 220 430" role="img" aria-label="Front muscle training load">'+
+    '<defs><linearGradient id="frontBodyShade" x1="0" x2="1"><stop offset="0" stop-color="#24332a"/><stop offset=".5" stop-color="#34473a"/><stop offset="1" stop-color="#202f27"/></linearGradient></defs>'+
+    '<ellipse class="anatomy-shadow" cx="110" cy="411" rx="63" ry="7"/>'+
+    '<path class="anatomy-silhouette" d="M95 27Q110 16 125 27L130 43Q127 56 119 63L120 73 141 80Q160 86 168 103L178 143 191 187 180 193 162 151 153 123 149 171 143 214 150 248 145 301 149 365 142 413 124 413 118 368 111 305 104 368 97 413 79 413 72 365 76 301 71 248 78 214 72 171 68 123 59 151 40 193 29 187 42 143 50 103Q59 86 79 80L100 73 101 63Q93 56 90 43Z"/>'+
+    '<path class="anatomy-neck" d="M101 61Q110 69 119 61L121 80Q110 88 99 80Z"/>'+
+    '<path class="anatomy-muscle shoulders'+shoulders+'" d="M99 82Q80 77 66 91L60 109Q75 104 88 112L103 98Z"/><path class="anatomy-muscle shoulders'+shoulders+'" d="M121 82Q140 77 154 91L160 109Q145 104 132 112L117 98Z"/>'+
+    '<path class="anatomy-muscle chest'+chest+'" d="M103 93Q86 89 73 102L75 127Q89 136 107 126L108 99Z"/><path class="anatomy-muscle chest'+chest+'" d="M117 93Q134 89 147 102L145 127Q131 136 113 126L112 99Z"/>'+
+    '<path class="anatomy-muscle biceps'+biceps+'" d="M62 113Q49 132 49 160L57 175Q69 151 72 121Z"/><path class="anatomy-muscle biceps'+biceps+'" d="M158 113Q171 132 171 160L163 175Q151 151 148 121Z"/>'+
+    '<path class="anatomy-muscle forearm'+biceps+'" d="M48 163 35 192 31 222 41 226 55 190 59 174Z"/><path class="anatomy-muscle forearm'+biceps+'" d="M172 163 185 192 189 222 179 226 165 190 161 174Z"/>'+
+    '<path class="anatomy-muscle core'+core+'" d="M91 132Q101 129 108 135L107 158Q100 162 93 158Z"/><path class="anatomy-muscle core'+core+'" d="M112 135Q119 129 129 132L127 158Q120 162 113 158Z"/>'+
+    '<path class="anatomy-muscle core'+core+'" d="M93 161Q101 158 107 163L106 184Q100 188 94 184Z"/><path class="anatomy-muscle core'+core+'" d="M113 163Q119 158 127 161L126 184Q120 188 114 184Z"/>'+
+    '<path class="anatomy-muscle core'+core+'" d="M94 188Q101 184 106 189L105 210Q100 214 95 210Z"/><path class="anatomy-muscle core'+core+'" d="M114 189Q119 184 126 188L125 210Q120 214 115 210Z"/>'+
+    '<path class="anatomy-muscle oblique'+core+'" d="M78 132Q87 137 91 151L92 198 81 213 74 188 77 150Z"/><path class="anatomy-muscle oblique'+core+'" d="M142 132Q133 137 129 151L128 198 139 213 146 188 143 150Z"/>'+
+    '<path class="anatomy-muscle hip'+quads+'" d="M80 213Q93 211 106 220L103 245 87 252 76 239Z"/><path class="anatomy-muscle hip'+quads+'" d="M140 213Q127 211 114 220L117 245 133 252 144 239Z"/>'+
+    '<path class="anatomy-muscle quads'+quads+'" d="M78 246Q91 244 102 252L97 307 85 333 75 314 73 274Z"/><path class="anatomy-muscle quads'+quads+'" d="M142 246Q129 244 118 252L123 307 135 333 145 314 147 274Z"/>'+
+    '<path class="anatomy-muscle quads'+quads+'" d="M103 250Q108 247 110 255L108 312 100 329 96 307Z"/><path class="anatomy-muscle quads'+quads+'" d="M117 250Q112 247 110 255L112 312 120 329 124 307Z"/>'+
+    '<path class="anatomy-muscle calves'+calves+'" d="M78 331Q91 337 95 357L90 397 80 404 74 379Z"/><path class="anatomy-muscle calves'+calves+'" d="M142 331Q129 337 125 357L130 397 140 404 146 379Z"/>'+
+    '<path class="anatomy-line" d="M110 90V215M82 132Q110 142 138 132M87 216Q110 230 133 216M75 246Q110 257 145 246M77 332Q91 343 101 335M143 332Q129 343 119 335"/>'+
   '</svg>';
 }
 function renderHomeBackAnatomy(snapshot){
-  return '<svg class="home-anatomy-svg back" viewBox="0 0 180 360" role="img" aria-label="Back muscle training load">'+
-    '<defs><filter id="backHeatGlow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'+
-    '<circle class="anatomy-base" cx="90" cy="31" r="18"/>'+
-    '<path class="anatomy-base" d="M82 48 78 61 62 67 47 78 39 105 31 146 39 151 52 112 61 91 64 149 57 194 62 230 58 283 61 344 78 344 83 285 90 235 97 285 102 344 119 344 122 283 118 230 123 194 116 149 119 91 128 112 141 151 149 146 141 105 133 78 118 67 102 61 98 48Z"/>'+
-    '<path class="anatomy-detail" d="M90 51V194M66 72Q90 64 114 72M65 104Q90 119 115 104M70 139Q90 150 110 139M64 194Q76 184 90 187M116 194Q104 184 90 187M63 232Q73 243 82 246M117 232Q107 243 98 246"/>'+
-    '<path class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" d="M66 70Q77 66 88 72L84 113 68 137 60 113 62 82Z"/>'+
-    '<path class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" d="M114 70Q103 66 92 72L96 113 112 137 120 113 118 82Z"/>'+
-    '<path class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" d="M49 91Q42 104 40 127L48 132Q56 111 57 96Z"/>'+
-    '<path class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" d="M131 91Q138 104 140 127L132 132Q124 111 123 96Z"/>'+
-    '<path class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" d="M67 168Q78 157 89 166L89 198Q76 207 63 193Z"/>'+
-    '<path class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" d="M113 168Q102 157 91 166L91 198Q104 207 117 193Z"/>'+
-    '<path class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" d="M64 199Q75 202 84 208L81 259 70 286 61 268 61 226Z"/>'+
-    '<path class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" d="M116 199Q105 202 96 208L99 259 110 286 119 268 119 226Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M61 277Q72 284 77 302L72 337 62 337 58 303Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M119 277Q108 284 103 302L108 337 118 337 122 303Z"/>'+
+  const back=bodyHeatClass(snapshot.back.back),triceps=bodyHeatClass(snapshot.back.triceps),glutes=bodyHeatClass(snapshot.back.glutes),hamstrings=bodyHeatClass(snapshot.back.hamstrings),calves=bodyHeatClass(snapshot.back.calves);
+  return '<svg class="home-anatomy-svg anatomy-v6 back" viewBox="0 0 220 430" role="img" aria-label="Back muscle training load">'+
+    '<defs><linearGradient id="backBodyShade" x1="0" x2="1"><stop offset="0" stop-color="#24332a"/><stop offset=".5" stop-color="#34473a"/><stop offset="1" stop-color="#202f27"/></linearGradient></defs>'+
+    '<ellipse class="anatomy-shadow" cx="110" cy="411" rx="63" ry="7"/>'+
+    '<path class="anatomy-silhouette" d="M95 27Q110 16 125 27L130 43Q127 56 119 63L120 73 141 80Q160 86 168 103L178 143 191 187 180 193 162 151 153 123 149 171 143 214 150 248 145 301 149 365 142 413 124 413 118 368 111 305 104 368 97 413 79 413 72 365 76 301 71 248 78 214 72 171 68 123 59 151 40 193 29 187 42 143 50 103Q59 86 79 80L100 73 101 63Q93 56 90 43Z"/>'+
+    '<path class="anatomy-neck" d="M101 61Q110 69 119 61L121 80Q110 88 99 80Z"/>'+
+    '<path class="anatomy-muscle traps'+back+'" d="M101 75 110 90 119 75 133 91 121 115 110 121 99 115 87 91Z"/>'+
+    '<path class="anatomy-muscle rear-delts'+back+'" d="M87 89Q71 84 60 101L63 119Q77 111 91 112L101 98Z"/><path class="anatomy-muscle rear-delts'+back+'" d="M133 89Q149 84 160 101L157 119Q143 111 129 112L119 98Z"/>'+
+    '<path class="anatomy-muscle lats'+back+'" d="M97 112Q84 112 74 126L76 171 91 203 106 178 106 126Z"/><path class="anatomy-muscle lats'+back+'" d="M123 112Q136 112 146 126L144 171 129 203 114 178 114 126Z"/>'+
+    '<path class="anatomy-muscle triceps'+triceps+'" d="M60 115Q49 134 49 160L57 176Q69 150 72 122Z"/><path class="anatomy-muscle triceps'+triceps+'" d="M160 115Q171 134 171 160L163 176Q151 150 148 122Z"/>'+
+    '<path class="anatomy-muscle forearm'+triceps+'" d="M48 163 35 192 31 222 41 226 55 190 59 174Z"/><path class="anatomy-muscle forearm'+triceps+'" d="M172 163 185 192 189 222 179 226 165 190 161 174Z"/>'+
+    '<path class="anatomy-muscle lower-back'+back+'" d="M91 177Q100 186 108 193L106 222 91 236 79 218Z"/><path class="anatomy-muscle lower-back'+back+'" d="M129 177Q120 186 112 193L114 222 129 236 141 218Z"/>'+
+    '<path class="anatomy-muscle glutes'+glutes+'" d="M78 222Q94 215 108 226L107 258Q92 272 75 258L72 241Z"/><path class="anatomy-muscle glutes'+glutes+'" d="M142 222Q126 215 112 226L113 258Q128 272 145 258L148 241Z"/>'+
+    '<path class="anatomy-muscle hamstrings'+hamstrings+'" d="M77 262Q91 263 104 272L99 327 86 348 76 325 73 289Z"/><path class="anatomy-muscle hamstrings'+hamstrings+'" d="M143 262Q129 263 116 272L121 327 134 348 144 325 147 289Z"/>'+
+    '<path class="anatomy-muscle calves'+calves+'" d="M78 333Q92 340 95 360L90 397 80 404 74 379Z"/><path class="anatomy-muscle calves'+calves+'" d="M142 333Q128 340 125 360L130 397 140 404 146 379Z"/>'+
+    '<path class="anatomy-line" d="M110 89V222M79 116Q110 128 141 116M85 175Q110 190 135 175M74 222Q110 238 146 222M75 261Q110 278 145 261M77 332Q90 345 101 337M143 332Q130 345 119 337"/>'+
   '</svg>';
 }
 function renderHomeBodySnapshot(){
@@ -7528,12 +7646,12 @@ function renderHomeBodySnapshot(){
       '<i></i><span><strong>'+esc(item.label)+'</strong><small>'+item.value+' touch'+(item.value===1?'':'es')+'</small></span><em>›</em>'+
     '</button>'
   ).join('');
-  return '<section class="home-body-card home-training-load home-training-load-v5">'+
-    '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p><h3>Where your work landed.</h3></div><button class="text-button" data-action="progress">VIEW PROGRESS →</button></div>'+
-    '<div class="home-body-layout"><div class="home-body-pair" aria-label="Muscle groups trained this week">'+
-      '<div class="home-body-figure anatomy"><span>FRONT</span>'+renderHomeFrontAnatomy(snapshot)+'</div>'+
-      '<div class="home-body-figure anatomy"><span>BACK</span>'+renderHomeBackAnatomy(snapshot)+'</div>'+
-    '</div><div class="home-body-copy"><button type="button" class="home-load-info" aria-label="About training load" data-action="progress">ⓘ Training load reflects muscles recorded in completed workouts.</button><div class="home-muscle-load-list">'+top+'</div></div></div>'+
+  return '<section class="home-body-card home-training-load home-training-load-v6">'+
+    '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p></div><button class="text-button" data-action="progress">VIEW PROGRESS →</button></div>'+
+    '<div class="home-body-layout">'+
+      '<div class="home-body-pair" aria-label="Muscle groups trained this week"><div class="home-body-figure anatomy"><span>FRONT</span>'+renderHomeFrontAnatomy(snapshot)+'</div><div class="home-body-figure anatomy"><span>BACK</span>'+renderHomeBackAnatomy(snapshot)+'</div></div>'+
+      '<div class="home-body-copy"><div class="home-muscle-load-list">'+top+'</div><button type="button" class="home-load-info" data-action="progress">ⓘ About training load</button></div>'+
+    '</div>'+
   '</section>';
 }
 function renderHomeLastWorkout(last){
@@ -7564,37 +7682,15 @@ function renderHomeNextSession(schedule,state){
   '</button>';
 }
 function renderHome(){
-  const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
-  const x=getHomeExperience(),schedule=x.schedule,context=x.context;
-  const stats=homeWeekStats(schedule);
+  const p=store.profile,plan=store.plan;
+  if(!p||!plan)return renderProfileEditor();
+  const x=getHomeExperience(),schedule=x.schedule;
   const shared=sharedTrainingState();
-  const name=homeFirstName();
-  const greeting=name?'Hey, '+esc(name)+'.':'Your training.';
-  const activeMeta=x.state==='active'
-    ?'<b id="home-elapsed-clock">'+esc(formatClock(workoutElapsedSeconds(store.activeWorkout)))+'</b> elapsed · '+esc(homeActivePhaseLabel(store.activeWorkout?.phase))
-    :esc(x.meta);
-  return '<div class="clean-page home-clean home-contextual home-contextual-v3 home-contextual-v4">'+
-    '<section class="home-intro-v2 home-intro-v4"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
-    renderHomeProgramJourney(context)+
-    '<section class="home-state-hero home-state-hero-v4 state-'+esc(x.state)+'">'+
-      renderHomeHeroBackdrop(x)+
-      '<div class="home-hero-content-v4">'+
-        '<div class="home-state-copy home-state-copy-v4"><span>'+esc(x.eyebrow)+(x.state==='active'?'<i class="home-live-dot"></i>':'')+'</span><h1>'+esc(x.title)+'</h1><p>'+esc(x.copy)+'</p><small>'+activeMeta+'</small></div>'+
-        renderHomeHeroAccessory(x)+
-      '</div>'+
-      '<div class="home-hero-actions home-hero-actions-v4">'+renderHomePrimaryAction(x)+
-        (x.entry&&['today','missed','returning'].includes(x.state)&&normalSessionSetupKey()!=='bodyweight'?'<button class="home-train-anywhere" data-action="train-anywhere-home" data-day-id="'+esc(x.entry.day.id)+'" data-scheduled-date="'+esc(x.entry.dateKey)+'">CAN’T MAKE THE GYM? <strong>TRAIN ANYWHERE</strong></button>':'')+
-      '</div>'+
-      (x.state==='active'?'<div class="home-state-secondary home-state-secondary-v4"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
-    '</section>'+
-    '<section class="clean-section home-week-section home-week-section-v3 home-week-section-v4"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
-      '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
-      renderHomeWeekPulse(schedule)+
-      '<div class="home-week-progress" aria-label="'+stats.completed+' of '+stats.planned+' workouts complete"><span style="width:'+Math.round((stats.completed/Math.max(1,stats.planned))*100)+'%"></span></div>'+
-    '</section>'+
+  return '<div class="clean-page home-clean home-dashboard-v6">'+
+    renderHomeWorkoutHero(x,schedule)+
+    renderHomeWeekSummary(schedule)+
     renderHomeBodySnapshot()+
-    renderHomeNextSession(schedule,x.state)+
-    (x.last&&x.state!=='completed-fresh'?renderHomeLastWorkout(x.last):'')+
+    (x.last?renderHomeLastWorkout(x.last):'')+
     (shared.draft?'<button class="shared-home-card" data-action="together"><div class="shared-avatar-stack small"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-avatar partner">'+esc((shared.draft.partnerName[0]||'P').toUpperCase())+'</div></div><div><span>SHARED WORKOUT</span><strong>'+esc(shared.draft.routineName)+' with '+esc(shared.draft.partnerName)+'</strong><small>'+esc(shared.draft.partnerStatus==='ready'?'Both ready':'Invite pending')+'</small></div><em>→</em></button>':'')+
   '</div>';
 }
@@ -9277,6 +9373,7 @@ function handleClick(event){
     cancelCoachTimeline(true);
     setTab('home');
   }
+  else if(a==='home-start-workout')openReadiness(node.dataset.dayId,node.dataset.scheduledDate||'');
   else if(a==='preview-train-day')openTrainPreview(node.dataset.dayId,node.dataset.scheduledDate||'');
   else if(a==='close-train-preview'){
     const inside=event.target.closest('[data-train-preview-panel]');
