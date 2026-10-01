@@ -2408,9 +2408,10 @@ function workoutExerciseFromCandidate(candidate,template,setCount){
     }))
   };
 }
-function estimatePlanExerciseSeconds(ex){
+function estimatePlanExerciseSeconds(ex,restBonus=0){
   const setSeconds=goalSettings(store.profile?.goal||'muscle',ex.movement,store.profile?.experience||'beginner').setSeconds||40;
-  const between=ex.blockId?(ex.transitionRest||15):(ex.rest||45);
+  const baseRest=ex.blockId?(ex.transitionRest||15):(ex.rest||45);
+  const between=Math.max(15,Math.min(120,baseRest+(ex.blockId?0:Math.max(0,num(restBonus)))));
   return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*between+35;
 }
 function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
@@ -2453,7 +2454,7 @@ function recalculatePlanDay(day){
   day.warmup=buildWarmup(day.exercises||[]);
   day.cooldown=buildCooldown(day.exercises||[]);
   const prep=[...(day.warmup||[]),...(day.cooldown||[])].reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0);
-  const work=(day.exercises||[]).reduce((sum,ex)=>sum+estimatePlanExerciseSeconds(ex),0);
+  const work=(day.exercises||[]).reduce((sum,ex)=>sum+estimatePlanExerciseSeconds(ex,day.readinessRestBonus||0),0);
   day.warmupMinutes=Math.ceil((day.warmup||[]).reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
   day.cooldownMinutes=Math.ceil((day.cooldown||[]).reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
   day.estimatedMinutes=Math.max(10,Math.ceil((prep+work)/60));
@@ -4050,20 +4051,60 @@ function readinessScore(readiness){
   return values.length?Math.round((values.reduce((a,b)=>a+b,0)/values.length)*10)/10:3;
 }
 function applyReadinessToDay(day,readiness){
-  const adjusted=clone(day),score=readinessScore(readiness);
+  let adjusted=clone(day),score=readinessScore(readiness);
   const available=Math.max(15,num(readiness?.timeAvailable)||num(store.profile?.minutes)||45);
   const energy=num(readiness?.energy)||3,sleep=num(readiness?.sleep)||3,soreness=num(readiness?.soreness)||2,notes=[];
-  adjusted.readinessLoadFactor=1;adjusted.readinessRestBonus=0;adjusted.holdProgression=false;
-  if(energy<=2){adjusted.readinessLoadFactor=.95;for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;adjusted.readinessRestBonus=15;notes.push('Low energy: accessory volume reduced and rest extended.');}
-  if(sleep<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);adjusted.holdProgression=true;adjusted.readinessRestBonus=Math.max(adjusted.readinessRestBonus,15);notes.push('Poor sleep: today holds load progression and uses a conservative prescription.');}
-  if(soreness>=4){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.9);adjusted.holdProgression=true;for(const ex of adjusted.exercises)if(ex.sets>2)ex.sets-=1;notes.push('High soreness: working volume and loading were reduced for recovery.');}
-  else if(soreness===3){for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;notes.push('Moderate soreness: optional accessory volume was trimmed.');}
+
+  if(adjusted.engineBacked&&available<(adjusted.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){
+    const engine=currentEngineProgram();
+    const week=engine?.program?.weeks?.find(w=>w.week===adjusted.engineWeek);
+    const session=week?.sessions?.find(s=>s.id===adjusted.engineSessionId);
+    if(session){
+      const compressed=programEngine.compressSession(session,available);
+      adjusted=engineSessionToLegacyDay(compressed,adjusted,0,adjusted.engineBlockNumber||programContext().blockNumber);
+      adjusted.adaptationNotes=[...(adjusted.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+available+' available minutes.'];
+    }
+  }
+  fitSessionDayToTime(adjusted,available);
+  const scopedExerciseCount=adjusted.exercises.length;
+
+  adjusted.readinessLoadFactor=1;
+  adjusted.readinessRestBonus=0;
+  adjusted.holdProgression=false;
+
+  if(energy<=2){
+    adjusted.readinessLoadFactor=.95;
+    for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
+    adjusted.readinessRestBonus=15;
+    notes.push('Low energy: accessory volume reduced and rest extended.');
+  }
+  if(sleep<=2){
+    adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);
+    adjusted.holdProgression=true;
+    adjusted.readinessRestBonus=Math.max(adjusted.readinessRestBonus,15);
+    notes.push('Poor sleep: today holds load progression and uses a conservative prescription.');
+  }
+  if(soreness>=4){
+    adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.9);
+    adjusted.holdProgression=true;
+    for(const ex of adjusted.exercises)if(ex.sets>2)ex.sets-=1;
+    notes.push('High soreness: working volume and loading were reduced for recovery.');
+  }else if(soreness===3){
+    for(const ex of adjusted.exercises)if(ACCESSORY_MOVEMENTS.has(ex.movement)&&ex.sets>2)ex.sets-=1;
+    notes.push('Moderate soreness: optional accessory volume was trimmed.');
+  }
+
   recalculatePlanDay(adjusted);
-  while(adjusted.estimatedMinutes>available&&adjusted.exercises.length>2){const index=[...adjusted.exercises].reverse().findIndex(ex=>ACCESSORY_MOVEMENTS.has(ex.movement));if(index<0)break;adjusted.exercises.splice(adjusted.exercises.length-1-index,1);recalculatePlanDay(adjusted);}
-  for(let i=adjusted.exercises.length-1;i>=0&&adjusted.estimatedMinutes>available;i--)while(adjusted.exercises[i]?.sets>2&&adjusted.estimatedMinutes>available){adjusted.exercises[i].sets-=1;recalculatePlanDay(adjusted);}
+  if(adjusted.estimatedMinutes>available)fitSessionDayToTime(adjusted,available);
+  adjusted.scopeExerciseCount=scopedExerciseCount;
+
   if(adjusted.estimatedMinutes>available)notes.push('The minimum useful session may run slightly past your available time.');
   else if(available<(num(store.profile?.minutes)||45))notes.push('Time available: the session was shortened while protecting priority work.');
-  adjusted.readinessNotes=notes;adjusted.readinessScore=score;adjusted.availableMinutes=available;return adjusted;
+
+  adjusted.readinessNotes=notes;
+  adjusted.readinessScore=score;
+  adjusted.availableMinutes=available;
+  return adjusted;
 }
 function scheduledEntryFor(dayId,scheduledDate=''){
   const key=scheduledDate||dateKey();
@@ -4357,14 +4398,6 @@ async function startPreparedWorkout(){
   await advanceBuild(1);
   const sourceDay=clone(context.day);
   let day=applyReadinessToDay(sourceDay,readiness);
-  if(day.engineBacked&&readiness.timeAvailable&&readiness.timeAvailable<(day.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){
-    const engine=currentEngineProgram(),week=engine?.program?.weeks?.find(w=>w.week===day.engineWeek),session=week?.sessions?.find(s=>s.id===day.engineSessionId);
-    if(session){
-      const compressed=programEngine.compressSession(session,readiness.timeAvailable);
-      day=engineSessionToLegacyDay(compressed,day);
-      day.adaptationNotes=[...(day.adaptationNotes||[]),'Program Engine protected priority movements and trimmed lower-priority work for '+readiness.timeAvailable+' available minutes.'];
-    }
-  }
   day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
   if(!day.exercises.length){
     context.building=null;
@@ -4406,7 +4439,7 @@ function createWorkout(day,meta={}){
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
     readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
-    preparedAt:now,startedAt:now,trainingStartedAt:null,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
+    preparedAt:now,startedAt:now,trainingStartedAt:null,estimatedMinutes:num(day.estimatedMinutes)||num(meta.estimatedMinutes)||num(meta.readiness?.timeAvailable)||num(store.profile?.minutes)||45,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,totalPausedMs:0,pauseLog:[],
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,timedStageSide:'',
     warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
