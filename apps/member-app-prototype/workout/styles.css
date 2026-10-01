@@ -15101,3 +15101,68 @@ body.home-mode .bottom-nav:before{
   .preflight-readiness-row{grid-template-columns:minmax(0,1fr) auto}
   .readiness-dot-option{width:25px}
 }
+
+
+/* GoWorkout exercise detail media v2 */
+.runner-exercise-detail{
+  grid-template-columns:1fr;
+}
+.runner-detail-media{
+  width:100%;
+  box-sizing:border-box;
+}
+.runner-detail-positions{
+  width:100%;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.runner-detail-positions figure{
+  min-width:0;
+  min-height:0;
+  display:grid;
+  grid-template-rows:auto auto;
+  gap:7px;
+  overflow:visible;
+  background:transparent;
+  border-radius:0;
+}
+.runner-detail-frame{
+  width:100%;
+  aspect-ratio:4/5;
+  overflow:hidden;
+  border:1px solid #ded6c6;
+  border-radius:14px;
+  background:#e9e1d2;
+}
+.runner-detail-frame img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center center;
+  background:#e9e1d2;
+}
+.runner-detail-positions figcaption{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  min-width:0;
+  padding:0 2px;
+}
+.runner-detail-positions figcaption span{
+  color:#7c6a3c;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.runner-detail-positions figcaption small{
+  color:#7b847c;
+  font-size:7px;
+}
+@media(max-width:560px){
+  .runner-detail-media{padding:0 12px}
+  .runner-detail-positions{gap:8px}
+  .runner-detail-frame{aspect-ratio:4/5}
+  .runner-detail-positions figure{min-height:0}
+}
