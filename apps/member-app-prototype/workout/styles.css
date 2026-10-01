@@ -16071,3 +16071,355 @@ body.home-mode .bottom-nav:before{
     transition:none;
   }
 }
+
+
+/* GoWorkout exercise intelligence + category color language */
+.library-v2 .studio-catalog-card{
+  --library-category:#d8b45c;
+  position:relative;
+  border-color:color-mix(in srgb,var(--library-category) 34%,var(--line));
+  box-shadow:inset 0 2px 0 color-mix(in srgb,var(--library-category) 58%,transparent);
+}
+.library-v2 .library-strength-card{--library-category:#d8b45c;}
+.library-v2 .stretch-catalog-card.stretch{--library-category:#a995c6;}
+.library-v2 .stretch-catalog-card.mobility{--library-category:#62aaa1;}
+.library-v2 .studio-catalog-card .library-category-label{
+  color:var(--library-category);
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.library-v2 .studio-catalog-card .library-movement-label{
+  display:block;
+  margin:8px 0 -3px;
+  color:var(--muted);
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.library-v2 .studio-catalog-card .catalog-details{
+  color:var(--library-category);
+}
+.library-v2 .stretch-catalog-card .stretch-media-type{
+  color:var(--library-category);
+}
+.library-v2 .library-type-filters button.active{
+  border-color:var(--accent);
+}
+.library-v2 .library-type-filters button[data-library-type-filter="stretch"].active{
+  border-color:#a995c6;
+  color:#d8c9ef;
+  background:rgba(169,149,198,.10);
+}
+.library-v2 .library-type-filters button[data-library-type-filter="mobility"].active{
+  border-color:#62aaa1;
+  color:#9ed7cf;
+  background:rgba(98,170,161,.10);
+}
+
+.exercise-intelligence-detail{
+  width:min(900px,calc(100vw - 24px));
+  max-height:min(900px,calc(100dvh - 24px));
+  overflow:auto;
+}
+.exercise-detail-tabs{
+  position:sticky;
+  top:0;
+  z-index:3;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+  margin:0;
+  padding:10px 18px;
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  background:rgba(18,27,22,.96);
+  backdrop-filter:blur(16px);
+}
+.exercise-detail-tabs button{
+  min-height:42px;
+  border:1px solid transparent;
+  border-radius:12px;
+  background:transparent;
+  color:var(--muted);
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+  cursor:pointer;
+}
+.exercise-detail-tabs button.active{
+  border-color:rgba(216,180,92,.36);
+  background:rgba(216,180,92,.10);
+  color:var(--accent-2);
+}
+.exercise-detail-tab-panel{
+  min-height:260px;
+}
+.exercise-analysis,
+.exercise-history-analytics{
+  display:grid;
+  gap:14px;
+  padding:18px;
+}
+.exercise-analysis-section,
+.exercise-analysis-split,
+.exercise-history-overview,
+.exercise-history-trend{
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--panel-2);
+}
+.exercise-analysis-section{
+  padding:16px;
+}
+.exercise-analysis-section.compact{
+  padding:14px 16px;
+}
+.exercise-analysis-heading{
+  display:grid;
+  gap:4px;
+  margin-bottom:14px;
+}
+.exercise-analysis-heading span,
+.exercise-analysis-split>div>span,
+.exercise-history-trend>span,
+.exercise-history-analytics.empty>span{
+  color:var(--accent-2);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.exercise-analysis-heading strong{
+  font-size:16px;
+}
+.exercise-analysis-facts{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+.exercise-analysis-facts>div,
+.exercise-muscle-map>div,
+.exercise-history-overview>div{
+  display:grid;
+  gap:4px;
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(255,255,255,.018);
+}
+.exercise-analysis-facts span,
+.exercise-muscle-map span,
+.exercise-history-overview span{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.exercise-analysis-facts strong,
+.exercise-muscle-map strong{
+  font-size:11px;
+  line-height:1.35;
+}
+.exercise-muscle-map{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+}
+.exercise-fit-grid{
+  display:grid;
+  gap:7px;
+}
+.exercise-fit-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  min-height:38px;
+  padding:8px 10px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.exercise-fit-row:last-child{border-bottom:0;}
+.exercise-fit-row span{
+  color:var(--muted);
+  font-size:11px;
+}
+.exercise-fit-row strong{
+  min-width:74px;
+  text-align:right;
+  font-size:10px;
+  letter-spacing:.05em;
+}
+.exercise-fit-row strong.tone-strong{color:var(--green);}
+.exercise-fit-row strong.tone-moderate{color:var(--accent-2);}
+.exercise-fit-row strong.tone-limited{color:var(--muted);}
+.exercise-analysis-note{
+  margin:12px 0 0;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.5;
+}
+.exercise-analysis-split{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  overflow:hidden;
+}
+.exercise-analysis-split>div{
+  padding:16px;
+}
+.exercise-analysis-split>div+div{
+  border-left:1px solid var(--line);
+}
+.exercise-analysis-split ul{
+  display:grid;
+  gap:8px;
+  margin:10px 0 0;
+  padding-left:17px;
+}
+.exercise-analysis-split li{
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.45;
+}
+.exercise-comparison-list{
+  display:grid;
+  gap:7px;
+}
+.exercise-comparison-list button{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:3px 10px;
+  align-items:center;
+  width:100%;
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(255,255,255,.018);
+  color:var(--text);
+  text-align:left;
+  cursor:pointer;
+}
+.exercise-comparison-list button span{
+  font-size:11px;
+  font-weight:800;
+}
+.exercise-comparison-list button small{
+  grid-column:1;
+  color:var(--muted);
+  font-size:8px;
+}
+.exercise-comparison-list button em{
+  grid-column:2;
+  grid-row:1 / span 2;
+  color:var(--accent-2);
+  font-size:8px;
+  font-style:normal;
+  font-weight:900;
+}
+.exercise-history-overview{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  overflow:hidden;
+}
+.exercise-history-overview>div{
+  border:0;
+  border-radius:0;
+}
+.exercise-history-overview>div+div{
+  border-left:1px solid var(--line);
+}
+.exercise-history-overview strong{
+  font-size:18px;
+}
+.exercise-history-trend{
+  display:grid;
+  gap:5px;
+  padding:15px 16px;
+}
+.exercise-history-trend strong{
+  font-size:13px;
+  line-height:1.4;
+}
+.exercise-history-trend small{
+  color:var(--muted);
+  font-size:9px;
+}
+.exercise-session-list{
+  display:grid;
+  gap:7px;
+}
+.exercise-session-row{
+  display:grid;
+  grid-template-columns:minmax(0,1.2fr) minmax(92px,.8fr) minmax(92px,.8fr);
+  gap:10px;
+  align-items:center;
+  padding:11px 0;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.exercise-session-row:last-child{border-bottom:0;}
+.exercise-session-row>div{
+  display:grid;
+  gap:3px;
+}
+.exercise-session-row span,
+.exercise-session-row small{
+  color:var(--muted);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.06em;
+}
+.exercise-session-row strong{
+  font-size:10px;
+}
+.exercise-history-analytics.empty{
+  padding:28px 18px;
+}
+.exercise-history-analytics.empty h3{
+  margin:0;
+  font-size:22px;
+}
+.exercise-history-analytics.empty>p{
+  margin:0;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.55;
+}
+@media(max-width:640px){
+  .exercise-detail-tabs{
+    padding:8px 12px;
+  }
+  .exercise-analysis,
+  .exercise-history-analytics{
+    padding:12px;
+  }
+  .exercise-analysis-facts{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .exercise-analysis-split{
+    grid-template-columns:1fr;
+  }
+  .exercise-analysis-split>div+div{
+    border-left:0;
+    border-top:1px solid var(--line);
+  }
+  .exercise-history-overview{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .exercise-history-overview>div:nth-child(3){
+    border-left:0;
+    border-top:1px solid var(--line);
+  }
+  .exercise-history-overview>div:nth-child(4){
+    border-top:1px solid var(--line);
+  }
+  .exercise-session-row{
+    grid-template-columns:minmax(0,1fr) auto;
+  }
+  .exercise-session-row>div:nth-child(3){
+    display:none;
+  }
+  .exercise-muscle-map{
+    grid-template-columns:1fr;
+  }
+}
