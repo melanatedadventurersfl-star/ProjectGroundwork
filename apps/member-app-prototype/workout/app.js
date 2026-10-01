@@ -2824,6 +2824,23 @@ function exerciseImageButton(ex,className='exercise-media',index=0){
     '<span class="media-status '+esc(state.kind)+'">'+esc(state.label)+'</span><span class="media-hint">VIEW FORM</span></button>';
 }
 
+function beginExerciseDetailReview(){
+  const w=store.activeWorkout;
+  if(!w||w.phase!=='work'||w.detailReviewStartedAt)return;
+  w.detailReviewStartedAt=new Date().toISOString();
+  saveStore();
+}
+function endExerciseDetailReview(){
+  const w=store.activeWorkout;
+  const started=Date.parse(w?.detailReviewStartedAt||'');
+  if(!w||!Number.isFinite(started))return;
+  const delta=Math.max(0,Date.now()-started);
+  w.totalPausedMs=Math.max(0,num(w.totalPausedMs))+delta;
+  ['exerciseStartedAt','setStartedAt'].forEach(key=>shiftWorkoutTimestamp(w,key,delta));
+  delete w.detailReviewStartedAt;
+  saveStore();
+}
+
 function renderExerciseModal(){
   if(!exerciseDetailId)return '';
   const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
@@ -8086,47 +8103,84 @@ function renderWorkout(){
     (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet"><button class="text-button" data-action="open-workout-map">WORKOUT MAP</button><button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+'</div>';
 }
 
+function runnerStrengthContext(ex,set,setIndex=0){
+  const previousSession=previousSetForPosition(ex,setIndex);
+  const previousSet=previousSession.set;
+  const priorCurrent=setIndex>0?ex.sets?.[setIndex-1]:null;
+  const currentWeight=setTargetValue(ex,set,'weight');
+  const currentReps=setTargetValue(ex,set,'reps');
+  const weighted=!['bodyweight','timed','band'].includes(ex.loadMode);
+  const lastLabel=previousSet?setPerformanceLabel(ex,previousSet):'No previous session';
+  const priorLabel=priorCurrent?.completed?setPerformanceLabel(ex,priorCurrent):'First set today';
+  let progress='BASELINE';
+  let progressTone='baseline';
+  if(previousSet){
+    const previousWeight=num(previousSet.weight),previousReps=num(previousSet.reps);
+    if(weighted&&currentWeight>previousWeight){
+      const diff=Math.round((currentWeight-previousWeight)*10)/10;
+      progress='+'+diff+' LB VS LAST';
+      progressTone='up';
+    }else if(currentWeight===previousWeight&&currentReps>previousReps){
+      progress='+'+(currentReps-previousReps)+' REP'+(currentReps-previousReps===1?'':'S')+' VS LAST';
+      progressTone='up';
+    }else if(currentWeight===previousWeight&&currentReps===previousReps){
+      progress='MATCH LAST TIME';
+      progressTone='steady';
+    }else if((weighted&&currentWeight<previousWeight)||currentReps<previousReps){
+      progress='CONTROLLED TARGET';
+      progressTone='recovery';
+    }else{
+      progress='BUILD FROM LAST';
+      progressTone='steady';
+    }
+  }
+  return {
+    lastLabel,
+    priorLabel,
+    progress,
+    progressTone,
+    movement:movements[ex.movement]||ex.movement||'Strength',
+    muscles:(ex.muscles||[]).slice(0,3).join(' · '),
+    rest:Math.max(0,num(ex.rest)||0)
+  };
+}
+
 function renderPreSet(pos){
-  const ex=pos.exercise,set=prepareSetTarget(ex,pos.set,pos.si),previous=previousSetForPosition(ex,pos.si);
-  const previousLabel=previous.set?setPerformanceLabel(ex,previous.set):'No previous set';
+  const ex=pos.exercise,set=prepareSetTarget(ex,pos.set,pos.si);
+  const context=runnerStrengthContext(ex,set,pos.si);
   const preSet=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
   const blockLabel=dynamicBlockPositionLabel(pos.workout,ex);
-  const bounds=repBounds(ex.reps);
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
   const repLabel=ex.loadMode==='timed'?'sec':(exerciseRepCountMode(ex)==='per-side'?'reps / side':'reps');
-  const targetReps=recommendedRepTarget(ex);
-  const recommendedReps=bounds.low&&bounds.high&&bounds.low!==bounds.high
-    ?(targetReps>bounds.high?(exerciseRepDisplay(ex,targetReps)+' · base '+bounds.low+'–'+bounds.high):(bounds.low+'–'+bounds.high+(exerciseRepCountMode(ex)==='per-side'?' / side':' reps')))
-    :exerciseRepDisplay(ex,targetReps);
-  const baseWeight=ex.learnerTarget?.applied?num(ex.learnerTarget.base?.weight):recommendedWeightTarget(ex);
-  const baseReps=ex.learnerTarget?.applied?Math.max(1,num(ex.learnerTarget.base?.reps)||targetReps):targetReps;
-  const recommendedWeight=noWeight?(ex.loadMode==='bodyweight'?'Bodyweight':ex.loadMode==='band'?'Band resistance':'Timed'):exerciseWeightDisplay(ex,baseWeight);
-  const recommendedRepsDisplay=ex.learnerTarget?.applied?exerciseRepDisplay(ex,baseReps):recommendedReps;
-  const workingWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
-  const workingTarget=(workingWeight?workingWeight+' × ':'')+exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
-  const sourceLabel=set.targetSource==='learner'?'Learner-guarded target':set.targetSource==='previous-set'?'Carried from your last set':set.targetSource==='learned'?'Learned target from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Plan starting point';
   const timedExercise=ex.loadMode==='timed';
   const autoTimed=timedExercise&&workoutCueSettings().autoStartTimedExercise;
+  const targetWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
+  const targetReps=exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
+  const targetLine=(targetWeight?targetWeight+' · ':'')+targetReps;
+  const sourceLabel=set.targetSource==='learner'?'Personalized from your training data':set.targetSource==='previous-set'?'Carried from your previous set':set.targetSource==='learned'?'Progressed from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Today’s plan target';
+
   const startControl=autoTimed
-    ? '<div class="runner-auto-start" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACHING':preSet.mode==='setup'?'GET READY':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>'+(preSet.mode==='coach'?'Countdown starts after the coach finishes the exercise intro.':'Timed exercise starts automatically when the countdown reaches zero.')+'</small></div>'+renderCountdownExercisePreview(pos)+'<button class="button secondary runner-start-now" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
-    : '<div class="runner-manual-start-note" role="status"><span>'+(preSet.mode==='coach'?'COACHING':'WHEN YOU’RE READY')+'</span><strong>'+(preSet.mode==='coach'?'Listen for the exercise setup.':'You control when this set starts.')+'</strong><small>The coach countdown begins after you tap Start Set.</small></div><button class="button primary-action runner-gold-action runner-start-now" type="button" data-action="start-set-now" '+(preSet.mode==='coach'?'disabled':'')+'>'+(preSet.mode==='coach'?'COACHING…':(timedExercise?'START TIMED SET':'START SET'))+'</button>';
-  return '<div class="runner-set-ready">'+
-    '<div class="runner-set-ready-head"><div><h2>'+esc(ex.name)+'</h2><p>Set '+(pos.si+1)+' of '+ex.sets.length+(blockLabel?' · '+esc(blockLabel):'')+(exerciseRepCountMode(ex)==='per-side'?' · EACH SIDE':'')+'</p></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
-    '<div class="runner-set-ready-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
-    '<div class="runner-recommended-line"><span>TODAY’S WORKING TARGET</span><strong>'+esc(workingTarget)+'</strong><small>'+esc(sourceLabel)+' · Plan baseline: '+esc(recommendedWeight)+' · '+esc(recommendedRepsDisplay)+' · Previous: '+esc(previousLabel)+'</small></div>'+
-    renderLearnerTargetAdvice(ex)+
-    renderLearnerRestAdvice(ex)+
-    renderLearnerVolumeAdvice(ex,set)+
-    renderLearnerShadowAdvice(ex)+
-    renderExerciseGuidanceCard(ex,{compact:true,label:'HOW TO'})+
-    '<div class="runner-target-steppers '+(noWeight?'single':'')+'">'+
+    ? '<div class="strength-runner-auto" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACH':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>Tap below if you want to start the countdown now.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
+    : '<div class="strength-runner-ready-note" role="status"><span>WHEN YOU’RE READY</span><strong>'+(preSet.mode==='coach'?'Coach cue is playing. You can still start.':'Your target is set.')+'</strong><small>Start Set begins the 3, 2, 1 countdown.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" data-action="start-set-now">'+(timedExercise?'START TIMED SET':'START SET')+'</button>';
+
+  return '<div class="strength-runner strength-runner-pre">'+
+    '<div class="strength-runner-title"><div><p>EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+' · SET '+(pos.si+1)+' OF '+ex.sets.length+'</p><h2>'+esc(ex.name)+'</h2><div class="strength-runner-tags"><span>'+esc(context.movement)+'</span>'+(context.muscles?'<span>'+esc(context.muscles)+'</span>':'')+(blockLabel?'<span>'+esc(blockLabel)+'</span>':'')+(exerciseRepCountMode(ex)==='per-side'?'<span>EACH SIDE</span>':'')+'</div></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="Exercise options">•••</button></div>'+
+    '<div class="strength-runner-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'pre-set-exercise-media')+'</div>'+
+    '<section class="strength-runner-target">'+
+      '<div class="strength-runner-target-head"><div><span>TODAY</span><strong>'+esc(targetLine)+'</strong></div><em class="tone-'+esc(context.progressTone)+'">'+esc(context.progress)+'</em></div>'+
+      '<div class="strength-runner-reference"><span><small>LAST TIME</small><strong>'+esc(context.lastLabel)+'</strong></span><span><small>PREVIOUS SET</small><strong>'+esc(context.priorLabel)+'</strong></span><span><small>REST</small><strong>'+context.rest+' sec</strong></span></div>'+
+      '<p>'+esc(sourceLabel)+'</p>'+
+    '</section>'+
+    '<div class="runner-target-steppers strength-runner-steppers '+(noWeight?'single':'')+'">'+
       (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
-      '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
+      '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(targetReps)+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
     startControl+
-    '<div class="runner-set-links"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><button class="text-button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">OPTIONS</button></div>'+
+    '<nav class="strength-runner-quick" aria-label="Exercise actions"><button type="button" data-exercise-detail="'+esc(ex.id)+'">'+uiIcon('plan')+'<span>FORM</span></button><button type="button" data-action="swap-active" data-swap-index="'+pos.ei+'">'+uiIcon('custom')+'<span>SWAP</span></button><button type="button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">'+uiIcon('settings')+'<span>MORE</span></button></nav>'+
   '</div>';
 }
+
+
 function renderTimedWorkSet(pos){
   const snap=timedSetSnapshot(pos.workout)||{remaining:num(pos.set.reps)||30,total:num(pos.set.reps)||30};
   const pct=Math.max(0,Math.min(100,(snap.remaining/Math.max(1,snap.total))*100));
@@ -8338,28 +8392,36 @@ function renderSetPerformanceInsight(insight,compact=false){
 }
 function renderWorkSet(pos){
   const ex=pos.exercise,set=pos.set;
+  const context=runnerStrengthContext(ex,set,pos.si);
   const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
   const repLabel=ex.loadMode==='timed'?'sec':(exerciseRepCountMode(ex)==='per-side'?'reps / side':'reps');
   const side=exerciseNeedsSideSwitch(ex)?activeExerciseSide(set):'';
   const sideLabel=side?side.toUpperCase()+' SIDE':'';
   const plannedWeight=set.plannedWeight??set.weight??'';
   const plannedReps=set.plannedReps??set.reps??'';
-  const displayLoad=noWeight?(ex.loadMode==='band'?'Band resistance':'Bodyweight'):(String(setTargetValue(ex,set,'weight'))+' lb');
-  return '<div class="runner-work-clean">'+
-    '<div class="runner-work-clean-head"><button class="text-button" data-exercise-detail="'+esc(ex.id)+'">FORM</button><div><strong>'+esc(ex.name)+'</strong><span>Set '+(pos.si+1)+' of '+ex.sets.length+(sideLabel?' · '+esc(sideLabel):'')+'</span></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">•••</button></div>'+
-    '<div class="runner-active-media '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
-    renderExerciseGuidanceCard(ex,{compact:true,label:'FORM WHILE YOU WORK'})+
+  const actualWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
+  const actualReps=exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
+  const plannedLabel=(noWeight?'':exerciseWeightDisplay(ex,plannedWeight)+' · ')+exerciseRepDisplay(ex,plannedReps);
+  const cue=exerciseGuidance(ex).cue||'Keep the movement controlled.';
 
-    '<div class="runner-live-plan"><span>PLANNED</span><strong>'+(noWeight?'':esc(plannedWeight||0)+' lb × ')+esc(plannedReps)+' '+repLabel+'</strong></div>'+
-    '<div class="runner-load-focus"><strong>'+esc(displayLoad)+'</strong><span>'+esc(exerciseGuidance(ex).cue||'Keep the movement controlled.')+'</span></div>'+
-    '<div class="runner-target-steppers '+(noWeight?'single':'')+' compact">'+
-      (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1">+</button></div></div>':'')+
-      '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1">−</button><strong>'+esc(exerciseRepDisplay(ex,setTargetValue(ex,set,'reps')))+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1">+</button></div></div>'+
+  return '<div class="strength-runner strength-runner-work">'+
+    '<div class="strength-runner-title compact"><div><p>EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+' · SET '+(pos.si+1)+' OF '+ex.sets.length+(sideLabel?' · '+esc(sideLabel):'')+'</p><h2>'+esc(ex.name)+'</h2><div class="strength-runner-tags"><span>'+esc(context.movement)+'</span>'+(context.muscles?'<span>'+esc(context.muscles)+'</span>':'')+'</div></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="Exercise options">•••</button></div>'+
+    '<div class="strength-runner-live-strip"><div><span>SET TIME</span><strong id="set-clock">'+formatClock(setElapsedSeconds(pos.workout))+'</strong></div><div><span>PLANNED</span><strong>'+esc(plannedLabel)+'</strong></div><em class="tone-'+esc(context.progressTone)+'">'+esc(context.progress)+'</em></div>'+
+    '<div class="strength-runner-media active '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
+    '<div class="strength-runner-cue">'+uiIcon('coach')+'<span>'+esc(cue)+'</span></div>'+
+    '<div class="runner-target-steppers strength-runner-steppers compact '+(noWeight?'single':'')+'">'+
+      (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease actual weight">−</button><strong>'+esc(actualWeight)+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase actual weight">+</button></div></div>':'')+
+      '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(actualReps)+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
+    '<div class="strength-runner-reference live"><span><small>LAST TIME</small><strong>'+esc(context.lastLabel)+'</strong></span><span><small>PREVIOUS SET</small><strong>'+esc(context.priorLabel)+'</strong></span><span><small>REST NEXT</small><strong>'+context.rest+' sec</strong></span></div>'+
     '<input id="set-weight" type="hidden" value="'+esc(set.weight??'')+'"><input id="set-reps" type="hidden" value="'+esc(set.reps??'')+'">'+
-    '<section class="runner-live-log"><button class="button primary-action runner-gold-action" data-action="complete-set">'+(sideLabel?'COMPLETE '+esc(sideLabel):'COMPLETE SET')+'</button><button class="text-button" data-action="skip-current-set">SKIP SET</button></section>'+
+    '<div class="strength-runner-timer-actions"><button type="button" data-action="toggle-workout-pause">'+(pos.workout.isPaused?'RESUME':'PAUSE')+'</button><button type="button" data-action="reset-timer">RESET TIMER</button><button type="button" data-action="skip-current-set">SKIP SET</button></div>'+
+    '<section class="strength-runner-complete"><button class="button primary-action runner-gold-action" data-action="complete-set">'+(sideLabel?'COMPLETE '+esc(sideLabel):'COMPLETE SET')+'</button></section>'+
+    '<nav class="strength-runner-quick" aria-label="Exercise actions"><button type="button" data-exercise-detail="'+esc(ex.id)+'">'+uiIcon('plan')+'<span>FORM</span></button><button type="button" data-action="swap-active" data-swap-index="'+pos.ei+'">'+uiIcon('custom')+'<span>SWAP</span></button><button type="button" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'">'+uiIcon('settings')+'<span>MORE</span></button></nav>'+
   '</div>';
 }
+
+
 function renderSideSwitch(pos){
   const remaining=sideSwitchRemaining(pos.workout);
   const duration=Math.max(1,num(pos.workout.sideSwitchDuration)||exerciseSideSwitchSeconds(pos.exercise)||5);
@@ -9400,12 +9462,12 @@ function handleClick(event){
     if(!insideSwap||explicitClose){closeSwap();return;}
   }
   const detail=event.target.closest('[data-exercise-detail]');
-  if(detail){exerciseActionsIndex=null;exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
+  if(detail){exerciseActionsIndex=null;beginExerciseDetailReview();exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
   const close=event.target.closest('[data-action="close-details"]');
   if(close){
     const insidePanel=event.target.closest('[data-modal-panel]');
     const explicitClose=event.target.closest('.modal-close');
-    if(!insidePanel||explicitClose){exerciseDetailId=null;render();return;}
+    if(!insidePanel||explicitClose){endExerciseDetailReview();exerciseDetailId=null;render();return;}
   }
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start,start.dataset.scheduledDate||'');return;}
@@ -9770,7 +9832,7 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&workoutMapOpen){workoutMapOpen=false;render();return;}
   if(event.key==='Escape'&&readinessContext){if(readinessContext.building)return;readinessContext=null;render();return;}
   if(event.key==='Escape'&&swapContext){swapContext=null;render();return;}
-  if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
+  if(event.key==='Escape'&&exerciseDetailId){endExerciseDetailReview();exerciseDetailId=null;render();return;}
   if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
 });
 tickHandle=window.setInterval(updateTimers,500);
