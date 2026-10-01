@@ -1,51 +1,68 @@
-# GoWorkout Adaptive Workout Structure V1
+# GoWorkout Adaptive Workout Structure V2
 
-## Purpose
+## Product rule
 
-Workout structure is a first-class training preference and adaptive-learning signal.
+Workout structure belongs to the four-week program.
 
-A user's long-term preference informs planning. A session-level choice can override it for today without rewriting the permanent profile.
+By the time a user reaches Today’s Setup or starts an exercise, the session already knows whether it uses straight sets, supersets, tri-sets, circuit work, or a hybrid layout.
 
-## Supported structures
+The start-workout flow does not ask the user to choose a structure again.
 
-- **Adaptive**: GoWorkout chooses a suitable structure from profile preference, learned behavior, session time, goal, and exercise compatibility.
-- **Straight sets**: Complete working sets for one exercise before moving to the next.
-- **Supersets**: Alternate two compatible exercises.
-- **Tri-sets**: Rotate three compatible exercises. The default prescription is three rounds.
-- **Circuit**: Rotate through a larger group with short transitions.
-- **Hybrid**: Protect priority compound work as straight sets, then group compatible accessory work.
+## Program creation
 
-## Precedence
+The program setup stores the user’s preferred structure:
 
-For a session, the structure decision follows this order:
+- Adaptive
+- Straight Sets
+- Supersets
+- Tri-Sets
+- Circuit
+- Hybrid
 
-1. Explicit structure selected for today's workout.
-2. Permanent profile structure when it is not Adaptive.
-3. Learned structure history when Adaptive is selected and the user's adaptation setting permits it.
-4. Session heuristics based on goal, time, and exercise count.
-5. Straight sets when no safe or compatible grouping can be formed.
+When the four-week block is generated, every session receives a programmed structure.
 
-## Profile controls
+If the user chooses a specific format, compatible sessions use that format.
 
-The training profile stores:
+If the user chooses Adaptive, GoWorkout decides the format during program generation. The decision can use:
 
-- preferred workout structure
-- adaptation level: close, balanced, or optimize
-- structure guardrails
+- training goal
+- planned session length
+- number of exercises
+- workout type
+- learned structure history
+- the user’s adaptation preference
 
-Default guardrails:
+The result is saved with the four-week program.
 
-- keep the first priority compound lift as straight sets
-- avoid grouping exercises with the same primary movement pattern or overlapping primary muscles
-- prefer practical grouping that reduces unnecessary transitions
+## Program changes
 
-## Session controls
+The Program screen shows the current structure strategy and the structure mix across the block.
 
-Today's setup screen includes a Workout Structure step.
+Users can change the structure from Program > Workout Structure.
 
-Changing the structure here applies to the current session only. The selection is stored with the completed workout so the learner can compare stated preference with actual behavior.
+Changing the structure:
 
-## Tri-set rules
+- updates remaining planned sessions
+- does not change completed workout history
+- keeps the current exercise plan and program goal
+- regroups compatible exercises into the selected format
+- keeps existing adaptive-learning history
+
+## Readiness
+
+Today’s Setup remains focused on today’s conditions:
+
+- training location and available equipment
+- energy
+- soreness
+- sleep
+- available time
+
+The screen shows the already-programmed workout format as read-only context.
+
+Readiness can change volume, load, rest, exercise availability, or session length. It can reflow the existing programmed format around removed or substituted exercises, but it does not choose a new workout format.
+
+## Tri-set behavior
 
 A tri-set contains three compatible exercises.
 
@@ -61,41 +78,54 @@ Normal flow:
 
 The default is three rounds.
 
-If readiness has already identified an unusually poor recovery state, the session may reduce the tri-set to two rounds. This is a readiness adjustment, not a permanent preference change.
+Readiness can reduce working volume when recovery signals require it. That is a volume adjustment inside the programmed tri-set, not a new structure decision.
 
-## Compatibility guardrails
+## Workout visibility
 
-Grouping should preserve the intended training purpose.
+The user should be able to understand the session before starting it.
 
-The system does not group exercises when it cannot form a compatible block. A requested grouped format may fall back to straight sets for the affected work.
+Workout previews group exercises visually by structure. Each group shows:
 
-Priority compound lifts can remain outside grouped blocks.
+- structure name
+- round or set count
+- exercise order
+- prescription
+- round-rest information when relevant
+
+The prepared workout screen includes the same roadmap.
+
+During strength work, the runner keeps the current block visible:
+
+- current structure
+- current round or set
+- current exercise
+- next exercise in the block
+- later exercise in the block when relevant
+
+The full workout map remains one tap away.
 
 ## Adaptive learning
 
-Each completed workout records a structure observation with:
+Completed workouts continue to record:
 
-- requested structure
-- recommended structure
+- requested program structure
+- programmed structure
 - applied structure
 - completion rate
 - skipped-exercise rate
 - duration
-- time available
+- readiness
 - setup
-- readiness score
 - routine and focus
 
-The learner aggregates performance by structure.
-
-A structure needs at least two completed observations before it can become the learned preferred structure.
-
-The learner favors structures with stronger completion, lower skip rate, and repeated evidence. The Optimize setting gives learned structure history more influence than Balanced. Stick closely to my choice limits automatic structure changes.
+Structure learning informs later program creation. It does not repeatedly redesign the format at workout start.
 
 ## Persistence
 
 Permanent structure preferences live in the workout profile JSON.
 
-Session structure is stored on the workout record and readiness context.
+The four-week Program Engine wrapper stores a structure plan for its sessions.
 
-Structure-learning aggregates live in the existing learner object inside the workout training program. No parallel profile or training database is introduced.
+Each converted workout day receives the planned structure before readiness runs.
+
+The completed workout record stores the applied structure for learner evaluation.
