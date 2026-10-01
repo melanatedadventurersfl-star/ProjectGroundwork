@@ -16,6 +16,11 @@ export default function WhatsNewScreen() {
     }
   }, []);
 
+  function openFeature(href?: string) {
+    if (!href) return;
+    router.push(href as never);
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -26,18 +31,35 @@ export default function WhatsNewScreen() {
 
         <Text style={styles.eyebrow}>GO MELANATED</Text>
         <Text style={styles.title}>{currentReleaseNotes.title}</Text>
+        <Text style={styles.subtitle}>{currentReleaseNotes.subtitle}</Text>
         <Text style={styles.intro}>{currentReleaseNotes.intro}</Text>
 
-        <View style={styles.card}>
-          {currentReleaseNotes.items.map((item, index) => (
-            <View key={item} style={[styles.itemRow, index > 0 && styles.divider]}>
-              <View style={styles.dot} />
-              <Text style={styles.itemText}>{item}</Text>
+        <View style={styles.metaRow}>
+          {currentReleaseNotes.dateLabel ? <Text style={styles.meta}>{currentReleaseNotes.dateLabel}</Text> : null}
+          {currentReleaseNotes.versionLabel ? <Text style={styles.meta}>{currentReleaseNotes.versionLabel}</Text> : null}
+        </View>
+
+        <View style={styles.features}>
+          {currentReleaseNotes.features.map((feature) => (
+            <View key={feature.id} style={styles.featureCard}>
+              <View style={styles.featureIcon}>
+                <View style={styles.dot} />
+              </View>
+              <View style={styles.featureCopy}>
+                <Text style={styles.featureTitle}>{feature.title}</Text>
+                <Text style={styles.featureBody}>{feature.body}</Text>
+                {feature.ctaLabel && feature.href ? (
+                  <Pressable onPress={() => openFeature(feature.href)} accessibilityRole="button" style={styles.featureCta}>
+                    <Text style={styles.featureCtaText}>{feature.ctaLabel}</Text>
+                    <AppIcon name="chevron-forward" color="#D7B45A" size={15} />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
 
-        <Text style={styles.footer}>You’ll only see What’s New in Menu again when a new changelog release is available.</Text>
+        {currentReleaseNotes.footer ? <Text style={styles.footer}>{currentReleaseNotes.footer}</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -50,11 +72,18 @@ const styles = StyleSheet.create({
   backText: { color: '#D7B45A', fontSize: 15, fontWeight: '800' },
   eyebrow: { color: '#D7B45A', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   title: { color: '#FFF8E8', fontSize: 36, lineHeight: 41, fontWeight: '900', marginTop: 5 },
-  intro: { color: '#B7C2BA', fontSize: 16, lineHeight: 23, marginTop: 12, marginBottom: 22 },
-  card: { backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#26332C', overflow: 'hidden' },
-  itemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 18 },
-  divider: { borderTopWidth: 1, borderTopColor: '#26332C' },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#D7B45A', marginTop: 7 },
-  itemText: { flex: 1, color: '#F0F3F1', fontSize: 15, lineHeight: 22 },
-  footer: { color: '#7F8B83', fontSize: 12, lineHeight: 18, marginTop: 16 },
+  subtitle: { color: '#F0E0B1', fontSize: 19, lineHeight: 25, fontWeight: '800', marginTop: 8 },
+  intro: { color: '#B7C2BA', fontSize: 16, lineHeight: 23, marginTop: 10 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, marginBottom: 22 },
+  meta: { color: '#7F8B83', fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  features: { gap: 12 },
+  featureCard: { flexDirection: 'row', gap: 12, backgroundColor: '#17211C', borderRadius: 18, borderWidth: 1, borderColor: '#26332C', padding: 16 },
+  featureIcon: { width: 26, alignItems: 'center', paddingTop: 5 },
+  dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#D7B45A' },
+  featureCopy: { flex: 1 },
+  featureTitle: { color: '#FFF8E8', fontSize: 16, lineHeight: 21, fontWeight: '900' },
+  featureBody: { color: '#B7C2BA', fontSize: 14, lineHeight: 21, marginTop: 5 },
+  featureCta: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 3, marginTop: 10, minHeight: 30 },
+  featureCtaText: { color: '#D7B45A', fontSize: 13, fontWeight: '900' },
+  footer: { color: '#7F8B83', fontSize: 12, lineHeight: 18, marginTop: 18 },
 });
