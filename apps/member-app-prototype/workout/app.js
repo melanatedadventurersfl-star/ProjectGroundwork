@@ -2467,6 +2467,19 @@ function structureCompatible(a,b,rules){
   }
   return true;
 }
+function structureEquipmentKey(ex){
+  return String(ex?.equipmentClass||ex?.loadMode||'').replace(/dumbbell-.*/,'dumbbell').replace(/cable-.*/,'cable');
+}
+function structurePairScore(seed,candidate,rules){
+  let score=0;
+  if(rules.includes('minimize-equipment')){
+    const a=structureEquipmentKey(seed),b=structureEquipmentKey(candidate);
+    if(a&&b&&a===b)score+=8;
+    if(['bodyweight','timed'].includes(a)||['bodyweight','timed'].includes(b))score+=2;
+  }
+  if(seed?.movement!==candidate?.movement)score+=2;
+  return score;
+}
 function assignWorkoutStructureBlock(day,indexes,type,number,context={}){
   const clean=[...new Set(indexes)].filter(index=>day.exercises[index]);
   if(clean.length<2)return null;
@@ -2497,12 +2510,15 @@ function groupWorkoutStructure(day,indexes,size,type,context={}){
   while(remaining.length>=size){
     const seed=remaining.shift();
     const group=[seed];
-    for(let cursor=0;cursor<remaining.length&&group.length<size;){
-      const candidate=remaining[cursor];
-      if(group.every(index=>structureCompatible(day.exercises[index],day.exercises[candidate],rules))){
-        group.push(candidate);
-        remaining.splice(cursor,1);
-      }else cursor+=1;
+    while(group.length<size){
+      const candidates=remaining
+        .map((candidate,index)=>({candidate,index,score:structurePairScore(day.exercises[seed],day.exercises[candidate],rules)}))
+        .filter(item=>group.every(existing=>structureCompatible(day.exercises[existing],day.exercises[item.candidate],rules)))
+        .sort((a,b)=>b.score-a.score||a.index-b.index);
+      if(!candidates.length)break;
+      const chosen=candidates[0];
+      group.push(chosen.candidate);
+      remaining.splice(chosen.index,1);
     }
     if(group.length===size)groups.push(group);
   }
@@ -4271,10 +4287,11 @@ function saveProfileFromForm(form){
     toast('No exercises matched those settings. Try another equipment option or fewer exclusions.');
     return false;
   }
+  const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner};
   refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
@@ -4300,8 +4317,9 @@ function editProfile(){
 
 function regeneratePlan(){
   if (!store.profile || store.activeWorkout) return;
+  const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
   store.plan=generatePlan(store.profile);
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner};
   refreshEngineProgram(store.profile);
   saveStore();
   toast(currentEngineProgram()?'Plan rebuilt with Program Engine '+currentEngineProgram().engineVersion+'.':'Plan rebuilt from your profile.');
