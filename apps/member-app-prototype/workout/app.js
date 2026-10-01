@@ -1979,7 +1979,6 @@ function renderCueControls(){
 }
 
 const MOVEMENT_GUIDANCE = {
-const MOVEMENT_GUIDANCE = {
   'squat': {
     cue:'Keep your chest tall and let your knees track with your toes.',
     setup:'Set your feet in a stable stance and brace before you descend.',
