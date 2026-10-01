@@ -14786,3 +14786,55 @@ body.home-mode .bottom-nav:before{
 @media(prefers-reduced-motion:reduce){
   .home-anatomy-svg.anatomy-pro .anatomy-muscle{transition:none}
 }
+
+
+/* Male anatomy artwork V2 */
+.home-anatomy-svg.anatomy-male .male-head{
+  stroke:rgba(190,205,195,.32);
+  stroke-width:1.05;
+}
+.home-anatomy-svg.anatomy-male .anatomy-face-shade{
+  fill:rgba(10,18,14,.28);
+}
+.home-anatomy-svg.anatomy-male .anatomy-hand,
+.home-anatomy-svg.anatomy-male .anatomy-foot,
+.home-anatomy-svg.anatomy-male .anatomy-knee{
+  fill:#26392e;
+  stroke:rgba(184,201,190,.25);
+  stroke-width:.8;
+}
+.home-anatomy-svg.anatomy-male .anatomy-separator,
+.home-anatomy-svg.anatomy-male .anatomy-ridge{
+  fill:none;
+  stroke:rgba(215,225,217,.24);
+  stroke-width:.85;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.home-anatomy-svg.anatomy-male .anatomy-ridge{
+  stroke:rgba(235,242,237,.16);
+  stroke-width:.65;
+}
+.home-anatomy-svg.anatomy-male .anatomy-muscle{
+  stroke:rgba(205,218,209,.25);
+  stroke-width:.75;
+}
+.home-anatomy-svg.anatomy-male .anatomy-muscle.heat-0{
+  opacity:.98;
+}
+.home-anatomy-svg.anatomy-male .anatomy-muscle.heat-1{
+  filter:drop-shadow(0 0 2px rgba(91,139,87,.16));
+}
+.home-anatomy-svg.anatomy-male .anatomy-muscle.heat-2{
+  filter:drop-shadow(0 0 3px rgba(118,174,91,.24));
+}
+.home-anatomy-svg.anatomy-male .anatomy-muscle.heat-3{
+  filter:
+    drop-shadow(0 0 4px rgba(169,223,89,.50))
+    drop-shadow(0 0 8px rgba(121,190,75,.24));
+}
+.home-anatomy-svg.anatomy-male .anatomy-muscle.heat-4{
+  filter:
+    drop-shadow(0 0 5px rgba(240,200,93,.60))
+    drop-shadow(0 0 10px rgba(240,200,93,.30));
+}
