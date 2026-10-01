@@ -1,4 +1,4 @@
-# GoWorkout Program Engine v1.5
+# GoWorkout Program Engine v1.7
 
 An isolated, deterministic programming layer for GoWorkout. The live workout execution flow is intentionally untouched until the engine is proven.
 
@@ -89,3 +89,21 @@ console.log(program);
 
 ## Next engine layer
 After browser validation, connect persistence to the real workout storage boundary and integrate the engine behind the GoWorkout UI without replacing the existing execution path in one jump.
+
+
+## Stretch Catalog V1
+
+The engine now ships with a 72-movement stretch and mobility catalog.
+
+Each catalog entry includes:
+- body area, regions, and target muscles
+- dynamic, active, static, mobility, or breath-assisted type
+- position, equipment, side behavior, difficulty, and compatible workout focus
+- beginner and default timing
+- warm-up, cooldown, and recovery placement rules
+- coaching cues, expected sensation, common mistakes, and a modification
+- production image key, image status, and framing requirement
+
+Unilateral stretches are expanded into separate left and right execution steps. This keeps timers, progress, voice cues, pause/skip behavior, and future imagery aligned to the side being performed.
+
+Cooldown stretch selection is deterministic and now scores movements against both workout label and the muscles trained in that session. Equipment filters still apply. Exact 5, 10, and 15 minute session totals are preserved, with a breathing reset filling any small remainder.
