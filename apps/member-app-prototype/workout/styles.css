@@ -15764,3 +15764,129 @@ body.home-mode .bottom-nav:before{
     grid-template-columns:1fr;
   }
 }
+
+
+/* GoWorkout Library V3: strength + stretch + mobility */
+.library-filter-stack{display:grid;gap:7px}
+.library-body-filters{padding-top:0}
+.library-filter.secondary{background:transparent}
+.library-filter.secondary.active{background:rgba(216,180,92,.12);border-color:rgba(216,180,92,.55);color:var(--accent-2)}
+.stretch-catalog-card{border-color:rgba(118,157,127,.26)}
+.stretch-catalog-card.mobility{border-color:rgba(104,166,159,.3)}
+.stretch-library-media{
+  position:relative;
+  width:100%;
+  aspect-ratio:4/3;
+  min-height:0;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:5px;
+  border:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 42%,rgba(216,180,92,.13),transparent 38%),
+    linear-gradient(145deg,#16231b,#0c1510 64%);
+  color:var(--text);
+  cursor:pointer;
+}
+.stretch-catalog-card.mobility .stretch-library-media{
+  background:
+    radial-gradient(circle at 50% 42%,rgba(80,175,166,.15),transparent 38%),
+    linear-gradient(145deg,#132520,#0b1613 64%);
+}
+.stretch-media-grid{
+  position:relative;
+  width:58px;
+  height:58px;
+  margin-bottom:3px;
+}
+.stretch-media-grid i{
+  position:absolute;
+  display:block;
+  border:2px solid rgba(229,205,139,.78);
+  border-radius:999px;
+}
+.stretch-media-grid i:nth-child(1){width:17px;height:17px;left:20px;top:2px}
+.stretch-media-grid i:nth-child(2){width:42px;height:22px;left:8px;top:24px;border-radius:50%}
+.stretch-media-grid i:nth-child(3){width:28px;height:2px;left:15px;top:51px;border-width:1px;border-radius:3px}
+.stretch-catalog-card.mobility .stretch-media-grid i{border-color:rgba(122,207,197,.82)}
+.stretch-media-type{
+  color:var(--accent-2);
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.stretch-catalog-card.mobility .stretch-media-type{color:#7bcfc6}
+.stretch-library-media strong{font-size:12px}
+.stretch-library-media small{color:var(--muted);font-size:8px}
+.stretch-library-media .media-hint{
+  position:absolute;
+  right:8px;
+  bottom:7px;
+  color:rgba(236,241,237,.62);
+  font-size:6.5px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.stretch-detail-media{
+  min-height:230px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:7px;
+  padding:26px;
+  background:
+    radial-gradient(circle at 50% 40%,rgba(216,180,92,.16),transparent 34%),
+    linear-gradient(145deg,#203026,#111b15 70%);
+  color:#f4eee0;
+  text-align:center;
+}
+.stretch-detail-symbol{
+  position:relative;
+  width:86px;
+  height:86px;
+  margin-bottom:5px;
+}
+.stretch-detail-symbol i{
+  position:absolute;
+  display:block;
+  border:3px solid rgba(240,210,132,.9);
+  border-radius:999px;
+}
+.stretch-detail-symbol i:nth-child(1){width:23px;height:23px;left:31px;top:3px}
+.stretch-detail-symbol i:nth-child(2){width:60px;height:32px;left:13px;top:33px;border-radius:50%}
+.stretch-detail-symbol i:nth-child(3){width:38px;height:3px;left:24px;top:73px;border-width:2px;border-radius:4px}
+.stretch-detail-media>span{color:#e8c566;font-size:8px;font-weight:900;letter-spacing:.12em}
+.stretch-detail-media>strong{font-size:18px}
+.stretch-detail-media>small{max-width:360px;color:#9eaca3;font-size:8px;line-height:1.4}
+.stretch-detail-facts{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:1px;
+  background:#ded6c6;
+}
+.stretch-detail-facts>div{
+  display:grid;
+  gap:4px;
+  padding:12px 14px;
+  background:#fbf8f0;
+}
+.stretch-detail-facts span{
+  color:#8a7542;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.stretch-detail-facts strong{
+  color:#153d28;
+  font-size:10px;
+}
+.stretch-detail-modal .runner-detail-body>section{min-height:auto}
+@media(max-width:680px){
+  .stretch-library-media{aspect-ratio:1/1}
+  .stretch-detail-media{min-height:190px}
+  .stretch-detail-facts{grid-template-columns:1fr}
+}
