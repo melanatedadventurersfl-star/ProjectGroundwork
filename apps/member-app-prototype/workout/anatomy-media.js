@@ -40,6 +40,24 @@
       '<linearGradient id="'+prefix+'Heat2" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#b3d97e"/><stop offset=".48" stop-color="#78ae5d"/><stop offset="1" stop-color="#4f7f45"/></linearGradient>'+
       '<linearGradient id="'+prefix+'Heat3" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#e0f894"/><stop offset=".44" stop-color="#a9df59"/><stop offset="1" stop-color="#77b644"/></linearGradient>'+
       '<linearGradient id="'+prefix+'Heat4" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#ffe89a"/><stop offset=".42" stop-color="#efc65c"/><stop offset="1" stop-color="#b9882c"/></linearGradient>'+
+      '<style>'+
+        '.anatomy-ground,'+
+        '.anatomy-body-shell,'+
+        '.anatomy-head-shell,'+
+        '.anatomy-jaw,'+
+        '.anatomy-neck-shell,'+
+        '.anatomy-hand,'+
+        '.anatomy-foot,'+
+        '.anatomy-knee,'+
+        '.anatomy-detail-fine,'+
+        '.anatomy-line,'+
+        '.anatomy-ridge,'+
+        '.anatomy-scapula,'+
+        '.anatomy-glute-fold,'+
+        '.anatomy-separator,'+
+        '.anatomy-muscle-base{display:none}'+
+        '.anatomy-region[data-heat="0"]{display:none}'+
+      '</style>'+
     '</defs>';
 
   function muscle(prefix,levels,group,side,d,detail=''){
