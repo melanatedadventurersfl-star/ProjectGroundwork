@@ -1,0 +1,1 @@
+Generated transparent anatomy lighting overlays live here. Keep every asset on the full 1000 × 1800 canvas.\n
