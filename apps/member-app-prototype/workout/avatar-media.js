@@ -1,4 +1,34 @@
 window.EXERCISE_AVATAR_MEDIA = {
+  "goblet-squat": {
+    "masc-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/goblet-squat/masc-athletic/position-1.webp",
+        "./assets/exercises/goblet-squat/masc-athletic/position-2.webp"
+      ]
+    },
+    "masc-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/goblet-squat/masc-full/position-1.webp",
+        "./assets/exercises/goblet-squat/masc-full/position-2.webp"
+      ]
+    },
+    "fem-athletic": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/goblet-squat/fem-athletic/position-1.webp",
+        "./assets/exercises/goblet-squat/fem-athletic/position-2.webp"
+      ]
+    },
+    "fem-full": {
+      "status": "approved",
+      "frames": [
+        "./assets/exercises/goblet-squat/fem-full/position-1.webp",
+        "./assets/exercises/goblet-squat/fem-full/position-2.webp"
+      ]
+    }
+  },
   "db-bench": {
     "masc-full": {
       "status": "approved",
