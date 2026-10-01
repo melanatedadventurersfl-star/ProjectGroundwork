@@ -7165,7 +7165,7 @@ function homeWeekMuscleSnapshot(){
   };
   return {
     counts,
-    top:Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([key,value])=>({key,label:homeTitleCase(key),value})),
+    top:Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([key,value])=>({key,label:homeTitleCase(key),value,level:levelFor([key])})),
     front:{
       chest:levelFor(['chest']),
       shoulders:levelFor(['anterior_delts','lateral_delts']),
@@ -7312,30 +7312,57 @@ function renderHomeWeekPulse(schedule){
 function bodyHeatClass(level){
   return level?' heat-'+Math.max(1,Math.min(4,level)):'';
 }
+function renderHomeFrontAnatomy(snapshot){
+  return '<svg class="home-anatomy-svg front" viewBox="0 0 180 360" role="img" aria-label="Front muscle training load">'+
+    '<defs><filter id="frontHeatGlow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'+
+    '<circle class="anatomy-base" cx="90" cy="31" r="18"/>'+
+    '<path class="anatomy-base" d="M82 48 78 61 62 67 47 78 39 105 31 146 39 151 52 112 61 91 64 149 57 194 62 230 58 283 61 344 78 344 83 285 90 235 97 285 102 344 119 344 122 283 118 230 123 194 116 149 119 91 128 112 141 151 149 146 141 105 133 78 118 67 102 61 98 48Z"/>'+
+    '<path class="anatomy-detail" d="M90 51V145M65 70Q90 82 115 70M66 99Q90 110 114 99M71 121Q90 128 109 121M72 148Q90 156 108 148M90 157V226M64 194Q76 204 90 202M116 194Q104 204 90 202M63 232Q73 243 82 246M117 232Q107 243 98 246"/>'+
+    '<path class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" d="M62 67Q50 71 45 82L53 96Q59 86 69 82L77 71Z"/>'+
+    '<path class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" d="M118 67Q130 71 135 82L127 96Q121 86 111 82L103 71Z"/>'+
+    '<path class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" d="M69 76Q79 70 89 73V103Q74 103 63 94L65 81Z"/>'+
+    '<path class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" d="M111 76Q101 70 91 73V103Q106 103 117 94L115 81Z"/>'+
+    '<path class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" d="M49 91Q42 103 40 124L47 131Q54 113 57 96Z"/>'+
+    '<path class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" d="M131 91Q138 103 140 124L133 131Q126 113 123 96Z"/>'+
+    '<path class="body-zone core'+bodyHeatClass(snapshot.front.core)+'" d="M72 107Q90 113 108 107L109 151Q104 177 90 189 76 177 71 151Z"/>'+
+    '<path class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" d="M64 194Q74 196 84 203L82 249 73 280 62 267 61 230Z"/>'+
+    '<path class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" d="M116 194Q106 196 96 203L98 249 107 280 118 267 119 230Z"/>'+
+    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M62 276Q72 285 77 302L73 335 62 335 59 302Z"/>'+
+    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M118 276Q108 285 103 302L107 335 118 335 121 302Z"/>'+
+  '</svg>';
+}
+function renderHomeBackAnatomy(snapshot){
+  return '<svg class="home-anatomy-svg back" viewBox="0 0 180 360" role="img" aria-label="Back muscle training load">'+
+    '<defs><filter id="backHeatGlow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'+
+    '<circle class="anatomy-base" cx="90" cy="31" r="18"/>'+
+    '<path class="anatomy-base" d="M82 48 78 61 62 67 47 78 39 105 31 146 39 151 52 112 61 91 64 149 57 194 62 230 58 283 61 344 78 344 83 285 90 235 97 285 102 344 119 344 122 283 118 230 123 194 116 149 119 91 128 112 141 151 149 146 141 105 133 78 118 67 102 61 98 48Z"/>'+
+    '<path class="anatomy-detail" d="M90 51V194M66 72Q90 64 114 72M65 104Q90 119 115 104M70 139Q90 150 110 139M64 194Q76 184 90 187M116 194Q104 184 90 187M63 232Q73 243 82 246M117 232Q107 243 98 246"/>'+
+    '<path class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" d="M66 70Q77 66 88 72L84 113 68 137 60 113 62 82Z"/>'+
+    '<path class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" d="M114 70Q103 66 92 72L96 113 112 137 120 113 118 82Z"/>'+
+    '<path class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" d="M49 91Q42 104 40 127L48 132Q56 111 57 96Z"/>'+
+    '<path class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" d="M131 91Q138 104 140 127L132 132Q124 111 123 96Z"/>'+
+    '<path class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" d="M67 168Q78 157 89 166L89 198Q76 207 63 193Z"/>'+
+    '<path class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" d="M113 168Q102 157 91 166L91 198Q104 207 117 193Z"/>'+
+    '<path class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" d="M64 199Q75 202 84 208L81 259 70 286 61 268 61 226Z"/>'+
+    '<path class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" d="M116 199Q105 202 96 208L99 259 110 286 119 268 119 226Z"/>'+
+    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M61 277Q72 284 77 302L72 337 62 337 58 303Z"/>'+
+    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M119 277Q108 284 103 302L108 337 118 337 122 303Z"/>'+
+  '</svg>';
+}
 function renderHomeBodySnapshot(){
   const snapshot=homeWeekMuscleSnapshot();
   if(!snapshot.top.length)return '';
-  const top=snapshot.top.map(item=>'<span><strong>'+esc(item.label)+'</strong><small>'+item.value+' touch'+(item.value===1?'':'es')+'</small></span>').join('');
-  return '<section class="home-body-card home-training-load home-training-load-v4">'+
-    '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p><h3>Where your work landed.</h3></div><button class="text-button" data-action="progress">VIEW PROGRESS</button></div>'+
+  const top=snapshot.top.slice(0,3).map(item=>
+    '<button type="button" class="home-muscle-load-item heat-'+Math.max(1,Math.min(4,item.level||1))+'" data-action="progress">'+
+      '<i></i><span><strong>'+esc(item.label)+'</strong><small>'+item.value+' touch'+(item.value===1?'':'es')+'</small></span><em>›</em>'+
+    '</button>'
+  ).join('');
+  return '<section class="home-body-card home-training-load home-training-load-v5">'+
+    '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p><h3>Where your work landed.</h3></div><button class="text-button" data-action="progress">VIEW PROGRESS →</button></div>'+
     '<div class="home-body-layout"><div class="home-body-pair" aria-label="Muscle groups trained this week">'+
-      '<div class="home-body-figure"><span>FRONT</span><svg viewBox="0 0 120 210" aria-hidden="true">'+
-        '<circle class="body-base" cx="60" cy="24" r="16"/><path class="body-base" d="M42 48Q60 39 78 48L84 105 74 132 70 194H52L48 132 36 105Z"/><path class="body-base" d="M42 55 18 111M78 55l24 56"/><path class="body-base" d="M49 131 35 200M71 131l14 69"/>'+
-        '<ellipse class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" cx="60" cy="66" rx="20" ry="12"/>'+
-        '<ellipse class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" cx="60" cy="55" rx="28" ry="9"/>'+
-        '<ellipse class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" cx="34" cy="88" rx="7" ry="21"/><ellipse class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" cx="86" cy="88" rx="7" ry="21"/>'+
-        '<ellipse class="body-zone core'+bodyHeatClass(snapshot.front.core)+'" cx="60" cy="103" rx="15" ry="23"/>'+
-        '<ellipse class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" cx="50" cy="153" rx="11" ry="31"/><ellipse class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" cx="70" cy="153" rx="11" ry="31"/>'+
-      '</svg></div>'+
-      '<div class="home-body-figure"><span>BACK</span><svg viewBox="0 0 120 210" aria-hidden="true">'+
-        '<circle class="body-base" cx="60" cy="24" r="16"/><path class="body-base" d="M42 48Q60 39 78 48L84 105 74 132 70 194H52L48 132 36 105Z"/><path class="body-base" d="M42 55 18 111M78 55l24 56"/><path class="body-base" d="M49 131 35 200M71 131l14 69"/>'+
-        '<ellipse class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" cx="60" cy="76" rx="23" ry="28"/>'+
-        '<ellipse class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" cx="34" cy="88" rx="7" ry="21"/><ellipse class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" cx="86" cy="88" rx="7" ry="21"/>'+
-        '<ellipse class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" cx="60" cy="126" rx="18" ry="14"/>'+
-        '<ellipse class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" cx="50" cy="157" rx="10" ry="29"/><ellipse class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" cx="70" cy="157" rx="10" ry="29"/>'+
-        '<ellipse class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" cx="47" cy="191" rx="7" ry="16"/><ellipse class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" cx="73" cy="191" rx="7" ry="16"/>'+
-      '</svg></div>'+
-    '</div><div class="home-body-copy"><p>This reflects muscles recorded in completed workouts. It is training load, not a body-change measurement.</p><div class="home-muscle-chips">'+top+'</div></div></div>'+
+      '<div class="home-body-figure anatomy"><span>FRONT</span>'+renderHomeFrontAnatomy(snapshot)+'</div>'+
+      '<div class="home-body-figure anatomy"><span>BACK</span>'+renderHomeBackAnatomy(snapshot)+'</div>'+
+    '</div><div class="home-body-copy"><button type="button" class="home-load-info" aria-label="About training load" data-action="progress">ⓘ Training load reflects muscles recorded in completed workouts.</button><div class="home-muscle-load-list">'+top+'</div></div></div>'+
   '</section>';
 }
 function renderHomeLastWorkout(last){
@@ -7353,7 +7380,17 @@ function renderHomeNextSession(schedule,state){
   const entry=homeNextScheduledEntry(schedule);
   const day=entry?.adaptedDay||entry?.day;
   if(!entry||!day)return '';
-  return '<button class="home-next-session" data-action="train"><div><span>WHAT’S NEXT</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · '+esc(day.focus||'Training')+'</small></div><em>'+homeWorkoutCode(day.name)+' →</em></button>';
+  const ex=homeEntryFirstExercise(entry);
+  let imageSrc='';
+  if(ex){
+    const spec=exerciseMediaSpec(ex);
+    if(!['reference','missing'].includes(spec.status))imageSrc=exerciseMediaFrameUrl(ex,0)||'';
+  }
+  return '<button class="home-next-session home-next-session-v2" data-action="train">'+
+    (imageSrc?'<img src="'+esc(imageSrc)+'" alt="" loading="lazy" decoding="async">':'')+
+    '<span class="home-next-session-shade"></span>'+
+    '<div><span>WHAT’S NEXT</span><strong>'+esc(day.name||'Workout')+'</strong><small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · '+esc(day.focus||'Training')+'</small></div><em>'+homeWorkoutCode(day.name)+' →</em>'+
+  '</button>';
 }
 function renderHome(){
   const p=store.profile,plan=store.plan;if(!p||!plan)return renderProfileEditor();
