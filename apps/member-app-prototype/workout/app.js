@@ -7673,19 +7673,6 @@ function renderHomeWeekPulse(schedule){
     '</div>';
   }).join('')+'</div>';
 }
-function bodyHeatClass(level){
-  return level?' heat-'+Math.max(1,Math.min(4,level)):'';
-}
-function renderHomeFrontAnatomy(snapshot){
-  const anatomy=window.GoWorkoutAnatomy;
-  if(anatomy?.front)return anatomy.front(snapshot.regions||snapshot.front||{});
-  return '<svg class="home-anatomy-svg anatomy-pro front" viewBox="0 0 320 570" role="img" aria-label="Front muscular anatomy training load"><text x="160" y="285" text-anchor="middle" class="anatomy-fallback-text">FRONT</text></svg>';
-}
-function renderHomeBackAnatomy(snapshot){
-  const anatomy=window.GoWorkoutAnatomy;
-  if(anatomy?.back)return anatomy.back(snapshot.regions||snapshot.back||{});
-  return '<svg class="home-anatomy-svg anatomy-pro back" viewBox="0 0 320 570" role="img" aria-label="Back muscular anatomy training load"><text x="160" y="285" text-anchor="middle" class="anatomy-fallback-text">BACK</text></svg>';
-}
 function renderHomeBodySnapshot(){
   const snapshot=homeWeekMuscleSnapshot();
   if(!snapshot.top.length)return '';
@@ -7696,10 +7683,10 @@ function renderHomeBodySnapshot(){
   ).join('');
   return '<section class="home-body-card home-training-load home-training-load-v5">'+
     '<div class="home-body-head"><div><p class="eyebrow">TRAINING LOAD · THIS WEEK</p><h3>Where your work landed.</h3></div><button class="text-button" data-action="progress">VIEW PROGRESS →</button></div>'+
-    '<div class="home-body-layout"><div class="home-body-pair" aria-label="Muscle groups trained this week">'+
-      '<div class="home-body-figure anatomy"><span>FRONT</span>'+renderHomeFrontAnatomy(snapshot)+'</div>'+
-      '<div class="home-body-figure anatomy"><span>BACK</span>'+renderHomeBackAnatomy(snapshot)+'</div>'+
-    '</div><div class="home-body-copy"><button type="button" class="home-load-info" aria-label="About training load" data-action="progress">ⓘ Training load reflects muscles recorded in completed workouts.</button><div class="home-muscle-load-list">'+top+'</div></div></div>'+
+    '<div class="home-training-load-summary">'+
+      '<button type="button" class="home-load-info" aria-label="About training load" data-action="progress">ⓘ Training load reflects muscles recorded in completed workouts.</button>'+
+      '<div class="home-muscle-load-list">'+top+'</div>'+
+    '</div>'+
   '</section>';
 }
 function renderHomeLastWorkout(last){
