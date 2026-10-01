@@ -2462,8 +2462,8 @@ function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
 }
 function recalculatePlanDay(day){
   if(!day)return;
-  day.warmup=buildWarmup(day.exercises||[]);
-  day.cooldown=buildCooldown(day.exercises||[]);
+  day.warmup=buildWarmup(day.exercises||[],day.trainingContext||null,day.warmupTargetSeconds||null);
+  day.cooldown=buildCooldown(day.exercises||[],day.trainingContext||null,day.cooldownTargetSeconds||null);
   const prep=[...(day.warmup||[]),...(day.cooldown||[])].reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0);
   const work=(day.exercises||[]).reduce((sum,ex)=>sum+estimatePlanExerciseSeconds(ex,day.readinessRestBonus||0),0);
   day.warmupMinutes=Math.ceil((day.warmup||[]).reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
@@ -3187,126 +3187,162 @@ function timedStageEstimateSeconds(item){
   return Math.max(1,Number(item.seconds)||30)*sides+switchSeconds+transition;
 }
 
-function normalizeTimedStage(items,targetSeconds,minSeconds,maxSeconds){
-  if(!items.length)return items;
-  const target=Math.max(minSeconds,Math.min(maxSeconds,targetSeconds));
-  const units=items.reduce((sum,item)=>sum+(item.side?2:1),0);
-  const each=Math.max(15,Math.round(target/Math.max(1,units)/5)*5);
-  return items.map(item=>({...item,seconds:each}));
+function normalizeStretchMuscle(value){
+ return String(value||'').trim().toLowerCase().replace(/[\s-]+/g,'_');
 }
-function buildWarmup(exercises){
-  const moves=new Set(exercises.map(e=>e.movement));
-  const lower=[...moves].some(m=>['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'].includes(m));
-  const upper=[...moves].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory','biceps','triceps'].includes(m));
-  const items=[{
-    name:'Easy march + arm swing',
-    mode:'time',
-    seconds:30,
-    description:'March in place while the arms swing naturally.',
-    cue:'Raise your temperature. Keep your shoulders loose.',
-    why:'Gently raises body temperature before training.',
-    mediaStatus:'none'
-  }];
-  if(lower){
-    items.push(
-      {name:'Ankle rocks',mode:'reps',reps:8,side:'each side',description:'Drive the knee forward over the toes while the heel stays down.',cue:'Keep the heel planted and move through a comfortable range.',why:'Prepares the ankles for squats, lunges, and leg work.',mediaStatus:'none'},
-      {name:'Bodyweight squat',mode:'reps',reps:8,description:'Sit between the hips and stand tall without load.',cue:'Keep your knees tracking over your toes.',why:'Warms the squat pattern before loaded lower-body work.',mediaId:'Bodyweight_Squat'}
-    );
-    if([...moves].some(m=>['hinge','hamstring-accessory'].includes(m))){
-      items.push({name:'Hip hinge reach',mode:'reps',reps:8,description:'Reach the hips back with soft knees, then return tall.',cue:'Keep your spine long and feel the hamstrings load lightly.',why:'Primes the hinge pattern without external load.'});
-    }
-    items.push(
-      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',description:'Step back into a controlled reverse lunge with an easy reach.',cue:'Stay tall and use a comfortable range.',why:'Adds single-leg motion and opens the hips.',mediaStatus:'none'},
-      {name:'Glute bridge',mode:'reps',reps:8,description:'Press through the feet and lift the hips under control.',cue:'Squeeze the glutes without arching the lower back.',why:'Turns on the glutes before loaded lower-body work.'}
-    );
-  }else if(upper){
-    items.push(
-      {name:'Arm circles',mode:'time',seconds:30,description:'Move from small circles into a comfortable larger range.',cue:'Keep the neck relaxed.',why:'Warms the shoulders before pressing and pulling.',mediaId:'Arm_Circles'},
-      {name:'Shoulder sweep',mode:'reps',reps:8,description:'Sweep the arms through a comfortable overhead range.',cue:'Move smoothly without shrugging.',why:'Prepares overhead shoulder motion.'},
-      {name:'Thoracic rotation',mode:'reps',reps:5,side:'each side',description:'Rotate through the upper back while the hips stay quiet.',cue:'Breathe out as you rotate.',why:'Prepares the upper back for rows and presses.'},
-      {name:'Scapular squeeze',mode:'reps',reps:8,description:'Draw the shoulder blades gently back and down, then release.',cue:'Keep the ribs quiet and neck long.',why:'Primes shoulder-blade control before upper-body work.'},
-      {name:'Wall push-up',mode:'reps',reps:8,description:'Use an easy wall push-up to warm the pressing pattern.',cue:'Keep a straight line from head to heels.',why:'Prepares the chest, shoulders, and triceps.'}
-    );
-  }else{
-    items.push(
-      {name:'Bodyweight squat',mode:'reps',reps:8,cue:'Move through a comfortable range.',why:'Adds gentle full-body movement.',mediaId:'Bodyweight_Squat'},
-      {name:'Shoulder sweep',mode:'reps',reps:8,cue:'Keep the shoulders relaxed.',why:'Warms the upper body.'},
-      {name:'Reverse lunge reach',mode:'reps',reps:5,side:'each side',cue:'Move slowly and stay tall.',why:'Adds hip and single-leg motion.',mediaId:'Crossover_Reverse_Lunge'}
-    );
-  }
-  return items.slice(0,6);
+function workoutStretchMuscles(exercises){
+ const out=new Set();
+ const aliases={
+   back:['upper_back','lats'],
+   shoulders:['shoulders','delts','rotator_cuff'],
+   chest:['chest'],
+   lats:['lats'],
+   biceps:['biceps'],
+   triceps:['triceps'],
+   core:['core','obliques'],
+   glutes:['glutes'],
+   quads:['quads'],
+   hamstrings:['hamstrings'],
+   calves:['calves']
+ };
+ const movementAliases={
+   'horizontal-push':['chest','shoulders','triceps'],
+   'horizontal-pull':['upper_back','lats','biceps'],
+   'vertical-push':['shoulders','triceps'],
+   'vertical-pull':['lats','upper_back','biceps'],
+   'shoulder-accessory':['shoulders','rotator_cuff'],
+   'biceps':['biceps'],
+   'triceps':['triceps'],
+   'squat':['quads','glutes'],
+   'hinge':['hamstrings','glutes','lower_back'],
+   'single-leg':['quads','glutes','hip_flexors'],
+   'quad-accessory':['quads'],
+   'hamstring-accessory':['hamstrings'],
+   'calves':['calves'],
+   'core':['core','obliques']
+ };
+ for(const ex of exercises||[]){
+   for(const muscle of ex.muscles||[]){
+     const key=normalizeStretchMuscle(muscle);
+     out.add(key);
+     for(const alias of aliases[key]||[])out.add(alias);
+   }
+   for(const alias of movementAliases[ex.movement]||[])out.add(alias);
+ }
+ return [...out];
 }
-
-function buildCooldown(exercises){
-  const muscles=new Set(exercises.flatMap(e=>e.muscles||[]));
-  const items=[];
-  if(muscles.has('Chest')||muscles.has('Shoulders')) items.push({
-    name:'Chest + shoulder stretch',
-    seconds:30,
-    description:'Use a comfortable chest-opening position to gently lengthen the chest and front of the shoulders after pressing.',
-    cue:'Gentle stretch only, no forcing the range.',
-    why:'Lets the chest and front of the shoulders relax after pressing.',
-    mediaId:'Chest_And_Front_Of_Shoulder_Stretch'
-  });
-  if(muscles.has('Back')||muscles.has('Lats')) items.push({
-    name:'Lat + upper-back stretch',
-    seconds:30,
-    description:'Reach into a relaxed upper-back and lat stretch, allowing the shoulders to settle while you breathe slowly.',
-    cue:'Breathe slowly and let the shoulders relax.',
-    why:'Lengthens the lats and upper back after rows and pulldowns.',
-    mediaId:'Overhead_Lat'
-  });
-  if(muscles.has('Quads')) items.push({
-    name:'Standing quad stretch',
-    seconds:30,
-    side:'each side',
-    sideSwitchSeconds:7,
-    description:'Stand tall and gently bend one knee to stretch the front of the thigh without pulling aggressively.',
-    cue:'Keep knees close and posture tall.',
-    why:'Gives the quads a gentle post-workout stretch.',
-    mediaId:'Standing_Elevated_Quad_Stretch'
-  });
-  if(muscles.has('Hamstrings')) items.push({
-    name:'Hamstring stretch',
-    seconds:30,
-    side:'each side',
-    sideSwitchSeconds:7,
-    description:'Hinge forward gently with a long spine until you feel a mild stretch through the back of the thigh.',
-    cue:'Hinge gently until you feel light tension.',
-    why:'Helps the hamstrings relax after hinges and leg work.',
-    mediaId:'Hamstring_Stretch'
-  });
-  if(muscles.has('Glutes')) items.push({
-    name:'Glute stretch',
-    seconds:30,
-    side:'each side',
-    sideSwitchSeconds:7,
-    description:'Settle into a comfortable hip position that creates a gentle stretch through the glutes without forcing the joint.',
-    cue:'Stay relaxed and avoid forcing the hip.',
-    why:'Releases the glutes after squats, hinges, and lunges.',
-    mediaId:'IT_Band_and_Glute_Stretch'
-  });
-  if(muscles.has('Calves')) items.push({
-    name:'Calf stretch',
-    seconds:30,
-    side:'each side',
-    sideSwitchSeconds:6,
-    description:'Keep the heel planted while leaning into a gentle calf stretch, using steady breathing instead of bouncing.',
-    cue:'Keep the heel down and breathe steadily.',
-    why:'Lets the calf settle after standing and lower-body work.',
-    mediaId:'Standing_Gastrocnemius_Calf_Stretch'
-  });
-  if(items.length<3) items.push({
-    name:'Full-body reach + breathing',
-    seconds:30,
-    description:'Reach tall, breathe slowly, and let the shoulders relax to bring the session down gradually.',
-    cue:'Slow inhale, longer exhale, relax the shoulders.',
-    why:'Brings your breathing down and finishes the session gradually.',
-    mediaId:'Upward_Stretch'
-  });
-  return normalizeTimedStage(items.slice(0,4),exercises.length<=3?60:exercises.length>=7?180:120,60,180);
+function workoutStretchFocus(exercises){
+ const movements=new Set((exercises||[]).map(ex=>ex.movement));
+ const upper=[...movements].some(m=>['horizontal-push','horizontal-pull','vertical-push','vertical-pull','shoulder-accessory','biceps','triceps'].includes(m));
+ const lower=[...movements].some(m=>['squat','hinge','single-leg','quad-accessory','hamstring-accessory','calves'].includes(m));
+ if(upper&&!lower)return 'upper';
+ if(lower&&!upper)return 'lower';
+ return 'full';
 }
-
+function stageEquipmentForSetup(setup){
+ const equipment=new Set(['bodyweight','wall']);
+ const modes=setup?.modes||engineEquipment(store.profile?.equipment||'full-gym');
+ if(modes.includes('full-gym')){
+   ['dumbbell','bench','cable','machine','band','pullup_bar'].forEach(item=>equipment.add(item));
+ }
+ if(modes.includes('dumbbells')||modes.includes('dumbbell'))equipment.add('dumbbell');
+ if(modes.includes('bands')||modes.includes('band'))equipment.add('band');
+ if(modes.includes('mixed-home')){
+   equipment.add('dumbbell');equipment.add('band');
+ }
+ if(setup?.chair)equipment.add('bench');
+ if(setup?.pullupBar)equipment.add('pullup_bar');
+ return [...equipment];
+}
+function stageExcludedPositions(setup){
+ if(setup?.floor!==false)return [];
+ return ['supine','prone','quadruped','side_lying','kneeling','half_kneeling','plank'];
+}
+function warmupBudgetSeconds(exercises,minutes=num(store.profile?.minutes)||45){
+ if(minutes<=30)return 180;
+ if(minutes>=60)return 300;
+ return 240;
+}
+function cooldownBudgetSeconds(exercises,minutes=num(store.profile?.minutes)||45){
+ const count=(exercises||[]).length;
+ if(minutes<=30||count<=3)return 60;
+ if(minutes>=60||count>=7)return 180;
+ return 120;
+}
+function runnerStageItem(activity,phase){
+ const side=activity?.side==='each side'?'each side':'';
+ const cue=(activity?.cues||[])[0]||'Move through a comfortable, controlled range.';
+ const description=(activity?.cues||[])[1]||activity?.feel||cue;
+ const muscleCopy=(activity?.muscles||[]).slice(0,3).map(libraryTitleCase).join(', ');
+ return {
+   id:'stretch:'+String(activity?.catalogId||activity?.id||'movement'),
+   catalogStretchId:activity?.catalogId||activity?.id||'',
+   name:activity?.name||'Mobility movement',
+   mode:'time',
+   seconds:Math.max(10,num(activity?.seconds)||25),
+   side,
+   sideSwitchSeconds:side?7:0,
+   alternating:Boolean(activity?.alternating),
+   type:activity?.type||'mobility',
+   bodyArea:activity?.bodyArea||'',
+   regions:clone(activity?.regions||[]),
+   muscles:clone(activity?.muscles||[]),
+   position:activity?.position||'',
+   equipment:clone(activity?.equipment||['bodyweight']),
+   cues:clone(activity?.cues||[]),
+   cue,
+   description,
+   feel:activity?.feel||'',
+   mistakes:clone(activity?.mistakes||[]),
+   modification:activity?.modification||'',
+   imageKey:activity?.imageKey||activity?.catalogId||activity?.id||'',
+   imageStatus:activity?.imageStatus||'needed',
+   imageRequirement:activity?.imageRequirement||'',
+   why:phase==='warmup'
+     ?'Selected from the GoWorkout catalog to prepare '+(muscleCopy||'the movement patterns')+' used in this session.'
+     :'Selected from the GoWorkout catalog for '+(muscleCopy||'the areas')+' trained in this session.',
+   mediaStatus:'none',
+   catalogVersion:1
+ };
+}
+function buildCatalogTimedStage(exercises,phase,setup,targetSeconds){
+ if(!programEngine?.buildMovementSession)return [];
+ const focus=workoutStretchFocus(exercises);
+ const label=focus==='upper'?'upper_a':focus==='lower'?'lower_a':'full_a';
+ const engineProfile={
+   goal:engineGoal(store.profile?.goal||'general'),
+   experience:engineExperience(store.profile?.experience||'beginner'),
+   sessionsPerWeek:num(store.profile?.days)||4,
+   sessionMinutes:num(store.profile?.minutes)||45,
+   equipment:stageEquipmentForSetup(setup),
+   exclusions:[]
+ };
+ try{
+   const session=programEngine.buildMovementSession(targetSeconds,label,engineProfile,{
+     placement:phase,
+     trainedMuscles:workoutStretchMuscles(exercises),
+     availableEquipment:stageEquipmentForSetup(setup),
+     excludedPositions:stageExcludedPositions(setup),
+     maxItems:phase==='warmup'?5:4
+   });
+   return (session?.activities||[]).map(item=>runnerStageItem(item,phase));
+ }catch(error){
+   console.warn('Catalog '+phase+' generation failed.',error);
+   return [];
+ }
+}
+function buildWarmup(exercises,setup=null,targetSeconds=null){
+ const seconds=targetSeconds||warmupBudgetSeconds(exercises);
+ const items=buildCatalogTimedStage(exercises,'warmup',setup,seconds);
+ if(items.length)return items;
+ return [{name:'Full-Body Reach and Fold',mode:'time',seconds:30,cue:'Move slowly through a comfortable range.',description:'Reach tall, hinge forward with soft knees, then return to standing.',why:'Simple full-body preparation when the catalog selector is unavailable.',mediaStatus:'none'}];
+}
+function buildCooldown(exercises,setup=null,targetSeconds=null){
+ const seconds=targetSeconds||cooldownBudgetSeconds(exercises);
+ const items=buildCatalogTimedStage(exercises,'cooldown',setup,seconds);
+ if(items.length)return items;
+ return [{name:'Breathing Reset',mode:'time',seconds:30,cue:'Use an easy inhale and a longer relaxed exhale.',description:'Let your breathing and heart rate settle.',why:'Simple recovery when the catalog selector is unavailable.',mediaStatus:'none'}];
+}
 
 const SESSION_SETUP_PRESETS = {
   'full-gym':{label:'Gym',shortLabel:'Gym',modes:['full-gym']},
@@ -3508,6 +3544,8 @@ function adaptDayForSessionSetup(day,setup,availableMinutes=null){
     changedCount:relevantChanges.filter(item=>item.type==='replacement').length,
     unavailableCount:relevantChanges.filter(item=>item.type==='unavailable').length
   };
+  recalculatePlanDay(adjusted);
+  if(availableMinutes)fitSessionDayToTime(adjusted,availableMinutes);
   adjusted.adaptationNotes=[...(adjusted.adaptationNotes||[])];
   if(setup.key!==normalSessionSetupKey()||relevantChanges.length){
     adjusted.adaptationNotes.unshift('Today’s setup: '+sessionSetupLabel(setup)+'. '+(relevantChanges.length?relevantChanges.length+' planned movement'+(relevantChanges.length===1?' was':'s were')+' adjusted for this session.':'Your planned movements already fit.'));
@@ -3789,7 +3827,7 @@ function engineExperience(experience){return experience==='new'?'beginner':(expe
 function buildEngineProgram(profile){
   if(!programEngine)return null;
   try{
-    const engineProfile={goal:engineGoal(profile.goal),experience:engineExperience(profile.experience),sessionsPerWeek:profile.days,sessionMinutes:profile.minutes,equipment:engineEquipment(profile.equipment),priorities:clone(profile.priorities||[]),exclusions:clone(store.exercisePreferences?.excluded||[]),stretchMinutes:10,mobilitySessionsPerWeek:1};
+    const engineProfile={goal:engineGoal(profile.goal),experience:engineExperience(profile.experience),sessionsPerWeek:profile.days,sessionMinutes:profile.minutes,equipment:engineEquipment(profile.equipment),priorities:clone(profile.priorities||[]),exclusions:clone(store.exercisePreferences?.excluded||[]),stretchMinutes:2,mobilitySessionsPerWeek:1};
     const built=programEngine.rebalancePriorityVolume(programEngine.buildProgram(engineProfile));
     const validation=programEngine.validateProgram(built);
     if(!validation.valid)throw new Error(validation.errors.join('; '));
@@ -3806,7 +3844,7 @@ function currentEngineProgram(){const e=ensureTrainingProgram().engine;return e?
 function ensureTrainProgramEngineCurrent(){
   const current=currentEngineProgram();
   if(!programEngine||!store.profile||store.activeWorkout)return current;
-  if(current?.engineVersion==='1.6.0'&&current?.program?.programModel==='anchor_rotation')return current;
+  if(current?.engineVersion==='1.8.0'&&current?.program?.programModel==='anchor_rotation')return current;
   const upgraded=buildEngineProgram(store.profile);
   if(!upgraded)return current;
   upgraded.migratedFrom=current?.engineVersion||'legacy';
@@ -3848,11 +3886,9 @@ function engineSessionToLegacyDay(session,fallbackDay,index=0,blockNumber=progra
   const exercises=(session.strength||[]).filter(item=>item.exercise).map(item=>{const source=engineCatalogExercise(item.exercise);if(!source)return null;const pr=item.prescription||{},repRange=Array.isArray(pr.reps)?pr.reps.join('–'):(pr.reps||'8–12'),estimated=estimateStartingLoad(source,store.profile||{});return {...source,sets:Math.max(1,num(pr.sets)||3),reps:repRange,startReps:Array.isArray(pr.reps)?pr.reps[0]:recommendedRepCount(repRange),rest:Math.max(30,Math.min(120,num(pr.restSeconds)||60)),startWeight:estimated.weight,startLabel:estimated.label,startSource:estimated.source||'Program Engine',calibrationRequired:estimated.calibrate,engineExerciseId:item.exercise.id,engineReason:clone(item.reason||[]),engineSubstitutions:clone(item.substitutions||[]),engineIntensityTarget:pr.intensityTarget||'',engineProgramRole:item.programRole||'',engineChangedFrom:clone(item.changedFromWeek1||null)};}).filter(Boolean);
   const fallback=clone(fallbackDay||{});if(!exercises.length)return fallback;
   const day={...fallback,id:fallback.id||('engine-day-'+(index+1)),name:fallback.name||session.label||'Training',focus:fallback.focus||'Program Engine session',targetMinutes:num(session.timeBudget?.targetMinutes)||num(store.profile?.minutes)||45,exercises,engineSessionId:session.id,engineWeek:session.week,engineBlockNumber:blockNumber,engineBacked:true,engineMinimumViable:clone(session.minimumViableWorkout||[]),engineStretch:clone(session.stretch||null)};
+  day.warmupTargetSeconds=num(session.timeBudget?.warmupMinutes)?Math.round(num(session.timeBudget.warmupMinutes)*60):warmupBudgetSeconds(exercises,num(store.profile?.minutes)||45);
+  day.cooldownTargetSeconds=num(session.stretch?.totalSeconds)||cooldownBudgetSeconds(exercises,num(store.profile?.minutes)||45);
   recalculatePlanDay(day);
-  day.warmup=(session.warmup||[]).map(item=>({name:item.name,seconds:Number(item.seconds)||30,description:'Program Engine movement preparation.',cue:'Move smoothly through a comfortable range.',why:'Prepares the movement patterns used in this session.'}));
-  day.cooldown=engineStretchToLegacy(session.stretch);
-  day.warmupMinutes=Math.ceil(day.warmup.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
-  day.cooldownMinutes=Math.ceil(day.cooldown.reduce((sum,item)=>sum+timedStageEstimateSeconds(item),0)/60);
   day.estimatedMinutes=num(session.timeBudget?.targetMinutes)||day.estimatedMinutes;return day;
 }
 function engineDayForSchedule(date,index,fallbackDay){const context=programContext(date),session=engineSessionForDate(date,index);return session?engineSessionToLegacyDay(session,fallbackDay,index,context.blockNumber):clone(fallbackDay);}
