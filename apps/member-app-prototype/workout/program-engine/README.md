@@ -1,4 +1,4 @@
-# GoWorkout Program Engine v1.7
+# GoWorkout Program Engine v1.8
 
 An isolated, deterministic programming layer for GoWorkout. The live workout execution flow is intentionally untouched until the engine is proven.
 
@@ -10,8 +10,8 @@ An isolated, deterministic programming layer for GoWorkout. The live workout exe
 - Four-week blocks with Base, Build, Overload, and Consolidate phases
 - Movement-slot based exercise selection with explainable reasons
 - Exercise-specific set, rep, rest, intensity, and progression prescriptions
-- Contextual upper/lower warm-ups
-- Exact 5, 10, and 15 minute targeted stretch sessions
+- Catalog-driven warm-ups matched to workout focus, trained muscles, equipment, and floor availability
+- Targeted cooldowns from 1 to 15 minutes, including the live 1 to 3 minute workout recovery flow
 - Exact 5, 10, and 15 minute mobility sessions
 - Low-equipment conditioning selection
 - Exercise substitutions that preserve movement intent
@@ -104,6 +104,6 @@ Each catalog entry includes:
 - coaching cues, expected sensation, common mistakes, and a modification
 - production image key, image status, and framing requirement
 
-Unilateral stretches are expanded into separate left and right execution steps. This keeps timers, progress, voice cues, pause/skip behavior, and future imagery aligned to the side being performed.
+Program-engine stretch exports still support separate left and right execution steps for isolated engine consumers. The live GoWorkout runner keeps each unilateral stretch as one canonical movement and executes right side, switch countdown, then left side.
 
-Cooldown stretch selection is deterministic and now scores movements against both workout label and the muscles trained in that session. Equipment filters still apply. Exact 5, 10, and 15 minute session totals are preserved, with a breathing reset filling any small remainder.
+The v1.8 workout-stage selector scores the same 72-item catalog against workout focus, trained muscles, warm-up versus cooldown placement, movement type, available equipment, and excluded positions. The live app uses it for 3 to 5 minute warm-ups and 1 to 3 minute cooldowns. Cooldowns are rebuilt from exercises actually completed, so skips and substitutions change the recovery sequence instead of leaving the original plan untouched.
