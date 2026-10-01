@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "goblet-squat-avatar-sheet-01",
+  "source": "source-sheets/goblet-squat-avatar-sheet-01.png",
+  "grid": {
+    "rows": 3,
+    "columns": 3,
+    "outerMarginPx": 0,
+    "gutterPx": 0,
+    "cellInsetPx": 4
+  },
+  "output": {
+    "format": "webp",
+    "quality": 88,
+    "maxEdge": 768,
+    "squareCrop": true
+  },
+  "cells": [
+    {"row":0,"column":0,"exerciseId":"goblet-squat","avatarId":"masc-athletic","position":"start"},
+    {"row":0,"column":1,"exerciseId":"goblet-squat","avatarId":"masc-athletic","position":"end"},
+    {"row":0,"column":2,"exerciseId":"goblet-squat","avatarId":"masc-full","position":"start"},
+    {"row":1,"column":0,"exerciseId":"goblet-squat","avatarId":"masc-full","position":"end"},
+    {"row":1,"column":1,"exerciseId":"goblet-squat","avatarId":"fem-athletic","position":"start"},
+    {"row":1,"column":2,"exerciseId":"goblet-squat","avatarId":"fem-athletic","position":"end"},
+    {"row":2,"column":0,"exerciseId":"goblet-squat","avatarId":"fem-full","position":"start"},
+    {"row":2,"column":1,"exerciseId":"goblet-squat","avatarId":"fem-full","position":"end"}
+  ]
+}
