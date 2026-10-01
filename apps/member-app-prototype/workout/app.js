@@ -26,6 +26,7 @@ const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:''
 let cloudSyncTimer=null;
 let cloudHydrating=false;
 let exerciseDetailId = null;
+let exerciseDetailTab = 'form';
 let swapContext = null;
 let readinessContext = null;
 let trainPreviewContext = null;
@@ -3014,6 +3015,181 @@ function renderStretchModal(item){
       '<section><span>EQUIPMENT</span><p>'+esc(equipment)+'</p></section>'+
     '</div></section></div>';
 }
+
+function exerciseTrainingAnalysis(ex){
+  const source=exerciseSource(ex)||ex||{};
+  const compoundMovements=new Set(['squat','hinge','single-leg','horizontal-push','horizontal-pull','vertical-push','vertical-pull']);
+  const compound=compoundMovements.has(source.movement);
+  const unilateral=exerciseLaterality(source)!=='bilateral';
+  const loadMode=source.loadMode||'bodyweight';
+  const loadable=['barbell','dumbbell','dumbbell-pair','machine','assisted'].includes(loadMode);
+  const machine=['machine','assisted'].includes(loadMode);
+  const freeLoaded=['barbell','dumbbell','dumbbell-pair'].includes(loadMode);
+  const beginner=String(source.difficulty||'beginner')==='beginner';
+  const intermediate=String(source.difficulty||'')==='intermediate';
+
+  let loadingPotential='Moderate';
+  if(loadMode==='barbell'&&compound)loadingPotential='High';
+  else if(machine&&compound)loadingPotential='High';
+  else if(loadable)loadingPotential='Moderate';
+  else loadingPotential='Limited';
+
+  let stabilityDemand='Moderate';
+  if(machine)stabilityDemand='Low';
+  else if(unilateral)stabilityDemand='High';
+  else if(loadMode==='barbell'&&compound)stabilityDemand='Moderate to high';
+  else if(['bodyweight','timed','band'].includes(loadMode))stabilityDemand='Moderate';
+
+  let techniqueComplexity=beginner?'Low to moderate':intermediate?'Moderate':'High';
+  if(machine&&beginner)techniqueComplexity='Low';
+  if(unilateral&&!beginner)techniqueComplexity='Moderate to high';
+
+  let fatigueCost=compound?'Moderate to high':'Low to moderate';
+  if(machine&&!compound)fatigueCost='Low to moderate';
+  if(['core','biceps','triceps','calves','shoulder-accessory','quad-accessory','hamstring-accessory'].includes(source.movement))fatigueCost='Low to moderate';
+
+  const rangePotential=({
+    squat:'High',hinge:'Moderate to high','single-leg':'High',
+    'horizontal-push':'Moderate','horizontal-pull':'Moderate',
+    'vertical-push':'Moderate','vertical-pull':'Moderate to high',
+    'hamstring-accessory':'Moderate','quad-accessory':'Moderate',
+    'shoulder-accessory':'Moderate',biceps:'Moderate',triceps:'Moderate',
+    calves:'Moderate',core:'Movement dependent'
+  })[source.movement]||'Movement dependent';
+
+  const secondaryMap={
+    squat:['Core','Adductors'],
+    hinge:['Core','Spinal erectors'],
+    'single-leg':['Core','Adductors'],
+    'horizontal-push':['Front delts'],
+    'horizontal-pull':['Rear delts'],
+    'vertical-push':['Upper chest','Core'],
+    'vertical-pull':['Upper back'],
+    calves:['Foot and ankle stabilizers']
+  };
+  const primary=(source.muscles||[]).slice(0,4);
+  const secondary=(secondaryMap[source.movement]||[]).filter(item=>!primary.includes(item));
+
+  const muscleGrowth=loadable?'Strong':compound?'Good':'Moderate';
+  const generalStrength=compound?(loadable?'Strong':'Good'):(loadable?'Good':'Moderate');
+  const maximumStrength=(loadMode==='barbell'&&compound)?'Strong':(machine&&compound)?'Good':freeLoaded&&compound?'Good':'Limited';
+  const endurance=['bodyweight','band','timed','machine'].includes(loadMode)?'Strong':'Good';
+  const learning=beginner?(machine?'Strong':'Good'):intermediate?'Moderate':'Limited';
+
+  const strengths=[];
+  if(compound)strengths.push('Trains several joints and muscle groups in one movement.');
+  else strengths.push('Lets you focus training stress on a smaller movement or muscle group.');
+  if(machine)strengths.push('The supported path reduces balance demands and makes resistance changes straightforward.');
+  else if(loadMode==='barbell')strengths.push('Supports clear load progression when equipment and setup are available.');
+  else if(loadMode==='dumbbell'||loadMode==='dumbbell-pair')strengths.push('Dumbbells allow independent arm or side positioning and practical load progression.');
+  else if(loadMode==='bodyweight'||loadMode==='timed')strengths.push('Requires little equipment and works well across home and travel setups.');
+  else if(loadMode==='band')strengths.push('Portable resistance makes the movement easy to include outside a full gym.');
+  if(unilateral)strengths.push('Trains each side independently, which makes side-to-side performance easier to observe.');
+
+  const limitations=[];
+  if(loadMode==='barbell')limitations.push('Requires more setup, equipment, and technique consistency than many machine or bodyweight options.');
+  else if(machine)limitations.push('The movement depends on the machine available and its fixed geometry.');
+  else if(loadMode==='dumbbell'||loadMode==='dumbbell-pair')limitations.push('Holding or positioning the dumbbells can become limiting before the target muscles do.');
+  else if(loadMode==='bodyweight'||loadMode==='timed')limitations.push('Progressive loading becomes less precise once the standard version stops being challenging.');
+  else if(loadMode==='band')limitations.push('Band tension changes through the range of motion and exact resistance is harder to compare between setups.');
+  if(unilateral)limitations.push('Each side takes separate work, which can increase session time.');
+  if(compound)limitations.push('Because several joints contribute, fatigue and technique can affect performance before one target muscle reaches its limit.');
+
+  const equipment=equipmentRequirement(source);
+  const type=compound?'Compound':'Accessory / isolation';
+  return {
+    type,
+    primary,
+    secondary,
+    loadingPotential,
+    stabilityDemand,
+    techniqueComplexity,
+    fatigueCost,
+    rangePotential,
+    equipment,
+    fit:[
+      {label:'Muscle growth',value:muscleGrowth},
+      {label:'General strength',value:generalStrength},
+      {label:'Maximum strength',value:maximumStrength},
+      {label:'Muscular endurance',value:endurance},
+      {label:'Beginner learning',value:learning}
+    ],
+    strengths:strengths.slice(0,3),
+    limitations:limitations.slice(0,3)
+  };
+}
+function exerciseAnalysisTone(value){
+  const v=String(value||'').toLowerCase();
+  if(v==='strong'||v==='high')return 'strong';
+  if(v.includes('limited')||v==='low')return 'limited';
+  return 'moderate';
+}
+function exerciseComparableOptions(ex,limit=3){
+  const source=exerciseSource(ex)||ex;
+  if(!source)return [];
+  return catalog
+    .filter(item=>item.id!==source.id&&item.movement===source.movement)
+    .map(item=>({
+      item,
+      score:(item.style===source.style?4:0)+(item.difficulty===source.difficulty?3:0)+muscleOverlap(source,item)*2
+    }))
+    .sort((a,b)=>b.score-a.score||a.item.name.localeCompare(b.item.name))
+    .slice(0,limit)
+    .map(row=>row.item);
+}
+function renderExerciseAnalysisPanel(ex){
+  const analysis=exerciseTrainingAnalysis(ex);
+  const fit=analysis.fit.map(item=>
+    '<div class="exercise-fit-row"><span>'+esc(item.label)+'</span><strong class="tone-'+exerciseAnalysisTone(item.value)+'">'+esc(item.value)+'</strong></div>'
+  ).join('');
+  const comparable=exerciseComparableOptions(ex,3);
+  const comparisons=comparable.length
+    ?'<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>COMPARE</span><strong>Similar movement options</strong></div><div class="exercise-comparison-list">'+comparable.map(item=>
+      '<button type="button" data-exercise-detail="'+esc(item.id)+'"><span>'+esc(item.name)+'</span><small>'+esc(item.style)+' · '+esc(item.difficulty)+' · '+esc((item.muscles||[]).slice(0,2).join(' / '))+'</small><em>VIEW →</em></button>'
+    ).join('')+'</div></section>'
+    :'';
+  return '<div class="exercise-analysis">'+
+    '<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>EXERCISE PROFILE</span><strong>What this movement asks from you</strong></div>'+
+      '<div class="exercise-analysis-facts">'+
+        '<div><span>TYPE</span><strong>'+esc(analysis.type)+'</strong></div>'+
+        '<div><span>LOADING POTENTIAL</span><strong>'+esc(analysis.loadingPotential)+'</strong></div>'+
+        '<div><span>STABILITY DEMAND</span><strong>'+esc(analysis.stabilityDemand)+'</strong></div>'+
+        '<div><span>TECHNIQUE</span><strong>'+esc(analysis.techniqueComplexity)+'</strong></div>'+
+        '<div><span>FATIGUE COST</span><strong>'+esc(analysis.fatigueCost)+'</strong></div>'+
+        '<div><span>RANGE OF MOTION</span><strong>'+esc(analysis.rangePotential)+'</strong></div>'+
+      '</div>'+
+      '<div class="exercise-muscle-map"><div><span>PRIMARY</span><strong>'+esc(analysis.primary.join(' · ')||'Movement dependent')+'</strong></div><div><span>SECONDARY DEMAND</span><strong>'+esc(analysis.secondary.join(' · ')||'Minimal additional emphasis')+'</strong></div></div>'+
+    '</section>'+
+    '<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>TRAINING FIT</span><strong>Where this exercise tends to fit best</strong></div><div class="exercise-fit-grid">'+fit+'</div><p class="exercise-analysis-note">Training fit describes the exercise’s loading, stability, and movement characteristics. It is not an effectiveness percentage. Results still depend on effort, technique, range of motion, recovery, and the rest of your program.</p></section>'+
+    '<section class="exercise-analysis-split"><div><span>STRONG AT</span><ul>'+analysis.strengths.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul></div><div><span>TRADEOFFS</span><ul>'+analysis.limitations.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul></div></section>'+
+    '<section class="exercise-analysis-section compact"><div class="exercise-analysis-heading"><span>EQUIPMENT</span><strong>'+esc(analysis.equipment)+'</strong></div></section>'+
+    comparisons+
+  '</div>';
+}
+function renderExerciseHistoryAnalytics(ex){
+  const history=exerciseSessionHistory(ex.id,100);
+  const trend=exerciseTrend(ex);
+  if(!history.length){
+    return '<div class="exercise-history-analytics empty"><span>YOUR HISTORY</span><h3>No completed sessions yet.</h3><p>Your first completed sets for '+esc(ex.name)+' will establish the baseline for load, reps, volume, and future comparisons.</p>'+renderExerciseHistoryPanel(ex)+'</div>';
+  }
+  const latest=history[0];
+  const oldest=history[history.length-1];
+  const totalSets=history.reduce((sum,row)=>sum+row.sets.length,0);
+  const totalReps=history.reduce((sum,row)=>sum+row.sets.reduce((n,set)=>n+num(set.reps),0),0);
+  const totalVolume=history.reduce((sum,row)=>sum+num(row.volume),0);
+  const weighted=!['bodyweight','timed','band'].includes(ex.loadMode);
+  const loadChange=weighted&&latest.best&&oldest.best?Math.round((latest.best.weight-oldest.best.weight)*10)/10:null;
+  const sessions=history.slice(0,5).map(row=>
+    '<div class="exercise-session-row"><div><span>'+esc(formatDate(row.date))+'</span><strong>'+esc(row.routineName||'Workout')+'</strong></div><div><small>BEST SET</small><strong>'+esc(row.best?setPerformanceLabel(ex,row.best):'Logged')+'</strong></div>'+(weighted?'<div><small>VOLUME</small><strong>'+esc(formatVolume(row.volume||0))+'</strong></div>':'')+'</div>'
+  ).join('');
+  return '<div class="exercise-history-analytics">'+
+    '<section class="exercise-history-overview"><div><span>SESSIONS</span><strong>'+history.length+'</strong></div><div><span>COMPLETED SETS</span><strong>'+totalSets+'</strong></div><div><span>TOTAL REPS</span><strong>'+Math.round(totalReps)+'</strong></div>'+(weighted?'<div><span>RECORDED VOLUME</span><strong>'+esc(formatVolume(totalVolume))+'</strong></div>':'')+'</section>'+
+    '<section class="exercise-history-trend"><span>'+esc(trend.label)+'</span><strong>'+esc(trend.detail)+'</strong>'+(loadChange!==null?'<small>Best working load change across recorded sessions: '+(loadChange>0?'+':'')+loadChange+' lb.</small>':'')+'</section>'+
+    renderExerciseHistoryPanel(ex)+
+    '<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>RECENT SESSIONS</span><strong>Your latest logged work</strong></div><div class="exercise-session-list">'+sessions+'</div></section>'+
+  '</div>';
+}
+
 function renderExerciseModal(){
   if(!exerciseDetailId)return '';
   if(String(exerciseDetailId).startsWith('stretch:')){
@@ -3023,23 +3199,35 @@ function renderExerciseModal(){
   }
   const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
   if(!ex)return '';
-  const guide=exerciseGuidance(ex),spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex);
+  const guide=detailedExerciseGuidance(ex),spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex);
   const primary=exerciseMediaFrameUrl(ex,0),secondary=exerciseMediaFrameUrl(ex,1);
   const endLabel=ex.movement==='squat'?'BOTTOM':ex.movement==='hinge'?'END':ex.movement==='horizontal-push'?'LOWERED':ex.movement==='vertical-pull'?'PULLED':'END';
   const media=primary
     ?'<div class="runner-detail-positions"><figure><div class="runner-detail-frame"><img src="'+esc(primary)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' start position"></div><figcaption><span>START</span><small>Position 1</small></figcaption></figure>'+(secondary?'<figure><div class="runner-detail-frame"><img src="'+esc(secondary)+'" loading="eager" decoding="async" alt="'+esc(ex.name)+' end position"></div><figcaption><span>'+esc(endLabel)+'</span><small>Position 2</small></figcaption></figure>':'')+'</div>'
     :'<div class="exercise-modal-placeholder"><span>'+esc(state.label)+'</span><strong>'+esc(ex.name)+'</strong><p>'+esc(state.note)+'</p></div>';
-  return '<div class="exercise-modal-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise instructions" data-modal-panel>'+
-    '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise instructions">×</button>'+
-    '<div class="runner-detail-head"><p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div>'+
+  const validTabs=['form','analysis','history'];
+  const activeTab=validTabs.includes(exerciseDetailTab)?exerciseDetailTab:'form';
+  const tabs='<nav class="exercise-detail-tabs" aria-label="Exercise detail sections">'+
+    ['form','analysis','history'].map(tab=>'<button type="button" class="'+(activeTab===tab?'active':'')+'" data-exercise-detail-tab="'+tab+'" aria-selected="'+(activeTab===tab?'true':'false')+'">'+(tab==='form'?'FORM':tab==='analysis'?'ANALYSIS':'YOUR HISTORY')+'</button>').join('')+
+  '</nav>';
+  const formContent='<div class="exercise-detail-tab-panel form-tab">'+
     '<div class="exercise-modal-media runner-detail-media">'+media+'</div>'+
     '<div class="runner-detail-body"><div class="runner-detail-cue"><span>COACHING CUE</span><strong>'+esc(guide.cue)+'</strong></div>'+
       '<section><span>SETUP</span><p>'+esc(guide.setup)+'</p></section>'+
       '<section><span>HOW TO MOVE</span><ol>'+guide.steps.map(step=>'<li>'+esc(step)+'</li>').join('')+'</ol></section>'+
       '<section class="watch"><span>WATCH FOR</span><p>'+esc(guide.mistake)+'</p></section>'+
       (ex.engineReason?.length?'<section><span>WHY THIS EXERCISE</span><p>'+esc(ex.engineReason.join(' · '))+'</p></section>':'')+
-      renderExerciseHistoryPanel(ex)+
-    '</div></section></div>';
+    '</div></div>';
+  const panel=activeTab==='analysis'
+    ?'<div class="exercise-detail-tab-panel analysis-tab">'+renderExerciseAnalysisPanel(ex)+'</div>'
+    :activeTab==='history'
+      ?'<div class="exercise-detail-tab-panel history-tab">'+renderExerciseHistoryAnalytics(ex)+'</div>'
+      :formContent;
+  return '<div class="exercise-modal-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail exercise-intelligence-detail" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise details" data-modal-panel>'+
+    '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise details">×</button>'+
+    '<div class="runner-detail-head"><p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div>'+
+    tabs+panel+
+  '</section></div>';
 }
 
 function goalSettings(goal,movement,experience){
@@ -6837,11 +7025,11 @@ function stretchLibraryMedia(item,className='catalog-exercise-media'){
 }
 function renderLibraryCard(entry){
   if(libraryEntryType(entry)==='strength'){
-    return '<article class="catalog-card visual-catalog-card studio-catalog-card library-strength-card">'+exerciseImageButton(entry,'catalog-exercise-media')+'<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(movements[entry.movement]||entry.movement)+'</span><span>'+esc(entry.difficulty)+'</span></div><h3>'+esc(entry.name)+'</h3><p>'+(entry.muscles||[]).map(esc).join(' · ')+'</p><div class="catalog-tags"><span>'+esc(entry.style)+'</span><span>'+esc((entry.equipment||[]).slice(0,2).join(' / '))+'</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="'+esc(entry.id)+'">View form & cues</button></div></article>';
+    return '<article class="catalog-card visual-catalog-card studio-catalog-card library-strength-card">'+exerciseImageButton(entry,'catalog-exercise-media')+'<div class="catalog-card-copy"><div class="catalog-top"><span class="library-category-label">Strength</span><span>'+esc(entry.difficulty)+'</span></div><small class="library-movement-label">'+esc(movements[entry.movement]||entry.movement)+'</small><h3>'+esc(entry.name)+'</h3><p>'+(entry.muscles||[]).map(esc).join(' · ')+'</p><div class="catalog-tags"><span>'+esc(entry.style)+'</span><span>'+esc((entry.equipment||[]).slice(0,2).join(' / '))+'</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="'+esc(entry.id)+'">View form & analysis</button></div></article>';
   }
   const kind=libraryEntryType(entry);
   return '<article class="catalog-card visual-catalog-card studio-catalog-card stretch-catalog-card '+kind+'">'+stretchLibraryMedia(entry)+
-    '<div class="catalog-card-copy"><div class="catalog-top"><span>'+esc(kind==='mobility'?'Mobility':'Stretch')+'</span><span>Level '+esc(entry.difficulty||1)+'</span></div>'+
+    '<div class="catalog-card-copy"><div class="catalog-top"><span class="library-category-label">'+esc(kind==='mobility'?'Mobility':'Stretch')+'</span><span>Level '+esc(entry.difficulty||1)+'</span></div>'+
     '<h3>'+esc(entry.name)+'</h3><p>'+(entry.muscles||entry.regions||[]).slice(0,3).map(value=>esc(libraryTitleCase(value))).join(' · ')+'</p>'+
     '<div class="catalog-tags"><span>'+esc(libraryTitleCase(entry.position||'Any'))+'</span><span>'+esc((entry.equipment||['bodyweight']).map(libraryTitleCase).slice(0,2).join(' / '))+'</span></div>'+
     '<button class="text-button catalog-details" type="button" data-exercise-detail="stretch:'+esc(entry.id)+'">View cues & details</button></div></article>';
@@ -9808,13 +9996,14 @@ function handleClick(event){
     if(!insideSwap||explicitClose){closeSwap();return;}
   }
   const detail=event.target.closest('[data-exercise-detail]');
-  if(detail){exerciseActionsIndex=null;beginExerciseDetailReview();exerciseDetailId=detail.dataset.exerciseDetail;render();return;}
+  if(detail){exerciseActionsIndex=null;beginExerciseDetailReview();exerciseDetailId=detail.dataset.exerciseDetail;exerciseDetailTab='form';render();return;}
   const close=event.target.closest('[data-action="close-details"]');
   if(close){
     const insidePanel=event.target.closest('[data-modal-panel]');
     const explicitClose=event.target.closest('.modal-close');
-    if(!insidePanel||explicitClose){endExerciseDetailReview();exerciseDetailId=null;render();return;}
+    if(!insidePanel||explicitClose){endExerciseDetailReview();exerciseDetailId=null;exerciseDetailTab='form';render();return;}
   }
+  const detailSection=event.target.closest('[data-exercise-detail-tab]');if(detailSection){const next=String(detailSection.dataset.exerciseDetailTab||'form');exerciseDetailTab=['form','analysis','history'].includes(next)?next:'form';render();return;}
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start,start.dataset.scheduledDate||'');return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
