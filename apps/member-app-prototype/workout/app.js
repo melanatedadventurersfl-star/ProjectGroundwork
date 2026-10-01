@@ -3247,6 +3247,8 @@ function stageEquipmentForSetup(setup){
  }
  if(modes.includes('dumbbells')||modes.includes('dumbbell'))equipment.add('dumbbell');
  if(modes.includes('bands')||modes.includes('band'))equipment.add('band');
+ if(modes.includes('bench'))equipment.add('bench');
+ if(modes.includes('pullup_bar'))equipment.add('pullup_bar');
  if(modes.includes('mixed-home')){
    equipment.add('dumbbell');equipment.add('band');
  }
@@ -4620,6 +4622,8 @@ function createWorkout(day,meta={}){
     isPaused:false,pausedAt:null,totalPausedMs:0,pauseLog:[],
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,timedStageSide:'',
     warmup:plannedWarmup(day),cooldown:plannedCooldown(day),
+    warmupTargetSeconds:num(day.warmupTargetSeconds)||warmupBudgetSeconds(day.exercises,num(meta.readiness?.timeAvailable)||num(store.profile?.minutes)||45),
+    cooldownTargetSeconds:num(day.cooldownTargetSeconds)||cooldownBudgetSeconds(day.exercises,num(meta.readiness?.timeAvailable)||num(store.profile?.minutes)||45),
     engineBacked:Boolean(day.engineBacked),engineSessionId:day.engineSessionId||null,engineWeek:day.engineWeek||null,engineBlockNumber:day.engineBlockNumber||null,engineMinimumViable:clone(day.engineMinimumViable||[]),engineStretch:clone(day.engineStretch||null),
     exerciseStartedAt:null,exerciseDurations:{},phaseTimestamps:{},restLog:[],
     restEndsAt:null,restDuration:0,restPausedRemaining:null,restToken:null,pendingPosition:null,
@@ -5255,6 +5259,11 @@ function startCooldown(){
   const w=store.activeWorkout;if(!w)return;
   recordExerciseDuration(w,w.currentExerciseIndex);
   const now=new Date().toISOString();
+  const performed=(w.exercises||[]).filter(ex=>ex.manualComplete||(ex.sets||[]).some(set=>set.completed));
+  const cooldownSource=performed.length?performed:(w.exercises||[]).filter(ex=>!ex.skipped);
+  w.cooldown=buildCooldown(cooldownSource,w.trainingContext,w.cooldownTargetSeconds||cooldownBudgetSeconds(cooldownSource,num(w.readiness?.timeAvailable)||num(store.profile?.minutes)||45));
+  w.cooldownRebuiltAt=now;
+  w.cooldownSourceExerciseIds=cooldownSource.map(ex=>ex.id);
   markExerciseEnd(w,w.currentExerciseIndex,now);
   markPhaseEnd(w,'strength',now);
   markPhaseStart(w,'cooldown',now);
@@ -5282,7 +5291,7 @@ function completeTimedStagePhase(w){
   if(w.phase==='warmup'){
     const now=new Date().toISOString();
     const current=timedStageItems(w)[w.timedStageIndex||0];
-    if(current)current.endedAt=now;
+    if(current){current.endedAt=now;if(!current.skippedAt)current.completedAt=now;}
     w.timedPhaseStartedAt=null;
     w.timedPhaseSkippedSeconds=0;
     completeWarmup();
@@ -5290,7 +5299,7 @@ function completeTimedStagePhase(w){
   }
   const now=new Date().toISOString();
   const current=timedStageItems(w)[w.timedStageIndex||0];
-  if(current)current.endedAt=now;
+  if(current){current.endedAt=now;if(!current.skippedAt)current.completedAt=now;}
   w.timedPhaseStartedAt=null;
   w.timedStageAwaitingStart=false;
   w.timedStageStarting=false;
@@ -5321,7 +5330,7 @@ function advanceTimedStage(){
   if(!items.length){completeTimedStagePhase(w);return;}
   const index=Math.max(0,Math.min(Number(w.timedStageIndex)||0,items.length-1));
   const now=new Date().toISOString();
-  if(items[index])items[index].endedAt=now;
+  if(items[index]){items[index].endedAt=now;if(!items[index].skippedAt)items[index].completedAt=now;}
   delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
   if(index>=items.length-1){completeTimedStagePhase(w);return;}
 
@@ -6681,12 +6690,16 @@ function renderTrainPreviewModal(){
   if(!trainPreviewContext)return '';
   const entry=trainPreviewContext.entry;
   const day=entry.adaptedDay||entry.day;
+  const warmup=plannedWarmup(day),cooldown=plannedCooldown(day);
+  const phaseRows=(items,label)=>'<section class="train-preview-phase"><div class="train-preview-phase-head"><span>'+label+'</span><strong>'+runnerPhaseMinutes(items)+' min · '+items.length+' movements</strong></div><div>'+items.map(item=>'<span>'+esc(item.name)+(item.side?' · both sides':'')+'</span>').join('')+'</div></section>';
   return '<div class="exercise-modal-backdrop train-preview-backdrop" data-action="close-train-preview">'+
     '<section class="exercise-modal train-preview-modal" role="dialog" aria-modal="true" aria-label="Workout preview" data-train-preview-panel>'+
       '<button class="modal-close" type="button" data-action="close-train-preview" aria-label="Close workout preview">×</button>'+
-      '<div class="train-preview-head"><p class="eyebrow">'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+'</p><h2>'+esc(day?.name||'Training')+'</h2><p>'+esc(day?.focus||'Training')+' · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</p></div>'+
-      '<div class="train-preview-exercises">'+(day?.exercises||[]).map((ex,index)=>'<div class="train-preview-exercise"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ex.name)+'</strong><small>'+esc(homeExerciseMeta(ex))+'</small></div>'+(ex.engineProgramRole?'<em class="'+esc(ex.engineProgramRole)+'">'+esc(ex.engineProgramRole.toUpperCase())+'</em>':'')+'</div>').join('')+'</div>'+
-      '<div class="train-preview-actions"><button class="button primary-action" data-action="prepare-previewed-workout">SET UP THIS SESSION</button><small>Equipment and readiness choices stay session-specific.</small></div>'+
+      '<div class="train-preview-head"><p class="eyebrow">'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+'</p><h2>'+esc(day?.name||'Training')+'</h2><p>'+esc(day?.focus||'Training')+' · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+runnerPhaseMinutes(warmup)+' min warm-up · '+runnerPhaseMinutes(cooldown)+' min cooldown</p></div>'+
+      phaseRows(warmup,'WARM-UP')+
+      '<section class="train-preview-phase strength"><div class="train-preview-phase-head"><span>STRENGTH</span><strong>'+(day?.exercises?.length||0)+' exercises</strong></div><div class="train-preview-exercises">'+(day?.exercises||[]).map((ex,index)=>'<div class="train-preview-exercise"><span>'+String(index+1).padStart(2,'0')+'</span><div><strong>'+esc(ex.name)+'</strong><small>'+esc(homeExerciseMeta(ex))+'</small></div>'+(ex.engineProgramRole?'<em class="'+esc(ex.engineProgramRole)+'">'+esc(ex.engineProgramRole.toUpperCase())+'</em>':'')+'</div>').join('')+'</div></section>'+
+      phaseRows(cooldown,'COOLDOWN')+
+      '<div class="train-preview-actions"><button class="button primary-action" data-action="prepare-previewed-workout">SET UP THIS SESSION</button><small>Equipment and readiness choices stay session-specific. The final cooldown updates from the work you actually complete.</small></div>'+
     '</section></div>';
 }
 function renderTrain(){
@@ -7932,11 +7945,13 @@ function renderWorkoutIntro(w){
   const warmCount=w.warmup?.length||0;
   const availableMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
   const plannedMinutes=num(w.estimatedMinutes)||availableMinutes;
+  const warmupMinutes=runnerPhaseMinutes(w.warmup||[]);
+  const cooldownMinutes=runnerPhaseMinutes(w.cooldown||[]);
   const status=preparedWorkoutStatus(w);
   return '<div class="prepared-workout-v4">'+
     '<section class="prepared-ready-card">'+
       '<div class="prepared-ready-visual"><div class="prepared-ready-check">'+uiIcon('check')+'</div></div>'+
-      '<div class="prepared-ready-title"><span class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</span><h2>'+esc(w.routineName)+' is ready</h2><p>about '+esc(plannedMinutes)+' min · '+w.exercises.length+' exercises</p><small>'+esc(availableMinutes)+' min available</small></div>'+
+      '<div class="prepared-ready-title"><span class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</span><h2>'+esc(w.routineName)+' is ready</h2><p>about '+esc(plannedMinutes)+' min · '+warmupMinutes+' min warm-up · '+w.exercises.length+' exercises · '+cooldownMinutes+' min cooldown</p><small>'+esc(availableMinutes)+' min available</small></div>'+
       renderPreparedChangeCard(w)+
       renderPreparedSetupList(w)+
       '<section class="ready-coach-card">'+uiIcon('coach')+'<div><strong>Coach guidance</strong><p>'+esc(preWorkoutCoachNote(w))+'</p></div></section>'+
