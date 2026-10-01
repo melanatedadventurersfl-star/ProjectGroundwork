@@ -77,7 +77,7 @@ const defaultStore = {
   cueSettings: {sound:true,voice:true,aiCoach:true,coachPreset:'guide',coachStyle:'balanced',coachVibe:'warm-familiar',coachFrequency:'normal',coachDetail:'short',coachVoice:'cedar',talkSpeed:'normal',nameUsage:'occasional',formCues:'basic',performanceFeedback:'session',motivation:'moderate',countdownMode:'full',warmupGuidance:'guided',cooldownGuidance:'guided',nextSetPreview:'target',exerciseInstruction:'quick',autoStartWarmup:true,autoStartCooldown:true,autoStartTimedExercise:true,adaptiveCoach:true,haptics:true,flash:true},
   account: {displayName:'',email:'',authProvider:'',status:'local',userId:''},
   sharedTraining: {partners:[],draft:null,history:[]},
-  sessionPreferences: {lastSetup:null},
+  sessionPreferences: {lastSetup:null,locations:{}},
   lastSummaryId: null
 };
 
@@ -4061,27 +4061,124 @@ function readinessDescriptor(name,value){
   const score=Math.max(1,Math.min(5,num(value)||3));
   return score+' · '+(labels[name]?.[score]||'Selected');
 }
+function readinessWord(name,value){
+  const text=readinessDescriptor(name,value);
+  return text.includes(' · ')?text.split(' · ')[1]:text;
+}
+function readinessLocationFamily(key){
+  if(key==='full-gym')return 'gym';
+  if(key==='bodyweight')return 'bodyweight';
+  if(key==='custom')return 'custom';
+  return 'home';
+}
+function readinessHomeSetupKey(){
+  const remembered=store.sessionPreferences?.locations?.home?.key||store.sessionPreferences?.lastSetup?.key;
+  if(['dumbbells','bands','mixed-home'].includes(remembered))return remembered;
+  const profileKey=store.profile?.equipment;
+  if(['dumbbells','bands','mixed-home'].includes(profileKey))return profileKey;
+  return 'mixed-home';
+}
+function readinessLocationLabel(key){
+  return ({gym:'Gym',home:'Home',bodyweight:'Bodyweight',custom:'Custom'})[readinessLocationFamily(key)]||sessionSetupLabel({key});
+}
+function readinessSetupDetail(setup){
+  const family=readinessLocationFamily(setup?.key);
+  if(family==='gym')return 'Machines, cables, barbells, dumbbells and floor space';
+  if(setup?.key==='dumbbells')return 'Dumbbells · bodyweight'+(setup.floor===false?'':' · floor space');
+  if(setup?.key==='bands')return 'Bands · bodyweight'+(setup.floor===false?'':' · floor space');
+  if(setup?.key==='mixed-home')return 'Dumbbells · bands · bodyweight'+(setup.floor===false?'':' · floor space');
+  if(family==='bodyweight')return 'No equipment required'+(setup.floor===false?'':' · floor space');
+  const modes=(setup?.modes||[]).filter(mode=>mode!=='mixed-home').map(mode=>mode==='bodyweight'?'Bodyweight':mode==='dumbbells'?'Dumbbells':mode==='bands'?'Bands':mode);
+  return modes.length?modes.join(' · '):'Choose what is available';
+}
+function readinessSetupMemoryText(setup){
+  const remembered=store.sessionPreferences?.locations?.[readinessLocationFamily(setup?.key)]||store.sessionPreferences?.lastSetup;
+  if(!remembered?.usedAt)return 'Today only. Your normal training profile stays unchanged.';
+  const stamp=Date.parse(remembered.usedAt);
+  if(!Number.isFinite(stamp))return 'Saved setup';
+  const age=Math.max(0,Math.floor((Date.now()-stamp)/86400000));
+  if(age===0)return 'Used earlier today';
+  if(age===1)return 'Last used yesterday';
+  return 'Last used '+age+' days ago';
+}
+function rememberSessionSetup(setup){
+  const value={...clone(setup),usedAt:new Date().toISOString()};
+  store.sessionPreferences=store.sessionPreferences||{lastSetup:null,locations:{}};
+  store.sessionPreferences.locations=store.sessionPreferences.locations||{};
+  store.sessionPreferences.lastSetup=value;
+  store.sessionPreferences.locations[readinessLocationFamily(setup.key)]=value;
+}
+function renderReadinessLocationOptions(selectedKey){
+  const homeKey=readinessHomeSetupKey();
+  const selectedFamily=readinessLocationFamily(selectedKey);
+  const options=[
+    {key:'full-gym',family:'gym',label:'Gym',icon:'▰'},
+    {key:homeKey,family:'home',label:'Home',icon:'⌂'},
+    {key:'bodyweight',family:'bodyweight',label:'Bodyweight',icon:'◎'},
+    {key:'custom',family:'custom',label:'Custom',icon:'⚙'}
+  ];
+  return '<div class="preflight-location-grid">'+options.map(item=>
+    '<label class="preflight-location-option"><input type="radio" name="sessionSetup" value="'+esc(item.key)+'" '+(item.family===selectedFamily?'checked':'')+' aria-label="'+esc(item.label)+' training"><span><b>'+item.icon+'</b><strong>'+esc(item.label)+'</strong></span></label>'
+  ).join('')+'</div>';
+}
+function renderReadinessScaleRow(name,label,icon,value){
+  const selected=Math.max(1,Math.min(5,num(value)||3));
+  return '<div class="preflight-readiness-row"><div class="preflight-readiness-copy"><b>'+icon+'</b><span><strong>'+esc(label)+'</strong><small data-readiness-meaning="'+name+'">'+esc(readinessDescriptor(name,selected))+'</small></span></div>'+
+    '<div class="preflight-readiness-dots" role="radiogroup" aria-label="'+esc(label)+'">'+[1,2,3,4,5].map(level=>
+      '<label class="readiness-dot-option"><input type="radio" name="'+name+'" value="'+level+'" '+(level===selected?'checked':'')+' aria-label="'+esc(label)+' '+level+' of 5, '+readinessWord(name,level)+'"><span></span></label>'
+    ).join('')+'</div></div>';
+}
+function renderReadinessTimeOptions(selectedMinutes){
+  const primary=[30,45,60];
+  const extra=[20,75];
+  return '<div class="preflight-time-grid">'+primary.map(value=>
+    '<label><input type="radio" name="timeAvailable" value="'+value+'" '+(value===selectedMinutes?'checked':'')+'><span>'+value+' MIN</span></label>'
+  ).join('')+'</div>'+
+  '<details class="preflight-time-more" '+(extra.includes(selectedMinutes)?'open':'')+'><summary>More time options</summary><div>'+extra.map(value=>
+    '<label><input type="radio" name="timeAvailable" value="'+value+'" '+(value===selectedMinutes?'checked':'')+'><span>'+value+' MIN</span></label>'
+  ).join('')+'</div></details>';
+}
 function readinessPreviewSnapshot(day,readiness,setup){
   let preview=applyReadinessToDay(clone(day),readiness);
   preview=adaptDayForSessionSetup(preview,setup,readiness.timeAvailable);
   const changes=preview.trainingContext?.changes||[];
   const replacementCount=changes.filter(change=>change.type==='replacement').length;
   const unavailableCount=changes.filter(change=>change.type==='unavailable').length;
+  const removedCount=Math.max(0,(day.exercises?.length||0)-(preview.exercises?.length||0));
   const notes=[...(preview.readinessNotes||[]),...(preview.adaptationNotes||[])].filter(Boolean);
   let title='Normal session';
   if(num(readiness.soreness)>=4)title='Recovery-adjusted';
   else if(num(readiness.energy)<=2||num(readiness.sleep)<=2)title='Conservative day';
   else if(num(readiness.timeAvailable)<num(day.estimatedMinutes))title='Time-adjusted';
   else if(replacementCount||unavailableCount)title='Setup-adjusted';
+  const consequences=[];
+  if(num(readiness.soreness)>=4)consequences.push('Working volume and loading reduced');
+  else if(num(readiness.soreness)===3)consequences.push('Accessory volume trimmed');
+  if(num(readiness.energy)<=2)consequences.push('Accessory work reduced · rest extended');
+  if(num(readiness.sleep)<=2)consequences.push('Load progression held today');
+  if(removedCount)consequences.push(removedCount+' lower-priority exercise'+(removedCount===1?' removed':'s removed'));
+  if(num(readiness.timeAvailable)<num(day.estimatedMinutes))consequences.push('Priority work protected');
+  if(replacementCount)consequences.push(replacementCount+' exercise'+(replacementCount===1?' changes':'s change')+' for '+readinessLocationLabel(setup.key));
+  if(unavailableCount)consequences.push(unavailableCount+' movement'+(unavailableCount===1?' needs':'s need')+' another setup');
+  if(!consequences.length)consequences.push('Normal strength volume','Normal progression');
   const copy=notes[0]||
-    (replacementCount?replacementCount+' movement'+(replacementCount===1?'':'s')+' will change to fit '+sessionSetupLabel(setup)+'.':
+    (replacementCount?replacementCount+' movement'+(replacementCount===1?'':'s')+' will change to fit '+readinessLocationLabel(setup.key)+'.':
     unavailableCount?unavailableCount+' movement'+(unavailableCount===1?' is':'s are')+' unavailable in this setup.':
     'Your normal volume and progression stay in place.');
-  return {day:preview,changes,replacementCount,unavailableCount,title,copy};
+  return {day:preview,changes,replacementCount,unavailableCount,removedCount,title,copy,consequences:consequences.slice(0,4)};
+}
+function readinessStatusClass(title){
+  return String(title||'Normal session').toLowerCase().replace(/[^a-z]+/g,'-').replace(/^-|-$/g,'');
+}
+function renderReadinessConsequences(snapshot){
+  return (snapshot.consequences||[]).map((item,index)=>{
+    const icon=/change|another setup/i.test(item)?'↔':/reduced|trimmed|removed|held/i.test(item)?'↓':'✓';
+    return '<li><b>'+icon+'</b><span>'+esc(item)+'</span></li>';
+  }).join('');
 }
 function updateReadinessPreview(){
   const form=document.querySelector('#readiness-form');
-  if(!form||!readinessContext)return;
+  if(!form||!readinessContext||readinessContext.building)return;
   const data=new FormData(form);
   const readiness={
     energy:num(data.get('energy'))||3,
@@ -4095,18 +4192,23 @@ function updateReadinessPreview(){
     if(target)target.textContent=readinessDescriptor(key,readiness[key]);
   }
   const snapshot=readinessPreviewSnapshot(readinessContext.day,readiness,setup);
-  const title=form.querySelector('[data-readiness-impact-title]');
-  const copy=form.querySelector('[data-readiness-impact-copy]');
+  const status=form.querySelector('[data-preflight-status]');
+  const summary=form.querySelector('[data-preflight-summary]');
+  const summaryReadiness=form.querySelector('[data-preflight-summary-readiness]');
   const plan=form.querySelector('[data-readiness-plan]');
-  const planCopy=form.querySelector('[data-readiness-plan-copy]');
-  if(title)title.textContent=snapshot.title;
-  if(copy)copy.textContent=snapshot.copy;
-  if(plan)plan.textContent='~'+snapshot.day.estimatedMinutes+' min · '+snapshot.day.exercises.length+' exercises';
-  if(planCopy){
-    if(snapshot.replacementCount)planCopy.textContent=snapshot.replacementCount+' movement'+(snapshot.replacementCount===1?' changes':'s change')+' before you start.';
-    else if(snapshot.unavailableCount)planCopy.textContent=snapshot.unavailableCount+' movement'+(snapshot.unavailableCount===1?' needs':'s need')+' another setup.';
-    else planCopy.textContent='The plan fits these choices without an equipment substitution.';
+  const consequenceList=form.querySelector('[data-readiness-consequences]');
+  const equipmentTitle=form.querySelector('[data-readiness-equipment-title]');
+  const equipmentCopy=form.querySelector('[data-readiness-equipment-copy]');
+  if(status){
+    status.textContent=snapshot.title;
+    status.className='preflight-status '+readinessStatusClass(snapshot.title);
   }
+  if(summary)summary.textContent=readiness.timeAvailable+' MIN · '+readinessLocationLabel(setup.key).toUpperCase();
+  if(summaryReadiness)summaryReadiness.textContent=readinessWord('energy',readiness.energy)+' energy · '+readinessWord('soreness',readiness.soreness)+' soreness · '+readinessWord('sleep',readiness.sleep)+' sleep';
+  if(plan)plan.textContent=snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min';
+  if(consequenceList)consequenceList.innerHTML=renderReadinessConsequences(snapshot);
+  if(equipmentTitle)equipmentTitle.textContent=readinessLocationLabel(setup.key)+(readinessLocationFamily(setup.key)==='bodyweight'?' session':' equipment loaded ✓');
+  if(equipmentCopy)equipmentCopy.textContent=readinessSetupDetail(setup);
 }
 function openReadiness(dayId,scheduledDate='',preferredSetup=''){
   if(store.activeWorkout){currentTab='workout';render();toast('Resume or finish your current workout first.');return;}
@@ -4144,47 +4246,70 @@ function editPreparedWorkout(){
   };
   render();
 }
-function closeReadiness(){readinessContext=null;render();}
+function closeReadiness(){
+  if(readinessContext?.building)return;
+  readinessContext=null;
+  render();
+}
+function renderWorkoutBuildScreen(context){
+  const building=context.building||{};
+  const readiness=building.readiness||{};
+  const setup=building.setup||buildSessionSetup(context.preferredSetup||normalSessionSetupKey());
+  const step=Math.max(0,Math.min(3,num(building.step)||0));
+  const rows=[
+    ['Checking readiness','Energy '+(readiness.energy||3)+' · Soreness '+(readiness.soreness||2)+' · Sleep '+(readiness.sleep||3)],
+    ['Matching equipment','Using your '+readinessLocationLabel(setup.key).toLowerCase()+' setup'],
+    ['Protecting priority work','Keeping the highest-priority strength work'],
+    ['Finalizing your plan','Applying today’s time and exercise changes']
+  ];
+  return '<div class="exercise-modal-backdrop readiness-backdrop preflight-build-backdrop"><section class="exercise-modal readiness-modal preflight-build-modal" role="dialog" aria-modal="true" aria-label="Building workout" data-readiness-panel>'+
+    '<div class="preflight-build-head"><p class="eyebrow">'+esc(context.day.name.toUpperCase())+'</p><h2>Building your workout</h2></div>'+
+    '<div class="preflight-build-ring"><span>▰</span></div>'+
+    '<div class="preflight-build-copy"><h3>Building today’s '+esc(context.day.name)+'</h3><p>Preparing a session based on your setup.</p></div>'+
+    '<div class="preflight-build-steps">'+rows.map((row,index)=>{
+      const state=index<step?'complete':index===step?'active':'pending';
+      return '<div class="preflight-build-step '+state+'"><b>'+(state==='complete'?'✓':'')+'</b><div><strong>'+row[0]+'</strong><small>'+row[1]+'</small></div></div>';
+    }).join('')+'</div>'+
+  '</section></div>';
+}
 function renderReadinessModal(){
   if(!readinessContext)return '';
+  if(readinessContext.building)return renderWorkoutBuildScreen(readinessContext);
   const day=readinessContext.day;
   const initial=readinessContext.initialReadiness||{};
   const selectedMinutes=num(initial.timeAvailable)||num(store.profile?.minutes)||45;
   const selectedSetup=readinessContext.preferredSetup||store.sessionPreferences?.lastSetup?.key||normalSessionSetupKey();
   const setupContext=readinessContext.setupContext?.key===selectedSetup?readinessContext.setupContext:buildSessionSetup(selectedSetup);
-  const timeOptions=[20,30,45,60,75].filter(v=>v<=Math.max(75,selectedMinutes));
-  if(!timeOptions.includes(selectedMinutes))timeOptions.push(selectedMinutes);
-  timeOptions.sort((a,b)=>a-b);
   const values={energy:num(initial.energy)||3,soreness:num(initial.soreness)||2,sleep:num(initial.sleep)||3,timeAvailable:selectedMinutes};
   const snapshot=readinessPreviewSnapshot(day,values,setupContext);
-  const scale=(name,left,right,selected=3)=>'<div class="readiness-scale"><div class="readiness-scale-head"><span>'+left+'</span><span>'+right+'</span></div><div class="readiness-buttons">'+[1,2,3,4,5].map(value=>'<label><input type="radio" name="'+name+'" value="'+value+'" '+(value===selected?'checked':'')+'><span>'+value+'</span></label>').join('')+'</div><strong class="readiness-selection-copy" data-readiness-meaning="'+name+'">'+esc(readinessDescriptor(name,selected))+'</strong></div>';
-  return '<div class="exercise-modal-backdrop readiness-backdrop" data-action="close-readiness">'+
-    '<section class="exercise-modal readiness-modal train-anywhere-readiness" role="dialog" aria-modal="true" aria-label="Pre-workout readiness" data-readiness-panel>'+
-      '<button class="modal-close" type="button" data-action="close-readiness" aria-label="Close readiness check">×</button>'+
-      '<div class="readiness-head"><p class="eyebrow">'+(readinessContext.mode==='edit'?'ADJUST TODAY':'TODAY · '+esc(formatDate(readinessContext.scheduledDate)))+'</p><h2>'+esc(day.name)+'</h2><p>Tell GoWorkout what today looks like. You will see what changes before the timer starts.</p></div>'+
-      '<form id="readiness-form" class="readiness-form">'+
-        '<section class="today-context-section"><div class="today-context-head"><div><span>WHERE</span><strong>Where are you training?</strong></div><em>TODAY ONLY</em></div>'+
-          renderSessionSetupOptions(selectedSetup)+renderSessionSetupExtras(setupContext)+
-          '<p class="session-context-note">Your normal training profile stays unchanged. This setup only affects today’s exercise choices.</p>'+
+  return '<div class="exercise-modal-backdrop readiness-backdrop preflight-backdrop" data-action="close-readiness">'+
+    '<section class="exercise-modal readiness-modal preflight-modal-v2" role="dialog" aria-modal="true" aria-label="Today’s workout setup" data-readiness-panel>'+
+      '<header class="preflight-modal-head"><button class="preflight-back" type="button" data-action="close-readiness" aria-label="Close today’s setup">‹</button><div><h2>'+esc(day.name.toUpperCase())+'</h2><p>Today’s setup</p></div><span>TODAY ONLY</span></header>'+
+      '<form id="readiness-form" class="preflight-form-v2">'+
+        '<section class="preflight-summary-card"><div><strong data-preflight-summary>'+selectedMinutes+' MIN · '+esc(readinessLocationLabel(selectedSetup).toUpperCase())+'</strong><p data-preflight-summary-readiness>'+esc(readinessWord('energy',values.energy)+' energy · '+readinessWord('soreness',values.soreness)+' soreness · '+readinessWord('sleep',values.sleep)+' sleep')+'</p></div><em class="preflight-status '+readinessStatusClass(snapshot.title)+'" data-preflight-status>'+esc(snapshot.title)+'</em></section>'+
+        (readinessContext.buildError?'<div class="preflight-error"><strong>Workout setup needs attention</strong><span>'+esc(readinessContext.buildError)+'</span></div>':'')+
+        '<section class="preflight-block preflight-location-block"><div class="preflight-block-title"><span>1.</span><strong>TRAINING LOCATION</strong></div>'+
+          renderReadinessLocationOptions(selectedSetup)+
+          '<div class="preflight-equipment-bar"><div><strong data-readiness-equipment-title>'+esc(readinessLocationLabel(selectedSetup)+(readinessLocationFamily(selectedSetup)==='bodyweight'?' session':' equipment loaded ✓'))+'</strong><small data-readiness-equipment-copy>'+esc(readinessSetupDetail(setupContext))+'</small></div>'+
+            '<details class="preflight-equipment-details"><summary>Change equipment</summary><div>'+renderSessionSetupExtras(setupContext)+'</div></details>'+
+          '</div>'+
         '</section>'+
-        '<section class="readiness-state-section"><div class="readiness-section-head"><span>HOW YOU FEEL</span><strong>Set today’s readiness</strong><small>Energy, soreness, and sleep can change volume, loading, rest, or progression.</small></div>'+
-          '<label class="readiness-question"><strong>Energy</strong><small>How much training energy do you have?</small>'+scale('energy','Low','High',values.energy)+'</label>'+
-          '<label class="readiness-question"><strong>Muscle soreness</strong><small>How sore do you feel overall?</small>'+scale('soreness','None','Very sore',values.soreness)+'</label>'+
-          '<label class="readiness-question"><strong>Sleep</strong><small>How rested do you feel from last night?</small>'+scale('sleep','Poor','Great',values.sleep)+'</label>'+
-        '</section>'+
-        '<section class="readiness-time-section"><div class="readiness-section-head"><span>TIME</span><strong>How long do you have?</strong><small>If time gets tight, GoWorkout protects priority work before trimming accessories.</small></div>'+
-          '<label class="field readiness-time"><span>TIME AVAILABLE TODAY</span><select name="timeAvailable">'+timeOptions.map(value=>'<option value="'+value+'" '+(value===selectedMinutes?'selected':'')+'>'+value+' minutes</option>').join('')+'</select></label>'+
-        '</section>'+
-        '<div class="readiness-story"><span>WHAT THIS MEANS</span><strong data-readiness-impact-title>'+esc(snapshot.title)+'</strong><p data-readiness-impact-copy>'+esc(snapshot.copy)+'</p></div>'+
-        '<div class="readiness-preview"><div><span>PLANNED SESSION</span><strong data-readiness-plan>~'+esc(snapshot.day.estimatedMinutes)+' min · '+snapshot.day.exercises.length+' exercises</strong></div><small data-readiness-plan-copy>'+(snapshot.replacementCount?snapshot.replacementCount+' movement'+(snapshot.replacementCount===1?' changes':'s change')+' before you start.':'The plan fits these choices without an equipment substitution.')+'</small></div>'+
-        '<div class="readiness-sticky-action"><button class="button primary-action" type="button" data-action="begin-workout">'+(readinessContext.mode==='edit'?'UPDATE TODAY’S WORKOUT':'PREPARE TODAY’S WORKOUT')+'</button></div>'+
+        '<section class="preflight-block"><div class="preflight-block-title"><span>2.</span><strong>HOW YOU FEEL</strong></div><div class="preflight-readiness-card">'+
+          renderReadinessScaleRow('energy','Energy','ϟ',values.energy)+
+          renderReadinessScaleRow('soreness','Soreness','◈',values.soreness)+
+          renderReadinessScaleRow('sleep','Sleep','◐',values.sleep)+
+        '</div></section>'+
+        '<section class="preflight-block"><div class="preflight-block-title"><span>3.</span><strong>TIME</strong></div>'+renderReadinessTimeOptions(selectedMinutes)+'</section>'+
+        '<section class="preflight-workout-card"><div class="preflight-workout-head"><span>▤</span><div><small>TODAY’S WORKOUT</small><strong data-readiness-plan>'+snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min</strong></div></div><ul data-readiness-consequences>'+renderReadinessConsequences(snapshot)+'</ul></section>'+
+        '<button class="button primary-action preflight-build-button" type="button" data-action="begin-workout">'+(readinessContext.mode==='edit'?'UPDATE MY ':'BUILD MY ')+esc(day.name.toUpperCase())+'</button>'+
       '</form>'+
     '</section></div>';
 }
 async function startPreparedWorkout(){
-  if(!readinessContext)return;
+  if(!readinessContext||readinessContext.building)return;
   const form=document.querySelector('#readiness-form');
   if(!form){toast('The readiness check could not be loaded. Please close it and try again.');return;}
+  const context=readinessContext;
   const data=new FormData(form);
   const readiness={
     energy:num(data.get('energy'))||3,
@@ -4192,15 +4317,27 @@ async function startPreparedWorkout(){
     sleep:num(data.get('sleep'))||3,
     timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
   };
-  const setup=sessionSetupFromForm(form,readinessContext.preferredSetup||normalSessionSetupKey());
+  const setup=sessionSetupFromForm(form,context.preferredSetup||normalSessionSetupKey());
   readiness.score=readinessScore(readiness);
   readiness.sessionSetup={key:setup.key,label:sessionSetupLabel(setup),modes:clone(setup.modes)};
-  store.sessionPreferences=store.sessionPreferences||{lastSetup:null};
-  store.sessionPreferences.lastSetup=clone(setup);
-  if(readinessContext.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId){
-    await workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',readinessContext.sharedDraft.backendId).eq('user_id',store.account.userId);
-  }
-  const sourceDay=clone(readinessContext.day);
+  context.buildError='';
+  context.building={step:0,readiness:clone(readiness),setup:clone(setup),startedAt:Date.now()};
+  render();
+
+  const advanceBuild=async step=>{
+    await new Promise(resolve=>setTimeout(resolve,190));
+    if(readinessContext!==context||!context.building)return false;
+    context.building.step=step;
+    render();
+    return true;
+  };
+
+  const sharedSync=(context.sharedDraft?.backendId&&workoutSupabase&&store.account?.userId)
+    ?workoutSupabase.from('workout_shared_participant_state').update({readiness,ready:true,phase:'ready',updated_at:new Date().toISOString()}).eq('session_id',context.sharedDraft.backendId).eq('user_id',store.account.userId)
+    :Promise.resolve();
+
+  await advanceBuild(1);
+  const sourceDay=clone(context.day);
   let day=applyReadinessToDay(sourceDay,readiness);
   if(day.engineBacked&&readiness.timeAvailable&&readiness.timeAvailable<(day.targetMinutes||store.profile?.minutes||45)&&programEngine?.compressSession){
     const engine=currentEngineProgram(),week=engine?.program?.weeks?.find(w=>w.week===day.engineWeek),session=week?.sessions?.find(s=>s.id===day.engineSessionId);
@@ -4211,24 +4348,38 @@ async function startPreparedWorkout(){
     }
   }
   day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
-  if(!day.exercises.length){toast('No usable exercises match that setup. Add floor space, equipment, or choose another setup.');return;}
-  const scheduledDate=readinessContext.scheduledDate;
-  const context=programContext(dateFromKey(scheduledDate));
-  const sharedDraft=readinessContext.sharedDraft?clone(readinessContext.sharedDraft):null;
+  if(!day.exercises.length){
+    context.building=null;
+    context.buildError='No usable exercises match that setup. Add available equipment or choose another training location.';
+    render();
+    toast(context.buildError);
+    return;
+  }
+  await advanceBuild(2);
+  rememberSessionSetup(setup);
+  await Promise.resolve(sharedSync).catch(error=>console.warn('Shared readiness sync failed',error));
+  await advanceBuild(3);
+  await new Promise(resolve=>setTimeout(resolve,220));
+
+  const scheduledDate=context.scheduledDate;
+  const programCtx=programContext(dateFromKey(scheduledDate));
+  const sharedDraft=context.sharedDraft?clone(context.sharedDraft):null;
   readinessContext=null;
   unlockWorkoutCues();
   store.activeWorkout=createWorkout(day,{
     scheduledDate,
     readiness,
-    programContext:context,
+    programContext:programCtx,
     trainingContext:day.trainingContext,
     adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]
   });
   if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString()};
-  saveStore();currentTab='workout';prefetchWorkoutOpeningCoach(store.activeWorkout);render();
+  saveStore();
+  currentTab='workout';
+  prefetchWorkoutOpeningCoach(store.activeWorkout);
+  render();
   if(sharedDraft?.backendId)activateSharedWorkout(sharedDraft).catch(error=>console.warn('Shared workout activation failed',error));
 }
-
 function createWorkout(day,meta={}){
   day=assignDynamicWorkoutBlocks(clone(day),store.profile||{});
   const now=new Date().toISOString();
@@ -4665,17 +4816,37 @@ function renderExerciseReview(pos){
 }
 function renderWorkoutMap(){
   if(!workoutMapOpen||!store.activeWorkout)return '';
-  const w=store.activeWorkout,tabs=[['warmup','Warm-up'],['strength','Strength'],['cooldown','Cooldown']];
-  const warmRows=(w.warmup||[]).map((item,index)=>'<div class="map-simple-row"><span>'+String(index+1)+'</span><div><strong>'+esc(item.name)+'</strong><small>'+(item.mode==='reps'||item.reps?esc(item.reps+' reps'+(item.side?' '+item.side:'')):formatClock(item.seconds||30))+'</small></div></div>').join('');
-  const coolRows=(w.cooldown||[]).map((item,index)=>'<div class="map-simple-row"><span>'+String(index+1)+'</span><div><strong>'+esc(item.name)+'</strong><small>'+formatClock(item.seconds||30)+'</small></div></div>').join('');
-  const strengthRows=w.exercises.map((ex,index)=>{
-    const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
-    const status=state==='complete'?'✓':state==='completed-manually'?'✓':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIP':'';
-    return '<article class="workout-map-row '+(index===w.currentExerciseIndex?'current':'')+'"><button class="map-open" type="button" '+(!['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase)?'data-action="jump-exercise" data-exercise-index="'+index+'"':'')+'><span class="map-number">'+String(index+1)+'</span><div class="map-copy"><strong>'+esc(ex.name)+'</strong><span>'+esc(ex.sets.length+' × '+ex.reps)+(ex.suggestedWeight?' · '+esc(ex.suggestedWeight)+' lb':'')+'</span></div><em class="map-status">'+esc(status)+'</em></button><button class="map-more" type="button" data-action="open-exercise-actions" data-exercise-index="'+index+'">•••</button></article>';
+  const w=store.activeWorkout;
+  const status=preparedWorkoutStatus(w);
+  const warmMinutes=runnerPhaseMinutes(w.warmup||[]);
+  const coolMinutes=runnerPhaseMinutes(w.cooldown||[]);
+  const totalMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
+  const strengthMinutes=Math.max(1,totalMinutes-warmMinutes-coolMinutes);
+
+  const timedRows=(items,phase)=>(items||[]).map((item,index)=>{
+    const image=timedStageImageUrl(item,0);
+    const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' per side':'')):formatClock(item.seconds||30);
+    return '<article class="workout-preview-row timed"><div class="workout-preview-thumb">'+(image?'<img src="'+esc(image)+'" alt="">':'<span>'+String(index+1).padStart(2,'0')+'</span>')+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div></article>';
   }).join('');
-  const body=workoutMapView==='warmup'?warmRows:workoutMapView==='cooldown'?coolRows:strengthRows;
-  return '<div class="exercise-modal-backdrop workout-map-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal runner-map-modal" data-workout-map-panel role="dialog" aria-modal="true"><button class="modal-close" data-action="close-workout-map" type="button">×</button><div class="workout-map-head"><h2>'+esc(w.routineName)+'</h2></div><div class="runner-map-tabs">'+tabs.map(([id,label])=>'<button class="'+(workoutMapView===id?'active':'')+'" data-action="set-workout-map-view" data-map-view="'+id+'">'+label+'</button>').join('')+'</div><div class="workout-map-list">'+body+'</div></section></div>';
+
+  const strengthRows=(w.exercises||[]).map((ex,index)=>{
+    const state=exerciseState(ex),done=(ex.sets||[]).filter(set=>set.completed).length;
+    const statusLabel=state==='complete'||state==='completed-manually'?'✓':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'SKIP':'';
+    const adapted=ex.sessionAdapted&&ex.sessionOriginalName?'<small class="preview-adaptation">Replaces '+esc(ex.sessionOriginalName)+'</small>':'';
+    return '<article class="workout-preview-row strength '+(index===w.currentExerciseIndex?'current':'')+'"><div class="workout-preview-thumb exercise">'+exerciseImageButton(ex,'workout-preview-media')+'</div><div><strong>'+esc(ex.name)+'</strong><small>'+esc(ex.sets.length+' sets · '+ex.reps)+(ex.suggestedWeight?' · '+esc(ex.suggestedWeight)+' lb':'')+'</small>'+adapted+'</div>'+(statusLabel?'<em>'+esc(statusLabel)+'</em>':'')+'<button class="workout-preview-chevron" type="button" data-exercise-detail="'+esc(ex.id)+'" aria-label="View '+esc(ex.name)+' details">›</button></article>';
+  }).join('');
+
+  return '<div class="exercise-modal-backdrop workout-map-backdrop workout-preview-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal workout-preview-v4" data-workout-map-panel role="dialog" aria-modal="true" aria-label="Workout preview">'+
+    '<button class="modal-close" data-action="close-workout-map" type="button" aria-label="Close workout preview">×</button>'+
+    '<header class="workout-preview-head"><h2>'+esc(w.routineName.toUpperCase())+'</h2><p>Workout preview</p></header>'+
+    '<section class="workout-preview-summary"><span><b>◷</b><strong>'+totalMinutes+' min</strong></span><span><b>▰</b><strong>'+w.exercises.length+' exercises</strong></span><em class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</em></section>'+
+    ((w.warmup||[]).length?'<section class="workout-preview-section warmup"><div class="workout-preview-section-head"><div><h3>Warm-up</h3><span>'+warmMinutes+' min</span></div><em>RECOMMENDED</em><b>'+(w.warmup?.length||0)+' movements</b></div><div class="workout-preview-list">'+timedRows(w.warmup,'warmup')+'</div></section>':'')+
+    '<section class="workout-preview-section strength"><div class="workout-preview-section-head"><div><h3>Strength</h3><span>'+strengthMinutes+' min</span></div><em>MAIN WORK</em><b>'+w.exercises.length+' exercises</b></div><div class="workout-preview-list">'+strengthRows+'</div></section>'+
+    ((w.cooldown||[]).length?'<section class="workout-preview-section cooldown"><div class="workout-preview-section-head"><div><h3>Cooldown</h3><span>'+coolMinutes+' min</span></div><em>OPTIONAL</em><b>'+(w.cooldown?.length||0)+' movements</b></div><div class="workout-preview-list">'+timedRows(w.cooldown,'cooldown')+'</div></section>':'')+
+    (w.phase==='intro'?'<div class="workout-preview-footer"><button class="button primary-action runner-gold-action" data-action="begin-session">'+((w.warmup||[]).length?'START WARM-UP':'START WORKOUT')+'</button><details><summary>Session options</summary><div>'+((w.warmup||[]).length?'<button class="text-button" data-action="skip-warmup" data-skip-source="intro">Skip warm-up</button>':'')+'<button class="text-button" data-action="open-session-setup">Change training setup</button><button class="text-button" data-action="open-cue-settings">Coach & cue settings</button></div></details></div>':'')+
+  '</section></div>';
 }
+
 
 function beginPreSetPosition(ei,si,isNewExercise=true,setupSeconds=null){
   const w=store.activeWorkout;if(!w)return;
@@ -7436,33 +7607,59 @@ function renderCatalog(){
     <div class="catalog-grid">${items.map(e=>`<article class="catalog-card visual-catalog-card">${exerciseImageButton(e,'catalog-exercise-media')}<div class="catalog-card-copy"><div class="catalog-top"><span>${esc(movements[e.movement]||e.movement)}</span><span>${esc(e.difficulty)}</span></div><h3>${esc(e.name)}</h3><p>${e.muscles.map(esc).join(' · ')}</p><p class="catalog-description">${esc(exerciseDescription(e))}</p><div class="catalog-tags"><span>${esc(e.style)}</span><span>${esc(e.equipment.join(' / '))}</span></div><button class="text-button catalog-details" type="button" data-exercise-detail="${esc(e.id)}">View form & cues</button></div></article>`).join('')}</div>`;
 }
 
+function preparedWorkoutStatus(w){
+  const readiness=w?.readiness||{};
+  if(num(readiness.soreness)>=4)return 'Recovery-adjusted';
+  if(num(readiness.energy)<=2||num(readiness.sleep)<=2)return 'Conservative day';
+  if(num(readiness.timeAvailable)<num(store.profile?.minutes||45))return 'Time-adjusted';
+  if(w?.trainingContext?.changes?.length)return 'Setup-adjusted';
+  return 'Normal session';
+}
+function renderPreparedChangeCard(w){
+  const rows=[];
+  const changes=w?.trainingContext?.changes||[];
+  for(const change of changes){
+    if(rows.length>=3)break;
+    if(change.type==='replacement')rows.push('<div class="ready-change-row"><b>↔</b><div><strong>'+esc(change.fromName)+' → '+esc(change.toName)+'</strong><small>'+esc(change.reason||'Matched to today’s setup.')+'</small></div></div>');
+    else if(change.type==='unavailable')rows.push('<div class="ready-change-row warning"><b>!</b><div><strong>'+esc(change.fromName||'Movement')+'</strong><small>Unavailable with today’s setup.</small></div></div>');
+  }
+  const readiness=w?.readiness||{};
+  if(rows.length<3&&num(readiness.soreness)>=4)rows.push('<div class="ready-change-row"><b>↓</b><div><strong>Recovery volume reduced</strong><small>Working volume and loading were reduced for today.</small></div></div>');
+  if(rows.length<3&&num(readiness.energy)<=2)rows.push('<div class="ready-change-row"><b>↓</b><div><strong>Accessory work reduced</strong><small>Rest was extended to match today’s energy.</small></div></div>');
+  if(rows.length<3&&num(readiness.sleep)<=2)rows.push('<div class="ready-change-row"><b>•</b><div><strong>Progression held</strong><small>Today keeps loading conservative after limited sleep.</small></div></div>');
+  if(!rows.length)return '<section class="ready-change-card normal"><div class="ready-change-title"><span>✓</span><div><strong>TODAY’S PLAN</strong><small>Your normal '+esc(w.routineName)+' session fits today’s readiness, time, and equipment.</small></div></div></section>';
+  return '<section class="ready-change-card"><div class="ready-change-title"><span>↔</span><div><strong>WHAT CHANGED TODAY</strong><small>'+rows.length+' adjustment'+(rows.length===1?'':'s')+' before you start</small></div></div><div class="ready-change-list">'+rows.join('')+'</div><p>Everything else stays as planned.</p></section>';
+}
+function renderPreparedSetupList(w){
+  const readiness=w?.readiness||{};
+  const setup=w.trainingContext||buildSessionSetup(normalSessionSetupKey());
+  return '<section class="ready-setup-card"><h3>Today’s setup</h3>'+
+    '<div><b>ϟ</b><span><strong>'+esc(readinessWord('energy',readiness.energy||3))+' energy</strong><small>'+(readiness.energy||3)+'/5</small></span></div>'+
+    '<div><b>◈</b><span><strong>'+esc(readinessWord('soreness',readiness.soreness||2))+' soreness</strong><small>'+(readiness.soreness||2)+'/5</small></span></div>'+
+    '<div><b>◐</b><span><strong>'+esc(readinessWord('sleep',readiness.sleep||3))+' sleep</strong><small>'+(readiness.sleep||3)+'/5</small></span></div>'+
+    '<div><b>◷</b><span><strong>'+esc(readiness.timeAvailable||store.profile?.minutes||45)+' minutes</strong><small>Available today</small></span></div>'+
+    '<div><b>▰</b><span><strong>'+esc(readinessLocationLabel(setup.key))+'</strong><small>'+esc(readinessSetupDetail(setup))+'</small></span></div>'+
+  '</section>';
+}
 function renderWorkoutIntro(w){
-  const warmCount=w.warmup?.length||0,coolCount=w.cooldown?.length||0;
+  const warmCount=w.warmup?.length||0;
   const totalMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
-  const strengthMinutes=Math.max(1,totalMinutes-runnerPhaseMinutes(w.warmup)-runnerPhaseMinutes(w.cooldown));
-  const setup=w.trainingContext?sessionSetupLabel(w.trainingContext):(store.profile?.equipment==='full-gym'?'Gym':'Training');
-  const motivation=preWorkoutMotivation(w);
-  const readiness=w.readiness||{};
-  const firstWarm=w.warmup?.[0],firstStrength=w.exercises?.[0],firstCool=w.cooldown?.[0];
-  return '<div class="runner-overview runner-overview-v3">'+
-    '<div class="runner-ready-kicker"><span>'+esc(motivation.label)+'</span><em>READY</em></div>'+
-    '<div class="runner-overview-title"><h2>'+esc(w.routineName)+'</h2><p>'+esc(w.focus||'Strength training')+'</p><small>'+esc(totalMinutes)+' minutes · '+esc(setup)+'</small></div>'+
-    '<div class="runner-readiness-strip">'+
-      '<span><small>ENERGY</small><strong>'+esc(readinessDescriptor('energy',readiness.energy||3))+'</strong></span>'+
-      '<span><small>SORENESS</small><strong>'+esc(readinessDescriptor('soreness',readiness.soreness||2))+'</strong></span>'+
-      '<span><small>SLEEP</small><strong>'+esc(readinessDescriptor('sleep',readiness.sleep||3))+'</strong></span>'+
-    '</div>'+
-    '<section class="runner-motivation-card pre runner-built-today"><span>BUILT AROUND TODAY</span><strong>'+esc(motivation.title)+'</strong><p>'+esc(motivation.copy)+'</p></section>'+
-    '<section class="runner-coach-note"><div><span>COACH NOTE</span><strong>Before you start</strong></div><p>'+esc(preWorkoutCoachNote(w))+'</p></section>'+
-    '<div class="runner-phase-list">'+
-      (warmCount?'<button class="runner-phase-row active" data-action="begin-session"><span class="runner-phase-icon">●</span><div><strong>Warm-up <b class="runner-recommended-chip">RECOMMENDED</b></strong><small>'+warmCount+' movements · '+runnerPhaseMinutes(w.warmup)+' minutes</small><b class="runner-phase-preview">Starts with '+esc(runnerPhasePreview(firstWarm,'mobility'))+'</b></div><em>›</em></button>':'')+
-      '<div class="runner-phase-row primary"><span class="runner-phase-icon">▰</span><div><strong>Strength <b class="runner-main-work-chip">MAIN WORK</b></strong><small>'+w.exercises.length+' exercises · ~'+strengthMinutes+' minutes</small><b class="runner-phase-preview">First: '+esc(runnerPhasePreview(firstStrength,'strength work'))+(firstStrength?' · '+esc(currentPrescriptionLabel(firstStrength)):'')+'</b></div></div>'+
-      (coolCount?'<div class="runner-phase-row"><span class="runner-phase-icon">✦</span><div><strong>Cooldown</strong><small>'+coolCount+' movements · '+runnerPhaseMinutes(w.cooldown)+' minutes</small><b class="runner-phase-preview">Starts with '+esc(runnerPhasePreview(firstCool,'recovery'))+'</b></div></div>':'')+
-    '</div>'+
-    renderIntroAdaptation(w)+
-    '<div class="runner-session-start-actions"><button class="button primary-action runner-gold-action" data-action="begin-session">'+(warmCount?'START WARM-UP':'START WORKOUT')+'</button></div>'+
-    '<div class="runner-preflight-actions"><button class="text-button runner-map-link" data-action="open-workout-map">PREVIEW FULL WORKOUT</button>'+(!w.sharedSession?'<button class="text-button" data-action="edit-prepared-workout">ADJUST TODAY</button>':'')+'</div>'+
-    (warmCount?'<details class="runner-session-options"><summary>SESSION OPTIONS</summary><button class="text-button runner-skip-warmup" data-action="skip-warmup" data-skip-source="intro">SKIP WARM-UP</button></details>':'')+
+  const status=preparedWorkoutStatus(w);
+  return '<div class="prepared-workout-v4">'+
+    '<section class="prepared-ready-card">'+
+      '<div class="prepared-ready-visual"><div class="prepared-ready-check">✓</div></div>'+
+      '<div class="prepared-ready-title"><span class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</span><h2>'+esc(w.routineName)+' is ready</h2><p>'+esc(totalMinutes)+' min · '+w.exercises.length+' exercises</p></div>'+
+      renderPreparedChangeCard(w)+
+      renderPreparedSetupList(w)+
+      '<section class="ready-coach-card"><b>▣</b><div><strong>Coach guidance</strong><p>'+esc(preWorkoutCoachNote(w))+'</p></div></section>'+
+    '</section>'+
+    '<div class="prepared-primary-actions"><button class="button primary-action runner-gold-action" data-action="begin-session">'+(warmCount?'START WARM-UP':'START WORKOUT')+'</button><button class="button secondary prepared-preview-button" data-action="open-workout-map">VIEW FULL WORKOUT</button></div>'+
+    (!w.sharedSession?'<button class="text-button prepared-adjust-link" data-action="edit-prepared-workout">Adjust today’s workout</button>':'')+
+    '<details class="prepared-session-options"><summary>SESSION OPTIONS</summary><div>'+
+      (warmCount?'<button class="text-button" data-action="skip-warmup" data-skip-source="intro">Skip warm-up</button>':'')+
+      '<button class="text-button" data-action="open-session-setup">Change training setup</button>'+
+      '<button class="text-button" data-action="open-cue-settings">Coach & cue settings</button>'+
+    '</div></details>'+
   '</div>';
 }
 
@@ -7728,12 +7925,13 @@ function renderWorkout(){
   const w=pos.workout,guided=['intro','warmup-routine','warmup','warmup-complete'].includes(w.phase);
   const activeStrength=['pre-set','work','timed-set','side-switch','rest','calibrate','feedback','exercise-transition','exercise-review'].includes(w.phase);
   const warmSnap=w.phase==='warmup'?timedStageSnapshot(w):null;
-  const headerTitle=w.phase==='intro'?'Workout ready':w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.routineName;
+  const headerTitle=w.phase==='intro'?w.routineName:w.phase==='warmup'?'Warm-up':w.phase==='cooldown'?'Cooldown':w.routineName;
   const headerProgress=w.phase==='warmup'&&warmSnap?(warmSnap.index+1)+' of '+(w.warmup?.length||0):activeStrength?(pos.ei+1)+' of '+w.exercises.length:'';
   const warmElapsed=w.phase==='warmup'?('<span>Warm-up <b id="warmup-elapsed-clock">'+formatClock(warmupElapsedSeconds(w))+'</b></span>'):'';
   const exerciseElapsed=activeStrength?('<span>Exercise <b id="exercise-clock">'+formatClock(exerciseElapsedSeconds(w))+'</b></span>'):'';
+  const headerTimers=w.phase==='intro'?'':('<small class="runner-header-timers"><span>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b></span>'+exerciseElapsed+warmElapsed+'</small>');
   return '<div class="guided-shell cleaned-workout runner-v2 phase-'+esc(w.phase)+'"><div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
-    '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+'<small class="runner-header-timers"><span>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b></span>'+exerciseElapsed+warmElapsed+'</small></div><button class="circle-action" data-action="open-workout-map" aria-label="Workout map">•••</button></header>'+
+    '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+headerTimers+'</div><button class="circle-action" data-action="open-workout-map" aria-label="Workout preview">•••</button></header>'+
     (w.phase==='warmup'?'<div class="runner-top-progress"><span style="width:'+(((warmSnap?.index||0)+1)/Math.max(1,w.warmup.length)*100)+'%"></span></div>':activeStrength?'<div class="runner-top-progress"><span style="width:'+((pos.ei+1)/Math.max(1,w.exercises.length)*100)+'%"></span></div>':'')+
     '<div class="runner-cue-access">'+renderCueControls()+'</div>'+
     '<div id="coach-live-line" class="coach-live-line" '+(cueRuntime.lastCoachLine?'':'hidden')+'><span>COACH</span><p id="coach-live-text">'+esc(cueRuntime.lastCoachLine||'')+'</p><button type="button" data-action="replay-coach" aria-label="Replay coach cue">↻</button></div>'+
@@ -9098,8 +9296,7 @@ function handleClick(event){
     const result=applySetupToActiveWorkout(setup);
     if(result.blocked){toast('That setup has no usable exercises for this session. Choose another setup or add available equipment.');return;}
     sessionSetupOpen=false;
-    store.sessionPreferences=store.sessionPreferences||{lastSetup:null};
-    store.sessionPreferences.lastSetup=clone(setup);
+    rememberSessionSetup(setup);
     saveStore();
     render();
     toast(result.changed+' movement'+(result.changed===1?'':'s')+' adapted'+(result.unavailable?' · '+result.unavailable+' unavailable':'')+'.');
@@ -9395,7 +9592,7 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Escape'&&cueSettingsOpen){requestCloseCueSettings();return;}
   if(event.key==='Escape'&&setEditContext){setEditContext=null;render();return;}
   if(event.key==='Escape'&&workoutMapOpen){workoutMapOpen=false;render();return;}
-  if(event.key==='Escape'&&readinessContext){readinessContext=null;render();return;}
+  if(event.key==='Escape'&&readinessContext){if(readinessContext.building)return;readinessContext=null;render();return;}
   if(event.key==='Escape'&&swapContext){swapContext=null;render();return;}
   if(event.key==='Escape'&&exerciseDetailId){exerciseDetailId=null;render();return;}
   if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
