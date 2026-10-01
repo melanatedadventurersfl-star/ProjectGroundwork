@@ -3239,6 +3239,7 @@ function buildCooldown(exercises){
 
 const SESSION_SETUP_PRESETS = {
   'full-gym':{label:'Gym',shortLabel:'Gym',modes:['full-gym']},
+  'home':{label:'Home',shortLabel:'Home',modes:['bodyweight']},
   'bodyweight':{label:'Bodyweight only',shortLabel:'Bodyweight',modes:['bodyweight']},
   'dumbbells':{label:'Dumbbells + bodyweight',shortLabel:'Dumbbells',modes:['dumbbells','bodyweight']},
   'bands':{label:'Bands + bodyweight',shortLabel:'Bands',modes:['bands','bodyweight']},
@@ -3267,7 +3268,7 @@ function sessionSetupLabel(setup){
 function buildSessionSetup(key,options={}){
   const preset=SESSION_SETUP_PRESETS[key]||SESSION_SETUP_PRESETS['full-gym'];
   const customModes=Array.isArray(options.customModes)?options.customModes:[];
-  let modes=key==='custom'?customModes.filter(mode=>['bodyweight','dumbbells','bands'].includes(mode)):[...preset.modes];
+  let modes=['custom','home'].includes(key)?customModes.filter(mode=>['bodyweight','dumbbells','bands'].includes(mode)):[...preset.modes];
   if(!modes.length)modes=['bodyweight'];
   const fullGym=modes.includes('full-gym');
   return {
@@ -3280,16 +3281,21 @@ function buildSessionSetup(key,options={}){
     temporary:key!==normalSessionSetupKey()||key==='custom'
   };
 }
-function sessionSetupFromForm(form,fallbackKey=normalSessionSetupKey()){
-  if(!form)return buildSessionSetup(fallbackKey);
+function setupFromReadinessControls(form,key){
+  if(!form)return buildSessionSetup(key||normalSessionSetupKey());
   const data=new FormData(form);
-  const key=String(data.get('sessionSetup')||fallbackKey);
-  return buildSessionSetup(key,{
+  return buildSessionSetup(key||normalSessionSetupKey(),{
     customModes:data.getAll('customEquipment').map(String),
     floor:data.get('sessionFloor')==='on',
     chair:data.get('sessionChair')==='on',
     pullupBar:data.get('sessionPullupBar')==='on'
   });
+}
+function sessionSetupFromForm(form,fallbackKey=normalSessionSetupKey()){
+  if(!form)return buildSessionSetup(fallbackKey);
+  const data=new FormData(form);
+  const key=String(data.get('sessionSetup')||fallbackKey);
+  return setupFromReadinessControls(form,key);
 }
 function setupAllowsExercise(exercise,setup){
   if(!exercise||!setup)return false;
@@ -3541,7 +3547,7 @@ function renderSessionSetupOptions(selectedKey=normalSessionSetupKey(),prefix=''
   }).join('')+'</div>';
 }
 function renderSessionSetupExtras(context={}){
-  const showCustom=context?.key==='custom';
+  const showCustom=['custom','home'].includes(context?.key);
   return '<div class="session-setup-extras"><div><span>AVAILABLE EXTRAS</span><small>Add only what you can use today.</small></div>'+
     '<label><input type="checkbox" name="sessionFloor" '+(context.floor===false?'':'checked')+'> Floor space</label>'+
     '<label><input type="checkbox" name="sessionChair" '+(context.chair?'checked':'')+'> Sturdy chair / step</label>'+
@@ -4163,11 +4169,11 @@ function readinessLocationFamily(key){
   return 'home';
 }
 function readinessHomeSetupKey(){
-  const remembered=store.sessionPreferences?.locations?.home?.key||store.sessionPreferences?.lastSetup?.key;
-  if(['dumbbells','bands','mixed-home'].includes(remembered))return remembered;
+  const remembered=store.sessionPreferences?.locations?.home?.key;
+  if(['home','dumbbells','bands','mixed-home'].includes(remembered))return remembered;
   const profileKey=store.profile?.equipment;
   if(['dumbbells','bands','mixed-home'].includes(profileKey))return profileKey;
-  return 'mixed-home';
+  return 'home';
 }
 function readinessLocationLabel(key){
   return ({gym:'Gym',home:'Home',bodyweight:'Bodyweight',custom:'Custom'})[readinessLocationFamily(key)]||sessionSetupLabel({key});
@@ -4185,6 +4191,7 @@ function readinessSetupDetail(setup){
   if(setup?.key==='bands')return 'Bands · bodyweight'+(setup.floor===false?'':' · floor space');
   if(setup?.key==='mixed-home')return 'Dumbbells · bands · bodyweight'+(setup.floor===false?'':' · floor space');
   if(family==='bodyweight')return 'No equipment required'+(setup.floor===false?'':' · floor space');
+  if(setup?.key==='home')return (setup.modes||['bodyweight']).map(mode=>mode==='bodyweight'?'Bodyweight':mode==='dumbbells'?'Dumbbells':mode==='bands'?'Bands':mode).join(' · ')+(setup.floor===false?'':' · floor space');
   const modes=(setup?.modes||[]).filter(mode=>mode!=='mixed-home').map(mode=>mode==='bodyweight'?'Bodyweight':mode==='dumbbells'?'Dumbbells':mode==='bands'?'Bands':mode);
   return modes.length?modes.join(' · '):'Choose what is available';
 }
@@ -4307,7 +4314,16 @@ function updateReadinessPreview(){
   if(summaryReadiness)summaryReadiness.textContent=readinessWord('energy',readiness.energy)+' energy · '+readinessWord('soreness',readiness.soreness)+' soreness · '+readinessWord('sleep',readiness.sleep)+' sleep';
   if(plan)plan.textContent=snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min';
   if(consequenceList)consequenceList.innerHTML=renderReadinessConsequences(snapshot);
-  if(equipmentTitle)equipmentTitle.textContent=readinessLocationLabel(setup.key)+(readinessLocationFamily(setup.key)==='bodyweight'?' session':' equipment loaded ✓');
+  if(equipmentTitle){
+    const family=readinessLocationFamily(setup.key);
+    equipmentTitle.textContent=family==='bodyweight'?'Bodyweight session':setup.key==='home'?'Home setup':readinessLocationLabel(setup.key)+' equipment loaded ✓';
+  }
+  if(readinessContext){
+    readinessContext.activeSetupKey=setup.key;
+    readinessContext.setupContext=clone(setup);
+    readinessContext.setupDrafts=readinessContext.setupDrafts||{};
+    readinessContext.setupDrafts[readinessLocationFamily(setup.key)]=clone(setup);
+  }
   if(equipmentCopy)equipmentCopy.textContent=readinessSetupDetail(setup);
 }
 function openReadiness(dayId,scheduledDate='',preferredSetup=''){
@@ -4319,12 +4335,15 @@ function openReadiness(dayId,scheduledDate='',preferredSetup=''){
   const setupKey=preferredSetup||normalSessionSetupKey();
   const family=readinessLocationFamily(setupKey);
   const remembered=store.sessionPreferences?.locations?.[family];
+  const setupContext=remembered?.key===setupKey?clone(remembered):buildSessionSetup(setupKey);
   readinessContext={
     dayId,
     scheduledDate:scheduledDate||entry?.dateKey||dateKey(),
     day:baseDay,
     preferredSetup:setupKey,
-    setupContext:remembered?.key===setupKey?clone(remembered):buildSessionSetup(setupKey)
+    activeSetupKey:setupKey,
+    setupContext,
+    setupDrafts:{[family]:clone(setupContext)}
   };
   render();
 }
@@ -4343,7 +4362,9 @@ function editPreparedWorkout(){
     preferredSetup:w.trainingContext?.key||normalSessionSetupKey(),
     setupContext:clone(w.trainingContext||buildSessionSetup(normalSessionSetupKey())),
     initialReadiness:clone(w.readiness||{}),
-    mode:'edit'
+    mode:'edit',
+    activeSetupKey:w.trainingContext?.key||normalSessionSetupKey(),
+    setupDrafts:{[readinessLocationFamily(w.trainingContext?.key||normalSessionSetupKey())]:clone(w.trainingContext||buildSessionSetup(normalSessionSetupKey()))}
   };
   render();
 }
@@ -4924,13 +4945,13 @@ function renderWorkoutMap(){
   const status=preparedWorkoutStatus(w);
   const warmMinutes=runnerPhaseMinutes(w.warmup||[]);
   const coolMinutes=runnerPhaseMinutes(w.cooldown||[]);
-  const totalMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
-  const strengthMinutes=Math.max(1,totalMinutes-warmMinutes-coolMinutes);
+  const availableMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
+  const plannedMinutes=num(w.estimatedMinutes)||availableMinutes;
+  const strengthMinutes=Math.max(1,plannedMinutes-warmMinutes-coolMinutes);
 
   const timedRows=(items,phase)=>(items||[]).map((item,index)=>{
-    const image=timedStageImageUrl(item,0);
     const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' per side':'')):formatClock(item.seconds||30);
-    return '<article class="workout-preview-row timed"><div class="workout-preview-thumb">'+(image?'<img src="'+esc(image)+'" alt="">':'<span>'+String(index+1).padStart(2,'0')+'</span>')+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div></article>';
+    return '<article class="workout-preview-row timed"><div class="workout-preview-thumb">'+renderTimedStageMedia(item,index)+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div></article>';
   }).join('');
 
   const strengthRows=(w.exercises||[]).map((ex,index)=>{
@@ -4943,7 +4964,7 @@ function renderWorkoutMap(){
   return '<div class="exercise-modal-backdrop workout-map-backdrop workout-preview-backdrop" data-action="close-workout-map"><section class="exercise-modal workout-map-modal workout-preview-v4" data-workout-map-panel role="dialog" aria-modal="true" aria-label="Workout preview">'+
     '<button class="modal-close" data-action="close-workout-map" type="button" aria-label="Close workout preview">×</button>'+
     '<header class="workout-preview-head"><h2>'+esc(w.routineName.toUpperCase())+'</h2><p>Workout preview</p></header>'+
-    '<section class="workout-preview-summary"><span><b>◷</b><strong>'+totalMinutes+' min</strong></span><span><b>▰</b><strong>'+w.exercises.length+' exercises</strong></span><em class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</em></section>'+
+    '<section class="workout-preview-summary"><span>'+uiIcon('clock')+'<strong>about '+plannedMinutes+' min</strong></span><span>'+uiIcon('plan')+'<strong>'+w.exercises.length+' exercises</strong></span><em class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</em><small>'+availableMinutes+' min available</small></section>'+
     ((w.warmup||[]).length?'<section class="workout-preview-section warmup"><div class="workout-preview-section-head"><div><h3>Warm-up</h3><span>'+warmMinutes+' min</span></div><em>RECOMMENDED</em><b>'+(w.warmup?.length||0)+' movements</b></div><div class="workout-preview-list">'+timedRows(w.warmup,'warmup')+'</div></section>':'')+
     '<section class="workout-preview-section strength"><div class="workout-preview-section-head"><div><h3>Strength</h3><span>'+strengthMinutes+' min</span></div><em>MAIN WORK</em><b>'+w.exercises.length+' exercises</b></div><div class="workout-preview-list">'+strengthRows+'</div></section>'+
     ((w.cooldown||[]).length?'<section class="workout-preview-section cooldown"><div class="workout-preview-section-head"><div><h3>Cooldown</h3><span>'+coolMinutes+' min</span></div><em>OPTIONAL</em><b>'+(w.cooldown?.length||0)+' movements</b></div><div class="workout-preview-list">'+timedRows(w.cooldown,'cooldown')+'</div></section>':'')+
@@ -9671,10 +9692,23 @@ document.addEventListener('input',event=>{
 document.addEventListener('change',event=>{
   if(event.target.name==='sessionSetup'){
     const form=event.target.closest('form');
+    const newKey=String(event.target.value||normalSessionSetupKey());
     const customRow=form?.querySelector('[data-custom-equipment-row]');
-    if(customRow)customRow.hidden=event.target.value!=='custom';
-    if(form?.id==='readiness-form'){
-      const defaults=buildSessionSetup(String(event.target.value||normalSessionSetupKey()));
+    if(form?.id==='readiness-form'&&readinessContext){
+      const oldKey=readinessContext.activeSetupKey||readinessContext.preferredSetup||normalSessionSetupKey();
+      const oldDraft=setupFromReadinessControls(form,oldKey);
+      readinessContext.setupDrafts=readinessContext.setupDrafts||{};
+      readinessContext.setupDrafts[readinessLocationFamily(oldKey)]=clone(oldDraft);
+
+      const newFamily=readinessLocationFamily(newKey);
+      const savedDraft=readinessContext.setupDrafts[newFamily]||store.sessionPreferences?.locations?.[newFamily];
+      const defaults=savedDraft?clone(savedDraft):buildSessionSetup(newKey);
+      readinessContext.activeSetupKey=newKey;
+      readinessContext.preferredSetup=newKey;
+      readinessContext.setupContext=clone(defaults);
+      readinessContext.setupDrafts[newFamily]=clone(defaults);
+
+      if(customRow)customRow.hidden=!['custom','home'].includes(newKey);
       const floor=form.querySelector('[name="sessionFloor"]');
       const chair=form.querySelector('[name="sessionChair"]');
       const pullup=form.querySelector('[name="sessionPullupBar"]');
@@ -9682,6 +9716,12 @@ document.addEventListener('change',event=>{
       if(chair)chair.checked=Boolean(defaults.chair);
       if(pullup)pullup.checked=Boolean(defaults.pullupBar);
       form.querySelectorAll('input[name="customEquipment"]').forEach(input=>{input.checked=(defaults.modes||['bodyweight']).includes(input.value);});
+      if(newKey==='home'&&!store.sessionPreferences?.locations?.home){
+        const details=form.querySelector('.preflight-equipment-details');
+        if(details)details.open=true;
+      }
+    }else if(customRow){
+      customRow.hidden=newKey!=='custom';
     }
   }
   if(event.target.closest?.('#readiness-form'))updateReadinessPreview();
