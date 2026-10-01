@@ -5181,11 +5181,12 @@ function nextDynamicBlockPosition(w,ei,si){
       if(set&&!setIsResolved(set))return {ei:index,si:round,type:'block-round',blockId:ex.blockId};
     }
   }
-  const lastPeer=Math.max(...peers);
-  for(let index=lastPeer+1;index<w.exercises.length;index++){
+  const firstPeer=Math.min(...peers);
+  for(let index=firstPeer+1;index<w.exercises.length;index++){
+    if(peers.includes(index))continue;
     if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
   }
-  for(let index=0;index<w.exercises.length;index++){
+  for(let index=0;index<=firstPeer;index++){
     if(peers.includes(index))continue;
     if(!exerciseCountsAsResolved(w.exercises[index]))return {ei:index,si:firstIncompleteSetIndex(w.exercises[index]),type:'exercise'};
   }
@@ -6483,7 +6484,7 @@ function renderProfileEditor(){
         </div>
       </section>
 
-      <section class="form-section training-structure-profile-section"><div class="form-section-head"><span>07</span><div><h3>How do you like to train?</h3><p>Choose your normal workout structure. You can still change it before any session.</p></div></div>
+      <section class="form-section training-structure-profile-section"><div class="form-section-head"><span>07</span><div><h3>How should this four-week program flow?</h3><p>Choose the program structure now. Adaptive assigns each session while the four-week block is built. You can change it later from Program.</p></div></div>
         <div class="structure-choice-grid">
           ${WORKOUT_STRUCTURE_OPTIONS.map(item=>`<label class="choice-card structure-choice-card"><input type="radio" name="workoutStructure" value="${item.id}" ${(p.workoutStructure||'adaptive')===item.id?'checked':''}><span><strong>${esc(item.label)}</strong><small>${esc(item.copy)}</small></span></label>`).join('')}
         </div>
