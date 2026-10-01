@@ -7677,11 +7677,21 @@ function bodyHeatClass(level){
   return level?' heat-'+Math.max(1,Math.min(4,level)):'';
 }
 function renderHomeFrontAnatomy(snapshot){
+  const base=window.GoWorkoutAnatomyBase;
+  if(base?.enabled){
+    const image=base.renderBase({view:'front',variant:'male',className:'front'});
+    if(image)return image;
+  }
   const anatomy=window.GoWorkoutAnatomy;
   if(anatomy?.front)return anatomy.front(snapshot.regions||snapshot.front||{});
   return '<svg class="home-anatomy-svg anatomy-pro front" viewBox="0 0 320 570" role="img" aria-label="Front muscular anatomy training load"><text x="160" y="285" text-anchor="middle" class="anatomy-fallback-text">FRONT</text></svg>';
 }
 function renderHomeBackAnatomy(snapshot){
+  const base=window.GoWorkoutAnatomyBase;
+  if(base?.enabled){
+    const image=base.renderBase({view:'back',variant:'male',className:'back'});
+    if(image)return image;
+  }
   const anatomy=window.GoWorkoutAnatomy;
   if(anatomy?.back)return anatomy.back(snapshot.regions||snapshot.back||{});
   return '<svg class="home-anatomy-svg anatomy-pro back" viewBox="0 0 320 570" role="img" aria-label="Back muscular anatomy training load"><text x="160" y="285" text-anchor="middle" class="anatomy-fallback-text">BACK</text></svg>';
