@@ -13192,3 +13192,304 @@ body.home-mode .bottom-nav:before{
     grid-template-columns:1fr;
   }
 }
+
+
+/* GoWorkout Home anatomy and visual media V5 */
+.home-training-load-v5{
+  display:grid;
+  gap:13px;
+  padding-top:22px;
+}
+.home-training-load-v5 .home-body-head{
+  align-items:end;
+}
+.home-training-load-v5 .home-body-head h3{
+  margin-top:4px;
+  font-size:25px;
+  letter-spacing:-.035em;
+}
+.home-training-load-v5 .home-body-head .text-button{
+  color:#e4c66f;
+  font-size:8px;
+}
+.home-training-load-v5 .home-body-layout{
+  grid-template-columns:minmax(300px,1.08fr) minmax(230px,.92fr);
+  gap:22px;
+  min-height:335px;
+  padding:22px 24px;
+  border-color:rgba(216,180,92,.13);
+  background:
+    radial-gradient(circle at 24% 42%,rgba(164,213,100,.10),transparent 28%),
+    radial-gradient(circle at 73% 24%,rgba(57,111,75,.18),transparent 34%),
+    linear-gradient(145deg,rgba(17,34,23,.96),rgba(8,17,12,.96));
+}
+.home-training-load-v5 .home-body-pair{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:18px;
+  align-items:end;
+}
+.home-training-load-v5 .home-body-figure{
+  gap:7px;
+}
+.home-training-load-v5 .home-body-figure>span{
+  color:#a9b5ad;
+  font-size:7px;
+  letter-spacing:.15em;
+}
+.home-training-load-v5 .home-body-figure svg{
+  width:min(100%,145px);
+  max-height:280px;
+  overflow:visible;
+}
+.home-anatomy-svg .anatomy-base{
+  fill:#25342a;
+  stroke:#617066;
+  stroke-width:1.6;
+  stroke-linejoin:round;
+}
+.home-anatomy-svg .anatomy-detail{
+  fill:none;
+  stroke:rgba(198,207,199,.20);
+  stroke-width:1.1;
+  stroke-linecap:round;
+}
+.home-anatomy-svg .body-zone{
+  fill:#34473a;
+  stroke:rgba(191,204,194,.16);
+  stroke-width:1;
+  transition:fill .2s ease,stroke .2s ease,filter .2s ease;
+}
+.home-anatomy-svg .body-zone.heat-1{
+  fill:#527357;
+  stroke:#6d916d;
+}
+.home-anatomy-svg .body-zone.heat-2{
+  fill:#76ad60;
+  stroke:#93ca73;
+  filter:drop-shadow(0 0 3px rgba(126,192,95,.22));
+}
+.home-anatomy-svg .body-zone.heat-3{
+  fill:#addb62;
+  stroke:#c8ee79;
+  filter:drop-shadow(0 0 6px rgba(173,219,98,.34));
+}
+.home-anatomy-svg .body-zone.heat-4{
+  fill:#e6c65e;
+  stroke:#f3dc84;
+  filter:drop-shadow(0 0 8px rgba(230,198,94,.42));
+}
+.home-training-load-v5 .home-body-copy{
+  display:grid;
+  align-content:center;
+  gap:11px;
+}
+.home-load-info{
+  width:100%;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#92a097;
+  font:inherit;
+  font-size:8px;
+  line-height:1.45;
+  text-align:left;
+}
+.home-muscle-load-list{
+  display:grid;
+  gap:7px;
+}
+.home-muscle-load-item{
+  width:100%;
+  min-height:56px;
+  display:grid;
+  grid-template-columns:12px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  padding:9px 11px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:14px;
+  background:rgba(255,255,255,.025);
+  color:#e6ebe5;
+  font:inherit;
+  text-align:left;
+}
+.home-muscle-load-item>i{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#527357;
+  box-shadow:0 0 0 3px rgba(82,115,87,.08);
+}
+.home-muscle-load-item.heat-2>i{background:#76ad60}
+.home-muscle-load-item.heat-3>i{background:#addb62}
+.home-muscle-load-item.heat-4>i{background:#e6c65e}
+.home-muscle-load-item>span{
+  display:grid;
+  gap:2px;
+}
+.home-muscle-load-item strong{
+  color:#eef2ed;
+  font-size:10px;
+}
+.home-muscle-load-item small{
+  color:#8b9890;
+  font-size:7px;
+}
+.home-muscle-load-item em{
+  color:#829087;
+  font-size:15px;
+  font-style:normal;
+}
+.home-next-session-v2{
+  position:relative;
+  isolation:isolate;
+  min-height:118px;
+  overflow:hidden;
+  margin-top:2px;
+  padding:18px;
+  border:1px solid rgba(216,180,92,.11);
+  border-radius:20px;
+  background:
+    radial-gradient(circle at 80% 20%,rgba(216,180,92,.09),transparent 28%),
+    #102018;
+}
+.home-next-session-v2>img{
+  position:absolute;
+  z-index:-3;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:68% 34%;
+  filter:saturate(.70) contrast(1.05) brightness(.54);
+}
+.home-next-session-v2 .home-next-session-shade{
+  position:absolute;
+  z-index:-2;
+  inset:0;
+  background:
+    linear-gradient(90deg,rgba(6,14,9,.96) 0%,rgba(6,14,9,.78) 53%,rgba(6,14,9,.32) 100%),
+    linear-gradient(0deg,rgba(5,12,8,.68),transparent 72%);
+}
+.home-next-session-v2>div{
+  gap:4px;
+}
+.home-next-session-v2>div>span{
+  color:#e6c66d;
+}
+.home-next-session-v2>div>strong{
+  color:#fffaf0;
+  font-size:21px;
+  letter-spacing:-.03em;
+}
+.home-next-session-v2>div>small{
+  color:#aeb9b1;
+  font-size:9px;
+}
+.home-next-session-v2>em{
+  align-self:center;
+  color:#efd178;
+  font-size:11px;
+}
+@media(max-width:620px){
+  .home-contextual-v4{
+    padding-bottom:112px;
+  }
+  .home-training-load-v5{
+    padding-top:14px;
+  }
+  .home-training-load-v5 .home-body-head{
+    align-items:center;
+  }
+  .home-training-load-v5 .home-body-head h3{
+    font-size:20px;
+  }
+  .home-training-load-v5 .home-body-layout{
+    grid-template-columns:1fr;
+    gap:13px;
+    min-height:0;
+    padding:15px 14px 14px;
+    border-radius:20px;
+  }
+  .home-training-load-v5 .home-body-pair{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:12px;
+    padding:2px 8px 6px;
+  }
+  .home-training-load-v5 .home-body-figure svg{
+    width:min(100%,128px);
+    max-height:248px;
+  }
+  .home-training-load-v5 .home-body-figure>span{
+    font-size:6.5px;
+  }
+  .home-training-load-v5 .home-body-copy{
+    gap:9px;
+  }
+  .home-load-info{
+    text-align:center;
+    font-size:7px;
+  }
+  .home-muscle-load-list{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:5px;
+  }
+  .home-muscle-load-item{
+    min-height:60px;
+    grid-template-columns:8px minmax(0,1fr);
+    gap:6px;
+    padding:8px 7px;
+    border-radius:12px;
+  }
+  .home-muscle-load-item>i{
+    width:7px;
+    height:7px;
+  }
+  .home-muscle-load-item strong{
+    font-size:7px;
+  }
+  .home-muscle-load-item small{
+    font-size:5.5px;
+  }
+  .home-muscle-load-item em{
+    display:none;
+  }
+  .home-next-session-v2{
+    min-height:132px;
+    padding:16px 15px;
+  }
+  .home-next-session-v2>div{
+    max-width:74%;
+  }
+  .home-next-session-v2>div>strong{
+    font-size:20px;
+  }
+}
+@media(max-width:390px){
+  .home-training-load-v5 .home-body-pair{
+    gap:7px;
+    padding-inline:2px;
+  }
+  .home-training-load-v5 .home-body-figure svg{
+    width:min(100%,116px);
+  }
+  .home-muscle-load-list{
+    grid-template-columns:1fr;
+  }
+  .home-muscle-load-item{
+    min-height:46px;
+    grid-template-columns:8px minmax(0,1fr) auto;
+  }
+  .home-muscle-load-item strong{
+    font-size:8px;
+  }
+  .home-muscle-load-item small{
+    font-size:6px;
+  }
+  .home-muscle-load-item em{
+    display:block;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .home-anatomy-svg .body-zone{transition:none}
+}
