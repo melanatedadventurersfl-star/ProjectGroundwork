@@ -116,6 +116,54 @@ The cropper:
 - refuses to replace approved assets unless `--replace-approved` is explicitly supplied
 - marks newly written assets `generated` when `--update-status` is supplied
 
+## Process a ZIP of exercise sheets
+
+The cropper also accepts a ZIP archive containing multiple 3x3 exercise sheets. This is the preferred workflow when exercise sheets are uploaded or exported in batches.
+
+Each image filename must match either the exercise name or its exercise ID. Folder names inside the ZIP do not matter, so batch folders are supported.
+
+Examples:
+
+```
+batch_01/barbell_back_squat.png
+batch_01/bodyweight_squat.png
+batch_01/romanian_deadlift.png
+batch_02/step_up.png
+batch_02/hip_thrust.png
+```
+
+Then run:
+
+```bash
+python3 apps/member-app-prototype/workout/media-production/scripts/crop_sheet.py \
+  /path/to/goworkout-exercise-sheets.zip \
+  --dry-run
+```
+
+After the dry run is correct:
+
+```bash
+python3 apps/member-app-prototype/workout/media-production/scripts/crop_sheet.py \
+  /path/to/goworkout-exercise-sheets.zip \
+  --update-status
+```
+
+ZIP mode automatically:
+
+- reads PNG, JPG, JPEG, and WebP images directly from the archive
+- maps each image to an exercise from `exercise-specs.json`
+- applies the standard 3x3 avatar cell order
+- leaves cell 9 unused
+- writes the same eight production WebP assets as manifest mode
+- preserves approved-asset protection unless `--replace-approved` is supplied
+- supports `--overwrite`, `--replace-approved`, `--update-status`, and `--dry-run`
+- rejects duplicate sheets for the same exercise
+- skips image filenames that cannot be mapped instead of guessing
+- supports `--strict-zip` when you want any unmatched image to fail the whole archive
+- ignores macOS metadata folders and non-image files
+
+If a ZIP contains generic filenames such as `imagegen.png`, rename them to the exercise name before running the cropper. Unmatched images are reported and skipped by default. Use `--strict-zip` to make unmatched files fail the run. The script never guesses an ambiguous exercise assignment.
+
 ## Review rule
 
 Review every crop before approval. Movement accuracy comes first.

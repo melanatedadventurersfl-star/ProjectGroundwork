@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Crop a generated contact sheet into GoWorkout exercise assets."""
+"""Crop generated GoWorkout contact sheets into production exercise assets.
+
+Supports either the original manifest + image workflow or a ZIP archive containing
+multiple named 3x3 exercise sheets.
+"""
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import re
 import sys
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 
 try:
     from PIL import Image
@@ -30,6 +37,34 @@ POSITION_FILE = {
     "start": "position-1.webp",
     "end": "position-2.webp",
 }
+
+SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+DEFAULT_GRID = {
+    "rows": 3,
+    "columns": 3,
+    "outerMarginPx": 0,
+    "gutterPx": 0,
+    "cellInsetPx": 4,
+}
+
+DEFAULT_OUTPUT = {
+    "format": "webp",
+    "quality": 88,
+    "maxEdge": 768,
+    "squareCrop": True,
+}
+
+DEFAULT_CELL_LAYOUT = (
+    (0, 0, "masc-athletic", "start"),
+    (0, 1, "masc-athletic", "end"),
+    (0, 2, "masc-full", "start"),
+    (1, 0, "masc-full", "end"),
+    (1, 1, "fem-athletic", "start"),
+    (1, 2, "fem-athletic", "end"),
+    (2, 0, "fem-full", "start"),
+    (2, 1, "fem-full", "end"),
+)
 
 
 def load_json(path: Path):
@@ -133,8 +168,7 @@ def validate_manifest(manifest: dict):
             raise ValueError(f"Unknown position: {cell['position']}")
 
 
-def update_status(cells: list[dict], written: list[Path]):
-    status = load_json(STATUS_PATH)
+def mark_status_generated(status: dict, cells: list[dict], written: list[Path]):
     written_set = {path.resolve() for path in written}
 
     for cell in cells:
@@ -147,44 +181,13 @@ def update_status(cells: list[dict], written: list[Path]):
         slot["status"] = "generated"
         slot["assetPath"] = relative_asset_path(path)
 
-    write_json(STATUS_PATH, status)
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Split one image-generation contact sheet into production WebP assets."
-    )
-    parser.add_argument("manifest", help="Path to a sheet manifest JSON file")
-    parser.add_argument("--source", help="Override the source image path from the manifest")
-    parser.add_argument("--overwrite", action="store_true", help="Replace non-approved assets")
-    parser.add_argument(
-        "--replace-approved",
-        action="store_true",
-        help="Allow replacement of an asset whose media status is approved",
-    )
-    parser.add_argument(
-        "--update-status",
-        action="store_true",
-        help="Mark successfully written outputs as generated in media-status.json",
-    )
-    parser.add_argument("--dry-run", action="store_true", help="Validate and print outputs only")
-    args = parser.parse_args()
-
-    manifest_path = Path(args.manifest).resolve()
-    manifest = load_json(manifest_path)
-    validate_manifest(manifest)
-
-    source_path = resolve_source(manifest, args.source)
-    if not source_path.exists():
-        raise FileNotFoundError(f"Source sheet not found: {source_path}")
-
-    status = load_json(STATUS_PATH)
+def crop_image(image: Image.Image, manifest: dict, status: dict, args) -> list[Path]:
     output_config = manifest.get("output", {})
     max_edge = int(output_config.get("maxEdge", 768))
     quality = int(output_config.get("quality", 88))
     make_square = bool(output_config.get("squareCrop", True))
-
-    image = Image.open(source_path).convert("RGB")
+    image = image.convert("RGB")
     written = []
 
     for cell in manifest["cells"]:
@@ -218,8 +221,227 @@ def main():
         crop.save(path, "WEBP", quality=quality, method=6)
         written.append(path)
 
+    return written
+
+
+def normalize_exercise_name(value: str) -> str:
+    value = value.lower().replace("°", " degree ")
+    value = re.sub(r"\b(?:avatar|contact|production|training)?[-_ ]*sheet(?:[-_ ]*\d+)?\b", " ", value)
+    value = re.sub(r"\b(?:batch)[-_ ]*\d+\b", " ", value)
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return " ".join(value.split())
+
+
+def exercise_name_lookup() -> dict[str, str]:
+    specs = load_json(SPECS_PATH)
+    lookup: dict[str, str] = {}
+    collisions: set[str] = set()
+
+    for item in specs["exercises"]:
+        exercise_id = item["id"]
+        keys = {
+            normalize_exercise_name(exercise_id),
+            normalize_exercise_name(item["name"]),
+        }
+        for key in keys:
+            if not key:
+                continue
+            existing = lookup.get(key)
+            if existing and existing != exercise_id:
+                collisions.add(key)
+            else:
+                lookup[key] = exercise_id
+
+    for key in collisions:
+        lookup.pop(key, None)
+    return lookup
+
+
+def exercise_id_from_archive_name(member_name: str, lookup: dict[str, str]) -> str | None:
+    path = PurePosixPath(member_name)
+    stem = normalize_exercise_name(path.stem)
+    if stem in lookup:
+        return lookup[stem]
+
+    matches = {
+        exercise_id
+        for key, exercise_id in lookup.items()
+        if key and (stem.startswith(f"{key} ") or stem.endswith(f" {key}"))
+    }
+    if len(matches) == 1:
+        return next(iter(matches))
+
+    stem_tokens = set(stem.split())
+    token_matches = {
+        exercise_id
+        for key, exercise_id in lookup.items()
+        if stem_tokens
+        and stem_tokens.issubset(set(key.split()))
+        and len(set(key.split()) - stem_tokens) <= 1
+    }
+    if len(token_matches) == 1:
+        return next(iter(token_matches))
+    return None
+
+
+def default_manifest_for_exercise(exercise_id: str, source_name: str) -> dict:
+    return {
+        "version": 1,
+        "name": f"{exercise_id}-zip-sheet",
+        "source": source_name,
+        "grid": dict(DEFAULT_GRID),
+        "output": dict(DEFAULT_OUTPUT),
+        "cells": [
+            {
+                "row": row,
+                "column": column,
+                "exerciseId": exercise_id,
+                "avatarId": avatar_id,
+                "position": position,
+            }
+            for row, column, avatar_id, position in DEFAULT_CELL_LAYOUT
+        ],
+    }
+
+
+def safe_archive_images(archive: zipfile.ZipFile):
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        path = PurePosixPath(info.filename)
+        if any(part in {"", ".", ".."} for part in path.parts):
+            raise ValueError(f"Unsafe ZIP member path: {info.filename}")
+        if path.name.startswith(".") or "__MACOSX" in path.parts:
+            continue
+        if path.suffix.lower() not in SUPPORTED_IMAGE_SUFFIXES:
+            continue
+        yield info
+
+
+def process_zip(zip_path: Path, status: dict, args) -> tuple[list[Path], list[dict]]:
+    lookup = exercise_name_lookup()
+    written: list[Path] = []
+    processed_cells: list[dict] = []
+    seen_exercises: dict[str, str] = {}
+
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        image_infos = list(safe_archive_images(archive))
+        if not image_infos:
+            raise ValueError("ZIP contains no supported image files (.png, .jpg, .jpeg, .webp)")
+
+        mappings = []
+        unmatched = []
+        for info in image_infos:
+            exercise_id = exercise_id_from_archive_name(info.filename, lookup)
+            if not exercise_id:
+                unmatched.append(info.filename)
+                continue
+            if exercise_id in seen_exercises:
+                raise ValueError(
+                    f"ZIP contains more than one sheet for {exercise_id}: "
+                    f"{seen_exercises[exercise_id]} and {info.filename}"
+                )
+            seen_exercises[exercise_id] = info.filename
+            mappings.append((info, exercise_id))
+
+        if unmatched:
+            names = "\n  - ".join(unmatched)
+            message = (
+                "Could not map these ZIP images to exercises in exercise-specs.json:\n  - "
+                + names
+            )
+            if args.strict_zip:
+                raise ValueError(message)
+            print(f"WARNING: {message}", file=sys.stderr)
+            print(
+                "WARNING: Unmatched images will be skipped. Use --strict-zip to fail instead.",
+                file=sys.stderr,
+            )
+
+        if not mappings:
+            raise ValueError(
+                "ZIP contains images, but none could be mapped to exercises in exercise-specs.json"
+            )
+
+        for info, exercise_id in mappings:
+            manifest = default_manifest_for_exercise(exercise_id, info.filename)
+            validate_manifest(manifest)
+            print(f"\nZIP SHEET: {info.filename} -> {exercise_id}")
+            try:
+                with Image.open(io.BytesIO(archive.read(info))) as image:
+                    just_written = crop_image(image, manifest, status, args)
+            except Exception as exc:
+                raise ValueError(f"Failed to process ZIP image {info.filename}: {exc}") from exc
+            written.extend(just_written)
+            processed_cells.extend(manifest["cells"])
+
+    return written, processed_cells
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Split a GoWorkout contact sheet into production WebP assets. Input may be "
+            "a sheet manifest JSON file or a ZIP of named 3x3 exercise sheets."
+        )
+    )
+    parser.add_argument(
+        "input",
+        help=(
+            "Path to a sheet manifest JSON file, or a ZIP archive whose image filenames "
+            "match exercise names/IDs"
+        ),
+    )
+    parser.add_argument(
+        "--source",
+        help="Override the source image path from a JSON manifest (manifest mode only)",
+    )
+    parser.add_argument("--overwrite", action="store_true", help="Replace non-approved assets")
+    parser.add_argument(
+        "--replace-approved",
+        action="store_true",
+        help="Allow replacement of an asset whose media status is approved",
+    )
+    parser.add_argument(
+        "--update-status",
+        action="store_true",
+        help="Mark successfully written outputs as generated in media-status.json",
+    )
+    parser.add_argument(
+        "--strict-zip",
+        action="store_true",
+        help="Fail ZIP processing if any image filename cannot be mapped to an exercise",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Validate and print outputs only")
+    args = parser.parse_args()
+
+    input_path = Path(args.input).resolve()
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input not found: {input_path}")
+
+    status = load_json(STATUS_PATH)
+    written: list[Path] = []
+    processed_cells: list[dict] = []
+
+    if input_path.suffix.lower() == ".zip":
+        if args.source:
+            raise ValueError("--source cannot be used when the input is a ZIP archive")
+        written, processed_cells = process_zip(input_path, status, args)
+    else:
+        manifest = load_json(input_path)
+        validate_manifest(manifest)
+
+        source_path = resolve_source(manifest, args.source)
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source sheet not found: {source_path}")
+
+        with Image.open(source_path) as image:
+            written = crop_image(image, manifest, status, args)
+        processed_cells = manifest["cells"]
+
     if args.update_status and not args.dry_run and written:
-        update_status(manifest["cells"], written)
+        mark_status_generated(status, processed_cells, written)
+        write_json(STATUS_PATH, status)
         print(f"Updated {STATUS_PATH}")
 
     print(f"Completed: {len(written)} asset(s) written")
