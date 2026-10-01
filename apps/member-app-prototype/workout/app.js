@@ -3227,7 +3227,7 @@ function renderExerciseAnalysisPanel(ex){
 function exerciseSessionWorkVolume(ex,row){
   const source=exerciseSource(ex)||ex||{};
   const pairMultiplier=source.loadMode==='dumbbell-pair'?2:1;
-  const sideMultiplier=exerciseRepCountMode(source)==='per-side'&&source.loadMode!=='dumbbell-pair'?2:1;
+  const sideMultiplier=exerciseRepCountMode(source)==='per-side'?2:1;
   return (row?.sets||[]).reduce((sum,set)=>sum+(num(set.weight)*num(set.reps)*pairMultiplier*sideMultiplier),0);
 }
 function exerciseHistoryMetricValue(ex,row,metric){
@@ -3326,7 +3326,7 @@ function renderExerciseModal(){
     :activeTab==='history'
       ?'<div class="exercise-detail-tab-panel history-tab">'+renderExerciseHistoryAnalytics(ex)+'</div>'
       :formContent;
-  const contextAction=store.activeWorkout?'<button type="button" data-action="close-details">RETURN TO WORKOUT</button>':'<button type="button" data-action="close-details">BACK TO LIBRARY</button>';
+  const contextAction=store.activeWorkout?'<button class="exercise-profile-exit" type="button" data-action="close-details">RETURN TO WORKOUT</button>':'<button class="exercise-profile-exit" type="button" data-action="close-details">DONE</button>';
   return '<div class="exercise-modal-backdrop exercise-profile-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail exercise-intelligence-detail" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise profile" data-modal-panel>'+
     '<header class="exercise-profile-header"><button class="exercise-profile-back modal-close" type="button" data-action="close-details" aria-label="Back">‹</button><div class="exercise-profile-title"><span>'+esc(movements[ex.movement]||ex.movement)+'</span><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div><div class="exercise-profile-avatar-chip">'+renderAvatarFigure(avatar.id,'profile-avatar')+'<span><small>YOUR AVATAR</small><strong>'+esc(avatar.name)+'</strong></span></div></header>'+
     tabs+panel+
@@ -10104,7 +10104,7 @@ function handleClick(event){
   const close=event.target.closest('[data-action="close-details"]');
   if(close){
     const insidePanel=event.target.closest('[data-modal-panel]');
-    const explicitClose=event.target.closest('.modal-close');
+    const explicitClose=event.target.closest('.modal-close,.exercise-profile-exit');
     if(!insidePanel||explicitClose){endExerciseDetailReview();exerciseDetailId=null;exerciseDetailTab='form';render();return;}
   }
   const detailSection=event.target.closest('[data-exercise-detail-tab]');if(detailSection){const next=String(detailSection.dataset.exerciseDetailTab||'form');exerciseDetailTab=['form','analysis','history'].includes(next)?next:'form';render();requestAnimationFrame(()=>document.querySelector('.exercise-intelligence-detail')?.scrollTo({top:0,behavior:'auto'}));return;}
