@@ -6486,7 +6486,7 @@ function renderTrainCurrentWeek(){
   const completed=schedule.filter(entry=>entry.status==='complete').length;
   const context=programContext(),phase=trainPhaseMeta(context.blockWeek);
   const start=startOfWeek(new Date()),end=addDays(start,6);
-  const primary=schedule.find(entry=>['today','missed','upcoming','partial'].includes(entry.status))||null;
+  const primary=schedule.find(entry=>entry.status==='today')||schedule.find(entry=>entry.status==='partial')||schedule.find(entry=>entry.status==='missed')||schedule.find(entry=>entry.status==='upcoming')||null;
   return '<div class="train-current-stack">'+
     renderTrainBlockTimeline(context)+
     '<section class="train-current-week train-current-week-v2">'+
@@ -7532,22 +7532,6 @@ function getHomeExperience(date=new Date()){
       last
     };
   }
-  if(missed){
-    const day=missed.adaptedDay||missed.day;
-    return {
-      state:'missed',
-      context,
-      schedule,
-      eyebrow:'STILL AVAILABLE',
-      title:day?.name||'Missed workout',
-      copy:day?.focus||'This session can move with you.',
-      meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises',
-      primaryLabel:'DO IT TODAY',
-      primaryAction:'start',
-      entry:missed,
-      last
-    };
-  }
   if(today){
     const day=today.adaptedDay||today.day;
     const previous=(store.history||[]).find(item=>item.routineName===day?.name);
@@ -7562,6 +7546,22 @@ function getHomeExperience(date=new Date()){
       primaryLabel:'START WORKOUT',
       primaryAction:'start',
       entry:today,
+      last
+    };
+  }
+  if(missed){
+    const day=missed.adaptedDay||missed.day;
+    return {
+      state:'missed',
+      context,
+      schedule,
+      eyebrow:'STILL AVAILABLE',
+      title:day?.name||'Missed workout',
+      copy:day?.focus||'This session can move with you.',
+      meta:'~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+(day?.exercises?.length||0)+' exercises',
+      primaryLabel:'DO IT TODAY',
+      primaryAction:'start',
+      entry:missed,
       last
     };
   }
