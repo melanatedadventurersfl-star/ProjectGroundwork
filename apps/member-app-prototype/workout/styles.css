@@ -15277,3 +15277,375 @@ body.home-mode .bottom-nav:before{
 @media(prefers-reduced-motion:reduce){
   .home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay{transition:none}
 }
+
+
+/* Strength runner focus V1 */
+.phase-pre-set .runner-v2-stage,
+.phase-work .runner-v2-stage{
+  overflow:visible;
+}
+.strength-runner{
+  display:grid;
+  gap:12px;
+  padding:14px 14px 104px;
+  color:#111712;
+}
+.strength-runner-title{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.strength-runner-title>div{
+  min-width:0;
+}
+.strength-runner-title p{
+  margin:0 0 4px;
+  color:#8a6920;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.strength-runner-title h2{
+  margin:0;
+  color:#111712;
+  font-size:clamp(25px,7vw,36px);
+  line-height:1.02;
+  letter-spacing:-.045em;
+}
+.strength-runner-title.compact h2{
+  font-size:clamp(23px,6.5vw,32px);
+}
+.strength-runner-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:7px;
+}
+.strength-runner-tags span{
+  padding:4px 7px;
+  border-radius:999px;
+  background:#e8ece4;
+  color:#385043;
+  font-size:7px;
+  font-weight:800;
+  line-height:1.15;
+}
+.strength-runner .more-action{
+  flex:0 0 40px;
+  border:1px solid #ddd5c5;
+  background:#fbf8f0;
+  color:#183d28;
+}
+.strength-runner-media{
+  height:clamp(165px,28vh,230px);
+  overflow:hidden;
+  border:1px solid #ded7c8;
+  border-radius:16px;
+  background:#e9e2d5;
+}
+.strength-runner-media.active{
+  height:clamp(145px,23vh,200px);
+}
+.strength-runner-media .exercise-media{
+  width:100%;
+  height:100%;
+  min-height:100%;
+  border:0;
+  border-radius:0;
+}
+.strength-runner-media img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.strength-runner-target{
+  display:grid;
+  gap:9px;
+  padding:12px;
+  border:1px solid #ded7c8;
+  border-radius:14px;
+  background:#fbf8f0;
+}
+.strength-runner-target-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.strength-runner-target-head>div span{
+  display:block;
+  color:#747d76;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.strength-runner-target-head>div strong{
+  display:block;
+  margin-top:2px;
+  font-size:22px;
+  letter-spacing:-.035em;
+}
+.strength-runner-target-head em,
+.strength-runner-live-strip em{
+  padding:5px 7px;
+  border-radius:999px;
+  background:#ece8dc;
+  color:#626b64;
+  font-size:6.5px;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.06em;
+  white-space:nowrap;
+}
+.strength-runner-target-head em.tone-up,
+.strength-runner-live-strip em.tone-up{
+  background:#deeddf;
+  color:#2d623e;
+}
+.strength-runner-target-head em.tone-recovery,
+.strength-runner-live-strip em.tone-recovery{
+  background:#f1e6d5;
+  color:#805d2f;
+}
+.strength-runner-reference{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+.strength-runner-reference>span{
+  min-width:0;
+  padding:8px;
+  border-radius:10px;
+  background:#f0ebdf;
+}
+.strength-runner-reference small{
+  display:block;
+  color:#737b75;
+  font-size:6px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.strength-runner-reference strong{
+  display:block;
+  margin-top:3px;
+  overflow:hidden;
+  color:#253229;
+  font-size:8px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.strength-runner-target>p{
+  margin:0;
+  color:#667168;
+  font-size:8px;
+  line-height:1.35;
+}
+.strength-runner-steppers{
+  gap:7px;
+}
+.strength-runner-steppers .runner-target-stepper{
+  padding:9px;
+}
+.strength-runner-steppers .runner-target-stepper>div{
+  grid-template-columns:42px minmax(0,1fr) 42px;
+}
+.strength-runner-steppers .runner-target-stepper button{
+  width:40px;
+  height:40px;
+}
+.strength-runner-steppers .runner-target-stepper strong{
+  font-size:17px;
+}
+.strength-runner-ready-note,
+.strength-runner-auto{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:3px;
+  padding:9px 11px;
+  border-radius:11px;
+  background:#e8efe7;
+}
+.strength-runner-ready-note span,
+.strength-runner-auto span{
+  color:#58705f;
+  font-size:6.5px;
+  font-weight:900;
+  letter-spacing:.1em;
+}
+.strength-runner-ready-note strong,
+.strength-runner-auto strong{
+  font-size:9px;
+}
+.strength-runner-ready-note small,
+.strength-runner-auto small{
+  color:#657269;
+  font-size:7.5px;
+}
+.strength-runner-main-action{
+  min-height:56px;
+}
+.strength-runner-quick{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;
+}
+.strength-runner-quick button{
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border:1px solid #ddd5c5;
+  border-radius:11px;
+  background:#fbf8f0;
+  color:#234331;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.06em;
+}
+.strength-runner-quick .ui-icon{
+  width:15px;
+  height:15px;
+}
+.strength-runner-live-strip{
+  display:grid;
+  grid-template-columns:auto auto 1fr;
+  gap:8px;
+  align-items:center;
+  padding:9px 10px;
+  border:1px solid #ded7c8;
+  border-radius:12px;
+  background:#fbf8f0;
+}
+.strength-runner-live-strip>div{
+  min-width:72px;
+}
+.strength-runner-live-strip span{
+  display:block;
+  color:#747d76;
+  font-size:6px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.strength-runner-live-strip strong{
+  display:block;
+  margin-top:2px;
+  color:#17231b;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+}
+.strength-runner-live-strip em{
+  justify-self:end;
+}
+.strength-runner-cue{
+  display:grid;
+  grid-template-columns:24px 1fr;
+  gap:7px;
+  align-items:center;
+  padding:9px 11px;
+  border-radius:11px;
+  background:#e8efe7;
+  color:#385043;
+}
+.strength-runner-cue .ui-icon{
+  width:20px;
+  height:20px;
+}
+.strength-runner-cue span{
+  font-size:8px;
+  line-height:1.4;
+}
+.strength-runner-reference.live{
+  margin-top:-2px;
+}
+.strength-runner-timer-actions{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+.strength-runner-timer-actions button{
+  min-height:39px;
+  padding:0 5px;
+  border:1px solid #d9d2c3;
+  border-radius:10px;
+  background:#f7f2e8;
+  color:#405047;
+  font-size:6.5px;
+  font-weight:900;
+  letter-spacing:.05em;
+}
+.strength-runner-complete{
+  position:sticky;
+  bottom:0;
+  z-index:8;
+  margin:0 -14px -2px;
+  padding:10px 14px max(10px,env(safe-area-inset-bottom));
+  background:linear-gradient(180deg,rgba(245,240,228,0),#f5f0e4 26%,#f5f0e4);
+}
+.strength-runner-complete .button{
+  width:100%;
+  min-height:58px;
+}
+.phase-pre-set .strength-runner-main-action{
+  position:sticky;
+  bottom:0;
+  z-index:8;
+  box-shadow:0 12px 28px rgba(74,54,12,.16);
+}
+.phase-pre-set .strength-runner-quick{
+  padding-bottom:max(2px,env(safe-area-inset-bottom));
+}
+.phase-work .runner-cue-access{
+  position:absolute;
+  top:calc(72px + env(safe-area-inset-top));
+  right:8px;
+  z-index:16;
+}
+.phase-work .coach-live-line{
+  display:none;
+}
+.runner-exercise-detail{
+  overscroll-behavior:contain;
+}
+.runner-exercise-detail .runner-detail-body{
+  padding-bottom:max(24px,env(safe-area-inset-bottom));
+}
+
+@media(max-width:560px){
+  .strength-runner{
+    gap:10px;
+    padding:12px 11px 98px;
+  }
+  .strength-runner-media{
+    height:clamp(150px,24vh,205px);
+  }
+  .strength-runner-media.active{
+    height:clamp(135px,20vh,180px);
+  }
+  .strength-runner-target-head>div strong{
+    font-size:20px;
+  }
+  .strength-runner-reference{
+    gap:4px;
+  }
+  .strength-runner-reference>span{
+    padding:7px 6px;
+  }
+  .strength-runner-reference strong{
+    font-size:7px;
+  }
+  .strength-runner-steppers .runner-target-stepper{
+    padding:8px 6px;
+  }
+  .strength-runner-steppers .runner-target-stepper>div{
+    grid-template-columns:38px minmax(0,1fr) 38px;
+  }
+  .strength-runner-live-strip{
+    grid-template-columns:auto auto;
+  }
+  .strength-runner-live-strip em{
+    grid-column:1/-1;
+    justify-self:start;
+  }
+}
