@@ -3260,6 +3260,10 @@ function stageExcludedPositions(setup){
  if(setup?.floor!==false)return [];
  return ['supine','prone','quadruped','side_lying','kneeling','half_kneeling','plank'];
 }
+function stageExcludedIds(setup){
+ if(setup?.floor!==false)return [];
+ return ['90_90','butterfly','seated_glute'];
+}
 function warmupBudgetSeconds(exercises,minutes=num(store.profile?.minutes)||45){
  if(minutes<=30)return 180;
  if(minutes>=60)return 300;
@@ -3325,6 +3329,7 @@ function buildCatalogTimedStage(exercises,phase,setup,targetSeconds){
      trainedMuscles:workoutStretchMuscles(exercises),
      availableEquipment:stageEquipmentForSetup(setup),
      excludedPositions:stageExcludedPositions(setup),
+     excludedIds:stageExcludedIds(setup),
      maxItems:phase==='warmup'?5:4
    });
    return (session?.activities||[]).map(item=>runnerStageItem(item,phase));
