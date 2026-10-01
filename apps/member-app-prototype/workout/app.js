@@ -7319,17 +7319,21 @@ function homeWeekStats(schedule){
 }
 function homeWeekMuscleSnapshot(){
   const counts={};
+  const canonicalMuscle=value=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
   for(const workout of weeklyHistory()){
     if(workout.manualWorkoutCompletion||workout.completionStatus==='partial')continue;
     for(const exercise of workout.exercises||[]){
       if(exercise.skipped)continue;
       const source=catalog.find(item=>item.id===exercise.id)||exercise;
-      for(const muscle of source.muscles||[])counts[muscle]=(counts[muscle]||0)+1;
+      for(const muscle of source.muscles||[]){
+        const key=canonicalMuscle(muscle);
+        if(key)counts[key]=(counts[key]||0)+1;
+      }
     }
   }
   const max=Math.max(1,...Object.values(counts));
   const levelFor=(keys)=>{
-    const value=keys.reduce((sum,key)=>sum+(counts[key]||0),0);
+    const value=keys.reduce((sum,key)=>sum+(counts[canonicalMuscle(key)]||0),0);
     if(!value)return 0;
     const ratio=value/max;
     return ratio>=.85?4:ratio>=.6?3:ratio>=.3?2:1;
@@ -7339,14 +7343,18 @@ function homeWeekMuscleSnapshot(){
     top:Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([key,value])=>({key,label:homeTitleCase(key),value,level:levelFor([key])})),
     front:{
       chest:levelFor(['chest']),
-      shoulders:levelFor(['anterior_delts','lateral_delts']),
+      shoulders:levelFor(['shoulders','front_delts']),
       biceps:levelFor(['biceps']),
-      core:levelFor(['core','hip_flexors']),
-      quads:levelFor(['quads','adductors'])
+      forearms:levelFor(['forearms']),
+      core:levelFor(['core']),
+      quads:levelFor(['quads']),
+      calves:levelFor(['calves'])
     },
     back:{
-      back:levelFor(['lats','upper_back','rear_delts']),
+      back:levelFor(['back','lats','upper_back']),
+      shoulders:levelFor(['shoulders','rear_delts']),
       triceps:levelFor(['triceps']),
+      forearms:levelFor(['forearms']),
       glutes:levelFor(['glutes']),
       hamstrings:levelFor(['hamstrings']),
       calves:levelFor(['calves'])
@@ -7484,41 +7492,14 @@ function bodyHeatClass(level){
   return level?' heat-'+Math.max(1,Math.min(4,level)):'';
 }
 function renderHomeFrontAnatomy(snapshot){
-  return '<svg class="home-anatomy-svg front" viewBox="0 0 180 360" role="img" aria-label="Front muscle training load">'+
-    '<defs><filter id="frontHeatGlow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'+
-    '<circle class="anatomy-base" cx="90" cy="31" r="18"/>'+
-    '<path class="anatomy-base" d="M82 48 78 61 62 67 47 78 39 105 31 146 39 151 52 112 61 91 64 149 57 194 62 230 58 283 61 344 78 344 83 285 90 235 97 285 102 344 119 344 122 283 118 230 123 194 116 149 119 91 128 112 141 151 149 146 141 105 133 78 118 67 102 61 98 48Z"/>'+
-    '<path class="anatomy-detail" d="M90 51V145M65 70Q90 82 115 70M66 99Q90 110 114 99M71 121Q90 128 109 121M72 148Q90 156 108 148M90 157V226M64 194Q76 204 90 202M116 194Q104 204 90 202M63 232Q73 243 82 246M117 232Q107 243 98 246"/>'+
-    '<path class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" d="M62 67Q50 71 45 82L53 96Q59 86 69 82L77 71Z"/>'+
-    '<path class="body-zone shoulders'+bodyHeatClass(snapshot.front.shoulders)+'" d="M118 67Q130 71 135 82L127 96Q121 86 111 82L103 71Z"/>'+
-    '<path class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" d="M69 76Q79 70 89 73V103Q74 103 63 94L65 81Z"/>'+
-    '<path class="body-zone chest'+bodyHeatClass(snapshot.front.chest)+'" d="M111 76Q101 70 91 73V103Q106 103 117 94L115 81Z"/>'+
-    '<path class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" d="M49 91Q42 103 40 124L47 131Q54 113 57 96Z"/>'+
-    '<path class="body-zone biceps'+bodyHeatClass(snapshot.front.biceps)+'" d="M131 91Q138 103 140 124L133 131Q126 113 123 96Z"/>'+
-    '<path class="body-zone core'+bodyHeatClass(snapshot.front.core)+'" d="M72 107Q90 113 108 107L109 151Q104 177 90 189 76 177 71 151Z"/>'+
-    '<path class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" d="M64 194Q74 196 84 203L82 249 73 280 62 267 61 230Z"/>'+
-    '<path class="body-zone quads'+bodyHeatClass(snapshot.front.quads)+'" d="M116 194Q106 196 96 203L98 249 107 280 118 267 119 230Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M62 276Q72 285 77 302L73 335 62 335 59 302Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M118 276Q108 285 103 302L107 335 118 335 121 302Z"/>'+
-  '</svg>';
+  const anatomy=window.GoWorkoutAnatomy;
+  if(anatomy?.front)return anatomy.front(snapshot.front||{});
+  return '<svg class="home-anatomy-svg anatomy-pro front" viewBox="0 0 280 520" role="img" aria-label="Front muscular anatomy training load"><text x="140" y="260" text-anchor="middle" class="anatomy-fallback-text">FRONT</text></svg>';
 }
 function renderHomeBackAnatomy(snapshot){
-  return '<svg class="home-anatomy-svg back" viewBox="0 0 180 360" role="img" aria-label="Back muscle training load">'+
-    '<defs><filter id="backHeatGlow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'+
-    '<circle class="anatomy-base" cx="90" cy="31" r="18"/>'+
-    '<path class="anatomy-base" d="M82 48 78 61 62 67 47 78 39 105 31 146 39 151 52 112 61 91 64 149 57 194 62 230 58 283 61 344 78 344 83 285 90 235 97 285 102 344 119 344 122 283 118 230 123 194 116 149 119 91 128 112 141 151 149 146 141 105 133 78 118 67 102 61 98 48Z"/>'+
-    '<path class="anatomy-detail" d="M90 51V194M66 72Q90 64 114 72M65 104Q90 119 115 104M70 139Q90 150 110 139M64 194Q76 184 90 187M116 194Q104 184 90 187M63 232Q73 243 82 246M117 232Q107 243 98 246"/>'+
-    '<path class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" d="M66 70Q77 66 88 72L84 113 68 137 60 113 62 82Z"/>'+
-    '<path class="body-zone back'+bodyHeatClass(snapshot.back.back)+'" d="M114 70Q103 66 92 72L96 113 112 137 120 113 118 82Z"/>'+
-    '<path class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" d="M49 91Q42 104 40 127L48 132Q56 111 57 96Z"/>'+
-    '<path class="body-zone triceps'+bodyHeatClass(snapshot.back.triceps)+'" d="M131 91Q138 104 140 127L132 132Q124 111 123 96Z"/>'+
-    '<path class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" d="M67 168Q78 157 89 166L89 198Q76 207 63 193Z"/>'+
-    '<path class="body-zone glutes'+bodyHeatClass(snapshot.back.glutes)+'" d="M113 168Q102 157 91 166L91 198Q104 207 117 193Z"/>'+
-    '<path class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" d="M64 199Q75 202 84 208L81 259 70 286 61 268 61 226Z"/>'+
-    '<path class="body-zone hamstrings'+bodyHeatClass(snapshot.back.hamstrings)+'" d="M116 199Q105 202 96 208L99 259 110 286 119 268 119 226Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M61 277Q72 284 77 302L72 337 62 337 58 303Z"/>'+
-    '<path class="body-zone calves'+bodyHeatClass(snapshot.back.calves)+'" d="M119 277Q108 284 103 302L108 337 118 337 122 303Z"/>'+
-  '</svg>';
+  const anatomy=window.GoWorkoutAnatomy;
+  if(anatomy?.back)return anatomy.back(snapshot.back||{});
+  return '<svg class="home-anatomy-svg anatomy-pro back" viewBox="0 0 280 520" role="img" aria-label="Back muscular anatomy training load"><text x="140" y="260" text-anchor="middle" class="anatomy-fallback-text">BACK</text></svg>';
 }
 function renderHomeBodySnapshot(){
   const snapshot=homeWeekMuscleSnapshot();
