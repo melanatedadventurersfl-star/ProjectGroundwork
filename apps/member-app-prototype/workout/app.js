@@ -2158,7 +2158,11 @@ function preWorkoutCoachNote(w){
   if(num(readiness.energy)<=2)return 'Start controlled. If the first working set feels heavier than expected, keep the target instead of forcing progression.';
   if(num(readiness.sleep)<=2)return 'Keep the first compound lift clean and leave room in the tank. Today is about productive work, not proving a number.';
   if(num(readiness.soreness)>=4)return 'Use the first working set as a movement check. Stay inside a comfortable range and keep the reduced plan.';
-  if(w?.trainingContext?.changes?.length)return 'A few movements changed for today’s setup. The exercise names may differ, but the movement goals stay matched.';
+  const changes=w?.trainingContext?.changes||[];
+  if(changes.length){
+    const count=changes.length;
+    return count+' movement'+(count===1?' changed':'s changed')+' for today’s setup. The exercise '+(count===1?'name differs':'names differ')+', but the movement goal'+(count===1?' stays':'s stay')+' matched.';
+  }
   return 'Start with the planned target. Add weight only when the first working set moves cleanly and the reps stay in range.';
 }
 function renderIntroAdaptation(w){
@@ -3239,8 +3243,9 @@ function normalSessionSetupKey(){
 function sessionSetupLabel(setup){
   return SESSION_SETUP_PRESETS[setup?.key]?.label||setup?.label||'Custom equipment';
 }
-function buildSessionSetup(key,{customModes=[],floor=true,chair=false,pullupBar=false}={}){
+function buildSessionSetup(key,options={}){
   const preset=SESSION_SETUP_PRESETS[key]||SESSION_SETUP_PRESETS['full-gym'];
+  const customModes=Array.isArray(options.customModes)?options.customModes:[];
   let modes=key==='custom'?customModes.filter(mode=>['bodyweight','dumbbells','bands'].includes(mode)):[...preset.modes];
   if(!modes.length)modes=['bodyweight'];
   const fullGym=modes.includes('full-gym');
@@ -3248,9 +3253,9 @@ function buildSessionSetup(key,{customModes=[],floor=true,chair=false,pullupBar=
     key:SESSION_SETUP_PRESETS[key]?key:'custom',
     label:key==='custom'?'Custom equipment':preset.label,
     modes:[...new Set(modes)],
-    floor:fullGym?true:Boolean(floor),
-    chair:fullGym?true:Boolean(chair),
-    pullupBar:fullGym?true:Boolean(pullupBar),
+    floor:options.floor===undefined?true:Boolean(options.floor),
+    chair:options.chair===undefined?fullGym:Boolean(options.chair),
+    pullupBar:options.pullupBar===undefined?fullGym:Boolean(options.pullupBar),
     temporary:key!==normalSessionSetupKey()||key==='custom'
   };
 }
@@ -3267,10 +3272,13 @@ function sessionSetupFromForm(form,fallbackKey=normalSessionSetupKey()){
 }
 function setupAllowsExercise(exercise,setup){
   if(!exercise||!setup)return false;
-  if(!setup.modes.some(mode=>(exercise.equipment||[]).includes(mode)))return false;
+  const equipment=exercise.equipment||[];
+  const fullGym=setup.modes.includes('full-gym');
+  const gymCompatible=fullGym&&equipment.some(mode=>['full-gym','dumbbells','bands','bodyweight','mixed-home'].includes(mode));
+  if(!gymCompatible&&!setup.modes.some(mode=>equipment.includes(mode)))return false;
   if(FLOOR_EXERCISE_IDS.has(exercise.id)&&!setup.floor)return false;
-  if(CHAIR_STEP_EXERCISE_IDS.has(exercise.id)&&!setup.chair&&!setup.modes.includes('full-gym'))return false;
-  if(PULLUP_BAR_EXERCISE_IDS.has(exercise.id)&&!setup.pullupBar&&!setup.modes.includes('full-gym'))return false;
+  if(CHAIR_STEP_EXERCISE_IDS.has(exercise.id)&&!setup.chair)return false;
+  if(PULLUP_BAR_EXERCISE_IDS.has(exercise.id)&&!setup.pullupBar)return false;
   return !avoided(exercise,store.profile||{});
 }
 function effectiveExerciseForSetup(exercise,setup){
@@ -4097,6 +4105,23 @@ function scheduledEntryFor(dayId,scheduledDate=''){
   return currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId&&entry.dateKey===key)||
     currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId)||null;
 }
+function uiIcon(name,className=''){
+  const paths={
+    gym:'<path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>',
+    home:'<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/>',
+    body:'<circle cx="12" cy="5.5" r="2.2"/><path d="M12 8v5M8 11l4 2 4-2M10 13l-2 7M14 13l2 7"/>',
+    custom:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4v6M7 14v6"/>',
+    energy:'<path d="m13 2-7 11h6l-1 9 7-12h-6z"/>',
+    soreness:'<path d="M3 12h4l2.2-4 3.1 8 2.1-4H21"/>',
+    sleep:'<path d="M19 15.5A7.5 7.5 0 0 1 8.5 5 7.5 7.5 0 1 0 19 15.5Z"/>',
+    clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    plan:'<path d="M7 4h10M7 9h10M7 14h10M7 19h7"/><circle cx="4" cy="4" r=".7"/><circle cx="4" cy="9" r=".7"/><circle cx="4" cy="14" r=".7"/><circle cx="4" cy="19" r=".7"/>',
+    coach:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
+    check:'<path d="m5 12 4 4L19 6"/>',
+    settings:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'
+  };
+  return '<svg class="ui-icon '+esc(className)+'" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(paths[name]||paths.plan)+'</svg>';
+}
 function readinessDescriptor(name,value){
   const labels={
     energy:['','Drained','Low','Moderate','Good','High'],
@@ -4128,7 +4153,13 @@ function readinessLocationLabel(key){
 }
 function readinessSetupDetail(setup){
   const family=readinessLocationFamily(setup?.key);
-  if(family==='gym')return 'Machines, cables, barbells, dumbbells and floor space';
+  if(family==='gym'){
+    const extras=[];
+    if(setup.floor)extras.push('floor space');
+    if(setup.chair)extras.push('bench / step');
+    if(setup.pullupBar)extras.push('pull-up bar');
+    return 'Machines, cables, barbells, dumbbells, bands'+(extras.length?' · '+extras.join(' · '):'');
+  }
   if(setup?.key==='dumbbells')return 'Dumbbells · bodyweight'+(setup.floor===false?'':' · floor space');
   if(setup?.key==='bands')return 'Bands · bodyweight'+(setup.floor===false?'':' · floor space');
   if(setup?.key==='mixed-home')return 'Dumbbells · bands · bodyweight'+(setup.floor===false?'':' · floor space');
@@ -4157,20 +4188,20 @@ function renderReadinessLocationOptions(selectedKey){
   const homeKey=readinessHomeSetupKey();
   const selectedFamily=readinessLocationFamily(selectedKey);
   const options=[
-    {key:'full-gym',family:'gym',label:'Gym',icon:'▰'},
-    {key:homeKey,family:'home',label:'Home',icon:'⌂'},
-    {key:'bodyweight',family:'bodyweight',label:'Bodyweight',icon:'◎'},
-    {key:'custom',family:'custom',label:'Custom',icon:'⚙'}
+    {key:'full-gym',family:'gym',label:'Gym',icon:'gym'},
+    {key:homeKey,family:'home',label:'Home',icon:'home'},
+    {key:'bodyweight',family:'bodyweight',label:'Bodyweight',icon:'body'},
+    {key:'custom',family:'custom',label:'Custom',icon:'custom'}
   ];
   return '<div class="preflight-location-grid">'+options.map(item=>
-    '<label class="preflight-location-option"><input type="radio" name="sessionSetup" value="'+esc(item.key)+'" '+(item.family===selectedFamily?'checked':'')+' aria-label="'+esc(item.label)+' training"><span><b>'+item.icon+'</b><strong>'+esc(item.label)+'</strong></span></label>'
+    '<label class="preflight-location-option"><input type="radio" name="sessionSetup" value="'+esc(item.key)+'" '+(item.family===selectedFamily?'checked':'')+' aria-label="'+esc(item.label)+' training"><span>'+uiIcon(item.icon)+'<strong>'+esc(item.label)+'</strong></span></label>'
   ).join('')+'</div>';
 }
 function renderReadinessScaleRow(name,label,icon,value){
   const selected=Math.max(1,Math.min(5,num(value)||3));
-  return '<div class="preflight-readiness-row"><div class="preflight-readiness-copy"><b>'+icon+'</b><span><strong>'+esc(label)+'</strong><small data-readiness-meaning="'+name+'">'+esc(readinessDescriptor(name,selected))+'</small></span></div>'+
+  return '<div class="preflight-readiness-row metric-'+esc(name)+'"><div class="preflight-readiness-copy">'+uiIcon(icon)+'<span><strong>'+esc(label)+'</strong><small data-readiness-meaning="'+name+'">'+esc(readinessDescriptor(name,selected))+'</small></span></div>'+
     '<div class="preflight-readiness-dots" role="radiogroup" aria-label="'+esc(label)+'">'+[1,2,3,4,5].map(level=>
-      '<label class="readiness-dot-option"><input type="radio" name="'+name+'" value="'+level+'" '+(level===selected?'checked':'')+' aria-label="'+esc(label)+' '+level+' of 5, '+readinessWord(name,level)+'"><span></span></label>'
+      '<label class="readiness-dot-option level-'+level+'"><input type="radio" name="'+name+'" value="'+level+'" '+(level===selected?'checked':'')+' aria-label="'+esc(label)+' '+level+' of 5, '+readinessWord(name,level)+'"><span></span></label>'
     ).join('')+'</div></div>';
 }
 function renderReadinessTimeOptions(selectedMinutes){
@@ -4184,8 +4215,7 @@ function renderReadinessTimeOptions(selectedMinutes){
   ).join('')+'</div></details>';
 }
 function readinessPreviewSnapshot(day,readiness,setup){
-  let preview=applyReadinessToDay(clone(day),readiness);
-  preview=adaptDayForSessionSetup(preview,setup,readiness.timeAvailable);
+  const preview=adaptDayForSessionSetup(applyReadinessToDay(clone(day),readiness),setup,readiness.timeAvailable);
   const changes=preview.trainingContext?.changes||[];
   const replacementCount=changes.filter(change=>change.type==='replacement').length;
   const unavailableCount=changes.filter(change=>change.type==='unavailable').length;
@@ -4196,21 +4226,25 @@ function readinessPreviewSnapshot(day,readiness,setup){
   else if(num(readiness.energy)<=2||num(readiness.sleep)<=2)title='Conservative day';
   else if(num(readiness.timeAvailable)<num(day.estimatedMinutes))title='Time-adjusted';
   else if(replacementCount||unavailableCount)title='Setup-adjusted';
+
   const consequences=[];
-  if(num(readiness.soreness)>=4)consequences.push('Working volume and loading reduced');
-  else if(num(readiness.soreness)===3)consequences.push('Accessory volume trimmed');
-  if(num(readiness.energy)<=2)consequences.push('Accessory work reduced · rest extended');
-  if(num(readiness.sleep)<=2)consequences.push('Load progression held today');
+  const recovery=[];
+  if(num(readiness.soreness)>=4)recovery.push('volume and loading reduced');
+  else if(num(readiness.soreness)===3)recovery.push('accessory volume trimmed');
+  if(num(readiness.energy)<=2)recovery.push('accessory work reduced');
+  if(recovery.length)consequences.push('Recovery: '+[...new Set(recovery)].join(' · '));
+  if(num(readiness.energy)<=2||num(readiness.sleep)<=2)consequences.push('Rest extended'+(num(readiness.sleep)<=2?' · progression held':''));
   if(removedCount)consequences.push(removedCount+' lower-priority exercise'+(removedCount===1?' removed':'s removed'));
-  if(num(readiness.timeAvailable)<num(day.estimatedMinutes))consequences.push('Priority work protected');
+  if(num(readiness.timeAvailable)<num(day.estimatedMinutes))consequences.push('Priority work protected for '+readiness.timeAvailable+' minutes');
   if(replacementCount)consequences.push(replacementCount+' exercise'+(replacementCount===1?' changes':'s change')+' for '+readinessLocationLabel(setup.key));
   if(unavailableCount)consequences.push(unavailableCount+' movement'+(unavailableCount===1?' needs':'s need')+' another setup');
   if(!consequences.length)consequences.push('Normal strength volume','Normal progression');
+
   const copy=notes[0]||
     (replacementCount?replacementCount+' movement'+(replacementCount===1?'':'s')+' will change to fit '+readinessLocationLabel(setup.key)+'.':
     unavailableCount?unavailableCount+' movement'+(unavailableCount===1?' is':'s are')+' unavailable in this setup.':
     'Your normal volume and progression stay in place.');
-  return {day:preview,changes,replacementCount,unavailableCount,removedCount,title,copy,consequences:consequences.slice(0,4)};
+  return {day:preview,changes,replacementCount,unavailableCount,removedCount,title,copy,consequences:consequences.slice(0,5)};
 }
 function readinessStatusClass(title){
   return String(title||'Normal session').toLowerCase().replace(/[^a-z]+/g,'-').replace(/^-|-$/g,'');
@@ -4248,7 +4282,7 @@ function updateReadinessPreview(){
     status.textContent=snapshot.title;
     status.className='preflight-status '+readinessStatusClass(snapshot.title);
   }
-  if(summary)summary.textContent=readiness.timeAvailable+' MIN · '+readinessLocationLabel(setup.key).toUpperCase();
+  if(summary)summary.textContent=readiness.timeAvailable+' MIN AVAILABLE · '+readinessLocationLabel(setup.key).toUpperCase();
   if(summaryReadiness)summaryReadiness.textContent=readinessWord('energy',readiness.energy)+' energy · '+readinessWord('soreness',readiness.soreness)+' soreness · '+readinessWord('sleep',readiness.sleep)+' sleep';
   if(plan)plan.textContent=snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min';
   if(consequenceList)consequenceList.innerHTML=renderReadinessConsequences(snapshot);
@@ -4261,8 +4295,9 @@ function openReadiness(dayId,scheduledDate='',preferredSetup=''){
   const scheduledBase=entry?.day||store.plan?.days?.find(day=>day.id===dayId);
   const baseDay=entry?.adaptedDay||adaptDayForProgramWeek(scheduledBase,scheduledDate?dateFromKey(scheduledDate):new Date());
   if(!baseDay)return;
-  const remembered=store.sessionPreferences?.lastSetup;
-  const setupKey=preferredSetup||remembered?.key||normalSessionSetupKey();
+  const setupKey=preferredSetup||normalSessionSetupKey();
+  const family=readinessLocationFamily(setupKey);
+  const remembered=store.sessionPreferences?.locations?.[family];
   readinessContext={
     dayId,
     scheduledDate:scheduledDate||entry?.dateKey||dateKey(),
@@ -4300,20 +4335,31 @@ function renderWorkoutBuildScreen(context){
   const building=context.building||{};
   const readiness=building.readiness||{};
   const setup=building.setup||buildSessionSetup(context.preferredSetup||normalSessionSetupKey());
+  const preview=building.preview||readinessPreviewSnapshot(context.day,readiness,setup);
   const step=Math.max(0,Math.min(3,num(building.step)||0));
+  const equipmentLine=preview.replacementCount
+    ?preview.replacementCount+' exercise'+(preview.replacementCount===1?' matched':'s matched')+' to '+readinessLocationLabel(setup.key)
+    :'Plan already fits '+readinessLocationLabel(setup.key);
+  const recoveryLine=preview.title==='Normal session'
+    ?'No recovery reduction needed'
+    :preview.title==='Recovery-adjusted'
+      ?'Recovery volume reduced'
+      :preview.title==='Conservative day'
+        ?'Progression and recovery adjusted'
+        :'Priority work preserved';
   const rows=[
-    ['Checking readiness','Energy '+(readiness.energy||3)+' · Soreness '+(readiness.soreness||2)+' · Sleep '+(readiness.sleep||3)],
-    ['Matching equipment','Using your '+readinessLocationLabel(setup.key).toLowerCase()+' setup'],
-    ['Protecting priority work','Keeping the highest-priority strength work'],
-    ['Finalizing your plan','Applying today’s time and exercise changes']
+    ['Checking readiness',preview.title+' · Energy '+(readiness.energy||3)+' · Soreness '+(readiness.soreness||2)+' · Sleep '+(readiness.sleep||3)],
+    ['Matching equipment',equipmentLine],
+    ['Fitting your time',preview.day.exercises.length+' exercises · about '+preview.day.estimatedMinutes+' min · '+recoveryLine],
+    ['Finalizing your plan','Confirming targets, rest, and exercise order']
   ];
   return '<div class="exercise-modal-backdrop readiness-backdrop preflight-build-backdrop"><section class="exercise-modal readiness-modal preflight-build-modal" role="dialog" aria-modal="true" aria-label="Building workout" data-readiness-panel>'+
     '<div class="preflight-build-head"><p class="eyebrow">'+esc(context.day.name.toUpperCase())+'</p><h2>Building your workout</h2></div>'+
-    '<div class="preflight-build-ring"><span>▰</span></div>'+
+    '<div class="preflight-build-ring">'+uiIcon('gym')+'</div>'+
     '<div class="preflight-build-copy"><h3>Building today’s '+esc(context.day.name)+'</h3><p>Preparing a session based on your setup.</p></div>'+
     '<div class="preflight-build-steps">'+rows.map((row,index)=>{
       const state=index<step?'complete':index===step?'active':'pending';
-      return '<div class="preflight-build-step '+state+'"><b>'+(state==='complete'?'✓':'')+'</b><div><strong>'+row[0]+'</strong><small>'+row[1]+'</small></div></div>';
+      return '<div class="preflight-build-step '+state+'"><b>'+(state==='complete'?uiIcon('check'):'')+'</b><div><strong>'+row[0]+'</strong><small>'+row[1]+'</small></div></div>';
     }).join('')+'</div>'+
   '</section></div>';
 }
@@ -4323,7 +4369,7 @@ function renderReadinessModal(){
   const day=readinessContext.day;
   const initial=readinessContext.initialReadiness||{};
   const selectedMinutes=num(initial.timeAvailable)||num(store.profile?.minutes)||45;
-  const selectedSetup=readinessContext.preferredSetup||store.sessionPreferences?.lastSetup?.key||normalSessionSetupKey();
+  const selectedSetup=readinessContext.preferredSetup||normalSessionSetupKey();
   const setupContext=readinessContext.setupContext?.key===selectedSetup?readinessContext.setupContext:buildSessionSetup(selectedSetup);
   const values={energy:num(initial.energy)||3,soreness:num(initial.soreness)||2,sleep:num(initial.sleep)||3,timeAvailable:selectedMinutes};
   const snapshot=readinessPreviewSnapshot(day,values,setupContext);
@@ -4331,21 +4377,21 @@ function renderReadinessModal(){
     '<section class="exercise-modal readiness-modal preflight-modal-v2" role="dialog" aria-modal="true" aria-label="Today’s workout setup" data-readiness-panel>'+
       '<header class="preflight-modal-head"><button class="preflight-back" type="button" data-action="close-readiness" aria-label="Close today’s setup">‹</button><div><h2>'+esc(day.name.toUpperCase())+'</h2><p>Today’s setup</p></div><span>TODAY ONLY</span></header>'+
       '<form id="readiness-form" class="preflight-form-v2">'+
-        '<section class="preflight-summary-card"><div><strong data-preflight-summary>'+selectedMinutes+' MIN · '+esc(readinessLocationLabel(selectedSetup).toUpperCase())+'</strong><p data-preflight-summary-readiness>'+esc(readinessWord('energy',values.energy)+' energy · '+readinessWord('soreness',values.soreness)+' soreness · '+readinessWord('sleep',values.sleep)+' sleep')+'</p></div><em class="preflight-status '+readinessStatusClass(snapshot.title)+'" data-preflight-status>'+esc(snapshot.title)+'</em></section>'+
+        '<section class="preflight-summary-card"><div><strong data-preflight-summary>'+selectedMinutes+' MIN AVAILABLE · '+esc(readinessLocationLabel(selectedSetup).toUpperCase())+'</strong><p data-preflight-summary-readiness>'+esc(readinessWord('energy',values.energy)+' energy · '+readinessWord('soreness',values.soreness)+' soreness · '+readinessWord('sleep',values.sleep)+' sleep')+'</p></div><em class="preflight-status '+readinessStatusClass(snapshot.title)+'" data-preflight-status>'+esc(snapshot.title)+'</em></section>'+
         (readinessContext.buildError?'<div class="preflight-error"><strong>Workout setup needs attention</strong><span>'+esc(readinessContext.buildError)+'</span></div>':'')+
-        '<section class="preflight-block preflight-location-block"><div class="preflight-block-title"><span>1.</span><strong>TRAINING LOCATION</strong></div>'+
+        '<section class="preflight-block preflight-location-block"><div class="preflight-block-title"><span>1.</span><strong>TODAY’S SETUP</strong></div>'+
           renderReadinessLocationOptions(selectedSetup)+
           '<div class="preflight-equipment-bar"><div><strong data-readiness-equipment-title>'+esc(readinessLocationLabel(selectedSetup)+(readinessLocationFamily(selectedSetup)==='bodyweight'?' session':' equipment loaded ✓'))+'</strong><small data-readiness-equipment-copy>'+esc(readinessSetupDetail(setupContext))+'</small></div>'+
             '<details class="preflight-equipment-details"><summary>Change equipment</summary><div>'+renderSessionSetupExtras(setupContext)+'</div></details>'+
           '</div>'+
         '</section>'+
         '<section class="preflight-block"><div class="preflight-block-title"><span>2.</span><strong>HOW YOU FEEL</strong></div><div class="preflight-readiness-card">'+
-          renderReadinessScaleRow('energy','Energy','ϟ',values.energy)+
-          renderReadinessScaleRow('soreness','Soreness','◈',values.soreness)+
-          renderReadinessScaleRow('sleep','Sleep','◐',values.sleep)+
+          renderReadinessScaleRow('energy','Energy','energy',values.energy)+
+          renderReadinessScaleRow('soreness','Soreness','soreness',values.soreness)+
+          renderReadinessScaleRow('sleep','Sleep','sleep',values.sleep)+
         '</div></section>'+
         '<section class="preflight-block"><div class="preflight-block-title"><span>3.</span><strong>TIME</strong></div>'+renderReadinessTimeOptions(selectedMinutes)+'</section>'+
-        '<section class="preflight-workout-card"><div class="preflight-workout-head"><span>▤</span><div><small>TODAY’S WORKOUT</small><strong data-readiness-plan>'+snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min</strong></div></div><ul data-readiness-consequences>'+renderReadinessConsequences(snapshot)+'</ul></section>'+
+        '<section class="preflight-workout-card"><div class="preflight-workout-head"><span>'+uiIcon('plan')+'</span><div><small>TODAY’S WORKOUT</small><strong data-readiness-plan>'+snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min</strong></div></div><ul data-readiness-consequences>'+renderReadinessConsequences(snapshot)+'</ul></section>'+
         '<button class="button primary-action preflight-build-button" type="button" data-action="begin-workout">'+(readinessContext.mode==='edit'?'UPDATE MY ':'BUILD MY ')+esc(day.name.toUpperCase())+'</button>'+
       '</form>'+
     '</section></div>';
@@ -4366,11 +4412,11 @@ async function startPreparedWorkout(){
   readiness.score=readinessScore(readiness);
   readiness.sessionSetup={key:setup.key,label:sessionSetupLabel(setup),modes:clone(setup.modes)};
   context.buildError='';
-  context.building={step:0,readiness:clone(readiness),setup:clone(setup),startedAt:Date.now()};
+  context.building={step:0,readiness:clone(readiness),setup:clone(setup),preview:readinessPreviewSnapshot(context.day,readiness,setup),startedAt:Date.now()};
   render();
 
   const advanceBuild=async step=>{
-    await new Promise(resolve=>setTimeout(resolve,190));
+    await new Promise(resolve=>setTimeout(resolve,270));
     if(readinessContext!==context||!context.building)return false;
     context.building.step=step;
     render();
@@ -4396,7 +4442,7 @@ async function startPreparedWorkout(){
   rememberSessionSetup(setup);
   await Promise.resolve(sharedSync).catch(error=>console.warn('Shared readiness sync failed',error));
   await advanceBuild(3);
-  await new Promise(resolve=>setTimeout(resolve,220));
+  await new Promise(resolve=>setTimeout(resolve,280));
 
   const scheduledDate=context.scheduledDate;
   const programCtx=programContext(dateFromKey(scheduledDate));
@@ -7671,24 +7717,25 @@ function renderPreparedSetupList(w){
   const readiness=w?.readiness||{};
   const setup=w.trainingContext||buildSessionSetup(normalSessionSetupKey());
   return '<section class="ready-setup-card"><h3>Today’s setup</h3>'+
-    '<div><b>ϟ</b><span><strong>'+esc(readinessWord('energy',readiness.energy||3))+' energy</strong><small>'+(readiness.energy||3)+'/5</small></span></div>'+
-    '<div><b>◈</b><span><strong>'+esc(readinessWord('soreness',readiness.soreness||2))+' soreness</strong><small>'+(readiness.soreness||2)+'/5</small></span></div>'+
-    '<div><b>◐</b><span><strong>'+esc(readinessWord('sleep',readiness.sleep||3))+' sleep</strong><small>'+(readiness.sleep||3)+'/5</small></span></div>'+
-    '<div><b>◷</b><span><strong>'+esc(readiness.timeAvailable||store.profile?.minutes||45)+' minutes</strong><small>Available today</small></span></div>'+
-    '<div><b>▰</b><span><strong>'+esc(readinessLocationLabel(setup.key))+'</strong><small>'+esc(readinessSetupDetail(setup))+'</small></span></div>'+
+    '<div>'+uiIcon('energy')+'<span><strong>'+esc(readinessWord('energy',readiness.energy||3))+' energy</strong><small>'+(readiness.energy||3)+'/5</small></span></div>'+
+    '<div>'+uiIcon('soreness')+'<span><strong>'+esc(readinessWord('soreness',readiness.soreness||2))+' soreness</strong><small>'+(readiness.soreness||2)+'/5</small></span></div>'+
+    '<div>'+uiIcon('sleep')+'<span><strong>'+esc(readinessWord('sleep',readiness.sleep||3))+' sleep</strong><small>'+(readiness.sleep||3)+'/5</small></span></div>'+
+    '<div>'+uiIcon('clock')+'<span><strong>'+esc(readiness.timeAvailable||store.profile?.minutes||45)+' min available</strong><small>Today’s limit</small></span></div>'+
+    '<div>'+uiIcon('gym')+'<span><strong>'+esc(readinessLocationLabel(setup.key))+'</strong><small>'+esc(readinessSetupDetail(setup))+'</small></span></div>'+
   '</section>';
 }
 function renderWorkoutIntro(w){
   const warmCount=w.warmup?.length||0;
-  const totalMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
+  const availableMinutes=w.readiness?.timeAvailable||store.profile?.minutes||45;
+  const plannedMinutes=num(w.estimatedMinutes)||availableMinutes;
   const status=preparedWorkoutStatus(w);
   return '<div class="prepared-workout-v4">'+
     '<section class="prepared-ready-card">'+
-      '<div class="prepared-ready-visual"><div class="prepared-ready-check">✓</div></div>'+
-      '<div class="prepared-ready-title"><span class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</span><h2>'+esc(w.routineName)+' is ready</h2><p>'+esc(totalMinutes)+' min · '+w.exercises.length+' exercises</p></div>'+
+      '<div class="prepared-ready-visual"><div class="prepared-ready-check">'+uiIcon('check')+'</div></div>'+
+      '<div class="prepared-ready-title"><span class="preflight-status '+readinessStatusClass(status)+'">'+esc(status)+'</span><h2>'+esc(w.routineName)+' is ready</h2><p>about '+esc(plannedMinutes)+' min · '+w.exercises.length+' exercises</p><small>'+esc(availableMinutes)+' min available</small></div>'+
       renderPreparedChangeCard(w)+
       renderPreparedSetupList(w)+
-      '<section class="ready-coach-card"><b>▣</b><div><strong>Coach guidance</strong><p>'+esc(preWorkoutCoachNote(w))+'</p></div></section>'+
+      '<section class="ready-coach-card">'+uiIcon('coach')+'<div><strong>Coach guidance</strong><p>'+esc(preWorkoutCoachNote(w))+'</p></div></section>'+
     '</section>'+
     '<div class="prepared-primary-actions"><button class="button primary-action runner-gold-action" data-action="begin-session">'+(warmCount?'START WARM-UP':'START WORKOUT')+'</button><button class="button secondary prepared-preview-button" data-action="open-workout-map">VIEW FULL WORKOUT</button></div>'+
     (!w.sharedSession?'<button class="text-button prepared-adjust-link" data-action="edit-prepared-workout">Adjust today’s workout</button>':'')+
