@@ -15169,3 +15169,111 @@ body.home-mode .bottom-nav:before{
   .runner-detail-frame{aspect-ratio:4/5}
   .runner-detail-positions figure{min-height:0}
 }
+
+
+/* Male anatomy artwork V3 */
+.home-anatomy-svg.anatomy-v3{
+  filter:drop-shadow(0 14px 20px rgba(0,0,0,.20));
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-body-shell{
+  stroke:rgba(169,187,175,.22);
+  stroke-width:.7;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-head-shell{
+  stroke:rgba(177,194,183,.24);
+  stroke-width:.7;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-jaw{
+  fill:rgba(9,16,12,.20);
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-neck-shell{
+  fill:#263a2f;
+  stroke:rgba(190,205,195,.18);
+  stroke-width:.55;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-muscle-base{
+  stroke:rgba(207,219,211,.13);
+  stroke-width:.42;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay{
+  stroke-width:.4;
+  pointer-events:none;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-1{
+  opacity:.43;
+  stroke:rgba(133,170,126,.20);
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-2{
+  opacity:.60;
+  stroke:rgba(171,211,139,.28);
+  filter:drop-shadow(0 0 2px rgba(119,174,91,.18));
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-3{
+  opacity:.74;
+  stroke:rgba(218,244,154,.42);
+  filter:
+    drop-shadow(0 0 3px rgba(169,223,89,.42))
+    drop-shadow(0 0 7px rgba(121,190,75,.18));
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay.heat-4{
+  opacity:.82;
+  stroke:rgba(255,233,158,.52);
+  filter:
+    drop-shadow(0 0 4px rgba(240,200,93,.54))
+    drop-shadow(0 0 9px rgba(240,200,93,.22));
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-region{
+  isolation:isolate;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-detail-fine{
+  fill:none;
+  stroke:rgba(229,236,230,.16);
+  stroke-width:.48;
+  stroke-linecap:round;
+  pointer-events:none;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-line,
+.home-anatomy-svg.anatomy-v3 .anatomy-ridge,
+.home-anatomy-svg.anatomy-v3 .anatomy-separator{
+  fill:none;
+  stroke:rgba(222,231,224,.17);
+  stroke-width:.55;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-ridge{
+  stroke:rgba(239,244,240,.13);
+  stroke-width:.45;
+}
+.home-anatomy-svg.anatomy-v3 .anatomy-hand,
+.home-anatomy-svg.anatomy-v3 .anatomy-foot,
+.home-anatomy-svg.anatomy-v3 .anatomy-knee{
+  fill:#24372c;
+  stroke:rgba(186,202,191,.18);
+  stroke-width:.55;
+}
+.home-training-load-v5 .home-body-figure.anatomy svg.anatomy-v3{
+  width:min(100%,156px);
+  max-height:294px;
+}
+@media(max-width:620px){
+  .home-training-load-v5 .home-body-figure.anatomy svg.anatomy-v3{
+    width:min(100%,140px);
+    max-height:270px;
+  }
+  .home-anatomy-svg.anatomy-v3 .anatomy-detail-fine{
+    opacity:.72;
+  }
+}
+@media(max-width:390px){
+  .home-training-load-v5 .home-body-figure.anatomy svg.anatomy-v3{
+    width:min(100%,126px);
+    max-height:252px;
+  }
+  .home-anatomy-svg.anatomy-v3 .anatomy-detail-fine{
+    opacity:.34;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .home-anatomy-svg.anatomy-v3 .anatomy-heat-overlay{transition:none}
+}

@@ -1,120 +1,158 @@
 (function(){
+  const SCHEMA=[
+    'chest','front_delts','side_delts','rear_delts','biceps','triceps','forearms',
+    'upper_abs','lower_abs','obliques','traps','upper_back','lats','lower_back',
+    'glutes','adductors','quads','hamstrings','calves'
+  ];
+  const LANDMARKS={
+    male:{
+      head:{x:160,y:43},
+      shoulders:{left:{x:73,y:128},right:{x:247,y:128}},
+      sternum:{x:160,y:140},
+      navel:{x:160,y:244},
+      iliac:{left:{x:111,y:292},right:{x:209,y:292}},
+      elbows:{left:{x:54,y:239},right:{x:266,y:239}},
+      wrists:{left:{x:32,y:324},right:{x:288,y:324}},
+      knees:{left:{x:111,y:432},right:{x:209,y:432}},
+      ankles:{left:{x:104,y:523},right:{x:216,y:523}},
+      heel:{y:548}
+    }
+  };
+  const DEBUG_PRESETS={
+    none:{},
+    lower:{quads:3,glutes:4,hamstrings:3,calves:2,adductors:1},
+    push:{chest:4,front_delts:3,side_delts:2,triceps:3},
+    pull:{lats:4,upper_back:3,traps:2,rear_delts:3,biceps:3},
+    full:{chest:2,front_delts:2,side_delts:2,biceps:1,triceps:1,upper_abs:2,lower_abs:1,obliques:1,lats:2,upper_back:2,glutes:3,quads:3,hamstrings:2,calves:1}
+  };
   const clampLevel=value=>Math.max(0,Math.min(4,Number(value)||0));
-  const region=(group,levels,prefix)=>{
-    const level=clampLevel(levels?.[group]);
-    return 'class="anatomy-muscle muscle-'+group+' heat-'+level+'" style="fill:url(#'+prefix+'Heat'+level+')"';
+  const resolveLevel=(levels,group,side)=>{
+    const sideKey=side?group+'_'+side:'';
+    if(sideKey&&levels?.[sideKey]!==undefined)return clampLevel(levels[sideKey]);
+    return clampLevel(levels?.[group]);
   };
   const defs=prefix=>
     '<defs>'+
-      '<linearGradient id="'+prefix+'Body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#101b15"/><stop offset=".30" stop-color="#34463b"/><stop offset=".58" stop-color="#1d3026"/><stop offset="1" stop-color="#0d1712"/></linearGradient>'+
-      '<radialGradient id="'+prefix+'Head" cx=".48" cy=".34" r=".72"><stop offset="0" stop-color="#48594e"/><stop offset=".48" stop-color="#283a30"/><stop offset="1" stop-color="#101a15"/></radialGradient>'+
-      '<linearGradient id="'+prefix+'Heat0" x1="0" y1="0" x2=".92" y2="1"><stop offset="0" stop-color="#4a5b50"/><stop offset=".38" stop-color="#31463a"/><stop offset=".72" stop-color="#24362c"/><stop offset="1" stop-color="#15231c"/></linearGradient>'+
-      '<linearGradient id="'+prefix+'Heat1" x1="0" y1="0" x2=".92" y2="1"><stop offset="0" stop-color="#6b8f69"/><stop offset=".45" stop-color="#527856"/><stop offset="1" stop-color="#34533d"/></linearGradient>'+
-      '<linearGradient id="'+prefix+'Heat2" x1="0" y1="0" x2=".92" y2="1"><stop offset="0" stop-color="#a1cf70"/><stop offset=".46" stop-color="#78ae5d"/><stop offset="1" stop-color="#4f7f45"/></linearGradient>'+
-      '<linearGradient id="'+prefix+'Heat3" x1="0" y1="0" x2=".92" y2="1"><stop offset="0" stop-color="#d4f27a"/><stop offset=".42" stop-color="#a9dd59"/><stop offset="1" stop-color="#79b746"/></linearGradient>'+
-      '<linearGradient id="'+prefix+'Heat4" x1="0" y1="0" x2=".92" y2="1"><stop offset="0" stop-color="#ffe38a"/><stop offset=".42" stop-color="#efc65c"/><stop offset="1" stop-color="#bd8f31"/></linearGradient>'+
+      '<linearGradient id="'+prefix+'Body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0d1712"/><stop offset=".24" stop-color="#34463b"/><stop offset=".52" stop-color="#22352a"/><stop offset=".82" stop-color="#17261e"/><stop offset="1" stop-color="#0b130f"/></linearGradient>'+
+      '<linearGradient id="'+prefix+'Muscle" x1="0" y1="0" x2=".95" y2="1"><stop offset="0" stop-color="#5a695f"/><stop offset=".18" stop-color="#3f5146"/><stop offset=".48" stop-color="#2b4034"/><stop offset=".78" stop-color="#1d3026"/><stop offset="1" stop-color="#122019"/></linearGradient>'+
+      '<radialGradient id="'+prefix+'Head" cx=".43" cy=".30" r=".78"><stop offset="0" stop-color="#4a5c50"/><stop offset=".46" stop-color="#2b3d32"/><stop offset="1" stop-color="#111b16"/></radialGradient>'+
+      '<linearGradient id="'+prefix+'Heat1" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#7e9b73"/><stop offset=".52" stop-color="#527957"/><stop offset="1" stop-color="#36553e"/></linearGradient>'+
+      '<linearGradient id="'+prefix+'Heat2" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#b3d97e"/><stop offset=".48" stop-color="#78ae5d"/><stop offset="1" stop-color="#4f7f45"/></linearGradient>'+
+      '<linearGradient id="'+prefix+'Heat3" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#e0f894"/><stop offset=".44" stop-color="#a9df59"/><stop offset="1" stop-color="#77b644"/></linearGradient>'+
+      '<linearGradient id="'+prefix+'Heat4" x1="0" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#ffe89a"/><stop offset=".42" stop-color="#efc65c"/><stop offset="1" stop-color="#b9882c"/></linearGradient>'+
     '</defs>';
 
+  function muscle(prefix,levels,group,side,d,detail=''){
+    const level=resolveLevel(levels,group,side);
+    const id=group+(side?'_'+side:'');
+    const overlay=level
+      ?'<path class="anatomy-heat-overlay heat-'+level+'" style="fill:url(#'+prefix+'Heat'+level+')" d="'+d+'"/>'
+      :'';
+    return '<g class="anatomy-region region-'+group+' side-'+(side||'center')+'" data-muscle="'+id+'" data-group="'+group+'" data-side="'+(side||'center')+'" data-heat="'+level+'">'+
+      '<path class="anatomy-muscle-base" style="fill:url(#'+prefix+'Muscle)" d="'+d+'"/>'+overlay+detail+
+    '</g>';
+  }
+  const line=(cls,d)=>'<path class="'+cls+'" d="'+d+'"/>';
+
   function maleFront(levels={}){
-    const p='mf',m=group=>region(group,levels,p);
-    return '<svg class="home-anatomy-svg anatomy-pro anatomy-male front" viewBox="0 0 320 560" role="img" aria-label="Front male muscular anatomy training load">'+
+    const p='m3f',m=(group,side,d,detail='')=>muscle(p,levels,group,side,d,detail);
+    return '<svg class="home-anatomy-svg anatomy-pro anatomy-male anatomy-v3 front" viewBox="0 0 320 570" role="img" aria-label="Front male muscular anatomy training load">'+
       defs(p)+
-      '<ellipse class="anatomy-ground" cx="160" cy="536" rx="76" ry="9"/>'+
-      '<path class="anatomy-body male-body" style="fill:url(#mfBody)" d="M137 70C129 78 125 91 124 105L111 116C91 121 72 131 60 147 49 165 44 187 40 211L29 261 19 300 32 306 49 271 64 221 73 185 80 162 83 213 77 267 83 309 78 355 82 410 86 474 94 521 113 533 132 531 139 470 145 399 151 342 160 326 169 342 175 399 181 470 188 531 207 533 226 521 234 474 238 410 242 355 237 309 243 267 237 213 240 162 247 185 256 221 271 271 288 306 301 300 291 261 280 211C276 187 271 165 260 147 248 131 229 121 209 116L196 105C195 91 191 78 183 70Z"/>'+
-      '<ellipse class="anatomy-head male-head" style="fill:url(#mfHead)" cx="160" cy="44" rx="29" ry="35"/>'+
-      '<path class="anatomy-face-shade" d="M140 34C145 18 175 18 180 34 177 57 169 68 160 70 151 68 143 57 140 34Z"/>'+
-      '<path class="anatomy-neck" d="M137 70C144 79 151 83 160 84 169 83 176 79 183 70L190 110 160 126 130 110Z"/>'+
+      '<ellipse class="anatomy-ground" cx="160" cy="549" rx="74" ry="8"/>'+
+      '<path class="anatomy-body-shell" style="fill:url(#m3fBody)" d="M136 72C127 84 124 95 124 109L108 118C88 123 68 134 56 151 45 170 41 194 38 217L27 268 17 307 31 313 49 275 63 226 72 186 79 163 82 215 76 267 81 307 76 352 80 405 85 468 92 520 105 538 125 536 134 474 143 400 151 339 160 325 169 339 177 400 186 474 195 536 215 538 228 520 235 468 240 405 244 352 239 307 244 267 238 215 241 163 248 186 257 226 271 275 289 313 303 307 293 268 282 217C279 194 275 170 264 151 252 134 232 123 212 118L196 109C196 95 193 84 184 72Z"/>'+
+      '<path class="anatomy-head-shell" style="fill:url(#m3fHead)" d="M137 19C146 7 174 7 183 19 190 29 190 49 185 62 179 75 170 82 160 83 150 82 141 75 135 62 130 49 130 29 137 19Z"/>'+
+      '<path class="anatomy-jaw" d="M141 54C147 65 153 70 160 71 167 70 173 65 179 54 175 72 169 82 160 84 151 82 145 72 141 54Z"/>'+
+      '<path class="anatomy-neck-shell" d="M139 76C143 88 142 99 132 111L118 124 133 135 160 123 187 135 202 124 188 111C178 99 177 88 181 76 174 84 168 88 160 89 152 88 146 84 139 76Z"/>'+
 
-      '<path '+m('shoulders')+' d="M130 111C108 105 88 110 72 126 66 132 62 141 60 151 76 145 91 148 104 158L132 139C139 129 139 118 130 111Z"/>'+
-      '<path '+m('shoulders')+' d="M190 111C212 105 232 110 248 126 254 132 258 141 260 151 244 145 229 148 216 158L188 139C181 129 181 118 190 111Z"/>'+
+      m('front_delts','left','M126 113C108 107 89 112 74 125 66 132 61 142 59 153 76 147 92 150 105 160L129 143C137 132 136 121 126 113Z')+
+      m('front_delts','right','M194 113C212 107 231 112 246 125 254 132 259 142 261 153 244 147 228 150 215 160L191 143C183 132 184 121 194 113Z')+
+      m('side_delts','left','M75 124C63 133 57 146 58 160 61 171 68 179 78 184 86 170 91 156 91 142 87 132 82 126 75 124Z')+
+      m('side_delts','right','M245 124C257 133 263 146 262 160 259 171 252 179 242 184 234 170 229 156 229 142 233 132 238 126 245 124Z')+
 
-      '<path '+m('chest')+' d="M132 124C110 118 91 123 80 139L84 171C98 185 119 187 153 170L154 135C148 130 141 126 132 124Z"/>'+
-      '<path '+m('chest')+' d="M188 124C210 118 229 123 240 139L236 171C222 185 201 187 167 170L166 135C172 130 179 126 188 124Z"/>'+
-      '<path class="anatomy-separator" d="M160 127V181M87 169C108 186 133 188 154 174M233 169C212 186 187 188 166 174"/>'+
+      m('chest','left','M130 125C111 119 92 123 80 137 78 150 81 164 88 175 105 185 126 183 154 170L154 138C149 131 141 127 130 125Z',line('anatomy-detail-fine','M91 143C108 136 130 137 151 145M92 169C111 176 130 175 151 166'))+
+      m('chest','right','M190 125C209 119 228 123 240 137 242 150 239 164 232 175 215 185 194 183 166 170L166 138C171 131 179 127 190 125Z',line('anatomy-detail-fine','M229 143C212 136 190 137 169 145M228 169C209 176 190 175 169 166'))+
+      line('anatomy-separator','M160 128V181')+
 
-      '<path '+m('biceps')+' d="M77 154C62 169 57 194 59 216 61 231 67 243 76 249 88 224 94 198 91 171 88 162 83 157 77 154Z"/>'+
-      '<path '+m('biceps')+' d="M243 154C258 169 263 194 261 216 259 231 253 243 244 249 232 224 226 198 229 171 232 162 237 157 243 154Z"/>'+
-      '<path '+m('forearms')+' d="M60 211C50 232 44 257 39 286L28 319 41 324 57 295 72 247 75 230C72 221 67 215 60 211Z"/>'+
-      '<path '+m('forearms')+' d="M260 211C270 232 276 257 281 286L292 319 279 324 263 295 248 247 245 230C248 221 253 215 260 211Z"/>'+
-      '<path class="anatomy-hand" d="M28 318 17 343 21 356 29 348 34 361 40 355 41 326Z"/>'+
-      '<path class="anatomy-hand" d="M292 318 303 343 299 356 291 348 286 361 280 355 279 326Z"/>'+
+      m('biceps','left','M80 158C68 165 61 181 59 202 58 220 64 239 75 250 87 239 94 216 93 192 92 176 88 165 80 158Z',line('anatomy-detail-fine','M72 172C66 192 67 219 75 238'))+
+      m('biceps','right','M240 158C252 165 259 181 261 202 262 220 256 239 245 250 233 239 226 216 227 192 228 176 232 165 240 158Z',line('anatomy-detail-fine','M248 172C254 192 253 219 245 238'))+
+      m('forearms','left','M60 207C50 229 44 255 39 284L29 316 42 322 57 295 72 248 76 226C73 217 68 211 60 207Z')+
+      m('forearms','right','M260 207C270 229 276 255 281 284L291 316 278 322 263 295 248 248 244 226C247 217 252 211 260 207Z')+
+      '<path class="anatomy-hand" d="M29 315 18 339 20 352 26 348 31 359 36 355 40 363 45 355 42 324Z"/>'+
+      '<path class="anatomy-hand" d="M291 315 302 339 300 352 294 348 289 359 284 355 280 363 275 355 278 324Z"/>'+
 
-      '<path '+m('core')+' d="M126 185C136 180 146 180 155 186L154 211C146 219 136 219 128 212Z"/>'+
-      '<path '+m('core')+' d="M165 186C174 180 184 180 194 185L192 212C184 219 174 219 166 211Z"/>'+
-      '<path '+m('core')+' d="M129 215C137 211 146 211 154 216L153 241C146 248 137 248 130 242Z"/>'+
-      '<path '+m('core')+' d="M166 216C174 211 183 211 191 215L190 242C183 248 174 248 167 241Z"/>'+
-      '<path '+m('core')+' d="M131 245C139 241 147 242 153 247L152 271C146 278 139 278 132 272Z"/>'+
-      '<path '+m('core')+' d="M167 247C173 242 181 241 189 245L188 272C181 278 174 278 168 271Z"/>'+
-      '<path '+m('core')+' d="M101 181C115 188 123 199 126 216L129 267 117 289C104 277 96 259 93 236L95 202C96 193 98 186 101 181Z"/>'+
-      '<path '+m('core')+' d="M219 181C205 188 197 199 194 216L191 267 203 289C216 277 224 259 227 236L225 202C224 193 222 186 219 181Z"/>'+
-      '<path class="anatomy-ridge" d="M111 188C119 197 123 210 123 226M209 188C201 197 197 210 197 226M160 186V279"/>'+
+      m('upper_abs','left','M128 185C136 181 146 181 154 186L153 211C146 218 137 218 129 212Z')+
+      m('upper_abs','right','M166 186C174 181 184 181 192 185L191 212C183 218 174 218 167 211Z')+
+      m('upper_abs','left','M130 214C137 211 146 211 153 216L152 240C145 247 137 247 131 241Z')+
+      m('upper_abs','right','M167 216C174 211 183 211 190 214L189 241C183 247 175 247 168 240Z')+
+      m('lower_abs','left','M132 243C139 240 146 241 152 246L151 270C145 277 139 277 133 271Z')+
+      m('lower_abs','right','M168 246C174 241 181 240 188 243L187 271C181 277 175 277 169 270Z')+
+      m('obliques','left','M102 179C113 184 121 196 125 213L129 264 116 290C104 278 96 260 92 238L94 202C96 191 99 183 102 179Z',line('anatomy-detail-fine','M102 193C111 207 115 228 115 252'))+
+      m('obliques','right','M218 179C207 184 199 196 195 213L191 264 204 290C216 278 224 260 228 238L226 202C224 191 221 183 218 179Z',line('anatomy-detail-fine','M218 193C209 207 205 228 205 252'))+
+      line('anatomy-ridge','M160 184V278')+
 
-      '<path '+m('quads')+' d="M103 294C120 286 137 291 148 305L143 352C138 381 129 408 115 426 99 410 91 385 89 357L91 320C94 307 98 299 103 294Z"/>'+
-      '<path '+m('quads')+' d="M217 294C200 286 183 291 172 305L177 352C182 381 191 408 205 426 221 410 229 385 231 357L229 320C226 307 222 299 217 294Z"/>'+
-      '<path '+m('quads')+' d="M143 302C151 294 158 299 159 311L157 361C154 386 149 407 140 425 131 410 128 392 130 368L133 325C135 314 138 306 143 302Z"/>'+
-      '<path '+m('quads')+' d="M177 302C169 294 162 299 161 311L163 361C166 386 171 407 180 425 189 410 192 392 190 368L187 325C185 314 182 306 177 302Z"/>'+
-      '<path '+m('quads')+' d="M94 309C105 305 116 313 122 328L118 371C114 392 108 407 101 415 92 403 88 384 88 360L89 331C90 321 92 314 94 309Z"/>'+
-      '<path '+m('quads')+' d="M226 309C215 305 204 313 198 328L202 371C206 392 212 407 219 415 228 403 232 384 232 360L231 331C230 321 228 314 226 309Z"/>'+
-      '<path class="anatomy-knee" d="M110 424C117 418 128 419 134 427L132 442C126 450 116 450 109 443Z"/>'+
-      '<path class="anatomy-knee" d="M210 424C203 418 192 419 186 427L188 442C194 450 204 450 211 443Z"/>'+
+      m('adductors','left','M131 289C141 284 150 291 154 307L151 351 140 378 130 355 125 321C125 306 127 295 131 289Z')+
+      m('adductors','right','M189 289C179 284 170 291 166 307L169 351 180 378 190 355 195 321C195 306 193 295 189 289Z')+
+      m('quads','left','M102 291C116 284 132 288 142 301L137 348C134 378 125 407 112 426 97 414 89 390 87 360L89 322C92 307 96 297 102 291Z',line('anatomy-detail-fine','M104 306C111 326 112 352 108 382'))+
+      m('quads','right','M218 291C204 284 188 288 178 301L183 348C186 378 195 407 208 426 223 414 231 390 233 360L231 322C228 307 224 297 218 291Z',line('anatomy-detail-fine','M216 306C209 326 208 352 212 382'))+
+      m('quads','left','M142 302C150 294 157 300 158 312L156 362C153 387 148 407 140 425 132 412 129 394 130 370L133 326C135 315 138 307 142 302Z')+
+      m('quads','right','M178 302C170 294 163 300 162 312L164 362C167 387 172 407 180 425 188 412 191 394 190 370L187 326C185 315 182 307 178 302Z')+
+      '<path class="anatomy-knee" d="M107 426C115 419 127 420 134 429L132 444C125 451 115 451 108 443Z"/>'+
+      '<path class="anatomy-knee" d="M213 426C205 419 193 420 186 429L188 444C195 451 205 451 212 443Z"/>'+
 
-      '<path '+m('calves')+' d="M101 443C114 441 125 452 130 470 131 489 125 510 115 524L99 521C91 504 89 483 92 462 94 453 97 447 101 443Z"/>'+
-      '<path '+m('calves')+' d="M219 443C206 441 195 452 190 470 189 489 195 510 205 524L221 521C229 504 231 483 228 462 226 453 223 447 219 443Z"/>'+
-      '<path '+m('calves')+' d="M132 449C139 455 141 468 139 485L133 522 116 524C125 506 129 489 128 470Z"/>'+
-      '<path '+m('calves')+' d="M188 449C181 455 179 468 181 485L187 522 204 524C195 506 191 489 192 470Z"/>'+
-      '<path class="anatomy-foot" d="M95 518C105 522 115 525 123 533L117 541 86 540 82 530Z"/>'+
-      '<path class="anatomy-foot" d="M225 518C215 522 205 525 197 533L203 541 234 540 238 530Z"/>'+
+      m('calves','left','M100 444C113 441 124 452 129 471 130 492 124 512 114 526L99 522C91 506 89 484 92 463 94 454 97 448 100 444Z',line('anatomy-detail-fine','M104 456C111 473 111 493 106 512'))+
+      m('calves','right','M220 444C207 441 196 452 191 471 190 492 196 512 206 526L221 522C229 506 231 484 228 463 226 454 223 448 220 444Z',line('anatomy-detail-fine','M216 456C209 473 209 493 214 512'))+
+      '<path class="anatomy-foot" d="M94 519C105 523 116 527 124 535L118 545 86 544 82 533Z"/>'+
+      '<path class="anatomy-foot" d="M226 519C215 523 204 527 196 535L202 545 234 544 238 533Z"/>'+
 
-      '<path class="anatomy-line" d="M160 111V283M105 181C125 192 144 194 154 185M215 181C195 192 176 194 166 185M102 292C122 306 141 309 154 302M218 292C198 306 179 309 166 302M92 438C104 446 119 447 130 441M228 438C216 446 201 447 190 441"/>'+
-      '<path class="anatomy-highlight-line" d="M91 133C103 128 115 128 127 132M229 133C217 128 205 128 193 132M107 318C115 333 118 352 116 370M213 318C205 333 202 352 204 370M106 455C113 466 116 483 114 498M214 455C207 466 204 483 206 498"/>'+
+      line('anatomy-line','M99 125C116 111 139 108 154 118M221 125C204 111 181 108 166 118M105 291C123 301 141 303 153 297M215 291C197 301 179 303 167 297M91 439C104 447 119 448 131 441M229 439C216 447 201 448 189 441')+
     '</svg>';
   }
 
   function maleBack(levels={}){
-    const p='mb',m=group=>region(group,levels,p);
-    return '<svg class="home-anatomy-svg anatomy-pro anatomy-male back" viewBox="0 0 320 560" role="img" aria-label="Back male muscular anatomy training load">'+
+    const p='m3b',m=(group,side,d,detail='')=>muscle(p,levels,group,side,d,detail);
+    return '<svg class="home-anatomy-svg anatomy-pro anatomy-male anatomy-v3 back" viewBox="0 0 320 570" role="img" aria-label="Back male muscular anatomy training load">'+
       defs(p)+
-      '<ellipse class="anatomy-ground" cx="160" cy="536" rx="76" ry="9"/>'+
-      '<path class="anatomy-body male-body" style="fill:url(#mbBody)" d="M137 70C129 78 125 91 124 105L111 116C91 121 72 131 60 147 49 165 44 187 40 211L29 261 19 300 32 306 49 271 64 221 73 185 80 162 83 213 77 267 83 309 78 355 82 410 86 474 94 521 113 533 132 531 139 470 145 399 151 342 160 326 169 342 175 399 181 470 188 531 207 533 226 521 234 474 238 410 242 355 237 309 243 267 237 213 240 162 247 185 256 221 271 271 288 306 301 300 291 261 280 211C276 187 271 165 260 147 248 131 229 121 209 116L196 105C195 91 191 78 183 70Z"/>'+
-      '<ellipse class="anatomy-head male-head" style="fill:url(#mbHead)" cx="160" cy="44" rx="29" ry="35"/>'+
-      '<path class="anatomy-neck" d="M137 70C144 79 151 83 160 84 169 83 176 79 183 70L190 110 160 126 130 110Z"/>'+
+      '<ellipse class="anatomy-ground" cx="160" cy="549" rx="74" ry="8"/>'+
+      '<path class="anatomy-body-shell" style="fill:url(#m3bBody)" d="M136 72C127 84 124 95 124 109L108 118C88 123 68 134 56 151 45 170 41 194 38 217L27 268 17 307 31 313 49 275 63 226 72 186 79 163 82 215 76 267 81 307 76 352 80 405 85 468 92 520 105 538 125 536 134 474 143 400 151 339 160 325 169 339 177 400 186 474 195 536 215 538 228 520 235 468 240 405 244 352 239 307 244 267 238 215 241 163 248 186 257 226 271 275 289 313 303 307 293 268 282 217C279 194 275 170 264 151 252 134 232 123 212 118L196 109C196 95 193 84 184 72Z"/>'+
+      '<path class="anatomy-head-shell" style="fill:url(#m3bHead)" d="M137 19C146 7 174 7 183 19 190 29 190 49 185 62 179 75 170 82 160 83 150 82 141 75 135 62 130 49 130 29 137 19Z"/>'+
+      '<path class="anatomy-neck-shell" d="M139 76C143 88 142 99 132 111L118 124 133 135 160 123 187 135 202 124 188 111C178 99 177 88 181 76 174 84 168 88 160 89 152 88 146 84 139 76Z"/>'+
 
-      '<path '+m('back')+' d="M132 93C142 101 151 109 160 124 169 109 178 101 188 93L205 118 188 146 160 161 132 146 115 118Z"/>'+
-      '<path '+m('shoulders')+' d="M120 112C100 104 79 111 64 128 59 135 57 143 58 151 78 143 96 146 112 158L136 137C135 126 130 118 120 112Z"/>'+
-      '<path '+m('shoulders')+' d="M200 112C220 104 241 111 256 128 261 135 263 143 262 151 242 143 224 146 208 158L184 137C185 126 190 118 200 112Z"/>'+
+      m('traps','left','M135 96C143 102 152 112 160 126L153 160 131 148 111 118 126 104Z')+
+      m('traps','right','M185 96C177 102 168 112 160 126L167 160 189 148 209 118 194 104Z')+
+      m('rear_delts','left','M119 113C100 106 81 112 66 127 60 134 58 143 59 153 78 145 96 149 111 160L135 139C134 127 129 119 119 113Z')+
+      m('rear_delts','right','M201 113C220 106 239 112 254 127 260 134 262 143 261 153 242 145 224 149 209 160L185 139C186 127 191 119 201 113Z')+
 
-      '<path '+m('back')+' d="M118 145C101 149 88 160 79 178L82 225C91 249 103 269 119 286L145 250 148 176C139 159 130 149 118 145Z"/>'+
-      '<path '+m('back')+' d="M202 145C219 149 232 160 241 178L238 225C229 249 217 269 201 286L175 250 172 176C181 159 190 149 202 145Z"/>'+
-      '<path '+m('back')+' d="M145 151C152 158 157 168 160 181V260L148 288 136 257 137 183C139 168 142 157 145 151Z"/>'+
-      '<path '+m('back')+' d="M175 151C168 158 163 168 160 181V260L172 288 184 257 183 183C181 168 178 157 175 151Z"/>'+
-      '<path class="anatomy-ridge" d="M160 126V291M126 154C136 168 141 184 142 207M194 154C184 168 179 184 178 207"/>'+
+      m('upper_back','left','M129 143C116 141 102 147 91 159L98 194 119 214 145 196 147 167C141 155 135 147 129 143Z',line('anatomy-detail-fine','M101 161C114 169 128 176 142 179'))+
+      m('upper_back','right','M191 143C204 141 218 147 229 159L222 194 201 214 175 196 173 167C179 155 185 147 191 143Z',line('anatomy-detail-fine','M219 161C206 169 192 176 178 179'))+
+      m('lats','left','M98 177C87 187 81 202 82 222 89 248 102 271 119 288L145 251 145 198C131 205 115 199 98 177Z',line('anatomy-detail-fine','M94 205C106 226 118 246 131 263'))+
+      m('lats','right','M222 177C233 187 239 202 238 222 231 248 218 271 201 288L175 251 175 198C189 205 205 199 222 177Z',line('anatomy-detail-fine','M226 205C214 226 202 246 189 263'))+
+      line('anatomy-ridge','M160 126V291')+
 
-      '<path '+m('triceps')+' d="M72 150C59 165 56 189 59 214 62 229 68 241 77 247 89 222 95 196 92 170 88 160 81 153 72 150Z"/>'+
-      '<path '+m('triceps')+' d="M248 150C261 165 264 189 261 214 258 229 252 241 243 247 231 222 225 196 228 170 232 160 239 153 248 150Z"/>'+
-      '<path '+m('forearms')+' d="M60 209C50 232 44 258 39 286L28 319 41 324 57 295 72 247 75 229C72 220 67 214 60 209Z"/>'+
-      '<path '+m('forearms')+' d="M260 209C270 232 276 258 281 286L292 319 279 324 263 295 248 247 245 229C248 220 253 214 260 209Z"/>'+
-      '<path class="anatomy-hand" d="M28 318 17 343 21 356 29 348 34 361 40 355 41 326Z"/>'+
-      '<path class="anatomy-hand" d="M292 318 303 343 299 356 291 348 286 361 280 355 279 326Z"/>'+
+      m('triceps','left','M76 152C64 161 58 179 59 202 60 220 66 238 76 249 88 237 94 214 93 190 92 173 86 159 76 152Z')+
+      m('triceps','right','M244 152C256 161 262 179 261 202 260 220 254 238 244 249 232 237 226 214 227 190 228 173 234 159 244 152Z')+
+      m('forearms','left','M60 207C50 229 44 255 39 284L29 316 42 322 57 295 72 248 76 226C73 217 68 211 60 207Z')+
+      m('forearms','right','M260 207C270 229 276 255 281 284L291 316 278 322 263 295 248 248 244 226C247 217 252 211 260 207Z')+
+      '<path class="anatomy-hand" d="M29 315 18 339 20 352 26 348 31 359 36 355 40 363 45 355 42 324Z"/>'+
+      '<path class="anatomy-hand" d="M291 315 302 339 300 352 294 348 289 359 284 355 280 363 275 355 278 324Z"/>'+
 
-      '<path '+m('back')+' d="M116 269C129 279 143 289 155 303L151 326 131 340 108 323 101 295Z"/>'+
-      '<path '+m('back')+' d="M204 269C191 279 177 289 165 303L169 326 189 340 212 323 219 295Z"/>'+
+      m('lower_back','left','M119 267C131 278 144 288 155 301L151 326 132 341 109 324 101 296Z')+
+      m('lower_back','right','M201 267C189 278 176 288 165 301L169 326 188 341 211 324 219 296Z')+
 
-      '<path '+m('glutes')+' d="M101 326C119 314 141 317 157 333L155 373C144 389 124 395 102 384 91 375 86 361 88 344 91 336 95 330 101 326Z"/>'+
-      '<path '+m('glutes')+' d="M219 326C201 314 179 317 163 333L165 373C176 389 196 395 218 384 229 375 234 361 232 344 229 336 225 330 219 326Z"/>'+
-      '<path class="anatomy-separator" d="M160 330V383M94 342C112 352 136 356 155 347M226 342C208 352 184 356 165 347"/>'+
+      m('glutes','left','M101 326C117 315 139 316 156 331L156 371C146 389 126 396 104 386 91 379 85 364 87 347 90 337 95 330 101 326Z',line('anatomy-detail-fine','M96 345C113 355 134 357 153 348'))+
+      m('glutes','right','M219 326C203 315 181 316 164 331L164 371C174 389 194 396 216 386 229 379 235 364 233 347 230 337 225 330 219 326Z',line('anatomy-detail-fine','M224 345C207 355 186 357 167 348'))+
+      line('anatomy-separator','M160 330V384')+
 
-      '<path '+m('hamstrings')+' d="M94 386C112 383 132 391 145 407L139 455C133 478 123 499 109 514 94 501 86 482 83 459L83 414C85 401 89 392 94 386Z"/>'+
-      '<path '+m('hamstrings')+' d="M226 386C208 383 188 391 175 407L181 455C187 478 197 499 211 514 226 501 234 482 237 459L237 414C235 401 231 392 226 386Z"/>'+
-      '<path '+m('hamstrings')+' d="M145 397C154 391 160 399 159 414L156 464 143 506 132 486 135 442Z"/>'+
-      '<path '+m('hamstrings')+' d="M175 397C166 391 160 399 161 414L164 464 177 506 188 486 185 442Z"/>'+
+      m('hamstrings','left','M96 388C112 383 130 389 144 403L140 451C136 476 126 500 112 517 96 507 87 487 83 462L83 418C85 404 90 394 96 388Z',line('anatomy-detail-fine','M102 405C110 428 112 455 107 483'))+
+      m('hamstrings','right','M224 388C208 383 190 389 176 403L180 451C184 476 194 500 208 517 224 507 233 487 237 462L237 418C235 404 230 394 224 388Z',line('anatomy-detail-fine','M218 405C210 428 208 455 213 483'))+
+      m('hamstrings','left','M144 399C152 393 159 398 159 411L156 460 144 507 132 487 135 443Z')+
+      m('hamstrings','right','M176 399C168 393 161 398 161 411L164 460 176 507 188 487 185 443Z')+
 
-      '<path '+m('calves')+' d="M98 493C111 488 124 499 129 515L125 536 112 543 99 536 91 517C91 506 93 498 98 493Z"/>'+
-      '<path '+m('calves')+' d="M222 493C209 488 196 499 191 515L195 536 208 543 221 536 229 517C229 506 227 498 222 493Z"/>'+
+      m('calves','left','M99 493C111 489 124 498 129 515L126 535 113 543 99 537 91 519C91 507 94 498 99 493Z')+
+      m('calves','right','M221 493C209 489 196 498 191 515L194 535 207 543 221 537 229 519C229 507 226 498 221 493Z')+
       '<path class="anatomy-foot" d="M96 533C106 536 116 539 124 546L118 553 87 552 83 542Z"/>'+
       '<path class="anatomy-foot" d="M224 533C214 536 204 539 196 546L202 553 233 552 237 542Z"/>'+
 
-      '<path class="anatomy-line" d="M160 124V325M90 159C111 170 132 173 149 165M230 159C209 170 188 173 171 165M105 327C124 339 143 341 156 334M215 327C196 339 177 341 164 334M92 388C113 399 132 401 146 394M228 388C207 399 188 401 174 394"/>'+
-      '<path class="anatomy-highlight-line" d="M95 177C108 188 119 207 124 229M225 177C212 188 201 207 196 229M105 402C114 419 119 441 117 462M215 402C206 419 201 441 203 462"/>'+
+      line('anatomy-line','M93 154C111 164 130 169 147 164M227 154C209 164 190 169 173 164M102 326C121 339 141 341 155 334M218 326C199 339 179 341 165 334M91 386C113 399 133 401 146 394M229 386C207 399 187 401 174 394')+
     '</svg>';
   }
 
@@ -123,11 +161,22 @@
     const renderer=variants[variant]?.[view]||variants.male[view];
     return renderer?renderer(levels):'';
   }
+  function debugGrid(variant='male'){
+    return Object.entries(DEBUG_PRESETS).map(([name,levels])=>({
+      name,
+      front:render('front',levels,variant),
+      back:render('back',levels,variant)
+    }));
+  }
 
   window.GoWorkoutAnatomy={
     front:(levels,variant='male')=>render('front',levels,variant),
     back:(levels,variant='male')=>render('back',levels,variant),
     render,
+    debugGrid,
+    schema:SCHEMA.slice(),
+    landmarks:LANDMARKS,
+    debugPresets:DEBUG_PRESETS,
     variants:['male'],
     defaultVariant:'male'
   };

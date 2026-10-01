@@ -7494,27 +7494,39 @@ function homeWeekMuscleSnapshot(){
     const ratio=value/max;
     return ratio>=.85?4:ratio>=.6?3:ratio>=.3?2:1;
   };
+  const shoulderAll=levelFor(['shoulders']);
+  const frontDelts=Math.max(shoulderAll,levelFor(['front_delts']));
+  const rearDelts=Math.max(shoulderAll,levelFor(['rear_delts']));
+  const upperBack=Math.max(levelFor(['upper_back']),levelFor(['back']));
+  const lats=Math.max(levelFor(['lats']),levelFor(['back']));
+  const core=levelFor(['core']);
+  const regions={
+    chest:levelFor(['chest']),
+    front_delts:frontDelts,
+    side_delts:shoulderAll,
+    rear_delts:rearDelts,
+    biceps:levelFor(['biceps']),
+    triceps:levelFor(['triceps']),
+    forearms:levelFor(['forearms']),
+    upper_abs:core,
+    lower_abs:core,
+    obliques:core,
+    traps:upperBack,
+    upper_back:upperBack,
+    lats,
+    lower_back:levelFor(['back']),
+    glutes:levelFor(['glutes']),
+    adductors:levelFor(['adductors']),
+    quads:levelFor(['quads']),
+    hamstrings:levelFor(['hamstrings']),
+    calves:levelFor(['calves'])
+  };
   return {
     counts,
     top:Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([key,value])=>({key,label:homeTitleCase(key),value,level:levelFor([key])})),
-    front:{
-      chest:levelFor(['chest']),
-      shoulders:levelFor(['shoulders','front_delts']),
-      biceps:levelFor(['biceps']),
-      forearms:levelFor(['forearms']),
-      core:levelFor(['core']),
-      quads:levelFor(['quads']),
-      calves:levelFor(['calves'])
-    },
-    back:{
-      back:levelFor(['back','lats','upper_back']),
-      shoulders:levelFor(['shoulders','rear_delts']),
-      triceps:levelFor(['triceps']),
-      forearms:levelFor(['forearms']),
-      glutes:levelFor(['glutes']),
-      hamstrings:levelFor(['hamstrings']),
-      calves:levelFor(['calves'])
-    }
+    regions,
+    front:regions,
+    back:regions
   };
 }
 function homeNextScheduledEntry(schedule,date=new Date()){
@@ -7649,13 +7661,13 @@ function bodyHeatClass(level){
 }
 function renderHomeFrontAnatomy(snapshot){
   const anatomy=window.GoWorkoutAnatomy;
-  if(anatomy?.front)return anatomy.front(snapshot.front||{});
-  return '<svg class="home-anatomy-svg anatomy-pro front" viewBox="0 0 280 520" role="img" aria-label="Front muscular anatomy training load"><text x="140" y="260" text-anchor="middle" class="anatomy-fallback-text">FRONT</text></svg>';
+  if(anatomy?.front)return anatomy.front(snapshot.regions||snapshot.front||{});
+  return '<svg class="home-anatomy-svg anatomy-pro front" viewBox="0 0 320 570" role="img" aria-label="Front muscular anatomy training load"><text x="160" y="285" text-anchor="middle" class="anatomy-fallback-text">FRONT</text></svg>';
 }
 function renderHomeBackAnatomy(snapshot){
   const anatomy=window.GoWorkoutAnatomy;
-  if(anatomy?.back)return anatomy.back(snapshot.back||{});
-  return '<svg class="home-anatomy-svg anatomy-pro back" viewBox="0 0 280 520" role="img" aria-label="Back muscular anatomy training load"><text x="140" y="260" text-anchor="middle" class="anatomy-fallback-text">BACK</text></svg>';
+  if(anatomy?.back)return anatomy.back(snapshot.regions||snapshot.back||{});
+  return '<svg class="home-anatomy-svg anatomy-pro back" viewBox="0 0 320 570" role="img" aria-label="Back muscular anatomy training load"><text x="160" y="285" text-anchor="middle" class="anatomy-fallback-text">BACK</text></svg>';
 }
 function renderHomeBodySnapshot(){
   const snapshot=homeWeekMuscleSnapshot();
