@@ -2425,40 +2425,168 @@ function estimatePlanExerciseSeconds(ex,restBonus=0){
   const between=Math.max(15,Math.min(120,baseRest+(ex.blockId?0:Math.max(0,num(restBonus)))));
   return (ex.setup||25)+(ex.sets||2)*setSeconds+Math.max(0,(ex.sets||2)-1)*between+35;
 }
-function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
-  if(!day?.exercises?.length)return day;
-  if(day.exercises.some(ex=>ex.blockId))return day;
+const WORKOUT_STRUCTURE_OPTIONS=[
+  {id:'adaptive',label:'Adaptive',short:'Adaptive',copy:'GoWorkout chooses the format that best fits today.'},
+  {id:'straight',label:'Straight sets',short:'Straight',copy:'Finish your sets on one exercise before moving on.'},
+  {id:'superset',label:'Supersets',short:'Superset',copy:'Two compatible exercises alternate before a longer rest.'},
+  {id:'tri-set',label:'Tri-sets',short:'Tri-set',copy:'Three compatible exercises rotate for three rounds by default.'},
+  {id:'circuit',label:'Circuit',short:'Circuit',copy:'Move through a larger group with short transitions between exercises.'},
+  {id:'hybrid',label:'Hybrid',short:'Hybrid',copy:'Keep priority lifts as straight sets, then group accessory work.'}
+];
+const WORKOUT_STRUCTURE_IDS=new Set(WORKOUT_STRUCTURE_OPTIONS.map(item=>item.id));
+const STRUCTURE_COMPOUND_MOVEMENTS=new Set(['horizontal-push','horizontal-pull','vertical-push','vertical-pull','squat','hinge','single-leg']);
+
+function workoutStructureLabel(id){
+  return WORKOUT_STRUCTURE_OPTIONS.find(item=>item.id===id)?.label||'Adaptive';
+}
+function profileWorkoutStructure(profile=store.profile||{}){
+  const value=String(profile?.workoutStructure||'adaptive');
+  return WORKOUT_STRUCTURE_IDS.has(value)?value:'adaptive';
+}
+function profileStructureRules(profile=store.profile||{}){
+  const existing=Array.isArray(profile?.structureRules)?profile.structureRules:[];
+  return existing.length?existing:['heavy-straight','limit-overlap','minimize-equipment'];
+}
+function clearWorkoutStructureBlocks(day){
+  if(!day?.exercises)return day;
   for(const ex of day.exercises){
     delete ex.blockId;delete ex.blockType;delete ex.blockOrder;delete ex.transitionRest;delete ex.blockRest;
   }
-  const exactIds=['push-up','sit-up','pull-up'];
-  const exact=exactIds.map(id=>day.exercises.findIndex(ex=>ex.id===id));
-  let indexes=[];
-  const exactMatch=exact.every(index=>index>=0);
-  if(exactMatch)indexes=exact;
-  else{
-    const accessory=new Set(['core','biceps','triceps','shoulder-accessory','calves','horizontal-push','horizontal-pull','vertical-pull']);
-    const candidates=day.exercises.map((ex,index)=>({ex,index}))
-      .filter(({ex})=>accessory.has(ex.movement)&&(num(ex.setup)||25)<=35)
-      .map(item=>item.index);
-    const wanted=['general','fat-loss'].includes(profile.goal)?3:2;
-    if(candidates.length>=wanted)indexes=candidates.slice(-wanted);
-  }
-  if(indexes.length<2)return day;
-  const ordered=exactMatch?[...new Set(indexes)]:[...new Set(indexes)].sort((a,b)=>a-b);
-  const blockType=ordered.length>=3?'tri-set':'superset';
-  const blockId=(day.id||'session')+'-'+blockType+'-1';
-  const roundRest=blockType==='tri-set'?75:60;
-  ordered.forEach((index,order)=>{
-    const ex=day.exercises[index];
-    ex.blockId=blockId;
-    ex.blockType=blockType;
-    ex.blockOrder=order;
-    ex.transitionRest=15;
-    ex.blockRest=roundRest;
-  });
-  day.blocks=[{id:blockId,type:blockType,exerciseIds:ordered.map(index=>day.exercises[index].id),transitionRest:15,roundRest}];
+  day.blocks=[];
   return day;
+}
+function structurePrimaryMuscles(ex){
+  return Array.isArray(ex?.muscles)?ex.muscles.slice(0,2):[];
+}
+function structureCompatible(a,b,rules){
+  if(!a||!b||a.id===b.id)return false;
+  if(a.movement===b.movement)return false;
+  if(rules.includes('limit-overlap')){
+    const left=new Set(structurePrimaryMuscles(a));
+    if(structurePrimaryMuscles(b).some(muscle=>left.has(muscle)))return false;
+  }
+  return true;
+}
+function assignWorkoutStructureBlock(day,indexes,type,number,context={}){
+  const clean=[...new Set(indexes)].filter(index=>day.exercises[index]);
+  if(clean.length<2)return null;
+  const id=(day.id||'session')+'-'+type+'-'+number;
+  const transitionRest=type==='circuit'?10:15;
+  const roundRest=type==='tri-set'?75:type==='circuit'?90:60;
+  const readiness=context.readiness||{};
+  const recoveryRoundCut=num(readiness.soreness)>=4||num(readiness.energy)<=1||num(readiness.sleep)<=1;
+  const rounds=type==='tri-set'?(recoveryRoundCut?2:3):null;
+  clean.forEach((index,order)=>{
+    const ex=day.exercises[index];
+    ex.blockId=id;
+    ex.blockType=type;
+    ex.blockOrder=order;
+    ex.transitionRest=transitionRest;
+    ex.blockRest=roundRest;
+    if(type==='tri-set')ex.sets=rounds;
+  });
+  const item={id,type,exerciseIds:clean.map(index=>day.exercises[index].id),transitionRest,roundRest};
+  if(rounds)item.rounds=rounds;
+  day.blocks.push(item);
+  return item;
+}
+function groupWorkoutStructure(day,indexes,size,type,context={}){
+  const rules=profileStructureRules(context.profile||store.profile||{});
+  const remaining=[...indexes];
+  const groups=[];
+  while(remaining.length>=size){
+    const seed=remaining.shift();
+    const group=[seed];
+    for(let cursor=0;cursor<remaining.length&&group.length<size;){
+      const candidate=remaining[cursor];
+      if(group.every(index=>structureCompatible(day.exercises[index],day.exercises[candidate],rules))){
+        group.push(candidate);
+        remaining.splice(cursor,1);
+      }else cursor+=1;
+    }
+    if(group.length===size)groups.push(group);
+  }
+  groups.forEach((group,index)=>assignWorkoutStructureBlock(day,group,type,index+1,context));
+  return groups;
+}
+function learnedWorkoutStructure(){
+  const stats=trainingLearnerOverview()?.structureProfile?.stats||{};
+  const candidates=Object.entries(stats)
+    .filter(([id,item])=>id!=='adaptive'&&WORKOUT_STRUCTURE_IDS.has(id)&&num(item.sessions)>=2&&num(item.completionRate)>=.75)
+    .sort((a,b)=>{
+      const aScore=num(a[1].completionRate)*100-num(a[1].skipRate)*25+Math.min(10,num(a[1].sessions));
+      const bScore=num(b[1].completionRate)*100-num(b[1].skipRate)*25+Math.min(10,num(b[1].sessions));
+      return bScore-aScore;
+    });
+  return candidates[0]?{id:candidates[0][0],stats:candidates[0][1]}:null;
+}
+function recommendedWorkoutStructure(day,readiness={},profile=store.profile||{}){
+  const requested=String(readiness.trainingStructure||'');
+  if(requested&&requested!=='adaptive'&&WORKOUT_STRUCTURE_IDS.has(requested))return {structure:requested,reason:'Selected for today'};
+  const profileChoice=profileWorkoutStructure(profile);
+  if(profileChoice!=='adaptive')return {structure:profileChoice,reason:'Your training profile preference'};
+  const learned=learnedWorkoutStructure();
+  const adaptation=String(profile.structureAdaptation||'balanced');
+  if(learned&&adaptation==='optimize')return {structure:learned.id,reason:'Learned from your completed sessions',learned:true};
+  const minutes=Math.max(15,num(readiness.timeAvailable)||num(day?.estimatedMinutes)||num(profile.minutes)||45);
+  const goal=String(profile.goal||'muscle');
+  const count=day?.exercises?.length||0;
+  if(minutes<=25&&count>=3)return {structure:'tri-set',reason:'Short session window'};
+  if(['fat-loss','general'].includes(goal)&&count>=4)return {structure:'circuit',reason:'Your goal favors denser work'};
+  if(goal==='strength'&&count>=4)return {structure:'hybrid',reason:'Priority strength work stays protected'};
+  if(count>=6)return {structure:'hybrid',reason:'Compounds stay focused while accessories pair efficiently'};
+  if(learned&&adaptation!=='close')return {structure:learned.id,reason:'Based on your recent format history',learned:true};
+  return {structure:'straight',reason:'Simple default for this session'};
+}
+function applyWorkoutStructure(day,requested='adaptive',profile=store.profile||{},context={}){
+  if(!day?.exercises?.length)return day;
+  clearWorkoutStructureBlocks(day);
+  const safeRequested=WORKOUT_STRUCTURE_IDS.has(String(requested))?String(requested):'adaptive';
+  const recommendation=safeRequested==='adaptive'
+    ?recommendedWorkoutStructure(day,{...(context.readiness||{}),trainingStructure:'adaptive'},profile)
+    :{structure:safeRequested,reason:'Selected for today'};
+  let applied=WORKOUT_STRUCTURE_IDS.has(recommendation.structure)?recommendation.structure:'straight';
+  const all=day.exercises.map((ex,index)=>index);
+  const rules=profileStructureRules(profile);
+  const protectedIndexes=new Set();
+
+  if(rules.includes('heavy-straight')){
+    const firstCompound=all.find(index=>STRUCTURE_COMPOUND_MOVEMENTS.has(day.exercises[index]?.movement));
+    if(firstCompound!==undefined)protectedIndexes.add(firstCompound);
+  }
+
+  if(applied==='superset'){
+    groupWorkoutStructure(day,all.filter(index=>!protectedIndexes.has(index)),2,'superset',{...context,profile});
+  }else if(applied==='tri-set'){
+    groupWorkoutStructure(day,all.filter(index=>!protectedIndexes.has(index)),3,'tri-set',{...context,profile});
+  }else if(applied==='circuit'){
+    const candidates=all.filter(index=>!protectedIndexes.has(index));
+    if(candidates.length>=3)assignWorkoutStructureBlock(day,candidates.slice(0,Math.min(5,candidates.length)),'circuit',1,{...context,profile});
+  }else if(applied==='hybrid'){
+    const candidates=all.filter(index=>!protectedIndexes.has(index));
+    const dense=String(profile.goal||'')==='muscle'&&candidates.length>=6;
+    groupWorkoutStructure(day,candidates,dense?3:2,dense?'tri-set':'superset',{...context,profile});
+  }
+
+  if(applied!=='straight'&&!day.blocks.length){
+    applied='straight';
+    recommendation.reason='Not enough compatible exercises, so this session stays in straight sets';
+  }
+
+  day.trainingStructure={
+    requested:safeRequested,
+    recommended:recommendation.structure,
+    applied,
+    reason:recommendation.reason,
+    learned:Boolean(recommendation.learned),
+    blockCount:day.blocks.length,
+    rules:clone(rules),
+    selectedAt:context.source==='session'?new Date().toISOString():null
+  };
+  return day;
+}
+function assignDynamicWorkoutBlocks(day,profile=store.profile||{}){
+  return applyWorkoutStructure(day,profileWorkoutStructure(profile),profile,{source:'legacy'});
 }
 function recalculatePlanDay(day){
   if(!day)return;
@@ -4085,6 +4213,9 @@ function saveProfileFromForm(form){
     minutes:num(data.get('minutes'))||45,
     equipment:data.get('equipment')||'full-gym',
     style:data.get('style')||'mixed',
+    workoutStructure:WORKOUT_STRUCTURE_IDS.has(String(data.get('workoutStructure')||''))?String(data.get('workoutStructure')):'adaptive',
+    structureAdaptation:['close','balanced','optimize'].includes(String(data.get('structureAdaptation')||''))?String(data.get('structureAdaptation')):'balanced',
+    structureRules:data.getAll('structureRules'),
     avoid:data.getAll('avoid'),
     priorities:data.getAll('priorities').slice(0,2),
     lifts:{
@@ -4352,8 +4483,26 @@ function renderReadinessTimeOptions(selectedMinutes){
     '<label><input type="radio" name="timeAvailable" value="'+value+'" '+(value===selectedMinutes?'checked':'')+'><span>'+value+' MIN</span></label>'
   ).join('')+'</div></details>';
 }
+function renderTrainingStructureOptions(selected='adaptive',applied=''){
+  const chosen=WORKOUT_STRUCTURE_IDS.has(String(selected))?String(selected):'adaptive';
+  const learned=learnedWorkoutStructure();
+  return '<div class="preflight-structure-options">'+WORKOUT_STRUCTURE_OPTIONS.map(item=>{
+    const active=chosen===item.id;
+    const learnedTag=learned?.id===item.id?'<em>LEARNED FIT</em>':'';
+    const appliedTag=chosen==='adaptive'&&applied===item.id?'<em>TODAY</em>':'';
+    return '<label class="preflight-structure-card"><input type="radio" name="trainingStructure" value="'+item.id+'" '+(active?'checked':'')+'><span><strong>'+esc(item.label)+'</strong><small>'+esc(item.copy)+'</small>'+(appliedTag||learnedTag)+'</span></label>';
+  }).join('')+'</div>';
+}
+function workoutStructurePlanLine(day){
+  const structure=day?.trainingStructure||{};
+  const blocks=num(structure.blockCount);
+  const format=workoutStructureLabel(structure.applied||'straight');
+  return (day?.exercises?.length||0)+' exercises · '+format+(blocks?' · '+blocks+' grouped block'+(blocks===1?'':'s'):'')+' · about '+num(day?.estimatedMinutes)+' min';
+}
 function readinessPreviewSnapshot(day,readiness,setup){
-  const preview=adaptDayForSessionSetup(applyReadinessToDay(clone(day),readiness),setup,readiness.timeAvailable);
+  let preview=adaptDayForSessionSetup(applyReadinessToDay(clone(day),readiness),setup,readiness.timeAvailable);
+  preview=applyWorkoutStructure(preview,readiness.trainingStructure||store.profile?.workoutStructure||'adaptive',store.profile||{},{readiness,source:'session'});
+  recalculatePlanDay(preview);
   const changes=preview.trainingContext?.changes||[];
   const replacementCount=changes.filter(change=>change.type==='replacement').length;
   const unavailableCount=changes.filter(change=>change.type==='unavailable').length;
@@ -4401,7 +4550,8 @@ function updateReadinessPreview(){
     energy:num(data.get('energy'))||3,
     soreness:num(data.get('soreness'))||2,
     sleep:num(data.get('sleep'))||3,
-    timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
+    timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45,
+    trainingStructure:String(data.get('trainingStructure')||readinessContext.initialReadiness?.trainingStructure||store.profile?.workoutStructure||'adaptive')
   };
   const setup=sessionSetupFromForm(form,readinessContext.preferredSetup||normalSessionSetupKey());
   for(const key of ['energy','soreness','sleep']){
@@ -4422,7 +4572,7 @@ function updateReadinessPreview(){
   }
   if(summary)summary.textContent=readiness.timeAvailable+' MIN AVAILABLE · '+readinessLocationLabel(setup.key).toUpperCase();
   if(summaryReadiness)summaryReadiness.textContent=readinessWord('energy',readiness.energy)+' energy · '+readinessWord('soreness',readiness.soreness)+' soreness · '+readinessWord('sleep',readiness.sleep)+' sleep';
-  if(plan)plan.textContent=snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min';
+  if(plan)plan.textContent=workoutStructurePlanLine(snapshot.day);
   if(consequenceList)consequenceList.innerHTML=renderReadinessConsequences(snapshot);
   if(equipmentTitle){
     const family=readinessLocationFamily(setup.key);
@@ -4523,7 +4673,8 @@ function renderReadinessModal(){
   const selectedMinutes=num(initial.timeAvailable)||num(store.profile?.minutes)||45;
   const selectedSetup=readinessContext.preferredSetup||normalSessionSetupKey();
   const setupContext=readinessContext.setupContext?.key===selectedSetup?readinessContext.setupContext:buildSessionSetup(selectedSetup);
-  const values={energy:num(initial.energy)||3,soreness:num(initial.soreness)||2,sleep:num(initial.sleep)||3,timeAvailable:selectedMinutes};
+  const selectedStructure=WORKOUT_STRUCTURE_IDS.has(String(initial.trainingStructure||''))?String(initial.trainingStructure):profileWorkoutStructure(store.profile||{});
+  const values={energy:num(initial.energy)||3,soreness:num(initial.soreness)||2,sleep:num(initial.sleep)||3,timeAvailable:selectedMinutes,trainingStructure:selectedStructure};
   const snapshot=readinessPreviewSnapshot(day,values,setupContext);
   return '<div class="exercise-modal-backdrop readiness-backdrop preflight-backdrop" data-action="close-readiness">'+
     '<section class="exercise-modal readiness-modal preflight-modal-v2" role="dialog" aria-modal="true" aria-label="Today’s workout setup" data-readiness-panel>'+
@@ -4543,7 +4694,8 @@ function renderReadinessModal(){
           renderReadinessScaleRow('sleep','Sleep','sleep',values.sleep)+
         '</div></section>'+
         '<section class="preflight-block"><div class="preflight-block-title"><span>3.</span><strong>TIME</strong></div>'+renderReadinessTimeOptions(selectedMinutes)+'</section>'+
-        '<section class="preflight-workout-card"><div class="preflight-workout-head"><span>'+uiIcon('plan')+'</span><div><small>TODAY’S WORKOUT</small><strong data-readiness-plan>'+snapshot.day.exercises.length+' exercises · about '+snapshot.day.estimatedMinutes+' min</strong></div></div><ul data-readiness-consequences>'+renderReadinessConsequences(snapshot)+'</ul></section>'+
+        '<section class="preflight-block preflight-structure-block"><div class="preflight-block-title"><span>4.</span><strong>WORKOUT STRUCTURE</strong></div><p class="preflight-block-copy">Choose how today’s exercises flow. Adaptive can use your profile and learned session history.</p>'+renderTrainingStructureOptions(selectedStructure,snapshot.day.trainingStructure?.applied||'')+'</section>'+
+        '<section class="preflight-workout-card"><div class="preflight-workout-head"><span>'+uiIcon('plan')+'</span><div><small>TODAY’S WORKOUT</small><strong data-readiness-plan>'+workoutStructurePlanLine(snapshot.day)+'</strong></div></div><ul data-readiness-consequences>'+renderReadinessConsequences(snapshot)+'</ul></section>'+
         '<button class="button primary-action preflight-build-button" type="button" data-action="begin-workout">'+(readinessContext.mode==='edit'?'UPDATE MY ':'BUILD MY ')+esc(day.name.toUpperCase())+'</button>'+
       '</form>'+
     '</section></div>';
@@ -4558,7 +4710,8 @@ async function startPreparedWorkout(){
     energy:num(data.get('energy'))||3,
     soreness:num(data.get('soreness'))||2,
     sleep:num(data.get('sleep'))||3,
-    timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45
+    timeAvailable:num(data.get('timeAvailable'))||num(store.profile?.minutes)||45,
+    trainingStructure:String(data.get('trainingStructure')||context.initialReadiness?.trainingStructure||store.profile?.workoutStructure||'adaptive')
   };
   const setup=sessionSetupFromForm(form,context.preferredSetup||normalSessionSetupKey());
   readiness.score=readinessScore(readiness);
@@ -4583,6 +4736,8 @@ async function startPreparedWorkout(){
   const sourceDay=clone(context.day);
   let day=applyReadinessToDay(sourceDay,readiness);
   day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
+  day=applyWorkoutStructure(day,readiness.trainingStructure,store.profile||{},{readiness,source:'session'});
+  recalculatePlanDay(day);
   if(!day.exercises.length){
     context.building=null;
     context.buildError='No usable exercises match that setup. Add available equipment or choose another training location.';
@@ -4616,13 +4771,14 @@ async function startPreparedWorkout(){
   if(sharedDraft?.backendId)activateSharedWorkout(sharedDraft).catch(error=>console.warn('Shared workout activation failed',error));
 }
 function createWorkout(day,meta={}){
-  day=assignDynamicWorkoutBlocks(clone(day),store.profile||{});
+  day=applyWorkoutStructure(clone(day),meta.readiness?.trainingStructure||day.trainingStructure?.requested||profileWorkoutStructure(store.profile||{}),store.profile||{},{readiness:meta.readiness||{},source:'session'});
+  recalculatePlanDay(day);
   const now=new Date().toISOString();
   const workout={
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
-    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
+    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
     preparedAt:now,startedAt:now,trainingStartedAt:null,estimatedMinutes:num(day.estimatedMinutes)||num(meta.estimatedMinutes)||num(meta.readiness?.timeAvailable)||num(store.profile?.minutes)||45,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,totalPausedMs:0,pauseLog:[],
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,timedStageSide:'',
@@ -6002,16 +6158,28 @@ function renderProfileEditor(){
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>07</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
+      <section class="form-section training-structure-profile-section"><div class="form-section-head"><span>07</span><div><h3>How do you like to train?</h3><p>Choose your normal workout structure. You can still change it before any session.</p></div></div>
+        <div class="structure-choice-grid">
+          ${WORKOUT_STRUCTURE_OPTIONS.map(item=>`<label class="choice-card structure-choice-card"><input type="radio" name="workoutStructure" value="${item.id}" ${(p.workoutStructure||'adaptive')===item.id?'checked':''}><span><strong>${esc(item.label)}</strong><small>${esc(item.copy)}</small></span></label>`).join('')}
+        </div>
+        <div class="structure-adaptation-grid">
+          ${[['close','Stick closely to my choice','Only change format when the selected structure cannot work.'],['balanced','Adapt when it makes sense','Respect my choice while allowing practical session adjustments.'],['optimize','Optimize for me','Let GoWorkout use learned completion and session patterns more aggressively.']].map(([v,t,d])=>`<label class="choice-card compact"><input type="radio" name="structureAdaptation" value="${v}" ${(p.structureAdaptation||'balanced')===v?'checked':''}><span><strong>${t}</strong><small>${d}</small></span></label>`).join('')}
+        </div>
+        <div class="structure-rule-box"><span>PROGRAMMING GUARDRAILS</span><div class="check-row">
+          ${[['heavy-straight','Keep the first heavy compound lift as straight sets'],['limit-overlap','Avoid pairing movements with the same primary muscles'],['minimize-equipment','Prefer groups that reduce equipment changes']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="structureRules" value="${v}" ${(p.structureRules||['heavy-straight','limit-overlap','minimize-equipment']).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}
+        </div></div>
+      </section>
+
+      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Training priorities</h3><p>Choose up to two areas to emphasize. These choices influence exercise ranking.</p></div></div>
         <div class="check-row">${[['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['glutes','Glutes'],['core','Core']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="priorities" value="${v}" ${(p.priorities||[]).includes(v)?'checked':''}><span>${t}</span></label>`).join('')}</div>
       </section>
-      <section class="form-section"><div class="form-section-head"><span>08</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Recent working weights <em>optional</em></h3><p>If you know them, they improve starting estimates. Leave blank if not.</p></div></div>
         <div class="form-grid five">
           ${[['bench','Bench press'],['squat','Squat'],['deadlift','Deadlift / RDL'],['overhead','Overhead press'],['row','Row / pulldown']].map(([n,l])=>`<label class="field"><span>${l.toUpperCase()}</span><input name="${n}" type="number" min="0" step="5" value="${esc(lifts[n]||'')}" placeholder="lb"></label>`).join('')}
         </div>
       </section>
 
-      <section class="form-section"><div class="form-section-head"><span>09</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
+      <section class="form-section"><div class="form-section-head"><span>10</span><div><h3>Movements to leave out</h3><p>These are preference/exclusion controls, not medical advice. If pain or an injury limits training, use guidance from a qualified clinician.</p></div></div>
         <div class="check-row">
           ${[['overhead','Overhead pressing'],['knee','Deep knee-dominant work'],['hinge','Hip hinging'],['floor','Floor exercises']].map(([v,t])=>`<label class="check-pill"><input type="checkbox" name="avoid" value="${v}" ${av(v)}><span>${t}</span></label>`).join('')}
         </div>
@@ -7252,7 +7420,7 @@ function renderProfileHub(){
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
-      '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>Goals, schedule, identity, equipment, preferences</strong></div><em>›</em></button>'+
+      '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -9318,15 +9486,22 @@ function renderLearnerDiagnostics(){
 }
 function renderAdaptiveLearningOverview(){
   const overview=trainingLearnerOverview();
-  if(!overview.modeledExercises)return '';
+  const structure=overview.structureProfile||{};
+  const structureSessions=num(structure.totalSessions);
+  if(!overview.modeledExercises&&!structureSessions)return '';
   const hit=overview.recentPredictionHitRate===null?'LEARNING':Math.round(overview.recentPredictionHitRate*100)+'%';
   const strongest=Object.values(ensureTrainingLearner()?.models||{}).sort((a,b)=>(b.confidence?.score||0)-(a.confidence?.score||0))[0]||null;
+  const favorite=structure.preferredStructure||'';
+  const structureLine=favorite
+    ?' Format learning has '+structureSessions+' completed session'+(structureSessions===1?'':'s')+' and currently sees '+workoutStructureLabel(favorite)+' as your strongest completion pattern.'
+    :structureSessions?' Format learning is collecting enough sessions before it favors one structure.':'';
   return '<section class="adaptive-learning-overview">'+
-    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Load, reps, rest, volume, and readiness earn confidence separately. Volume compares 2, 3, and 4 working-set evidence, starts in shadow mode, then can run an occasional one-set controlled experiment after stronger evidence. Only one volume experiment can run in a workout, readiness must be adequate, and at least two normal exposures separate tests. Each experiment gets an immediate check and a next-exposure follow-up before the learner trusts it.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
+    '<div class="adaptive-learning-copy"><p class="eyebrow">ADAPTIVE LEARNING · V'+esc(overview.version)+'</p><h3>GoWorkout is testing its predictions.</h3><p>'+overview.modeledExercises+' movement'+(overview.modeledExercises===1?'':'s')+' modeled from '+overview.events+' completed exercise exposures. Load, reps, rest, volume, readiness, and workout structure are learned separately.'+esc(structureLine)+' Volume still uses controlled evidence gates before automatic changes.</p><button class="text-button adaptive-diagnostics-link" data-action="toggle-learner-diagnostics">'+(learnerDiagnosticsOpen?'HIDE DIAGNOSTICS':'VIEW DIAGNOSTICS')+'</button></div>'+
     '<div class="adaptive-learning-stats">'+
       '<div><span>MODELED</span><strong>'+overview.modeledExercises+'</strong><small>movements</small></div>'+
       '<div><span>PREDICTIONS</span><strong>'+overview.predictionsEvaluated+'</strong><small>evaluated</small></div>'+
       '<div><span>LAST 20 HIT</span><strong>'+hit+'</strong><small>recent target accuracy</small></div>'+
+      '<div><span>FORMAT SESSIONS</span><strong>'+structureSessions+'</strong><small>'+(favorite?esc(workoutStructureLabel(favorite))+' trending':'still learning')+'</small></div>'+
       '<div><span>VOLUME TESTS</span><strong>'+num(overview.volumeExperiments)+'</strong><small>'+num(overview.delayedOutcomes)+' follow-up checks completed</small></div>'+
     '</div>'+
   '</section>';
