@@ -1969,12 +1969,16 @@ function applyCoachPreset(id){
 }
 function renderCueControls(){
   const settings=workoutCueSettings();
+  const active=store.activeWorkout&&store.activeWorkout.phase!=='intro';
+  if(active){
+    return '<button type="button" class="workout-cue-mini" data-action="open-cue-settings" aria-label="Coach and cue settings">'+uiIcon('settings')+'<span class="sr-only">Coach settings</span></button>';
+  }
   const voiceLabel=settings.voice?(settings.aiCoach?coachVoiceLabel(settings.coachVoice):'Device voice'):'Voice off';
   const style=COACH_SETTING_LABELS.coachStyle[settings.coachStyle]||'Balanced';
-  const vibe=COACH_SETTING_LABELS.coachVibe[settings.coachVibe]||'Warm & Familiar';
-  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings"><span>◉</span><div><strong>Coach & cues</strong><small>'+esc(voiceLabel+' · '+style+' · Tap to adjust')+'</small></div><em>›</em></button>';
+  return '<button type="button" class="workout-cue-compact" data-action="open-cue-settings">'+uiIcon('coach')+'<div><strong>Coach & cues</strong><small>'+esc(voiceLabel+' · '+style+' · Tap to adjust')+'</small></div><em>›</em></button>';
 }
 
+const MOVEMENT_GUIDANCE = {
 const MOVEMENT_GUIDANCE = {
   'squat': {
     cue:'Keep your chest tall and let your knees track with your toes.',
@@ -2755,6 +2759,24 @@ function timedStageImageUrl(item,index=0){
   if(item?.mediaStatus==='none')return '';
   const mediaId=item?.mediaId||TIMED_STAGE_MEDIA[item?.name];
   return mediaId?EXERCISE_IMAGE_BASE+encodeURIComponent(mediaId)+'/'+index+'.jpg':'';
+}
+
+function renderTimedStageFallback(item,index=0){
+  const name=String(item?.name||'Movement').toLowerCase();
+  const type=name.includes('march')?'march':name.includes('circle')||name.includes('sweep')?'arms':name.includes('rotation')?'rotate':name.includes('squat')||name.includes('lunge')?'lower':'mobility';
+  const body='<circle cx="40" cy="20" r="7"/><path d="M40 27v24M40 34 24 43M40 34l18 8M40 51 28 69M40 51l15 18"/>';
+  const motion=type==='march'
+    ?'<path d="M22 48c-5 2-8 6-9 11M58 43c6 1 10 5 12 10"/><path d="m13 59 1-7 6 4M70 53l-6-4-1 7"/>'
+    :type==='arms'
+      ?'<path d="M17 37c2-13 12-23 23-25M63 37c-2-13-12-23-23-25"/><path d="m18 30-1 7 7-1M62 30l1 7-7-1"/>'
+      :type==='rotate'
+        ?'<path d="M18 43c9-10 34-11 45 0"/><path d="m58 36 5 7-8 1"/>'
+        :'<path d="M18 62c8 7 35 7 44-1"/><path d="m57 55 5 6-7 2"/>';
+  return '<span class="timed-stage-illustration '+type+'" aria-hidden="true"><svg viewBox="0 0 80 80">'+body+motion+'</svg><small>'+String(index+1).padStart(2,'0')+'</small></span>';
+}
+function renderTimedStageMedia(item,index=0){
+  const image=timedStageImageUrl(item,0);
+  return image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':renderTimedStageFallback(item,index);
 }
 
 function timedStageWhy(item){
@@ -7996,16 +8018,14 @@ function runnerPhaseMinutes(items=[]){
 }
 function renderWarmupRoutine(w){
   return '<div class="runner-warmup-routine">'+
-    '<div class="runner-routine-head"><h2>'+esc(w.routineName)+' Warm-up</h2><p>'+runnerPhaseMinutes(w.warmup)+' minutes · '+w.warmup.length+' movements</p><small>Get your body ready for today’s workout with dynamic movement and mobility.</small></div>'+
+    '<div class="runner-routine-head"><h2>'+esc(w.routineName)+' Warm-up</h2><p>'+runnerPhaseMinutes(w.warmup)+' minutes · '+w.warmup.length+' movements</p><small>Preview the sequence. Starting from the Ready screen now goes directly into movement one.</small></div>'+
     '<div class="runner-routine-list">'+w.warmup.map((item,index)=>{
-      const image=timedStageImageUrl(item,0);
       const target=item.mode==='reps'||item.reps?(item.reps+' reps'+(item.side?' '+item.side:'')):(formatClock(item.seconds||30)+(item.side?' each side':''));
-      return '<div class="runner-routine-row"><div class="runner-routine-thumb">'+(image?'<img src="'+esc(image)+'" alt="">':'<span>'+String(index+1).padStart(2,'0')+'</span>')+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div><em>≡</em></div>';
+      return '<div class="runner-routine-row"><div class="runner-routine-thumb">'+renderTimedStageMedia(item,index)+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(target)+'</small></div><em>'+String(index+1).padStart(2,'0')+'</em></div>';
     }).join('')+'</div>'+
     '<div class="runner-warmup-actions"><button class="button primary-action runner-gold-action" data-action="start-warmup">START WARM-UP</button><button class="text-button runner-skip-warmup" data-action="skip-warmup" data-skip-source="routine">SKIP WARM-UP</button></div>'+
   '</div>';
 }
-
 function renderWarmupComplete(w){
   const first=w.exercises?.[0];
   return '<div class="runner-warmup-complete"><div class="runner-complete-mark">✓</div><h2>You’re warm.</h2><p>'+esc(w.routineName)+' starts with</p>'+
@@ -8023,7 +8043,8 @@ function renderWorkout(){
   const headerProgress=w.phase==='warmup'&&warmSnap?(warmSnap.index+1)+' of '+(w.warmup?.length||0):activeStrength?(pos.ei+1)+' of '+w.exercises.length:'';
   const warmElapsed=w.phase==='warmup'?('<span>Warm-up <b id="warmup-elapsed-clock">'+formatClock(warmupElapsedSeconds(w))+'</b></span>'):'';
   const exerciseElapsed=activeStrength?('<span>Exercise <b id="exercise-clock">'+formatClock(exerciseElapsedSeconds(w))+'</b></span>'):'';
-  const headerTimers=w.phase==='intro'?'':('<small class="runner-header-timers"><span>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b></span>'+exerciseElapsed+warmElapsed+'</small>');
+  const timerBits=[w.phase==='intro'?'':'<span>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b></span>',exerciseElapsed,warmElapsed].filter(Boolean);
+  const headerTimers=w.phase==='intro'?'':('<small class="runner-header-timers">'+timerBits.join('<i>·</i>')+'</small>');
   return '<div class="guided-shell cleaned-workout runner-v2 phase-'+esc(w.phase)+'"><div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
     '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+headerTimers+'</div><button class="circle-action" data-action="open-workout-map" aria-label="Workout preview">•••</button></header>'+
     (w.phase==='warmup'?'<div class="runner-top-progress"><span style="width:'+(((warmSnap?.index||0)+1)/Math.max(1,w.warmup.length)*100)+'%"></span></div>':activeStrength?'<div class="runner-top-progress"><span style="width:'+((pos.ei+1)/Math.max(1,w.exercises.length)*100)+'%"></span></div>':'')+
@@ -8101,9 +8122,9 @@ function renderTimedStage(w){
 
   if(snap.mode==='ready'){
     return '<div class="timed-stage runner-guided-stage runner-guided-ready" data-stage-index="'+index+'" data-stage-mode="ready">'+
-      '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
+      '<div class="runner-stage-media">'+renderTimedStageMedia(item,index)+'</div>'+
       '<div class="runner-stage-copy">'+(snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'')+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p></div>'+
-      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?'Coach countdown is running.':'Start this movement when you are set.')+'</strong><small>'+(guidedAutoStartEnabled(w.phase)?'This normally starts after the coach cue.':'Auto-start is off in your coach settings.')+'</small></div>'+
+      '<div class="runner-guided-ready-card"><span>'+(w.timedStageStarting?'STARTING':'WHEN YOU’RE READY')+'</span><strong>'+(w.timedStageStarting?(w.timedStageCountdownValue||'GO'):'Start this movement when you are set.')+'</strong><small>'+(w.timedStageStarting?'The visible countdown controls the start. Coach audio will not hold the timer.':(guidedAutoStartEnabled(w.phase)?'Auto-start begins immediately with a visible countdown.':'Auto-start is off in your coach settings.'))+'</small></div>'+
       '<button class="button primary-action runner-gold-action" data-action="start-guided-stage" '+(w.timedStageStarting?'disabled':'')+'>'+(w.timedStageStarting?'STARTING…':'START MOVEMENT')+'</button>'+
       (w.phase==='warmup'?'<button class="text-button runner-skip-warmup runner-skip-remaining" data-action="skip-warmup" data-skip-source="active">SKIP REMAINING WARM-UP</button>':'')+
     '</div>';
@@ -8121,7 +8142,7 @@ function renderTimedStage(w){
 
   const sideLabel=snap.side?'<span class="runner-stage-side">'+esc(snap.side)+'</span>':'';
   return '<div class="timed-stage runner-guided-stage" data-stage-index="'+index+'" data-stage-mode="'+esc(snap.mode)+'">'+
-    '<div class="runner-stage-media">'+(image?'<img src="'+esc(image)+'" loading="eager" decoding="async" alt="'+esc(item?.name||'Movement')+' demonstration">':'<div class="runner-stage-placeholder"><span>'+String(index+1).padStart(2,'0')+'</span></div>')+'</div>'+
+    '<div class="runner-stage-media">'+renderTimedStageMedia(item,index)+'</div>'+
     '<div class="runner-stage-copy">'+sideLabel+'<h2>'+esc(item?.name||'Get ready')+'</h2><p>'+esc(item?.description||item?.cue||'Move through a comfortable range.')+'</p>'+(item?.cue?'<small class="runner-stage-form-tip"><b>FORM TIP</b> '+esc(item.cue)+'</small>':'')+'</div>'+
     (snap.mode==='reps'?'<div class="runner-rep-selected"><span>ACTUAL REPS</span><div class="runner-rep-stepper"><button data-action="warmup-rep-minus" '+(snap.completedReps<=1?'disabled':'')+' aria-label="Decrease reps">−</button><div><strong>'+snap.completedReps+'</strong><span>of '+snap.totalReps+' target'+(item?.side?' · this side':'')+'</span></div><button data-action="warmup-rep" aria-label="Increase reps">+</button></div><button class="button primary-action runner-gold-action" data-action="complete-stage-reps">COMPLETE MOVEMENT</button></div>':'<div class="runner-stage-time" id="stage-clock">'+formatClock(snap.remaining)+'</div>')+
     (snap.mode==='reps'?'<small class="runner-rep-instruction">Adjust the number only if you completed more or fewer reps, then tap Complete Movement.</small>':'<div class="runner-stage-progress"><span id="stage-progress-fill" style="width:'+pct+'%"></span></div>')+
