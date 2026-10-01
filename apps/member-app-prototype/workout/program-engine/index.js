@@ -193,10 +193,10 @@ const SLOT_TEMPLATES={
 };
 
 function normalizeProfile(input){
- const p=Object.assign({goal:'hypertrophy',experience:'beginner',sessionsPerWeek:4,sessionMinutes:45,equipment:['bodyweight','dumbbell','bench'],priorities:[],preferences:[],exclusions:[],stretchMinutes:10,mobilitySessionsPerWeek:1},input||{});
+ const p=Object.assign({goal:'hypertrophy',experience:'beginner',sessionsPerWeek:4,sessionMinutes:45,equipment:['bodyweight','dumbbell','bench'],priorities:[],preferences:[],exclusions:[],stretchMinutes:2,mobilitySessionsPerWeek:1},input||{});
  p.sessionsPerWeek=Math.max(2,Math.min(5,Number(p.sessionsPerWeek)||4));
  p.sessionMinutes=Math.max(20,Math.min(120,Number(p.sessionMinutes)||45));
- p.stretchMinutes=[5,10,15].includes(Number(p.stretchMinutes))?Number(p.stretchMinutes):10;
+ p.stretchMinutes=Math.max(1,Math.min(15,Number(p.stretchMinutes)||2));
  p.equipment=Array.from(new Set(['bodyweight'].concat(p.equipment||[]))); p.temporaryExclusions=p.temporaryExclusions||[]; p.exerciseHistory=p.exerciseHistory||{}; p.discomfortPatterns=p.discomfortPatterns||[];
  return p;
 }
@@ -274,8 +274,139 @@ function expandStretchActivity(stretchItem,totalSeconds){
  }
  return [{...base,side:stretchItem.side||'both',perSide:false,seconds:totalSeconds,secondsPerSide:null}];
 }
+function movementStageDuration(item){
+ const seconds=Math.max(0,Number(item?.seconds)||0);
+ return seconds*(item?.side==='each side'?2:1);
+}
+function movementSessionActivity(stretchItem,secondsPerSide){
+ return {
+   id:stretchItem.id,
+   catalogId:stretchItem.id,
+   name:stretchItem.name,
+   bodyArea:stretchItem.bodyArea,
+   type:stretchItem.type,
+   regions:stretchItem.regions,
+   muscles:stretchItem.muscles,
+   position:stretchItem.position,
+   equipment:stretchItem.equipment,
+   side:stretchItem.side==='per_side'?'each side':'',
+   alternating:stretchItem.side==='alternating',
+   seconds:Math.max(1,Math.round(secondsPerSide)),
+   cues:stretchItem.cues,
+   feel:stretchItem.feel,
+   mistakes:stretchItem.mistakes,
+   modification:stretchItem.modification,
+   placements:stretchItem.placements,
+   compatible:stretchItem.compatible,
+   imageKey:stretchItem.imageKey,
+   imageStatus:stretchItem.imageStatus,
+   imageRequirement:stretchItem.imageRequirement,
+   tags:stretchItem.tags
+ };
+}
+function stageEquipmentFits(item,p,options){
+ const available=new Set((options?.availableEquipment||p?.equipment||[]).concat('bodyweight'));
+ return (item.equipment||[]).every(eq=>eq==='bodyweight'||eq==='wall'||available.has(eq));
+}
+function stageCompatible(item,label){
+ const wanted=String(label||'').startsWith('upper')?'upper':String(label||'').startsWith('lower')?'lower':'full_body';
+ const compatible=item.compatible||['full_body'];
+ return compatible.includes(wanted)||compatible.includes('full_body')||wanted==='full_body';
+}
+function stageCompatibilityScore(item,label){
+ const wanted=String(label||'').startsWith('upper')?'upper':String(label||'').startsWith('lower')?'lower':'full_body';
+ const compatible=item.compatible||['full_body'];
+ if(compatible.includes(wanted))return 40;
+ if(compatible.includes('full_body'))return 12;
+ return 0;
+}
+function stageTypeScore(item,placement){
+ if(placement==='warmup'){
+   if(item.type==='dynamic')return 70;
+   if(item.type==='mobility')return 60;
+   if(item.type==='active')return 50;
+   if(item.type==='breath_assisted')return -20;
+   if(item.type==='static')return -45;
+ }
+ if(placement==='cooldown'){
+   if(item.type==='static')return 60;
+   if(item.type==='breath_assisted')return 45;
+   if(item.type==='mobility')return 10;
+   if(item.type==='dynamic')return -25;
+ }
+ return item.type==='mobility'?35:item.type==='static'?25:15;
+}
+function buildMovementSession(seconds,label,p,options){
+ const opts=options||{};
+ const placement=opts.placement||'recovery';
+ const target=Math.max(60,Math.min(900,Number(seconds)||120));
+ const trainedMuscles=Array.from(new Set(opts.trainedMuscles||[]));
+ const excludedPositions=new Set(opts.excludedPositions||[]);
+ const excludedIds=new Set(opts.excludedIds||[]);
+ const targets=stretchTargets(label);
+ const maxItems=Math.max(1,Math.min(8,Number(opts.maxItems)||(placement==='warmup'?5:placement==='cooldown'?4:6)));
+ let pool=STRETCHES.filter(item=>
+   !excludedIds.has(item.id)&&
+   !excludedPositions.has(item.position)&&
+   stretchPlacementFits(item,placement)&&
+   stageCompatible(item,label)&&
+   stageEquipmentFits(item,p,opts)
+ );
+ if(!pool.length){
+   pool=STRETCHES.filter(item=>
+     !excludedIds.has(item.id)&&
+     !excludedPositions.has(item.position)&&
+     stretchPlacementFits(item,placement)&&
+     stageEquipmentFits(item,p,opts)
+   );
+ }
+ pool=pool.slice().sort((a,b)=>{
+   const aScore=stretchScore(a,targets,trainedMuscles)+stageTypeScore(a,placement)+stageCompatibilityScore(a,label);
+   const bScore=stretchScore(b,targets,trainedMuscles)+stageTypeScore(b,placement)+stageCompatibilityScore(b,label);
+   return bScore-aScore||a.id.localeCompare(b.id);
+ });
+ const activities=[];
+ let total=0;
+ for(const item of pool){
+   if(activities.length>=maxItems||total>=target)break;
+   const perSide=item.side==='per_side';
+   const units=perSide?2:1;
+   const preferred=Math.max(15,Number(item.defaultSeconds)||25);
+   const minimum=Math.max(10,Number(item.minSeconds)||Number(item.beginnerSeconds)||15);
+   const remaining=target-total;
+   if(remaining<minimum*units)continue;
+   const secondsPerSide=Math.min(preferred,Math.floor(remaining/units));
+   if(secondsPerSide<minimum)continue;
+   const activity=movementSessionActivity(item,secondsPerSide);
+   activities.push(activity);
+   total+=movementStageDuration(activity);
+ }
+ if(placement!=='warmup'&&total<target){
+   const reset=STRETCHES.find(item=>item.id==='breathing_reset');
+   if(reset&&!activities.some(item=>item.catalogId===reset.id)&&stageEquipmentFits(reset,p,opts)&&!excludedPositions.has(reset.position)){
+     const remaining=target-total;
+     if(remaining>=10){
+       const activity=movementSessionActivity(reset,remaining);
+       activities.push(activity);
+       total+=movementStageDuration(activity);
+     }
+   }
+ }
+ return {
+   type:placement==='warmup'?'warmup':placement==='cooldown'?'stretch':'mobility',
+   placement,
+   targetSeconds:target,
+   targetMinutes:Math.round(target/6)/10,
+   totalSeconds:total,
+   activities,
+   catalogVersion:1,
+   targetedMuscles:trainedMuscles,
+   setupFiltered:Boolean(opts.availableEquipment||opts.excludedPositions)
+ };
+}
+
 function buildStretchSession(minutes,label,p,options){
- const target=Math.max(300,Math.min(900,minutes*60));
+ const target=Math.max(60,Math.min(900,minutes*60));
  const opts=options||{},placement=opts.placement||'cooldown';
  const targets=stretchTargets(label);
  const trainedMuscles=Array.from(new Set(opts.trainedMuscles||[]));
@@ -311,7 +442,7 @@ function estimateStrengthMinutes(strength){
  },0);
 }
 function timeBudgetSession(session,p){
- const warmupSeconds=session.warmup.reduce((n,x)=>n+x.seconds,0);
+ const warmupSeconds=session.warmup.reduce((n,x)=>n+movementStageDuration(x),0);
  const stretchSeconds=session.stretch.totalSeconds;
  const availableStrength=Math.max(8,p.sessionMinutes-(warmupSeconds+stretchSeconds)/60);
  let running=0;
@@ -442,7 +573,8 @@ function buildProgram(input){
        };
      });
      const trainedMuscles=Array.from(new Set(strength.filter(x=>x.exercise).flatMap(x=>(x.exercise.primary||[]).concat(x.exercise.secondary||[]))));
-     let session={id:'w'+week+'s'+(index+1),week,index:index+1,label,type:'strength',estimatedMinutes:p.sessionMinutes,warmup:warmupFor(label),strength,stretch:buildStretchSession(p.stretchMinutes,label,p,{placement:'cooldown',trainedMuscles}),status:'scheduled'};
+     const warmupSeconds=p.sessionMinutes<=30?180:p.sessionMinutes>=60?300:240;
+     let session={id:'w'+week+'s'+(index+1),week,index:index+1,label,type:'strength',estimatedMinutes:p.sessionMinutes,warmup:buildMovementSession(warmupSeconds,label,p,{placement:'warmup',trainedMuscles,maxItems:5}).activities,strength,stretch:buildStretchSession(p.stretchMinutes,label,p,{placement:'cooldown',trainedMuscles}),status:'scheduled'};
      session=applySupersets(session);
      session=timeBudgetSession(session,p);
      if(week===1)baselineSessions[index]=JSON.parse(JSON.stringify(session));
@@ -461,7 +593,7 @@ function buildProgram(input){
    },{retained:0,rotated:0,progressed:0,total:0});
    weeks.push({week,label:model.label,sessions,recoveryActivities,changeSummary:totals,provisional:week>1});
  }
- return {version:'1.7.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.7',programModel:'anchor_rotation',stretchCatalogVersion:1};
+ return {version:'1.8.0',profile:p,strategy,weeks,createdBy:'GoWorkout Program Engine v1.8',programModel:'anchor_rotation',stretchCatalogVersion:1};
 }
 function validateProgram(program){
  const errors=[];
@@ -470,7 +602,7 @@ function validateProgram(program){
  if(sessions.length!==program.profile.sessionsPerWeek*4)errors.push('Session count does not match frequency');
  sessions.forEach(s=>{
    if(!s.warmup?.length)errors.push(s.id+': missing warmup');
-   if(!s.stretch||![300,600,900].includes(s.stretch.totalSeconds))errors.push(s.id+': stretch duration invalid');
+   if(!s.stretch||s.stretch.totalSeconds<60||s.stretch.totalSeconds>900)errors.push(s.id+': stretch duration invalid');
    s.strength.forEach(x=>{
      if(x.exercise&&!equipmentFits(x.exercise,program.profile))errors.push(s.id+': incompatible equipment '+x.exercise.id);
      if(x.exercise&&program.profile.exclusions.includes(x.exercise.id))errors.push(s.id+': excluded exercise selected '+x.exercise.id);
@@ -784,7 +916,7 @@ function progressionDecision(history,target){
  return {action:'maintain',reason:'Performance remains within progression range'};
 }
 
-const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,EXECUTION_STATES,normalizeProfile,buildStrategy,stretchTargets,expandStretchActivity,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,createWorkoutExecution,executionTransition,recordSet,startRest,restRemaining,finishRest,previewNextExercise,navigateExercise,canAdvanceExercise,advanceExercise,substituteDuringWorkout,executionSnapshot,resumeExecution,completeWarmupStep,completeStretchStep,completionPayload,serializeExecution,restoreExecution,guardedExecutionWrite,recoverExecution,progressionDecision};
+const API={TAXONOMY,EXERCISES,STRETCHES,MOBILITY,CONDITIONING,WEEK_MODELS,EXECUTION_STATES,normalizeProfile,buildStrategy,stretchTargets,expandStretchActivity,movementStageDuration,buildMovementSession,buildStretchSession,buildMobilitySession,buildConditioningSession,substitutionsFor,substitutionOptions,weeklyMuscleTargets,weeklyMuscleVolume,volumeAudit,rebalancePriorityVolume,interpretPostWorkoutFeedback,createSchedule,transitionScheduleEntry,buildProgram,validateProgram,readinessDecision,applyReadiness,muscleVolume,ingestPerformance,compressSession,adaptationDecision,createProgramVersion,createWorkoutExecution,executionTransition,recordSet,startRest,restRemaining,finishRest,previewNextExercise,navigateExercise,canAdvanceExercise,advanceExercise,substituteDuringWorkout,executionSnapshot,resumeExecution,completeWarmupStep,completeStretchStep,completionPayload,serializeExecution,restoreExecution,guardedExecutionWrite,recoverExecution,progressionDecision};
 if(typeof module!=='undefined'&&module.exports)module.exports=API;
 root.GoWorkoutProgramEngine=API;
 })(typeof globalThis!=='undefined'?globalThis:this);
