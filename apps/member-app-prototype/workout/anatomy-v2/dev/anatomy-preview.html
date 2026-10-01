@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GoWorkout Anatomy Base Preview</title>
+<style>
+  :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}
+  body{margin:0;background:#07110b;color:#f2f3ed}
+  main{max-width:920px;margin:auto;padding:32px 20px 48px}
+  h1{font-size:28px;margin:0 0 8px}
+  p{color:#9eaaa2;margin:0 0 24px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  figure{margin:0;padding:18px;border:1px solid rgba(216,180,92,.18);border-radius:24px;background:#0e1d14}
+  figcaption{font-size:12px;font-weight:800;letter-spacing:.16em;color:#e2c56a;text-align:center;margin-bottom:8px}
+  img{display:block;width:100%;height:min(70vh,620px);object-fit:contain}
+  @media(max-width:600px){.grid{gap:8px}figure{padding:10px;border-radius:16px}img{height:60vh}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Male anatomy base, Phase 1</h1>
+  <p>Silhouette review only. No muscle segmentation or heat overlays.</p>
+  <section class="grid">
+    <figure><figcaption>FRONT</figcaption><img src="../male/front/male-front-base.svg" alt="Male front base silhouette"></figure>
+    <figure><figcaption>BACK</figcaption><img src="../male/back/male-back-base.svg" alt="Male back base silhouette"></figure>
+  </section>
+</main>
+</body>
+</html>
