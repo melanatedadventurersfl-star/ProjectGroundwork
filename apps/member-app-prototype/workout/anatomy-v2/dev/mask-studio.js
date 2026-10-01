@@ -17,6 +17,10 @@
     erase:document.getElementById('eraseBtn'),
     clear:document.getElementById('clearBtn'),
     baseUpload:document.getElementById('baseUpload'),
+    litUpload:document.getElementById('litUpload'),
+    diffThreshold:document.getElementById('diffThreshold'),
+    diffThresholdOut:document.getElementById('diffThresholdOut'),
+    extractMask:document.getElementById('extractMaskBtn'),
     maskUpload:document.getElementById('maskUpload'),
     saveMask:document.getElementById('saveMaskBtn'),
     exportMask:document.getElementById('exportMaskBtn'),
@@ -43,6 +47,8 @@
   const previewCanvases=[...document.querySelectorAll('[data-preview]')]
   const baseImages={front:null,back:null}
   const customBaseUrls={front:'',back:''}
+  const litImages={front:null,back:null}
+  const litUrls={front:'',back:''}
 
   const state={
     view:'front',
@@ -51,6 +57,7 @@
     mode:'paint',
     brush:72,
     feather:38,
+    diffThreshold:32,
     drawing:false,
     last:null
   }
@@ -115,10 +122,58 @@
     els.mode.textContent=state.mode.toUpperCase()
     els.brushOut.textContent=state.brush
     els.featherOut.textContent=state.feather
+    if(els.diffThresholdOut)els.diffThresholdOut.textContent=state.diffThreshold
   }
 
   function clearCanvas(ctx,canvas){
     ctx.clearRect(0,0,canvas.width,canvas.height)
+  }
+
+  async function extractDifferenceMask(){
+    const base=await ensureBase()
+    const lit=litImages[state.view]
+    if(!lit){
+      setStatus('Load a lit reference for the current '+state.view+' view first.')
+      return
+    }
+
+    const baseCanvas=document.createElement('canvas')
+    const litCanvas=document.createElement('canvas')
+    baseCanvas.width=litCanvas.width=W
+    baseCanvas.height=litCanvas.height=H
+
+    const baseCtx=baseCanvas.getContext('2d',{willReadFrequently:true})
+    const litCtx=litCanvas.getContext('2d',{willReadFrequently:true})
+    baseCtx.drawImage(base,0,0,W,H)
+    litCtx.drawImage(lit,0,0,W,H)
+
+    const baseData=baseCtx.getImageData(0,0,W,H)
+    const litData=litCtx.getImageData(0,0,W,H)
+    const out=maskCtx.createImageData(W,H)
+    const threshold=state.diffThreshold
+
+    for(let i=0;i<out.data.length;i+=4){
+      const dr=Math.abs(litData.data[i]-baseData.data[i])
+      const dg=Math.abs(litData.data[i+1]-baseData.data[i+1])
+      const db=Math.abs(litData.data[i+2]-baseData.data[i+2])
+      const baseLum=(baseData.data[i]+baseData.data[i+1]+baseData.data[i+2])/3
+      const litLum=(litData.data[i]+litData.data[i+1]+litData.data[i+2])/3
+      const lift=Math.max(0,litLum-baseLum)
+      const diff=Math.max(dr,dg,db,lift*1.25)
+
+      if(diff>threshold){
+        const alpha=Math.max(0,Math.min(255,Math.round((diff-threshold)*7.2)))
+        out.data[i]=255
+        out.data[i+1]=255
+        out.data[i+2]=255
+        out.data[i+3]=alpha
+      }
+    }
+
+    maskCtx.clearRect(0,0,W,H)
+    maskCtx.putImageData(out,0,0)
+    await render()
+    setStatus('Extracted a difference mask. Paint or erase to clean the edges before saving.')
   }
 
   function createTintLayer(level){
@@ -482,6 +537,7 @@
   els.level.addEventListener('change',()=>{state.level=Number(els.level.value);render()})
   els.brush.addEventListener('input',()=>{state.brush=Number(els.brush.value);updateLabels()})
   els.feather.addEventListener('input',()=>{state.feather=Number(els.feather.value);updateLabels()})
+  els.diffThreshold.addEventListener('input',()=>{state.diffThreshold=Number(els.diffThreshold.value);updateLabels()})
 
   els.paint.addEventListener('click',()=>{
     state.mode='paint'
@@ -512,6 +568,17 @@
     await render()
     setStatus('Loaded custom '+state.view+' base image for this session.')
   })
+
+  els.litUpload.addEventListener('change',async event=>{
+    const file=event.target.files?.[0]
+    if(!file)return
+    if(litUrls[state.view])URL.revokeObjectURL(litUrls[state.view])
+    litUrls[state.view]=URL.createObjectURL(file)
+    litImages[state.view]=await loadImage(litUrls[state.view])
+    setStatus('Loaded lit '+state.view+' reference. Adjust the threshold, then extract the mask.')
+  })
+
+  els.extractMask.addEventListener('click',extractDifferenceMask)
 
   els.maskUpload.addEventListener('change',async event=>{
     const file=event.target.files?.[0]
