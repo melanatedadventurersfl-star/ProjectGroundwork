@@ -1,5 +1,6 @@
 (function(){
-  const FEATURE_FLAG=true;
+  // Dev-only until approved base artwork replaces the placeholder silhouette.
+  const FEATURE_FLAG=false;
   function assetFor(view='front',variant='male'){
     const config=window.GoWorkoutAnatomyCanvas;
     return config?.assets?.[variant]?.[view]||'';
