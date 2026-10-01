@@ -27,6 +27,7 @@ let cloudSyncTimer=null;
 let cloudHydrating=false;
 let exerciseDetailId = null;
 let exerciseDetailTab = 'form';
+let exerciseHistoryMetric = 'weight';
 let swapContext = null;
 let readinessContext = null;
 let trainPreviewContext = null;
@@ -3124,6 +3125,33 @@ function exerciseAnalysisTone(value){
   if(v.includes('limited')||v==='low')return 'limited';
   return 'moderate';
 }
+function exerciseAnalysisLevel(value){
+  const v=String(value||'').toLowerCase();
+  if(v.includes('high'))return 4;
+  if(v.includes('moderate to high'))return 3;
+  if(v.includes('moderate'))return 2;
+  if(v.includes('low'))return 1;
+  if(v.includes('limited'))return 1;
+  return 2;
+}
+function renderExerciseMetricMeter(label,value,why){
+  const level=exerciseAnalysisLevel(value);
+  return '<details class="exercise-profile-meter"><summary><div><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong></div><div class="exercise-meter-track" aria-hidden="true">'+
+    [1,2,3,4].map(index=>'<i class="'+(index<=level?'on':'')+'"></i>').join('')+
+    '</div></summary><p>'+esc(why)+'</p></details>';
+}
+function exerciseGoalFit(ex,analysis){
+  const goal=store.profile?.goal||'muscle';
+  const goalMap={
+    muscle:{label:'Muscle growth',fit:'Muscle growth',detail:'This view prioritizes resistance, range of motion, and progression options that support hypertrophy work.'},
+    strength:{label:'Strength',fit:'General strength',detail:'This view prioritizes progressive loading, repeatable technique, and the ability to measure performance over time.'},
+    'fat-loss':{label:'Conditioning',fit:'Muscular endurance',detail:'This view prioritizes movements that can fit moderate-to-higher rep work while keeping technique repeatable.'},
+    general:{label:'General fitness',fit:'General strength',detail:'This view favors a balanced role across strength, movement practice, and overall training capacity.'}
+  };
+  const target=goalMap[goal]||goalMap.muscle;
+  const row=analysis.fit.find(item=>item.label===target.fit)||analysis.fit[0];
+  return {...target,value:row?.value||'Moderate'};
+}
 function exerciseComparableOptions(ex,limit=3){
   const source=exerciseSource(ex)||ex;
   if(!source)return [];
@@ -3137,56 +3165,131 @@ function exerciseComparableOptions(ex,limit=3){
     .slice(0,limit)
     .map(row=>row.item);
 }
+function exerciseComparisonReason(source,candidate){
+  if(!source||!candidate)return 'Similar training purpose';
+  if(candidate.loadMode==='machine'&&source.loadMode!=='machine')return 'More external stability';
+  if(candidate.loadMode==='barbell'&&source.loadMode!=='barbell')return 'Higher loading ceiling';
+  if(['bodyweight','band'].includes(candidate.loadMode)&&!['bodyweight','band'].includes(source.loadMode))return 'Less equipment';
+  if(candidate.difficulty==='beginner'&&source.difficulty!=='beginner')return 'Simpler learning curve';
+  if(exerciseLaterality(candidate)!=='bilateral'&&exerciseLaterality(source)==='bilateral')return 'More single-side work';
+  return candidate.style===source.style?'Similar setup':'Different loading option';
+}
+function exerciseProgrammingGuidance(ex){
+  const source=exerciseSource(ex)||ex||{};
+  const compound=['squat','hinge','single-leg','horizontal-push','horizontal-pull','vertical-push','vertical-pull'].includes(source.movement);
+  const role=compound?'Primary or secondary lift':'Accessory movement';
+  const placement=compound?'Earlier in the strength portion, before fatigue makes technique harder to repeat.':'After primary lifts or wherever the target muscle needs focused work.';
+  const repRange=source.loadMode==='timed'?'20–60 sec':compound?'6–15 reps':'8–20 reps';
+  return {role,placement,repRange};
+}
+function renderExerciseMuscleVisual(ex,analysis){
+  const avatar=trainingAvatar();
+  return '<section class="exercise-muscle-visual" id="exercise-muscles">'+
+    '<div class="exercise-muscle-figure">'+renderAvatarFigure(avatar.id,'analysis-avatar')+'<span>'+esc(avatar.name)+'</span></div>'+
+    '<div class="exercise-muscle-copy"><span>MUSCLE EMPHASIS</span><h3>'+esc(analysis.primary.join(' · ')||'Movement dependent')+'</h3>'+
+      '<div class="muscle-chip-row">'+analysis.primary.map(item=>'<b class="primary">'+esc(item)+'</b>').join('')+analysis.secondary.map(item=>'<b>'+esc(item)+'</b>').join('')+'</div>'+
+      '<p>Primary labels show the main muscles listed for this exercise. Secondary demand reflects the movement pattern and should be read as training context, not a muscle-activation measurement.</p>'+
+    '</div>'+
+  '</section>';
+}
 function renderExerciseAnalysisPanel(ex){
   const analysis=exerciseTrainingAnalysis(ex);
+  const goalFit=exerciseGoalFit(ex,analysis);
+  const programming=exerciseProgrammingGuidance(ex);
   const fit=analysis.fit.map(item=>
     '<div class="exercise-fit-row"><span>'+esc(item.label)+'</span><strong class="tone-'+exerciseAnalysisTone(item.value)+'">'+esc(item.value)+'</strong></div>'
   ).join('');
   const comparable=exerciseComparableOptions(ex,3);
   const comparisons=comparable.length
-    ?'<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>COMPARE</span><strong>Similar movement options</strong></div><div class="exercise-comparison-list">'+comparable.map(item=>
-      '<button type="button" data-exercise-detail="'+esc(item.id)+'"><span>'+esc(item.name)+'</span><small>'+esc(item.style)+' · '+esc(item.difficulty)+' · '+esc((item.muscles||[]).slice(0,2).join(' / '))+'</small><em>VIEW →</em></button>'
+    ?'<section class="exercise-profile-section" id="exercise-compare"><div class="exercise-profile-section-head"><div><span>COMPARE</span><h3>Choose based on the job you need done.</h3></div></div><div class="exercise-comparison-list">'+comparable.map(item=>
+      '<button type="button" data-exercise-detail="'+esc(item.id)+'"><div><span>'+esc(item.name)+'</span><small>'+esc(exerciseComparisonReason(ex,item))+'</small></div><em>VIEW →</em></button>'
     ).join('')+'</div></section>'
     :'';
-  return '<div class="exercise-analysis">'+
-    '<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>EXERCISE PROFILE</span><strong>What this movement asks from you</strong></div>'+
-      '<div class="exercise-analysis-facts">'+
-        '<div><span>TYPE</span><strong>'+esc(analysis.type)+'</strong></div>'+
-        '<div><span>LOADING POTENTIAL</span><strong>'+esc(analysis.loadingPotential)+'</strong></div>'+
-        '<div><span>STABILITY DEMAND</span><strong>'+esc(analysis.stabilityDemand)+'</strong></div>'+
-        '<div><span>TECHNIQUE</span><strong>'+esc(analysis.techniqueComplexity)+'</strong></div>'+
-        '<div><span>FATIGUE COST</span><strong>'+esc(analysis.fatigueCost)+'</strong></div>'+
-        '<div><span>RANGE OF MOTION</span><strong>'+esc(analysis.rangePotential)+'</strong></div>'+
+  return '<div class="exercise-analysis exercise-profile-analysis">'+
+    '<section class="exercise-goal-hero"><div><span>FOR YOUR GOAL · '+esc(goalFit.label.toUpperCase())+'</span><h3>'+esc(goalFit.value)+' fit</h3><p>'+esc(goalFit.detail)+'</p></div><strong class="tone-'+exerciseAnalysisTone(goalFit.value)+'">'+esc(goalFit.value)+'</strong></section>'+
+    '<nav class="exercise-analysis-jump" aria-label="Analysis sections"><button type="button" data-exercise-anchor="exercise-profile">Profile</button><button type="button" data-exercise-anchor="exercise-muscles">Muscles</button><button type="button" data-exercise-anchor="exercise-fit">Fit</button><button type="button" data-exercise-anchor="exercise-compare">Compare</button></nav>'+
+    '<section class="exercise-profile-section" id="exercise-profile"><div class="exercise-profile-section-head"><div><span>EXERCISE PROFILE</span><h3>What this movement asks from you.</h3></div><small>'+esc(analysis.type)+'</small></div>'+
+      '<div class="exercise-profile-meters">'+
+        renderExerciseMetricMeter('Loading',analysis.loadingPotential,'How much progressive external resistance this exercise setup tends to support.')+
+        renderExerciseMetricMeter('Stability',analysis.stabilityDemand,'How much balance and body control the setup demands while you produce force.')+
+        renderExerciseMetricMeter('Technique',analysis.techniqueComplexity,'How much setup, coordination, and repeatable positioning typically matter for clean reps.')+
+        renderExerciseMetricMeter('Fatigue',analysis.fatigueCost,'How much whole-body or multi-joint fatigue the movement can create relative to smaller accessory work.')+
       '</div>'+
-      '<div class="exercise-muscle-map"><div><span>PRIMARY</span><strong>'+esc(analysis.primary.join(' · ')||'Movement dependent')+'</strong></div><div><span>SECONDARY DEMAND</span><strong>'+esc(analysis.secondary.join(' · ')||'Minimal additional emphasis')+'</strong></div></div>'+
+      '<div class="exercise-profile-tags"><span>ROM · '+esc(analysis.rangePotential)+'</span><span>'+esc(analysis.type)+'</span><span>'+esc(analysis.equipment)+'</span></div>'+
     '</section>'+
-    '<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>TRAINING FIT</span><strong>Where this exercise tends to fit best</strong></div><div class="exercise-fit-grid">'+fit+'</div><p class="exercise-analysis-note">Training fit describes the exercise’s loading, stability, and movement characteristics. It is not an effectiveness percentage. Results still depend on effort, technique, range of motion, recovery, and the rest of your program.</p></section>'+
-    '<section class="exercise-analysis-split"><div><span>STRONG AT</span><ul>'+analysis.strengths.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul></div><div><span>TRADEOFFS</span><ul>'+analysis.limitations.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul></div></section>'+
-    '<section class="exercise-analysis-section compact"><div class="exercise-analysis-heading"><span>EQUIPMENT</span><strong>'+esc(analysis.equipment)+'</strong></div></section>'+
+    renderExerciseMuscleVisual(ex,analysis)+
+    '<section class="exercise-profile-section" id="exercise-fit"><div class="exercise-profile-section-head"><div><span>TRAINING FIT</span><h3>Where this exercise tends to fit.</h3></div></div><div class="exercise-fit-grid">'+fit+'</div><p class="exercise-analysis-note">These are GoWorkout training-fit labels based on exercise characteristics. They are not effectiveness percentages or research effect sizes.</p></section>'+
+    '<section class="exercise-profile-two-col"><div><span>STRONG AT</span><ul>'+analysis.strengths.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul></div><div><span>TRADEOFFS</span><ul>'+analysis.limitations.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul></div></section>'+
+    '<section class="exercise-programming-card"><div><span>PROGRAMMING</span><h3>'+esc(programming.role)+'</h3></div><div class="exercise-programming-grid"><div><small>TYPICAL RANGE</small><strong>'+esc(programming.repRange)+'</strong></div><div><small>PLACEMENT</small><strong>'+esc(programming.placement)+'</strong></div></div></section>'+
     comparisons+
   '</div>';
 }
+function exerciseSessionWorkVolume(ex,row){
+  const source=exerciseSource(ex)||ex||{};
+  const pairMultiplier=source.loadMode==='dumbbell-pair'?2:1;
+  const sideMultiplier=exerciseRepCountMode(source)==='per-side'&&source.loadMode!=='dumbbell-pair'?2:1;
+  return (row?.sets||[]).reduce((sum,set)=>sum+(num(set.weight)*num(set.reps)*pairMultiplier*sideMultiplier),0);
+}
+function exerciseHistoryMetricValue(ex,row,metric){
+  if(metric==='reps')return num(row?.best?.reps);
+  if(metric==='volume')return exerciseSessionWorkVolume(ex,row);
+  return num(row?.best?.weight);
+}
+function exerciseHistoryMetricLabel(metric){
+  return metric==='reps'?'Best-set reps':metric==='volume'?'Load volume':'Best working weight';
+}
+function exerciseHistoryChart(ex,history,metric){
+  const rows=[...history].slice(0,8).reverse();
+  if(rows.length<2)return '<div class="exercise-chart-empty"><span>CHART UNLOCKS AFTER 2 SESSIONS</span><p>Keep logging this movement to see a trend line.</p></div>';
+  const values=rows.map(row=>exerciseHistoryMetricValue(ex,row,metric));
+  const max=Math.max(...values,1),min=Math.min(...values,0);
+  const spread=Math.max(1,max-min);
+  const width=620,height=190,padX=28,padY=24;
+  const points=values.map((value,index)=>{
+    const x=padX+(index*(width-padX*2)/Math.max(1,values.length-1));
+    const y=height-padY-((value-min)/spread)*(height-padY*2);
+    return {x,y,value,row:rows[index]};
+  });
+  const polyline=points.map(point=>point.x.toFixed(1)+','+point.y.toFixed(1)).join(' ');
+  const dots=points.map(point=>'<circle cx="'+point.x.toFixed(1)+'" cy="'+point.y.toFixed(1)+'" r="5"></circle>').join('');
+  const first=points[0],last=points[points.length-1];
+  const valueFormat=value=>metric==='volume'?formatVolume(value):metric==='weight'?Math.round(value)+' lb':Math.round(value);
+  return '<div class="exercise-history-chart"><div class="exercise-history-chart-head"><div><span>'+esc(exerciseHistoryMetricLabel(metric).toUpperCase())+'</span><strong>'+esc(valueFormat(last.value))+'</strong></div><small>'+esc(formatDate(first.row.date))+' → '+esc(formatDate(last.row.date))+'</small></div>'+
+    '<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="'+esc(exerciseHistoryMetricLabel(metric))+' trend"><line x1="'+padX+'" y1="'+(height-padY)+'" x2="'+(width-padX)+'" y2="'+(height-padY)+'"></line><polyline points="'+polyline+'"></polyline>'+dots+'</svg>'+
+  '</div>';
+}
+function exerciseHistoryInsight(ex,history){
+  if(!history.length)return {label:'NO BASELINE YET',detail:'Complete this exercise in a workout to start building your personal history.'};
+  if(history.length===1)return {label:'BASELINE ESTABLISHED',detail:'One completed session is recorded. Your next session will create the first direct comparison.'};
+  if(history.length<4)return {label:'BUILDING YOUR TREND',detail:'You have '+history.length+' completed sessions. Keep logging consistent sets before treating short-term changes as a stable trend.'};
+  const trend=exerciseTrend(ex);
+  return {label:trend.label,detail:trend.detail};
+}
 function renderExerciseHistoryAnalytics(ex){
   const history=exerciseSessionHistory(ex.id,100);
-  const trend=exerciseTrend(ex);
+  const weighted=!['bodyweight','timed','band'].includes(ex.loadMode);
+  if(!weighted&&exerciseHistoryMetric==='weight')exerciseHistoryMetric='reps';
+  const validMetrics=weighted?['weight','reps','volume']:['reps'];
+  if(!validMetrics.includes(exerciseHistoryMetric))exerciseHistoryMetric=validMetrics[0];
+  const insight=exerciseHistoryInsight(ex,history);
   if(!history.length){
-    return '<div class="exercise-history-analytics empty"><span>YOUR HISTORY</span><h3>No completed sessions yet.</h3><p>Your first completed sets for '+esc(ex.name)+' will establish the baseline for load, reps, volume, and future comparisons.</p>'+renderExerciseHistoryPanel(ex)+'</div>';
+    return '<div class="exercise-history-analytics empty"><section class="exercise-history-empty-hero"><span>YOUR HISTORY</span><h3>Start your '+esc(ex.name)+' baseline.</h3><p>Your completed sets will populate personal trends here. No generic performance score is shown in place of your data.</p></section>'+renderExerciseHistoryPanel(ex)+'</div>';
   }
   const latest=history[0];
-  const oldest=history[history.length-1];
   const totalSets=history.reduce((sum,row)=>sum+row.sets.length,0);
   const totalReps=history.reduce((sum,row)=>sum+row.sets.reduce((n,set)=>n+num(set.reps),0),0);
-  const totalVolume=history.reduce((sum,row)=>sum+num(row.volume),0);
-  const weighted=!['bodyweight','timed','band'].includes(ex.loadMode);
-  const loadChange=weighted&&latest.best&&oldest.best?Math.round((latest.best.weight-oldest.best.weight)*10)/10:null;
-  const sessions=history.slice(0,5).map(row=>
-    '<div class="exercise-session-row"><div><span>'+esc(formatDate(row.date))+'</span><strong>'+esc(row.routineName||'Workout')+'</strong></div><div><small>BEST SET</small><strong>'+esc(row.best?setPerformanceLabel(ex,row.best):'Logged')+'</strong></div>'+(weighted?'<div><small>VOLUME</small><strong>'+esc(formatVolume(row.volume||0))+'</strong></div>':'')+'</div>'
+  const totalVolume=history.reduce((sum,row)=>sum+exerciseSessionWorkVolume(ex,row),0);
+  const metricButtons=validMetrics.map(metric=>
+    '<button type="button" class="'+(exerciseHistoryMetric===metric?'active':'')+'" data-exercise-history-metric="'+metric+'"><span>'+esc(metric==='weight'?'WEIGHT':metric==='reps'?'REPS':'VOLUME')+'</span><strong>'+esc(metric==='weight'?(Math.round(latest.best?.weight||0)+' lb'):metric==='reps'?Math.round(latest.best?.reps||0):formatVolume(exerciseSessionWorkVolume(ex,latest)))+'</strong></button>'
+  ).join('');
+  const sessions=history.slice(0,6).map((row,index)=>
+    '<div class="exercise-session-timeline-row"><i></i><div><span>'+esc(formatDate(row.date))+'</span><strong>'+esc(row.routineName||'Workout')+'</strong><small>'+row.sets.length+' set'+(row.sets.length===1?'':'s')+'</small></div><div><span>BEST</span><strong>'+esc(row.best?setPerformanceLabel(ex,row.best):'Logged')+'</strong>'+(weighted?'<small>'+esc(formatVolume(exerciseSessionWorkVolume(ex,row)))+' load volume</small>':'')+'</div></div>'
   ).join('');
   return '<div class="exercise-history-analytics">'+
-    '<section class="exercise-history-overview"><div><span>SESSIONS</span><strong>'+history.length+'</strong></div><div><span>COMPLETED SETS</span><strong>'+totalSets+'</strong></div><div><span>TOTAL REPS</span><strong>'+Math.round(totalReps)+'</strong></div>'+(weighted?'<div><span>RECORDED VOLUME</span><strong>'+esc(formatVolume(totalVolume))+'</strong></div>':'')+'</section>'+
-    '<section class="exercise-history-trend"><span>'+esc(trend.label)+'</span><strong>'+esc(trend.detail)+'</strong>'+(loadChange!==null?'<small>Best working load change across recorded sessions: '+(loadChange>0?'+':'')+loadChange+' lb.</small>':'')+'</section>'+
-    renderExerciseHistoryPanel(ex)+
-    '<section class="exercise-analysis-section"><div class="exercise-analysis-heading"><span>RECENT SESSIONS</span><strong>Your latest logged work</strong></div><div class="exercise-session-list">'+sessions+'</div></section>'+
+    '<section class="exercise-history-overview"><div><span>SESSIONS</span><strong>'+history.length+'</strong></div><div><span>SETS</span><strong>'+totalSets+'</strong></div><div><span>REPS</span><strong>'+Math.round(totalReps)+'</strong></div>'+(weighted?'<div><span>LOAD VOLUME</span><strong>'+esc(formatVolume(totalVolume))+'</strong></div>':'')+'</section>'+
+    '<section class="exercise-history-insight"><div><span>GOWORKOUT INSIGHT</span><h3>'+esc(insight.label)+'</h3><p>'+esc(insight.detail)+'</p></div><small>Based on '+history.length+' completed session'+(history.length===1?'':'s')+'</small></section>'+
+    '<section class="exercise-history-visual"><div class="exercise-history-metric-tabs">'+metricButtons+'</div>'+exerciseHistoryChart(ex,history,exerciseHistoryMetric)+(weighted?'<p class="exercise-volume-note">Load volume is calculated from recorded external load × reps. Paired dumbbells and per-side movements are counted across both sides for this view. Machine loads are useful for your own trend but should not be compared directly across different machines.</p>':'')+'</section>'+
+    '<section class="exercise-profile-section"><div class="exercise-profile-section-head"><div><span>RECENT SESSIONS</span><h3>Your latest logged work.</h3></div></div><div class="exercise-session-timeline">'+sessions+'</div></section>'+
   '</div>';
 }
 
@@ -3199,7 +3302,7 @@ function renderExerciseModal(){
   }
   const ex=catalog.find(item=>item.id===exerciseDetailId)||store.activeWorkout?.exercises?.find(item=>item.id===exerciseDetailId);
   if(!ex)return '';
-  const guide=detailedExerciseGuidance(ex),spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex);
+  const guide=detailedExerciseGuidance(ex),spec=exerciseMediaSpec(ex),state=exerciseMediaState(ex),avatar=trainingAvatar();
   const primary=exerciseMediaFrameUrl(ex,0),secondary=exerciseMediaFrameUrl(ex,1);
   const endLabel=ex.movement==='squat'?'BOTTOM':ex.movement==='hinge'?'END':ex.movement==='horizontal-push'?'LOWERED':ex.movement==='vertical-pull'?'PULLED':'END';
   const media=primary
@@ -3208,7 +3311,7 @@ function renderExerciseModal(){
   const validTabs=['form','analysis','history'];
   const activeTab=validTabs.includes(exerciseDetailTab)?exerciseDetailTab:'form';
   const tabs='<nav class="exercise-detail-tabs" aria-label="Exercise detail sections">'+
-    ['form','analysis','history'].map(tab=>'<button type="button" class="'+(activeTab===tab?'active':'')+'" data-exercise-detail-tab="'+tab+'" aria-selected="'+(activeTab===tab?'true':'false')+'">'+(tab==='form'?'FORM':tab==='analysis'?'ANALYSIS':'YOUR HISTORY')+'</button>').join('')+
+    ['form','analysis','history'].map(tab=>'<button type="button" class="'+(activeTab===tab?'active':'')+'" data-exercise-detail-tab="'+tab+'" aria-selected="'+(activeTab===tab?'true':'false')+'">'+(tab==='form'?'FORM':tab==='analysis'?'ANALYSIS':'HISTORY')+'</button>').join('')+
   '</nav>';
   const formContent='<div class="exercise-detail-tab-panel form-tab">'+
     '<div class="exercise-modal-media runner-detail-media">'+media+'</div>'+
@@ -3223,10 +3326,11 @@ function renderExerciseModal(){
     :activeTab==='history'
       ?'<div class="exercise-detail-tab-panel history-tab">'+renderExerciseHistoryAnalytics(ex)+'</div>'
       :formContent;
-  return '<div class="exercise-modal-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail exercise-intelligence-detail" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise details" data-modal-panel>'+
-    '<button class="modal-close" type="button" data-action="close-details" aria-label="Close exercise details">×</button>'+
-    '<div class="runner-detail-head"><p class="eyebrow">'+esc(movements[ex.movement]||ex.movement)+'</p><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div>'+
+  const contextAction=store.activeWorkout?'<button type="button" data-action="close-details">RETURN TO WORKOUT</button>':'<button type="button" data-action="close-details">BACK TO LIBRARY</button>';
+  return '<div class="exercise-modal-backdrop exercise-profile-backdrop" data-action="close-details"><section class="exercise-modal runner-exercise-detail exercise-intelligence-detail" role="dialog" aria-modal="true" aria-label="'+esc(ex.name)+' exercise profile" data-modal-panel>'+
+    '<header class="exercise-profile-header"><button class="exercise-profile-back modal-close" type="button" data-action="close-details" aria-label="Back">‹</button><div class="exercise-profile-title"><span>'+esc(movements[ex.movement]||ex.movement)+'</span><h2>'+esc(ex.name)+'</h2><p>'+esc((ex.muscles||[]).join(' · '))+'</p></div><div class="exercise-profile-avatar-chip">'+renderAvatarFigure(avatar.id,'profile-avatar')+'<span><small>YOUR AVATAR</small><strong>'+esc(avatar.name)+'</strong></span></div></header>'+
     tabs+panel+
+    '<footer class="exercise-profile-footer">'+contextAction+'</footer>'+
   '</section></div>';
 }
 
@@ -9996,14 +10100,16 @@ function handleClick(event){
     if(!insideSwap||explicitClose){closeSwap();return;}
   }
   const detail=event.target.closest('[data-exercise-detail]');
-  if(detail){exerciseActionsIndex=null;beginExerciseDetailReview();exerciseDetailId=detail.dataset.exerciseDetail;exerciseDetailTab='form';render();return;}
+  if(detail){exerciseActionsIndex=null;beginExerciseDetailReview();const keepAnalysis=Boolean(detail.closest('.exercise-comparison-list'));exerciseDetailId=detail.dataset.exerciseDetail;if(!keepAnalysis)exerciseDetailTab='form';render();requestAnimationFrame(()=>document.querySelector('.exercise-intelligence-detail')?.scrollTo({top:0,behavior:'auto'}));return;}
   const close=event.target.closest('[data-action="close-details"]');
   if(close){
     const insidePanel=event.target.closest('[data-modal-panel]');
     const explicitClose=event.target.closest('.modal-close');
     if(!insidePanel||explicitClose){endExerciseDetailReview();exerciseDetailId=null;exerciseDetailTab='form';render();return;}
   }
-  const detailSection=event.target.closest('[data-exercise-detail-tab]');if(detailSection){const next=String(detailSection.dataset.exerciseDetailTab||'form');exerciseDetailTab=['form','analysis','history'].includes(next)?next:'form';render();return;}
+  const detailSection=event.target.closest('[data-exercise-detail-tab]');if(detailSection){const next=String(detailSection.dataset.exerciseDetailTab||'form');exerciseDetailTab=['form','analysis','history'].includes(next)?next:'form';render();requestAnimationFrame(()=>document.querySelector('.exercise-intelligence-detail')?.scrollTo({top:0,behavior:'auto'}));return;}
+  const detailMetric=event.target.closest('[data-exercise-history-metric]');if(detailMetric){exerciseHistoryMetric=String(detailMetric.dataset.exerciseHistoryMetric||'weight');render();requestAnimationFrame(()=>document.querySelector('.exercise-history-visual')?.scrollIntoView({block:'start'}));return;}
+  const detailAnchor=event.target.closest('[data-exercise-anchor]');if(detailAnchor){const target=document.getElementById(String(detailAnchor.dataset.exerciseAnchor||''));if(target)target.scrollIntoView({behavior:'smooth',block:'start'});return;}
   const tab=event.target.closest('[data-tab]');if(tab){setTab(tab.dataset.tab);return;}
   const start=event.target.closest('[data-start]');if(start){startWorkout(start.dataset.start,start.dataset.scheduledDate||'');return;}
   const rir=event.target.closest('[data-rir]');if(rir){applyCalibration(rir.dataset.rir);return;}
