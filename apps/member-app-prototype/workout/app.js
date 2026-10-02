@@ -6138,6 +6138,7 @@ function completeCurrentSet(){
   const side=unilateral?activeExerciseSide(pos.set):'both';
   const actionKey=workoutActionKey(pos.workout,'complete-set-'+side,pos.ei,pos.si);
   if(!claimWorkoutAction(pos.workout,actionKey)){toast('That side is already logged.');return;}
+  cancelCoachTimeline(true);
   const endedAt=new Date().toISOString();
   pos.set.plannedWeight=String(pos.set.plannedWeight??weight);
   pos.set.plannedReps=String(pos.set.plannedReps??reps);
@@ -7546,7 +7547,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   if(!workoutSupabase||!sessionId||store.account?.status!=='connected')return null;
   const [{data:session,error},{data:participants, error:participantError}]=await Promise.all([
     workoutSupabase.from('workout_shared_sessions').select('*').eq('id',sessionId).maybeSingle(),
-    workoutSupabase.from('workout_shared_participant_state').select('session_id,user_id,display_name,ready,connection_state,exercise_index,set_index,phase,is_paused,active_side,stage_index,stage_side,next_exercise_index,next_set_index,phase_started_at,phase_ends_at,timer_duration_seconds,paused_at,sync_revision,step_key,step_complete,updated_at').eq('session_id',sessionId)
+    workoutSupabase.from('workout_shared_participant_state').select('*').eq('session_id',sessionId)
   ]);
   if(error){console.warn('Shared session refresh failed',error);return null;}
   if(participantError)console.warn('Shared participant refresh failed',participantError);
@@ -7602,6 +7603,8 @@ async function unsubscribeSharedSession(){
   sharedRuntime.channel=null;
   sharedRuntime.sessionId='';
   sharedRuntime.lastPresenceSignature='';
+  sharedRuntime.lastAppliedSyncRevision=0;
+  sharedRuntime.pendingControlRequests.clear();
   if(channel&&workoutSupabase){
     try{await channel.untrack();}catch{}
     try{await workoutSupabase.removeChannel(channel);}catch{}
@@ -7881,7 +7884,6 @@ function sharedBarrierKey(pos,kind='set',side=''){
 function enterSharedBarrier(pos,key,pendingAction){
   const w=pos?.workout;
   if(!w||!sharedWorkoutSyncEnabled(w))return false;
-  cancelCoachTimeline(true);
   w.sharedStepKey=String(key||'');
   w.sharedStepComplete=true;
   w.sharedPendingAction=clone(pendingAction||{});
@@ -8219,6 +8221,7 @@ function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
   if(remote.connectionState==='offline')return 'Partner reconnecting';
   if(remote.phase==='complete')return 'Partner finished';
   if(remote.isPaused)return 'Partner paused';
+  if(remote.phase==='partner-wait')return 'Partner finished this step · waiting for you';
   if(remote.phase==='lobby')return 'Partner ready';
   const day=sharedDraftDay(draft);
   const ex=day?.exercises?.[remote.exerciseIndex];
@@ -8251,7 +8254,7 @@ function renderTogether(){
       '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
       '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
       '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
-      '<section class="prototype-note compact"><strong>Realtime connected.</strong><span>Only lobby state, online status, workout phase, and exercise/set position synchronize. Readiness answers, body data, weights, reps, notes, PRs, and history stay private.</span></section>'+
+      '<section class="prototype-note compact"><strong>Realtime connected.</strong><span>Stay Together synchronizes side, set, phase, timers, pauses, and transitions. Flexible Pace shares position without forcing one clock. Readiness answers, body data, weights, reps, notes, PRs, and history stay private.</span></section>'+
     '</div>';
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
