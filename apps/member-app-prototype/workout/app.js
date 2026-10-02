@@ -20,8 +20,6 @@ const TRAINING_AVATARS = [
 const EXERCISE_IMAGE_BASE = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
 const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
 const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
-const WORKOUT_OWNER_USER_ID = '804ce75b-f3ba-4759-8258-47bd9a3660ea';
-const WORKOUT_PRIVATE_ACCESS_MESSAGE = 'This GoWorkout build is private. Sign in with the owner account.';
 let workoutSupabase = null;
 let authReady=false;
 const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:''};
@@ -6780,11 +6778,6 @@ async function initWorkoutAuth(){
   }
 }
 function applyWorkoutSession(session){
-  if(session?.user && session.user.id!==WORKOUT_OWNER_USER_ID){
-    accountEntryError=WORKOUT_PRIVATE_ACCESS_MESSAGE;
-    void workoutSupabase?.auth.signOut({scope:'local'});
-    session=null;
-  }
   authReady=true;
   cloudHydrating=Boolean(session?.user);
   const previousUserId=store.account?.userId||'';
@@ -6833,11 +6826,6 @@ async function signInEntryAccount(){
       accountEntryError='Sign-in did not create a session. Try again.';
       return;
     }
-    if(data.session.user?.id!==WORKOUT_OWNER_USER_ID){
-      await workoutSupabase.auth.signOut({scope:'local'});
-      accountEntryError=WORKOUT_PRIVATE_ACCESS_MESSAGE;
-      return;
-    }
     if(store.account?.status!=='connected'||store.account?.userId!==data.session.user?.id){
       applyWorkoutSession(data.session);
     }
@@ -6851,9 +6839,6 @@ async function signInEntryAccount(){
   }
 }
 async function createEntryAccount(){
-  accountEntryError=WORKOUT_PRIVATE_ACCESS_MESSAGE;
-  render();
-  return;
   if(accountEntryBusy)return;
   accountEntryError='';
   if(!workoutSupabase){accountEntryError='Account service is unavailable. Reload and try again.';render();return;}
@@ -6911,19 +6896,12 @@ async function signInWorkoutAccount(){
     toast(message);return;
   }
   if(!data?.session){toast('Sign-in did not create a browser session. Try again.');return;}
-  if(data.session.user?.id!==WORKOUT_OWNER_USER_ID){
-    await workoutSupabase.auth.signOut({scope:'local'});
-    toast(WORKOUT_PRIVATE_ACCESS_MESSAGE);
-    return;
-  }
   accountSheetOpen=false;
   persistUiState();
   toast('Signed in.');
   render();
 }
 async function createOnboardingAccount(){
-  toast(WORKOUT_PRIVATE_ACCESS_MESSAGE);
-  return;
   if(!workoutSupabase){toast('Account service is not available.');return;}
   const email=(document.querySelector('#onboard-account-email')?.value||document.querySelector('[name="email"]')?.value||'').trim().toLowerCase();
   const password=document.querySelector('#onboard-account-password')?.value||'';
@@ -6938,8 +6916,6 @@ async function createOnboardingAccount(){
   toast(data?.session?'Account created. Finish your training setup.':'Account created. Confirm your email, then sign in to sync this setup.');render();
 }
 async function createWorkoutAccount(){
-  toast(WORKOUT_PRIVATE_ACCESS_MESSAGE);
-  return;
   if(!workoutSupabase){toast('Account service is not available in this build.');return;}
   const email=(document.querySelector('#account-email')?.value||'').trim().toLowerCase();
   const password=document.querySelector('#account-password')?.value||'';
