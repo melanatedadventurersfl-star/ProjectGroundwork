@@ -6153,6 +6153,7 @@ function completeCurrentSet(){
     };
     delete pos.workout.setStartedAt;
     if(side==='right'){
+      pos.set.activeSide='right';
       fireWorkoutSignal('complete','complete-side-'+pos.workout.id+'-'+pos.ei+'-'+pos.si+'-right',{voice:'Right side complete',label:'DONE'});
       if(enterSharedBarrier(pos,sharedBarrierKey(pos,'side','right'),{kind:'side-switch'}))return;
       beginExerciseSideSwitch(pos);
@@ -7778,6 +7779,7 @@ function sharedActiveSide(w){
   if(['warmup','cooldown'].includes(w.phase))return w.timedStageSwitchEndsAt?'switch':(w.timedStageSide||'');
   const ex=w.exercises?.[w.currentExerciseIndex],set=ex?.sets?.[w.currentSetIndex];
   if(w.phase==='side-switch')return 'switch';
+  if(exerciseNeedsSideSwitch(ex)&&['right','left','switch','done'].includes(set?.activeSide))return set.activeSide;
   return exerciseNeedsSideSwitch(ex)?activeExerciseSide(set):'both';
 }
 function applySharedRemoteState(draft,remote){
@@ -7826,7 +7828,7 @@ function applySharedRemoteState(draft,remote){
     }
     const set=ex?.sets?.[si];
     if(set&&exerciseNeedsSideSwitch(ex)&&remote.activeSide){
-      set.activeSide=remote.activeSide==='switch'?'switch':remote.activeSide==='left'?'left':'right';
+      set.activeSide=['right','left','switch','done'].includes(remote.activeSide)?remote.activeSide:'right';
     }
     if(['warmup','cooldown'].includes(w.phase)){
       w.timedStageIndex=Math.max(0,num(remote.stageIndex));
@@ -7979,9 +7981,36 @@ async function syncSharedParticipantState(){
   if(!workoutSupabase)return;
   const state=currentSharedCoordinationState();
   if(!state)return;
-  const {error}=await workoutSupabase
+  const precisePayload={
+    display_name:state.displayName,
+    ready:state.ready,
+    connection_state:state.connectionState,
+    exercise_index:state.exerciseIndex,
+    set_index:state.setIndex,
+    phase:state.phase,
+    is_paused:state.isPaused,
+    active_side:state.activeSide||null,
+    stage_index:state.stageIndex,
+    stage_side:state.stageSide||null,
+    next_exercise_index:state.nextExerciseIndex,
+    next_set_index:state.nextSetIndex,
+    phase_started_at:state.phaseStartedAt,
+    phase_ends_at:state.phaseEndsAt,
+    timer_duration_seconds:state.timerDurationSeconds,
+    paused_at:state.pausedAt,
+    sync_revision:state.syncRevision,
+    step_key:state.stepKey||null,
+    step_complete:state.stepComplete,
+    updated_at:state.updatedAt
+  };
+  let {error}=await workoutSupabase
     .from('workout_shared_participant_state')
-    .update({
+    .update(precisePayload)
+    .eq('session_id',state.sessionId)
+    .eq('user_id',state.userId);
+  if(error){
+    console.warn('Precise participant state update failed, retrying compatibility payload',error);
+    const fallback={
       display_name:state.displayName,
       ready:state.ready,
       connection_state:state.connectionState,
@@ -7989,22 +8018,15 @@ async function syncSharedParticipantState(){
       set_index:state.setIndex,
       phase:state.phase,
       is_paused:state.isPaused,
-      active_side:state.activeSide||null,
-      stage_index:state.stageIndex,
-      stage_side:state.stageSide||null,
-      next_exercise_index:state.nextExerciseIndex,
-      next_set_index:state.nextSetIndex,
-      phase_started_at:state.phaseStartedAt,
-      phase_ends_at:state.phaseEndsAt,
-      timer_duration_seconds:state.timerDurationSeconds,
-      paused_at:state.pausedAt,
-      sync_revision:state.syncRevision,
-      step_key:state.stepKey||null,
-      step_complete:state.stepComplete,
       updated_at:state.updatedAt
-    })
-    .eq('session_id',state.sessionId)
-    .eq('user_id',state.userId);
+    };
+    const retry=await workoutSupabase
+      .from('workout_shared_participant_state')
+      .update(fallback)
+      .eq('session_id',state.sessionId)
+      .eq('user_id',state.userId);
+    error=retry.error;
+  }
   if(error){console.warn('Participant state update failed',error);return;}
   try{
     await sharedRuntime.channel?.send({
@@ -9627,7 +9649,7 @@ function renderWorkSet(pos){
 function renderSharedPartnerWait(pos){
   const draft=sharedTrainingState().draft;
   const partner=draft?.partnerName||pos.workout.sharedSession?.partnerName||'your partner';
-  const side=pos.set?.activeSide==='switch'?'RIGHT SIDE':pos.set?.activeSide==='done'?'SET':'SET';
+  const side=['right','switch'].includes(pos.set?.activeSide)?'RIGHT SIDE':pos.set?.activeSide==='done'?'SET':'SET';
   return '<div class="runner-side-switch runner-partner-wait"><p class="eyebrow">'+esc(side)+' COMPLETE</p><h2>Waiting for '+esc(partner)+'</h2><p>'+esc(pos.exercise.name)+' · Set '+(pos.si+1)+' of '+pos.exercise.sets.length+'</p><div class="shared-wait-pulse" aria-hidden="true">•••</div><small>Stay Together starts the next switch, rest, or exercise only after both accounts reach this point.</small></div>';
 }
 
