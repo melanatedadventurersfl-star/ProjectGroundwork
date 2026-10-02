@@ -28,7 +28,7 @@
   function configureAudioSession() {
     try {
       if (!('audioSession' in navigator) || !navigator.audioSession) return;
-      navigator.audioSession.type = 'transient';
+      navigator.audioSession.type = 'playback';
       if (!audioSessionBound && typeof navigator.audioSession.addEventListener === 'function') {
         audioSessionBound = true;
         navigator.audioSession.addEventListener('statechange', () => {
