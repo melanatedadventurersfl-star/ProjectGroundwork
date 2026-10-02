@@ -15,6 +15,8 @@ function getParams(url: string) {
 export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isPreparing, setIsPreparing] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasRecoverySession, setHasRecoverySession] = useState(false);
@@ -103,26 +105,48 @@ export default function ResetPasswordScreen() {
               : 'This screen needs a valid reset link. Go back to sign in and request a new password reset email.'}
         </Text>
 
-        <TextInput
-          autoCapitalize="none"
-          autoComplete="new-password"
-          editable={hasRecoverySession && !isPreparing}
-          onChangeText={setPassword}
-          placeholder="New password"
-          secureTextEntry
-          style={styles.input}
-          value={password}
-        />
-        <TextInput
-          autoCapitalize="none"
-          autoComplete="new-password"
-          editable={hasRecoverySession && !isPreparing}
-          onChangeText={setConfirmPassword}
-          placeholder="Confirm new password"
-          secureTextEntry
-          style={styles.input}
-          value={confirmPassword}
-        />
+        <View style={styles.passwordField}>
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="new-password"
+            editable={hasRecoverySession && !isPreparing}
+            onChangeText={setPassword}
+            placeholder="New password"
+            secureTextEntry={!showPassword}
+            style={styles.passwordInput}
+            value={password}
+          />
+          <Pressable
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => setShowPassword((value) => !value)}
+            style={styles.visibilityButton}
+          >
+            <Text style={styles.visibilityText}>{showPassword ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
+        <View style={styles.passwordField}>
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="new-password"
+            editable={hasRecoverySession && !isPreparing}
+            onChangeText={setConfirmPassword}
+            placeholder="Confirm new password"
+            secureTextEntry={!showConfirmPassword}
+            style={styles.passwordInput}
+            value={confirmPassword}
+          />
+          <Pressable
+            accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => setShowConfirmPassword((value) => !value)}
+            style={styles.visibilityButton}
+          >
+            <Text style={styles.visibilityText}>{showConfirmPassword ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+        </View>
 
         {password && confirmPassword && password !== confirmPassword ? (
           <Text style={styles.validation}>Passwords do not match.</Text>
@@ -150,7 +174,10 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 1.2, color: '#24543B' },
   title: { fontSize: 30, fontWeight: '800', color: '#17211B' },
   body: { fontSize: 16, lineHeight: 24, color: '#56615A' },
-  input: { minHeight: 52, borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, paddingHorizontal: 16, backgroundColor: '#FFFFFF' },
+  passwordField: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#B8BEB9', borderRadius: 8, backgroundColor: '#FFFFFF' },
+  passwordInput: { flex: 1, minHeight: 50, paddingHorizontal: 16, color: '#17211B' },
+  visibilityButton: { minHeight: 44, minWidth: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  visibilityText: { color: '#24543B', fontSize: 13, fontWeight: '800' },
   validation: { color: '#A33A3A', fontSize: 13, fontWeight: '700' },
   button: { minHeight: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#24543B' },
   buttonDisabled: { opacity: 0.45 },

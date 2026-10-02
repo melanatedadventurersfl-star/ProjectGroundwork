@@ -95,7 +95,7 @@ export default function VendorLoginScreen() {
             <TextInput autoCapitalize="none" autoComplete="email" autoCorrect={false} keyboardType="email-address" placeholder="Email" placeholderTextColor="#738078" value={email} onChangeText={setEmail} style={styles.input} />
             <View style={styles.passwordRow}>
               <TextInput autoCapitalize="none" autoComplete="current-password" placeholder="Password" placeholderTextColor="#738078" value={password} onChangeText={setPassword} onSubmitEditing={() => void signIn()} secureTextEntry={!showPassword} style={styles.passwordInput} />
-              <Pressable hitSlop={10} onPress={() => setShowPassword((value) => !value)}><Text style={styles.show}>{showPassword ? 'Hide' : 'Show'}</Text></Pressable>
+              <Pressable accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} accessibilityRole="button" hitSlop={10} onPress={() => setShowPassword((value) => !value)}><Text style={styles.show}>{showPassword ? 'Hide' : 'Show'}</Text></Pressable>
             </View>
             <Pressable disabled={working} onPress={() => void resetPassword()} style={styles.forgot}><Text style={styles.forgotText}>Forgot password?</Text></Pressable>
             {error ? <Text style={styles.error}>{error}</Text> : null}
