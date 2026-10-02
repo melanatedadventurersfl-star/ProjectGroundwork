@@ -10,7 +10,9 @@ alter table public.workout_shared_participant_state
   add column if not exists phase_ends_at timestamptz,
   add column if not exists timer_duration_seconds integer,
   add column if not exists paused_at timestamptz,
-  add column if not exists sync_revision bigint not null default 0;
+  add column if not exists sync_revision bigint not null default 0,
+  add column if not exists step_key text,
+  add column if not exists step_complete boolean not null default false;
 
 alter table public.workout_shared_participant_state
   drop constraint if exists workout_shared_participant_stage_index_chk,
@@ -51,7 +53,9 @@ grant update (
   phase_ends_at,
   timer_duration_seconds,
   paused_at,
-  sync_revision
+  sync_revision,
+  step_key,
+  step_complete
 )
 on public.workout_shared_participant_state to authenticated;
 
@@ -63,5 +67,9 @@ comment on column public.workout_shared_participant_state.phase_ends_at is
   'Authoritative phase timer deadline for Stay Together sessions.';
 comment on column public.workout_shared_participant_state.sync_revision is
   'Monotonic client timestamp used to ignore stale realtime coordination updates.';
+comment on column public.workout_shared_participant_state.step_key is
+  'Share-safe barrier key for the active side, set, calibration, or feedback step.';
+comment on column public.workout_shared_participant_state.step_complete is
+  'Signals that this participant reached the current Stay Together barrier.';
 
 notify pgrst, 'reload schema';
