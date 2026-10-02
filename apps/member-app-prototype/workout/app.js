@@ -10604,7 +10604,7 @@ function updateTimers(){
   if(w.phase==='timed-set'){
     const snap=timedSetSnapshot(w);
     if(!snap)return;
-    if(snap.complete){if(!sharedFollower)completeTimedSet(false);return;}
+    if(snap.complete){completeTimedSet(false);return;}
     if(snap.remaining<=3&&snap.remaining>0){
       prepareCountdownAudioWindow('timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex);
       fireWorkoutSignal('warning','timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
