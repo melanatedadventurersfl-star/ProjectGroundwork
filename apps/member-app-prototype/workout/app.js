@@ -871,7 +871,8 @@ function announceExercise(ex,prefix='Next exercise'){
   if(!ex)return Promise.resolve();
   const target=(ex.sets?.length||0)+' sets of '+String(ex.reps||ex.suggestedReps||'your target');
   const equipment=equipmentRequirement(exerciseSource(ex));
-  const exerciseIndex=store.activeWorkout?.currentExerciseIndex||0;
+  const matchedIndex=store.activeWorkout?.exercises?.findIndex(item=>item===ex||item?.id===ex.id);
+  const exerciseIndex=matchedIndex>=0?matchedIndex:(store.activeWorkout?.currentExerciseIndex||0);
   const token='exercise-announce-'+(store.activeWorkout?.id||'')+'-'+exerciseIndex+'-'+ex.id;
   const settings=workoutCueSettings();
   const extra=coachExerciseExtra(ex,exerciseIndex);
@@ -885,7 +886,7 @@ function announceExercise(ex,prefix='Next exercise'){
   return emitWorkoutCoach('exercise_started',extra,prefix+': '+ex.name+'. '+target+'. You will need '+equipment+'.','coach-'+token);
 }
 let workoutAudioContext=null;
-const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0,coachCuePack:null,coachCuePackKey:'',coachCuePackPromise:null,coachPrefetchCache:new Map(),coachPrefetchPending:new Map(),coachTimelineTokens:new Map(),coachTimelineEpoch:0,lastCoachLine:'',lastCoachAudio:null,lastCoachMime:'audio/wav',recentSignalTokens:new Map()};
+const cueRuntime={lastToken:'',lastVoiceToken:'',lastVisualToken:'',visualTimer:null,lastCoachConfigNoticeAt:0,coachCuePack:null,coachCuePackKey:'',coachCuePackPromise:null,coachPrefetchCache:new Map(),coachPrefetchPending:new Map(),coachTimelineTokens:new Map(),coachTimelineEpoch:0,lastCoachLine:'',lastCoachAudio:null,lastCoachMime:'audio/wav',recentSignalTokens:new Map(),countdownWindowToken:''};
 
 const COACH_VOICES=[
   {id:'marin',label:'Marin',recommended:true},
@@ -1000,17 +1001,24 @@ function unlockWorkoutCues(){
   }
 }
 function speakWorkoutCue(text,token=''){
-  if(!text||!workoutCueSettings().voice||!('speechSynthesis' in window)||typeof window.SpeechSynthesisUtterance!=='function')return;
-  if(token&&cueRuntime.lastVoiceToken===token)return;
+  if(!text||!workoutCueSettings().voice||!('speechSynthesis' in window)||typeof window.SpeechSynthesisUtterance!=='function')return Promise.resolve(false);
+  if(token&&cueRuntime.lastVoiceToken===token)return Promise.resolve(false);
   if(token)cueRuntime.lastVoiceToken=token;
-  try{
-    window.speechSynthesis.cancel?.();
-    const utterance=new window.SpeechSynthesisUtterance(String(text));
-    utterance.rate=1.18;
-    utterance.pitch=1.02;
-    utterance.volume=1;
-    window.speechSynthesis.speak(utterance);
-  }catch{}
+  return new Promise(resolve=>{
+    try{
+      window.speechSynthesis.cancel?.();
+      const utterance=new window.SpeechSynthesisUtterance(String(text));
+      utterance.rate=1.18;
+      utterance.pitch=1.02;
+      utterance.volume=1;
+      let settled=false;
+      const finish=value=>{if(settled)return;settled=true;resolve(value);};
+      utterance.onend=()=>finish(true);
+      utterance.onerror=()=>finish(false);
+      window.speechSynthesis.speak(utterance);
+      window.setTimeout(()=>finish(false),5000);
+    }catch{resolve(false);}
+  });
 }
 
 function coachEventAllowed(event,frequency){
@@ -1075,8 +1083,7 @@ function emitWorkoutCoach(event,extra={},fallbackLine='',token=''){
   if(!settings.voice)return Promise.resolve();
   if(event==='exercise_feedback'&&settings.performanceFeedback==='off')return Promise.resolve();
   if(!settings.aiCoach){
-    if(fallbackLine)speakWorkoutCue(fallbackLine,'classic-'+token);
-    return Promise.resolve();
+    return fallbackLine?speakWorkoutCue(fallbackLine,'classic-'+token):Promise.resolve(false);
   }
   if(!coachEventAllowed(event,settings.coachFrequency))return Promise.resolve();
   const coach=window.GoWorkoutCoach;
@@ -1655,10 +1662,23 @@ function cancelCoachTimeline(clearCaption=false){
   cueRuntime.coachPrefetchCache.clear();
   cueRuntime.coachPrefetchPending.clear();
   window.GoWorkoutCoach?.cancel?.();
+  cueRuntime.countdownWindowToken='';
   if(clearCaption){
     cueRuntime.lastCoachLine='';
     cueRuntime.lastCoachAudio=null;
+    cueRuntime.lastCoachMime='audio/wav';
+    const text=document.querySelector('#coach-live-text');
+    if(text)text.textContent='';
+    const row=document.querySelector('#coach-live-line');
+    if(row)row.hidden=true;
   }
+}
+function prepareCountdownAudioWindow(token){
+  token=String(token||'');
+  if(!token||cueRuntime.countdownWindowToken===token)return;
+  cueRuntime.countdownWindowToken=token;
+  if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
+  window.GoWorkoutCoach?.cancel?.();
 }
 function timelineComposite(key){return cueRuntime.coachTimelineEpoch+'|'+String(key||'');}
 function timelineMark(key){
@@ -1845,8 +1865,7 @@ function playPreparedWorkoutCoach(event,extra={},fallbackLine='',token=''){
   const settings=workoutCueSettings();
   if(!settings.voice)return Promise.resolve(false);
   if(!settings.aiCoach){
-    if(fallbackLine)speakWorkoutCue(fallbackLine,'classic-'+token);
-    return Promise.resolve(true);
+    return fallbackLine?speakWorkoutCue(fallbackLine,'classic-'+token):Promise.resolve(false);
   }
   if(!coachEventAllowed(event,settings.coachFrequency))return Promise.resolve(false);
   const key=coachPrefetchKey(event,extra,settings);
@@ -5442,7 +5461,7 @@ function finishTimedStageSideSwitch(){
 }
 function skipTimedStage(){
   const w=store.activeWorkout;if(!w||!['warmup','cooldown'].includes(w.phase))return;
-  cancelCoachTimeline();
+  cancelCoachTimeline(true);
   unlockWorkoutCues();
   const item=timedStageItems(w)[w.timedStageIndex||0];
   if(item)item.skippedAt=new Date().toISOString();
@@ -5467,7 +5486,7 @@ function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(
 
 function navigateToExercise(index,{announce=true}={}){
   const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
-  cancelCoachTimeline();
+  cancelCoachTimeline(true);
   index=Math.max(0,Math.min(index,w.exercises.length-1));
   pauseInteractiveTimers(w);
   const previous=w.currentExerciseIndex||0;
@@ -5533,6 +5552,8 @@ function undoManualExercise(index){
 }
 function skipExercise(index,reason='Skipped by user'){
   const w=store.activeWorkout,ex=w?.exercises?.[index];if(!ex)return;
+  const skippingActive=index===w.currentExerciseIndex||(w.phase==='exercise-transition'&&w.pendingPosition?.ei===index);
+  if(skippingActive)cancelCoachTimeline(true);
   ex.skipped=true;ex.skipReason=reason;ex.manualComplete=false;ex.manualCompletedAt=null;ex.endedAt=new Date().toISOString();
   if(w.phase==='intro'){saveStore();render();return;}
   if(w.phase==='exercise-transition'&&w.pendingPosition?.ei===index){
@@ -5746,12 +5767,14 @@ function preSetSnapshot(w,nowMs=Date.now()){
 function waitForCoachBeat(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function runSetStartCountdown(w,pos){
   const settings=workoutCueSettings();
+  const countdownToken='manual-preset-'+w.id+'-'+pos.ei+'-'+pos.si;
+  prepareCountdownAudioWindow(countdownToken);
   const steps=[['3','warning'],['2','warning'],['1','warning']];
   for(const [voice,type] of steps){
     const started=Date.now();
-    await fireWorkoutSignal(type,'manual-preset-'+w.id+'-'+pos.ei+'-'+pos.si+'-'+voice,{voice,label:voice});
+    await fireWorkoutSignal(type,countdownToken+'-'+voice,{voice,label:voice});
     const elapsed=Date.now()-started;
-    if(elapsed<650)await waitForCoachBeat(650-elapsed);
+    if(elapsed<1000)await waitForCoachBeat(1000-elapsed);
   }
   return fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'});
 }
@@ -5848,6 +5871,7 @@ function completeTimedSet(early=false){
 
 function startCooldown(){
   const w=store.activeWorkout;if(!w)return;
+  cancelCoachTimeline(true);
   recordExerciseDuration(w,w.currentExerciseIndex);
   const now=new Date().toISOString();
   const performed=(w.exercises||[]).filter(ex=>ex.manualComplete||(ex.sets||[]).some(set=>set.completed));
@@ -6516,10 +6540,12 @@ function discardRecoveredWorkout(startNew=false){
  if(!store.activeWorkout)return;
  const name=store.activeWorkout.routineName||'current workout';
  if(!confirm('Discard '+name+'? Logged progress in this unfinished session will be removed.'))return;
+ cancelCoachTimeline(true);
+ if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
  store.activeWorkout=null;saveStore();currentTab=startNew?'train':'home';render();
  if(startNew)toast('Choose the workout you want to start.');
 }
-function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;store.activeWorkout=null;saveStore();currentTab='home';render();}
+function discardWorkout(){if(!store.activeWorkout)return;if(!confirm('Discard this workout?'))return;cancelCoachTimeline(true);if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}store.activeWorkout=null;saveStore();currentTab='home';render();}
 
 function renderProfileEditor(){
   const p=store.profile||{};
@@ -8667,7 +8693,7 @@ function beginWorkoutSession(skipWarmup=false){
   const hasWarmup=Boolean(w.warmup?.length);
   const willWarmup=hasWarmup&&!skipWarmup;
   if(skipWarmup&&hasWarmup){
-    cancelCoachTimeline();
+    cancelCoachTimeline(true);
     w.warmupSkipped=true;
     w.warmupSkippedAt=now;
     w.warmupSkipSource='intro';
@@ -8716,7 +8742,7 @@ function beginWorkoutSession(skipWarmup=false){
 
 function cancelWarmupCoachPlayback(){
   if('speechSynthesis' in window){try{window.speechSynthesis.cancel?.();}catch{}}
-  cancelCoachTimeline();
+  cancelCoachTimeline(true);
 }
 function skipWorkoutWarmup(source='intro'){
   const w=store.activeWorkout;if(!w)return;
@@ -8798,14 +8824,21 @@ function activateGuidedStage(workoutId,phase,index){
   prefetchGuidedLookahead(active);
   saveStore();render();
 }
-function runGuidedCountdown(workoutId,phase,index,value){
+async function runGuidedCountdown(workoutId,phase,index,value){
   const active=store.activeWorkout;
   if(!active||active.id!==workoutId||active.phase!==phase||active.timedStageIndex!==index||!active.timedStageStarting)return;
   if(value<=0){activateGuidedStage(workoutId,phase,index);return;}
+  const countdownToken='guided-start-'+workoutId+'-'+phase+'-'+index;
+  prepareCountdownAudioWindow(countdownToken);
   active.timedStageCountdownValue=value;
   saveStore();render();
-  fireWorkoutSignal('warning','guided-start-'+workoutId+'-'+phase+'-'+index+'-'+value,{voice:String(value),label:String(value)});
-  window.setTimeout(()=>runGuidedCountdown(workoutId,phase,index,value-1),650);
+  const started=Date.now();
+  await fireWorkoutSignal('warning',countdownToken+'-'+value,{voice:String(value),label:String(value)});
+  const current=store.activeWorkout;
+  if(!current||current.id!==workoutId||current.phase!==phase||current.timedStageIndex!==index||!current.timedStageStarting)return;
+  const elapsed=Date.now()-started;
+  if(elapsed<1000)await waitForCoachBeat(1000-elapsed);
+  runGuidedCountdown(workoutId,phase,index,value-1);
 }
 function startGuidedStageNow(){
   const w=store.activeWorkout;
@@ -8829,12 +8862,17 @@ function beginGuidedStageAfterInstruction(w,phase,index,instructionPromise){
   w.timedPhaseStartedAt=null;
   saveStore();render();
 
-  Promise.resolve(instructionPromise).catch(()=>{});
+  const instructionSettled=Promise.race([
+    Promise.resolve(instructionPromise).catch(()=>false),
+    new Promise(resolve=>window.setTimeout(()=>resolve(false),12000))
+  ]);
   if(guidedAutoStartEnabled(phase)){
-    window.setTimeout(()=>{
-      const active=store.activeWorkout;
-      if(active?.id===workoutId&&active.phase===phase&&active.timedStageIndex===index&&active.timedStageAwaitingStart)startGuidedStageNow();
-    },60);
+    instructionSettled.finally(()=>{
+      window.setTimeout(()=>{
+        const active=store.activeWorkout;
+        if(active?.id===workoutId&&active.phase===phase&&active.timedStageIndex===index&&active.timedStageAwaitingStart)startGuidedStageNow();
+      },120);
+    });
   }
 }
 
@@ -10172,7 +10210,10 @@ function updateTimers(){
       const lead=coachSpeechLeadSeconds(preview.line);
       if(snap.remaining<=lead)playTimelineCue(preview.line,preview.key,{preview:{type:w.phase,index:preview.nextIndex}});
     }
-    if(snap.remaining>0&&snap.remaining<=3)fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.mode+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    if(snap.remaining>0&&snap.remaining<=3){
+      prepareCountdownAudioWindow('stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.mode);
+      fireWorkoutSignal('warning','stage-warning-'+w.id+'-'+w.phase+'-'+snap.index+'-'+snap.mode+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    }
     const stageClock=document.querySelector('#stage-clock');
     const fill=document.querySelector('#stage-progress-fill');
     if(stageClock)stageClock.textContent=formatClock(snap.remaining);
@@ -10194,6 +10235,7 @@ function updateTimers(){
     if(w.preSetFinishing)return;
     if(snap.complete){finishPreSet();return;}
     if(snap.mode==='countdown'&&snap.remaining>0&&snap.remaining<=3){
+      prepareCountdownAudioWindow('preset-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex);
       fireWorkoutSignal('warning','preset-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
     }
     if(countdown)countdown.textContent=String(snap.remaining);
@@ -10213,7 +10255,10 @@ function updateTimers(){
     const ring=document.querySelector('#timer-ring');
     if(clock)clock.textContent=formatClock(remaining);
     if(ring)ring.style.setProperty('--timer-progress',`${Math.max(0,Math.min(100,(remaining/Math.max(1,num(w.sideSwitchDuration)||5))*100))}%`);
-    if(remaining>0&&remaining<=3)fireWorkoutSignal('warning','exercise-side-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+    if(remaining>0&&remaining<=3){
+      prepareCountdownAudioWindow('exercise-side-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex);
+      fireWorkoutSignal('warning','exercise-side-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+remaining,{voice:String(remaining),label:String(remaining)});
+    }
     if(remaining<=0)finishExerciseSideSwitch();
     return;
   }
@@ -10222,7 +10267,10 @@ function updateTimers(){
     const snap=timedSetSnapshot(w);
     if(!snap)return;
     if(snap.complete){completeTimedSet(false);return;}
-    if(snap.remaining<=3&&snap.remaining>0)fireWorkoutSignal('warning','timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    if(snap.remaining<=3&&snap.remaining>0){
+      prepareCountdownAudioWindow('timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex);
+      fireWorkoutSignal('warning','timed-set-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
+    }
     const clock=document.querySelector('#timed-set-clock');
     const fill=document.querySelector('#timed-set-progress');
     const note=document.querySelector('#timed-finish-note');
