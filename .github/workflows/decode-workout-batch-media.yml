@@ -1,0 +1,65 @@
+name: Decode GoWorkout batch media
+
+on:
+  push:
+    branches:
+      - feature/workout-batches-5-6-media
+    paths:
+      - apps/member-app-prototype/workout/media-production/tmp/batch56-binary-manifest.json
+      - .github/workflows/decode-workout-batch-media.yml
+
+permissions:
+  contents: write
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/workout-batches-5-6-media
+          fetch-depth: 0
+
+      - name: Decode WebP assets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          manifest = Path("apps/member-app-prototype/workout/media-production/tmp/batch56-binary-manifest.json")
+          if not manifest.exists():
+              raise SystemExit(0)
+
+          data = json.loads(manifest.read_text(encoding="utf-8"))
+          files = data.get("files", [])
+          if len(files) != 48:
+              raise SystemExit(f"Expected 48 files, found {len(files)}")
+
+          prefix = "apps/member-app-prototype/workout/assets/exercises/"
+          for item in files:
+              rel = item["path"]
+              if not rel.startswith(prefix) or ".." in Path(rel).parts:
+                  raise SystemExit(f"Unsafe path: {rel}")
+              target = Path(rel)
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(base64.b64decode(item["base64"], validate=True))
+
+          manifest.unlink()
+          Path(".github/workflows/decode-workout-batch-media.yml").unlink()
+          print(f"Decoded {len(files)} GoWorkout assets")
+          PY
+
+      - name: Commit decoded assets
+        shell: bash
+        run: |
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Decode remaining GoWorkout batch 5 and 6 media"
+          git push origin HEAD:feature/workout-batches-5-6-media
