@@ -28,7 +28,10 @@
   function configureAudioSession() {
     try {
       if (!('audioSession' in navigator) || !navigator.audioSession) return;
-      navigator.audioSession.type = 'playback';
+      // Coach cues must coexist with Spotify/Apple Music. `playback` is exclusive on iOS
+      // and pauses other media. `transient` is the web AudioSession type intended for
+      // short cues that mix with or duck other audio.
+      navigator.audioSession.type = 'transient';
       if (!audioSessionBound && typeof navigator.audioSession.addEventListener === 'function') {
         audioSessionBound = true;
         navigator.audioSession.addEventListener('statechange', () => {
