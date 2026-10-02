@@ -2367,7 +2367,7 @@ function swapCandidateAvailable(candidate,setup=null){
   if(setup)return setupAllowsExercise(candidate,setup);
   return equipmentAllows(candidate,store.profile?.equipment||'full-gym');
 }
-function swapCandidates(ex,{includeOtherEquipment=true,limit=7,setup=null}={}){
+function swapCandidates(ex,{includeOtherEquipment=false,limit=7,setup=null}={}){
   const source=exerciseSource(ex);
   if(!source)return [];
   const profile=store.profile||{};
@@ -3927,7 +3927,8 @@ const SESSION_SETUP_PRESETS = {
   'custom':{label:'Custom equipment',shortLabel:'Custom',modes:[]}
 };
 const FLOOR_EXERCISE_IDS=new Set(['push-up','glute-bridge','plank','dead-bug','pike-pushup','prone-w-raise','prone-lat-pull','db-floor-press']);
-const CHAIR_STEP_EXERCISE_IDS=new Set(['step-up']);
+const CHAIR_STEP_EXERCISE_IDS=new Set(['step-up','split-squat']);
+const BENCH_EXERCISE_IDS=new Set(['db-bench','chest-row']);
 const PULLUP_BAR_EXERCISE_IDS=new Set(['pull-up']);
 const SESSION_MOVEMENT_ALTERNATIVES={
   'vertical-pull':['horizontal-pull'],
@@ -3957,6 +3958,7 @@ function buildSessionSetup(key,options={}){
     modes:[...new Set(modes)],
     floor:options.floor===undefined?true:Boolean(options.floor),
     chair:options.chair===undefined?fullGym:Boolean(options.chair),
+    bench:options.bench===undefined?fullGym:Boolean(options.bench),
     pullupBar:options.pullupBar===undefined?fullGym:Boolean(options.pullupBar),
     temporary:key!==normalSessionSetupKey()||key==='custom'
   };
@@ -3968,6 +3970,7 @@ function setupFromReadinessControls(form,key){
     customModes:data.getAll('customEquipment').map(String),
     floor:data.get('sessionFloor')==='on',
     chair:data.get('sessionChair')==='on',
+    bench:data.get('sessionBench')==='on',
     pullupBar:data.get('sessionPullupBar')==='on'
   });
 }
@@ -3985,6 +3988,7 @@ function setupAllowsExercise(exercise,setup){
   if(!gymCompatible&&!setup.modes.some(mode=>equipment.includes(mode)))return false;
   if(FLOOR_EXERCISE_IDS.has(exercise.id)&&!setup.floor)return false;
   if(CHAIR_STEP_EXERCISE_IDS.has(exercise.id)&&!setup.chair)return false;
+  if(BENCH_EXERCISE_IDS.has(exercise.id)&&!setup.bench)return false;
   if(PULLUP_BAR_EXERCISE_IDS.has(exercise.id)&&!setup.pullupBar)return false;
   return !avoided(exercise,store.profile||{});
 }
@@ -4233,6 +4237,7 @@ function renderSessionSetupExtras(context={}){
   return '<div class="session-setup-extras"><div><span>AVAILABLE EXTRAS</span><small>Add only what you can use today.</small></div>'+
     '<label><input type="checkbox" name="sessionFloor" '+(context.floor===false?'':'checked')+'> Floor space</label>'+
     '<label><input type="checkbox" name="sessionChair" '+(context.chair?'checked':'')+'> Sturdy chair / step</label>'+
+    '<label><input type="checkbox" name="sessionBench" '+(context.bench?'checked':'')+'> Workout bench</label>'+
     '<label><input type="checkbox" name="sessionPullupBar" '+(context.pullupBar?'checked':'')+'> Pull-up bar</label>'+
     '<div class="custom-equipment-row" data-custom-equipment-row '+(showCustom?'':'hidden')+'><span>CUSTOM EQUIPMENT</span>'+
       '<label><input type="checkbox" name="customEquipment" value="bodyweight" '+((context.modes||['bodyweight']).includes('bodyweight')?'checked':'')+'> Bodyweight</label>'+
@@ -4247,6 +4252,8 @@ function renderTrainingContextSummary(context,compact=false){
 }
 function equipmentAllows(exercise,equipment){
   if (equipment === 'full-gym') return exercise.equipment.includes('full-gym');
+  if(BENCH_EXERCISE_IDS.has(exercise.id))return false;
+  if(CHAIR_STEP_EXERCISE_IDS.has(exercise.id)&&equipment==='dumbbells')return false;
   return exercise.equipment.includes(equipment);
 }
 
