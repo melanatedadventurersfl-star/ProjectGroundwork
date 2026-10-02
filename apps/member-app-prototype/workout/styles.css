@@ -17642,3 +17642,9 @@ body.home-mode .bottom-nav:before{
     text-align:left;
   }
 }
+
+/* Password visibility controls */
+.password-control{display:flex;align-items:center;width:100%;position:relative}
+.password-control input{flex:1;min-width:0;padding-right:64px!important}
+.password-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);min-width:52px;min-height:44px;border:0;background:transparent;color:inherit;font:inherit;font-size:12px;font-weight:800;cursor:pointer;z-index:1}
+.password-toggle:focus-visible{outline:2px solid currentColor;outline-offset:-3px;border-radius:8px}

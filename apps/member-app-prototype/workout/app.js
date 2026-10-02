@@ -6804,6 +6804,20 @@ function applyWorkoutSession(session){
     unsubscribeSharedSession();
   }
 }
+function togglePasswordVisibility(inputId,button){
+  const input=document.getElementById(inputId);
+  if(!input||!button)return;
+  const showing=input.type==='text';
+  const start=input.selectionStart;
+  const end=input.selectionEnd;
+  input.type=showing?'password':'text';
+  const nextShowing=!showing;
+  button.textContent=nextShowing?'Hide':'Show';
+  button.setAttribute('aria-label',nextShowing?'Hide password':'Show password');
+  button.setAttribute('aria-pressed',String(nextShowing));
+  requestAnimationFrame(()=>{try{input.focus({preventScroll:true});if(start!==null&&end!==null)input.setSelectionRange(start,end);}catch(_error){}});
+}
+
 async function signInEntryAccount(){
   if(accountEntryBusy)return;
   accountEntryError='';
@@ -7983,7 +7997,7 @@ function renderAccountSheet(){
     (connected?
       '<div class="account-identity-preview"><div class="profile-avatar-large small">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><strong>'+esc(displayName())+'</strong><span>'+esc(account.email||'Connected account')+'</span></div></div><button class="button secondary account-signout" data-action="account-sign-out">SIGN OUT</button>'
       :
-      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><input id="account-password" type="password" autocomplete="'+(account.status==='pending'?'new-password':'current-password')+'" placeholder="••••••••"></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>'+(account.status==='pending'?'<button class="text-button account-resend" data-action="account-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':''))+
+      '<div class="account-auth-form"><label class="field"><span>EMAIL</span><input id="account-email" type="email" autocomplete="email" value="'+esc(account.email||store.profile?.email||'')+'" placeholder="you@example.com"></label><label class="field"><span>PASSWORD</span><span class="password-control"><input id="account-password" type="password" autocomplete="'+(account.status==='pending'?'new-password':'current-password')+'" placeholder="••••••••"><button class="password-toggle" type="button" data-password-toggle="account-password" aria-label="Show password" aria-pressed="false">Show</button></span></label></div><div class="auth-choice-grid"><button class="button" data-action="account-sign-in">SIGN IN</button><button class="button secondary" data-action="account-create">CREATE ACCOUNT</button></div>'+(account.status==='pending'?'<button class="text-button account-resend" data-action="account-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':''))+
     '<div class="privacy-list"><div><span>PRIVATE BY DEFAULT</span><strong>Readiness, body data, notes, and full training history</strong></div><div><span>SHARED SESSION</span><strong>Partner sees session state and only the data required to train together</strong></div></div>'+
   '</section></div>';
 }
@@ -10136,7 +10150,7 @@ function renderAccountEntry(){
     '<section class="form-section account-entry-card"><div class="form-section-head"><span>01</span><div><h3>'+(createMode?'Create account':'Sign in')+'</h3><p>'+(createMode?'Your display name is used for your profile and shared workout identity.':'Use the email and password for your GoWorkout account.')+'</p></div></div>'+
       (createMode?'<label class="field"><span>DISPLAY NAME</span><input id="entry-display-name" autocomplete="name" value="'+esc(accountEntryDisplay||store.account?.displayName||store.profile?.displayName||'')+'" placeholder="How you want to appear"></label>':'')+
       '<label class="field"><span>EMAIL</span><input id="entry-email" type="email" autocomplete="email" value="'+esc(knownEmail)+'" placeholder="you@example.com"></label>'+
-      '<label class="field"><span>PASSWORD</span><input id="entry-password" type="password" autocomplete="'+(createMode?'new-password':'current-password')+'" placeholder="'+(createMode?'At least 6 characters':'Your password')+'"></label>'+
+      '<label class="field"><span>PASSWORD</span><span class="password-control"><input id="entry-password" type="password" autocomplete="'+(createMode?'new-password':'current-password')+'" placeholder="'+(createMode?'At least 6 characters':'Your password')+'"><button class="password-toggle" type="button" data-password-toggle="entry-password" aria-label="Show password" aria-pressed="false">Show</button></span></label>'+
       (accountEntryError?'<div class="auth-entry-error" role="alert">'+esc(accountEntryError)+'</div>':'')+
       (createMode?'<div class="auth-choice-grid"><button class="button" data-action="entry-create-account" '+(accountEntryBusy?'disabled':'')+'>'+(accountEntryBusy?'CREATING ACCOUNT…':'CREATE ACCOUNT')+'</button><button class="button secondary" data-action="entry-show-sign-in" '+(accountEntryBusy?'disabled':'')+'>BACK TO SIGN IN</button></div>':'<div class="auth-choice-grid"><button class="button" data-action="entry-sign-in" '+(accountEntryBusy?'disabled':'')+'>'+(accountEntryBusy?'SIGNING IN…':'SIGN IN')+'</button><button class="button secondary" data-action="entry-show-create" '+(accountEntryBusy?'disabled':'')+'>CREATE ACCOUNT</button></div>')+
       (pending&&!createMode?'<button class="text-button account-resend" data-action="entry-resend-confirmation">RESEND CONFIRMATION EMAIL</button>':'')+
@@ -10296,6 +10310,8 @@ function updateTimers(){
 }
 
 function handleClick(event){
+  const passwordToggle=event.target.closest('[data-password-toggle]');
+  if(passwordToggle){togglePasswordVisibility(passwordToggle.dataset.passwordToggle,passwordToggle);return;}
   const avatarClose=event.target.closest('[data-action="close-avatar-picker"]');
   if(avatarClose){
     const inside=event.target.closest('[data-avatar-picker-panel]');
