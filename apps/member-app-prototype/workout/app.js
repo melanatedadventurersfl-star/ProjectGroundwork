@@ -6290,7 +6290,10 @@ function adjustRest(delta,fromShared=false){
 }
 function toggleRestPause(fromShared=false){
   const w=store.activeWorkout;if(!w||w.phase!=='rest')return;
-  if(!fromShared&&requestSharedControl('toggle-rest-pause'))return;
+  if(sharedWorkoutSyncEnabled(w)){
+    if(!fromShared&&requestSharedControl('toggle-rest-pause'))return;
+    toggleWorkoutPause(true);return;
+  }
   if(Number.isFinite(w.restPausedRemaining)){w.restEndsAt=new Date(Date.now()+w.restPausedRemaining*1000).toISOString();w.restPausedRemaining=null;}
   else{w.restPausedRemaining=restRemaining(w);w.restEndsAt=null;}
   saveStore();render();
@@ -7691,7 +7694,7 @@ async function subscribeSharedSession(draft){
       else if(payload.action==='reset-timer')resetActiveTimer(true);
       else if(payload.action==='skip-rest')skipRest(true);
       else if(payload.action==='skip-side-switch')skipExerciseSideSwitch(true);
-      else if(payload.action==='toggle-rest-pause')toggleRestPause(true);
+      else if(payload.action==='toggle-rest-pause')toggleWorkoutPause(true);
       else if(payload.action==='adjust-rest')adjustRest(num(payload.delta),true);
       else if(payload.action==='skip-timed-stage')skipTimedStage(true);
     })
@@ -9707,7 +9710,7 @@ function nextExercisePreview(w,currentExerciseIndex){
   return null;
 }
 function renderRest(pos){
-  const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Number.isFinite(pos.workout.restPausedRemaining);
+  const remaining=restRemaining(pos.workout),next=pos.workout.pendingPosition,nextEx=next?pos.workout.exercises[next.ei]:null,paused=Boolean(pos.workout.isPaused||Number.isFinite(pos.workout.restPausedRemaining));
   const changingExercise=Boolean(next&&next.ei!==pos.ei);
   const sameBlockNext=Boolean(nextEx&&sameDynamicBlock(pos.exercise,nextEx));
   const blockRound=Boolean(sameBlockNext&&next?.type==='block-round');
