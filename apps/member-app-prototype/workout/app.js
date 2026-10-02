@@ -10739,8 +10739,33 @@ document.addEventListener('keydown',event=>{
   if(event.key==='Enter'&&currentTab==='workout'&&store.activeWorkout?.phase==='work'&&document.activeElement?.tagName==='INPUT'){event.preventDefault();completeCurrentSet();}
 });
 tickHandle=window.setInterval(updateTimers,500);
+function recoverWorkoutAfterForeground(){
+  const w=store.activeWorkout;
+  if(!w)return;
+
+  // Mobile browsers throttle/suspend JS timers while backgrounded. A guided-stage
+  // countdown is transient UI state, so never depend on its async timeout chain
+  // surviving app minimization. Resume it from durable workout state instead.
+  if(['warmup','cooldown'].includes(w.phase)&&w.timedStageAwaitingStart&&w.timedStageStarting){
+    const phase=w.phase,index=w.timedStageIndex||0;
+    w.timedStageStarting=false;
+    w.timedStageCountdownValue=0;
+    saveStore();
+    render();
+    window.setTimeout(()=>{
+      const active=store.activeWorkout;
+      if(active?.id===w.id&&active.phase===phase&&active.timedStageIndex===index&&active.timedStageAwaitingStart){
+        startGuidedStageNow();
+      }
+    },80);
+    return;
+  }
+
+  updateTimers();
+  render();
+}
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible') updateTimers();
+  if(document.visibilityState==='visible')recoverWorkoutAfterForeground();
 });
 window.addEventListener('pageshow',event=>{
   if(event.persisted){
