@@ -7954,7 +7954,7 @@ function renderProfileHub(){
     '<section class="settings-list">'+
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
       '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
-      '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>ONBOARDING</span><strong>Review the full setup without changing your current plan</strong></div><em>›</em></button>'+
+      '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>REVISIT TRAINING SETUP</span><strong>Update goals, schedule, equipment, restrictions and preferences</strong></div><em>›</em></button>'+
       '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -10429,7 +10429,7 @@ function handleClick(event){
   else if(a==='toggle-learner-diagnostics'){learnerDiagnosticsOpen=!learnerDiagnosticsOpen;persistUiState();render();}
   else if(a==='close-progress-exercise'){progressExerciseId='';persistUiState();render();}
   else if(a==='profile')setTab('profile');
-  else if(a==='review-onboarding'){window.location.href=window.location.pathname+'?onboarding=preview';}
+  else if(a==='review-onboarding'){window.location.href=window.location.pathname+'?onboarding=revisit';}
   else if(a==='open-avatar-picker'){avatarPickerOpen=true;render();}
   else if(a==='close-avatar-picker'){avatarPickerOpen=false;render();}
   else if(a==='choose-avatar'){
