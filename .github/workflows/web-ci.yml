@@ -50,6 +50,7 @@ jobs:
           node --check apps/member-app-prototype/workout/coach-engine.js
           node --check apps/member-app-prototype/workout/app.js
           node --check apps/member-app-prototype/workout/performance.js
+          node --check apps/member-app-prototype/workout/onboarding.js
 
       - name: Install exact dependencies
         run: npm ci
