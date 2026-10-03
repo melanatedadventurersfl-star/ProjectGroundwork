@@ -184,6 +184,12 @@ function validateActiveWorkoutCandidate(candidate,history=store.history){
  const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
  const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
  w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;w.recoveryCheckpointAt=w.recoveryCheckpointAt||w.startedAt;
+ if(w.phase==='partner-wait'&&w.sharedPendingAction?.kind==='side-switch'){
+  const stuckEx=w.exercises?.[w.currentExerciseIndex],stuckSet=stuckEx?.sets?.[w.currentSetIndex],now=new Date().toISOString();
+  if(stuckSet){stuckSet.activeSide='left';stuckSet.sideStartedAt=now;}
+  w.phase='work';w.setStartedAt=now;w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;w.pendingPosition=null;
+  delete w.sideSwitchStartedAt;delete w.sideSwitchEndsAt;delete w.sideSwitchDuration;delete w.sideSwitchPausedRemaining;
+ }
  if(w.phase==='rest'&&!w.pendingPosition){w.phase='pre-set';w.restEndsAt=null;w.restPausedRemaining=null;w.restToken=null;}
  if(w.phase==='rest'&&!w.restToken)w.restToken=newTimerToken('rest',w);
  return {valid:true,workout:w,ageHours};
@@ -7473,6 +7479,11 @@ function safeSharedPlanSnapshot(day){
     name:day.name||'Shared workout',
     focus:day.focus||'Shared training',
     estimatedMinutes:num(day.estimatedMinutes)||num(store.profile?.minutes)||45,
+    targetMinutes:num(day.targetMinutes)||num(day.estimatedMinutes)||num(store.profile?.minutes)||45,
+    warmupTargetSeconds:num(day.warmupTargetSeconds)||0,
+    cooldownTargetSeconds:num(day.cooldownTargetSeconds)||0,
+    trainingStructure:clone(day.trainingStructure||null),
+    blocks:clone(day.blocks||[]),
     warmup:clone(day.warmup||[]),
     cooldown:clone(day.cooldown||[]),
     exercises:(day.exercises||[]).map(ex=>({
@@ -7483,9 +7494,14 @@ function safeSharedPlanSnapshot(day){
       loadMode:ex.loadMode,
       sets:num(ex.sets)||2,
       reps:ex.reps||'8–12',
-      rest:Math.max(30,Math.min(60,num(ex.rest)||45)),
+      rest:Math.max(30,Math.min(90,num(ex.rest)||45)),
       setup:num(ex.setup)||25,
-      increment:num(ex.increment)||5
+      increment:num(ex.increment)||5,
+      blockId:ex.blockId||null,
+      blockType:ex.blockType||null,
+      blockOrder:ex.blockOrder===undefined?null:num(ex.blockOrder),
+      blockRest:ex.blockRest===undefined?null:num(ex.blockRest),
+      transitionRest:ex.transitionRest===undefined?null:num(ex.transitionRest)
     }))
   };
 }
@@ -7507,7 +7523,7 @@ function localizeSharedPlan(snapshot){
       calibrationRequired:Boolean(estimated.calibrate&&!calibrated&&!adaptive)
     };
   });
-  return {...snapshot,exercises,warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
+  return {...snapshot,exercises,trainingStructure:clone(snapshot.trainingStructure||null),blocks:clone(snapshot.blocks||[]),warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
 }
 function sharedDraftFromRow(row,role=''){
   const userId=store.account?.userId||'';
