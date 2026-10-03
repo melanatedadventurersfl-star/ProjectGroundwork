@@ -7789,7 +7789,7 @@ async function subscribeSharedSession(draft){
 }
 function sharedWorkoutSyncEnabled(w=store.activeWorkout){
   const shared=w?.sharedSession;
-  return Boolean(shared?.backendId&&shared.pace==='stay-together'&&shared.mode!=='share-plan');
+  return Boolean(shared?.backendId&&shared.sharedPlanLocked===true&&shared.pace==='stay-together'&&shared.mode!=='share-plan');
 }
 function sharedWorkoutFollower(w=store.activeWorkout){
   return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='partner');
@@ -9353,10 +9353,13 @@ function renderSharedWorkoutSync(w){
   if(!w?.sharedSession)return '';
   const draft=sharedTrainingState().draft;
   const synced=sharedWorkoutSyncEnabled(w);
+  const recovery=w.sharedSession?.pace==='stay-together'&&w.sharedSession?.sharedPlanLocked!==true;
   const remote=draft?.remoteState;
   const online=Boolean(remote&&remote.connectionState!=='offline');
   const status=!remote?'Waiting for partner':!online?'Partner reconnecting':sharedRemotePositionLabel(draft);
-  return '<div class="runner-shared-sync '+(synced?'synced':'flexible')+'"><span>TOGETHER · '+(synced?'SYNCED TIMING':'FLEXIBLE TIMING')+'</span><strong>'+esc(status)+'</strong><small>'+(synced?'One shared clock · performance stays individual':'Same plan · independent pace')+'</small></div>';
+  const mode=recovery?'RECOVERY MODE':synced?'SYNCED TIMING':'FLEXIBLE TIMING';
+  const note=recovery?'This older mismatched session can continue without partner barriers. New Together sessions use one locked shared plan.':synced?'One shared plan · one shared pace · performance stays individual':'Same plan · independent pace';
+  return '<div class="runner-shared-sync '+(synced?'synced':'flexible')+'"><span>TOGETHER · '+mode+'</span><strong>'+esc(status)+'</strong><small>'+esc(note)+'</small></div>';
 }
 function renderWorkout(){
   const pos=getActivePosition();
