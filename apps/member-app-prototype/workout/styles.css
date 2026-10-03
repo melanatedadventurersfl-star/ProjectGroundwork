@@ -5931,6 +5931,8 @@ body.workout-mode .main{
 .runner-shared-sync span{font-size:10px;font-weight:800;letter-spacing:.09em;color:#d6ff43}
 .runner-shared-sync strong{font-size:12px;text-align:right;color:var(--text,#f7faf8)}
 .runner-shared-sync small{grid-column:1/-1;font-size:10px;color:var(--muted,#8e9a93)}
+.runner-shared-sync.live-tracker em{grid-column:1/-1;font-size:10px;font-style:normal;font-weight:700;color:#d6ff43}
+.runner-shared-sync.live-tracker b{grid-column:1/-1;font-size:9px;font-weight:700;letter-spacing:.05em;color:var(--muted,#8e9a93)}
 .runner-shared-sync.flexible{border-color:rgba(142,154,147,.24);background:rgba(142,154,147,.07)}
 .runner-shared-sync.flexible span{color:var(--muted,#8e9a93)}
 
