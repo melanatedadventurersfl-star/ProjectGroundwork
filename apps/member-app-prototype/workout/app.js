@@ -184,11 +184,24 @@ function validateActiveWorkoutCandidate(candidate,history=store.history){
  const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
  const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
  w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;w.recoveryCheckpointAt=w.recoveryCheckpointAt||w.startedAt;
- if(w.phase==='partner-wait'&&w.sharedPendingAction?.kind==='side-switch'){
-  const stuckEx=w.exercises?.[w.currentExerciseIndex],stuckSet=stuckEx?.sets?.[w.currentSetIndex],now=new Date().toISOString();
-  if(stuckSet){stuckSet.activeSide='left';stuckSet.sideStartedAt=now;}
-  w.phase='work';w.setStartedAt=now;w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;w.pendingPosition=null;
-  delete w.sideSwitchStartedAt;delete w.sideSwitchEndsAt;delete w.sideSwitchDuration;delete w.sideSwitchPausedRemaining;
+ if(w.phase==='partner-wait'){
+  const action=w.sharedPendingAction||{},now=new Date(),iso=now.toISOString();
+  const stuckEx=w.exercises?.[w.currentExerciseIndex],stuckSet=stuckEx?.sets?.[w.currentSetIndex];
+  if(action.kind==='side-switch'){
+   if(stuckSet){stuckSet.activeSide='left';stuckSet.sideStartedAt=iso;}
+   w.phase='work';w.setStartedAt=iso;w.pendingPosition=null;
+   delete w.sideSwitchStartedAt;delete w.sideSwitchEndsAt;delete w.sideSwitchDuration;delete w.sideSwitchPausedRemaining;
+  }else if(action.kind==='calibrate'){
+   w.phase='calibrate';w.pendingPosition=action.next?clone(action.next):w.pendingPosition;
+  }else if(action.kind==='feedback'){
+   w.phase='feedback';w.pendingPosition=action.next?clone(action.next):w.pendingPosition;
+  }else if(action.kind==='rest'){
+   const seconds=Math.max(5,num(action.seconds)||45);
+   w.phase='rest';w.pendingPosition=action.next?clone(action.next):null;w.restDuration=seconds;w.restEndsAt=new Date(now.getTime()+seconds*1000).toISOString();w.restPausedRemaining=null;w.restToken='independent-rest-'+w.id+'-'+now.getTime();
+  }else{
+   w.phase='work';
+  }
+  w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;
  }
  if(w.phase==='rest'&&!w.pendingPosition){w.phase='pre-set';w.restEndsAt=null;w.restPausedRemaining=null;w.restToken=null;}
  if(w.phase==='rest'&&!w.restToken)w.restToken=newTimerToken('rest',w);
@@ -7693,7 +7706,7 @@ function updateSharedFromPresence(){
     draft.remoteState={...draft.remoteState,connectionState:'offline'};
   }
   saveSharedBackendDraft(draft);
-  if(currentTab==='together')render();
+  if(currentTab==='together'||currentTab==='workout')render();
 }
 async function subscribeSharedSession(draft){
   if(!workoutSupabase||!draft?.backendId||store.account?.status!=='connected')return;
@@ -7745,25 +7758,9 @@ async function subscribeSharedSession(draft){
       };
       saveSharedBackendDraft(current);
       applySharedRemoteState(current,current.remoteState);
-      maybeReleaseSharedBarrier(current,current.remoteState);
-      if(currentTab==='together')render();
+      if(currentTab==='together'||currentTab==='workout')render();
     })
-    .on('broadcast',{event:'control-request'},({payload})=>{
-      const current=sharedTrainingState().draft;
-      const w=store.activeWorkout;
-      if(!payload||!current||!w||current.backendId!==draft.backendId||w.sharedSession?.backendId!==draft.backendId)return;
-      if(current.role!=='host'||!sharedWorkoutSyncEnabled(w)||payload.userId===store.account?.userId)return;
-      const requestId=String(payload.requestId||'');
-      if(requestId&&sharedRuntime.pendingControlRequests.has(requestId))return;
-      if(requestId){sharedRuntime.pendingControlRequests.add(requestId);if(sharedRuntime.pendingControlRequests.size>80)sharedRuntime.pendingControlRequests.delete(sharedRuntime.pendingControlRequests.values().next().value);}
-      if(payload.action==='toggle-pause')toggleWorkoutPause(true);
-      else if(payload.action==='reset-timer')resetActiveTimer(true);
-      else if(payload.action==='skip-rest')skipRest(true);
-      else if(payload.action==='skip-side-switch')skipExerciseSideSwitch(true);
-      else if(payload.action==='toggle-rest-pause')toggleWorkoutPause(true);
-      else if(payload.action==='adjust-rest')adjustRest(num(payload.delta),true);
-      else if(payload.action==='skip-timed-stage')skipTimedStage(true);
-    })
+    .on('broadcast',{event:'control-request'},()=>{})
     .on('broadcast',{event:'session-state'},({payload})=>{
       const current=sharedTrainingState().draft;
       if(!current||current.backendId!==draft.backendId||!payload)return;
@@ -7792,12 +7789,8 @@ function sharedWorkoutSyncEnabled(w=store.activeWorkout){
   const shared=w?.sharedSession;
   return Boolean(shared?.backendId&&shared.sharedPlanLocked===true&&shared.pace==='stay-together'&&shared.mode!=='share-plan');
 }
-function sharedWorkoutFollower(w=store.activeWorkout){
-  return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='partner');
-}
-function sharedWorkoutHost(w=store.activeWorkout){
-  return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='host');
-}
+function sharedWorkoutFollower(){return false;}
+function sharedWorkoutHost(){return false;}
 function sharedClockSnapshot(w){
   if(!w)return {phaseStartedAt:null,phaseEndsAt:null,timerDurationSeconds:0};
   let phaseStartedAt=null,phaseEndsAt=null,timerDurationSeconds=0;
@@ -7844,162 +7837,44 @@ function sharedActiveSide(w){
   if(exerciseNeedsSideSwitch(ex)&&['right','left','switch','done'].includes(set?.activeSide))return set.activeSide;
   return exerciseNeedsSideSwitch(ex)?activeExerciseSide(set):'both';
 }
+function sharedSameWorkoutPosition(w,remote){
+  if(!w||!remote)return false;
+  if(['warmup','cooldown'].includes(w.phase)){
+    return w.phase===remote.phase&&num(w.timedStageIndex)===num(remote.stageIndex)&&(w.timedStageSide||'')===(remote.stageSide||'');
+  }
+  return num(w.currentExerciseIndex)===num(remote.exerciseIndex)&&num(w.currentSetIndex)===num(remote.setIndex)&&w.phase===remote.phase;
+}
+function alignMatchingSharedTimer(w,remote){
+  if(!sharedWorkoutSyncEnabled(w)||w?.sharedSession?.role!=='partner'||!sharedSameWorkoutPosition(w,remote))return false;
+  if(w.isPaused||remote.isPaused)return false;
+  const localClock=sharedClockSnapshot(w),localStart=Date.parse(localClock.phaseStartedAt||''),remoteStart=Date.parse(remote.phaseStartedAt||'');
+  if(!Number.isFinite(localStart)||!Number.isFinite(remoteStart)||Math.abs(localStart-remoteStart)>5000)return false;
+  const allowed=new Set(['rest','timed-set','side-switch','warmup','cooldown']);
+  if(!allowed.has(w.phase)||!remote.phaseEndsAt)return false;
+  if(w.phase==='rest'){w.restEndsAt=remote.phaseEndsAt;w.restDuration=Math.max(1,num(remote.timerDurationSeconds)||num(w.restDuration));}
+  else if(w.phase==='timed-set'){w.timedSetStartedAt=remote.phaseStartedAt;w.timedSetEndsAt=remote.phaseEndsAt;w.timedSetDuration=Math.max(1,num(remote.timerDurationSeconds)||num(w.timedSetDuration));}
+  else if(w.phase==='side-switch'){w.sideSwitchStartedAt=remote.phaseStartedAt;w.sideSwitchEndsAt=remote.phaseEndsAt;w.sideSwitchDuration=Math.max(1,num(remote.timerDurationSeconds)||num(w.sideSwitchDuration));}
+  else if(['warmup','cooldown'].includes(w.phase)){w.timedPhaseStartedAt=remote.phaseStartedAt;}
+  w.sharedTimerAlignedAt=new Date().toISOString();
+  return true;
+}
 function applySharedRemoteState(draft,remote){
   const w=store.activeWorkout;
-  if(!draft||!remote||!w||w.sharedSession?.backendId!==draft.backendId||!sharedWorkoutFollower(w))return false;
-  if(draft.role!=='partner'||remote.userId!==draft.partnerId)return false;
-  if(['lobby','ready','planning','complete'].includes(remote.phase||''))return false;
-  if(remote.phase==='partner-wait'&&!w.sharedStepComplete)return false;
-  if(w.phase==='partner-wait'&&w.sharedStepComplete&&remote.phase!=='partner-wait'){
-    const samePosition=num(remote.exerciseIndex)===num(w.currentExerciseIndex)&&num(remote.setIndex)===num(w.currentSetIndex);
-    const releasedPhase=['side-switch','rest','calibrate','feedback','cooldown','pre-set','timed-set','warmup','warmup-complete','exercise-transition','exercise-review'].includes(remote.phase||'');
-    const releasedSide=remote.phase==='work'&&remote.activeSide==='left';
-    const releasedPosition=!samePosition;
-    if(!releasedPhase&&!releasedSide&&!releasedPosition)return false;
-  }
-  const incomingRevision=num(remote.syncRevision);
-  const incomingTime=Date.parse(remote.updatedAt||'')||0;
-  const localTime=Date.parse(w.sharedSyncUpdatedAt||'')||0;
+  if(!draft||!remote||!w||w.sharedSession?.backendId!==draft.backendId)return false;
+  const incomingRevision=num(remote.syncRevision),incomingTime=Date.parse(remote.updatedAt||'')||0,localTime=Date.parse(w.sharedSyncUpdatedAt||'')||0;
   if(incomingRevision&&incomingRevision<=num(sharedRuntime.lastAppliedSyncRevision)&&incomingTime<=localTime)return false;
   sharedRuntime.lastAppliedSyncRevision=Math.max(num(sharedRuntime.lastAppliedSyncRevision),incomingRevision);
-  const ei=Math.max(0,Math.min(num(remote.exerciseIndex),Math.max(0,(w.exercises?.length||1)-1)));
-  const ex=w.exercises?.[ei];
-  const si=Math.max(0,Math.min(num(remote.setIndex),Math.max(0,(ex?.sets?.length||1)-1)));
-  sharedRuntime.syncMuted=true;
-  try{
-    w.currentExerciseIndex=ei;
-    w.currentSetIndex=si;
-    w.furthestExerciseIndex=Math.max(num(w.furthestExerciseIndex),ei);
-    w.phase=remote.phase||w.phase;
-    w.isPaused=Boolean(remote.isPaused);
-    w.pausedAt=w.isPaused?(remote.pausedAt||remote.updatedAt||new Date().toISOString()):null;
-    w.sharedSyncUpdatedAt=remote.updatedAt||new Date().toISOString();
-    w.sharedSyncRevision=incomingRevision||Date.now();
-    if(remote.phase!=='partner-wait'){
-      w.sharedStepKey='';
-      w.sharedStepComplete=false;
-      w.sharedPendingAction=null;
-    }
-    if(remote.nextExerciseIndex!==null&&remote.nextExerciseIndex!==undefined){
-      const nextEi=Math.max(0,Math.min(num(remote.nextExerciseIndex),Math.max(0,(w.exercises?.length||1)-1)));
-      const nextEx=w.exercises?.[nextEi];
-      const nextSi=Math.max(0,Math.min(num(remote.nextSetIndex),Math.max(0,(nextEx?.sets?.length||1)-1)));
-      w.pendingPosition={ei:nextEi,si:nextSi,type:nextEi===ei?'set':'exercise'};
-    }else if(w.phase!=='rest'&&w.phase!=='feedback'&&w.phase!=='calibrate'){
-      w.pendingPosition=null;
-    }
-    const set=ex?.sets?.[si];
-    if(set&&exerciseNeedsSideSwitch(ex)&&remote.activeSide){
-      set.activeSide=['right','left','switch','done'].includes(remote.activeSide)?remote.activeSide:'right';
-    }
-    if(['warmup','cooldown'].includes(w.phase)){
-      w.timedStageIndex=Math.max(0,num(remote.stageIndex));
-      w.timedStageSide=remote.stageSide||remote.activeSide||w.timedStageSide||'';
-      if(remote.activeSide==='switch'){
-        w.timedStageSwitchStartedAt=remote.phaseStartedAt||null;
-        w.timedStageSwitchEndsAt=remote.phaseEndsAt||null;
-      }else{
-        delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
-        w.timedPhaseStartedAt=remote.phaseStartedAt||null;
-      }
-    }else if(w.phase==='rest'){
-      w.restEndsAt=remote.phaseEndsAt||null;
-      w.restDuration=Math.max(0,num(remote.timerDurationSeconds));
-      w.restPausedRemaining=null;
-      if(!w.restToken)w.restToken='shared:'+draft.backendId+':'+ei+':'+si;
-    }else if(w.phase==='side-switch'){
-      w.sideSwitchStartedAt=remote.phaseStartedAt||null;
-      w.sideSwitchEndsAt=remote.phaseEndsAt||null;
-      w.sideSwitchDuration=Math.max(0,num(remote.timerDurationSeconds));
-      w.sideSwitchPausedRemaining=null;
-    }else if(w.phase==='timed-set'){
-      w.timedSetStartedAt=remote.phaseStartedAt||null;
-      w.timedSetEndsAt=remote.phaseEndsAt||null;
-      w.timedSetDuration=Math.max(0,num(remote.timerDurationSeconds));
-      delete w.timedSetPausedRemaining;
-    }else if(w.phase==='pre-set'){
-      w.preSetStartedAt=remote.phaseStartedAt||null;
-      w.preSetSetupSeconds=0;
-      w.preSetCountdownSeconds=Math.max(1,num(remote.timerDurationSeconds)||3);
-      w.preSetCoachPending=false;
-      w.preSetManualStart=!remote.phaseStartedAt;
-      w.preSetFinishing=false;
-    }else if(w.phase==='work'){
-      w.setStartedAt=remote.phaseStartedAt||w.setStartedAt||new Date().toISOString();
-    }
-    saveStore();
-  }finally{
-    sharedRuntime.syncMuted=false;
-  }
-  if(currentTab==='workout')render();
+  w.sharedSyncUpdatedAt=remote.updatedAt||new Date().toISOString();
+  w.sharedSyncRevision=incomingRevision||Date.now();
+  const aligned=alignMatchingSharedTimer(w,remote);
+  if(aligned)saveStore();
   return true;
 }
-function requestSharedControl(action,payload={}){
-  const w=store.activeWorkout;
-  if(!sharedWorkoutFollower(w)||!sharedRuntime.channel)return false;
-  const requestId=[w.sharedSession.backendId,store.account?.userId,action,Date.now()].join(':');
-  sharedRuntime.channel.send({type:'broadcast',event:'control-request',payload:{requestId,userId:store.account?.userId,action,...payload,updatedAt:new Date().toISOString()}}).catch(()=>{});
-  toast('Synced control sent to '+(w.sharedSession?.partnerName||'your workout partner')+'.');
-  return true;
-}
-function sharedBarrierKey(pos,kind='set',side=''){
-  return [kind,pos?.ei??0,pos?.si??0,side||'both'].join(':');
-}
-function enterSharedBarrier(pos,key,pendingAction){
-  const w=pos?.workout;
-  if(!w||!sharedWorkoutSyncEnabled(w))return false;
-  w.sharedStepKey=String(key||'');
-  w.sharedStepComplete=true;
-  w.sharedPendingAction=clone(pendingAction||{});
-  w.phase='partner-wait';
-  w.pendingPosition=pendingAction?.next?clone(pendingAction.next):w.pendingPosition;
-  saveStore();
-  render();
-  maybeReleaseSharedBarrier(sharedTrainingState().draft,sharedTrainingState().draft?.remoteState);
-  return true;
-}
-function runSharedPendingAction(w,action){
-  if(!w||!action)return;
-  const pos=getActivePosition();
-  if(!pos)return;
-  w.sharedStepKey='';
-  w.sharedStepComplete=false;
-  w.sharedPendingAction=null;
-  if(action.kind==='side-switch'){
-    w.phase='work';
-    beginExerciseSideSwitch(pos);
-    return;
-  }
-  if(action.kind==='calibrate'){
-    w.phase='calibrate';
-    w.pendingPosition=action.next?clone(action.next):null;
-    saveStore();render();
-    return;
-  }
-  if(action.kind==='feedback'){
-    w.phase='work';
-    startExerciseFeedback(action.next?clone(action.next):null);
-    return;
-  }
-  if(action.kind==='rest'){
-    w.phase='work';
-    beginRest(action.next?clone(action.next):null,Math.max(5,num(action.seconds)||45));
-    return;
-  }
-  if(action.kind==='cooldown'){
-    w.phase='work';
-    startCooldown();
-    return;
-  }
-}
-function maybeReleaseSharedBarrier(draft=sharedTrainingState().draft,remote=draft?.remoteState){
-  const w=store.activeWorkout;
-  if(!w||!sharedWorkoutHost(w)||w.phase!=='partner-wait'||!w.sharedStepComplete||!w.sharedPendingAction)return false;
-  if(!remote||remote.connectionState==='offline'||!remote.stepComplete||remote.stepKey!==w.sharedStepKey)return false;
-  const action=clone(w.sharedPendingAction);
-  runSharedPendingAction(w,action);
-  return true;
-}
+function requestSharedControl(){return false;}
+function sharedBarrierKey(pos,kind='set',side=''){return [kind,pos?.ei??0,pos?.si??0,side||'both'].join(':');}
+function enterSharedBarrier(){return false;}
+function runSharedPendingAction(){return false;}
+function maybeReleaseSharedBarrier(){return false;}
 function currentSharedCoordinationState(){
   const draft=sharedTrainingState().draft;
   if(!draft?.backendId||store.account?.status!=='connected')return null;
