@@ -4840,6 +4840,39 @@ function applyReadinessToDay(day,readiness){
   adjusted.availableMinutes=available;
   return adjusted;
 }
+function applySharedReadinessToDay(day,readiness,setup=null){
+  const adjusted=clone(day);
+  const available=Math.max(15,num(readiness?.timeAvailable)||num(store.profile?.minutes)||45);
+  const energy=num(readiness?.energy)||3,sleep=num(readiness?.sleep)||3,soreness=num(readiness?.soreness)||2;
+  const notes=[];
+  adjusted.readinessLoadFactor=1;
+  adjusted.readinessRestBonus=0;
+  adjusted.holdProgression=false;
+  if(energy<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);notes.push('Low energy: personal loading reduced while the shared exercise sequence stays unchanged.');}
+  if(sleep<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);adjusted.holdProgression=true;notes.push('Limited sleep: personal progression held while the shared workout stays aligned.');}
+  if(soreness>=4){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.9);adjusted.holdProgression=true;notes.push('High soreness: personal loading reduced without changing the shared exercises or set count.');}
+  else if(soreness===3){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);notes.push('Moderate soreness: personal loading stays conservative without changing the shared workout.');}
+  const incompatible=setup?(adjusted.exercises||[]).filter(ex=>!setupAllowsExercise(exerciseSource(ex)||ex,setup)):[];
+  adjusted.sharedSetupIncompatible=incompatible.map(ex=>({id:ex.id,name:ex.name}));
+  adjusted.readinessNotes=notes;
+  adjusted.readinessScore=readinessScore(readiness);
+  adjusted.availableMinutes=available;
+  adjusted.sharedPlanLocked=true;
+  return adjusted;
+}
+function sharedReadinessPreviewSnapshot(day,readiness,setup){
+  const preview=applySharedReadinessToDay(day,readiness,setup);
+  const unavailableCount=preview.sharedSetupIncompatible?.length||0;
+  const consequences=['Shared exercises, order, sets, and workout format stay locked'];
+  if(num(readiness.energy)<=2||num(readiness.soreness)>=3)consequences.push('Your personal load is reduced');
+  if(num(readiness.sleep)<=2)consequences.push('Your progression is held for this session');
+  if(unavailableCount)consequences.push(unavailableCount+' shared exercise'+(unavailableCount===1?' needs':'s need')+' a compatible equipment setup');
+  if(num(readiness.timeAvailable)<num(day.estimatedMinutes))consequences.push('Shared session may run past your selected time');
+  return {day:preview,changes:[],replacementCount:0,unavailableCount,removedCount:0,
+    title:unavailableCount?'Shared setup check':(num(readiness.soreness)>=4?'Recovery-adjusted':num(readiness.energy)<=2||num(readiness.sleep)<=2?'Conservative day':'Shared plan locked'),
+    copy:unavailableCount?'Choose a setup that supports every shared exercise. GoWorkout will not silently replace one person’s movements.':'Both accounts keep the same exercises and workout format. Readiness only changes your personal prescription.',
+    consequences:consequences.slice(0,5)};
+}
 function scheduledEntryFor(dayId,scheduledDate=''){
   const key=scheduledDate||dateKey();
   return currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId&&entry.dateKey===key)||
@@ -4962,6 +4995,7 @@ function workoutStructurePlanLine(day){
   return (day?.exercises?.length||0)+' exercises · '+format+(blocks?' · '+blocks+' grouped block'+(blocks===1?'':'s'):'')+' · about '+num(day?.estimatedMinutes)+' min';
 }
 function readinessPreviewSnapshot(day,readiness,setup){
+  if(readinessContext?.sharedDraft)return sharedReadinessPreviewSnapshot(day,readiness,setup);
   const plannedStructure=clone(day.trainingStructure||null);
   let preview=adaptDayForSessionSetup(applyReadinessToDay(clone(day),readiness),setup,readiness.timeAvailable);
   preview=reflowPlannedWorkoutStructure(preview,plannedStructure,readiness);
@@ -5196,10 +5230,20 @@ async function startPreparedWorkout(){
   await advanceBuild(1);
   const sourceDay=clone(context.day);
   const plannedStructure=clone(sourceDay.trainingStructure||null);
-  let day=applyReadinessToDay(sourceDay,readiness);
-  day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
-  day=reflowPlannedWorkoutStructure(day,plannedStructure,readiness);
-  recalculatePlanDay(day);
+  let day;
+  if(context.sharedDraft){
+    day=applySharedReadinessToDay(sourceDay,readiness,setup);
+    if(day.sharedSetupIncompatible?.length){
+      context.building=null;
+      context.buildError='This shared workout has '+day.sharedSetupIncompatible.length+' exercise'+(day.sharedSetupIncompatible.length===1?'':'s')+' that do not fit your selected equipment. Choose a compatible setup so both accounts keep the same movements.';
+      render();toast(context.buildError);return;
+    }
+  }else{
+    day=applyReadinessToDay(sourceDay,readiness);
+    day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
+    day=reflowPlannedWorkoutStructure(day,plannedStructure,readiness);
+    recalculatePlanDay(day);
+  }
   if(!day.exercises.length){
     context.building=null;
     context.buildError='No usable exercises match that setup. Add available equipment or choose another training location.';
@@ -5225,7 +5269,7 @@ async function startPreparedWorkout(){
     trainingContext:day.trainingContext,
     adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]
   });
-  if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString()};
+  if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString(),sharedPlanLocked:true,sharedPlanExerciseIds:(day.exercises||[]).map(ex=>ex.id),sharedStructure:clone(day.trainingStructure||null)};
   saveStore();
   currentTab='workout';
   prefetchWorkoutOpeningCoach(store.activeWorkout);
