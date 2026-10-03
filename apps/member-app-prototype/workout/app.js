@@ -475,7 +475,7 @@ function storeLearnerDecision(engine,learner,exercise,workout,proposal,prefix){
   return decision;
 }
 function applyLearnerTargetInfluence(exercise,workout){
-  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner();
+  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner(),sharedLocked=Boolean(workout?.sharedPlanLocked);
   if(!engine?.targetProposal||!learner||!exercise||!workout)return exercise;
   const model=learner.models?.[exercise.id];
   if(!model)return exercise;
@@ -499,7 +499,7 @@ function applyLearnerTargetInfluence(exercise,workout){
     }
   }
 
-  if(engine.restProposal&&!exercise.blockId){
+  if(engine.restProposal&&!exercise.blockId&&!sharedLocked){
     const rest=engine.restProposal(model,{restSeconds:num(exercise.rest)});
     if(['apply','suggest'].includes(rest.action)){
       const restDecision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,rest,'rest');
@@ -510,7 +510,7 @@ function applyLearnerTargetInfluence(exercise,workout){
     }
   }
 
-  if(engine.volumeExperimentProposal||engine.volumeShadowProposal){
+  if((engine.volumeExperimentProposal||engine.volumeShadowProposal)&&!sharedLocked){
     const volumeBase={weight:num(exercise.suggestedWeight),reps:num(exercise.suggestedReps),restSeconds:num(exercise.rest),sets:exercise.sets?.length||0};
     const volume=engine.volumeExperimentProposal
       ?engine.volumeExperimentProposal(model,volumeBase,exercise,{readinessScore:num(workout.readiness?.score),alreadyApplied:num(workout.volumeExperimentCount)>=1,otherApplied:Boolean(proposal.applied||exercise.learnerRest?.applied)})
@@ -5269,7 +5269,8 @@ async function startPreparedWorkout(){
     readiness,
     programContext:programCtx,
     trainingContext:day.trainingContext,
-    adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]
+    adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])],
+    sharedPlanLocked:Boolean(sharedDraft)
   });
   if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString(),sharedPlanLocked:true,sharedPlanExerciseIds:(day.exercises||[]).map(ex=>ex.id),sharedStructure:clone(day.trainingStructure||null)};
   saveStore();
@@ -5287,7 +5288,7 @@ function createWorkout(day,meta={}){
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
-    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
+    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],sharedPlanLocked:Boolean(meta.sharedPlanLocked),
     preparedAt:now,startedAt:now,trainingStartedAt:null,estimatedMinutes:num(day.estimatedMinutes)||num(meta.estimatedMinutes)||num(meta.readiness?.timeAvailable)||num(store.profile?.minutes)||45,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,totalPausedMs:0,pauseLog:[],
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,timedStageSide:'',
@@ -5306,7 +5307,7 @@ function createWorkout(day,meta={}){
       const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
       if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
       if(day.readinessLoadFactor<1&&isWeightedMode(ex.loadMode)&&suggestedWeight)suggestedWeight=roundTo(suggestedWeight*day.readinessLoadFactor,ex.increment||5);
-      const suggestedRest=Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
+      const suggestedRest=meta.sharedPlanLocked?Math.max(30,Math.min(90,num(ex.rest)||45)):Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
       const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
       const weightValue=noWeight?'':(ex.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
       return {
