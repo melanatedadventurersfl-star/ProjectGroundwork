@@ -184,6 +184,12 @@ function validateActiveWorkoutCandidate(candidate,history=store.history){
  const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
  const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
  w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;w.recoveryCheckpointAt=w.recoveryCheckpointAt||w.startedAt;
+ if(w.phase==='partner-wait'&&w.sharedPendingAction?.kind==='side-switch'){
+  const stuckEx=w.exercises?.[w.currentExerciseIndex],stuckSet=stuckEx?.sets?.[w.currentSetIndex],now=new Date().toISOString();
+  if(stuckSet){stuckSet.activeSide='left';stuckSet.sideStartedAt=now;}
+  w.phase='work';w.setStartedAt=now;w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;w.pendingPosition=null;
+  delete w.sideSwitchStartedAt;delete w.sideSwitchEndsAt;delete w.sideSwitchDuration;delete w.sideSwitchPausedRemaining;
+ }
  if(w.phase==='rest'&&!w.pendingPosition){w.phase='pre-set';w.restEndsAt=null;w.restPausedRemaining=null;w.restToken=null;}
  if(w.phase==='rest'&&!w.restToken)w.restToken=newTimerToken('rest',w);
  return {valid:true,workout:w,ageHours};
@@ -469,7 +475,7 @@ function storeLearnerDecision(engine,learner,exercise,workout,proposal,prefix){
   return decision;
 }
 function applyLearnerTargetInfluence(exercise,workout){
-  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner();
+  const engine=trainingLearnerEngine(),learner=ensureTrainingLearner(),sharedLocked=Boolean(workout?.sharedPlanLocked);
   if(!engine?.targetProposal||!learner||!exercise||!workout)return exercise;
   const model=learner.models?.[exercise.id];
   if(!model)return exercise;
@@ -493,7 +499,7 @@ function applyLearnerTargetInfluence(exercise,workout){
     }
   }
 
-  if(engine.restProposal&&!exercise.blockId){
+  if(engine.restProposal&&!exercise.blockId&&!sharedLocked){
     const rest=engine.restProposal(model,{restSeconds:num(exercise.rest)});
     if(['apply','suggest'].includes(rest.action)){
       const restDecision=storeLearnerDecision(engine,ensureTrainingLearner(),exercise,workout,rest,'rest');
@@ -504,7 +510,7 @@ function applyLearnerTargetInfluence(exercise,workout){
     }
   }
 
-  if(engine.volumeExperimentProposal||engine.volumeShadowProposal){
+  if((engine.volumeExperimentProposal||engine.volumeShadowProposal)&&!sharedLocked){
     const volumeBase={weight:num(exercise.suggestedWeight),reps:num(exercise.suggestedReps),restSeconds:num(exercise.rest),sets:exercise.sets?.length||0};
     const volume=engine.volumeExperimentProposal
       ?engine.volumeExperimentProposal(model,volumeBase,exercise,{readinessScore:num(workout.readiness?.score),alreadyApplied:num(workout.volumeExperimentCount)>=1,otherApplied:Boolean(proposal.applied||exercise.learnerRest?.applied)})
@@ -2778,6 +2784,7 @@ function rememberSwap(original,replacement,reason,mode){
   store.exercisePreferences.swapHistory=store.exercisePreferences.swapHistory.slice(0,100);
 }
 function applyExerciseSwap(candidateId,reason='other',neverShow=false){
+  if(swapContext?.mode==='workout'&&store.activeWorkout?.sharedSession?.sharedPlanLocked){toast('Together workouts keep the same exercises on both accounts.');return;}
   const target=swapTarget();
   const candidate=catalog.find(item=>item.id===candidateId);
   if(!target||!candidate)return;
@@ -4152,6 +4159,7 @@ function runtimeExerciseFromSessionReplacement(source,template,replacement,setup
 function applySetupToActiveWorkout(setup){
   const w=store.activeWorkout;
   if(!w)return {changed:0,unavailable:0};
+  if(w.sharedSession?.sharedPlanLocked){toast('Together workouts keep one shared exercise list. Change equipment before creating the shared session.');return {changed:0,unavailable:0,blocked:true};}
   if(w.phase==='intro'&&w.trainingContext?.originalExercises?.length){
     const baseDay={
       id:w.planDayId,
@@ -4834,6 +4842,39 @@ function applyReadinessToDay(day,readiness){
   adjusted.availableMinutes=available;
   return adjusted;
 }
+function applySharedReadinessToDay(day,readiness,setup=null){
+  const adjusted=clone(day);
+  const available=Math.max(15,num(readiness?.timeAvailable)||num(store.profile?.minutes)||45);
+  const energy=num(readiness?.energy)||3,sleep=num(readiness?.sleep)||3,soreness=num(readiness?.soreness)||2;
+  const notes=[];
+  adjusted.readinessLoadFactor=1;
+  adjusted.readinessRestBonus=0;
+  adjusted.holdProgression=false;
+  if(energy<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);notes.push('Low energy: personal loading reduced while the shared exercise sequence stays unchanged.');}
+  if(sleep<=2){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);adjusted.holdProgression=true;notes.push('Limited sleep: personal progression held while the shared workout stays aligned.');}
+  if(soreness>=4){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.9);adjusted.holdProgression=true;notes.push('High soreness: personal loading reduced without changing the shared exercises or set count.');}
+  else if(soreness===3){adjusted.readinessLoadFactor=Math.min(adjusted.readinessLoadFactor,.95);notes.push('Moderate soreness: personal loading stays conservative without changing the shared workout.');}
+  const incompatible=setup?(adjusted.exercises||[]).filter(ex=>!setupAllowsExercise(exerciseSource(ex)||ex,setup)):[];
+  adjusted.sharedSetupIncompatible=incompatible.map(ex=>({id:ex.id,name:ex.name}));
+  adjusted.readinessNotes=notes;
+  adjusted.readinessScore=readinessScore(readiness);
+  adjusted.availableMinutes=available;
+  adjusted.sharedPlanLocked=true;
+  return adjusted;
+}
+function sharedReadinessPreviewSnapshot(day,readiness,setup){
+  const preview=applySharedReadinessToDay(day,readiness,setup);
+  const unavailableCount=preview.sharedSetupIncompatible?.length||0;
+  const consequences=['Shared exercises, order, sets, and workout format stay locked'];
+  if(num(readiness.energy)<=2||num(readiness.soreness)>=3)consequences.push('Your personal load is reduced');
+  if(num(readiness.sleep)<=2)consequences.push('Your progression is held for this session');
+  if(unavailableCount)consequences.push(unavailableCount+' shared exercise'+(unavailableCount===1?' needs':'s need')+' a compatible equipment setup');
+  if(num(readiness.timeAvailable)<num(day.estimatedMinutes))consequences.push('Shared session may run past your selected time');
+  return {day:preview,changes:[],replacementCount:0,unavailableCount,removedCount:0,
+    title:unavailableCount?'Shared setup check':(num(readiness.soreness)>=4?'Recovery-adjusted':num(readiness.energy)<=2||num(readiness.sleep)<=2?'Conservative day':'Shared plan locked'),
+    copy:unavailableCount?'Choose a setup that supports every shared exercise. GoWorkout will not silently replace one person’s movements.':'Both accounts keep the same exercises and workout format. Readiness only changes your personal prescription.',
+    consequences:consequences.slice(0,5)};
+}
 function scheduledEntryFor(dayId,scheduledDate=''){
   const key=scheduledDate||dateKey();
   return currentWeekSchedule(dateFromKey(key)).find(entry=>entry.day.id===dayId&&entry.dateKey===key)||
@@ -4956,6 +4997,7 @@ function workoutStructurePlanLine(day){
   return (day?.exercises?.length||0)+' exercises · '+format+(blocks?' · '+blocks+' grouped block'+(blocks===1?'':'s'):'')+' · about '+num(day?.estimatedMinutes)+' min';
 }
 function readinessPreviewSnapshot(day,readiness,setup){
+  if(readinessContext?.sharedDraft)return sharedReadinessPreviewSnapshot(day,readiness,setup);
   const plannedStructure=clone(day.trainingStructure||null);
   let preview=adaptDayForSessionSetup(applyReadinessToDay(clone(day),readiness),setup,readiness.timeAvailable);
   preview=reflowPlannedWorkoutStructure(preview,plannedStructure,readiness);
@@ -5190,10 +5232,20 @@ async function startPreparedWorkout(){
   await advanceBuild(1);
   const sourceDay=clone(context.day);
   const plannedStructure=clone(sourceDay.trainingStructure||null);
-  let day=applyReadinessToDay(sourceDay,readiness);
-  day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
-  day=reflowPlannedWorkoutStructure(day,plannedStructure,readiness);
-  recalculatePlanDay(day);
+  let day;
+  if(context.sharedDraft){
+    day=applySharedReadinessToDay(sourceDay,readiness,setup);
+    if(day.sharedSetupIncompatible?.length){
+      context.building=null;
+      context.buildError='This shared workout has '+day.sharedSetupIncompatible.length+' exercise'+(day.sharedSetupIncompatible.length===1?'':'s')+' that do not fit your selected equipment. Choose a compatible setup so both accounts keep the same movements.';
+      render();toast(context.buildError);return;
+    }
+  }else{
+    day=applyReadinessToDay(sourceDay,readiness);
+    day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
+    day=reflowPlannedWorkoutStructure(day,plannedStructure,readiness);
+    recalculatePlanDay(day);
+  }
   if(!day.exercises.length){
     context.building=null;
     context.buildError='No usable exercises match that setup. Add available equipment or choose another training location.';
@@ -5217,9 +5269,10 @@ async function startPreparedWorkout(){
     readiness,
     programContext:programCtx,
     trainingContext:day.trainingContext,
-    adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])]
+    adaptationNotes:[...(day.adaptationNotes||[]),...(day.readinessNotes||[])],
+    sharedPlanLocked:Boolean(sharedDraft)
   });
-  if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString()};
+  if(sharedDraft)store.activeWorkout.sharedSession={...sharedDraft,startedTogetherAt:new Date().toISOString(),sharedPlanLocked:true,sharedPlanExerciseIds:(day.exercises||[]).map(ex=>ex.id),sharedStructure:clone(day.trainingStructure||null)};
   saveStore();
   currentTab='workout';
   prefetchWorkoutOpeningCoach(store.activeWorkout);
@@ -5235,7 +5288,7 @@ function createWorkout(day,meta={}){
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
-    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],
+    readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],sharedPlanLocked:Boolean(meta.sharedPlanLocked),
     preparedAt:now,startedAt:now,trainingStartedAt:null,estimatedMinutes:num(day.estimatedMinutes)||num(meta.estimatedMinutes)||num(meta.readiness?.timeAvailable)||num(store.profile?.minutes)||45,currentExerciseIndex:0,currentSetIndex:0,furthestExerciseIndex:0,
     isPaused:false,pausedAt:null,totalPausedMs:0,pauseLog:[],
     phase:'intro',timedPhaseStartedAt:null,timedPhaseSkippedSeconds:0,timedStageIndex:0,timedStageReps:0,timedStageSide:'',
@@ -5254,7 +5307,7 @@ function createWorkout(day,meta={}){
       const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
       if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
       if(day.readinessLoadFactor<1&&isWeightedMode(ex.loadMode)&&suggestedWeight)suggestedWeight=roundTo(suggestedWeight*day.readinessLoadFactor,ex.increment||5);
-      const suggestedRest=Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
+      const suggestedRest=meta.sharedPlanLocked?Math.max(30,Math.min(90,num(ex.rest)||45)):Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
       const noWeight=['bodyweight','timed','band'].includes(ex.loadMode);
       const weightValue=noWeight?'':(ex.loadMode==='assisted'&&!suggestedWeight?'':String(suggestedWeight||''));
       return {
@@ -6155,7 +6208,6 @@ function completeCurrentSet(){
     if(side==='right'){
       pos.set.activeSide='right';
       fireWorkoutSignal('complete','complete-side-'+pos.workout.id+'-'+pos.ei+'-'+pos.si+'-right',{voice:'Right side complete',label:'DONE'});
-      if(enterSharedBarrier(pos,sharedBarrierKey(pos,'side','right'),{kind:'side-switch'}))return;
       beginExerciseSideSwitch(pos);
       return;
     }
@@ -7473,6 +7525,11 @@ function safeSharedPlanSnapshot(day){
     name:day.name||'Shared workout',
     focus:day.focus||'Shared training',
     estimatedMinutes:num(day.estimatedMinutes)||num(store.profile?.minutes)||45,
+    targetMinutes:num(day.targetMinutes)||num(day.estimatedMinutes)||num(store.profile?.minutes)||45,
+    warmupTargetSeconds:num(day.warmupTargetSeconds)||0,
+    cooldownTargetSeconds:num(day.cooldownTargetSeconds)||0,
+    trainingStructure:clone(day.trainingStructure||null),
+    blocks:clone(day.blocks||[]),
     warmup:clone(day.warmup||[]),
     cooldown:clone(day.cooldown||[]),
     exercises:(day.exercises||[]).map(ex=>({
@@ -7483,9 +7540,14 @@ function safeSharedPlanSnapshot(day){
       loadMode:ex.loadMode,
       sets:num(ex.sets)||2,
       reps:ex.reps||'8–12',
-      rest:Math.max(30,Math.min(60,num(ex.rest)||45)),
+      rest:Math.max(30,Math.min(90,num(ex.rest)||45)),
       setup:num(ex.setup)||25,
-      increment:num(ex.increment)||5
+      increment:num(ex.increment)||5,
+      blockId:ex.blockId||null,
+      blockType:ex.blockType||null,
+      blockOrder:ex.blockOrder===undefined?null:num(ex.blockOrder),
+      blockRest:ex.blockRest===undefined?null:num(ex.blockRest),
+      transitionRest:ex.transitionRest===undefined?null:num(ex.transitionRest)
     }))
   };
 }
@@ -7507,7 +7569,7 @@ function localizeSharedPlan(snapshot){
       calibrationRequired:Boolean(estimated.calibrate&&!calibrated&&!adaptive)
     };
   });
-  return {...snapshot,exercises,warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
+  return {...snapshot,exercises,trainingStructure:clone(snapshot.trainingStructure||null),blocks:clone(snapshot.blocks||[]),warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
 }
 function sharedDraftFromRow(row,role=''){
   const userId=store.account?.userId||'';
@@ -7728,7 +7790,7 @@ async function subscribeSharedSession(draft){
 }
 function sharedWorkoutSyncEnabled(w=store.activeWorkout){
   const shared=w?.sharedSession;
-  return Boolean(shared?.backendId&&shared.pace==='stay-together'&&shared.mode!=='share-plan');
+  return Boolean(shared?.backendId&&shared.sharedPlanLocked===true&&shared.pace==='stay-together'&&shared.mode!=='share-plan');
 }
 function sharedWorkoutFollower(w=store.activeWorkout){
   return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='partner');
@@ -8088,16 +8150,11 @@ async function startSharedWorkout(){
     toast('Your partner has not started the shared workout yet.');
     return;
   }
-  let sharedDay=sharedDraftDay(draft);
-  if(draft.backendId&&workoutSupabase){
-    const {data:participants}=await workoutSupabase.from('workout_shared_participant_state').select('user_id,planning_profile,planned_day,readiness').eq('session_id',draft.backendId);
-    const partner=(participants||[]).find(p=>p.user_id!==store.account?.userId);
-    if(partner?.planned_day?.exercises?.length){
-      const partnerIds=new Set(partner.planned_day.exercises.map(ex=>ex.id));
-      const common=(sharedDay?.exercises||[]).filter(ex=>partnerIds.has(ex.id));
-      if(common.length>=2){sharedDay=clone(sharedDay);sharedDay.exercises=common;sharedDay.name='Shared '+sharedDay.name;recalculatePlanDay(sharedDay);}
-    }
-  }
+  let sharedDay=localizeSharedPlan(draft.planSnapshot)||sharedDraftDay(draft);
+  if(!sharedDay?.exercises?.length){toast('The shared workout plan could not be loaded. Recreate the Together session.');return;}
+  sharedDay=clone(sharedDay);
+  sharedDay.name=sharedDay.name||draft.routineName||'Shared workout';
+  sharedDay.sharedPlanLocked=true;
   openReadiness(draft.dayId,draft.scheduledDate);
   if(readinessContext){readinessContext.sharedDraft=clone(draft);if(sharedDay)readinessContext.day=sharedDay;}
   render();
@@ -8150,7 +8207,7 @@ async function createSharedDraft(){
     ready:false,
     connection_state:'online',
     phase:'planning',
-    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
+    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,workoutStructure:store.profile?.workoutStructure||'adaptive',priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
     planned_day:snapshot
   });
   if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
@@ -8276,7 +8333,7 @@ function renderTogether(){
       '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
       '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
       '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
-      '<section class="prototype-note compact"><strong>Realtime connected.</strong><span>Stay Together synchronizes side, set, phase, timers, pauses, and transitions. Flexible Pace shares position without forcing one clock. Readiness answers, body data, weights, reps, notes, PRs, and history stay private.</span></section>'+
+      '<section class="prototype-note compact"><strong>One shared workout plan.</strong><span>Both accounts receive the same exercises, order, sets, warm-up, cooldown, and workout format. Stay Together synchronizes full-set transitions and timers. Personal weights, reps, readiness, notes, PRs, and history stay private.</span></section>'+
     '</div>';
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
@@ -9297,10 +9354,13 @@ function renderSharedWorkoutSync(w){
   if(!w?.sharedSession)return '';
   const draft=sharedTrainingState().draft;
   const synced=sharedWorkoutSyncEnabled(w);
+  const recovery=w.sharedSession?.pace==='stay-together'&&w.sharedSession?.sharedPlanLocked!==true;
   const remote=draft?.remoteState;
   const online=Boolean(remote&&remote.connectionState!=='offline');
   const status=!remote?'Waiting for partner':!online?'Partner reconnecting':sharedRemotePositionLabel(draft);
-  return '<div class="runner-shared-sync '+(synced?'synced':'flexible')+'"><span>TOGETHER · '+(synced?'SYNCED TIMING':'FLEXIBLE TIMING')+'</span><strong>'+esc(status)+'</strong><small>'+(synced?'One shared clock · performance stays individual':'Same plan · independent pace')+'</small></div>';
+  const mode=recovery?'RECOVERY MODE':synced?'SYNCED TIMING':'FLEXIBLE TIMING';
+  const note=recovery?'This older mismatched session can continue without partner barriers. New Together sessions use one locked shared plan.':synced?'One shared plan · one shared pace · performance stays individual':'Same plan · independent pace';
+  return '<div class="runner-shared-sync '+(synced?'synced':'flexible')+'"><span>TOGETHER · '+mode+'</span><strong>'+esc(status)+'</strong><small>'+esc(note)+'</small></div>';
 }
 function renderWorkout(){
   const pos=getActivePosition();
