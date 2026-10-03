@@ -7739,7 +7739,11 @@ async function subscribeSharedSession(draft){
         ready:Boolean(payload.ready),
         connectionState:'online',
         exerciseIndex:num(payload.exerciseIndex),
+        exerciseName:payload.exerciseName||'',
+        exerciseCount:num(payload.exerciseCount),
         setIndex:num(payload.setIndex),
+        setCount:num(payload.setCount),
+        stageName:payload.stageName||'',
         phase:payload.phase||'lobby',
         isPaused:Boolean(payload.isPaused),
         activeSide:payload.activeSide||'',
@@ -7881,6 +7885,8 @@ function currentSharedCoordinationState(){
   const w=store.activeWorkout?.sharedSession?.backendId===draft.backendId?store.activeWorkout:null;
   const clock=sharedClockSnapshot(w);
   const next=w?.pendingPosition||null;
+  const activeEx=w?.exercises?.[w.currentExerciseIndex];
+  const activeStage=['warmup','cooldown'].includes(w?.phase)?timedStageItems(w)[w.timedStageIndex||0]:null;
   return {
     sessionId:draft.backendId,
     userId:store.account.userId,
@@ -7888,7 +7894,11 @@ function currentSharedCoordinationState(){
     ready:true,
     connectionState:'online',
     exerciseIndex:w?num(w.currentExerciseIndex):0,
+    exerciseName:activeEx?.name||'',
+    exerciseCount:w?.exercises?.length||0,
     setIndex:w?num(w.currentSetIndex):0,
+    setCount:activeEx?.sets?.length||0,
+    stageName:activeStage?.name||'',
     phase:w?(w.phase||'workout'):(draft.userStatus||'lobby'),
     isPaused:Boolean(w?.isPaused),
     activeSide:w?sharedActiveSide(w):'',
@@ -8189,17 +8199,21 @@ function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
   const day=sharedRemoteWorkoutDay(draft);
   if(remote.phase==='warmup'){
     const item=day?.warmup?.[remote.stageIndex];
-    return 'Warm-up'+(item?.name?' · '+item.name:'')+' · '+(num(remote.stageIndex)+1)+'/'+Math.max(1,day?.warmup?.length||1);
+    const name=remote.stageName||item?.name||'';
+    return 'Warm-up'+(name?' · '+name:'')+' · '+(num(remote.stageIndex)+1)+'/'+Math.max(1,day?.warmup?.length||1);
   }
   if(remote.phase==='cooldown'){
     const item=day?.cooldown?.[remote.stageIndex];
-    return 'Cooldown'+(item?.name?' · '+item.name:'')+' · '+(num(remote.stageIndex)+1)+'/'+Math.max(1,day?.cooldown?.length||1);
+    const name=remote.stageName||item?.name||'';
+    return 'Cooldown'+(name?' · '+name:'')+' · '+(num(remote.stageIndex)+1)+'/'+Math.max(1,day?.cooldown?.length||1);
   }
   const ex=day?.exercises?.[remote.exerciseIndex];
-  if(!ex)return 'Connected';
+  const name=remote.exerciseName||ex?.name||'';
+  if(!name)return 'Connected';
+  const setCount=Math.max(1,num(remote.setCount)||num(ex?.sets)||1);
   const side=['right','left'].includes(remote.activeSide)?' · '+remote.activeSide.toUpperCase()+' SIDE':'';
   const phase=remote.phase==='rest'?' · Resting':remote.phase==='side-switch'?' · Switching sides':remote.phase==='pre-set'?' · Getting ready':remote.phase==='feedback'?' · Exercise review':remote.phase==='timed-set'?' · Timed set':'';
-  return ex.name+' · Set '+(num(remote.setIndex)+1)+'/'+Math.max(1,num(ex.sets)||1)+side+phase;
+  return name+' · Set '+(num(remote.setIndex)+1)+'/'+setCount+side+phase;
 }
 function sharedRelativePositionLabel(w,draft=sharedTrainingState().draft){
   const remote=draft?.remoteState;
@@ -9618,7 +9632,7 @@ function renderSharedPartnerWait(pos){
   const draft=sharedTrainingState().draft;
   const partner=draft?.partnerName||pos.workout.sharedSession?.partnerName||'your partner';
   const side=['right','switch'].includes(pos.set?.activeSide)?'RIGHT SIDE':pos.set?.activeSide==='done'?'SET':'SET';
-  return '<div class="runner-side-switch runner-partner-wait"><p class="eyebrow">'+esc(side)+' COMPLETE</p><h2>Waiting for '+esc(partner)+'</h2><p>'+esc(pos.exercise.name)+' · Set '+(pos.si+1)+' of '+pos.exercise.sets.length+'</p><div class="shared-wait-pulse" aria-hidden="true">•••</div><small>Stay Together starts the next switch, rest, or exercise only after both accounts reach this point.</small></div>';
+  return '<div class="runner-side-switch runner-partner-wait"><p class="eyebrow">LEGACY SHARED STATE</p><h2>Continuing independently</h2><p>'+esc(pos.exercise.name)+' · Set '+(pos.si+1)+' of '+pos.exercise.sets.length+'</p><small>This older wait state will clear when the session reloads. New Together sessions never block your progress on a partner.</small></div>';
 }
 
 function renderSideSwitch(pos){
