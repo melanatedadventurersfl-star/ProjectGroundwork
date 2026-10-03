@@ -2784,6 +2784,7 @@ function rememberSwap(original,replacement,reason,mode){
   store.exercisePreferences.swapHistory=store.exercisePreferences.swapHistory.slice(0,100);
 }
 function applyExerciseSwap(candidateId,reason='other',neverShow=false){
+  if(swapContext?.mode==='workout'&&store.activeWorkout?.sharedSession?.sharedPlanLocked){toast('Together workouts keep the same exercises on both accounts.');return;}
   const target=swapTarget();
   const candidate=catalog.find(item=>item.id===candidateId);
   if(!target||!candidate)return;
@@ -4158,6 +4159,7 @@ function runtimeExerciseFromSessionReplacement(source,template,replacement,setup
 function applySetupToActiveWorkout(setup){
   const w=store.activeWorkout;
   if(!w)return {changed:0,unavailable:0};
+  if(w.sharedSession?.sharedPlanLocked){toast('Together workouts keep one shared exercise list. Change equipment before creating the shared session.');return {changed:0,unavailable:0,blocked:true};}
   if(w.phase==='intro'&&w.trainingContext?.originalExercises?.length){
     const baseDay={
       id:w.planDayId,
@@ -6205,7 +6207,6 @@ function completeCurrentSet(){
     if(side==='right'){
       pos.set.activeSide='right';
       fireWorkoutSignal('complete','complete-side-'+pos.workout.id+'-'+pos.ei+'-'+pos.si+'-right',{voice:'Right side complete',label:'DONE'});
-      if(enterSharedBarrier(pos,sharedBarrierKey(pos,'side','right'),{kind:'side-switch'}))return;
       beginExerciseSideSwitch(pos);
       return;
     }
@@ -8148,16 +8149,11 @@ async function startSharedWorkout(){
     toast('Your partner has not started the shared workout yet.');
     return;
   }
-  let sharedDay=sharedDraftDay(draft);
-  if(draft.backendId&&workoutSupabase){
-    const {data:participants}=await workoutSupabase.from('workout_shared_participant_state').select('user_id,planning_profile,planned_day,readiness').eq('session_id',draft.backendId);
-    const partner=(participants||[]).find(p=>p.user_id!==store.account?.userId);
-    if(partner?.planned_day?.exercises?.length){
-      const partnerIds=new Set(partner.planned_day.exercises.map(ex=>ex.id));
-      const common=(sharedDay?.exercises||[]).filter(ex=>partnerIds.has(ex.id));
-      if(common.length>=2){sharedDay=clone(sharedDay);sharedDay.exercises=common;sharedDay.name='Shared '+sharedDay.name;recalculatePlanDay(sharedDay);}
-    }
-  }
+  let sharedDay=localizeSharedPlan(draft.planSnapshot)||sharedDraftDay(draft);
+  if(!sharedDay?.exercises?.length){toast('The shared workout plan could not be loaded. Recreate the Together session.');return;}
+  sharedDay=clone(sharedDay);
+  sharedDay.name=sharedDay.name||draft.routineName||'Shared workout';
+  sharedDay.sharedPlanLocked=true;
   openReadiness(draft.dayId,draft.scheduledDate);
   if(readinessContext){readinessContext.sharedDraft=clone(draft);if(sharedDay)readinessContext.day=sharedDay;}
   render();
@@ -8210,7 +8206,7 @@ async function createSharedDraft(){
     ready:false,
     connection_state:'online',
     phase:'planning',
-    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
+    planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,workoutStructure:store.profile?.workoutStructure||'adaptive',priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[],day_name:day.name,day_focus:day.focus},
     planned_day:snapshot
   });
   if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
@@ -8336,7 +8332,7 @@ function renderTogether(){
       '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
       '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
       '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
-      '<section class="prototype-note compact"><strong>Realtime connected.</strong><span>Stay Together synchronizes side, set, phase, timers, pauses, and transitions. Flexible Pace shares position without forcing one clock. Readiness answers, body data, weights, reps, notes, PRs, and history stay private.</span></section>'+
+      '<section class="prototype-note compact"><strong>One shared workout plan.</strong><span>Both accounts receive the same exercises, order, sets, warm-up, cooldown, and workout format. Stay Together synchronizes full-set transitions and timers. Personal weights, reps, readiness, notes, PRs, and history stay private.</span></section>'+
     '</div>';
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
