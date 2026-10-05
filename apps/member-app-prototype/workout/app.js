@@ -4956,7 +4956,8 @@ function readinessSetupDetail(setup){
   if(family==='gym'){
     const extras=[];
     if(setup.floor)extras.push('floor space');
-    if(setup.chair)extras.push('bench / step');
+    if(setup.chair)extras.push('chair / step');
+    if(setup.bench)extras.push('workout bench');
     if(setup.pullupBar)extras.push('pull-up bar');
     return 'Machines, cables, barbells, dumbbells, bands'+(extras.length?' · '+extras.join(' · '):'');
   }
@@ -4979,7 +4980,7 @@ function readinessSetupMemoryText(setup){
   return 'Last used '+age+' days ago';
 }
 function rememberSessionSetup(setup){
-  const value={...clone(setup),usedAt:new Date().toISOString()};
+  const value={...clone(setup),preferenceVersion:2,usedAt:new Date().toISOString()};
   store.sessionPreferences=store.sessionPreferences||{lastSetup:null,locations:{}};
   store.sessionPreferences.locations=store.sessionPreferences.locations||{};
   store.sessionPreferences.lastSetup=value;
@@ -5118,7 +5119,8 @@ function openReadiness(dayId,scheduledDate='',preferredSetup=''){
   const setupKey=preferredSetup||normalSessionSetupKey();
   const family=readinessLocationFamily(setupKey);
   const remembered=store.sessionPreferences?.locations?.[family];
-  const setupContext=remembered?.key===setupKey?clone(remembered):buildSessionSetup(setupKey);
+  const rememberedUsable=remembered?.key===setupKey&&(family!=='gym'||remembered.preferenceVersion===2);
+  const setupContext=rememberedUsable?clone(remembered):buildSessionSetup(setupKey);
   readinessContext={
     dayId,
     scheduledDate:scheduledDate||entry?.dateKey||dateKey(),
@@ -11195,7 +11197,9 @@ document.addEventListener('change',event=>{
       readinessContext.setupDrafts[readinessLocationFamily(oldKey)]=clone(oldDraft);
 
       const newFamily=readinessLocationFamily(newKey);
-      const savedDraft=readinessContext.setupDrafts[newFamily]||store.sessionPreferences?.locations?.[newFamily];
+      const localDraft=readinessContext.setupDrafts[newFamily];
+      const storedDraft=store.sessionPreferences?.locations?.[newFamily];
+      const savedDraft=localDraft||(newFamily==='gym'&&storedDraft?.preferenceVersion!==2?null:storedDraft);
       const defaults=savedDraft?clone(savedDraft):buildSessionSetup(newKey);
       readinessContext.activeSetupKey=newKey;
       readinessContext.preferredSetup=newKey;
@@ -11205,9 +11209,11 @@ document.addEventListener('change',event=>{
       if(customRow)customRow.hidden=!['custom','home'].includes(newKey);
       const floor=form.querySelector('[name="sessionFloor"]');
       const chair=form.querySelector('[name="sessionChair"]');
+      const bench=form.querySelector('[name="sessionBench"]');
       const pullup=form.querySelector('[name="sessionPullupBar"]');
       if(floor)floor.checked=defaults.floor!==false;
       if(chair)chair.checked=Boolean(defaults.chair);
+      if(bench)bench.checked=Boolean(defaults.bench);
       if(pullup)pullup.checked=Boolean(defaults.pullupBar);
       form.querySelectorAll('input[name="customEquipment"]').forEach(input=>{input.checked=(defaults.modes||['bodyweight']).includes(input.value);});
       if(newKey==='home'&&!store.sessionPreferences?.locations?.home){
