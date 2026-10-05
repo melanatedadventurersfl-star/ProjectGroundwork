@@ -8348,6 +8348,7 @@ async function createSharedDraft(){
         p_join_code:code,
         p_partner_user_id:selectedPartner.userId,
         p_partner_name:selectedPartner.name||'Workout partner',
+        p_host_name:displayName(),
         p_routine_name:day.name,
         p_scheduled_date:next.dateKey,
         p_plan_day_id:day.id,
