@@ -7553,6 +7553,21 @@ function sharedJoinCode(){
   for(let i=0;i<6;i++)code+=alphabet[Math.floor(Math.random()*alphabet.length)];
   return code;
 }
+function sharedExerciseCatalogSource(sharedEx){
+  if(!sharedEx)return null;
+  const sharedIds=[sharedEx.catalogId,sharedEx.id,sharedEx.historyKey,...(sharedEx.historyAliases||[])].filter(Boolean);
+  const byId=catalog.find(item=>{
+    const itemIds=[item.id,item.historyKey,...(item.historyAliases||[])].filter(Boolean);
+    return sharedIds.some(id=>itemIds.includes(id));
+  });
+  if(byId)return byId;
+  const sharedName=normalizedExerciseName(sharedEx.name);
+  if(!sharedName)return null;
+  return catalog.find(item=>{
+    if(normalizedExerciseName(item.name)===sharedName)return true;
+    return (item.historyNames||[]).some(name=>normalizedExerciseName(name)===sharedName);
+  })||null;
+}
 function safeSharedPlanSnapshot(day){
   if(!day)return {};
   return {
@@ -7567,38 +7582,54 @@ function safeSharedPlanSnapshot(day){
     blocks:clone(day.blocks||[]),
     warmup:clone(day.warmup||[]),
     cooldown:clone(day.cooldown||[]),
-    exercises:(day.exercises||[]).map(ex=>({
-      id:ex.id,
-      name:ex.name,
-      movement:ex.movement,
-      muscles:clone(ex.muscles||[]),
-      loadMode:ex.loadMode,
-      sets:num(ex.sets)||2,
-      reps:ex.reps||'8–12',
-      rest:Math.max(30,Math.min(90,num(ex.rest)||45)),
-      setup:num(ex.setup)||25,
-      increment:num(ex.increment)||5,
-      blockId:ex.blockId||null,
-      blockType:ex.blockType||null,
-      blockOrder:ex.blockOrder===undefined?null:num(ex.blockOrder),
-      blockRest:ex.blockRest===undefined?null:num(ex.blockRest),
-      transitionRest:ex.transitionRest===undefined?null:num(ex.transitionRest)
-    }))
+    exercises:(day.exercises||[]).map(ex=>{
+      const source=exerciseSource(ex)||ex;
+      return {
+        id:source.id||ex.id,
+        catalogId:source.id||ex.id,
+        historyKey:source.historyKey||null,
+        historyAliases:clone(source.historyAliases||[]),
+        historyNames:clone(source.historyNames||[]),
+        name:source.name||ex.name,
+        movement:ex.movement||source.movement,
+        muscles:clone(ex.muscles||source.muscles||[]),
+        equipment:clone(source.equipment||ex.equipment||[]),
+        loadMode:ex.loadMode||source.loadMode,
+        sets:num(ex.sets)||2,
+        reps:ex.reps||'8–12',
+        rest:Math.max(30,Math.min(90,num(ex.rest)||45)),
+        setup:num(ex.setup)||25,
+        increment:num(ex.increment)||5,
+        blockId:ex.blockId||null,
+        blockType:ex.blockType||null,
+        blockOrder:ex.blockOrder===undefined?null:num(ex.blockOrder),
+        blockRest:ex.blockRest===undefined?null:num(ex.blockRest),
+        transitionRest:ex.transitionRest===undefined?null:num(ex.transitionRest)
+      };
+    })
   };
 }
 function localizeSharedPlan(snapshot){
   if(!snapshot?.exercises?.length)return null;
   const exercises=snapshot.exercises.map(sharedEx=>{
-    const source=catalog.find(item=>item.id===sharedEx.id)||sharedEx;
+    const matchedSource=sharedExerciseCatalogSource(sharedEx);
+    const source=matchedSource||sharedEx;
+    const canonicalId=matchedSource?.id||sharedEx.id;
     const adaptive=adaptivePrescription(source);
-    const calibrated=store.calibration?.[sharedEx.id]?.weight;
-    const estimated=catalog.find(item=>item.id===sharedEx.id)?estimateStartingLoad(source,store.profile||{}):{weight:0,label:'Choose a comfortable starting load',source:'shared plan',calibrate:true};
+    const calibrated=store.calibration?.[canonicalId]?.weight??store.calibration?.[sharedEx.id]?.weight;
+    const estimated=matchedSource?estimateStartingLoad(source,store.profile||{}):{weight:0,label:'Choose a comfortable starting load',source:'shared plan',calibrate:true};
     const startWeight=adaptive?.weight??calibrated??estimated.weight??0;
+    const loadMode=sharedEx.loadMode||source.loadMode;
     return {
       ...source,
       ...sharedEx,
+      id:canonicalId,
+      catalogId:matchedSource?.id||sharedEx.catalogId||sharedEx.id,
+      name:matchedSource?.name||sharedEx.name,
+      equipment:clone(matchedSource?.equipment||sharedEx.equipment||[]),
+      loadMode,
       startWeight,
-      startLabel:adaptive?.label||(startWeight?(sharedEx.loadMode==='dumbbell-pair'?startWeight+' lb each':startWeight+' lb'):(estimated.label||'Choose a comfortable starting load')),
+      startLabel:adaptive?.label||(startWeight?(loadMode==='dumbbell-pair'?startWeight+' lb each':startWeight+' lb'):(estimated.label||'Choose a comfortable starting load')),
       startSource:adaptive?'your learned progression':(calibrated?'your calibration':estimated.source||'shared plan'),
       startReps:adaptive?.reps||recommendedRepCount(sharedEx.reps),
       calibrationRequired:Boolean(estimated.calibrate&&!calibrated&&!adaptive)
