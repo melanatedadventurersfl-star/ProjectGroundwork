@@ -626,7 +626,9 @@ function programOriginDate(){
 }
 function programContext(date=new Date()){
   const origin=programOriginDate(),weekStart=startOfWeek(date);
-  const calendarWeekNumber=Math.max(1,Math.floor((weekStart-origin)/(7*86400000))+1);
+  const originUtc=Date.UTC(origin.getFullYear(),origin.getMonth(),origin.getDate());
+  const weekStartUtc=Date.UTC(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate());
+  const calendarWeekNumber=Math.max(1,Math.round((weekStartUtc-originUtc)/(7*86400000))+1);
   const plannedPerWeek=Math.max(1,num(store.profile?.days)||4);
   const completedScheduledDates=new Set(
     store.history
@@ -638,11 +640,13 @@ function programContext(date=new Date()){
       .map(item=>item.scheduledDate)
   );
   const earnedWeekNumber=Math.floor(completedScheduledDates.size/plannedPerWeek)+1;
-  const weekNumber=Math.max(1,Math.min(calendarWeekNumber,earnedWeekNumber));
+  // Program phases follow the calendar. Missed workouts affect adaptation, not the week clock.
+  const weekNumber=calendarWeekNumber;
   return {
     weekStart,
     weekKey:dateKey(weekStart),
     calendarWeekNumber,
+    earnedWeekNumber,
     weekNumber,
     blockNumber:Math.floor((weekNumber-1)/4)+1,
     blockWeek:((weekNumber-1)%4)+1,
@@ -4731,9 +4735,11 @@ function saveProfileFromForm(form){
     toast('Enter height inches between 0 and 11.');
     return false;
   }
+  const existingProgramStartedAt=store.plan?.createdAt||'';
   let plan;
   try{
     plan=generatePlan(profile);
+    if(existingProgramStartedAt)plan.createdAt=existingProgramStartedAt;
   }catch(error){
     console.error('Workout plan generation failed',error);
     toast('Could not build the plan. Please reload and try again.');
