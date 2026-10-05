@@ -4016,7 +4016,7 @@ function setupAllowsExercise(exercise,setup){
   if(CHAIR_STEP_EXERCISE_IDS.has(exercise.id)&&!setup.chair)return false;
   if(BENCH_EXERCISE_IDS.has(exercise.id)&&!setup.bench)return false;
   if(PULLUP_BAR_EXERCISE_IDS.has(exercise.id)&&!setup.pullupBar)return false;
-  return !avoided(exercise,store.profile||{});
+  return true;
 }
 function effectiveExerciseForSetup(exercise,setup){
   const out=clone(exercise);
@@ -4046,7 +4046,7 @@ function sessionReplacementReason(source,candidate,quality){
   return 'No direct equipment-free match was available, so this keeps the closest useful training purpose.';
 }
 function findSessionReplacement(source,setup,used=new Set()){
-  const allowed=candidate=>!used.has(candidate.id)&&setupAllowsExercise(candidate,setup);
+  const allowed=candidate=>!used.has(candidate.id)&&setupAllowsExercise(candidate,setup)&&!avoided(candidate,store.profile||{});
   const alternatives=SESSION_MOVEMENT_ALTERNATIVES[source.movement]||[];
   const scored=catalog
     .filter(allowed)
@@ -5191,7 +5191,7 @@ function renderReadinessModal(){
   const day=readinessContext.day;
   const initial=readinessContext.initialReadiness||{};
   const selectedMinutes=num(initial.timeAvailable)||num(store.profile?.minutes)||45;
-  const selectedSetup=readinessContext.preferredSetup||normalSessionSetupKey();
+  const selectedSetup=readinessContext.activeSetupKey||readinessContext.preferredSetup||normalSessionSetupKey();
   const setupContext=readinessContext.setupContext?.key===selectedSetup?readinessContext.setupContext:buildSessionSetup(selectedSetup);
   const values={energy:num(initial.energy)||3,soreness:num(initial.soreness)||2,sleep:num(initial.sleep)||3,timeAvailable:selectedMinutes};
   const snapshot=readinessPreviewSnapshot(day,values,setupContext);
@@ -5259,7 +5259,9 @@ async function startPreparedWorkout(){
     day=applySharedReadinessToDay(sourceDay,readiness,setup);
     if(day.sharedSetupIncompatible?.length){
       context.building=null;
-      context.buildError='This shared workout has '+day.sharedSetupIncompatible.length+' exercise'+(day.sharedSetupIncompatible.length===1?'':'s')+' that do not fit your selected equipment. Choose a compatible setup so both accounts keep the same movements.';
+      const conflicts=day.sharedSetupIncompatible.map(item=>item.name).filter(Boolean);
+      const conflictLabel=conflicts.length?conflicts.join(', '):(day.sharedSetupIncompatible.length+' exercise'+(day.sharedSetupIncompatible.length===1?'':'s'));
+      context.buildError=conflictLabel+' '+(day.sharedSetupIncompatible.length===1?'does':'do')+' not fit this equipment setup. Change the setup for this session so the shared exercise list stays aligned.';
       render();toast(context.buildError);return;
     }
   }else{
@@ -10790,7 +10792,7 @@ function handleClick(event){
   const readinessClose=event.target.closest('[data-action="close-readiness"]');
   if(readinessClose){
     const inside=event.target.closest('[data-readiness-panel]');
-    const explicit=event.target.closest('.modal-close');
+    const explicit=event.target.closest('.modal-close,.preflight-back');
     if(!inside||explicit){closeReadiness();return;}
   }
   const swapClose=event.target.closest('[data-action="close-swap"]');
