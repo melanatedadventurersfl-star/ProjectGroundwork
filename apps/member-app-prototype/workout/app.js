@@ -6924,7 +6924,7 @@ function applyWorkoutSession(session){
   sharedRuntime.syncMuted=false;
   render();
   if(session?.user?.id){
-    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await restoreSharedWorkoutSession(session.user.id);}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
+    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await hydrateSavedWorkoutPartners();await restoreSharedWorkoutSession(session.user.id);}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
   }else if(previousUserId){
     unsubscribeSharedSession();
   }
@@ -7549,6 +7549,54 @@ function sharedTrainingState(){
   store.sharedTraining.history=Array.isArray(store.sharedTraining.history)?store.sharedTraining.history:[];
   return store.sharedTraining;
 }
+function savedSharedPartners(){
+  const ownId=store.account?.userId||'';
+  const seen=new Set();
+  return sharedTrainingState().partners
+    .filter(item=>item?.userId&&item.userId!==ownId)
+    .filter(item=>{
+      if(seen.has(item.userId))return false;
+      seen.add(item.userId);
+      return true;
+    })
+    .sort((a,b)=>(Date.parse(b.lastSharedAt||'')||0)-(Date.parse(a.lastSharedAt||'')||0));
+}
+function rememberSharedPartner({userId,name,contact='',status='saved',lastSharedAt=''}={}){
+  if(!userId||userId===store.account?.userId)return null;
+  const shared=sharedTrainingState();
+  let partner=shared.partners.find(item=>item.userId===userId);
+  if(!partner){
+    partner={id:uid('partner'),userId,name:name||'Workout partner',contact,status,lastSharedAt:lastSharedAt||new Date().toISOString()};
+    shared.partners.push(partner);
+  }else{
+    partner.name=name||partner.name||'Workout partner';
+    partner.contact=contact||partner.contact||'';
+    partner.status=status||partner.status||'saved';
+    partner.lastSharedAt=lastSharedAt||partner.lastSharedAt||new Date().toISOString();
+  }
+  return partner;
+}
+async function hydrateSavedWorkoutPartners(){
+  if(!workoutSupabase||store.account?.status!=='connected'||!store.account?.userId)return;
+  const ownId=store.account.userId;
+  const {data,error}=await workoutSupabase
+    .from('workout_shared_sessions')
+    .select('host_user_id,partner_user_id,host_name,partner_name,updated_at')
+    .not('partner_user_id','is',null)
+    .order('updated_at',{ascending:false})
+    .limit(50);
+  if(error){console.warn('Saved workout partner restore failed',error);return;}
+  for(const row of data||[]){
+    const isHost=row.host_user_id===ownId;
+    const partnerUserId=isHost?row.partner_user_id:row.host_user_id;
+    const partnerName=isHost?(row.partner_name||'Workout partner'):(row.host_name||'Workout partner');
+    rememberSharedPartner({userId:partnerUserId,name:partnerName,status:'saved',lastSharedAt:row.updated_at||''});
+  }
+  sharedRuntime.syncMuted=true;
+  saveStore();
+  sharedRuntime.syncMuted=false;
+  if(currentTab==='together'||currentTab==='profile')render();
+}
 function sharedJoinCode(){
   const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code='';
@@ -7653,7 +7701,7 @@ function sharedDraftFromRow(row,role=''){
     partnerId:resolvedRole==='host'?(row.partner_user_id||''):(row.host_user_id||''),
     partnerName,
     partnerContact:'',
-    partnerStatus:row.partner_user_id?'ready':'invited',
+    partnerStatus:'invited',
     userStatus:'ready',
     mode:row.mode||'same-gym',
     pace:row.pace||'stay-together',
@@ -7723,8 +7771,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
   applySharedRemoteState(draft,draft.remoteState);
   maybeReleaseSharedBarrier(draft,draft.remoteState);
   if(remote?.display_name){
-    const existing=shared.partners.find(item=>item.userId===remote.user_id);
-    if(!existing)shared.partners.push({id:uid('partner'),userId:remote.user_id,name:remote.display_name,contact:'',status:'connected'});
+    rememberSharedPartner({userId:remote.user_id,name:remote.display_name,status:'connected',lastSharedAt:remote.updated_at||session.updated_at||''});
   }
   if(renderNow&&currentTab==='together')render();
   return draft;
@@ -7849,6 +7896,20 @@ async function subscribeSharedSession(draft){
     })
     .subscribe(async status=>{
       if(status!=='SUBSCRIBED')return;
+      if(draft.role==='partner'){
+        const {error:directInviteReadyError}=await workoutSupabase.from('workout_shared_participant_state').upsert({
+          session_id:draft.backendId,
+          user_id:store.account.userId,
+          display_name:displayName(),
+          ready:true,
+          connection_state:'online',
+          phase:draft.sessionStatus==='active'?'active':'lobby',
+          planning_profile:{goal:store.profile?.goal,experience:store.profile?.experience,equipment:store.profile?.equipment,minutes:store.profile?.minutes,workoutStructure:store.profile?.workoutStructure||'adaptive',priorities:store.profile?.priorities||[],avoid:store.profile?.avoid||[]},
+          planned_day:draft.planSnapshot||{},
+          updated_at:new Date().toISOString()
+        },{onConflict:'session_id,user_id'});
+        if(directInviteReadyError)console.warn('Saved partner invite ready state failed',directInviteReadyError);
+      }
       try{
         await channel.track({
           userId:store.account.userId,
@@ -8268,34 +8329,54 @@ async function createSharedDraft(){
   if(!workoutSupabase){toast('Shared workout service is unavailable.');return;}
   const next=nextScheduledSession();
   if(!next){toast('No scheduled workout is available to share right now.');return;}
-  const name=(document.querySelector('#shared-partner-name')?.value||'').trim();
-  const contact=(document.querySelector('#shared-partner-contact')?.value||'').trim();
+  const selectedPartnerUserId=String(document.querySelector('#shared-saved-partner')?.value||'').trim();
+  const selectedPartner=savedSharedPartners().find(item=>item.userId===selectedPartnerUserId)||null;
+  const name=selectedPartner?.name||(document.querySelector('#shared-partner-name')?.value||'').trim();
+  const contact=selectedPartner?.contact||(document.querySelector('#shared-partner-contact')?.value||'').trim();
   const mode=document.querySelector('#shared-mode')?.value||'same-gym';
   const pace=document.querySelector('#shared-pace')?.value||'stay-together';
   const setFlow=document.querySelector('#shared-set-flow')?.value||'alternating';
-  if(!name){toast('Enter your workout partner’s name.');return;}
+  if(!name){toast('Choose a saved partner or enter your workout partner’s name.');return;}
   const shared=sharedTrainingState();
   const day=next.adaptedDay||next.day;
   const snapshot=safeSharedPlanSnapshot(day);
   let created=null,lastError=null;
   for(let attempt=0;attempt<4&&!created;attempt++){
     const code=sharedJoinCode();
-    const {data,error}=await workoutSupabase.from('workout_shared_sessions').insert({
-      join_code:code,
-      host_user_id:store.account.userId,
-      host_name:displayName(),
-      routine_name:day.name,
-      scheduled_date:next.dateKey,
-      plan_day_id:day.id,
-      plan_snapshot:snapshot,
-      mode,
-      pace,
-      set_flow:setFlow,
-      lead_audio_user_id:store.account.userId,
-      status:'lobby'
-    }).select('*').single();
-    if(error){lastError=error;continue;}
-    created=data;
+    if(selectedPartner?.userId){
+      const {data,error}=await workoutSupabase.rpc('create_workout_shared_session_for_partner',{
+        p_join_code:code,
+        p_partner_user_id:selectedPartner.userId,
+        p_partner_name:selectedPartner.name||'Workout partner',
+        p_host_name:displayName(),
+        p_routine_name:day.name,
+        p_scheduled_date:next.dateKey,
+        p_plan_day_id:day.id,
+        p_plan_snapshot:snapshot,
+        p_mode:mode,
+        p_pace:pace,
+        p_set_flow:setFlow
+      });
+      if(error){lastError=error;continue;}
+      created=Array.isArray(data)?data[0]:data;
+    }else{
+      const {data,error}=await workoutSupabase.from('workout_shared_sessions').insert({
+        join_code:code,
+        host_user_id:store.account.userId,
+        host_name:displayName(),
+        routine_name:day.name,
+        scheduled_date:next.dateKey,
+        plan_day_id:day.id,
+        plan_snapshot:snapshot,
+        mode,
+        pace,
+        set_flow:setFlow,
+        lead_audio_user_id:store.account.userId,
+        status:'lobby'
+      }).select('*').single();
+      if(error){lastError=error;continue;}
+      created=data;
+    }
   }
   if(!created){toast(lastError?.message||'Could not create the shared lobby.');return;}
   const {error:participantError}=await workoutSupabase.from('workout_shared_participant_state').insert({
@@ -8309,13 +8390,20 @@ async function createSharedDraft(){
     planned_day:snapshot
   });
   if(participantError){toast(participantError.message||'Could not open the lobby.');return;}
-  const partner={id:uid('partner'),name,contact,status:'invited'};
-  const existing=shared.partners.find(item=>item.contact&&contact&&item.contact.toLowerCase()===contact.toLowerCase());
-  if(!existing)shared.partners.push(partner);
-  const draft={...sharedDraftFromRow(created,'host'),partnerId:(existing||partner).id,partnerName:name,partnerContact:contact,partnerStatus:'invited',planSnapshot:snapshot};
+  let partnerRecord=selectedPartner;
+  if(selectedPartner?.userId){
+    partnerRecord=rememberSharedPartner({userId:selectedPartner.userId,name:selectedPartner.name,contact:selectedPartner.contact||'',status:'invited',lastSharedAt:new Date().toISOString()});
+  }else{
+    const partner={id:uid('partner'),name,contact,status:'invited'};
+    const existing=shared.partners.find(item=>item.contact&&contact&&item.contact.toLowerCase()===contact.toLowerCase());
+    if(!existing)shared.partners.push(partner);
+    partnerRecord=existing||partner;
+  }
+  const draft={...sharedDraftFromRow(created,'host'),partnerId:selectedPartner?.userId||partnerRecord?.userId||partnerRecord?.id||'',partnerName:name,partnerContact:contact,partnerStatus:'invited',planSnapshot:snapshot,inviteMethod:selectedPartner?.userId?'saved-partner':'code'};
   saveSharedBackendDraft(draft);
   await subscribeSharedSession(draft);
   render();
+  if(selectedPartner?.userId)toast('Invite sent to '+name+'. No join code needed.');
 }
 async function joinSharedSession(){
   if(store.account?.status!=='connected'){accountSheetOpen=true;render();toast('Sign in before joining a shared workout.');return;}
@@ -8328,6 +8416,7 @@ async function joinSharedSession(){
   if(!row){toast('Could not load that shared workout.');return;}
   const draft=sharedDraftFromRow(row,'partner');
   draft.partnerStatus='ready';
+  rememberSharedPartner({userId:draft.partnerId,name:draft.partnerName,status:'connected',lastSharedAt:new Date().toISOString()});
   saveSharedBackendDraft(draft);
   await subscribeSharedSession(draft);
   toast('Joined '+draft.partnerName+'’s workout.');
@@ -8417,7 +8506,7 @@ function renderTogether(){
       '<section class="clean-panel shared-preview-card"><div><span>REALTIME SHARED TRAINING</span><strong>Same Gym · Remote Together · Share Plan</strong><p>Join codes, participant presence, session starts, and workout position now synchronize through your account.</p></div></section>'+
     '</div>';
   }
-  const shared=sharedTrainingState(),draft=shared.draft,next=nextScheduledSession();
+  const shared=sharedTrainingState(),draft=shared.draft,next=nextScheduledSession(),savedPartners=savedSharedPartners();
   if(draft){
     const partnerReady=draft.partnerStatus==='ready';
     const remoteOnline=draft.remoteState?.connectionState!=='offline'&&Boolean(draft.remoteState);
@@ -8426,18 +8515,20 @@ function renderTogether(){
     const statusCopy=draft.sessionStatus==='active'?'Workout in progress':draft.sessionStatus==='completed'?'Session completed':partnerReady?'Both connected':'Waiting for partner';
     const partnerPhase=draft.remoteState?.phase&&draft.remoteState.phase!=='lobby'?draft.remoteState.phase.replace(/-/g,' '):'Lobby';
     return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Shared session lobby.</h2><p>'+esc(statusCopy)+'. Each person keeps their own weights, reps, readiness, history, and progression.</p></div><button class="text-button danger-text" data-action="cancel-shared-draft">'+(role==='host'?'CANCEL':'LEAVE')+'</button></div>'+
-      '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</p>'+(role==='host'?'<div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div>':'')+'</section>'+
+      '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</p>'+(role==='host'?(draft.inviteMethod==='saved-partner'?'<div class="shared-code"><span>DIRECT INVITE</span><strong>'+esc(draft.partnerName||'Saved partner')+'</strong><small>No join code needed</small></div>':'<div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div>'):'')+'</section>'+
       '<div class="participant-grid"><article class="participant-card ready"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU · '+esc(role.toUpperCase())+'</span><strong>'+esc(displayName())+'</strong><small>'+(store.activeWorkout?.sharedSession?'Training':'Ready')+'</small></div><em>✓</em></article><article class="participant-card '+(partnerReady?'ready':'pending')+'"><div class="participant-avatar">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div><div><span>PARTNER</span><strong>'+esc(draft.partnerName||'Workout partner')+'</strong><small>'+(partnerReady?(remoteOnline?'Online · '+esc(partnerPhase):'Joined · reconnecting'):'Invite pending')+'</small></div><em>'+(partnerReady?'✓':'…')+'</em></article></div>'+
       '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
       '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
-      '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
+      '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'&&draft.inviteMethod!=='saved-partner'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
       '<section class="prototype-note compact"><strong>One shared workout plan.</strong><span>Both accounts receive the same exercises, order, sets, warm-up, cooldown, and workout format. Stay Together synchronizes full-set transitions and timers. Personal weights, reps, readiness, notes, PRs, and history stay private.</span></section>'+
     '</div>';
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
     '<section class="together-hero"><div class="together-icon">◎</div><div><span>NEXT AVAILABLE WORKOUT</span><h3>'+esc(next?.adaptedDay?.name||next?.day?.name||'No session scheduled')+'</h3><p>'+(next?esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min':'Schedule a workout first.')+'</p></div></section>'+
-    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Invite one workout partner</h3></div></div><div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="For your own saved partner list"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label><label class="field"><span>SET FLOW</span><select id="shared-set-flow"><option value="alternating">Alternating Sets</option><option value="parallel">Parallel Sets</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
-    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">JOIN A SESSION</p><h3>Enter the code from your workout partner</h3></div></div><label class="field shared-code-input"><span>6-CHARACTER JOIN CODE</span><input id="shared-join-code" inputmode="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"></label><button class="button secondary" data-action="join-shared-session">JOIN WORKOUT</button></section>'+
+    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Choose who you are training with</h3></div></div>'+
+      (savedPartners.length?'<label class="field"><span>SAVED PARTNER</span><select id="shared-saved-partner"><option value="">New partner</option>'+savedPartners.map(item=>'<option value="'+esc(item.userId)+'">'+esc(item.name||'Workout partner')+'</option>').join('')+'</select><small>Saved partners receive the session directly. No join code is required.</small></label>':'')+
+      '<div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="Used to recognize a new partner"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label><label class="field"><span>SET FLOW</span><select id="shared-set-flow"><option value="alternating">Alternating Sets</option><option value="parallel">Parallel Sets</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
+    '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">FIRST-TIME PARTNER</p><h3>Use a code once to connect</h3></div></div><label class="field shared-code-input"><span>6-CHARACTER JOIN CODE</span><input id="shared-join-code" inputmode="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"></label><button class="button secondary" data-action="join-shared-session">JOIN WORKOUT</button><small>After your first shared session, this person appears under Saved Partner.</small></section>'+
     (shared.partners.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT PARTNERS</p><h3>Recent partners</h3></div></div><div class="partner-list">'+shared.partners.slice(-5).reverse().map(item=>'<div class="partner-row"><div class="participant-avatar">'+esc((item.name[0]||'P').toUpperCase())+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(item.contact||'Shared workout partner')+'</small></div></div>').join('')+'</div></section>':'')+
     (shared.history.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT SHARED SESSIONS</p><h3>Trained together</h3></div></div><div class="partner-list">'+shared.history.slice(0,5).map(item=>'<div class="partner-row"><div class="participant-avatar">✓</div><div><strong>'+esc(item.routineName)+'</strong><small>With '+esc(item.partnerName)+' · '+esc(formatDate(item.completedAt))+'</small></div></div>').join('')+'</div></section>':'')+
     '<section class="prototype-note"><strong>Realtime shared training is live.</strong><span>Create or join from another signed-in browser or phone. Detailed workout performance remains on each person’s own device.</span></section>'+
@@ -10629,6 +10720,14 @@ function setTab(tab){
   else currentTab=tab;
   persistUiState();
   render();updateTimers();window.scrollTo({top:0,behavior:'smooth'});
+  if(currentTab==='together'&&store.account?.status==='connected'&&store.account?.userId){
+    queueMicrotask(async()=>{
+      try{
+        await hydrateSavedWorkoutPartners();
+        if(!sharedTrainingState().draft)await restoreSharedWorkoutSession(store.account.userId);
+      }catch(error){console.warn('Together refresh failed',error);}
+    });
+  }
 }
 function syncNav(){
   const navTab=currentTab==='workout'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
@@ -11186,6 +11285,13 @@ document.addEventListener('input',event=>{
   }
 });
 document.addEventListener('change',event=>{
+  if(event.target.id==='shared-saved-partner'){
+    const partner=savedSharedPartners().find(item=>item.userId===String(event.target.value||''))||null;
+    const nameInput=document.querySelector('#shared-partner-name');
+    const contactInput=document.querySelector('#shared-partner-contact');
+    if(nameInput){nameInput.value=partner?.name||'';nameInput.readOnly=Boolean(partner);}
+    if(contactInput){contactInput.value=partner?.contact||'';contactInput.readOnly=Boolean(partner);}
+  }
   if(event.target.name==='sessionSetup'){
     const form=event.target.closest('form');
     const newKey=String(event.target.value||normalSessionSetupKey());
