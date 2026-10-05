@@ -621,8 +621,21 @@ function renderLearnerVolumeProfile(model){
   }).join('')+'</div>';
 }
 function programOriginDate(){
+  const training=store.trainingProgram||{};
+  const explicit=training.programStartedAt?new Date(training.programStartedAt):null;
+  if(explicit&&Number.isFinite(explicit.getTime()))return startOfWeek(explicit);
   const created=store.plan?.createdAt?new Date(store.plan.createdAt):new Date();
-  return startOfWeek(Number.isFinite(created.getTime())?created:new Date());
+  const fallback=Number.isFinite(created.getTime())?created:new Date();
+  const fallbackWeek=startOfWeek(fallback);
+  const evidence=[
+    ...Object.keys(training.weekReviews||{}),
+    ...Object.keys(training.scheduleOverrides||{}),
+    ...(store.history||[]).map(item=>item?.scheduledDate||'')
+  ].map(dateFromKey).filter(date=>Number.isFinite(date.getTime())&&date<=fallbackWeek&&fallbackWeek-date<=28*86400000);
+  const inferred=evidence.length?startOfWeek(new Date(Math.min(...evidence.map(date=>date.getTime())))):fallbackWeek;
+  training.programStartedAt=inferred.toISOString();
+  store.trainingProgram=training;
+  return inferred;
 }
 function programContext(date=new Date()){
   const origin=programOriginDate(),weekStart=startOfWeek(date);
@@ -4753,7 +4766,8 @@ function saveProfileFromForm(form){
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner};
+  const programStartedAt=store.trainingProgram?.programStartedAt||plan.createdAt;
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,programStartedAt};
   refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
@@ -4780,8 +4794,10 @@ function editProfile(){
 function regeneratePlan(){
   if (!store.profile || store.activeWorkout) return;
   const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
+  const programStartedAt=store.trainingProgram?.programStartedAt||store.plan?.createdAt||new Date().toISOString();
   store.plan=generatePlan(store.profile);
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner};
+  store.plan.createdAt=programStartedAt;
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,programStartedAt};
   refreshEngineProgram(store.profile);
   saveStore();
   toast(currentEngineProgram()?'Plan rebuilt with Program Engine '+currentEngineProgram().engineVersion+'.':'Plan rebuilt from your profile.');
