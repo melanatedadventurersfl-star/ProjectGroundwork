@@ -180,7 +180,10 @@ function validateActiveWorkoutCandidate(candidate,history=store.history){
  if((history||[]).some(item=>item.id===candidate.id))return {valid:false,reason:'already-completed'};
  if(candidate.phase==='complete'||!RESUMABLE_WORKOUT_PHASES.has(candidate.phase))return {valid:false,reason:'phase'};
  const started=Date.parse(candidate.startedAt);if(!Number.isFinite(started))return {valid:false,reason:'started-at'};
- const ageHours=(Date.now()-started)/3600000;if(ageHours>24)return {valid:false,reason:'stale',stale:true};
+ const ageHours=(Date.now()-started)/3600000;
+ const hasRecordedWork=(candidate.exercises||[]).some(ex=>ex?.manualComplete||ex?.skipped||(ex?.sets||[]).some(set=>set?.completed||set?.skipped));
+ const preserveUnsaved=candidate.phase==='review'||Boolean(candidate.sharedSession?.backendId)||hasRecordedWork;
+ if(ageHours>24&&!preserveUnsaved)return {valid:false,reason:'stale',stale:true};
  const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
  const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
  w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;w.recoveryCheckpointAt=w.recoveryCheckpointAt||w.startedAt;
@@ -5222,6 +5225,13 @@ function renderReadinessModal(){
 }
 async function startPreparedWorkout(){
   if(!readinessContext||readinessContext.building)return;
+  if(store.activeWorkout&&readinessContext.mode!=='edit'){
+    readinessContext=null;
+    currentTab='workout';
+    render();
+    toast('Resume or save your current workout before starting another one.');
+    return;
+  }
   const form=document.querySelector('#readiness-form');
   if(!form){toast('The readiness check could not be loaded. Please close it and try again.');return;}
   const context=readinessContext;
@@ -6497,6 +6507,7 @@ function renderWorkoutReview(w){
     return '<button class="final-review-row clean-review-row" data-action="jump-from-review" data-exercise-index="'+index+'"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(status)+'</span></div><em>›</em></button>';
   }).join('');
   return '<div class="workout-final-review clean-final-review"><div class="summary-check">'+(fullyResolved?'✓':'◐')+'</div><p class="eyebrow">WORKOUT REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check anything that needs correcting before this session becomes training history.</p>'+
+    (w.sharedSession?.hostCompletedAt?'<div class="prototype-note compact"><strong>Your partner finished the shared session.</strong><span>Your workout is still here. Review your sets, then save it to History.</span></div>':'')+
     '<div class="review-summary-grid clean-review-summary"><div><span>EXERCISES</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>SETS LOGGED</span><strong>'+actualSets+'/'+totalSets(w.exercises)+'</strong></div><div><span>SKIPPED</span><strong>'+skipped+'</strong></div></div>'+
     '<div class="final-review-list">'+rows+'</div>'+
     '<div class="final-review-actions">'+
@@ -7619,6 +7630,7 @@ function sharedDraftFromRow(row,role=''){
     role:resolvedRole,
     sessionStatus:row.status||'lobby',
     startedAt:row.started_at||null,
+    completedAt:row.completed_at||null,
     planSnapshot:row.plan_snapshot||{},
     remoteState:null
   };
@@ -7793,9 +7805,14 @@ async function subscribeSharedSession(draft){
       if(!current||current.backendId!==draft.backendId||!payload)return;
       current.sessionStatus=payload.status||current.sessionStatus;
       if(payload.startedAt)current.startedAt=payload.startedAt;
+      if(payload.completedAt)current.completedAt=payload.completedAt;
+      const partnerNeedsSave=current.role==='partner'&&payload.status==='completed'
+        ?preservePartnerWorkoutForSharedCompletion(draft.backendId,payload.completedAt||'')
+        :false;
       saveSharedBackendDraft(current);
-      if(currentTab==='together')render();
+      if(currentTab==='together'||partnerNeedsSave)render();
       if(current.role==='partner'&&payload.status==='active')toast('Your partner started the shared workout. You can begin when ready.');
+      else if(partnerNeedsSave)toast('Shared session ended. Review and save your workout so it stays in History.');
     })
     .subscribe(async status=>{
       if(status!=='SUBSCRIBED')return;
@@ -7814,13 +7831,27 @@ async function subscribeSharedSession(draft){
 }
 function sharedWorkoutSyncEnabled(w=store.activeWorkout){
   const shared=w?.sharedSession;
-  return Boolean(shared?.backendId&&shared.sharedPlanLocked===true&&shared.pace==='stay-together'&&shared.mode!=='share-plan');
+  return Boolean(shared?.backendId&&shared.sharedPlanLocked===true&&shared.pace==='stay-together'&&shared.mode!=='share-plan'&&shared.sessionStatus!=='completed'&&!shared.hostCompletedAt);
 }
 function sharedWorkoutFollower(w=store.activeWorkout){
   return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='partner');
 }
 function sharedWorkoutHost(w=store.activeWorkout){
   return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='host');
+}
+function preservePartnerWorkoutForSharedCompletion(sessionId,completedAt=''){
+  const w=store.activeWorkout;
+  if(!w?.sharedSession||w.sharedSession.backendId!==sessionId||w.sharedSession.role!=='partner')return false;
+  const endedAt=completedAt||new Date().toISOString();
+  w.sharedSession.sessionStatus='completed';
+  w.sharedSession.hostCompletedAt=endedAt;
+  if(w.phase!=='review'){
+    pauseInteractiveTimers(w);
+    w.returnPhase=w.phase;
+    w.phase='review';
+  }
+  currentTab='workout';
+  return true;
 }
 function sharedClockSnapshot(w){
   if(!w)return {phaseStartedAt:null,phaseEndsAt:null,timerDurationSeconds:0};
@@ -8126,6 +8157,15 @@ async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
   if(!workoutSupabase||!userId||store.account?.status!=='connected')return;
   if(sharedRuntime.restoreUserId===userId&&sharedRuntime.channel)return;
   sharedRuntime.restoreUserId=userId;
+  const activeShared=store.activeWorkout?.sharedSession;
+  if(activeShared?.backendId&&activeShared.role==='partner'){
+    const {data:activeSession,error:activeSessionError}=await workoutSupabase.from('workout_shared_sessions').select('id,status,completed_at').eq('id',activeShared.backendId).maybeSingle();
+    if(activeSessionError)console.warn('Shared completion recovery failed',activeSessionError);
+    if(activeSession?.status==='completed'){
+      const partnerNeedsSave=preservePartnerWorkoutForSharedCompletion(activeShared.backendId,activeSession.completed_at||'');
+      if(partnerNeedsSave){saveStore();render();toast('Your shared workout still needs to be saved to History.');return;}
+    }
+  }
   const existing=sharedTrainingState().draft;
   if(existing?.backendId){
     const refreshed=await fetchSharedSessionState(existing.backendId,{renderNow:false});
@@ -8169,6 +8209,7 @@ async function cancelSharedDraft(){
 }
 async function startSharedWorkout(){
   const draft=sharedTrainingState().draft;if(!draft)return;
+  if(store.activeWorkout){currentTab='workout';render();toast('Resume or save your current workout before starting another shared session.');return;}
   if(draft.mode!=='share-plan'&&draft.partnerStatus!=='ready'){toast('Your workout partner has not joined the lobby yet.');return;}
   if(draft.role==='partner'&&draft.mode!=='share-plan'&&draft.sessionStatus!=='active'){
     toast('Your partner has not started the shared workout yet.');
