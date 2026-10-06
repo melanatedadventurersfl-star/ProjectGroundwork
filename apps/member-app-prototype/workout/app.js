@@ -3613,7 +3613,7 @@ function adjustSetTarget(type,delta){
   prepareSetTarget(pos.exercise,pos.set,pos.si);
   if(type==='weight'){
     if(['bodyweight','timed','band'].includes(pos.exercise.loadMode))return;
-    const step=Math.max(1,num(pos.exercise.increment)||5);
+    const step=5;
     const next=Math.max(0,setTargetValue(pos.exercise,pos.set,'weight')+(delta*step));
     pos.set.weight=String(next);
   }else{
@@ -3624,6 +3624,20 @@ function adjustSetTarget(type,delta){
   pos.set.targetAdjusted=true;
   pos.set.targetPrepared=true;
   saveStore();render();
+}
+function updateSetTargetFromInput(type,value){
+  const pos=getActivePosition();
+  if(!pos||!['pre-set','work'].includes(pos.workout.phase))return '';
+  prepareSetTarget(pos.exercise,pos.set,pos.si);
+  if(type!=='weight'||['bodyweight','timed','band'].includes(pos.exercise.loadMode))return '';
+  const digits=String(value??'').replace(/[^0-9.]/g,'');
+  const dot=digits.indexOf('.');
+  const normalized=dot<0?digits:digits.slice(0,dot+1)+digits.slice(dot+1).replace(/\./g,'');
+  pos.set.weight=normalized;
+  pos.set.targetAdjusted=true;
+  pos.set.targetPrepared=true;
+  saveStore();
+  return normalized;
 }
 function setElapsedSeconds(w){
   if(!w||w.phase!=='work')return 0;
@@ -9644,7 +9658,7 @@ function renderPreSet(pos){
       '<p>'+esc(sourceLabel)+'</p>'+
     '</section>'+
     '<div class="runner-target-steppers strength-runner-steppers '+(noWeight?'single':'')+'">'+
-      (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight">−</button><strong>'+esc(exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight')))+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight">+</button></div></div>':'')+
+      (!noWeight?'<div class="runner-target-stepper"><span>WEIGHT · LB'+(ex.loadMode==='dumbbell-pair'?' EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease weight by 5 pounds">−</button><input class="runner-target-input" data-set-target-input="weight" inputmode="decimal" aria-label="Weight in pounds" value="'+esc(String(setTargetValue(ex,set,'weight')))+'"><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase weight by 5 pounds">+</button></div></div>':'')+
       '<div class="runner-target-stepper"><span>'+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(targetReps)+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
     startControl+
@@ -9871,7 +9885,6 @@ function renderWorkSet(pos){
   const sideLabel=side?side.toUpperCase()+' SIDE':'';
   const plannedWeight=set.plannedWeight??set.weight??'';
   const plannedReps=set.plannedReps??set.reps??'';
-  const actualWeight=noWeight?'':exerciseWeightDisplay(ex,setTargetValue(ex,set,'weight'));
   const actualReps=exerciseRepDisplay(ex,setTargetValue(ex,set,'reps'));
   const plannedLabel=(noWeight?'':exerciseWeightDisplay(ex,plannedWeight)+' · ')+exerciseRepDisplay(ex,plannedReps);
   const cue=exerciseGuidance(ex).cue||'Keep the movement controlled.';
@@ -9883,7 +9896,7 @@ function renderWorkSet(pos){
     '<div class="strength-runner-media active '+(exerciseMediaSpec(ex).status==='direct'?'':'compact-fallback')+'">'+exerciseImageButton(ex,'active-exercise-media')+'</div>'+
     '<div class="strength-runner-cue">'+uiIcon('coach')+'<span>'+esc(cue)+'</span></div>'+
     '<div class="runner-target-steppers strength-runner-steppers compact '+(noWeight?'single':'')+'">'+
-      (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT'+(ex.loadMode==='dumbbell-pair'?' · EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease actual weight">−</button><strong>'+esc(actualWeight)+'</strong><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase actual weight">+</button></div></div>':'')+
+      (!noWeight?'<div class="runner-target-stepper"><span>ACTUAL WEIGHT · LB'+(ex.loadMode==='dumbbell-pair'?' EACH':'')+'</span><div><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="-1" aria-label="Decrease actual weight by 5 pounds">−</button><input class="runner-target-input" data-set-target-input="weight" inputmode="decimal" aria-label="Actual weight in pounds" value="'+esc(String(setTargetValue(ex,set,'weight')))+'"><button data-action="adjust-set-target" data-target-type="weight" data-target-delta="1" aria-label="Increase actual weight by 5 pounds">+</button></div></div>':'')+
       '<div class="runner-target-stepper"><span>ACTUAL '+(ex.loadMode==='timed'?'TIME':exerciseRepCountMode(ex)==='per-side'?'REPS · EACH SIDE':'REPS')+'</span><div><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="-1" aria-label="Decrease '+repLabel+'">−</button><strong>'+esc(actualReps)+'</strong><button data-action="adjust-set-target" data-target-type="reps" data-target-delta="1" aria-label="Increase '+repLabel+'">+</button></div></div>'+
     '</div>'+
     '<div class="strength-runner-reference live"><span><small>LAST TIME</small><strong>'+esc(context.lastLabel)+'</strong></span><span><small>PREVIOUS SET</small><strong>'+esc(context.priorLabel)+'</strong></span><span><small>REST NEXT</small><strong>'+context.rest+' sec</strong></span></div>'+
@@ -11272,6 +11285,11 @@ document.addEventListener('submit',event=>{
   }
 });
 document.addEventListener('input',event=>{
+  if(event.target.matches?.('[data-set-target-input="weight"]')){
+    const normalized=updateSetTargetFromInput('weight',event.target.value);
+    if(event.target.value!==normalized)event.target.value=normalized;
+    return;
+  }
   if(event.target.id==='coach-frequency-range'){
     updateCueSettingsFrequencyLive(event.target.value);
     return;
