@@ -9722,6 +9722,7 @@ function runnerStrengthContext(ex,set,setIndex=0){
 }
 
 function renderPreSet(pos){
+  const w=pos.workout;
   const ex=pos.exercise,set=prepareSetTarget(ex,pos.set,pos.si);
   const context=runnerStrengthContext(ex,set,pos.si);
   const preSet=preSetSnapshot(pos.workout)||{mode:'countdown',remaining:3};
