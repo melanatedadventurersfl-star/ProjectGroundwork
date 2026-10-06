@@ -187,11 +187,24 @@ function validateActiveWorkoutCandidate(candidate,history=store.history){
  const w=clone(candidate);w.currentExerciseIndex=Math.max(0,Math.min(num(w.currentExerciseIndex),w.exercises.length-1));
  const ex=w.exercises[w.currentExerciseIndex];if(!Array.isArray(ex?.sets)||!ex.sets.length)return {valid:false,reason:'sets'};
  w.currentSetIndex=Math.max(0,Math.min(num(w.currentSetIndex),ex.sets.length-1));w.processedActions=w.processedActions||{};w.revision=Math.max(1,num(w.revision)||1);w.finalizing=false;w.recoveryCheckpointAt=w.recoveryCheckpointAt||w.startedAt;
- if(w.phase==='partner-wait'&&w.sharedPendingAction?.kind==='side-switch'){
-  const stuckEx=w.exercises?.[w.currentExerciseIndex],stuckSet=stuckEx?.sets?.[w.currentSetIndex],now=new Date().toISOString();
-  if(stuckSet){stuckSet.activeSide='left';stuckSet.sideStartedAt=now;}
-  w.phase='work';w.setStartedAt=now;w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;w.pendingPosition=null;
-  delete w.sideSwitchStartedAt;delete w.sideSwitchEndsAt;delete w.sideSwitchDuration;delete w.sideSwitchPausedRemaining;
+ if(w.phase==='partner-wait'){
+  const action=w.sharedPendingAction||{},now=new Date(),iso=now.toISOString();
+  const stuckEx=w.exercises?.[w.currentExerciseIndex],stuckSet=stuckEx?.sets?.[w.currentSetIndex];
+  if(action.kind==='side-switch'){
+   if(stuckSet){stuckSet.activeSide='left';stuckSet.sideStartedAt=iso;}
+   w.phase='work';w.setStartedAt=iso;w.pendingPosition=null;
+   delete w.sideSwitchStartedAt;delete w.sideSwitchEndsAt;delete w.sideSwitchDuration;delete w.sideSwitchPausedRemaining;
+  }else if(action.kind==='calibrate'){
+   w.phase='calibrate';w.pendingPosition=action.next?clone(action.next):w.pendingPosition;
+  }else if(action.kind==='feedback'){
+   w.phase='feedback';w.pendingPosition=action.next?clone(action.next):w.pendingPosition;
+  }else if(action.kind==='rest'){
+   const seconds=Math.max(5,num(action.seconds)||45);
+   w.phase='rest';w.pendingPosition=action.next?clone(action.next):null;w.restDuration=seconds;w.restEndsAt=new Date(now.getTime()+seconds*1000).toISOString();w.restPausedRemaining=null;w.restToken='independent-rest-'+w.id+'-'+now.getTime();
+  }else{
+   w.phase='work';
+  }
+  w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;
  }
  if(w.phase==='rest'&&!w.pendingPosition){w.phase='pre-set';w.restEndsAt=null;w.restPausedRemaining=null;w.restToken=null;}
  if(w.phase==='rest'&&!w.restToken)w.restToken=newTimerToken('rest',w);
@@ -4904,14 +4917,14 @@ function applySharedReadinessToDay(day,readiness,setup=null){
 function sharedReadinessPreviewSnapshot(day,readiness,setup){
   const preview=applySharedReadinessToDay(day,readiness,setup);
   const unavailableCount=preview.sharedSetupIncompatible?.length||0;
-  const consequences=['Shared exercises, order, sets, and workout format stay locked'];
+  const consequences=['Shared exercise roster and set counts stay aligned · your workout format stays personal'];
   if(num(readiness.energy)<=2||num(readiness.soreness)>=3)consequences.push('Your personal load is reduced');
   if(num(readiness.sleep)<=2)consequences.push('Your progression is held for this session');
   if(unavailableCount)consequences.push(unavailableCount+' shared exercise'+(unavailableCount===1?' needs':'s need')+' a compatible equipment setup');
   if(num(readiness.timeAvailable)<num(day.estimatedMinutes))consequences.push('Shared session may run past your selected time');
   return {day:preview,changes:[],replacementCount:0,unavailableCount,removedCount:0,
-    title:unavailableCount?'Shared setup check':(num(readiness.soreness)>=4?'Recovery-adjusted':num(readiness.energy)<=2||num(readiness.sleep)<=2?'Conservative day':'Shared plan locked'),
-    copy:unavailableCount?'Choose a setup that supports every shared exercise. GoWorkout will not silently replace one person’s movements.':'Both accounts keep the same exercises and workout format. Readiness only changes your personal prescription.',
+    title:unavailableCount?'Shared setup check':(num(readiness.soreness)>=4?'Recovery-adjusted':num(readiness.energy)<=2||num(readiness.sleep)<=2?'Conservative day':'Shared roster ready'),
+    copy:unavailableCount?'Choose a setup that supports every shared exercise. GoWorkout will not silently replace one person’s movements.':'Both accounts keep the same exercise roster. Each account keeps its own workout format, readiness, targets, timers, and pace.',
     consequences:consequences.slice(0,5)};
 }
 function scheduledEntryFor(dayId,scheduledDate=''){
@@ -7732,7 +7745,22 @@ function localizeSharedPlan(snapshot){
       calibrationRequired:Boolean(estimated.calibrate&&!calibrated&&!adaptive)
     };
   });
-  return {...snapshot,exercises,trainingStructure:clone(snapshot.trainingStructure||null),blocks:clone(snapshot.blocks||[]),warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
+  const localized={...snapshot,exercises,trainingStructure:clone(snapshot.trainingStructure||null),blocks:clone(snapshot.blocks||[]),warmup:clone(snapshot.warmup||[]),cooldown:clone(snapshot.cooldown||[])};
+  const preferred=profileWorkoutStructure(store.profile||{});
+  const structured=applyWorkoutStructure(localized,preferred,store.profile||{},{
+    source:'shared-personal',
+    readiness:{timeAvailable:num(localized.targetMinutes)||num(localized.estimatedMinutes)||num(store.profile?.minutes)||45},
+    preserveVolume:true
+  });
+  structured.trainingStructure={
+    ...(structured.trainingStructure||{}),
+    requested:preferred,
+    sharedPersonal:true,
+    programLocked:false,
+    reason:preferred==='adaptive'?(structured.trainingStructure?.reason||'Adaptive on this account'):'Your training profile preference'
+  };
+  recalculatePlanDay(structured);
+  return structured;
 }
 function sharedDraftFromRow(row,role=''){
   const userId=store.account?.userId||'';
@@ -7794,6 +7822,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
       userId:remote.user_id,
       displayName:remote.display_name,
       ready:Boolean(remote.ready),
+      planningProfile:clone(remote.planning_profile||null),
       connectionState:remote.connection_state,
       exerciseIndex:num(remote.exercise_index),
       setIndex:num(remote.set_index),
@@ -7857,7 +7886,7 @@ function updateSharedFromPresence(){
     draft.remoteState={...draft.remoteState,connectionState:'offline'};
   }
   saveSharedBackendDraft(draft);
-  if(currentTab==='together')render();
+  if(currentTab==='together'||currentTab==='workout')render();
 }
 async function subscribeSharedSession(draft){
   if(!workoutSupabase||!draft?.backendId||store.account?.status!=='connected')return;
@@ -7888,9 +7917,14 @@ async function subscribeSharedSession(draft){
         userId:payload.userId,
         displayName:payload.displayName||current.partnerName,
         ready:Boolean(payload.ready),
+        planningProfile:clone(current.remoteState?.planningProfile||null),
         connectionState:'online',
         exerciseIndex:num(payload.exerciseIndex),
+        exerciseName:payload.exerciseName||'',
+        exerciseCount:num(payload.exerciseCount),
         setIndex:num(payload.setIndex),
+        setCount:num(payload.setCount),
+        stageName:payload.stageName||'',
         phase:payload.phase||'lobby',
         isPaused:Boolean(payload.isPaused),
         activeSide:payload.activeSide||'',
@@ -7909,26 +7943,9 @@ async function subscribeSharedSession(draft){
       };
       saveSharedBackendDraft(current);
       applySharedRemoteState(current,current.remoteState);
-      maybeReleaseSharedBarrier(current,current.remoteState);
-      if(currentTab==='together')render();
+      if(currentTab==='together'||currentTab==='workout')render();
     })
-    .on('broadcast',{event:'control-request'},({payload})=>{
-      const current=sharedTrainingState().draft;
-      const w=store.activeWorkout;
-      if(!payload||!current||!w||current.backendId!==draft.backendId||w.sharedSession?.backendId!==draft.backendId)return;
-      if(current.role!=='host'||!sharedWorkoutSyncEnabled(w)||payload.userId===store.account?.userId)return;
-      const requestId=String(payload.requestId||'');
-      if(requestId&&sharedRuntime.pendingControlRequests.has(requestId))return;
-      if(requestId){sharedRuntime.pendingControlRequests.add(requestId);if(sharedRuntime.pendingControlRequests.size>80)sharedRuntime.pendingControlRequests.delete(sharedRuntime.pendingControlRequests.values().next().value);}
-      if(payload.action==='toggle-pause')toggleWorkoutPause(true);
-      else if(payload.action==='reset-timer')resetActiveTimer(true);
-      else if(payload.action==='skip-rest')skipRest(true);
-      else if(payload.action==='skip-side-switch')skipExerciseSideSwitch(true);
-      else if(payload.action==='toggle-rest-pause')toggleWorkoutPause(true);
-      else if(payload.action==='adjust-rest')adjustRest(num(payload.delta),true);
-      else if(payload.action==='skip-timed-stage')skipTimedStage(true);
-      else if(payload.action==='jump-exercise')navigateToExercise(num(payload.exerciseIndex),{fromShared:true});
-    })
+    .on('broadcast',{event:'control-request'},()=>{})
     .on('broadcast',{event:'session-state'},({payload})=>{
       const current=sharedTrainingState().draft;
       if(!current||current.backendId!==draft.backendId||!payload)return;
@@ -7976,12 +7993,8 @@ function sharedWorkoutSyncEnabled(w=store.activeWorkout){
   const shared=w?.sharedSession;
   return Boolean(shared?.backendId&&shared.sharedPlanLocked===true&&shared.pace==='stay-together'&&shared.mode!=='share-plan'&&shared.sessionStatus!=='completed'&&!shared.hostCompletedAt);
 }
-function sharedWorkoutFollower(w=store.activeWorkout){
-  return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='partner');
-}
-function sharedWorkoutHost(w=store.activeWorkout){
-  return Boolean(sharedWorkoutSyncEnabled(w)&&w?.sharedSession?.role==='host');
-}
+function sharedWorkoutFollower(){return false;}
+function sharedWorkoutHost(){return false;}
 function preservePartnerWorkoutForSharedCompletion(sessionId,completedAt=''){
   const w=store.activeWorkout;
   if(!w?.sharedSession||w.sharedSession.backendId!==sessionId||w.sharedSession.role!=='partner')return false;
@@ -8042,112 +8055,41 @@ function sharedActiveSide(w){
   if(exerciseNeedsSideSwitch(ex)&&['right','left','switch','done'].includes(set?.activeSide))return set.activeSide;
   return exerciseNeedsSideSwitch(ex)?activeExerciseSide(set):'both';
 }
+function sharedSameWorkoutPosition(w,remote){
+  if(!w||!remote)return false;
+  if(['warmup','cooldown'].includes(w.phase)){
+    return w.phase===remote.phase&&num(w.timedStageIndex)===num(remote.stageIndex)&&(w.timedStageSide||'')===(remote.stageSide||'');
+  }
+  return num(w.currentExerciseIndex)===num(remote.exerciseIndex)&&num(w.currentSetIndex)===num(remote.setIndex)&&w.phase===remote.phase;
+}
+function alignMatchingSharedTimer(w,remote){
+  if(!sharedWorkoutSyncEnabled(w)||!sharedSameWorkoutPosition(w,remote))return false;
+  if(w.isPaused||remote.isPaused)return false;
+  const localClock=sharedClockSnapshot(w),localStart=Date.parse(localClock.phaseStartedAt||''),remoteStart=Date.parse(remote.phaseStartedAt||'');
+  if(!Number.isFinite(localStart)||!Number.isFinite(remoteStart)||Math.abs(localStart-remoteStart)>5000)return false;
+  const allowed=new Set(['rest','timed-set','side-switch','warmup','cooldown']);
+  if(!allowed.has(w.phase)||!remote.phaseEndsAt)return false;
+  if(w.phase==='rest'){w.restEndsAt=remote.phaseEndsAt;w.restDuration=Math.max(1,num(remote.timerDurationSeconds)||num(w.restDuration));}
+  else if(w.phase==='timed-set'){w.timedSetStartedAt=remote.phaseStartedAt;w.timedSetEndsAt=remote.phaseEndsAt;w.timedSetDuration=Math.max(1,num(remote.timerDurationSeconds)||num(w.timedSetDuration));}
+  else if(w.phase==='side-switch'){w.sideSwitchStartedAt=remote.phaseStartedAt;w.sideSwitchEndsAt=remote.phaseEndsAt;w.sideSwitchDuration=Math.max(1,num(remote.timerDurationSeconds)||num(w.sideSwitchDuration));}
+  else if(['warmup','cooldown'].includes(w.phase)){w.timedPhaseStartedAt=remote.phaseStartedAt;}
+  w.sharedTimerAlignedAt=new Date().toISOString();
+  return true;
+}
 function applySharedRemoteState(draft,remote){
   const w=store.activeWorkout;
-  if(!draft||!remote||!w||w.sharedSession?.backendId!==draft.backendId||!sharedWorkoutFollower(w))return false;
-  if(draft.role!=='partner'||remote.userId!==draft.partnerId)return false;
-  if(['lobby','ready','planning','complete'].includes(remote.phase||''))return false;
-  if(remote.phase==='partner-wait'&&!w.sharedStepComplete)return false;
-  if(w.phase==='partner-wait'&&w.sharedStepComplete&&remote.phase!=='partner-wait'){
-    const samePosition=num(remote.exerciseIndex)===num(w.currentExerciseIndex)&&num(remote.setIndex)===num(w.currentSetIndex);
-    const releasedPhase=['side-switch','rest','calibrate','feedback','cooldown','pre-set','timed-set','warmup','warmup-complete','exercise-transition','exercise-review'].includes(remote.phase||'');
-    const releasedSide=remote.phase==='work'&&remote.activeSide==='left';
-    const releasedPosition=!samePosition;
-    if(!releasedPhase&&!releasedSide&&!releasedPosition)return false;
-  }
-  const incomingRevision=num(remote.syncRevision);
-  const incomingTime=Date.parse(remote.updatedAt||'')||0;
-  const localTime=Date.parse(w.sharedSyncUpdatedAt||'')||0;
+  if(!draft||!remote||!w||w.sharedSession?.backendId!==draft.backendId)return false;
+  const incomingRevision=num(remote.syncRevision),incomingTime=Date.parse(remote.updatedAt||'')||0,localTime=Date.parse(w.sharedSyncUpdatedAt||'')||0;
   if(incomingRevision&&incomingRevision<=num(sharedRuntime.lastAppliedSyncRevision)&&incomingTime<=localTime)return false;
   sharedRuntime.lastAppliedSyncRevision=Math.max(num(sharedRuntime.lastAppliedSyncRevision),incomingRevision);
-  const ei=Math.max(0,Math.min(num(remote.exerciseIndex),Math.max(0,(w.exercises?.length||1)-1)));
-  const ex=w.exercises?.[ei];
-  const si=Math.max(0,Math.min(num(remote.setIndex),Math.max(0,(ex?.sets?.length||1)-1)));
-  sharedRuntime.syncMuted=true;
-  try{
-    w.currentExerciseIndex=ei;
-    w.currentSetIndex=si;
-    w.furthestExerciseIndex=Math.max(num(w.furthestExerciseIndex),ei);
-    w.phase=remote.phase||w.phase;
-    w.isPaused=Boolean(remote.isPaused);
-    w.pausedAt=w.isPaused?(remote.pausedAt||remote.updatedAt||new Date().toISOString()):null;
-    w.sharedSyncUpdatedAt=remote.updatedAt||new Date().toISOString();
-    w.sharedSyncRevision=incomingRevision||Date.now();
-    if(remote.phase!=='partner-wait'){
-      w.sharedStepKey='';
-      w.sharedStepComplete=false;
-      w.sharedPendingAction=null;
-    }
-    if(remote.nextExerciseIndex!==null&&remote.nextExerciseIndex!==undefined){
-      const nextEi=Math.max(0,Math.min(num(remote.nextExerciseIndex),Math.max(0,(w.exercises?.length||1)-1)));
-      const nextEx=w.exercises?.[nextEi];
-      const nextSi=Math.max(0,Math.min(num(remote.nextSetIndex),Math.max(0,(nextEx?.sets?.length||1)-1)));
-      w.pendingPosition={ei:nextEi,si:nextSi,type:nextEi===ei?'set':'exercise'};
-    }else if(w.phase!=='rest'&&w.phase!=='feedback'&&w.phase!=='calibrate'){
-      w.pendingPosition=null;
-    }
-    const set=ex?.sets?.[si];
-    if(set&&exerciseNeedsSideSwitch(ex)&&remote.activeSide){
-      set.activeSide=['right','left','switch','done'].includes(remote.activeSide)?remote.activeSide:'right';
-    }
-    if(['warmup','cooldown'].includes(w.phase)){
-      w.timedStageIndex=Math.max(0,num(remote.stageIndex));
-      w.timedStageSide=remote.stageSide||remote.activeSide||w.timedStageSide||'';
-      if(remote.activeSide==='switch'){
-        w.timedStageSwitchStartedAt=remote.phaseStartedAt||null;
-        w.timedStageSwitchEndsAt=remote.phaseEndsAt||null;
-      }else{
-        delete w.timedStageSwitchStartedAt;delete w.timedStageSwitchEndsAt;
-        w.timedPhaseStartedAt=remote.phaseStartedAt||null;
-      }
-    }else if(w.phase==='rest'){
-      const duration=Math.max(5,num(remote.timerDurationSeconds)||num(ex?.rest)||45);
-      w.restEndsAt=sharedRemoteDeadline(remote,duration);
-      w.restDuration=duration;
-      w.restPausedRemaining=null;
-      if(!w.restToken)w.restToken='shared:'+draft.backendId+':'+ei+':'+si;
-    }else if(w.phase==='side-switch'){
-      const duration=Math.max(1,num(remote.timerDurationSeconds)||exerciseSideSwitchSeconds(ex)||5);
-      w.sideSwitchStartedAt=remote.phaseStartedAt||remote.updatedAt||null;
-      w.sideSwitchEndsAt=sharedRemoteDeadline(remote,duration);
-      w.sideSwitchDuration=duration;
-      w.sideSwitchPausedRemaining=null;
-    }else if(w.phase==='timed-set'){
-      const duration=Math.max(1,num(remote.timerDurationSeconds)||num(set?.reps)||30);
-      w.timedSetStartedAt=remote.phaseStartedAt||remote.updatedAt||null;
-      w.timedSetEndsAt=sharedRemoteDeadline(remote,duration);
-      w.timedSetDuration=duration;
-      delete w.timedSetPausedRemaining;
-    }else if(w.phase==='pre-set'){
-      w.preSetStartedAt=remote.phaseStartedAt||remote.updatedAt||null;
-      w.preSetSetupSeconds=0;
-      w.preSetCountdownSeconds=Math.max(1,num(remote.timerDurationSeconds)||3);
-      w.preSetCoachPending=false;
-      w.preSetManualStart=!w.preSetStartedAt;
-      w.preSetFinishing=false;
-    }else if(w.phase==='work'){
-      w.setStartedAt=remote.phaseStartedAt||w.setStartedAt||new Date().toISOString();
-    }
-    saveStore();
-  }finally{
-    sharedRuntime.syncMuted=false;
-  }
-  if(w.phase==='partner-wait')scheduleSharedBarrierPoll();
-  else stopSharedBarrierPoll();
-  if(currentTab==='workout')render();
+  w.sharedSyncUpdatedAt=remote.updatedAt||new Date().toISOString();
+  w.sharedSyncRevision=incomingRevision||Date.now();
+  const aligned=alignMatchingSharedTimer(w,remote);
+  if(aligned)saveStore();
   return true;
 }
-function requestSharedControl(action,payload={}){
-  const w=store.activeWorkout;
-  if(!sharedWorkoutFollower(w)||!sharedRuntime.channel)return false;
-  const requestId=[w.sharedSession.backendId,store.account?.userId,action,Date.now()].join(':');
-  sharedRuntime.channel.send({type:'broadcast',event:'control-request',payload:{requestId,userId:store.account?.userId,action,...payload,updatedAt:new Date().toISOString()}}).catch(()=>{});
-  toast('Synced control sent to '+(w.sharedSession?.partnerName||'your workout partner')+'.');
-  return true;
-}
-function sharedBarrierKey(pos,kind='set',side=''){
-  return [kind,pos?.ei??0,pos?.si??0,side||'both'].join(':');
-}
+function requestSharedControl(){return false;}
+function sharedBarrierKey(pos,kind='set',side=''){return [kind,pos?.ei??0,pos?.si??0,side||'both'].join(':');}
 function stopSharedBarrierPoll(){
   if(sharedRuntime.barrierPollTimer){
     clearTimeout(sharedRuntime.barrierPollTimer);
@@ -8161,27 +8103,7 @@ function flushSharedStateSync(){
   }
   queueMicrotask(()=>syncSharedParticipantState().catch(error=>console.warn('Shared state flush failed',error)));
 }
-function scheduleSharedBarrierPoll(delay=350){
-  const w=store.activeWorkout;
-  const draft=sharedTrainingState().draft;
-  if(!w||w.phase!=='partner-wait'||!draft?.backendId||w.sharedSession?.backendId!==draft.backendId){
-    stopSharedBarrierPoll();
-    return;
-  }
-  if(sharedRuntime.barrierPollTimer)return;
-  sharedRuntime.barrierPollTimer=setTimeout(async()=>{
-    sharedRuntime.barrierPollTimer=null;
-    const current=store.activeWorkout;
-    const activeDraft=sharedTrainingState().draft;
-    if(!current||current.phase!=='partner-wait'||!activeDraft?.backendId||current.sharedSession?.backendId!==activeDraft.backendId)return;
-    try{
-      await fetchSharedSessionState(activeDraft.backendId,{renderNow:false});
-    }catch(error){
-      console.warn('Shared barrier refresh failed',error);
-    }
-    if(store.activeWorkout?.phase==='partner-wait')scheduleSharedBarrierPoll(700);
-  },Math.max(100,delay));
-}
+function scheduleSharedBarrierPoll(){return;}
 function sharedRemoteDeadline(remote,fallbackDuration=0){
   const explicit=Date.parse(remote?.phaseEndsAt||'');
   if(Number.isFinite(explicit))return new Date(explicit).toISOString();
@@ -8189,70 +8111,28 @@ function sharedRemoteDeadline(remote,fallbackDuration=0){
   const duration=Math.max(0,num(remote?.timerDurationSeconds)||num(fallbackDuration));
   return Number.isFinite(start)&&duration>0?new Date(start+duration*1000).toISOString():null;
 }
-function enterSharedBarrier(pos,key,pendingAction){
-  const w=pos?.workout;
-  if(!w||!sharedWorkoutSyncEnabled(w))return false;
-  w.sharedStepKey=String(key||'');
-  w.sharedStepComplete=true;
-  w.sharedPendingAction=clone(pendingAction||{});
-  w.phase='partner-wait';
-  w.pendingPosition=pendingAction?.next?clone(pendingAction.next):w.pendingPosition;
-  saveStore();
-  render();
-  flushSharedStateSync();
-  scheduleSharedBarrierPoll();
-  maybeReleaseSharedBarrier(sharedTrainingState().draft,sharedTrainingState().draft?.remoteState);
-  return true;
-}
+function enterSharedBarrier(){return false;}
 function runSharedPendingAction(w,action){
-  if(!w||!action)return;
+  if(!w||!action)return false;
   const pos=getActivePosition();
-  if(!pos)return;
-  stopSharedBarrierPoll();
-  w.sharedStepKey='';
-  w.sharedStepComplete=false;
-  w.sharedPendingAction=null;
-  if(action.kind==='side-switch'){
-    w.phase='work';
-    beginExerciseSideSwitch(pos);
-    return;
-  }
-  if(action.kind==='calibrate'){
-    w.phase='calibrate';
-    w.pendingPosition=action.next?clone(action.next):null;
-    saveStore();render();
-    return;
-  }
-  if(action.kind==='feedback'){
-    w.phase='work';
-    startExerciseFeedback(action.next?clone(action.next):null);
-    return;
-  }
-  if(action.kind==='rest'){
-    w.phase='work';
-    beginRest(action.next?clone(action.next):null,Math.max(5,num(action.seconds)||45));
-    return;
-  }
-  if(action.kind==='cooldown'){
-    w.phase='work';
-    startCooldown();
-    return;
-  }
+  if(!pos)return false;
+  w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;
+  if(action.kind==='side-switch'){w.phase='work';beginExerciseSideSwitch(pos);return true;}
+  if(action.kind==='calibrate'){w.phase='calibrate';w.pendingPosition=action.next?clone(action.next):null;saveStore();render();return true;}
+  if(action.kind==='feedback'){w.phase='work';startExerciseFeedback(action.next?clone(action.next):null);return true;}
+  if(action.kind==='rest'){w.phase='work';beginRest(action.next?clone(action.next):null,Math.max(5,num(action.seconds)||45));return true;}
+  if(action.kind==='cooldown'){w.phase='work';startCooldown();return true;}
+  w.phase='work';saveStore();render();return true;
 }
-function maybeReleaseSharedBarrier(draft=sharedTrainingState().draft,remote=draft?.remoteState){
-  const w=store.activeWorkout;
-  if(!w||!sharedWorkoutHost(w)||w.phase!=='partner-wait'||!w.sharedStepComplete||!w.sharedPendingAction)return false;
-  if(!remote||remote.connectionState==='offline'||!remote.stepComplete||remote.stepKey!==w.sharedStepKey)return false;
-  const action=clone(w.sharedPendingAction);
-  runSharedPendingAction(w,action);
-  return true;
-}
+function maybeReleaseSharedBarrier(){return false;}
 function currentSharedCoordinationState(){
   const draft=sharedTrainingState().draft;
   if(!draft?.backendId||store.account?.status!=='connected')return null;
   const w=store.activeWorkout?.sharedSession?.backendId===draft.backendId?store.activeWorkout:null;
   const clock=sharedClockSnapshot(w);
   const next=w?.pendingPosition||null;
+  const activeEx=w?.exercises?.[w.currentExerciseIndex];
+  const activeStage=['warmup','cooldown'].includes(w?.phase)?timedStageItems(w)[w.timedStageIndex||0]:null;
   return {
     sessionId:draft.backendId,
     userId:store.account.userId,
@@ -8260,7 +8140,11 @@ function currentSharedCoordinationState(){
     ready:true,
     connectionState:'online',
     exerciseIndex:w?num(w.currentExerciseIndex):0,
+    exerciseName:activeEx?.name||'',
+    exerciseCount:w?.exercises?.length||0,
     setIndex:w?num(w.currentSetIndex):0,
+    setCount:activeEx?.sets?.length||0,
+    stageName:activeStage?.name||'',
     phase:w?(w.phase||'workout'):(draft.userStatus||'lobby'),
     isPaused:Boolean(w?.isPaused),
     activeSide:w?sharedActiveSide(w):'',
@@ -8509,7 +8393,7 @@ async function createSharedDraft(){
   const contact=selectedPartner?.contact||(document.querySelector('#shared-partner-contact')?.value||'').trim();
   const mode=document.querySelector('#shared-mode')?.value||'same-gym';
   const pace=document.querySelector('#shared-pace')?.value||'stay-together';
-  const setFlow=document.querySelector('#shared-set-flow')?.value||'alternating';
+  const setFlow='parallel';
   if(!name){toast('Choose a saved partner or enter your workout partner’s name.');return;}
   const shared=sharedTrainingState();
   const day=next.adaptedDay||next.day;
@@ -8598,9 +8482,9 @@ async function joinSharedSession(){
 }
 function sharedDraftDay(draft){
   if(!draft)return null;
-  if(draft.role==='partner'&&draft.planSnapshot?.exercises?.length)return localizeSharedPlan(draft.planSnapshot);
+  if(draft.planSnapshot?.exercises?.length)return localizeSharedPlan(draft.planSnapshot);
   const entry=scheduledEntryFor(draft.dayId,draft.scheduledDate);
-  return entry?.adaptedDay||store.plan?.days?.find(day=>day.id===draft.dayId)||localizeSharedPlan(draft.planSnapshot)||null;
+  return entry?.adaptedDay||store.plan?.days?.find(day=>day.id===draft.dayId)||null;
 }
 async function activateSharedWorkout(draft){
   if(!draft?.backendId||!workoutSupabase)return;
@@ -8632,6 +8516,11 @@ async function activateSharedWorkout(draft){
 async function completeSharedParticipant(sharedSession,completionStatus){
   if(!sharedSession?.backendId||!workoutSupabase||store.account?.status!=='connected')return;
   const now=new Date().toISOString();
+  const shared=sharedTrainingState();
+  if(shared.draft?.backendId===sharedSession.backendId){
+    shared.draft.userStatus='complete';
+    saveSharedBackendDraft(shared.draft);
+  }
   await workoutSupabase.from('workout_shared_participant_state').update({
     ready:false,
     phase:'complete',
@@ -8645,28 +8534,62 @@ async function completeSharedParticipant(sharedSession,completionStatus){
       payload:{userId:store.account.userId,displayName:displayName(),ready:false,connectionState:'online',exerciseIndex:999,setIndex:999,phase:'complete',isPaused:false,updatedAt:now}
     });
   }catch{}
-  if(sharedSession.role==='host'){
+  const {data:participants}=await workoutSupabase.from('workout_shared_participant_state').select('user_id,phase').eq('session_id',sharedSession.backendId);
+  const bothFinished=Array.isArray(participants)&&participants.length>=2&&participants.every(item=>item.phase==='complete');
+  if(bothFinished){
     await workoutSupabase.from('workout_shared_sessions').update({
       status:'completed',
       completed_at:now,
       updated_at:now
     }).eq('id',sharedSession.backendId);
     try{await sharedRuntime.channel?.send({type:'broadcast',event:'session-state',payload:{status:'completed',completedAt:now,completionStatus}});}catch{}
+    setTimeout(()=>unsubscribeSharedSession(),500);
   }
-  setTimeout(()=>unsubscribeSharedSession(),500);
+}
+function sharedRemoteWorkoutDay(draft=sharedTrainingState().draft){
+  return draft?.planSnapshot?.exercises?.length?localizeSharedPlan(draft.planSnapshot):sharedDraftDay(draft);
 }
 function sharedRemotePositionLabel(draft=sharedTrainingState().draft){
   const remote=draft?.remoteState;
-  if(!remote)return draft?.partnerStatus==='ready'?'Partner ready':'Waiting for partner';
-  if(remote.connectionState==='offline')return 'Partner reconnecting';
-  if(remote.phase==='complete')return 'Partner finished';
-  if(remote.isPaused)return 'Partner paused';
-  if(remote.phase==='partner-wait')return 'Partner finished this step · waiting for you';
-  if(remote.phase==='lobby')return 'Partner ready';
-  const day=sharedDraftDay(draft);
+  if(!remote)return draft?.partnerStatus==='ready'?'Ready to train':'Waiting to connect';
+  if(remote.connectionState==='offline')return 'Reconnecting';
+  if(remote.phase==='complete')return 'Workout complete';
+  if(remote.isPaused)return 'Paused';
+  if(remote.phase==='lobby'||remote.phase==='planning'||remote.phase==='ready')return 'Ready to train';
+  const day=sharedRemoteWorkoutDay(draft);
+  if(remote.phase==='warmup'){
+    const item=day?.warmup?.[remote.stageIndex];
+    const name=remote.stageName||item?.name||'';
+    return 'Warm-up'+(name?' · '+name:'')+' · '+(num(remote.stageIndex)+1)+'/'+Math.max(1,day?.warmup?.length||1);
+  }
+  if(remote.phase==='cooldown'){
+    const item=day?.cooldown?.[remote.stageIndex];
+    const name=remote.stageName||item?.name||'';
+    return 'Cooldown'+(name?' · '+name:'')+' · '+(num(remote.stageIndex)+1)+'/'+Math.max(1,day?.cooldown?.length||1);
+  }
   const ex=day?.exercises?.[remote.exerciseIndex];
-  if(!ex)return 'Partner connected';
-  return ex.name+' · Set '+(num(remote.setIndex)+1);
+  const name=remote.exerciseName||ex?.name||'';
+  if(!name)return 'Connected';
+  const setCount=Math.max(1,num(remote.setCount)||num(ex?.sets)||1);
+  const side=['right','left'].includes(remote.activeSide)?' · '+remote.activeSide.toUpperCase()+' SIDE':'';
+  const phase=remote.phase==='rest'?' · Resting':remote.phase==='side-switch'?' · Switching sides':remote.phase==='pre-set'?' · Getting ready':remote.phase==='feedback'?' · Exercise review':remote.phase==='timed-set'?' · Timed set':'';
+  return name+' · Set '+(num(remote.setIndex)+1)+'/'+setCount+side+phase;
+}
+function sharedRelativePositionLabel(w,draft=sharedTrainingState().draft){
+  const remote=draft?.remoteState;
+  if(!w||!remote||['complete','lobby','planning','ready'].includes(remote.phase||''))return '';
+  if(['warmup','cooldown'].includes(w.phase)||['warmup','cooldown'].includes(remote.phase||'')){
+    if(w.phase===remote.phase&&num(w.timedStageIndex)===num(remote.stageIndex))return 'Same position';
+    return 'Moving independently';
+  }
+  const localEi=num(w.currentExerciseIndex),remoteEi=num(remote.exerciseIndex);
+  const localSi=num(w.currentSetIndex),remoteSi=num(remote.setIndex);
+  if(localEi===remoteEi&&localSi===remoteSi)return 'Same exercise · same set';
+  if(remoteEi>localEi)return (remoteEi-localEi)+' exercise'+(remoteEi-localEi===1?'':'s')+' ahead';
+  if(localEi>remoteEi)return 'You are '+(localEi-remoteEi)+' exercise'+(localEi-remoteEi===1?'':'s')+' ahead';
+  if(remoteSi>localSi)return (remoteSi-localSi)+' set'+(remoteSi-localSi===1?'':'s')+' ahead';
+  if(localSi>remoteSi)return 'You are '+(localSi-remoteSi)+' set'+(localSi-remoteSi===1?'':'s')+' ahead';
+  return 'Moving independently';
 }
 function renderSharedMatches(draft){
   const day=sharedDraftDay(draft);if(!day)return '';
@@ -8689,19 +8612,19 @@ function renderTogether(){
     const statusCopy=draft.sessionStatus==='active'?'Workout in progress':draft.sessionStatus==='completed'?'Session completed':partnerReady?'Both connected':'Waiting for partner';
     const partnerPhase=draft.remoteState?.phase&&draft.remoteState.phase!=='lobby'?draft.remoteState.phase.replace(/-/g,' '):'Lobby';
     return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Shared session lobby.</h2><p>'+esc(statusCopy)+'. Each person keeps their own weights, reps, readiness, history, and progression.</p></div><button class="text-button danger-text" data-action="cancel-shared-draft">'+(role==='host'?'CANCEL':'LEAVE')+'</button></div>'+
-      '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</p>'+(role==='host'?(draft.inviteMethod==='saved-partner'?'<div class="shared-code"><span>DIRECT INVITE</span><strong>'+esc(draft.partnerName||'Saved partner')+'</strong><small>No join code needed</small></div>':'<div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div>'):'')+'</section>'+
+      '<section class="shared-lobby-hero"><div class="shared-avatar-stack"><div class="shared-avatar you">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div class="shared-link-mark">+</div><div class="shared-avatar partner">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div></div><p class="eyebrow">'+esc(draft.mode==='same-gym'?'SAME GYM':draft.mode==='remote'?'REMOTE TOGETHER':'SHARE PLAN')+'</p><h3>'+esc(draft.routineName)+'</h3><p>'+esc(formatDate(draft.scheduledDate))+' · '+esc(draft.pace==='stay-together'?'Match Timers When Aligned':'Independent Timers')+'</p>'+(role==='host'?(draft.inviteMethod==='saved-partner'?'<div class="shared-code"><span>DIRECT INVITE</span><strong>'+esc(draft.partnerName||'Saved partner')+'</strong><small>No join code needed</small></div>':'<div class="shared-code"><span>JOIN CODE</span><strong>'+esc(draft.code)+'</strong></div>'):'')+'</section>'+
       '<div class="participant-grid"><article class="participant-card ready"><div class="participant-avatar">'+esc((displayName()[0]||'Y').toUpperCase())+'</div><div><span>YOU · '+esc(role.toUpperCase())+'</span><strong>'+esc(displayName())+'</strong><small>'+(store.activeWorkout?.sharedSession?'Training':'Ready')+'</small></div><em>✓</em></article><article class="participant-card '+(partnerReady?'ready':'pending')+'"><div class="participant-avatar">'+esc((draft.partnerName?.[0]||'P').toUpperCase())+'</div><div><span>PARTNER</span><strong>'+esc(draft.partnerName||'Workout partner')+'</strong><small>'+(partnerReady?(remoteOnline?'Online · '+esc(partnerPhase):'Joined · reconnecting'):'Invite pending')+'</small></div><em>'+(partnerReady?'✓':'…')+'</em></article></div>'+
-      '<section class="clean-panel shared-settings-summary"><div><span>PACE</span><strong>'+esc(draft.pace==='stay-together'?'Stay Together':'Flexible Pace')+'</strong></div><div><span>SETS</span><strong>'+esc(draft.setFlow==='parallel'?'Parallel':'Alternating')+'</strong></div><div><span>LEAD AUDIO</span><strong>'+esc(draft.leadAudio==='you'?'Your phone':'Partner phone')+'</strong></div><div><span>PRIVACY</span><strong>Performance stays individual</strong></div></section>'+
+      '<section class="clean-panel shared-settings-summary"><div><span>PROGRESS</span><strong>Independent</strong></div><div><span>TIMERS</span><strong>'+esc(draft.pace==='stay-together'?'Match when aligned':'Independent')+'</strong></div><div><span>YOUR FORMAT</span><strong>'+esc(workoutStructureLabel(sharedDraftDay(draft)?.trainingStructure?.applied||profileWorkoutStructure(store.profile||{})))+'</strong></div><div><span>PARTNER PREF</span><strong>'+esc(workoutStructureLabel(draft.remoteState?.planningProfile?.workoutStructure||'adaptive'))+'</strong></div></section>'+
       '<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">REVIEW MATCHES</p><h3>'+((sharedDraftDay(draft)?.exercises||[]).length)+' shared stations</h3></div></div>'+renderSharedMatches(draft)+'</section>'+
       '<div class="shared-lobby-actions">'+(canStart?'<button class="button primary-action" data-action="start-shared-workout">'+(role==='partner'&&draft.mode!=='share-plan'?'START MY WORKOUT':'START TOGETHER')+'</button>':'<button class="button secondary" disabled>'+(role==='partner'?'WAITING FOR HOST':'WAITING FOR PARTNER')+'</button>')+(role==='host'&&draft.inviteMethod!=='saved-partner'?'<button class="button secondary" data-action="copy-shared-code">COPY JOIN CODE</button>':'')+'</div>'+
-      '<section class="prototype-note compact"><strong>One shared workout plan.</strong><span>Both accounts receive the same exercises, order, sets, warm-up, cooldown, and workout format. Stay Together synchronizes full-set transitions and timers. Personal weights, reps, readiness, notes, PRs, and history stay private.</span></section>'+
+      '<section class="prototype-note compact"><strong>Same roster. Personal workout flow.</strong><span>Both accounts receive the same exercise roster and set counts. Each person keeps their own structure preference, readiness, targets, timers, and progress. Neither account waits for the other to move forward.</span></section>'+
     '</div>';
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
     '<section class="together-hero"><div class="together-icon">◎</div><div><span>NEXT AVAILABLE WORKOUT</span><h3>'+esc(next?.adaptedDay?.name||next?.day?.name||'No session scheduled')+'</h3><p>'+(next?esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min':'Schedule a workout first.')+'</p></div></section>'+
     '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Choose who you are training with</h3></div></div>'+
       (savedPartners.length?'<label class="field"><span>SAVED PARTNER</span><select id="shared-saved-partner"><option value="">New partner</option>'+savedPartners.map(item=>'<option value="'+esc(item.userId)+'">'+esc(item.name||'Workout partner')+'</option>').join('')+'</select><small>Saved partners receive the session directly. No join code is required.</small></label>':'')+
-      '<div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="Used to recognize a new partner"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>PACE</span><select id="shared-pace"><option value="stay-together">Stay Together</option><option value="flexible">Flexible Pace</option></select></label><label class="field"><span>SET FLOW</span><select id="shared-set-flow"><option value="alternating">Alternating Sets</option><option value="parallel">Parallel Sets</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
+      '<div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="Used to recognize a new partner"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>TIMING</span><select id="shared-pace"><option value="stay-together">Match Timers When Aligned</option><option value="flexible">Independent Timers</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
     '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">FIRST-TIME PARTNER</p><h3>Use a code once to connect</h3></div></div><label class="field shared-code-input"><span>6-CHARACTER JOIN CODE</span><input id="shared-join-code" inputmode="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"></label><button class="button secondary" data-action="join-shared-session">JOIN WORKOUT</button><small>After your first shared session, this person appears under Saved Partner.</small></section>'+
     (shared.partners.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">WORKOUT PARTNERS</p><h3>Recent partners</h3></div></div><div class="partner-list">'+shared.partners.slice(-5).reverse().map(item=>'<div class="partner-row"><div class="participant-avatar">'+esc((item.name[0]||'P').toUpperCase())+'</div><div><strong>'+esc(item.name)+'</strong><small>'+esc(item.contact||'Shared workout partner')+'</small></div></div>').join('')+'</div></section>':'')+
     (shared.history.length?'<section class="clean-section"><div class="clean-section-head"><div><p class="eyebrow">RECENT SHARED SESSIONS</p><h3>Trained together</h3></div></div><div class="partner-list">'+shared.history.slice(0,5).map(item=>'<div class="partner-row"><div class="participant-avatar">✓</div><div><strong>'+esc(item.routineName)+'</strong><small>With '+esc(item.partnerName)+' · '+esc(formatDate(item.completedAt))+'</small></div></div>').join('')+'</div></section>':'')+
@@ -9715,15 +9638,13 @@ function renderWarmupComplete(w){
 
 function renderSharedWorkoutSync(w){
   if(!w?.sharedSession)return '';
-  const draft=sharedTrainingState().draft;
-  const synced=sharedWorkoutSyncEnabled(w);
-  const recovery=w.sharedSession?.pace==='stay-together'&&w.sharedSession?.sharedPlanLocked!==true;
-  const remote=draft?.remoteState;
+  const draft=sharedTrainingState().draft,remote=draft?.remoteState;
   const online=Boolean(remote&&remote.connectionState!=='offline');
-  const status=!remote?'Waiting for partner':!online?'Partner reconnecting':sharedRemotePositionLabel(draft);
-  const mode=recovery?'RECOVERY MODE':synced?'SYNCED TIMING':'FLEXIBLE TIMING';
-  const note=recovery?'This older mismatched session can continue without partner barriers. New Together sessions use one locked shared plan.':synced?'One shared plan · one shared pace · performance stays individual':'Same plan · independent pace';
-  return '<div class="runner-shared-sync '+(synced?'synced':'flexible')+'"><span>TOGETHER · '+mode+'</span><strong>'+esc(status)+'</strong><small>'+esc(note)+'</small></div>';
+  const timerMode=sharedWorkoutSyncEnabled(w)?'MATCH TIMERS WHEN ALIGNED':'INDEPENDENT TIMERS';
+  const partnerName=draft?.partnerName||w.sharedSession?.partnerName||'Partner';
+  const status=!remote?'Waiting to connect':!online?'Reconnecting':sharedRemotePositionLabel(draft);
+  const relative=online?sharedRelativePositionLabel(w,draft):'';
+  return '<div class="runner-shared-sync live-tracker"><span>TOGETHER · LIVE</span><strong>'+esc(partnerName)+'</strong><small>'+esc(status)+'</small>'+(relative?'<em>'+esc(relative)+'</em>':'')+'<b>'+esc(timerMode)+'</b></div>';
 }
 function renderRunnerExerciseNavigation(pos){
   const w=pos?.workout;if(!w||!w.exercises?.length)return '';
@@ -10082,10 +10003,7 @@ function renderWorkSet(pos){
 
 
 function renderSharedPartnerWait(pos){
-  const draft=sharedTrainingState().draft;
-  const partner=draft?.partnerName||pos.workout.sharedSession?.partnerName||'your partner';
-  const side=['right','switch'].includes(pos.set?.activeSide)?'RIGHT SIDE':pos.set?.activeSide==='done'?'SET':'SET';
-  return '<div class="runner-side-switch runner-partner-wait"><p class="eyebrow">'+esc(side)+' COMPLETE</p><h2>Waiting for '+esc(partner)+'</h2><p>'+esc(pos.exercise.name)+' · Set '+(pos.si+1)+' of '+pos.exercise.sets.length+'</p><div class="shared-wait-pulse" aria-hidden="true">•••</div><small>Stay Together starts the next switch, rest, or exercise only after both accounts reach this point.</small></div>';
+  return '<div class="runner-side-switch runner-partner-wait"><p class="eyebrow">SHARED SESSION UPDATED</p><h2>Continuing your workout</h2><p>'+esc(pos.exercise.name)+' · Set '+(pos.si+1)+' of '+pos.exercise.sets.length+'</p><small>Partner waiting no longer blocks your workout. This legacy state clears automatically.</small></div>';
 }
 
 function renderSideSwitch(pos){
@@ -10991,7 +10909,11 @@ function render(){
 function updateTimers(){
   const w=store.activeWorkout;
   if(!w)return;
-  if(w.phase==='partner-wait')scheduleSharedBarrierPoll();
+  if(w.phase==='partner-wait'){
+    if(w.sharedPendingAction)runSharedPendingAction(w,clone(w.sharedPendingAction));
+    else{w.phase='work';w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;saveStore();render();}
+    return;
+  }
   const nowMs=Date.now();
   const sharedFollower=sharedWorkoutFollower(w);
 
@@ -11565,8 +11487,8 @@ function recoverWorkoutAfterForeground(){
   const w=store.activeWorkout;
   if(!w)return;
   if(w.phase==='partner-wait'){
-    flushSharedStateSync();
-    scheduleSharedBarrierPoll(100);
+    if(w.sharedPendingAction)runSharedPendingAction(w,clone(w.sharedPendingAction));
+    else{w.phase='work';w.sharedStepKey='';w.sharedStepComplete=false;w.sharedPendingAction=null;saveStore();}
   }
 
   // Mobile browsers throttle/suspend JS timers while backgrounded. A guided-stage
