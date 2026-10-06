@@ -95,8 +95,7 @@ function withHealthPackage(config){
     let source=cfg.modResults.contents;
     const importLine='import '+HEALTH_PACKAGE+'.GoWorkoutHealthConnectPackage';
     if(!source.includes(importLine)){
-      const packageLine='package '+PACKAGE_NAME;
-      source=source.replace(packageLine,packageLine+'\n\n'+importLine);
+      source=source.replace(/^(package\\s+[^\\n]+)/m,'$1\\n\\n'+importLine);
     }
     if(!source.includes('add(GoWorkoutHealthConnectPackage())')){
       const marker='PackageList(this).packages.apply {';
