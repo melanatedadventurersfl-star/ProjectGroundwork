@@ -6649,6 +6649,28 @@ button.runner-phase-row{cursor:pointer}
   text-align:center;
   white-space:nowrap;
 }
+.runner-target-input{
+  width:100%;
+  min-width:0;
+  height:36px;
+  margin:0;
+  padding:0 4px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#111712;
+  font:inherit;
+  font-size:15px;
+  font-weight:800;
+  line-height:36px;
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+  outline:none;
+}
+.runner-target-input:focus{
+  background:#fff;
+  box-shadow:0 0 0 2px rgba(35,67,49,.18);
+}
 .runner-set-timer strong{
   font-variant-numeric:tabular-nums;
 }
@@ -15464,6 +15486,11 @@ body.home-mode .bottom-nav:before{
 }
 .strength-runner-steppers .runner-target-stepper strong{
   font-size:17px;
+}
+.strength-runner-steppers .runner-target-input{
+  height:40px;
+  font-size:17px;
+  line-height:40px;
 }
 .strength-runner-ready-note,
 .strength-runner-auto{
