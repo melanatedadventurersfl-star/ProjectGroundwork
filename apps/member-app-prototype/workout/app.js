@@ -8363,6 +8363,9 @@ async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
     const refreshed=await fetchSharedSessionState(existing.backendId,{renderNow:false});
     if(refreshed&&['lobby','active'].includes(refreshed.sessionStatus)){
       await subscribeSharedSession(refreshed);
+      if(refreshed.sessionStatus==='active'&&!store.activeWorkout){
+        await recoverActiveSharedWorkout(refreshed);
+      }
       return;
     }
     sharedTrainingState().draft=null;
@@ -8424,17 +8427,36 @@ async function recoverActiveSharedWorkout(draft=sharedTrainingState().draft){
 }
 async function resumeWorkout(){
   if(store.activeWorkout){unlockWorkoutCues();setTab('workout');return;}
-  const draft=sharedTrainingState().draft;
-  if(draft?.sessionStatus==='active'&&draft.backendId&&workoutSupabase&&store.account?.status==='connected'){
-    const refreshed=await fetchSharedSessionState(draft.backendId,{renderNow:false});
-    const recovered=await recoverActiveSharedWorkout(refreshed||draft);
-    if(recovered){
-      unlockWorkoutCues();
-      currentTab='workout';
-      persistUiState();
-      render();
-      toast('Shared workout restored.');
-      return;
+  if(workoutSupabase&&store.account?.status==='connected'){
+    let draft=sharedTrainingState().draft;
+    if(draft?.backendId)draft=await fetchSharedSessionState(draft.backendId,{renderNow:false})||draft;
+    if(!draft?.backendId||draft.sessionStatus!=='active'){
+      const {data,error}=await workoutSupabase
+        .from('workout_shared_sessions')
+        .select('*')
+        .in('status',['lobby','active'])
+        .gt('expires_at',new Date().toISOString())
+        .order('created_at',{ascending:false})
+        .limit(1);
+      if(error)console.warn('Shared resume lookup failed',error);
+      const row=data?.[0];
+      if(row){
+        draft=sharedDraftFromRow(row);
+        saveSharedBackendDraft(draft);
+        await subscribeSharedSession(draft);
+        draft=await fetchSharedSessionState(draft.backendId,{renderNow:false})||draft;
+      }
+    }
+    if(draft?.sessionStatus==='active'){
+      const recovered=await recoverActiveSharedWorkout(draft);
+      if(recovered){
+        unlockWorkoutCues();
+        currentTab='workout';
+        persistUiState();
+        render();
+        toast('Shared workout restored.');
+        return;
+      }
     }
   }
   toast('That workout could not be restored. Open Together and reconnect to the active session.');
