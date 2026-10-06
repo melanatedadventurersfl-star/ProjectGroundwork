@@ -55,6 +55,24 @@ function withHealthManifest(config){
           action:[{$:{'android:name':'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE'}}]
         });
       }
+
+      application['activity-alias']=application['activity-alias']||[];
+      const aliasName='.ViewPermissionUsageActivity';
+      const hasUsageAlias=application['activity-alias'].some(alias=>alias?.$?.['android:name']===aliasName);
+      if(!hasUsageAlias){
+        application['activity-alias'].push({
+          $:{
+            'android:name':aliasName,
+            'android:exported':'true',
+            'android:targetActivity':mainActivity?.$?.['android:name']||'.MainActivity',
+            'android:permission':'android.permission.START_VIEW_PERMISSION_USAGE'
+          },
+          'intent-filter':[{
+            action:[{$:{'android:name':'android.intent.action.VIEW_PERMISSION_USAGE'}}],
+            category:[{$:{'android:name':'android.intent.category.HEALTH_PERMISSIONS'}}]
+          }]
+        });
+      }
     }
     return cfg;
   });
@@ -66,6 +84,7 @@ function withHealthGradle(config){
     if(!source.includes('androidx.health.connect:connect-client:1.1.0')){
       source=source.replace(/dependencies\s*\{/,'dependencies {\n    implementation "androidx.health.connect:connect-client:1.1.0"\n    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"');
     }
+    source=source.replace('minSdkVersion rootProject.ext.minSdkVersion','minSdkVersion 26');
     cfg.modResults.contents=source;
     return cfg;
   });
