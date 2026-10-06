@@ -94,7 +94,7 @@ jobs:
           release = workout / 'releases' / build
           release.mkdir(parents=True, exist_ok=True)
           release_html = source_html
-          for asset in ('styles.css', 'performance.css', 'catalog.js', 'coach-engine.js', 'app.js', 'performance.js'):
+          for asset in ('styles.css', 'performance.css', 'health-connect.css', 'catalog.js', 'coach-engine.js', 'health-connect-core.js', 'app.js', 'health-connect.js', 'performance.js'):
               shutil.copy2(workout / asset, release / asset)
           (release / 'index.html').write_text(release_html, encoding='utf-8')
 
