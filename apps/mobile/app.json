@@ -17,6 +17,7 @@
       "expo-router",
       "expo-sqlite",
       "expo-status-bar",
+      "./plugins/with-goworkout-health-connect",
       "@maplibre/maplibre-react-native",
       [
         "expo-camera",
