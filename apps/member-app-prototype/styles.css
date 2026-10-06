@@ -358,7 +358,7 @@ main { padding: 8px 18px 28px; outline: none; }
 
 .workout-brand-word-o::after {
   inset: 5.2px;
-  background: var(--bg);
+  background: #14271f;
 }
 
 .workout-brand-name {
