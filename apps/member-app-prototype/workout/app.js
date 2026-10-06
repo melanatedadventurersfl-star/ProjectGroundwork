@@ -5607,6 +5607,14 @@ function navigateToExercise(index,{announce=true,fromShared=false}={}){
   }
   cancelCoachTimeline(true);
   pauseInteractiveTimers(w);
+  stopSharedBarrierPoll();
+  w.sharedStepKey='';
+  w.sharedStepComplete=false;
+  w.sharedPendingAction=null;
+  delete w.reviewPausedTimedStage;
+  delete w.reviewPausedPreSetRemaining;
+  delete w.reviewPausedTimedSetRemaining;
+  delete w.sideSwitchPausedRemaining;
   const previous=w.currentExerciseIndex||0;
   if(w.exerciseStartedAt&&previous!==index)recordExerciseDuration(w,previous);
   w.currentExerciseIndex=index;
