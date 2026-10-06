@@ -4,7 +4,7 @@ const VER=1,TOTAL=14;
 const GOALS=[['muscle','Build muscle'],['gain-weight','Gain weight'],['strength','Get stronger'],['fat-loss','Fat loss'],['conditioning','Improve conditioning'],['mobility','Improve mobility'],['active','Stay active'],['general','General fitness'],['return','Return to exercise']];
 const GOAL_IMAGES={
   muscle:'./assets/exercises/biceps-curl/masc-athletic/position-2.webp',
-  'gain-weight':'./assets/goals/gain-weight.svg',
+  'gain-weight':'./assets/goals/gain-weight.jpg',
   strength:'./assets/exercises/back-squat/masc-full/position-1.webp',
   'fat-loss':'./assets/exercises/step-up/fem-athletic/position-2.webp',
   conditioning:'./assets/exercises/reverse-lunge/masc-athletic/position-2.webp',
