@@ -5905,17 +5905,14 @@ function preSetSnapshot(w,nowMs=Date.now()){
 }
 function waitForCoachBeat(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function runSetStartCountdown(w,pos){
-  const settings=workoutCueSettings();
   const countdownToken='manual-preset-'+w.id+'-'+pos.ei+'-'+pos.si;
   prepareCountdownAudioWindow(countdownToken);
   const steps=[['3','warning'],['2','warning'],['1','warning']];
   for(const [voice,type] of steps){
-    const started=Date.now();
-    await fireWorkoutSignal(type,countdownToken+'-'+voice,{voice,label:voice});
-    const elapsed=Date.now()-started;
-    if(elapsed<1000)await waitForCoachBeat(1000-elapsed);
+    fireWorkoutSignal(type,countdownToken+'-'+voice,{voice,label:voice}).catch(()=>{});
+    await waitForCoachBeat(1000);
   }
-  return fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'});
+  fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'}).catch(()=>{});
 }
 function finishPreSet(forceCountdown=false){
   const w=store.activeWorkout;if(!w||w.phase!=='pre-set'||w.preSetFinishing)return;
@@ -5967,10 +5964,15 @@ function finishPreSet(forceCountdown=false){
     saveStore();render();
   };
 
-  const startPromise=fullCountdown
-    ? runSetStartCountdown(w,pos)
-    : fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'});
-  Promise.resolve(startPromise).finally(beginWork);
+  if(fullCountdown){
+    runSetStartCountdown(w,pos).catch(()=>{});
+    const startAt=Date.parse(w.preSetStartedAt||'');
+    const delay=Number.isFinite(startAt)?Math.max(0,(startAt+3000)-Date.now()):3000;
+    setTimeout(beginWork,delay+40);
+  }else{
+    fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'}).catch(()=>{});
+    beginWork();
+  }
 }
 function timedSetSnapshot(w,nowMs=Date.now()){
   if(!w||w.phase!=='timed-set')return null;
@@ -10962,8 +10964,17 @@ function updateTimers(){
       return;
     }
     if(snap.mode==='ready')return;
-    if(w.preSetFinishing)return;
-    if(snap.complete){if(!sharedFollower)finishPreSet();return;}
+    if(snap.complete){
+      if(!w.preSetFinishing&&!sharedFollower)finishPreSet();
+      if(countdown)countdown.textContent='0';
+      if(label)label.textContent='STARTING';
+      return;
+    }
+    if(w.preSetFinishing){
+      if(countdown)countdown.textContent=String(snap.remaining);
+      if(label)label.textContent='STARTING IN';
+      return;
+    }
     if(snap.mode==='countdown'&&snap.remaining>0&&snap.remaining<=3){
       prepareCountdownAudioWindow('preset-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex);
       fireWorkoutSignal('warning','preset-warning-'+w.id+'-'+w.currentExerciseIndex+'-'+w.currentSetIndex+'-'+snap.remaining,{voice:String(snap.remaining),label:String(snap.remaining)});
