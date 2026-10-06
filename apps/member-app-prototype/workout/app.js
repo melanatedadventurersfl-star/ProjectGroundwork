@@ -22,7 +22,7 @@ const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
 const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
 let workoutSupabase = null;
 let authReady=false;
-const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:'',lastAppliedSyncRevision:0,pendingControlRequests:new Set()};
+const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,barrierPollTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:'',lastAppliedSyncRevision:0,pendingControlRequests:new Set()};
 let cloudSyncTimer=null;
 let cloudHydrating=false;
 let exerciseDetailId = null;
@@ -5885,6 +5885,13 @@ function finishPreSet(forceCountdown=false){
     window.GoWorkoutCoach?.stop?.();
   }
   prepareSetTarget(pos.exercise,pos.set,pos.si);
+  const fullCountdown=Boolean(forceCountdown||w.preSetManualStart);
+  if(fullCountdown){
+    w.preSetStartedAt=new Date().toISOString();
+    w.preSetSetupSeconds=0;
+    w.preSetCountdownSeconds=3;
+    w.preSetManualStart=false;
+  }
   w.preSetFinishing=true;
   saveStore();render();
 
@@ -5920,7 +5927,6 @@ function finishPreSet(forceCountdown=false){
     saveStore();render();
   };
 
-  const fullCountdown=Boolean(forceCountdown||w.preSetManualStart);
   const startPromise=fullCountdown
     ? runSetStartCountdown(w,pos)
     : fireWorkoutSignal('go','go-'+w.id+'-'+pos.ei+'-'+pos.si,{voice:'Go',label:'GO'});
@@ -7778,6 +7784,7 @@ async function fetchSharedSessionState(sessionId,{renderNow=true}={}){
 }
 async function unsubscribeSharedSession(){
   if(sharedRuntime.syncTimer){clearTimeout(sharedRuntime.syncTimer);sharedRuntime.syncTimer=null;}
+  if(sharedRuntime.barrierPollTimer){clearTimeout(sharedRuntime.barrierPollTimer);sharedRuntime.barrierPollTimer=null;}
   const channel=sharedRuntime.channel;
   sharedRuntime.channel=null;
   sharedRuntime.sessionId='';
@@ -8052,26 +8059,29 @@ function applySharedRemoteState(draft,remote){
         w.timedPhaseStartedAt=remote.phaseStartedAt||null;
       }
     }else if(w.phase==='rest'){
-      w.restEndsAt=remote.phaseEndsAt||null;
-      w.restDuration=Math.max(0,num(remote.timerDurationSeconds));
+      const duration=Math.max(5,num(remote.timerDurationSeconds)||num(ex?.rest)||45);
+      w.restEndsAt=sharedRemoteDeadline(remote,duration);
+      w.restDuration=duration;
       w.restPausedRemaining=null;
       if(!w.restToken)w.restToken='shared:'+draft.backendId+':'+ei+':'+si;
     }else if(w.phase==='side-switch'){
-      w.sideSwitchStartedAt=remote.phaseStartedAt||null;
-      w.sideSwitchEndsAt=remote.phaseEndsAt||null;
-      w.sideSwitchDuration=Math.max(0,num(remote.timerDurationSeconds));
+      const duration=Math.max(1,num(remote.timerDurationSeconds)||exerciseSideSwitchSeconds(ex)||5);
+      w.sideSwitchStartedAt=remote.phaseStartedAt||remote.updatedAt||null;
+      w.sideSwitchEndsAt=sharedRemoteDeadline(remote,duration);
+      w.sideSwitchDuration=duration;
       w.sideSwitchPausedRemaining=null;
     }else if(w.phase==='timed-set'){
-      w.timedSetStartedAt=remote.phaseStartedAt||null;
-      w.timedSetEndsAt=remote.phaseEndsAt||null;
-      w.timedSetDuration=Math.max(0,num(remote.timerDurationSeconds));
+      const duration=Math.max(1,num(remote.timerDurationSeconds)||num(set?.reps)||30);
+      w.timedSetStartedAt=remote.phaseStartedAt||remote.updatedAt||null;
+      w.timedSetEndsAt=sharedRemoteDeadline(remote,duration);
+      w.timedSetDuration=duration;
       delete w.timedSetPausedRemaining;
     }else if(w.phase==='pre-set'){
-      w.preSetStartedAt=remote.phaseStartedAt||null;
+      w.preSetStartedAt=remote.phaseStartedAt||remote.updatedAt||null;
       w.preSetSetupSeconds=0;
       w.preSetCountdownSeconds=Math.max(1,num(remote.timerDurationSeconds)||3);
       w.preSetCoachPending=false;
-      w.preSetManualStart=!remote.phaseStartedAt;
+      w.preSetManualStart=!w.preSetStartedAt;
       w.preSetFinishing=false;
     }else if(w.phase==='work'){
       w.setStartedAt=remote.phaseStartedAt||w.setStartedAt||new Date().toISOString();
@@ -8080,6 +8090,8 @@ function applySharedRemoteState(draft,remote){
   }finally{
     sharedRuntime.syncMuted=false;
   }
+  if(w.phase==='partner-wait')scheduleSharedBarrierPoll();
+  else stopSharedBarrierPoll();
   if(currentTab==='workout')render();
   return true;
 }
@@ -8094,6 +8106,47 @@ function requestSharedControl(action,payload={}){
 function sharedBarrierKey(pos,kind='set',side=''){
   return [kind,pos?.ei??0,pos?.si??0,side||'both'].join(':');
 }
+function stopSharedBarrierPoll(){
+  if(sharedRuntime.barrierPollTimer){
+    clearTimeout(sharedRuntime.barrierPollTimer);
+    sharedRuntime.barrierPollTimer=null;
+  }
+}
+function flushSharedStateSync(){
+  if(sharedRuntime.syncTimer){
+    clearTimeout(sharedRuntime.syncTimer);
+    sharedRuntime.syncTimer=null;
+  }
+  queueMicrotask(()=>syncSharedParticipantState().catch(error=>console.warn('Shared state flush failed',error)));
+}
+function scheduleSharedBarrierPoll(delay=350){
+  const w=store.activeWorkout;
+  const draft=sharedTrainingState().draft;
+  if(!w||w.phase!=='partner-wait'||!draft?.backendId||w.sharedSession?.backendId!==draft.backendId){
+    stopSharedBarrierPoll();
+    return;
+  }
+  if(sharedRuntime.barrierPollTimer)return;
+  sharedRuntime.barrierPollTimer=setTimeout(async()=>{
+    sharedRuntime.barrierPollTimer=null;
+    const current=store.activeWorkout;
+    const activeDraft=sharedTrainingState().draft;
+    if(!current||current.phase!=='partner-wait'||!activeDraft?.backendId||current.sharedSession?.backendId!==activeDraft.backendId)return;
+    try{
+      await fetchSharedSessionState(activeDraft.backendId,{renderNow:false});
+    }catch(error){
+      console.warn('Shared barrier refresh failed',error);
+    }
+    if(store.activeWorkout?.phase==='partner-wait')scheduleSharedBarrierPoll(700);
+  },Math.max(100,delay));
+}
+function sharedRemoteDeadline(remote,fallbackDuration=0){
+  const explicit=Date.parse(remote?.phaseEndsAt||'');
+  if(Number.isFinite(explicit))return new Date(explicit).toISOString();
+  const start=Date.parse(remote?.phaseStartedAt||remote?.updatedAt||'');
+  const duration=Math.max(0,num(remote?.timerDurationSeconds)||num(fallbackDuration));
+  return Number.isFinite(start)&&duration>0?new Date(start+duration*1000).toISOString():null;
+}
 function enterSharedBarrier(pos,key,pendingAction){
   const w=pos?.workout;
   if(!w||!sharedWorkoutSyncEnabled(w))return false;
@@ -8104,6 +8157,8 @@ function enterSharedBarrier(pos,key,pendingAction){
   w.pendingPosition=pendingAction?.next?clone(pendingAction.next):w.pendingPosition;
   saveStore();
   render();
+  flushSharedStateSync();
+  scheduleSharedBarrierPoll();
   maybeReleaseSharedBarrier(sharedTrainingState().draft,sharedTrainingState().draft?.remoteState);
   return true;
 }
@@ -8111,6 +8166,7 @@ function runSharedPendingAction(w,action){
   if(!w||!action)return;
   const pos=getActivePosition();
   if(!pos)return;
+  stopSharedBarrierPoll();
   w.sharedStepKey='';
   w.sharedStepComplete=false;
   w.sharedPendingAction=null;
@@ -9630,9 +9686,12 @@ function renderPreSet(pos){
   const targetLine=(targetWeight?targetWeight+' · ':'')+targetReps;
   const sourceLabel=set.targetSource==='learner'?'Personalized from your training data':set.targetSource==='previous-set'?'Carried from your previous set':set.targetSource==='learned'?'Progressed from your last session':set.targetSource==='history'?'Loaded from your last completed session':'Today’s plan target';
 
-  const startControl=autoTimed
-    ? '<div class="strength-runner-auto" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACH':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>Tap below if you want to start the countdown now.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
-    : '<div class="strength-runner-ready-note" role="status"><span>WHEN YOU’RE READY</span><strong>'+(preSet.mode==='coach'?'Coach cue is playing. You can still start.':'Your target is set.')+'</strong><small>Start Set begins the 3, 2, 1 countdown.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" data-action="start-set-now">'+(timedExercise?'START TIMED SET':'START SET')+'</button>';
+  const syncedCountdown=Boolean(preSet.mode==='countdown'&&(w.preSetFinishing||sharedWorkoutFollower(w))&&Number.isFinite(Date.parse(w.preSetStartedAt||'')));
+  const startControl=syncedCountdown
+    ? '<div class="strength-runner-auto" role="status"><span id="preset-phase-label">STARTING IN</span><strong id="preset-countdown">'+preSet.remaining+'</strong><small>Both workout screens use the same countdown anchor.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" disabled>STARTING…</button>'
+    : autoTimed
+      ? '<div class="strength-runner-auto" role="status"><span id="preset-phase-label">'+(preSet.mode==='coach'?'COACH':'AUTO START')+'</span><strong id="preset-countdown">'+(preSet.mode==='coach'?'…':preSet.remaining)+'</strong><small>Tap below if you want to start the countdown now.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" data-action="start-set-now">START COUNTDOWN NOW</button>'
+      : '<div class="strength-runner-ready-note" role="status"><span>WHEN YOU’RE READY</span><strong>'+(preSet.mode==='coach'?'Coach cue is playing. You can still start.':'Your target is set.')+'</strong><small>Start Set begins the 3, 2, 1 countdown.</small></div><button class="button primary-action runner-gold-action strength-runner-main-action" type="button" data-action="start-set-now">'+(timedExercise?'START TIMED SET':'START SET')+'</button>';
 
   return '<div class="strength-runner strength-runner-pre">'+
     '<div class="strength-runner-title"><div><p>EXERCISE '+(pos.ei+1)+' OF '+pos.workout.exercises.length+' · SET '+(pos.si+1)+' OF '+ex.sets.length+'</p><h2>'+esc(ex.name)+'</h2><div class="strength-runner-tags"><span>'+esc(context.movement)+'</span>'+(context.muscles?'<span>'+esc(context.muscles)+'</span>':'')+(blockLabel?'<span>'+esc(blockLabel)+'</span>':'')+(exerciseRepCountMode(ex)==='per-side'?'<span>EACH SIDE</span>':'')+'</div></div><button class="more-action" data-action="open-exercise-actions" data-exercise-index="'+pos.ei+'" aria-label="Exercise options">•••</button></div>'+
@@ -10805,6 +10864,7 @@ function render(){
 function updateTimers(){
   const w=store.activeWorkout;
   if(!w)return;
+  if(w.phase==='partner-wait')scheduleSharedBarrierPoll();
   const nowMs=Date.now();
   const sharedFollower=sharedWorkoutFollower(w);
 
@@ -11372,6 +11432,10 @@ tickHandle=window.setInterval(updateTimers,500);
 function recoverWorkoutAfterForeground(){
   const w=store.activeWorkout;
   if(!w)return;
+  if(w.phase==='partner-wait'){
+    flushSharedStateSync();
+    scheduleSharedBarrierPoll(100);
+  }
 
   // Mobile browsers throttle/suspend JS timers while backgrounded. A guided-stage
   // countdown is transient UI state, so never depend on its async timeout chain
