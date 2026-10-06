@@ -33,8 +33,9 @@ function shareHost() {
 }
 
 function tenantPlugins(appName) {
-  return (base.plugins || []).map((plugin) => {
+  return (base.plugins || []).flatMap((plugin) => {
     const name = Array.isArray(plugin) ? plugin[0] : plugin;
+    if (name === './plugins/with-goworkout-health-connect') return [];
     if (name === 'expo-location') {
       return ['expo-location', {
         locationWhenInUsePermission: `Allow ${appName} to use your location for nearby and location-aware features.`,
@@ -52,7 +53,7 @@ function tenantPlugins(appName) {
         microphonePermission: false,
       }];
     }
-    return plugin;
+    return [plugin];
   });
 }
 
