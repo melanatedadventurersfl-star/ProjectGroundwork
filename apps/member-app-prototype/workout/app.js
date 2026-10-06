@@ -6916,7 +6916,12 @@ function displayName(){
 }
 async function initWorkoutAuth(){
   try{
-    if(!window.supabase?.createClient){authReady=true;render();return;}
+    if(!window.supabase?.createClient){
+      authReady=true;
+      render();
+      toast('Account service did not load. Check your connection and reload.');
+      return;
+    }
     workoutSupabase=window.supabase.createClient(WORKOUT_SUPABASE_URL,WORKOUT_SUPABASE_PUBLISHABLE_KEY,{
       auth:{
         storage:window.localStorage,
@@ -6925,11 +6930,17 @@ async function initWorkoutAuth(){
         detectSessionInUrl:true
       }
     });
-    const {data,error}=await workoutSupabase.auth.getSession();
-    if(error)console.warn('Workout session restore warning',error);
-    applyWorkoutSession(data?.session||null);
-    workoutSupabase.auth.onAuthStateChange((_event,session)=>{
-      applyWorkoutSession(session||null);
+    let session=null;
+    try{
+      const result=await workoutSupabase.auth.getSession();
+      if(result?.error)console.warn('Workout session restore warning',result.error);
+      session=result?.data?.session||null;
+    }catch(error){
+      console.warn('Workout session restore failed. Starting account service without a restored session.',error);
+    }
+    applyWorkoutSession(session);
+    workoutSupabase.auth.onAuthStateChange((_event,nextSession)=>{
+      applyWorkoutSession(nextSession||null);
     });
   }catch(error){
     console.error('Workout auth initialization failed',error);
