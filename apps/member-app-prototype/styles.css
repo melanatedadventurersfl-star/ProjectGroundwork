@@ -186,3 +186,220 @@ main { padding: 8px 18px 28px; outline: none; }
 .more-module-card { display: block; width: 100%; color: inherit; text-align: left; cursor: pointer; }
 .more-module-card h3 { margin-bottom: 6px; }
 .more-module-card p { margin: 0 0 12px; }
+
+
+/* GO Workout branded route + splash, 2026-10-06 */
+.workout-route-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #061d15;
+  opacity: 1;
+  transition: opacity .38s ease, transform .38s ease;
+}
+
+.workout-route-splash-backdrop {
+  position: absolute;
+  inset: -5%;
+  background:
+    linear-gradient(rgba(3, 22, 15, .34), rgba(3, 22, 15, .5)),
+    url("workout/assets/branding/goworkout-splash.webp") center / cover no-repeat;
+  filter: blur(22px) brightness(.62) saturate(.88);
+  transform: scale(1.1);
+}
+
+.workout-route-splash-art {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.workout-route-splash-loader {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: max(28px, calc(env(safe-area-inset-bottom) + 18px));
+  width: 76px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(248, 245, 236, .22);
+  transform: translateX(-50%);
+  box-shadow: 0 0 18px rgba(216, 180, 92, .2);
+}
+
+.workout-route-splash-loader span {
+  display: block;
+  width: 44%;
+  height: 100%;
+  border-radius: inherit;
+  background: #d8b45c;
+  animation: workout-route-splash-progress 1.05s ease-in-out infinite;
+}
+
+.workout-route-splash.is-leaving {
+  opacity: 0;
+  transform: scale(1.012);
+  pointer-events: none;
+}
+
+@keyframes workout-route-splash-progress {
+  0% { transform: translateX(-115%); }
+  55% { transform: translateX(115%); }
+  100% { transform: translateX(250%); }
+}
+
+.workout-module-intro {
+  display: grid;
+  gap: 7px;
+  padding: 10px 2px 14px;
+}
+
+.workout-module-intro p {
+  margin: 0 0 0 1px;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.35;
+}
+
+.workout-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.workout-brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 46px;
+  height: 46px;
+  padding: 0 6px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(248, 245, 236, .08);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #155037 0%, #083021 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 8px 22px rgba(0,0,0,.16);
+}
+
+.workout-brand-g,
+.workout-brand-word-g {
+  display: inline-block;
+  color: #f8f5ec;
+  font-family: Inter, Arial, sans-serif;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -.1em;
+}
+
+.workout-brand-g {
+  font-size: 19px;
+}
+
+.workout-brand-o,
+.workout-brand-word-o {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #d8b45c 0 25%, #f8f5ec 25% 100%);
+}
+
+.workout-brand-o {
+  width: 18px;
+  height: 18px;
+}
+
+.workout-brand-o::after,
+.workout-brand-word-o::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+}
+
+.workout-brand-o::after {
+  inset: 5px;
+  background: #0c3324;
+}
+
+.workout-brand-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #f8f5ec;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.workout-brand-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.workout-brand-word-g {
+  font-size: 20px;
+}
+
+.workout-brand-word-o {
+  width: 19px;
+  height: 19px;
+}
+
+.workout-brand-word-o::after {
+  inset: 5.2px;
+  background: #14271f;
+}
+
+.workout-brand-name {
+  color: #f8f5ec;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (max-width: 460px) {
+  .workout-brand-lockup { gap: 9px; }
+  .workout-brand-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+  }
+  .workout-brand-g { font-size: 17px; }
+  .workout-brand-o {
+    width: 16px;
+    height: 16px;
+  }
+  .workout-brand-o::after { inset: 4.5px; }
+  .workout-brand-word-g { font-size: 18px; }
+  .workout-brand-word-o {
+    width: 17px;
+    height: 17px;
+  }
+  .workout-brand-word-o::after { inset: 4.7px; }
+  .workout-brand-name {
+    font-size: 10.5px;
+    letter-spacing: .12em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workout-route-splash,
+  .workout-route-splash-loader span {
+    animation: none !important;
+    transition: none !important;
+  }
+  .workout-route-splash-loader span { width: 100%; }
+}

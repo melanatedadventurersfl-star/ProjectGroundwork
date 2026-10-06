@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0c120f" />
+  <meta name="theme-color" content="#062b1f" />
   <meta name="description" content="Personalized guided strength plans built from goals, experience, equipment, body weight, and available workout time." />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
@@ -13,20 +13,34 @@
       document.documentElement.classList.add('embedded-workout');
     }
   </script>
-  <title>GoWorkout</title>
+  <title>GO Workout</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20261005-exercise-navigation" />
+  <link rel="preload" as="image" href="./assets/branding/goworkout-splash.webp" type="image/webp" />
+  <link rel="stylesheet" href="./styles.css?v=20261006-brand-splash" />
   <link rel="stylesheet" href="./performance.css" />
   <link rel="stylesheet" href="./onboarding.css" />
 </head>
-<body>
+<body class="splash-active">
+  <div id="goworkout-splash" class="goworkout-splash" role="status" aria-label="Opening GO Workout">
+    <div class="goworkout-splash-backdrop" aria-hidden="true"></div>
+    <img class="goworkout-splash-art" src="./assets/branding/goworkout-splash.webp" alt="" fetchpriority="high" />
+    <div class="goworkout-splash-loader" aria-hidden="true"><span></span></div>
+  </div>
   <div class="app-shell">
     <header class="topbar">
       <button class="brand-wrap" type="button" data-action="go-home" aria-label="Go to workout home">
-        <div class="brand-mark" aria-hidden="true">GO</div>
-        <div class="brand-copy"><h1>GOWORKOUT</h1><p>Adaptive training</p></div>
+        <div class="brand-mark" aria-hidden="true">
+          <span class="brand-g">G</span><span class="brand-o"></span>
+        </div>
+        <div class="brand-copy">
+          <h1 class="brand-wordmark" aria-label="GO Workout">
+            <span class="brand-wordmark-go" aria-hidden="true"><span class="brand-wordmark-g">G</span><span class="brand-wordmark-o"></span></span>
+            <span class="brand-wordmark-workout" aria-hidden="true">WORKOUT</span>
+          </h1>
+          <p>Adaptive training</p>
+        </div>
       </button>
       <div class="top-actions"><span class="storage-badge build-badge">Build __WORKOUT_BUILD__</span><button class="avatar" type="button" data-tab="profile" aria-label="Open profile">ME</button></div>
     </header>
@@ -50,6 +64,33 @@
     </nav>
   </div>
   <div id="toast-region" aria-live="assertive" aria-atomic="true"></div>
+  <script>
+    (() => {
+      const splash = document.getElementById('goworkout-splash');
+      if (!splash) return;
+      if (document.documentElement.classList.contains('embedded-workout')) {
+        splash.remove();
+        document.body.classList.remove('splash-active');
+        return;
+      }
+      const startedAt = performance.now();
+      let dismissed = false;
+      const dismiss = () => {
+        if (dismissed) return;
+        dismissed = true;
+        const minimumVisibleMs = 950;
+        const wait = Math.max(0, minimumVisibleMs - (performance.now() - startedAt));
+        window.setTimeout(() => {
+          splash.classList.add('is-leaving');
+          document.body.classList.remove('splash-active');
+          window.setTimeout(() => splash.remove(), 420);
+        }, wait);
+      };
+      if (document.readyState === 'complete') dismiss();
+      else window.addEventListener('load', dismiss, { once: true });
+      window.setTimeout(dismiss, 2200);
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4" defer></script>
   <script src="./catalog.js" defer></script>
   <script src="./avatar-media.js" defer></script>
