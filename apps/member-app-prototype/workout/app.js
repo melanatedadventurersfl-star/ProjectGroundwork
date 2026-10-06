@@ -8372,7 +8372,61 @@ async function restoreSharedWorkoutSession(userId=store.account?.userId||''){
   const draft=sharedDraftFromRow(row);
   saveSharedBackendDraft(draft);
   await subscribeSharedSession(draft);
+  if(row.status==='active'&&!store.activeWorkout)await recoverActiveSharedWorkout(draft);
   if(currentTab==='together')render();
+}
+async function recoverActiveSharedWorkout(draft=sharedTrainingState().draft){
+  if(!draft?.backendId||draft.sessionStatus!=='active'||store.activeWorkout)return Boolean(store.activeWorkout);
+  const day=localizeSharedPlan(draft.planSnapshot)||sharedDraftDay(draft);
+  if(!day?.exercises?.length)return false;
+  const {data:ownState,error}=await workoutSupabase.from('workout_shared_participant_state').select('*').eq('session_id',draft.backendId).eq('user_id',store.account.userId).maybeSingle();
+  if(error)console.warn('Shared workout participant recovery failed',error);
+  const recoveredDay=clone(day);
+  recoveredDay.name=recoveredDay.name||draft.routineName||'Shared workout';
+  recoveredDay.sharedPlanLocked=true;
+  const startedAt=draft.startedAt||ownState?.phase_started_at||new Date().toISOString();
+  const workout=createWorkout(recoveredDay,{scheduledDate:draft.scheduledDate,programContext:programContext(dateFromKey(draft.scheduledDate)),sharedPlanLocked:true});
+  workout.startedAt=startedAt;
+  workout.preparedAt=startedAt;
+  workout.trainingStartedAt=startedAt;
+  workout.sharedSession={...clone(draft),startedTogetherAt:startedAt,sharedPlanLocked:true,sharedPlanExerciseIds:(recoveredDay.exercises||[]).map(ex=>ex.id),sharedStructure:clone(recoveredDay.trainingStructure||null)};
+  if(ownState){
+    workout.currentExerciseIndex=Math.max(0,Math.min(num(ownState.exercise_index),workout.exercises.length-1));
+    const activeExercise=workout.exercises[workout.currentExerciseIndex];
+    workout.currentSetIndex=Math.max(0,Math.min(num(ownState.set_index),Math.max(0,(activeExercise?.sets?.length||1)-1)));
+    const recoveredPhase=String(ownState.phase||'pre-set');
+    workout.phase=RESUMABLE_WORKOUT_PHASES.has(recoveredPhase)&&recoveredPhase!=='partner-wait'?recoveredPhase:'pre-set';
+    workout.isPaused=Boolean(ownState.is_paused);
+    workout.pausedAt=ownState.paused_at||null;
+    workout.revision=Math.max(1,num(ownState.sync_revision)||1);
+    workout.sharedStepKey=ownState.step_key||'';
+    workout.sharedStepComplete=Boolean(ownState.step_complete);
+    if(ownState.phase_started_at)workout.setStartedAt=ownState.phase_started_at;
+    if(ownState.phase_ends_at&&workout.phase==='rest')workout.restEndsAt=ownState.phase_ends_at;
+  }
+  store.activeWorkout=workout;
+  sharedRuntime.syncMuted=true;
+  saveStore();
+  sharedRuntime.syncMuted=false;
+  scheduleCloudStateSync();
+  return true;
+}
+async function resumeWorkout(){
+  if(store.activeWorkout){unlockWorkoutCues();setTab('workout');return;}
+  const draft=sharedTrainingState().draft;
+  if(draft?.sessionStatus==='active'&&draft.backendId&&workoutSupabase&&store.account?.status==='connected'){
+    const refreshed=await fetchSharedSessionState(draft.backendId,{renderNow:false});
+    const recovered=await recoverActiveSharedWorkout(refreshed||draft);
+    if(recovered){
+      unlockWorkoutCues();
+      currentTab='workout';
+      persistUiState();
+      render();
+      toast('Shared workout restored.');
+      return;
+    }
+  }
+  toast('That workout could not be restored. Open Together and reconnect to the active session.');
 }
 async function cancelSharedDraft(){
   const shared=sharedTrainingState();
@@ -11233,7 +11287,7 @@ function handleClick(event){
   else if(a==='undo-history-remove')undoHistoryRemove();
   else if(a==='save-history-note')saveHistoryNote(node.dataset.historyId);
   else if(a==='save-history-exercise-note')saveHistoryExerciseNote(node.dataset.historyId,Number(node.dataset.exerciseIndex));
-  else if(a==='resume'){unlockWorkoutCues();setTab('workout');}
+  else if(a==='resume'){resumeWorkout().catch(error=>{console.warn('Workout resume failed',error);toast('Workout could not be resumed. Try again.');});}
   else if(a==='edit-profile')editProfile();
   else if(a==='build-plan')saveProfileFromForm(document.querySelector('#profile-form'));
   else if(a==='skip-scheduled')skipScheduledSession(node.dataset.scheduledDate);
