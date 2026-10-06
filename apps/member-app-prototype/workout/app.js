@@ -5597,11 +5597,24 @@ function restRemaining(w){
 }
 function restProgress(w){ const d=Math.max(1,w.restDuration||1);return Math.max(0,Math.min(100,(restRemaining(w)/d)*100)); }
 
-function navigateToExercise(index,{announce=true}={}){
+function navigateToExercise(index,{announce=true,fromShared=false}={}){
   const w=store.activeWorkout;if(!w||w.phase==='intro'||w.phase==='review')return;
-  cancelCoachTimeline(true);
   index=Math.max(0,Math.min(index,w.exercises.length-1));
+  if(!fromShared&&sharedWorkoutFollower(w)){
+    if(requestSharedControl('jump-exercise',{exerciseIndex:index}))return;
+    toast('Reconnect to your workout partner before changing exercises.');
+    return;
+  }
+  cancelCoachTimeline(true);
   pauseInteractiveTimers(w);
+  stopSharedBarrierPoll();
+  w.sharedStepKey='';
+  w.sharedStepComplete=false;
+  w.sharedPendingAction=null;
+  delete w.reviewPausedTimedStage;
+  delete w.reviewPausedPreSetRemaining;
+  delete w.reviewPausedTimedSetRemaining;
+  delete w.sideSwitchPausedRemaining;
   const previous=w.currentExerciseIndex||0;
   if(w.exerciseStartedAt&&previous!==index)recordExerciseDuration(w,previous);
   w.currentExerciseIndex=index;
@@ -6528,7 +6541,7 @@ function renderWorkoutReview(w){
     const status=state==='complete'?'✓':state==='completed-manually'?'✓ Manual':state==='partial'?done+'/'+ex.sets.length:state==='skipped'?'Skipped':'Not finished';
     return '<button class="final-review-row clean-review-row" data-action="jump-from-review" data-exercise-index="'+index+'"><div class="review-index">'+String(index+1).padStart(2,'0')+'</div><div><strong>'+esc(ex.name)+'</strong><span>'+esc(status)+'</span></div><em>›</em></button>';
   }).join('');
-  return '<div class="workout-final-review clean-final-review"><div class="summary-check">'+(fullyResolved?'✓':'◐')+'</div><p class="eyebrow">WORKOUT REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Check anything that needs correcting before this session becomes training history.</p>'+
+  return '<div class="workout-final-review clean-final-review"><div class="summary-check">'+(fullyResolved?'✓':'◐')+'</div><p class="eyebrow">WORKOUT REVIEW</p><h2>'+esc(w.routineName)+'</h2><p>Tap any exercise to review or edit its sets before this session becomes training history.</p>'+
     (w.sharedSession?.hostCompletedAt?'<div class="prototype-note compact"><strong>Your partner finished the shared session.</strong><span>Your workout is still here. Review your sets, then save it to History.</span></div>':'')+
     '<div class="review-summary-grid clean-review-summary"><div><span>EXERCISES</span><strong>'+resolved+'/'+w.exercises.length+'</strong></div><div><span>SETS LOGGED</span><strong>'+actualSets+'/'+totalSets(w.exercises)+'</strong></div><div><span>SKIPPED</span><strong>'+skipped+'</strong></div></div>'+
     '<div class="final-review-list">'+rows+'</div>'+
@@ -6548,7 +6561,8 @@ function jumpFromReview(index){
   const w=store.activeWorkout;if(!w||w.phase!=='review')return;
   w.phase='exercise-review';
   delete w.returnPhase;
-  navigateToExercise(index);
+  const resolved=exerciseCountsAsResolved(w.exercises?.[index]);
+  navigateToExercise(index,{announce:!resolved,fromShared:resolved});
 }
 function resumeReviewedPhase(w,phase){
   if(!w)return;
@@ -7515,7 +7529,9 @@ function renderStructuredWorkoutRoadmap(source,{compact=false,live=false,current
       const ex=item.exercise,isCurrent=item.index===currentIndex;
       const state=live?exerciseState(ex):'planned';
       const resolved=live&&(state==='complete'||state==='completed-manually'||state==='skipped');
-      return '<div class="roadmap-exercise '+(isCurrent?'current ':'')+(resolved?'resolved':'')+'"><b>'+(resolved?'✓':String(item.index+1).padStart(2,'0'))+'</b><div><strong>'+esc(ex.name)+'</strong><small>'+esc(currentPrescriptionLabel(ex))+'</small></div>'+(isCurrent?'<em>NOW</em>':'')+'</div>';
+      const content='<b>'+(resolved?'✓':String(item.index+1).padStart(2,'0'))+'</b><div><strong>'+esc(ex.name)+'</strong><small>'+esc(currentPrescriptionLabel(ex))+'</small></div>'+(live?'<em>'+(isCurrent?'NOW':resolved?'REVIEW':'GO')+'</em>':'');
+      if(!live)return '<div class="roadmap-exercise">'+content+'</div>';
+      return '<button type="button" class="roadmap-exercise roadmap-exercise-jump '+(isCurrent?'current ':'')+(resolved?'resolved':'')+'" '+(isCurrent?'disabled aria-current="step"':'data-action="jump-exercise" data-exercise-index="'+item.index+'"')+' aria-label="'+esc(isCurrent?ex.name+' is the current exercise':(resolved?'Review ':'Go to ')+ex.name)+'">'+content+'</button>';
     }).join('')+'</div></section>';
   }).join('')+'</div>';
 }
@@ -7900,6 +7916,7 @@ async function subscribeSharedSession(draft){
       else if(payload.action==='toggle-rest-pause')toggleWorkoutPause(true);
       else if(payload.action==='adjust-rest')adjustRest(num(payload.delta),true);
       else if(payload.action==='skip-timed-stage')skipTimedStage(true);
+      else if(payload.action==='jump-exercise')navigateToExercise(num(payload.exerciseIndex),{fromShared:true});
     })
     .on('broadcast',{event:'session-state'},({payload})=>{
       const current=sharedTrainingState().draft;
@@ -9621,6 +9638,15 @@ function renderSharedWorkoutSync(w){
   const note=recovery?'This older mismatched session can continue without partner barriers. New Together sessions use one locked shared plan.':synced?'One shared plan · one shared pace · performance stays individual':'Same plan · independent pace';
   return '<div class="runner-shared-sync '+(synced?'synced':'flexible')+'"><span>TOGETHER · '+mode+'</span><strong>'+esc(status)+'</strong><small>'+esc(note)+'</small></div>';
 }
+function renderRunnerExerciseNavigation(pos){
+  const w=pos?.workout;if(!w||!w.exercises?.length)return '';
+  const previous=pos.ei-1,next=pos.ei+1;
+  return '<nav class="runner-exercise-navigation" aria-label="Exercise navigation">'+
+    '<button type="button" data-action="previous-exercise" '+(previous<0?'disabled':'')+'><span>‹</span><strong>PREVIOUS</strong><small>'+(previous>=0?esc(w.exercises[previous].name):'First exercise')+'</small></button>'+
+    '<button type="button" class="all-exercises" data-action="open-workout-map"><span>☰</span><strong>ALL EXERCISES</strong><small>Jump anywhere</small></button>'+
+    '<button type="button" data-action="next-exercise" '+(next>=w.exercises.length?'disabled':'')+'><span>›</span><strong>NEXT</strong><small>'+(next<w.exercises.length?esc(w.exercises[next].name):'Last exercise')+'</small></button>'+
+  '</nav>';
+}
 function renderWorkout(){
   const pos=getActivePosition();
   if(!pos)return '<div class="clean-page empty-workout-page"><p class="eyebrow">TRAIN</p><h2>No active session.</h2><p>Start today’s workout from Home or Train.</p><button class="button" data-action="home">GO HOME</button></div>';
@@ -9641,7 +9667,8 @@ function renderWorkout(){
     '<div id="coach-live-line" class="coach-live-line" '+(cueRuntime.lastCoachLine?'':'hidden')+'><span>COACH</span><p id="coach-live-text">'+esc(cueRuntime.lastCoachLine||'')+'</p><button type="button" data-action="replay-coach" aria-label="Replay coach cue">↻</button></div>'+
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
     '<section class="exercise-stage runner-v2-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='warmup-routine'?renderWarmupRoutine(w):w.phase==='warmup-complete'?renderWarmupComplete(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='side-switch'?renderSideSwitch(pos):w.phase==='partner-wait'?renderSharedPartnerWait(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
-    (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet"><button class="text-button" data-action="open-workout-map">WORKOUT MAP</button><button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+'</div>';
+    (activeStrength?renderRunnerExerciseNavigation(pos):'')+
+    (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet">'+(activeStrength?'':'<button class="text-button" data-action="open-workout-map">WORKOUT MAP</button>')+'<button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+'</div>';
 }
 
 function runnerStrengthContext(ex,set,setIndex=0){
@@ -11064,7 +11091,7 @@ function handleClick(event){
   const feedback=event.target.closest('[data-feedback]');if(feedback){applyExerciseFeedback(feedback.dataset.feedback);return;}
   const node=event.target.closest('[data-action]');if(!node)return;
   const a=node.dataset.action;
-  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-vibe','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','cycle-next-set-preview','cycle-exercise-instruction','toggle-adaptive-coach','toggle-auto-start-warmup','toggle-auto-start-cooldown','toggle-auto-start-timed','replay-coach','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
+  const allowedWhilePaused=['toggle-workout-pause','home','go-home','finish','discard','toggle-sound','toggle-voice','toggle-ai-coach','apply-coach-preset','cycle-coach-style','cycle-coach-vibe','cycle-coach-frequency','cycle-coach-detail','cycle-talk-speed','cycle-name-usage','cycle-form-cues','cycle-performance-feedback','cycle-motivation','cycle-countdown-mode','cycle-warmup-guidance','cycle-cooldown-guidance','cycle-next-set-preview','cycle-exercise-instruction','toggle-adaptive-coach','toggle-auto-start-warmup','toggle-auto-start-cooldown','toggle-auto-start-timed','replay-coach','select-coach-voice','preview-coach-voice','toggle-flash','toggle-haptics','test-cues','open-workout-map','close-workout-map','set-workout-map-view','previous-exercise','next-exercise','jump-exercise','jump-from-review','continue-exercise','edit-set','close-set-editor','open-cue-settings','close-cue-settings','open-exercise-actions','close-exercise-actions','open-session-setup','close-session-setup','apply-session-setup'];
   if(store.activeWorkout?.isPaused&&!cueSettingsOpen&&!allowedWhilePaused.includes(a)){
     toast('Resume the workout before changing the active set or timer.');
     return;
