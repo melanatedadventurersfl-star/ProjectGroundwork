@@ -109,22 +109,51 @@ function render(route) {
 }
 
 function renderWorkout() {
-  title.textContent = 'GoWorkout';
+  title.textContent = 'GO Workout';
   app.innerHTML = `
     <section class="screen workout-page-host">
+      <div class="workout-route-splash" data-workout-route-splash role="status" aria-label="Opening GO Workout">
+        <div class="workout-route-splash-backdrop" aria-hidden="true"></div>
+        <img class="workout-route-splash-art" src="workout/assets/branding/goworkout-splash.webp" alt="" fetchpriority="high" />
+        <div class="workout-route-splash-loader" aria-hidden="true"><span></span></div>
+      </div>
       <div class="workout-module-intro">
-        <span class="eyebrow">GO MELANATED · TRAINING</span>
-        <h2>GoWorkout</h2>
-        <p>Your adaptive training experience, now living inside the Go Melanated app.</p>
+        <div class="workout-brand-lockup" aria-label="GO Workout">
+          <span class="workout-brand-icon" aria-hidden="true">
+            <span class="workout-brand-g">G</span><span class="workout-brand-o"></span>
+          </span>
+          <span class="workout-brand-wordmark" aria-hidden="true">
+            <span class="workout-brand-go"><span class="workout-brand-word-g">G</span><span class="workout-brand-word-o"></span></span>
+            <span class="workout-brand-name">WORKOUT</span>
+          </span>
+        </div>
+        <p>Training built around you.</p>
       </div>
       <iframe
         class="workout-module-frame"
-        title="GoWorkout"
-        src="workout/?embedded=1&v=20261005-weight-controls"
+        title="GO Workout"
+        src="workout/?embedded=1&v=20261006-brand-splash"
         loading="eager"
         allow="autoplay"
       ></iframe>
     </section>`;
+
+  const splash = app.querySelector('[data-workout-route-splash]');
+  const frame = app.querySelector('.workout-module-frame');
+  const startedAt = performance.now();
+  let splashDismissed = false;
+  const dismissSplash = () => {
+    if (splashDismissed || !splash?.isConnected) return;
+    splashDismissed = true;
+    const wait = Math.max(0, 950 - (performance.now() - startedAt));
+    window.setTimeout(() => {
+      if (!splash?.isConnected) return;
+      splash.classList.add('is-leaving');
+      window.setTimeout(() => splash.remove(), 420);
+    }, wait);
+  };
+  frame?.addEventListener('load', dismissSplash, { once: true });
+  window.setTimeout(dismissSplash, 2200);
 }
 
 function bindRoutes() {
