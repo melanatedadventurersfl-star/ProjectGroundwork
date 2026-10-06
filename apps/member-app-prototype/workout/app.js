@@ -22,6 +22,28 @@ const WORKOUT_SUPABASE_URL = 'https://iftnwzqlofhujzulmofu.supabase.co';
 const WORKOUT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_JCb6OcXTZcvjSfhHohWGZw__96BdfIB';
 let workoutSupabase = null;
 let authReady=false;
+let lastWorkoutBuildCheckAt=0;
+async function refreshWorkoutIfBuildChanged(){
+  if(document.visibilityState==='hidden')return;
+  const now=Date.now();
+  if(now-lastWorkoutBuildCheckAt<15000)return;
+  lastWorkoutBuildCheckAt=now;
+  const currentText=document.querySelector('.build-badge')?.textContent||'';
+  const currentBuild=currentText.match(/Build\s+([0-9a-f]{8,40})/i)?.[1]||'';
+  if(!currentBuild)return;
+  try{
+    const response=await fetch('./index.html?build-check='+now,{cache:'no-store'});
+    if(!response.ok)return;
+    const html=await response.text();
+    const latestBuild=html.match(/Build\s+([0-9a-f]{8,40})/i)?.[1]||'';
+    if(latestBuild&&latestBuild!==currentBuild){
+      location.reload();
+    }
+  }catch{}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshWorkoutIfBuildChanged();});
+window.addEventListener('focus',refreshWorkoutIfBuildChanged);
+setTimeout(refreshWorkoutIfBuildChanged,2500);
 const sharedRuntime = {channel:null,sessionId:'',syncTimer:null,barrierPollTimer:null,restoreUserId:'',syncMuted:false,lastPresenceSignature:'',lastAppliedSyncRevision:0,pendingControlRequests:new Set()};
 let cloudSyncTimer=null;
 let cloudHydrating=false;

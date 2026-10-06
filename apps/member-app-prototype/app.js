@@ -120,7 +120,7 @@ function renderWorkout() {
       <iframe
         class="workout-module-frame"
         title="GoWorkout"
-        src="workout/?embedded=1&v=phase3"
+        src="workout/?embedded=1&v=20261005-weight-controls"
         loading="eager"
         allow="autoplay"
       ></iframe>
