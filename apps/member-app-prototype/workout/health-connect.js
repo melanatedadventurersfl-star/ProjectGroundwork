@@ -139,7 +139,7 @@
   }
 
   async function persistConnection(state){
-    if(!window.workoutSupabase||store?.account?.status!=='connected'||!store?.account?.userId)return;
+    if((typeof workoutSupabase==='undefined'||!workoutSupabase)||store?.account?.status!=='connected'||!store?.account?.userId)return;
     try{
       await workoutSupabase.from('workout_health_connections').upsert({
         user_id:store.account.userId,
@@ -154,7 +154,7 @@
   }
 
   async function persistImports(entries){
-    if(!entries.length||!window.workoutSupabase||store?.account?.status!=='connected'||!store?.account?.userId)return;
+    if(!entries.length||(typeof workoutSupabase==='undefined'||!workoutSupabase)||store?.account?.status!=='connected'||!store?.account?.userId)return;
     const rows=entries.map(entry=>({
       user_id:store.account.userId,
       provider:entry.externalSource.provider,
