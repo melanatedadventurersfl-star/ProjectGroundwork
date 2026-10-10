@@ -32,7 +32,7 @@ function shareHost() {
   }
 }
 
-function tenantPlugins(appName) {
+function goMelanatedPlugins(appName) {
   return (base.plugins || []).flatMap((plugin) => {
     const name = Array.isArray(plugin) ? plugin[0] : plugin;
     if (name === './plugins/with-goworkout-health-connect') return [];
@@ -57,11 +57,25 @@ function tenantPlugins(appName) {
   });
 }
 
+function workoutPlugins() {
+  return [
+    ['expo-router', { root: './workout-app' }],
+    'expo-status-bar',
+    './plugins/with-goworkout-health-connect',
+  ];
+}
+
+const appFlavor = envValue('EXPO_PUBLIC_APP_FLAVOR') || 'go-melanated';
+const isWorkoutApp = appFlavor === 'workout';
+const workoutWebUrl =
+  envValue('EXPO_PUBLIC_WORKOUT_WEB_URL') ||
+  'https://melanatedadventurersfl-star.github.io/ProjectGroundwork/goworkout/';
+
 const tenantPublicSlug = envValue('EXPO_PUBLIC_TENANT_PUBLIC_SLUG');
 const publicShareHost = shareHost();
 const webBaseUrl = envValue('EXPO_PUBLIC_WEB_BASE_URL');
 
-const tenantIdentity = tenantPublicSlug
+const tenantIdentity = !isWorkoutApp && tenantPublicSlug
   ? {
       publicSlug: tenantPublicSlug,
       name: requiredTenantEnv('EXPO_PUBLIC_TENANT_APP_NAME'),
@@ -79,13 +93,18 @@ const tenantIdentity = tenantPublicSlug
 
 const android = {
   ...(base.android || {}),
-  ...(tenantIdentity
+  ...(isWorkoutApp
     ? {
-        package: tenantIdentity.androidPackage,
-        icon: tenantIdentity.icon,
+        package: 'com.melanatedadventurers.goworkout',
+        softwareKeyboardLayoutMode: 'resize',
       }
-    : {}),
-  ...(publicShareHost
+    : tenantIdentity
+      ? {
+          package: tenantIdentity.androidPackage,
+          icon: tenantIdentity.icon,
+        }
+      : {}),
+  ...(!isWorkoutApp && publicShareHost
     ? {
         intentFilters: [
           ...(base.android?.intentFilters || []),
@@ -100,11 +119,16 @@ const android = {
     : {}),
 };
 delete android.adaptiveIcon;
+if (isWorkoutApp) delete android.icon;
 
 const ios = {
   ...(base.ios || {}),
-  ...(tenantIdentity ? { bundleIdentifier: tenantIdentity.iosBundleIdentifier } : {}),
-  ...(publicShareHost
+  ...(isWorkoutApp
+    ? { bundleIdentifier: 'com.melanatedadventurers.goworkout' }
+    : tenantIdentity
+      ? { bundleIdentifier: tenantIdentity.iosBundleIdentifier }
+      : {}),
+  ...(!isWorkoutApp && publicShareHost
     ? {
         associatedDomains: [
           ...(base.ios?.associatedDomains || []),
@@ -114,26 +138,50 @@ const ios = {
     : {}),
 };
 
+const { eas: _baseEas, ...baseExtraWithoutEas } = base.extra || {};
+
 module.exports = {
   ...base,
-  ...(tenantIdentity
+  ...(isWorkoutApp
     ? {
-        name: tenantIdentity.name,
-        slug: tenantIdentity.slug,
-        description: tenantIdentity.description || `${tenantIdentity.name} organization app`,
-        scheme: tenantIdentity.scheme,
-        icon: tenantIdentity.icon,
+        name: 'GO Workout',
+        slug: 'go-workout',
+        description: 'Adaptive strength training, workout tracking, and connected health.',
+        version: '0.1.0',
+        scheme: 'goworkout',
+        userInterfaceStyle: 'dark',
+        icon: undefined,
         splash: {
-          ...(base.splash || {}),
-          image: tenantIdentity.splashImage,
+          resizeMode: 'contain',
+          backgroundColor: '#0A0D0B',
         },
-        plugins: tenantPlugins(tenantIdentity.name),
+        plugins: workoutPlugins(),
         updates: {
-          ...(base.updates || {}),
-          url: `https://u.expo.dev/${tenantIdentity.easProjectId}`,
+          enabled: false,
+          checkAutomatically: 'NEVER',
+          fallbackToCacheTimeout: 0,
         },
       }
-    : {}),
+    : tenantIdentity
+      ? {
+          name: tenantIdentity.name,
+          slug: tenantIdentity.slug,
+          description: tenantIdentity.description || `${tenantIdentity.name} organization app`,
+          scheme: tenantIdentity.scheme,
+          icon: tenantIdentity.icon,
+          splash: {
+            ...(base.splash || {}),
+            image: tenantIdentity.splashImage,
+          },
+          plugins: goMelanatedPlugins(tenantIdentity.name),
+          updates: {
+            ...(base.updates || {}),
+            url: `https://u.expo.dev/${tenantIdentity.easProjectId}`,
+          },
+        }
+      : {
+          plugins: goMelanatedPlugins('Go Melanated'),
+        }),
   android,
   ios,
   web: {
@@ -144,24 +192,40 @@ module.exports = {
     ...(base.experiments || {}),
     ...(webBaseUrl ? { baseUrl: webBaseUrl } : {}),
   },
-  extra: {
-    ...base.extra,
-    ...(tenantIdentity
-      ? {
-          tenantPublicSlug: tenantIdentity.publicSlug,
-          tenantAppName: tenantIdentity.name,
-          nativeBuildAssetRevision: tenantIdentity.assetRevision,
-          eas: { projectId: tenantIdentity.easProjectId },
-        }
-      : {
-          tenantPublicSlug: null,
-          tenantAppName: null,
-          nativeBuildAssetRevision: 'go-melanated-launcher-v15',
-        }),
-    buildCommit,
-    buildNumber,
-    buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
-    buildProfile: process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_BUILD_PROFILE || 'local',
-    buildSource: process.env.EXPO_PUBLIC_BUILD_SOURCE || 'local',
-  },
+  extra: isWorkoutApp
+    ? {
+        ...baseExtraWithoutEas,
+        router: {},
+        appFlavor: 'workout',
+        workoutWebUrl,
+        tenantPublicSlug: null,
+        tenantAppName: null,
+        nativeBuildAssetRevision: 'go-workout-android-v1',
+        buildCommit,
+        buildNumber,
+        buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
+        buildProfile: process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_BUILD_PROFILE || 'local',
+        buildSource: process.env.EXPO_PUBLIC_BUILD_SOURCE || 'local',
+      }
+    : {
+        ...base.extra,
+        ...(tenantIdentity
+          ? {
+              tenantPublicSlug: tenantIdentity.publicSlug,
+              tenantAppName: tenantIdentity.name,
+              nativeBuildAssetRevision: tenantIdentity.assetRevision,
+              eas: { projectId: tenantIdentity.easProjectId },
+            }
+          : {
+              tenantPublicSlug: null,
+              tenantAppName: null,
+              nativeBuildAssetRevision: 'go-melanated-launcher-v15',
+            }),
+        appFlavor: 'go-melanated',
+        buildCommit,
+        buildNumber,
+        buildTimestamp: process.env.EXPO_PUBLIC_BUILD_TIMESTAMP || new Date().toISOString(),
+        buildProfile: process.env.EAS_BUILD_PROFILE || process.env.EXPO_PUBLIC_BUILD_PROFILE || 'local',
+        buildSource: process.env.EXPO_PUBLIC_BUILD_SOURCE || 'local',
+      },
 };
