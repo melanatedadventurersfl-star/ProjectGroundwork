@@ -5079,6 +5079,14 @@ function readinessPreviewSnapshot(day,readiness,setup){
   let preview=adaptDayForSessionSetup(applyReadinessToDay(clone(day),readiness),setup,readiness.timeAvailable);
   preview=reflowPlannedWorkoutStructure(preview,plannedStructure,readiness);
   recalculatePlanDay(preview);
+  if(window.GoWorkoutGoalStrategy&&!day.goalFocused){
+    preview=window.GoWorkoutGoalStrategy.applyDay(ensureTrainingProgram(),preview,catalog,store.profile,{
+      plan:store.plan,minutes:readiness.timeAvailable,soreness:readiness.soreness,energy:readiness.energy,sleep:readiness.sleep,
+      shared:Boolean(readinessContext?.sharedDraft),
+      allowExercise:ex=>setupAllowsExercise(ex,setup)&&!avoided(ex,store.profile||{})
+    });
+    recalculatePlanDay(preview);
+  }
   const changes=preview.trainingContext?.changes||[];
   const replacementCount=changes.filter(change=>change.type==='replacement').length;
   const unavailableCount=changes.filter(change=>change.type==='unavailable').length;
@@ -5332,6 +5340,14 @@ async function startPreparedWorkout(){
     day=adaptDayForSessionSetup(day,setup,readiness.timeAvailable);
     day=reflowPlannedWorkoutStructure(day,plannedStructure,readiness);
     recalculatePlanDay(day);
+    if(window.GoWorkoutGoalStrategy&&!sourceDay.goalFocused){
+      day=window.GoWorkoutGoalStrategy.applyDay(ensureTrainingProgram(),day,catalog,store.profile,{
+        plan:store.plan,minutes:readiness.timeAvailable,soreness:readiness.soreness,energy:readiness.energy,sleep:readiness.sleep,
+        shared:false,
+        allowExercise:ex=>setupAllowsExercise(ex,setup)&&!avoided(ex,store.profile||{})
+      });
+      recalculatePlanDay(day);
+    }
   }
   if(!day.exercises.length){
     context.building=null;
@@ -6719,6 +6735,7 @@ function finalizeWorkout(status='complete'){
   ['pendingPosition','restEndsAt','restPausedRemaining','restToken','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','preSetCoachPending','preSetManualStart','preSetFinishing','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','timedStageSwitchStartedAt','timedStageSwitchEndsAt','sideSwitchStartedAt','sideSwitchEndsAt','sideSwitchDuration','sideSwitchPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
   if(store.history.some(item=>item.id===entry.id)){store.activeWorkout=null;saveStore();currentTab='summary';render();return;}
   if(window.GoWorkoutGoalLab)window.GoWorkoutGoalLab.afterWorkout(ensureTrainingProgram(),entry);
+  if(window.GoWorkoutGoalStrategy)window.GoWorkoutGoalStrategy.onWorkout(ensureTrainingProgram(),entry);
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
   if(entry.sharedSession){
     const shared=sharedTrainingState();
@@ -7627,6 +7644,7 @@ function renderTrain(){
   return '<div class="clean-page train-reframed train-reframed-v2">'+
     '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program, in motion.</h2><p>See what is next, what changed, and why each week is different.</p></div></div>'+
     (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'train'):'')+
+    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.teaser(ensureTrainingProgram(),p,plan):'')+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     renderTrainTabs()+
     (trainView==='program'?renderTrainProgramView():trainView==='exercises'?renderTrainExercisesView():renderTrainWeekView())+
@@ -9306,6 +9324,7 @@ function renderHome(){
     '<section class="home-intro-v2 home-intro-v4"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
     renderHomeProgramJourney(context)+
     (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'home'):'')+
+    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.teaser(ensureTrainingProgram(),p,plan):'')+
     '<section class="home-state-hero home-state-hero-v4 state-'+esc(x.state)+'">'+
       renderHomeHeroBackdrop(x)+
       '<div class="home-hero-content-v4">'+
@@ -10815,6 +10834,7 @@ function renderProgress(){
   if(selected&&!progressExerciseId)progressExerciseId=selected.exerciseId;
   return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See what changed, where you started, and which movements are moving forward.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
     (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'progress'):'')+
+    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.summary(ensureTrainingProgram(),store.history,store.profile,store.plan):'')+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
     renderAdaptiveLearningOverview()+
     renderLearnerDiagnostics()+
@@ -10914,9 +10934,12 @@ function render(){
   else if(currentTab==='workout')app.innerHTML=renderWorkout();
   else if(currentTab==='history')app.innerHTML=renderHistory();
   else if(currentTab==='progress')app.innerHTML=renderProgress();
-  else if(currentTab==='goals')app.innerHTML=window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.render(ensureTrainingProgram()):renderTrain();
+  else if(currentTab==='goals')app.innerHTML=window.GoWorkoutGoalLab?
+    window.GoWorkoutGoalLab.render(ensureTrainingProgram())+
+    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.panel(ensureTrainingProgram(),store.profile,store.plan,catalog,store.history):''):renderTrain();
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
+  if(currentTab==='summary'&&window.GoWorkoutGoalStrategy)app.insertAdjacentHTML('beforeend',window.GoWorkoutGoalStrategy.checkin(ensureTrainingProgram(),store.history));
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
   if(swapContext) app.insertAdjacentHTML('beforeend',renderSwapModal());
   if(readinessContext) app.insertAdjacentHTML('beforeend',renderReadinessModal());
@@ -11070,7 +11093,11 @@ function updateTimers(){
 function startGoalFocusWorkout(){
   if(store.activeWorkout){setTab('workout');toast('Finish or resume your current workout first.');return;}
   if(!window.GoWorkoutGoalLab||!store.profile||!store.plan)return;
-  const day=window.GoWorkoutGoalLab.buildGoalDay(ensureTrainingProgram(),catalog,store.profile);
+  const training=ensureTrainingProgram(),strategy=window.GoWorkoutGoalStrategy;
+  const selectedStrategy=strategy?.current(training,store.profile,store.plan)?strategy.ensure(training):null;
+  if(selectedStrategy?.mode==='track'){toast('Your approved strategy is set to tracking only. Review your strategy to enable goal workouts.');return;}
+  const focusProfile=selectedStrategy?.mode==='focused'?{...store.profile,goalIds:selectedStrategy.goalIds}:store.profile;
+  const day=window.GoWorkoutGoalLab.buildGoalDay(training,catalog,focusProfile);
   if(!day){toast('Complete a compatible exercise baseline before starting a goal workout.');return;}
   // Route personalized sessions through the same readiness and equipment
   // assessment as regular workouts. Keep the existing four-week plan intact.
@@ -11090,10 +11117,15 @@ function handleClick(event){
   const goalButton=event.target.closest('[data-goal-action]');
   if(goalButton&&window.GoWorkoutGoalLab){
     if(goalButton.dataset.goalAction==='start-session'){startGoalFocusWorkout();return;}
-    const result=window.GoWorkoutGoalLab.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton);
-    if(result.changed){saveStore();render();}
-    if(result.message)toast(result.message);
-    if(result.changed&&goalButton.dataset.goalAction==='back-home')setTab('home');
+    const isStrategy=goalButton.dataset.goalAction.startsWith('strategy-');
+    const result=isStrategy&&window.GoWorkoutGoalStrategy?
+      window.GoWorkoutGoalStrategy.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton,{
+        profile:store.profile,plan:store.plan,catalog,history:store.history
+      }):
+      window.GoWorkoutGoalLab.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton);
+    if(result?.changed){saveStore();render();}
+    if(result?.message)toast(result.message);
+    if(result?.changed&&goalButton.dataset.goalAction==='back-home')setTab('home');
     return;
   }
   const avatarClose=event.target.closest('[data-action="close-avatar-picker"]');
