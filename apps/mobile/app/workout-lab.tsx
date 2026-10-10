@@ -420,7 +420,12 @@ export default function WorkoutLabScreen() {
             <Text style={styles.brand}>WORKOUT</Text>
             <Text style={styles.headerSub}>Simple training. Clear progress.</Text>
           </View>
-          <View style={styles.avatar}><Text style={styles.avatarText}>JC</Text></View>
+          <View style={styles.headerActions}>
+            <Pressable style={styles.healthButton} accessibilityRole="button" accessibilityLabel="Connected health" onPress={() => router.push('/workout-health' as never)}>
+              <Text style={styles.healthButtonText}>♥</Text>
+            </Pressable>
+            <View style={styles.avatar}><Text style={styles.avatarText}>JC</Text></View>
+          </View>
         </View>
 
         <ScrollView
@@ -709,6 +714,9 @@ const styles = StyleSheet.create({
   headerBack: { color: ACCENT, fontSize: 11, fontWeight: '900', marginBottom: 8 },
   brand: { color: TEXT, fontSize: 20, fontWeight: '900', letterSpacing: 2 },
   headerSub: { color: MUTED, fontSize: 11, marginTop: 3 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  healthButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#4A554F', backgroundColor: CARD, alignItems: 'center', justifyContent: 'center' },
+  healthButtonText: { color: ACCENT, fontSize: 17, fontWeight: '900' },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: BG, fontSize: 12, fontWeight: '900' },
   scroll: { flex: 1 },
