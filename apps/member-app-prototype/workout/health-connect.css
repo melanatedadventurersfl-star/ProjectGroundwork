@@ -1,0 +1,32 @@
+.health-connect-settings-button{position:relative}
+.health-connect-icon{color:#f3c98b}
+.health-connect-backdrop{z-index:10030}
+.health-connect-sheet{width:min(680px,96vw);max-height:min(92vh,920px);overflow:auto}
+.health-connect-status{display:grid;gap:4px;margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.health-connect-status span,.health-connect-sync-summary span{color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.12em}
+.health-connect-status strong{font-size:15px}
+.health-connect-status.connected{border-color:rgba(111,181,132,.48);background:rgba(78,145,95,.08)}
+.health-connect-status.connected strong{color:#9ed3aa}
+.health-connect-status small{color:var(--muted);font-size:9px}
+.health-connect-permissions{display:grid;gap:8px}
+.health-connect-toggle{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.health-connect-toggle span{font-size:12px;font-weight:750}
+.health-connect-toggle input{position:absolute;opacity:0;pointer-events:none}
+.health-connect-toggle i{position:relative;width:42px;height:24px;border-radius:999px;background:#3b433f;transition:.18s ease}
+.health-connect-toggle i:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#d5dbd7;transition:.18s ease}
+.health-connect-toggle input:checked+i{background:#2f8150}
+.health-connect-toggle input:checked+i:after{transform:translateX(18px);background:#fff}
+.health-connect-toggle input:disabled+i{opacity:.45}
+.health-connect-sync-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.health-connect-sync-summary>div{display:grid;gap:4px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.health-connect-sync-summary strong{font-size:11px}
+.health-connect-actions{display:flex;gap:8px;flex-wrap:wrap}
+.health-connect-actions .button{flex:1 1 190px}
+.health-connect-privacy{margin-top:14px}
+.health-history-detail{margin:14px 0;padding:14px;border:1px solid rgba(111,181,132,.35);border-radius:14px;background:rgba(78,145,95,.07)}
+.health-history-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.health-history-metrics>div{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.health-history-metrics span{display:block;color:var(--muted);font-size:8px;letter-spacing:.1em}
+.health-history-metrics strong{display:block;margin-top:4px;font-size:13px}
+.health-history-detail>small{display:block;margin-top:10px;color:var(--muted);font-size:9px}
+@media(max-width:560px){.health-connect-sync-summary,.health-history-metrics{grid-template-columns:1fr 1fr}}
