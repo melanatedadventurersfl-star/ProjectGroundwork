@@ -7,8 +7,14 @@ const {
   withDangerousMod
 }=require('@expo/config-plugins');
 
-const PACKAGE_NAME='com.melanatedadventurers.app';
-const HEALTH_PACKAGE='com.melanatedadventurers.app.health';
+function healthPackage(config){
+  return (config.android?.package || 'com.melanatedadventurers.app')+'.health';
+}
+
+function appScheme(config){
+  const scheme=config.scheme;
+  return Array.isArray(scheme)?scheme[0]:(scheme||'melanatedadventurers');
+}
 const HEALTH_PERMISSIONS=[
   'android.permission.health.READ_EXERCISE',
   'android.permission.health.READ_HEART_RATE',
@@ -25,6 +31,7 @@ function addManifestPermission(manifest,name){
 }
 
 function withHealthManifest(config){
+  const targetHealthPackage=healthPackage(config);
   return withAndroidManifest(config,cfg=>{
     const manifest=cfg.modResults.manifest;
     HEALTH_PERMISSIONS.forEach(name=>addManifestPermission(manifest,name));
@@ -40,7 +47,7 @@ function withHealthManifest(config){
 
     const application=manifest.application?.[0];
     if(application){
-      const rationaleActivity='com.melanatedadventurers.app.health.PermissionsRationaleActivity';
+      const rationaleActivity=targetHealthPackage+'.PermissionsRationaleActivity';
       application.activity=application.activity||[];
       if(!application.activity.some(activity=>activity?.$?.['android:name']===rationaleActivity)){
         application.activity.push({
@@ -84,9 +91,10 @@ function withHealthGradle(config){
 }
 
 function withHealthPackage(config){
+  const targetHealthPackage=healthPackage(config);
   return withMainApplication(config,cfg=>{
     let source=cfg.modResults.contents;
-    const importLine='import '+HEALTH_PACKAGE+'.GoWorkoutHealthConnectPackage';
+    const importLine='import '+targetHealthPackage+'.GoWorkoutHealthConnectPackage';
     if(!source.includes(importLine)){
       source=source.replace(/^(package\\s+[^\\n]+)/m,'$1\\n\\n'+importLine);
     }
@@ -395,13 +403,18 @@ class GoWorkoutHealthConnectPackage : ReactPackage {
 `;
 
 function withHealthSources(config){
+  const targetHealthPackage=healthPackage(config);
+  const targetScheme=appScheme(config);
   return withDangerousMod(config,['android',async cfg=>{
     const root=cfg.modRequest.platformProjectRoot;
-    const sourceDir=path.join(root,'app','src','main','java',...HEALTH_PACKAGE.split('.'));
+    const sourceDir=path.join(root,'app','src','main','java',...targetHealthPackage.split('.'));
     fs.mkdirSync(sourceDir,{recursive:true});
-    fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectModule.kt'),moduleSource);
-    fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectPackage.kt'),packageSource);
-    fs.writeFileSync(path.join(sourceDir,'PermissionsRationaleActivity.kt'),rationaleSource);
+    const rewrite=(source)=>source
+      .replaceAll('com.melanatedadventurers.app.health',targetHealthPackage)
+      .replaceAll('melanatedadventurers://privacy-policy',targetScheme+'://privacy-policy');
+    fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectModule.kt'),rewrite(moduleSource));
+    fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectPackage.kt'),rewrite(packageSource));
+    fs.writeFileSync(path.join(sourceDir,'PermissionsRationaleActivity.kt'),rewrite(rationaleSource));
     return cfg;
   }]);
 }
