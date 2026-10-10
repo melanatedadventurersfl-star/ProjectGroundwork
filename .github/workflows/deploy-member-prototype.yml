@@ -54,6 +54,7 @@ jobs:
           node --check apps/member-app-prototype/workout/health-connect-core.js
           node --check apps/member-app-prototype/workout/health-connect.js
           node apps/member-app-prototype/workout/health-connect-core.test.js
+          node apps/member-app-prototype/workout/splash.test.cjs
 
       - name: Install application dependencies
         run: npm ci
