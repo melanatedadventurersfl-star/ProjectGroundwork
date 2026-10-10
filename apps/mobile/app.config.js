@@ -33,26 +33,27 @@ function shareHost() {
 }
 
 function tenantPlugins(appName) {
-  return (base.plugins || []).map((plugin) => {
+  return (base.plugins || []).flatMap((plugin) => {
     const name = Array.isArray(plugin) ? plugin[0] : plugin;
+    if (name === './plugins/with-goworkout-health-connect') return [];
     if (name === 'expo-location') {
-      return ['expo-location', {
+      return [['expo-location', {
         locationWhenInUsePermission: `Allow ${appName} to use your location for nearby and location-aware features.`,
-      }];
+      }]];
     }
     if (name === 'expo-contacts') {
-      return ['expo-contacts', {
+      return [['expo-contacts', {
         contactsPermission: `Allow ${appName} to access contacts for features you choose.`,
-      }];
+      }]];
     }
     if (name === 'expo-image-picker') {
-      return ['expo-image-picker', {
+      return [['expo-image-picker', {
         photosPermission: `Allow ${appName} to add photos from your library.`,
         cameraPermission: `Allow ${appName} to take photos.`,
         microphonePermission: false,
-      }];
+      }]];
     }
-    return plugin;
+    return [plugin];
   });
 }
 
