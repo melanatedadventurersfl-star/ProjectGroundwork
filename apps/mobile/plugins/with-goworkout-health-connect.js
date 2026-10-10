@@ -94,16 +94,21 @@ function withHealthPackage(config){
   const targetHealthPackage=healthPackage(config);
   return withMainApplication(config,cfg=>{
     let source=cfg.modResults.contents;
-    const importLine='import '+targetHealthPackage+'.GoWorkoutHealthConnectPackage';
-    if(!source.includes(importLine)){
-      source=source.replace(/^(package\\s+[^\\n]+)/m,'$1\\n\\n'+importLine);
-    }
-    if(!source.includes('add(GoWorkoutHealthConnectPackage())')){
+    if(!source.includes('GoWorkoutHealthConnectModule(reactContext)')){
       const marker='PackageList(this).packages.apply {';
       if(!source.includes(marker)){
         throw new Error('Go Workout Health Connect could not find the React package list in MainApplication.kt');
       }
-      source=source.replace(marker,marker+'\n              add(GoWorkoutHealthConnectPackage())');
+      const registration=[
+        marker,
+        '              add(object : com.facebook.react.ReactPackage {',
+        '                override fun createNativeModules(reactContext: com.facebook.react.bridge.ReactApplicationContext): List<com.facebook.react.bridge.NativeModule> =',
+        '                  listOf('+targetHealthPackage+'.GoWorkoutHealthConnectModule(reactContext))',
+        '                override fun createViewManagers(reactContext: com.facebook.react.bridge.ReactApplicationContext): List<com.facebook.react.uimanager.ViewManager<*, *>> =',
+        '                  emptyList()',
+        '              })'
+      ].join('\n');
+      source=source.replace(marker,registration);
     }
     cfg.modResults.contents=source;
     return cfg;
