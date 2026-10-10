@@ -5,6 +5,7 @@ const sections = [
   ['Information we collect', 'Go Melanated may collect account and profile information, approximate or precise location when you choose location features, photos and other content you submit, community activity, adventure registrations, payment-related records, device push tokens, and support communications.'],
   ['How we use information', 'We use this information to provide accounts and profiles, show nearby outdoor experiences, operate community features, manage adventures and reservations, deliver notifications, provide support, improve safety, prevent abuse, and maintain the service.'],
   ['Location', 'Location access is optional. When enabled, it is used for nearby Adventures, local weather, and location-aware discovery. You can change location permission at any time in your device settings.'],
+  ['Health and fitness data', 'If you connect Go Workout to Android Health Connect, Go Workout may read workout categories you approve, including exercise sessions, heart rate, calories, distance, and steps. Connected health data is used to add supported workout activity and metrics to your private Workout history. Go Workout does not share connected health metrics with workout partners. You can revoke Health Connect access at any time in Connected Health or device settings.'],
   ['Photos and user content', 'Photos, posts, comments, reflections, and other content you choose to share may be stored and displayed according to the privacy or audience settings you select. Some submitted content may be reviewed for moderation and safety.'],
   ['Payments and records', 'Payment processing may involve third-party payment providers. We may retain transaction, attendance, waiver, safety, and fraud-prevention records when necessary for legal, financial, security, or operational obligations.'],
   ['Service providers', 'We use service providers to operate the app, including cloud database and authentication, hosting, notifications, mapping or weather-related functionality, and payment processing. These providers process information only as needed to provide their services to us.'],
@@ -19,7 +20,7 @@ export default function PrivacyPolicyScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.eyebrow}>GO MELANATED</Text>
     <Text style={styles.title}>Privacy Policy</Text>
-    <Text style={styles.meta}>Effective August 21, 2026</Text>
+    <Text style={styles.meta}>Effective October 10, 2026</Text>
     <Text style={styles.intro}>This policy explains how Go Melanated handles information when you use the mobile app and related services.</Text>
     {sections.map(([title, body]) => <View key={title} style={styles.section}><Text style={styles.heading}>{title}</Text><Text style={styles.body}>{body}</Text></View>)}
   </ScrollView></SafeAreaView>;
