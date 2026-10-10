@@ -91,4 +91,71 @@ click(userA,'toggle-pause',{goalId:push.id});
 assert.equal(push.status,'active');
 
 assert.match(G.render(userA),/YOUR GOAL/);
+
+// Regression: a wall push-up baseline must never produce a standard push-up prescription.
+const wallUser={};
+click(wallUser,'new',{mode:'target'});
+click(wallUser,'template',{kind:'pushup'});
+click(wallUser,'choose-next');
+click(wallUser,'target-next');
+G.field(wallUser,'variant','Wall push-up');
+for(let i=0;i<15;i++)click(wallUser,'count-up');
+click(wallUser,'assessment-done');
+click(wallUser,'feedback-next');
+click(wallUser,'save-goal');
+const wall=wallUser.goalLab.goals[0];
+assert.equal(wall.baseline,15);
+assert.equal(G.isRunnableGoal(wall),false);
+assert.equal(G.buildGoalDay(wallUser,catalogs,{equipment:'bodyweight',minutes:30}),null);
+click(wallUser,'all-goals');
+assert.ok(!G.render(wallUser).includes('START GOAL WORKOUT'),'Unsupported variation must not advertise a runnable goal session');
+assert.match(G.recommendations(wall).summary,/not in the automated workout catalog/);
+assert.equal(G.afterWorkout(wallUser,entry),false);
+assert.equal(wall.best,15,'Standard push-up workout sets must not count toward wall push-ups');
+
+// A compatible goal can still train alongside an unsupported goal without replacing it.
+const compatible=makeGoal(wallUser,'plank',20,60);
+assert.equal(G.isRunnableGoal(compatible),true);
+const mixedPlan=G.buildGoalDay(wallUser,catalogs,{equipment:'bodyweight',minutes:30});
+assert.ok(mixedPlan.exercises.some(ex=>ex.id==='plank'));
+assert.ok(!mixedPlan.exercises.some(ex=>ex.id==='push-up'),'Mixed goal sessions cannot silently change variations');
+
+// Regression: editing a custom goal measurement requires a new test in the new unit.
+const customUser={};
+const custom=makeGoal(customUser,'custom',6,20);
+assert.equal(custom.unit,'reps');
+click(customUser,'edit',{goalId:custom.id});
+assert.equal(G.field(customUser,'unit','seconds'),true);
+assert.equal(customUser.goalLab.draft.tested,false,'Old rep baseline cannot become seconds');
+assert.equal(customUser.goalLab.draft.result,0);
+assert.equal(customUser.goalLab.draft.metric,'single hold');
+assert.equal(customUser.goalLab.draft.stage,'target');
+click(customUser,'target-next');
+assert.equal(customUser.goalLab.draft.stage,'assessment');
+assert.equal(customUser.goalLab.draft.unit,'seconds');
+G.field(customUser,'result',32);
+click(customUser,'assessment-done');
+click(customUser,'feedback-next');
+click(customUser,'save-goal');
+assert.equal(custom.unit,'seconds');
+assert.equal(custom.baseline,32);
+assert.equal(custom.best,32);
+assert.equal(custom.assessments.length,2);
+assert.equal(custom.assessments[0].unit,'reps','Previous test unit preserved');
+assert.equal(custom.assessments[0].value,6);
+assert.equal(custom.assessments[1].unit,'seconds','New baseline uses new unit');
+assert.match(G.render(customUser),/6 reps/);
+assert.match(G.render(customUser),/32 seconds/);
+
+// Changing back to the existing unit should not create a duplicate assessment.
+click(customUser,'edit',{goalId:custom.id});
+G.field(customUser,'unit','miles');
+assert.equal(customUser.goalLab.draft.tested,false);
+G.field(customUser,'unit','seconds');
+assert.equal(customUser.goalLab.draft.tested,true);
+click(customUser,'target-next');
+click(customUser,'save-goal');
+assert.equal(custom.assessments.length,2);
+assert.equal(custom.unit,'seconds');
+
 console.log('GO Workout Goal Lab: all regression checks passed.');
