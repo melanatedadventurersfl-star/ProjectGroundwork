@@ -31,6 +31,18 @@
       effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,tested:false};
   }
   const active = s => s.goals.filter(g=>g.status==='active');
+  // A baseline for an assisted or modified movement is not interchangeable
+  // with the catalog's standard-form exercise.
+  const SUPPORTED_VARIANTS={
+    pushup:['standard push up','push up','pushup','standard pushup'],
+    plank:['forearm plank','plank','standard plank'],
+    squat:['bodyweight squat','air squat','unweighted squat'],
+    pullup:['unassisted pull up','pull up','pullup','strict pull up']
+  };
+  const normalizeVariant=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  function isRunnableGoal(g){
+    return Boolean(g?.exerciseId&&SUPPORTED_VARIANTS[g.kind]?.includes(normalizeVariant(g.variant)));
+  }
   function recent(g){return (g.assessments||[]).slice(-6);}
   function targetText(g){return String(g.target)+' '+(g.unit==='seconds'?'seconds':g.unit==='miles'?'miles':'reps');}
   function progress(g){return g.target>0 ? Math.max(0,Math.min(100,Math.round(number(g.best)/g.target*100))) : 0;}
@@ -50,6 +62,7 @@
   function recommendations(g){
     const b=number(g.best),kind=g.kind;
     if(g.painFlag)return {summary:'Training recommendations are paused because discomfort was recorded. Choose a comfortable alternative and seek professional advice when appropriate.',sets:[],frequency:'Assessment review needed'};
+    if(SUPPORTED_VARIANTS[kind]&&!isRunnableGoal(g))return {summary:'Your '+String(g.variant||'chosen variation')+' baseline is saved, but that movement is not in the automated workout catalog. GO Workout will not replace it with a different variation.',sets:[],frequency:'Track this variation with guided reassessments'};
     if(kind==='pushup')return {summary:b<1?'Build controlled strength with an easier variation before retesting standard push-ups.':'Train below your maximum and retest only after adequate recovery.',sets:[b<1?'Wall push-ups · 2 × 6 to 8':'Push-ups · 3 × '+Math.max(2,Math.floor(b*.55)), 'Incline push-ups · 2 × 8', 'Core stability · 2 controlled sets'],frequency:'2 to 3 nonconsecutive days per week'};
     if(kind==='plank')return {summary:'Build multiple quality holds rather than attempting a maximum every day.',sets:['Plank · 3 × '+Math.max(10,Math.min(45,Math.floor(b*.7)||10))+' sec','Bird dog · 2 × 8 per side'],frequency:'2 to 3 days per week with recovery'};
     if(kind==='pullup')return {summary:'Progress toward unassisted repetitions with controlled pulling variations.',sets:[b<1?'Assisted pull-ups · 3 × 5':'Pull-ups · 3 × '+Math.max(1,Math.floor(b*.6)),'Rows · 2 × 8 to 10'],frequency:'2 nonconsecutive days per week'};
@@ -67,7 +80,7 @@
     const gs=active(s),paused=s.goals.filter(g=>g.status==='paused');
     return '<section class="goal-hero"><span class="goal-kicker">GO WORKOUT / PERSONAL GOALS</span><h1>Give your training a target.</h1><p>Find your baseline through a guided assessment. Train toward something measurable, then come back to prove your progress.</p>'+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="new" data-mode="target">SET A GOAL</button><button class="goal-secondary" data-goal-action="new" data-mode="discover">DISCOVER MY GOALS</button></div></section>'+
-      (gs.some(g=>g.exerciseId&&number(g.best)>0&&!g.painFlag)?'<button class="goal-primary goal-session-button" data-goal-action="start-session">START GOAL WORKOUT →</button>':'')+
+      (gs.some(g=>isRunnableGoal(g)&&number(g.best)>0&&!g.painFlag)?'<button class="goal-primary goal-session-button" data-goal-action="start-session">START GOAL WORKOUT →</button>':'')+
       (gs.length?'<section class="goal-section"><div class="goal-section-head"><h2>Your active goals</h2><span>'+gs.length+' active</span></div><div class="goal-cards">'+gs.map(card).join('')+'</div></section>':
         '<div class="goal-empty"><strong>Start with what you can do.</strong><p>Your first test becomes the starting point of your training history.</p></div>')+
       (paused.length?'<section class="goal-section"><h2>Paused goals</h2><div class="goal-cards">'+paused.map(card).join('')+'</div></section>':'')+
@@ -134,6 +147,7 @@
       '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(g.best)+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+'</strong></div></div>'+
       '<div class="goal-track"><i style="width:'+progress(g)+'%"></i></div>'+
       '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(progress(g)===100?'Target reached. You can maintain it or set another target.':'')+'</p>'+
+      (SUPPORTED_VARIANTS[g.kind]&&!isRunnableGoal(g)?'<p class="goal-footnote">'+safe(g.variant||'This variation')+' is tracked through your assessments. Automated workouts do not yet include that exact exercise.</p>':'')+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="retest" data-goal-id="'+safe(g.id)+'">REASSESS</button><button class="goal-secondary" data-goal-action="edit" data-goal-id="'+safe(g.id)+'">EDIT TARGET</button></div>'+
       '<section class="goal-detail-section"><h3>Suggested training focus</h3><p>'+safe(rec.summary)+'</p><div class="goal-plan-steps">'+rec.sets.map(s=>'<div>'+safe(s)+'</div>').join('')+'</div><small>'+safe(rec.frequency)+'. Coordinate with your existing program and allow recovery.</small></section>'+
       '<section class="goal-detail-section"><h3>Performance history</h3>'+
@@ -227,8 +241,7 @@
     const s=ensure(training);let changed=false;
     for(const g of s.goals){
       if(!g.exerciseId||g.status!=='active'||g.unit!=='reps'||!entry?.exercises)continue;
-      const comparable={pushup:/standard/i,pullup:/unassisted/i,squat:/bodyweight/i};
-      if(comparable[g.kind]&&!comparable[g.kind].test(String(g.variant)))continue;
+      if(!isRunnableGoal(g))continue;
       const completed=(entry.exercises||[]).filter(ex=>ex.id===g.exerciseId&&!ex.skipped);
       const numbers=completed.flatMap(ex=>(ex.sets||[]).filter(x=>x.completed).map(x=>number(x.reps)).filter(x=>x>0));
       if(!numbers.length)continue;
@@ -246,7 +259,7 @@
     const goals=active(ensure(training)).filter(g=>!g.painFlag && ['reps','seconds'].includes(g.unit));
     const minutes=Math.max(10,Math.min(45,number(profile.minutes)||30));
     const maxGoals=minutes<=20?2:3;
-    const compatible=goals.filter(g=>g.exerciseId&&number(g.best)>0).slice().sort((a,b)=>(a.priority==='primary'?0:1)-(b.priority==='primary'?0:1));
+    const compatible=goals.filter(g=>isRunnableGoal(g)&&number(g.best)>0).slice().sort((a,b)=>(a.priority==='primary'?0:1)-(b.priority==='primary'?0:1));
     const used=new Set(),slots=[];
     const slot=(id,sets,reps,rest=45)=>{
       const ex=exerciseCatalog.find(x=>x.id===id);
@@ -288,6 +301,6 @@
     if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
   }
   if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
-  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
+  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();
