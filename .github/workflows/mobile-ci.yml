@@ -211,6 +211,9 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
+      - name: Install GO Workout DOM runtime
+        run: npm install --workspace @ma/mobile --no-save react-dom@19.2.3 react-native-web@0.21.0
+
       - name: Generate standalone GO Workout Android project
         working-directory: apps/mobile
         run: npx expo prebuild --platform android --no-install --clean
@@ -222,14 +225,14 @@ jobs:
           grep -R "android.permission.health.READ_EXERCISE" android/app/src/main/AndroidManifest.xml >/dev/null
           grep -R "GoWorkoutHealthConnectModule" android/app/src/main/java >/dev/null
 
-      - name: Build installable GO Workout APK
+      - name: Build self-contained GO Workout APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Stage APK
         run: |
           mkdir -p /tmp/goworkout-apk
-          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk /tmp/goworkout-apk/GO-Workout-Android-Preview.apk
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk /tmp/goworkout-apk/GO-Workout-Android-Preview.apk
 
       - name: Upload GO Workout APK
         uses: actions/upload-artifact@v4
