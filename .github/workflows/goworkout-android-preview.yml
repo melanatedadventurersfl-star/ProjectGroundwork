@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - feature/goworkout-android-app-v1-main
     paths:
       - 'apps/mobile/app.config.js'
       - 'apps/mobile/plugins/with-goworkout-health-connect.js'
@@ -78,9 +77,9 @@ jobs:
           grep -R "android.permission.health.READ_EXERCISE" android/app/src/main/AndroidManifest.xml >/dev/null
           grep -R "GoWorkoutHealthConnectModule" android/app/src/main/java >/dev/null
 
-      - name: Build installable debug APK
+      - name: Build self-contained GO Workout APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Stage APK
         run: |
