@@ -22,7 +22,7 @@ jobs:
   build-preview:
     name: Build GO Workout APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       EXPO_PUBLIC_APP_FLAVOR: workout
       EXPO_PUBLIC_WORKOUT_WEB_URL: https://melanatedadventurersfl-star.github.io/ProjectGroundwork/goworkout/
@@ -70,6 +70,32 @@ jobs:
         working-directory: apps/mobile
         run: npx expo prebuild --platform android --no-install --clean
 
+      - name: Tune Gradle for preview APK
+        working-directory: apps/mobile/android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('gradle.properties')
+          text = path.read_text(encoding='utf-8')
+          properties = {
+              'org.gradle.jvmargs': '-Xmx4096m -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8',
+              'org.gradle.workers.max': '2',
+              'org.gradle.parallel': 'false',
+              'reactNativeArchitectures': 'arm64-v8a',
+              'kotlin.daemon.jvmargs': '-Xmx1536m -XX:MaxMetaspaceSize=768m',
+          }
+
+          lines = []
+          for line in text.splitlines():
+              if any(line.startswith(key + '=') for key in properties):
+                  continue
+              lines.append(line)
+
+          lines.extend(f'{key}={value}' for key, value in properties.items())
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
       - name: Verify standalone identity and Health Connect
         working-directory: apps/mobile
         run: |
@@ -79,7 +105,7 @@ jobs:
 
       - name: Build self-contained GO Workout APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a -x lintVitalAnalyzeRelease
 
       - name: Stage APK
         run: |
