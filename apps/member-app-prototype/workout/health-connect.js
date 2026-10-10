@@ -28,10 +28,15 @@
     localStorage.setItem(STATE_KEY,JSON.stringify(next));
   }
 
+  function parentBridgeAvailable(){
+    return new URLSearchParams(location.search).get('nativeBridge')==='1'&&window.parent&&window.parent!==window;
+  }
+
   function bridgeAvailable(){
     return Boolean(
       window.GoWorkoutNativeHealth?.request||
-      window.ReactNativeWebView?.postMessage
+      window.ReactNativeWebView?.postMessage||
+      parentBridgeAvailable()
     );
   }
 
@@ -48,6 +53,17 @@
         },20000);
         pending.set(requestId,{resolve,reject,timeout});
         window.ReactNativeWebView.postMessage(JSON.stringify({channel:CHANNEL,requestId,action,payload}));
+      });
+    }
+    if(parentBridgeAvailable()){
+      const requestId='health-'+Date.now()+'-'+(++messageCounter);
+      return new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>{
+          pending.delete(requestId);
+          reject(new Error('Health Connect request timed out.'));
+        },20000);
+        pending.set(requestId,{resolve,reject,timeout});
+        window.parent.postMessage({channel:CHANNEL,requestId,action,payload},'*');
       });
     }
     return Promise.reject(Object.assign(new Error('Health Connect requires the Android app.'),{code:'native_required'}));
