@@ -147,7 +147,9 @@ jobs:
 
       - name: Generate Android native project
         working-directory: apps/mobile
-        run: npx expo prebuild --platform android --no-install --clean
+        run: |
+          npx expo prebuild --platform android --no-install --clean
+          git restore -- apps/mobile/package.json
         env:
           EXPO_PUBLIC_APP_ENV: preview
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
