@@ -43,8 +43,8 @@
   function nextMilestone(g){
     const best=number(g.best),target=number(g.target);
     if(best>=target)return target;
-    if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?.25:1);
-    const step=g.unit==='miles'?.25:g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
+    if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?0.25:1);
+    const step=g.unit==='miles'?0.25:g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
     return rounded(Math.min(target,Math.max(best+step,best+1*(g.unit==='miles'?.25:1))),g.unit);
   }
   function recommendations(g){
@@ -99,7 +99,7 @@
       '<p>'+safe(t.instruction)+'</p><div class="goal-guidance"><strong>'+safe(d.label)+'</strong><span>'+safe(t.cue)+'</span></div>'+
       '<label>Exercise variation<input data-goal-field="variant" maxlength="100" value="'+safe(d.variant)+'" placeholder="Standard, assisted, elevated..."></label>'+
       (isDistance?'<label>Distance you completed ('+safe(d.unit)+')<input data-goal-field="result" type="number" min="0" max="10000" step="0.01" value="'+safe(d.result)+'"></label>'+
-        isTimer?'<div class="goal-measure"><span>HOLD TIMER</span><strong data-goal-clock>'+(d.startedAt?Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed):number(d.result))+'s</strong>'+
+        isTimer?'<div class="goal-measure"><span>HOLD TIMER</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'">'+(d.startedAt?Math.min(1800,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):number(d.result))+'s</strong>+
           '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>':
           '<div class="goal-measure"><span>COMPLETED REPS</span><strong>'+safe(d.result)+'</strong><div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div></div>')+
       '<p class="goal-footnote">Your results are self-recorded. Stop for pain, dizziness, or loss of control. You can retest later.</p>'+
@@ -175,7 +175,7 @@
     if(name==='count-up'||name==='count-down'){if(d.unit!=='reps')return result(false);d.result=Math.max(0,Math.min(100000,number(d.result)+(name==='count-up'?1:-1)));return result(true);}
     if(name==='assessment-done'){
       if(d.startedAt)return result(false,'Stop the timer before finishing.');
-      d.tested=true;d.stage='feedback';return result(true);
+      d.tested=true;d.testedAt=now();d.stage='feedback';return result(true);
     }
     if(name==='effort'){d.effort=node.dataset.effort;return result(true);}
     if(name==='feedback-next'){d.stage=d.mode==='discover'&&!d.goalId?'target':'review';
@@ -211,6 +211,7 @@
     return result(false);
   }
   function afterWorkout(training,entry){
+    if(!training.goalLab)return false;
     const s=ensure(training);let changed=false;
     for(const g of s.goals){
       if(!g.exerciseId||g.status!=='active'||g.unit!=='reps'||!entry?.exercises)continue;
@@ -234,6 +235,7 @@
     const start=clock.dataset.startedAt;
     if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
   }
+  if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
   window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,recommendations,nextMilestone,suggestTarget,template,pulse};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();
