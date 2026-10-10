@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feature/goworkout-android-app-v1
+      - main
+      - feature/goworkout-android-app-v1-main
     paths:
       - 'apps/mobile/app.config.js'
       - 'apps/mobile/plugins/with-goworkout-health-connect.js'
