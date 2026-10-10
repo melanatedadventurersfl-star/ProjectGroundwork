@@ -248,6 +248,45 @@
       (w.retests.length?'<p>Reassessment available for: '+safe(w.retests.join(', '))+'. You decide when to retest.</p>':'')+
       '</section>';
   }
+  // A single compact Goals panel lives below the primary daily workout card.
+  // Goal settings and strategy review stay on the dedicated Goals screen.
+  function homePanel(training,profile,plan){
+    const visible=goals(training);
+    if(!visible.length)return '';
+    const s=ensure(training),G=goalEngine(),needsReview=s.status==='active'&&!current(training,profile,plan);
+    const cards=visible.map(g=>{
+      const best=num(G?.assessmentBest?.(g)??g.baseline);
+      const target=Math.max(1,num(g.target));
+      const progress=Math.max(0,Math.min(100,Math.round(best/target*100)));
+      const unit=g.unit==='seconds'?'sec':g.unit==='miles'?'mi':'reps';
+      const milestone=num(G?.nextMilestone?.(g)??target);
+      const label=String(g.target)+' '+String(g.name||'Personal goal');
+      return '<div class="home-goal-item" role="group" aria-label="'+safe(g.name)+' goal">'+
+        '<div class="home-goal-line"><div class="home-goal-icon" aria-hidden="true">'+safe(g.icon||'🎯')+'</div>'+
+          '<div class="home-goal-labels"><strong>'+safe(label)+'</strong><span>'+safe(best)+' / '+safe(g.target)+' '+safe(unit)+'</span></div>'+
+          '<span class="home-goal-percent">'+progress+'%</span></div>'+
+        '<div class="home-goal-progress" role="progressbar" aria-label="'+safe(g.name)+' progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+progress+'"><i style="width:'+progress+'%"></i></div>'+
+        '<p class="home-goal-milestone">'+(g.status==='maintenance'?'Maintenance goal':progress===100?'Target verified in an assessment':'Next milestone: '+safe(milestone)+' '+safe(unit))+'</p>'+
+      '</div>';
+    }).join('');
+    const statusText=needsReview?'Your goals changed. Review your strategy before adding new training.'
+      :s.status==='active'&&s.mode==='integrate'?'Your approved goals can support your daily workouts.'
+      :s.status==='active'&&s.mode==='focused'?'Your goals have separate focus sessions when you choose them.'
+      :s.status==='active'&&s.mode==='track'?'Your goals are being tracked without changing workouts.'
+      :s.status==='paused'?'Goal integration is paused. Your workouts are unchanged.'
+      :'Connect your goals to your weekly workouts without losing your current program.';
+    const title=needsReview?'Your strategy needs a review':s.status==='active'?'Your training strategy':'Turn your goals into a plan';
+    const primary=needsReview?'REVIEW MY STRATEGY':s.status==='active'?'ADJUST TRAINING STRATEGY':'BUILD MY TRAINING STRATEGY';
+    return '<section class="home-goals-panel" aria-label="Personal goals and training strategy">'+
+      '<div class="home-goals-heading"><span>PERSONAL GOALS</span><small>'+visible.length+' SAVED</small></div>'+
+      '<div class="home-goals-track" aria-label="Your saved goals">'+cards+'</div>'+
+      (visible.length>1?'<small class="home-goal-swipe">Swipe to see more goals</small>':'')+
+      '<div class="home-goals-strategy"><div class="home-goals-strategy-icon" aria-hidden="true">↗</div><div>'+
+        '<strong>'+safe(title)+'</strong><p>'+safe(statusText)+'</p></div></div>'+
+      '<div class="home-goals-actions"><button type="button" class="home-goals-primary" data-goal-action="strategy-open">'+safe(primary)+' <span aria-hidden="true">→</span></button>'+
+        '<button type="button" class="home-goals-secondary" data-tab="goals">VIEW ALL GOALS</button></div>'+
+      '</section>';
+  }
   function teaser(training,profile,plan){
     if(!selected(training).length)return '';
     const s=ensure(training),needsReview=s.status==='active'&&!current(training,profile,plan);
@@ -294,5 +333,5 @@
     if(maintenance.length)html+='<div class="goal-strategy-review"><h3>Maintenance goals</h3>'+maintenance.map(g=>'<div class="goal-strategy-maintain"><span>'+safe(g.name)+'</span><button data-goal-action="strategy-reactivate" data-goal-id="'+safe(g.id)+'">TRAIN THIS GOAL AGAIN</button></div>').join('')+'</div>';
     return html+'</section>'+summary(training,history,profile,plan)+checkin(training,history);
   }
-  window.GoWorkoutGoalStrategy={ensure,signature,current,preview,action,applyDay,onWorkout,weekly,summary,teaser,panel,checkin,prescription};
+  window.GoWorkoutGoalStrategy={ensure,signature,current,preview,action,applyDay,onWorkout,weekly,summary,teaser,homePanel,panel,checkin,prescription};
 })();
