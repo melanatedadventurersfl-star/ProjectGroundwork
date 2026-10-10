@@ -127,4 +127,35 @@ assert.equal(S.current(training,profile,plan),false);
 assert.equal(S.action(training,'strategy-reactivate',{dataset:{goalId:push.id}},context).changed,true);
 assert.equal(push.status,'active');
 assert.ok(squat);
+
+// Home hierarchy regression: daily workout stays above the single Goals panel.
+// A compact, scrollable multi-goal card replaces both old competing banners.
+const fs=require('node:fs');
+const path=require('node:path');
+const appSource=fs.readFileSync(path.join(__dirname,'app.js'),'utf8');
+const homeStart=appSource.indexOf('function renderHome(){');
+const homeEnd=appSource.indexOf('\nfunction ',homeStart+1);
+const homeBody=appSource.slice(homeStart,homeEnd);
+const journey=homeBody.indexOf('renderHomeProgramJourney(context)');
+const daily=homeBody.indexOf("'<section class=\"home-state-hero");
+const unifiedGoals=homeBody.indexOf('GoWorkoutGoalStrategy.homePanel(');
+const weekly=homeBody.indexOf("'<section class=\"clean-section home-week-section");
+assert.ok(journey>=0&&journey<daily&&daily<unifiedGoals&&unifiedGoals<weekly,
+  'Weekly phase, daily workout, unified goals, then weekly stats must display in that order');
+assert.ok(!homeBody.includes("GoWorkoutGoalLab.shortcuts("),'No duplicate standalone Goals card above the daily workout');
+assert.ok(!homeBody.includes("GoWorkoutGoalStrategy.teaser("),'No duplicate light strategy banner');
+assert.match(appSource,/goalButton\.dataset\.goalAction==='strategy-open'&&currentTab!=='goals'/,
+  'Home strategy CTA must open the actual Goals strategy editor');
+const goalsHome=S.homePanel(training,profile,plan);
+assert.match(goalsHome,/home-goals-panel/);
+assert.match(goalsHome,/PERSONAL GOALS/);
+assert.match(goalsHome,/BUILD MY TRAINING STRATEGY|ADJUST TRAINING STRATEGY|REVIEW MY STRATEGY/);
+assert.match(goalsHome,/VIEW ALL GOALS/);
+assert.equal((goalsHome.match(/class="home-goal-item"/g)||[]).length,training.goalLab.goals.length,
+  'All saved goals remain accessible in horizontal scroll');
+const style=fs.readFileSync(path.join(__dirname,'goal-strategy.css'),'utf8');
+assert.match(style,/\.home-goals-panel\{/);
+assert.match(style,/\.home-goals-primary/);
+assert.match(style,/\.home-goals-track\{[^}]*overflow-x:auto/);
+
 console.log('GO Workout Goal-to-Training V2: approval, integration, protection, progress and review checks passed.');
