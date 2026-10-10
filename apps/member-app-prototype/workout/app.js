@@ -5373,6 +5373,7 @@ function createWorkout(day,meta={}){
   const now=new Date().toISOString();
   const workout={
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
+    goalFocused:Boolean(day.goalFocused),
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
     readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],sharedPlanLocked:Boolean(meta.sharedPlanLocked),
@@ -5389,9 +5390,9 @@ function createWorkout(day,meta={}){
     revision:1,processedActions:{},finalizing:false,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
-      const adaptive=adaptivePrescription(ex);
+      const adaptive=day.goalFocused?null:adaptivePrescription(ex);
       let suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
-      const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
+      const suggestedReps=day.goalFocused?(ex.startReps||recommendedRepCount(ex.reps)):(adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps));
       if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
       if(day.readinessLoadFactor<1&&isWeightedMode(ex.loadMode)&&suggestedWeight)suggestedWeight=roundTo(suggestedWeight*day.readinessLoadFactor,ex.increment||5);
       const suggestedRest=meta.sharedPlanLocked?Math.max(30,Math.min(90,num(ex.rest)||45)):Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
@@ -5406,7 +5407,7 @@ function createWorkout(day,meta={}){
       };
     })
   };
-  workout.exercises=workout.exercises.map(ex=>applyLearnerTargetInfluence(ex,workout));
+  if(!day.goalFocused)workout.exercises=workout.exercises.map(ex=>applyLearnerTargetInfluence(ex,workout));
   registerWorkoutLearningPredictions(workout);
   return workout;
 }
@@ -11071,18 +11072,19 @@ function startGoalFocusWorkout(){
   if(!window.GoWorkoutGoalLab||!store.profile||!store.plan)return;
   const day=window.GoWorkoutGoalLab.buildGoalDay(ensureTrainingProgram(),catalog,store.profile);
   if(!day){toast('Complete a compatible exercise baseline before starting a goal workout.');return;}
-  const w=createWorkout(day,{scheduledDate:dateKey(),programContext:programContext()});
-  w.goalFocused=true;
-  // Goal sessions preserve their derived, baseline-based prescriptions instead of
-  // allowing unrelated general-program progression to replace each target.
-  for(const ex of w.exercises){
-    const planned=day.exercises.find(item=>item.id===ex.id);
-    if(!planned)continue;
-    ex.suggestedReps=planned.startReps;
-    ex.sets.forEach(set=>{set.reps=String(planned.startReps);});
-  }
-  store.activeWorkout=w;
-  saveStore();setTab('workout');
+  // Route personalized sessions through the same readiness and equipment
+  // assessment as regular workouts. Keep the existing four-week plan intact.
+  const setupKey=normalSessionSetupKey();
+  const family=readinessLocationFamily(setupKey);
+  const remembered=store.sessionPreferences?.locations?.[family];
+  const rememberedUsable=remembered?.key===setupKey&&(family!=='gym'||remembered.preferenceVersion===2);
+  const setupContext=rememberedUsable?clone(remembered):buildSessionSetup(setupKey);
+  readinessContext={
+    dayId:day.id,scheduledDate:dateKey(),day,
+    preferredSetup:setupKey,activeSetupKey:setupKey,
+    setupContext,setupDrafts:{[family]:clone(setupContext)}
+  };
+  render();
 }
 function handleClick(event){
   const goalButton=event.target.closest('[data-goal-action]');
