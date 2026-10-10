@@ -39,32 +39,25 @@ function withHealthManifest(config){
     }
 
     const application=manifest.application?.[0];
-    const activities=application?.activity||[];
-    const mainActivity=activities.find(activity=>
-      (activity['intent-filter']||[]).some(filter=>
-        (filter.action||[]).some(action=>action?.$?.['android:name']==='android.intent.action.MAIN')
-      )
-    );
-    if(mainActivity){
-      mainActivity['intent-filter']=mainActivity['intent-filter']||[];
-      const hasRationale=mainActivity['intent-filter'].some(filter=>
-        (filter.action||[]).some(action=>action?.$?.['android:name']==='androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE')
-      );
-      if(!hasRationale){
-        mainActivity['intent-filter'].push({
-          action:[{$:{'android:name':'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE'}}]
+    if(application){
+      const rationaleActivity='com.melanatedadventurers.app.health.PermissionsRationaleActivity';
+      application.activity=application.activity||[];
+      if(!application.activity.some(activity=>activity?.$?.['android:name']===rationaleActivity)){
+        application.activity.push({
+          $:{'android:name':rationaleActivity,'android:exported':'true'},
+          'intent-filter':[{
+            action:[{$:{'android:name':'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE'}}]
+          }]
         });
       }
-
       application['activity-alias']=application['activity-alias']||[];
       const aliasName='.ViewPermissionUsageActivity';
-      const hasUsageAlias=application['activity-alias'].some(alias=>alias?.$?.['android:name']===aliasName);
-      if(!hasUsageAlias){
+      if(!application['activity-alias'].some(alias=>alias?.$?.['android:name']===aliasName)){
         application['activity-alias'].push({
           $:{
             'android:name':aliasName,
             'android:exported':'true',
-            'android:targetActivity':mainActivity?.$?.['android:name']||'.MainActivity',
+            'android:targetActivity':rationaleActivity,
             'android:permission':'android.permission.START_VIEW_PERMISSION_USAGE'
           },
           'intent-filter':[{
@@ -117,6 +110,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -148,7 +142,7 @@ class GoWorkoutHealthConnectModule(
   }
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-  private val permissionContract = PermissionController.createRequestPermissionResultContract(PROVIDER_PACKAGE)
+  private val permissionContract = PermissionController.createRequestPermissionResultContract()
   private var permissionPromise: Promise? = null
 
   private val permissionListener: ActivityEventListener = object : BaseActivityEventListener() {
@@ -172,11 +166,11 @@ class GoWorkoutHealthConnectModule(
   override fun getName() = "GoWorkoutHealthConnect"
 
   private fun sdkAvailable(): Boolean {
-    return HealthConnectClient.getSdkStatus(reactContext, PROVIDER_PACKAGE) == HealthConnectClient.SDK_AVAILABLE
+    return HealthConnectClient.getSdkStatus(reactContext) == HealthConnectClient.SDK_AVAILABLE
   }
 
   private fun client(): HealthConnectClient {
-    return HealthConnectClient.getOrCreate(reactContext, PROVIDER_PACKAGE)
+    return HealthConnectClient.getOrCreate(reactContext)
   }
 
   private fun requestedPermissions(toggles: ReadableMap?): Set<String> {
@@ -281,7 +275,8 @@ class GoWorkoutHealthConnectModule(
         val response = health.readRecords(
           ReadRecordsRequest(
             recordType = ExerciseSessionRecord::class,
-            timeRangeFilter = TimeRangeFilter.between(start, end)
+            timeRangeFilter = TimeRangeFilter.between(start, end),
+            dataOriginFilter = setOf(DataOrigin(SAMSUNG_HEALTH_PACKAGE))
           )
         )
         val records = Arguments.createArray()
@@ -363,6 +358,24 @@ class GoWorkoutHealthConnectModule(
 }
 `;
 
+const rationaleSource=String.raw`package com.melanatedadventurers.app.health
+
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+
+class PermissionsRationaleActivity : Activity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    val privacyIntent = Intent(Intent.ACTION_VIEW, Uri.parse("melanatedadventurers://privacy-policy")).apply {
+      setPackage(packageName)
+    }
+    startActivity(privacyIntent)
+    finish()
+  }
+}
+`;
 const packageSource=String.raw`package com.melanatedadventurers.app.health
 
 import com.facebook.react.ReactPackage
@@ -388,6 +401,7 @@ function withHealthSources(config){
     fs.mkdirSync(sourceDir,{recursive:true});
     fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectModule.kt'),moduleSource);
     fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectPackage.kt'),packageSource);
+    fs.writeFileSync(path.join(sourceDir,'PermissionsRationaleActivity.kt'),rationaleSource);
     return cfg;
   }]);
 }
