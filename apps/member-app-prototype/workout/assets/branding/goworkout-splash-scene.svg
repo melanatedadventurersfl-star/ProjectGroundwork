@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Sunlit training studio with weight racks">
+<defs>
+  <linearGradient id="room" x1="0" y1="0" x2=".83" y2="1">
+    <stop stop-color="#173225"/><stop offset=".42" stop-color="#112a20"/><stop offset="1" stop-color="#040e0c"/>
+  </linearGradient>
+  <linearGradient id="sun" x1="0" y1="0" x2="1" y2=".8">
+    <stop stop-color="#fff1b2"/><stop offset=".23" stop-color="#e0b76b"/><stop offset=".7" stop-color="#846c43"/><stop offset="1" stop-color="#263b2e"/>
+  </linearGradient>
+  <linearGradient id="floor" x1=".15" y1="0" x2=".7" y2="1">
+    <stop stop-color="#344439"/><stop offset=".43" stop-color="#1d2d24"/><stop offset="1" stop-color="#07110e"/>
+  </linearGradient>
+  <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+    <stop stop-color="#04100b" stop-opacity=".52"/><stop offset=".27" stop-color="#04100b" stop-opacity=".11"/><stop offset=".7" stop-color="#04100b" stop-opacity=".32"/><stop offset="1" stop-color="#04100b" stop-opacity=".78"/>
+  </linearGradient>
+  <radialGradient id="glow"><stop stop-color="#e4b96d" stop-opacity=".42"/><stop offset="1" stop-color="#e4b96d" stop-opacity="0"/></radialGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#d1b170" stop-opacity=".17"/><stop offset="1" stop-color="#274332" stop-opacity=".08"/>
+  </linearGradient>
+  <pattern id="grain" width="88" height="94" patternUnits="userSpaceOnUse"><circle cx="9" cy="12" r="1" fill="#c5d4bc" opacity=".09"/><circle cx="37" cy="63" r="1.2" fill="#d6b178" opacity=".055"/><circle cx="79" cy="40" r=".8" fill="#b3bcae" opacity=".08"/></pattern>
+</defs>
+<!-- Full bleed architectural scene. Vector artwork remains crisp on high-density displays. -->
+<rect width="1080" height="1920" fill="url(#room)"/>
+<path d="M0 130 L1080 60 1080 1200 0 1290Z" fill="#10251c"/>
+<path d="M0 0 H1080 V220 L0 345Z" fill="#0b1b15" opacity=".8"/>
+<path d="M0 245 L700 170 680 1200 0 1350Z" fill="#26392b"/>
+<path d="M32 310 L660 251 615 1221 0 1318Z" fill="url(#sun)" opacity=".94"/>
+<path d="M18 310 L650 246 610 1200 0 1312Z" fill="url(#glass)" opacity=".65"/>
+<!-- Towering glass panes, sunlit on the left. -->
+<g stroke="#11241c" fill="none" stroke-linejoin="round">
+  <path d="M35 293 L-24 1322 M205 281 L176 1280 M388 266 L388 1258 M566 250 L582 1230" stroke-width="27"/>
+  <path d="M0 628 L648 558 M0 1025 L627 955" stroke-width="24"/>
+  <path d="M-10 324 L648 252 L610 1228 -15 1350Z" stroke-width="27"/>
+</g>
+<path d="M23 605 L628 535 623 575 10 651Z" fill="#fff0b5" opacity=".11"/>
+<path d="M0 900 L624 840 616 876 0 939Z" fill="#f8d797" opacity=".12"/>
+<!-- shafts of daylight -->
+<path d="M80 334 L280 318 888 1740 600 1670Z" fill="#edbb74" opacity=".07"/>
+<path d="M400 270 L550 254 1035 1710 874 1700Z" fill="#f3d19a" opacity=".045"/>
+<ellipse cx="205" cy="730" rx="425" ry="670" fill="url(#glow)"/>
+<!-- Industrial ceiling beams and long lights -->
+<path d="M0 180 L1080 90 V170 L0 276Z" fill="#0c1e16"/>
+<path d="M650 194 L1080 128 V190 L664 249Z" fill="#07110e"/>
+<g transform="rotate(-26 670 310)">
+ <rect x="656" y="140" width="13" height="385" rx="5" fill="#cfaa5b"/>
+ <rect x="659" y="154" width="7" height="350" rx="3" fill="#ffe4a2"/>
+</g>
+<g transform="rotate(-23 965 275)">
+ <rect x="951" y="175" width="13" height="310" rx="5" fill="#c8a25b"/>
+ <rect x="954" y="187" width="7" height="275" rx="3" fill="#ffdf96"/>
+</g>
+<!-- Back wall and mountains motif -->
+<path d="M645 272 L1080 203 V1240 L662 1182Z" fill="#10291d" opacity=".82"/>
+<path d="M698 825 L790 730 853 800 919 721 1049 856" fill="none" stroke="#395344" stroke-width="18" opacity=".65"/>
+<path d="M780 807 L835 754 879 806" fill="none" stroke="#476552" stroke-width="10" opacity=".48"/>
+<!-- Pullup rigs and hanging rings -->
+<g stroke="#07120f" stroke-width="23" fill="none">
+ <path d="M697 240 L697 1420 M935 199 L935 1455 M657 432 L1080 405"/>
+</g>
+<g stroke="#556b55" stroke-width="9" fill="none" opacity=".7">
+ <path d="M760 437 V690 M840 429 V675"/>
+ <ellipse cx="760" cy="744" rx="30" ry="38"/><ellipse cx="840" cy="730" rx="30" ry="38"/>
+</g>
+<!-- Weight stand and barbell plates on the right -->
+<g>
+ <path d="M1034 648 V1690" stroke="#080f0d" stroke-width="40"/>
+ <path d="M929 980 H1080 M930 1222 H1080 M910 1458 H1080" stroke="#35473a" stroke-width="22"/>
+ <g fill="#091410" stroke="#314335" stroke-width="13">
+  <circle cx="1005" cy="931" r="103"/><circle cx="1020" cy="1214" r="124"/><circle cx="1028" cy="1520" r="96"/>
+ </g>
+ <g fill="none" stroke="#465b47" stroke-width="7">
+  <circle cx="1005" cy="931" r="71"/><circle cx="1020" cy="1214" r="85"/><circle cx="1028" cy="1520" r="66"/>
+ </g>
+</g>
+<!-- Dumbbell storage and bench at lower right -->
+<path d="M596 1308 H1025 L1075 1340 H620Z" fill="#213b2b"/>
+<path d="M634 1330 L670 1655 M1035 1330 L998 1650" stroke="#0b1711" stroke-width="26"/>
+<g fill="#101b16" stroke="#395547" stroke-width="4">
+ <rect x="654" y="1260" width="58" height="105" rx="20"/>
+ <rect x="732" y="1256" width="58" height="109" rx="20"/>
+ <rect x="815" y="1247" width="58" height="118" rx="20"/>
+ <rect x="897" y="1243" width="58" height="123" rx="20"/>
+</g>
+<path d="M355 1502 L768 1456 809 1486 391 1540Z" fill="#15271d" stroke="#4b614c" stroke-width="7"/>
+<path d="M411 1523 L445 1778 M737 1502 L720 1752" stroke="#0a1510" stroke-width="24"/>
+<!-- Indoor plants, silhouettes -->
+<g fill="#183829" opacity=".84">
+ <path d="M44 1170 Q-18 885 111 820 Q80 1040 44 1170"/>
+ <path d="M67 1176 Q90 859 249 875 Q134 1046 67 1176"/>
+ <path d="M63 1176 Q-30 1040 -5 938 Q92 1057 63 1176"/>
+ <path d="M120 1162 Q188 1000 294 1019 Q208 1100 120 1162"/>
+ <path d="M49 1181 Q38 970 164 940 Q124 1095 49 1181"/>
+</g>
+<path d="M32 1165 H196 L169 1350 H55Z" fill="#101f18"/>
+<path d="M48 1190 H183" stroke="#3b4f3d" stroke-width="10"/>
+<!-- Perspective floor, patterned plank highlights -->
+<path d="M0 1250 L1080 1125 V1920 H0Z" fill="url(#floor)"/>
+<g stroke="#65745e" stroke-width="3" opacity=".28">
+ <path d="M0 1430 L1080 1335 M0 1630 L1080 1595 M0 1835 L1080 1815"/>
+ <path d="M390 1240 L-65 1920 M568 1210 L405 1920 M760 1190 L835 1920"/>
+</g>
+<path d="M0 1373 L460 1290 782 1920 H0Z" fill="#edcb82" opacity=".035"/>
+<ellipse cx="430" cy="1540" rx="460" ry="170" fill="url(#glow)" opacity=".52"/>
+<!-- Foreground free weights -->
+<g fill="#0b1711" stroke="#374c3b" stroke-width="9">
+ <ellipse cx="90" cy="1818" rx="91" ry="67"/><path d="M13 1788 L13 1870 174 1855 170 1789Z"/>
+ <ellipse cx="130" cy="1817" rx="36" ry="27"/>
+ <ellipse cx="975" cy="1813" rx="126" ry="74"/>
+ <ellipse cx="930" cy="1810" rx="47" ry="40"/>
+</g>
+<rect width="1080" height="1920" fill="url(#vignette)"/>
+<rect width="1080" height="1920" fill="url(#grain)"/>
+</svg>
