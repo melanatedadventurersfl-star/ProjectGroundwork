@@ -1,6 +1,6 @@
 # Go Melanated Privacy Policy
 
-**Effective: August 21, 2026**
+**Effective: October 10, 2026**
 
 Go Melanated is an outdoor community and adventure application. This policy explains how information is handled when people use the mobile app and related services.
 
@@ -15,6 +15,10 @@ We use information to operate accounts and profiles, provide nearby outdoor disc
 ## Location
 
 Location access is optional. When enabled, location may be used for nearby Adventures, local weather, and location-aware discovery. Location permission can be changed at any time through device settings.
+
+## Health and fitness data
+
+If a person connects Go Workout to Android Health Connect, Go Workout may read workout categories that person approves, including exercise sessions, heart rate, calories, distance, and steps. Connected health data is used to add supported workout activity and metrics to private Workout history. Go Workout does not share connected health metrics with workout partners. Health Connect access can be revoked at any time from Connected Health or device settings.
 
 ## Photos and user content
 
