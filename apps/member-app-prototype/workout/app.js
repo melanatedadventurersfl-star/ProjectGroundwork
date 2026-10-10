@@ -11064,9 +11064,28 @@ function updateTimers(){
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining)&&!sharedFollower)advanceAfterRest(w.restToken);
 }
 
+function startGoalFocusWorkout(){
+  if(store.activeWorkout){setTab('workout');toast('Finish or resume your current workout first.');return;}
+  if(!window.GoWorkoutGoalLab||!store.profile||!store.plan)return;
+  const day=window.GoWorkoutGoalLab.buildGoalDay(ensureTrainingProgram(),catalog,store.profile);
+  if(!day){toast('Complete a compatible exercise baseline before starting a goal workout.');return;}
+  const w=createWorkout(day,{scheduledDate:dateKey(),programContext:programContext()});
+  w.goalFocused=true;
+  // Goal sessions preserve their derived, baseline-based prescriptions instead of
+  // allowing unrelated general-program progression to replace each target.
+  for(const ex of w.exercises){
+    const planned=day.exercises.find(item=>item.id===ex.id);
+    if(!planned)continue;
+    ex.suggestedReps=planned.startReps;
+    ex.sets.forEach(set=>{set.reps=String(planned.startReps);});
+  }
+  store.activeWorkout=w;
+  saveStore();setTab('workout');
+}
 function handleClick(event){
   const goalButton=event.target.closest('[data-goal-action]');
   if(goalButton&&window.GoWorkoutGoalLab){
+    if(goalButton.dataset.goalAction==='start-session'){startGoalFocusWorkout();return;}
     const result=window.GoWorkoutGoalLab.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton);
     if(result.changed){saveStore();render();}
     if(result.message)toast(result.message);
