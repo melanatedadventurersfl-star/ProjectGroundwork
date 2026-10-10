@@ -113,7 +113,7 @@ let store = loadStore();
 let clearedLegacyActiveWorkout = false;
 if(store.activeWorkout){const bootRecovery=validateActiveWorkoutCandidate(store.activeWorkout,store.history);if(bootRecovery.valid)store.activeWorkout=bootRecovery.workout;else{store.activeWorkout=null;clearedLegacyActiveWorkout=true;localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}}
 const restoredUiState=loadUiState();
-const allowedTabs=new Set(['home','train','together','progress','profile','profile-edit','catalog','workout','history','summary']);
+const allowedTabs=new Set(['home','train','together','progress','profile','profile-edit','catalog','workout','history','summary','goals']);
 let restoredTab=allowedTabs.has(restoredUiState.currentTab)?restoredUiState.currentTab:'';
 if(!store.profile||!store.plan)restoredTab='profile-edit';
 else if(restoredTab==='workout'&&!store.activeWorkout)restoredTab='home';
@@ -4815,11 +4815,12 @@ function saveProfileFromForm(form){
     return false;
   }
   const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
+  const retainedGoalLab=store.trainingProgram?.goalLab?clone(store.trainingProgram.goalLab):null;
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
   const programStartedAt=store.trainingProgram?.programStartedAt||plan.createdAt;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,programStartedAt};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,goalLab:retainedGoalLab,programStartedAt};
   refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
@@ -4846,10 +4847,11 @@ function editProfile(){
 function regeneratePlan(){
   if (!store.profile || store.activeWorkout) return;
   const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
+  const retainedGoalLab=store.trainingProgram?.goalLab?clone(store.trainingProgram.goalLab):null;
   const programStartedAt=store.trainingProgram?.programStartedAt||store.plan?.createdAt||new Date().toISOString();
   store.plan=generatePlan(store.profile);
   store.plan.createdAt=programStartedAt;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,programStartedAt};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,goalLab:retainedGoalLab,programStartedAt};
   refreshEngineProgram(store.profile);
   saveStore();
   toast(currentEngineProgram()?'Plan rebuilt with Program Engine '+currentEngineProgram().engineVersion+'.':'Plan rebuilt from your profile.');
@@ -5371,6 +5373,7 @@ function createWorkout(day,meta={}){
   const now=new Date().toISOString();
   const workout={
     schemaVersion:ACTIVE_WORKOUT_SCHEMA,
+    goalFocused:Boolean(day.goalFocused),
     id:uid('workout'),planId:store.plan.id,planDayId:day.id,routineName:day.name,focus:day.focus,
     scheduledDate:meta.scheduledDate||dateKey(),actualStartDate:dateKey(),
     readiness:meta.readiness||null,trainingContext:meta.trainingContext||day.trainingContext||null,trainingStructure:clone(day.trainingStructure||null),programContext:meta.programContext||programContext(),adaptationNotes:meta.adaptationNotes||day.adaptationNotes||[],sharedPlanLocked:Boolean(meta.sharedPlanLocked),
@@ -5387,9 +5390,9 @@ function createWorkout(day,meta={}){
     revision:1,processedActions:{},finalizing:false,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
-      const adaptive=adaptivePrescription(ex);
+      const adaptive=day.goalFocused?null:adaptivePrescription(ex);
       let suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
-      const suggestedReps=adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps);
+      const suggestedReps=day.goalFocused?(ex.startReps||recommendedRepCount(ex.reps)):(adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps));
       if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
       if(day.readinessLoadFactor<1&&isWeightedMode(ex.loadMode)&&suggestedWeight)suggestedWeight=roundTo(suggestedWeight*day.readinessLoadFactor,ex.increment||5);
       const suggestedRest=meta.sharedPlanLocked?Math.max(30,Math.min(90,num(ex.rest)||45)):Math.max(30,Math.min(90,(adaptive?.rest || ex.rest || 45)+(day.readinessRestBonus||0)));
@@ -5404,7 +5407,7 @@ function createWorkout(day,meta={}){
       };
     })
   };
-  workout.exercises=workout.exercises.map(ex=>applyLearnerTargetInfluence(ex,workout));
+  if(!day.goalFocused)workout.exercises=workout.exercises.map(ex=>applyLearnerTargetInfluence(ex,workout));
   registerWorkoutLearningPredictions(workout);
   return workout;
 }
@@ -6715,6 +6718,7 @@ function finalizeWorkout(status='complete'){
   if(entry.engineBacked){ingestEngineWorkout(entry);maybeCreateNextEngineBlock(entry);}
   ['pendingPosition','restEndsAt','restPausedRemaining','restToken','lastProgressionResult','preSetStartedAt','preSetSetupSeconds','preSetCountdownSeconds','preSetIsNewExercise','preSetCoachPending','preSetManualStart','preSetFinishing','pausedAt','isPaused','timedSetStartedAt','timedSetDuration','timedSetEndsAt','timedSetPausedRemaining','timedStageSwitchStartedAt','timedStageSwitchEndsAt','sideSwitchStartedAt','sideSwitchEndsAt','sideSwitchDuration','sideSwitchPausedRemaining','returnPhase'].forEach(key=>delete entry[key]);
   if(store.history.some(item=>item.id===entry.id)){store.activeWorkout=null;saveStore();currentTab='summary';render();return;}
+  if(window.GoWorkoutGoalLab)window.GoWorkoutGoalLab.afterWorkout(ensureTrainingProgram(),entry);
   store.history.unshift(entry);store.history=store.history.slice(0,100);store.lastSummaryId=entry.id;
   if(entry.sharedSession){
     const shared=sharedTrainingState();
@@ -7622,6 +7626,7 @@ function renderTrain(){
   ensureTrainProgramEngineCurrent();
   return '<div class="clean-page train-reframed train-reframed-v2">'+
     '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program, in motion.</h2><p>See what is next, what changed, and why each week is different.</p></div></div>'+
+    (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'train'):'')+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     renderTrainTabs()+
     (trainView==='program'?renderTrainProgramView():trainView==='exercises'?renderTrainExercisesView():renderTrainWeekView())+
@@ -8666,6 +8671,7 @@ function renderProfileHub(){
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
       '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>REVISIT TRAINING SETUP</span><strong>Update goals, schedule, equipment, restrictions and preferences</strong></div><em>›</em></button>'+
+      '<button data-tab="goals"><i class="settings-icon" aria-hidden="true">◎</i><div><span>PERSONAL GOALS</span><strong>Discover your baseline, measure progress, and train toward a target</strong></div><em>›</em></button>'+
       '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -9299,6 +9305,7 @@ function renderHome(){
   return '<div class="clean-page home-clean home-contextual home-contextual-v3 home-contextual-v4">'+
     '<section class="home-intro-v2 home-intro-v4"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
     renderHomeProgramJourney(context)+
+    (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'home'):'')+
     '<section class="home-state-hero home-state-hero-v4 state-'+esc(x.state)+'">'+
       renderHomeHeroBackdrop(x)+
       '<div class="home-hero-content-v4">'+
@@ -10807,6 +10814,7 @@ function renderProgress(){
   const selected=(progressExerciseId?records.find(item=>item.exerciseId===progressExerciseId):null)||trends[0]||null;
   if(selected&&!progressExerciseId)progressExerciseId=selected.exerciseId;
   return '<div class="clean-page progress-clean"><div class="clean-page-head"><div><p class="eyebrow">PROGRESS</p><h2>Your training story.</h2><p>See what changed, where you started, and which movements are moving forward.</p></div><button class="button secondary" data-action="history">HISTORY</button></div>'+
+    (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'progress'):'')+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
     renderAdaptiveLearningOverview()+
     renderLearnerDiagnostics()+
@@ -10859,7 +10867,7 @@ function setTab(tab){
   }
 }
 function syncNav(){
-  const navTab=currentTab==='workout'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
+  const navTab=currentTab==='workout'?'train':currentTab==='goals'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===navTab));
   const nav=document.querySelector('.bottom-nav');if(nav)nav.classList.toggle('nav-disabled',!store.profile);
 }
@@ -10906,6 +10914,7 @@ function render(){
   else if(currentTab==='workout')app.innerHTML=renderWorkout();
   else if(currentTab==='history')app.innerHTML=renderHistory();
   else if(currentTab==='progress')app.innerHTML=renderProgress();
+  else if(currentTab==='goals')app.innerHTML=window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.render(ensureTrainingProgram()):renderTrain();
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
   if(exerciseDetailId) app.insertAdjacentHTML('beforeend',renderExerciseModal());
@@ -11058,7 +11067,35 @@ function updateTimers(){
   if(remaining<=0&&!Number.isFinite(w.restPausedRemaining)&&!sharedFollower)advanceAfterRest(w.restToken);
 }
 
+function startGoalFocusWorkout(){
+  if(store.activeWorkout){setTab('workout');toast('Finish or resume your current workout first.');return;}
+  if(!window.GoWorkoutGoalLab||!store.profile||!store.plan)return;
+  const day=window.GoWorkoutGoalLab.buildGoalDay(ensureTrainingProgram(),catalog,store.profile);
+  if(!day){toast('Complete a compatible exercise baseline before starting a goal workout.');return;}
+  // Route personalized sessions through the same readiness and equipment
+  // assessment as regular workouts. Keep the existing four-week plan intact.
+  const setupKey=normalSessionSetupKey();
+  const family=readinessLocationFamily(setupKey);
+  const remembered=store.sessionPreferences?.locations?.[family];
+  const rememberedUsable=remembered?.key===setupKey&&(family!=='gym'||remembered.preferenceVersion===2);
+  const setupContext=rememberedUsable?clone(remembered):buildSessionSetup(setupKey);
+  readinessContext={
+    dayId:day.id,scheduledDate:dateKey(),day,
+    preferredSetup:setupKey,activeSetupKey:setupKey,
+    setupContext,setupDrafts:{[family]:clone(setupContext)}
+  };
+  render();
+}
 function handleClick(event){
+  const goalButton=event.target.closest('[data-goal-action]');
+  if(goalButton&&window.GoWorkoutGoalLab){
+    if(goalButton.dataset.goalAction==='start-session'){startGoalFocusWorkout();return;}
+    const result=window.GoWorkoutGoalLab.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton);
+    if(result.changed){saveStore();render();}
+    if(result.message)toast(result.message);
+    if(result.changed&&goalButton.dataset.goalAction==='back-home')setTab('home');
+    return;
+  }
   const avatarClose=event.target.closest('[data-action="close-avatar-picker"]');
   if(avatarClose){
     const inside=event.target.closest('[data-avatar-picker-panel]');
@@ -11380,6 +11417,9 @@ function handleClick(event){
   else if(a==='finish')finishWorkout(false);
   else if(a==='discard')discardWorkout();
 }
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'&&window.GoWorkoutGoalLab?.pauseTimer(ensureTrainingProgram()))saveStore();
+});
 document.addEventListener('click',handleClick);
 document.addEventListener('load',event=>{
   const img=event.target?.closest?.('img');
@@ -11433,6 +11473,11 @@ document.addEventListener('input',event=>{
   }
 });
 document.addEventListener('change',event=>{
+  const goalInput=event.target.closest('[data-goal-field]');
+  if(goalInput&&window.GoWorkoutGoalLab){
+    if(window.GoWorkoutGoalLab.field(ensureTrainingProgram(),goalInput.dataset.goalField,goalInput.value))saveStore();
+    return;
+  }
   if(event.target.id==='shared-saved-partner'){
     const partner=savedSharedPartners().find(item=>item.userId===String(event.target.value||''))||null;
     const nameInput=document.querySelector('#shared-partner-name');
