@@ -61,6 +61,9 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
 
+      - name: Install GO Workout DOM runtime
+        run: npm install --workspace @ma/mobile --no-save react-dom@19.2.3 react-native-web@0.21.0
+
       - name: Generate standalone GO Workout Android project
         working-directory: apps/mobile
         run: npx expo prebuild --platform android --no-install --clean
@@ -79,7 +82,7 @@ jobs:
       - name: Stage APK
         run: |
           mkdir -p /tmp/goworkout-apk
-          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk /tmp/goworkout-apk/GO-Workout-Android-Preview.apk
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk /tmp/goworkout-apk/GO-Workout-Android-Preview.apk
 
       - name: Upload GO Workout APK
         uses: actions/upload-artifact@v4
