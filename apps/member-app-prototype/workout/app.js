@@ -9323,8 +9323,6 @@ function renderHome(){
   return '<div class="clean-page home-clean home-contextual home-contextual-v3 home-contextual-v4">'+
     '<section class="home-intro-v2 home-intro-v4"><div class="home-intro-copy"><p class="eyebrow">'+esc(homeDateLabel())+'</p><h2>'+greeting+'</h2></div><div class="home-phase-chip"><span>'+esc(blockPhaseLabel(context.blockWeek))+'</span><small>BLOCK '+context.blockNumber+' · WEEK '+context.blockWeek+' OF 4</small></div></section>'+
     renderHomeProgramJourney(context)+
-    (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'home'):'')+
-    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.teaser(ensureTrainingProgram(),p,plan):'')+
     '<section class="home-state-hero home-state-hero-v4 state-'+esc(x.state)+'">'+
       renderHomeHeroBackdrop(x)+
       '<div class="home-hero-content-v4">'+
@@ -9336,6 +9334,7 @@ function renderHome(){
       '</div>'+
       (x.state==='active'?'<div class="home-state-secondary home-state-secondary-v4"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
+    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.homePanel(ensureTrainingProgram(),p,plan):'')+
     '<section class="clean-section home-week-section home-week-section-v3 home-week-section-v4"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
       renderHomeWeekPulse(schedule)+
@@ -11123,7 +11122,11 @@ function handleClick(event){
         profile:store.profile,plan:store.plan,catalog,history:store.history
       }):
       window.GoWorkoutGoalLab.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton);
-    if(result?.changed){saveStore();render();}
+    if(result?.changed){
+      saveStore();
+      if(isStrategy&&goalButton.dataset.goalAction==='strategy-open'&&currentTab!=='goals')setTab('goals');
+      else render();
+    }
     if(result?.message)toast(result.message);
     if(result?.changed&&goalButton.dataset.goalAction==='back-home')setTab('home');
     return;
