@@ -21,7 +21,7 @@
 .goal-track{height:9px;background:#dfebe3;border-radius:999px;overflow:hidden;margin:13px 0}
 .goal-track i{display:block;height:100%;background:linear-gradient(90deg,#438e67,#e0b14e);border-radius:999px;transition:width .25s}
 .goal-card>small{color:#607a6b;font-size:.75rem;line-height:1.45}
-.goal-empty,.goal-how,.goal-wizard,.goal-detail{background:#fff;border:1px solid #dce6df;border-radius:20px;padding:clamp(18px,4vw,32px);margin-top:18px}
+.goal-empty,.goal-how,.goal-wizard,.goal-detail{background:#f9fbf8;color:#17392b;border:1px solid #dce6df;border-radius:20px;padding:clamp(18px,4vw,32px);margin-top:18px}
 .goal-empty p{color:#647d6c}.goal-how div{font-size:.82rem;line-height:2;color:#4b6f5d;word-spacing:5px}.goal-how b{color:#ab8a45}
 .goal-wizard,.goal-detail{max-width:740px;margin:0 auto}.goal-wizard h2,.goal-detail h2{font-size:clamp(1.5rem,4vw,2.35rem);line-height:1.15;margin:12px 0}.goal-wizard>p,.goal-detail>p{line-height:1.6;color:#526d5e}
 .goal-template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:20px 0}
@@ -45,3 +45,15 @@
 .goal-detail-section{border-top:1px solid #e0ebe3;margin-top:24px;padding-top:20px}.goal-detail-section h3{margin:0 0 10px}.goal-detail-section p,.goal-detail-section>small{color:#587261;line-height:1.55}
 .goal-history{display:grid;gap:8px}.goal-history>div{display:flex;align-items:center;gap:13px;padding:11px;border-radius:10px;background:#f3f7f4}.goal-history time{font-size:.76rem;color:#678472;min-width:90px}.goal-history b{font-size:.9rem}.goal-history small{font-size:.73rem;color:#577561;margin-left:auto}
 @media(max-width:650px){.goal-shortcut{flex-direction:column;align-items:flex-start}.goal-shortcut .goal-primary{width:100%}.goal-template-grid{gap:8px}.goal-template{padding:11px;gap:7px;min-height:70px}.goal-template span{font-size:1.2rem}.goal-template strong{font-size:.78rem}.goal-choices{grid-template-columns:1fr}.goal-result-pair strong{font-size:1.35rem}.goal-history>div{flex-wrap:wrap}.goal-history small{margin-left:0}.goal-wizard-actions button{flex:1}}
+
+/* The global Workout shell uses light text on dark panels. Goal detail and
+ * discovery cards are intentionally light, so give them an explicit ink color.
+ * Never inherit --text from the dark shell into these light surfaces. */
+.goal-lab-page :is(.goal-wizard,.goal-detail,.goal-empty,.goal-how){color:#17392b}
+.goal-lab-page :is(.goal-wizard,.goal-detail,.goal-empty,.goal-how) :is(h2,h3,h4,strong){color:#17392b}
+.goal-lab-page :is(.goal-wizard,.goal-detail) .goal-step{color:#80631e}
+.goal-lab-page :is(.goal-wizard,.goal-detail) .goal-guidance strong{color:#17392b}
+.goal-lab-page :is(.goal-wizard,.goal-detail) .goal-measure strong{color:#fff}
+.goal-lab-page :is(.goal-wizard,.goal-detail) button.goal-primary{color:#143325}
+.goal-lab-page :is(.goal-wizard,.goal-detail) button.goal-secondary{color:#17392b}
+.goal-lab-page :is(.goal-wizard,.goal-detail) button:focus-visible{outline:3px solid #18593d;outline-offset:2px}
