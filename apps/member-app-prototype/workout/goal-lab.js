@@ -67,6 +67,7 @@
     const gs=active(s),paused=s.goals.filter(g=>g.status==='paused');
     return '<section class="goal-hero"><span class="goal-kicker">GO WORKOUT / PERSONAL GOALS</span><h1>Give your training a target.</h1><p>Find your baseline through a guided assessment. Train toward something measurable, then come back to prove your progress.</p>'+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="new" data-mode="target">SET A GOAL</button><button class="goal-secondary" data-goal-action="new" data-mode="discover">DISCOVER MY GOALS</button></div></section>'+
+      (gs.some(g=>g.exerciseId&&number(g.best)>0&&!g.painFlag)?'<button class="goal-primary goal-session-button" data-goal-action="start-session">START GOAL WORKOUT →</button>':'')+
       (gs.length?'<section class="goal-section"><div class="goal-section-head"><h2>Your active goals</h2><span>'+gs.length+' active</span></div><div class="goal-cards">'+gs.map(card).join('')+'</div></section>':
         '<div class="goal-empty"><strong>Start with what you can do.</strong><p>Your first test becomes the starting point of your training history.</p></div>')+
       (paused.length?'<section class="goal-section"><h2>Paused goals</h2><div class="goal-cards">'+paused.map(card).join('')+'</div></section>':'')+
@@ -235,6 +236,37 @@
     }
     return changed;
   }
+  function buildGoalDay(training,exerciseCatalog,profile={}){
+    const goals=active(ensure(training)).filter(g=>!g.painFlag && ['reps','seconds'].includes(g.unit));
+    const minutes=Math.max(10,Math.min(45,number(profile.minutes)||30));
+    const maxGoals=minutes<=20?2:3;
+    const compatible=goals.filter(g=>g.exerciseId&&number(g.best)>0).slice().sort((a,b)=>(a.priority==='primary'?0:1)-(b.priority==='primary'?0:1));
+    const used=new Set(),slots=[];
+    const slot=(id,sets,reps,rest=45)=>{
+      const ex=exerciseCatalog.find(x=>x.id===id);
+      if(!ex||used.has(id))return false;
+      const available=Array.isArray(ex.equipment)?ex.equipment:[];
+      if(!available.includes(profile.equipment||'bodyweight')&&!available.includes('bodyweight'))return false;
+      used.add(id);
+      const value=Math.max(1,Math.floor(reps));
+      slots.push({id:ex.id,name:ex.name,movement:ex.movement,muscles:ex.muscles,loadMode:ex.loadMode,sets,reps:ex.loadMode==='timed'?value+' sec':String(value),
+        startReps:String(value),rest,setup:ex.setup||15,increment:ex.increment||0,startWeight:0,calibrationRequired:false,
+        goalFocus:true});
+      return true;
+    };
+    for(const g of compatible){
+      if(slots.length>=maxGoals)break;
+      const b=number(g.best);
+      if(g.kind==='pushup')slot('push-up',3,Math.max(1,Math.floor(b*.55)),60);
+      else if(g.kind==='plank')slot('plank',3,Math.max(10,Math.floor(b*.7)),45);
+      else if(g.kind==='squat')slot('bodyweight-squat',3,Math.max(3,Math.floor(b*.6)),60);
+      else if(g.kind==='pullup'&&b>=1)slot('pull-up',3,Math.max(1,Math.floor(b*.6)),75);
+    }
+    if(!slots.length)return null;
+    if(slots.length===1)slot(slots[0].movement==='core'?'glute-bridge':'dead-bug',2,8,45);
+    return {id:'goal-focus-session',name:'Personal Goal Focus',focus:'Goal-based strength and endurance',targetMinutes:minutes,
+      estimatedMinutes:minutes,goalFocused:true,exercises:slots};
+  }
   function pulse(){
     const clock=document.querySelector('[data-goal-clock]');
     if(!clock)return;
@@ -243,6 +275,6 @@
     if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
   }
   if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
-  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,recommendations,nextMilestone,suggestTarget,template,pulse};
+  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,recommendations,nextMilestone,suggestTarget,template,pulse};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();
