@@ -1,6 +1,6 @@
 
 /* GO Workout: multi-goal planning and review */
-.goal-strategy-panel,.goal-strategy-review,.goal-strategy-teaser{border:1px solid var(--line,#d7ddd4);border-radius:18px;padding:20px;margin:18px 0;background:var(--surface,#fff);color:var(--text,#162d24)}
+.goal-strategy-panel,.goal-strategy-review,.goal-strategy-teaser{border:1px solid #ceddd3;border-radius:18px;padding:20px;margin:18px 0;background:#f7faf6;color:#173629}
 .goal-strategy-panel{display:grid;gap:18px}
 .goal-strategy-heading h2{font-size:clamp(1.4rem,3vw,2rem);line-height:1.2;margin:7px 0}
 .goal-strategy-heading p,.goal-strategy-status span,.goal-strategy-panel p,.goal-strategy-review p,.goal-strategy-teaser p{font-size:.92rem;line-height:1.5;opacity:.85;margin:6px 0}
@@ -33,6 +33,24 @@
 .goal-strategy-maintain{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:9px 0}
 @media(max-width:600px){.goal-strategy-panel,.goal-strategy-review,.goal-strategy-teaser{padding:15px;border-radius:14px}.goal-strategy-teaser{display:grid}.goal-strategy-choices button{flex:1}.goal-strategy-actions>*{flex:1}.goal-strategy-changes>div{display:grid}}
 
+
+/* Strategy builder and weekly review appear on light cards under a dark UI.
+ * Resolve all readable foreground colors explicitly, including unselected
+ * choices and secondary controls. The shell --text token is nearly white. */
+.goal-strategy-panel :is(h2,h3,h4,strong),.goal-strategy-review :is(h2,h3,h4,strong){color:#173629}
+.goal-strategy-panel :is(p,span,small),.goal-strategy-review :is(p,span,small){color:#355747}
+.goal-strategy-panel .goal-kicker,.goal-strategy-review .goal-kicker{color:#84631f}
+.goal-strategy-panel .goal-strategy-heading h2{color:#123a28}
+.goal-strategy-panel .goal-strategy-heading p,.goal-strategy-panel .goal-strategy-status span,.goal-strategy-panel p,.goal-strategy-review p{opacity:1}
+.goal-strategy-panel .goal-strategy-modes button,.goal-strategy-panel .goal-strategy-priority button,.goal-strategy-panel .goal-strategy-actions button:not(.goal-primary),.goal-strategy-panel .goal-strategy-maintain button,.goal-strategy-review .goal-strategy-choices button{color:#173629;background:#fff;border-color:#9db6a7;font-weight:650}
+.goal-strategy-panel .goal-strategy-modes button.chosen,.goal-strategy-panel .goal-strategy-priority button.chosen,.goal-strategy-review .goal-strategy-choices button.chosen{color:#10402b;background:#e2f2e7;border-color:#387951}
+.goal-strategy-panel .goal-primary,.goal-strategy-review .goal-primary{background:#e5b658;color:#142f22;border:1px solid #d3a647;font-weight:850}
+.goal-strategy-panel .goal-strategy-text-button{color:#355745;background:transparent;min-height:44px;font-weight:750}
+.goal-strategy-panel .goal-strategy-changes span,.goal-strategy-panel .goal-strategy-notice{color:#355747}
+.goal-strategy-panel .goal-strategy-notice{background:#fff4dd;border-left-color:#b88632}
+.goal-strategy-panel :is(button,select,input):focus-visible,.goal-strategy-review button:focus-visible{outline:3px solid #126b46;outline-offset:3px}
+.goal-strategy-panel .goal-strategy-modes button,.goal-strategy-panel .goal-strategy-priority button{min-height:44px}
+#app > .goal-strategy-review:last-child,#app > .goal-strategy-panel:last-child{margin-bottom:calc(130px + env(safe-area-inset-bottom,0px))}
 
 /* Home screen: daily training is first, then one unified dark Goals panel. */
 .home-goals-panel{
