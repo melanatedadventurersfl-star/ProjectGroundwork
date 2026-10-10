@@ -234,7 +234,7 @@ class GoWorkoutHealthConnectModule(
       promise.reject("health_permission_busy", "A Health Connect permission request is already open.")
       return
     }
-    val activity = reactContext.currentActivity
+    val activity = reactContext.getCurrentActivity()
     if (activity == null) {
       promise.reject("health_no_activity", "Go Workout must be open to request Health Connect permissions.")
       return
