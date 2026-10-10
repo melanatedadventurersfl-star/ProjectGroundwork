@@ -4815,11 +4815,12 @@ function saveProfileFromForm(form){
     return false;
   }
   const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
+  const retainedGoalLab=store.trainingProgram?.goalLab?clone(store.trainingProgram.goalLab):null;
   store.profile=profile;
   store.account={...(store.account||{}),displayName:profile.displayName,email:profile.email,status:store.account?.status||'local'};
   store.plan=plan;
   const programStartedAt=store.trainingProgram?.programStartedAt||plan.createdAt;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,programStartedAt};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,goalLab:retainedGoalLab,programStartedAt};
   refreshEngineProgram(profile);
   const persisted=saveStore();
   if(store.account?.status!=='connected'){
@@ -4846,10 +4847,11 @@ function editProfile(){
 function regeneratePlan(){
   if (!store.profile || store.activeWorkout) return;
   const retainedLearner=store.trainingProgram?.learner?clone(store.trainingProgram.learner):null;
+  const retainedGoalLab=store.trainingProgram?.goalLab?clone(store.trainingProgram.goalLab):null;
   const programStartedAt=store.trainingProgram?.programStartedAt||store.plan?.createdAt||new Date().toISOString();
   store.plan=generatePlan(store.profile);
   store.plan.createdAt=programStartedAt;
-  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,programStartedAt};
+  store.trainingProgram={scheduleOverrides:{},weekReviews:{},engine:null,learner:retainedLearner,goalLab:retainedGoalLab,programStartedAt};
   refreshEngineProgram(store.profile);
   saveStore();
   toast(currentEngineProgram()?'Plan rebuilt with Program Engine '+currentEngineProgram().engineVersion+'.':'Plan rebuilt from your profile.');
