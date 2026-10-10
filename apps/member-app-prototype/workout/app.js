@@ -11475,7 +11475,12 @@ document.addEventListener('input',event=>{
 document.addEventListener('change',event=>{
   const goalInput=event.target.closest('[data-goal-field]');
   if(goalInput&&window.GoWorkoutGoalLab){
-    if(window.GoWorkoutGoalLab.field(ensureTrainingProgram(),goalInput.dataset.goalField,goalInput.value))saveStore();
+    if(window.GoWorkoutGoalLab.field(ensureTrainingProgram(),goalInput.dataset.goalField,goalInput.value)){
+      saveStore();
+      // A changed custom goal unit invalidates the old baseline. Show the
+      // new unit label, correct input type, and TEST MY BASELINE immediately.
+      if(goalInput.dataset.goalField==='unit')render();
+    }
     return;
   }
   if(event.target.id==='shared-saved-partner'){
