@@ -30,7 +30,15 @@
       target:t.target,deadline:'none',priority:'primary',variant:t.variation,result:0,
       effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,tested:false};
   }
-  const active = s => s.goals.filter(g=>g.status==='active');
+  const active = s => s.goals.filter(g=>g.status==='active'||g.status==='maintenance');
+  // Only comparable discovery tests establish verified continuous performance.
+  // Completed training sets may improve trainingBest, but are not proof of
+  // reaching a continuous-repetition or single-hold goal.
+  function assessmentBest(g){
+    const evidence=(g.assessments||[]).filter(a=>a.source==='discovery'&&(!a.unit||a.unit===g.unit)&&
+      normalizeVariant(a.variant)===normalizeVariant(g.variant)).map(a=>number(a.value));
+    return evidence.length?Math.max(...evidence):number(g.baseline);
+  }
   // A baseline for an assisted or modified movement is not interchangeable
   // with the catalog's standard-form exercise.
   const SUPPORTED_VARIANTS={
@@ -45,7 +53,7 @@
   }
   function recent(g){return (g.assessments||[]).slice(-6);}
   function targetText(g){return String(g.target)+' '+(g.unit==='seconds'?'seconds':g.unit==='miles'?'miles':'reps');}
-  function progress(g){return g.target>0 ? Math.max(0,Math.min(100,Math.round(number(g.best)/g.target*100))) : 0;}
+  function progress(g){return g.target>0 ? Math.max(0,Math.min(100,Math.round(assessmentBest(g)/g.target*100))) : 0;}
   function suggestTarget(d){
     const value=number(d.result);
     if(d.unit==='miles')return Math.max(.25,Math.round(Math.max(value*1.5,.5)*4)/4);
@@ -53,14 +61,14 @@
     return Math.max(d.kind==='pullup'?1:5,Math.ceil(Math.max(value*1.5,value+3)));
   }
   function nextMilestone(g){
-    const best=number(g.best),target=number(g.target);
+    const best=assessmentBest(g),target=number(g.target);
     if(best>=target)return target;
     if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?0.25:1);
     const step=g.unit==='miles'?0.25:g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
     return rounded(Math.min(target,Math.max(best+step,best+1*(g.unit==='miles'?.25:1))),g.unit);
   }
   function recommendations(g){
-    const b=number(g.best),kind=g.kind;
+    const b=assessmentBest(g),kind=g.kind;
     if(g.painFlag)return {summary:'Training recommendations are paused because discomfort was recorded. Choose a comfortable alternative and seek professional advice when appropriate.',sets:[],frequency:'Assessment review needed'};
     if(SUPPORTED_VARIANTS[kind]&&!isRunnableGoal(g))return {summary:'Your '+String(g.variant||'chosen variation')+' baseline is saved, but that movement is not in the automated workout catalog. GO Workout will not replace it with a different variation.',sets:[],frequency:'Track this variation with guided reassessments'};
     if(kind==='pushup')return {summary:b<1?'Build controlled strength with an easier variation before retesting standard push-ups.':'Train below your maximum and retest only after adequate recovery.',sets:[b<1?'Wall push-ups · 2 × 6 to 8':'Push-ups · 3 × '+Math.max(2,Math.floor(b*.55)), 'Incline push-ups · 2 × 8', 'Core stability · 2 controlled sets'],frequency:'2 to 3 nonconsecutive days per week'};
@@ -73,14 +81,14 @@
   function shortcuts(training,placement='home'){
     const s=ensure(training),goals=active(s);
     return '<section class="goal-shortcut goal-shortcut-'+placement+'"><div><span class="goal-kicker">PERSONAL GOALS</span><h3>'+(goals.length?'Your next milestone':'Train for something specific.')+'</h3>'+
-      '<p>'+(goals.length?goals.slice(0,2).map(g=>safe(g.name)+': '+safe(g.best)+' / '+safe(targetText(g))).join(' · '):'Discover your baseline, set a target, and build a progression from what you can do today.')+'</p></div>'+
+      '<p>'+(goals.length?goals.slice(0,2).map(g=>safe(g.name)+': '+safe(assessmentBest(g))+' / '+safe(targetText(g))).join(' · '):'Discover your baseline, set a target, and build a progression from what you can do today.')+'</p></div>'+
       '<button type="button" class="goal-primary" data-tab="goals">'+(goals.length?'VIEW GOALS':'START DISCOVERY')+' →</button></section>';
   }
   function overview(s){
     const gs=active(s),paused=s.goals.filter(g=>g.status==='paused');
     return '<section class="goal-hero"><span class="goal-kicker">GO WORKOUT / PERSONAL GOALS</span><h1>Give your training a target.</h1><p>Find your baseline through a guided assessment. Train toward something measurable, then come back to prove your progress.</p>'+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="new" data-mode="target">SET A GOAL</button><button class="goal-secondary" data-goal-action="new" data-mode="discover">DISCOVER MY GOALS</button></div></section>'+
-      (gs.some(g=>isRunnableGoal(g)&&number(g.best)>0&&!g.painFlag)?'<button class="goal-primary goal-session-button" data-goal-action="start-session">START GOAL WORKOUT →</button>':'')+
+      (gs.some(g=>g.status==='active'&&isRunnableGoal(g)&&assessmentBest(g)>0&&!g.painFlag)&&!(s.strategy?.status==='active'&&s.strategy?.mode==='track')?'<button class="goal-primary goal-session-button" data-goal-action="start-session">START GOAL WORKOUT →</button>':'')+
       (gs.length?'<section class="goal-section"><div class="goal-section-head"><h2>Your active goals</h2><span>'+gs.length+' active</span></div><div class="goal-cards">'+gs.map(card).join('')+'</div></section>':
         '<div class="goal-empty"><strong>Start with what you can do.</strong><p>Your first test becomes the starting point of your training history.</p></div>')+
       (paused.length?'<section class="goal-section"><h2>Paused goals</h2><div class="goal-cards">'+paused.map(card).join('')+'</div></section>':'')+
@@ -88,8 +96,8 @@
   }
   function card(g){
     const pct=progress(g);
-    return '<button class="goal-card" type="button" data-goal-action="open" data-goal-id="'+safe(g.id)+'"><div class="goal-card-top"><span>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</span><small>'+safe(g.status==='paused'?'PAUSED':pct===100?'TARGET REACHED':'IN PROGRESS')+'</small></div>'+
-      '<div class="goal-card-numbers"><strong>'+safe(g.best)+'</strong><span>/ '+safe(targetText(g))+'</span></div>'+
+    return '<button class="goal-card" type="button" data-goal-action="open" data-goal-id="'+safe(g.id)+'"><div class="goal-card-top"><span>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</span><small>'+safe(g.status==='paused'?'PAUSED':g.status==='maintenance'?'MAINTENANCE':pct===100?'TARGET REACHED':'IN PROGRESS')+'</small></div>'+
+      '<div class="goal-card-numbers"><strong>'+safe(assessmentBest(g))+'</strong><span>/ '+safe(targetText(g))+'</span></div>'+
       '<div class="goal-track"><i style="width:'+pct+'%"></i></div><small>Initial baseline '+safe(g.baseline)+' '+safe(g.unit)+' · Next milestone '+safe(nextMilestone(g))+'</small></button>';
   }
   function choose(d){
@@ -144,13 +152,14 @@
   function detail(g){
     const rec=recommendations(g),recentTests=recent(g);
     return '<section class="goal-detail"><div class="goal-step">YOUR GOAL · '+safe(g.status.toUpperCase())+'</div><h2>'+safe(g.icon)+' '+safe(g.name)+'</h2>'+
-      '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(g.best)+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+'</strong></div></div>'+
+      '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(assessmentBest(g))+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+'</strong></div></div>'+
       '<div class="goal-track"><i style="width:'+progress(g)+'%"></i></div>'+
       '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(progress(g)===100?'Target reached. You can maintain it or set another target.':'')+'</p>'+
       (SUPPORTED_VARIANTS[g.kind]&&!isRunnableGoal(g)?'<p class="goal-footnote">'+safe(g.variant||'This variation')+' is tracked through your assessments. Automated workouts do not yet include that exact exercise.</p>':'')+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="retest" data-goal-id="'+safe(g.id)+'">REASSESS</button><button class="goal-secondary" data-goal-action="edit" data-goal-id="'+safe(g.id)+'">EDIT TARGET</button></div>'+
       '<section class="goal-detail-section"><h3>Suggested training focus</h3><p>'+safe(rec.summary)+'</p><div class="goal-plan-steps">'+rec.sets.map(s=>'<div>'+safe(s)+'</div>').join('')+'</div><small>'+safe(rec.frequency)+'. Coordinate with your existing program and allow recovery.</small></section>'+
-      '<section class="goal-detail-section"><h3>Performance history</h3>'+
+      '<section class="goal-detail-section"><h3>Training performance</h3><p>'+safe(number(g.trainingBest)>0?'Best completed training set: '+g.trainingBest+' '+g.unit+'. This does not count as a verified maximum.':'Training sets will appear separately from goal assessments.')+'</p></section>'+
+      '<section class="goal-detail-section"><h3>Assessment history</h3>'+
       (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(a.unit||g.unit)+'</b><small>'+safe(a.variant||g.variant)+' · '+safe(a.source==='workout-set'?'Logged workout set':'Discovery test')+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
       '</section><div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="toggle-pause" data-goal-id="'+safe(g.id)+'">'+(g.status==='paused'?'RESUME':'PAUSE')+'</button><button class="goal-secondary" data-goal-action="delete" data-goal-id="'+safe(g.id)+'">DELETE GOAL</button></div></section>';
   }
@@ -192,7 +201,7 @@
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
     if(name==='cancel'){s.draft=null;return result(true);}
     if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment'};s.selectedId=g.id;return result(true);}
-    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:g.best,originalUnit:g.unit,originalResult:g.best};return result(true);}
+    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:assessmentBest(g),originalUnit:g.unit,originalResult:assessmentBest(g)};return result(true);}
     if(name==='toggle-pause'){const g=goal(node.dataset.goalId);if(!g)return result(false);g.status=g.status==='paused'?'active':'paused';g.updatedAt=now();return result(true);}
     if(name==='delete'){const g=goal(node.dataset.goalId);if(!g||!confirm('Delete '+g.name+' and its goal assessment history?'))return result(false);s.goals=s.goals.filter(x=>x.id!==g.id);s.selectedId=null;return result(true,'Goal deleted.');}
     if(!d)return result(false);
@@ -242,11 +251,11 @@
           g.achievedAt=null;
         }else if(retested){
           g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
-          if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(g.best,val);
+          if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(assessmentBest(g),val);
           g.painFlag=d.effort==='pain';
         }
         g.target=rounded(number(d.target),d.unit);g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
-        if(g.best>=g.target&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
+        if(assessmentBest(g)>=g.target&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
         s.selectedId=g.id;
       } else {
         const t=template(d.kind);
@@ -271,20 +280,23 @@
       const numbers=completed.flatMap(ex=>(ex.sets||[]).filter(x=>x.completed).map(x=>number(x.reps)).filter(x=>x>0));
       if(!numbers.length)continue;
       const best=rounded(Math.max(...numbers),g.unit);
-      if(best<=number(g.best))continue;
-      g.best=best;g.updatedAt=entry.completedAt||now();
-      g.assessments.push({at:g.updatedAt,value:best,unit:g.unit,source:'workout-set',workoutId:entry.id,variant:g.variant});
-      g.assessments=g.assessments.slice(-75);
-      if(best>=g.target)g.achievedAt=g.achievedAt||g.updatedAt;
+      if(best<=number(g.trainingBest))continue;
+      g.trainingBest=best;g.lastTrainingAt=entry.completedAt||now();
+      g.trainingHistory=Array.isArray(g.trainingHistory)?g.trainingHistory:[];
+      if(!g.trainingHistory.some(x=>x.workoutId===entry.id)){
+        g.trainingHistory.push({at:g.lastTrainingAt,value:best,unit:g.unit,workoutId:entry.id,variant:g.variant});
+        g.trainingHistory=g.trainingHistory.slice(-75);
+      }
       changed=true;
     }
     return changed;
   }
   function buildGoalDay(training,exerciseCatalog,profile={}){
-    const goals=active(ensure(training)).filter(g=>!g.painFlag && ['reps','seconds'].includes(g.unit));
+    const goals=active(ensure(training)).filter(g=>g.status==='active'&&!g.painFlag&&['reps','seconds'].includes(g.unit)&&
+      (!Array.isArray(profile.goalIds)||profile.goalIds.includes(g.id)));
     const minutes=Math.max(10,Math.min(45,number(profile.minutes)||30));
     const maxGoals=minutes<=20?2:3;
-    const compatible=goals.filter(g=>isRunnableGoal(g)&&number(g.best)>0).slice().sort((a,b)=>(a.priority==='primary'?0:1)-(b.priority==='primary'?0:1));
+    const compatible=goals.filter(g=>g.status==='active'&&isRunnableGoal(g)&&assessmentBest(g)>0).slice().sort((a,b)=>(a.priority==='primary'?0:1)-(b.priority==='primary'?0:1));
     const used=new Set(),slots=[];
     const slot=(id,sets,reps,rest=45)=>{
       const ex=exerciseCatalog.find(x=>x.id===id);
@@ -300,7 +312,7 @@
     };
     for(const g of compatible){
       if(slots.length>=maxGoals)break;
-      const b=number(g.best);
+      const b=assessmentBest(g);
       if(g.kind==='pushup')slot('push-up',3,Math.max(1,Math.floor(b*.55)),60);
       else if(g.kind==='plank')slot('plank',3,Math.max(10,Math.floor(b*.7)),45);
       else if(g.kind==='squat')slot('bodyweight-squat',3,Math.max(3,Math.floor(b*.6)),60);
@@ -326,6 +338,6 @@
     if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
   }
   if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
-  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
+  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,assessmentBest,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();

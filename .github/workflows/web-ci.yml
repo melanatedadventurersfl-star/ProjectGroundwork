@@ -49,11 +49,20 @@ jobs:
           node --check apps/member-app-prototype/workout/catalog.js
           node --check apps/member-app-prototype/workout/coach-engine.js
           node --check apps/member-app-prototype/workout/app.js
+          node --check apps/member-app-prototype/workout/goal-lab.js
+          node --check apps/member-app-prototype/workout/goal-strategy.js
+          node --check apps/member-app-prototype/workout/goal-strategy.tests.cjs
           node --check apps/member-app-prototype/workout/performance.js
           node --check apps/member-app-prototype/workout/onboarding.js
           node --check apps/member-app-prototype/workout/health-connect-core.js
           node --check apps/member-app-prototype/workout/health-connect.js
           node apps/member-app-prototype/workout/health-connect-core.test.js
+
+      - name: Test workout goals and training strategy
+        run: |
+          node apps/member-app-prototype/workout/goal-lab.test.js
+          node apps/member-app-prototype/workout/goal-lab.tests.cjs
+          node apps/member-app-prototype/workout/goal-strategy.tests.cjs
 
       - name: Install exact dependencies
         run: npm ci

@@ -56,15 +56,17 @@ const trained = goals.afterWorkout(state,{
   ]
 });
 assert.equal(trained,true);
-assert.equal(state.goalLab.goals[0].best,16,'largest completed continuous set counts, not the sum');
-assert.equal(state.goalLab.goals[0].assessments.length,4);
+assert.equal(state.goalLab.goals[0].best,12,'Completed training sets cannot verify a continuous goal maximum');
+assert.equal(state.goalLab.goals[0].trainingBest,16,'Training record uses largest completed set');
+assert.equal(state.goalLab.goals[0].assessments.length,3,'Workout sets are not mislabeled as assessments');
 assert.equal(goals.afterWorkout(state,{id:'session-2',exercises:[{id:'push-up',sets:[{reps:10,completed:true}]}]}),false);
 const generated=goals.buildGoalDay(state,{length:0,find(){return null}},{equipment:'bodyweight',minutes:30});
 assert.equal(generated,null,'unavailable catalog movements should not produce a workout');
 assert.match(goals.render(state),/PERSONAL BEST/);
 
 const cloned=JSON.parse(JSON.stringify(state));
-assert.equal(cloned.goalLab.goals[0].best,16,'all user progress should be JSON-serializable');
+assert.equal(cloned.goalLab.goals[0].best,12,'verified goal results survive serialization');
+assert.equal(cloned.goalLab.goals[0].trainingBest,16,'training-set records survive serialization');
 
 click('new',{mode:'discover'});
 click('template',{kind:'plank'});

@@ -70,7 +70,9 @@ const entry={id:'session-1',completedAt:new Date().toISOString(),exercises:[
   {id:'push-up',sets:[{completed:true,reps:16},{completed:true,reps:10},{completed:false,reps:60}]}
 ]};
 assert.equal(G.afterWorkout(userA,entry),true);
-assert.equal(push.best,16,'Workout totals and incomplete sets must not count as a single-set record');
+assert.equal(push.best,12,'Training sets must never raise the verified assessment maximum');
+assert.equal(push.trainingBest,16,'Only the largest completed training set is recorded as training performance');
+assert.equal(push.assessments.length,2,'Training does not invent a discovery reassessment');
 assert.equal(G.afterWorkout(userB,{id:'other',exercises:[]}),false);
 assert.equal(second.best,5);
 
