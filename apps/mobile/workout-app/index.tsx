@@ -3,10 +3,7 @@ import { NativeModules, Platform, StyleSheet, View } from 'react-native';
 
 import WorkoutWebFrame from '../src/workout-app/WorkoutWebFrame';
 
-type HealthPayload = {
-  toggles?: Record<string, boolean>;
-  days?: number;
-};
+type HealthPayload = Record<string, unknown>;
 
 type NativeHealthModule = {
   getStatus: () => Promise<unknown>;
@@ -29,20 +26,28 @@ function healthModule(): NativeHealthModule {
   return module;
 }
 
+function togglesFromPayload(payload: HealthPayload) {
+  if (!payload.toggles || typeof payload.toggles !== 'object' || Array.isArray(payload.toggles)) return {};
+  return Object.fromEntries(
+    Object.entries(payload.toggles).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'),
+  );
+}
+
 async function healthRequest(action: string, payload: HealthPayload) {
   const health = healthModule();
+  const toggles = togglesFromPayload(payload);
   switch (action) {
     case 'getStatus':
       return health.getStatus();
     case 'requestPermissions':
-      return health.requestPermissions(payload.toggles ?? {});
+      return health.requestPermissions(toggles);
     case 'revokePermissions':
       await health.revokePermissions();
       return null;
     case 'readSamsungWorkouts':
       return health.readSamsungWorkouts(
         Math.min(30, Math.max(1, Number(payload.days) || 30)),
-        payload.toggles ?? {},
+        toggles,
       );
     default:
       throw new Error('Unsupported native health action.');
