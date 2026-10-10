@@ -5,11 +5,11 @@
 (() => {
   'use strict';
   const TEMPLATES = [
-    {id:'pushup',name:'Push-ups',unit:'reps',target:60,exerciseId:'push-up',icon:'💪',metric:'continuous',instruction:'Complete controlled push-ups until you cannot maintain form. Count each full repetition.',variation:'Standard, incline, or wall push-up',cue:'Hands stable, body controlled. Stop when your form changes.'},
-    {id:'plank',name:'Plank hold',unit:'seconds',target:60,exerciseId:'plank',icon:'⏱',metric:'single hold',instruction:'Start the timer when you enter a stable plank. Stop as soon as you cannot maintain position.',variation:'Forearm or elevated plank',cue:'Breathe normally. Avoid holding through pain.'},
-    {id:'squat',name:'Bodyweight squats',unit:'reps',target:30,exerciseId:'bodyweight-squat',icon:'🦵',metric:'continuous',instruction:'Complete comfortable controlled squats, counting full repetitions.',variation:'Bodyweight or chair-assisted squat',cue:'Use a comfortable range and stop when control fades.'},
-    {id:'pullup',name:'Pull-ups',unit:'reps',target:10,exerciseId:'pull-up',icon:'🏋',metric:'continuous',instruction:'Count controlled pull-ups without assistance, or record the assistance used.',variation:'Standard, band-assisted, or machine-assisted pull-up',cue:'Record the variation accurately so future tests remain comparable.'},
-    {id:'run',name:'Running distance',unit:'miles',target:1,exerciseId:'',icon:'🏃',metric:'continuous distance',instruction:'Walk or run a measured route and record the distance completed continuously.',variation:'Outdoor route or treadmill',cue:'Distance is self-recorded. The app does not automatically measure your route.'},
+    {id:'pushup',name:'Push-ups',unit:'reps',target:60,exerciseId:'push-up',icon:'💪',metric:'continuous',instruction:'Complete controlled push-ups until you cannot maintain form. Count each full repetition.',variation:'Standard push-up',cue:'Hands stable, body controlled. Stop when your form changes.'},
+    {id:'plank',name:'Plank hold',unit:'seconds',target:60,exerciseId:'plank',icon:'⏱',metric:'single hold',instruction:'Start the timer when you enter a stable plank. Stop as soon as you cannot maintain position.',variation:'Forearm plank',cue:'Breathe normally. Avoid holding through pain.'},
+    {id:'squat',name:'Bodyweight squats',unit:'reps',target:30,exerciseId:'bodyweight-squat',icon:'🦵',metric:'continuous',instruction:'Complete comfortable controlled squats, counting full repetitions.',variation:'Bodyweight squat',cue:'Use a comfortable range and stop when control fades.'},
+    {id:'pullup',name:'Pull-ups',unit:'reps',target:10,exerciseId:'pull-up',icon:'🏋',metric:'continuous',instruction:'Count controlled pull-ups without assistance, or record the assistance used.',variation:'Unassisted pull-up',cue:'Record the variation accurately so future tests remain comparable.'},
+    {id:'run',name:'Running distance',unit:'miles',target:1,exerciseId:'',icon:'🏃',metric:'continuous distance',instruction:'Walk or run a measured route and record the distance completed continuously.',variation:'Measured route',cue:'Distance is self-recorded. The app does not automatically measure your route.'},
     {id:'custom',name:'My own goal',unit:'reps',target:10,exerciseId:'',icon:'🎯',metric:'continuous',instruction:'Perform the movement safely and record the actual result.',variation:'Your chosen variation',cue:'Choose a measurable achievement and record a baseline before planning.'}
   ];
   const safe = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -158,7 +158,7 @@
     const s=ensure(training),d=s.draft,goal=id=>s.goals.find(g=>g.id===id);
     const result=(ok,message='')=>({changed:ok,message});
     if(name==='new'){s.selectedId=null;s.draft=draft(node.dataset.mode==='discover'?'discover':'target');return result(true);}
-    if(name==='back-home'){s.draft=null;s.selectedId=null;return result(true);}
+    if(name==='back-home'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
     if(name==='cancel'){s.draft=null;return result(true);}
     if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment'};s.selectedId=g.id;return result(true);}
@@ -197,10 +197,11 @@
         const g=goal(d.goalId);if(!g)return result(false);
         // Editing target does not fabricate a new assessment.
         if(d.stage==='review'&&g.name!==d.label)g.name=d.label;
-        const retested = d.stage==='review' && !d.editedOnly && d.testedAt;
+        const retested = d.stage==='review' && Boolean(d.testedAt);
         if(retested){
           g.assessments.push({at,value:val,source:'discovery',effort:d.effort,variant:d.variant});
-          g.best=Math.max(g.best,val);g.painFlag=d.effort==='pain';g.variant=d.variant;
+          if(String(d.variant).trim().toLowerCase()===String(g.variant).trim().toLowerCase())g.best=Math.max(g.best,val);
+          g.painFlag=d.effort==='pain';
         }
         g.target=rounded(number(d.target),d.unit);g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
         if(g.best>=g.target && !g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
@@ -223,6 +224,8 @@
     const s=ensure(training);let changed=false;
     for(const g of s.goals){
       if(!g.exerciseId||g.status!=='active'||g.unit!=='reps'||!entry?.exercises)continue;
+      const comparable={pushup:/standard/i,pullup:/unassisted/i,squat:/bodyweight/i};
+      if(comparable[g.kind]&&!comparable[g.kind].test(String(g.variant)))continue;
       const completed=(entry.exercises||[]).filter(ex=>ex.id===g.exerciseId&&!ex.skipped);
       const numbers=completed.flatMap(ex=>(ex.sets||[]).filter(x=>x.completed).map(x=>number(x.reps)).filter(x=>x>0));
       if(!numbers.length)continue;
@@ -267,6 +270,13 @@
     return {id:'goal-focus-session',name:'Personal Goal Focus',focus:'Goal-based strength and endurance',targetMinutes:minutes,
       estimatedMinutes:minutes,goalFocused:true,exercises:slots};
   }
+  function pauseTimer(training){
+    const d=training?.goalLab?.draft;
+    if(!d?.startedAt)return false;
+    d.result=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+    d.startedAt=null;d.startedElapsed=0;
+    return true;
+  }
   function pulse(){
     const clock=document.querySelector('[data-goal-clock]');
     if(!clock)return;
@@ -275,6 +285,6 @@
     if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
   }
   if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
-  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,recommendations,nextMilestone,suggestTarget,template,pulse};
+  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();
