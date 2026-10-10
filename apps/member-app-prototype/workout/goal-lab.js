@@ -169,7 +169,9 @@
     if(name==='mode'){d.mode=node.dataset.mode==='discover'?'discover':'target';return result(true);}
     if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false});return result(true);}
     if(name==='choose-next'){d.stage=d.mode==='discover'?'assessment':'target';return result(true);}
-    if(name==='back'){d.startedAt=null;
+    if(name==='back'){
+      if(d.stage==='feedback'){d.result=0;d.tested=false;d.testedAt=null;}
+      d.startedAt=null;
       d.stage=d.stage==='assessment'?(d.mode==='discover'?'choose':'target'):d.stage==='feedback'?'assessment':d.stage==='review'?'target':'choose';return result(true);}
     if(name==='target-next'){
       if(!d.label.trim()||number(d.target)<=0)return result(false,'Enter a goal name and target above zero.');
