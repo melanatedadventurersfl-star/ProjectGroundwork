@@ -48,6 +48,23 @@ export type WorkoutHistoryEntry = {
   exercises: ActiveExercise[];
   totalVolume: number;
   completedSets: number;
+  manualWorkoutCompletion?: boolean;
+  externalWorkout?: boolean;
+  externalSource?: {
+    provider: 'samsung_health' | 'health_connect';
+    healthConnectRecordId: string;
+    sourcePackage: string;
+    sourceDevice?: string;
+    importedAt: string;
+  };
+  healthMetrics?: {
+    averageHeartRateBpm: number;
+    maxHeartRateBpm: number;
+    minHeartRateBpm: number;
+    caloriesKcal: number;
+    distanceMeters: number;
+    steps: number;
+  };
 };
 
 export type WorkoutStore = {
