@@ -11413,6 +11413,9 @@ function handleClick(event){
   else if(a==='finish')finishWorkout(false);
   else if(a==='discard')discardWorkout();
 }
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'&&window.GoWorkoutGoalLab?.pauseTimer(ensureTrainingProgram()))saveStore();
+});
 document.addEventListener('click',handleClick);
 document.addEventListener('load',event=>{
   const img=event.target?.closest?.('img');
