@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 export default function WorkoutRootLayout() {
   return (
     <>
-      <StatusBar style="light" backgroundColor="#0A0D0B" />
+      <StatusBar style="light" />
       <Stack
         screenOptions={{
           headerShown: false,
