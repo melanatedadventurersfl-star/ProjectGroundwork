@@ -126,14 +126,17 @@ import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
+import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.uimanager.ViewManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -364,6 +367,16 @@ class GoWorkoutHealthConnectModule(
     }
   }
 }
+
+class GoWorkoutHealthConnectPackage : ReactPackage {
+  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
+    return listOf(GoWorkoutHealthConnectModule(reactContext))
+  }
+
+  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
+    return emptyList()
+  }
+}
 `;
 
 const rationaleSource=String.raw`package com.melanatedadventurers.app.health
@@ -384,24 +397,6 @@ class PermissionsRationaleActivity : Activity() {
   }
 }
 `;
-const packageSource=String.raw`package com.melanatedadventurers.app.health
-
-import com.facebook.react.ReactPackage
-import com.facebook.react.bridge.NativeModule
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.uimanager.ViewManager
-
-class GoWorkoutHealthConnectPackage : ReactPackage {
-  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-    return listOf(GoWorkoutHealthConnectModule(reactContext))
-  }
-
-  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-    return emptyList()
-  }
-}
-`;
-
 function withHealthSources(config){
   const targetHealthPackage=healthPackage(config);
   const targetScheme=appScheme(config);
@@ -413,7 +408,6 @@ function withHealthSources(config){
       .replaceAll('com.melanatedadventurers.app.health',targetHealthPackage)
       .replaceAll('melanatedadventurers://privacy-policy',targetScheme+'://privacy-policy');
     fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectModule.kt'),rewrite(moduleSource));
-    fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectPackage.kt'),rewrite(packageSource));
     fs.writeFileSync(path.join(sourceDir,'PermissionsRationaleActivity.kt'),rewrite(rationaleSource));
     return cfg;
   }]);
