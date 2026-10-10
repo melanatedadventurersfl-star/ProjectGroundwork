@@ -95,13 +95,20 @@
   }
   function assessment(d){
     const isTimer=d.unit==='seconds',isDistance=d.unit==='miles',t=template(d.kind);
+    let measurement='';
+    if(isDistance){
+      measurement='<label>Distance you completed ('+safe(d.unit)+')<input data-goal-field="result" type="number" min="0" max="10000" step="0.01" value="'+safe(d.result)+'"></label>';
+    }else if(isTimer){
+      const elapsed=d.startedAt?Math.min(1800,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):number(d.result);
+      measurement='<div class="goal-measure"><span>HOLD TIMER</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'">'+elapsed+'s</strong>'+
+        '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>';
+    }else{
+      measurement='<div class="goal-measure"><span>COMPLETED REPS</span><strong>'+safe(d.result)+'</strong><div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div></div>';
+    }
     return '<div class="goal-wizard"><div class="goal-step">BASELINE DISCOVERY · ACTION FIRST</div><h2>Let’s see what you can do.</h2>'+
       '<p>'+safe(t.instruction)+'</p><div class="goal-guidance"><strong>'+safe(d.label)+'</strong><span>'+safe(t.cue)+'</span></div>'+
       '<label>Exercise variation<input data-goal-field="variant" maxlength="100" value="'+safe(d.variant)+'" placeholder="Standard, assisted, elevated..."></label>'+
-      (isDistance?'<label>Distance you completed ('+safe(d.unit)+')<input data-goal-field="result" type="number" min="0" max="10000" step="0.01" value="'+safe(d.result)+'"></label>'+
-        isTimer?'<div class="goal-measure"><span>HOLD TIMER</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'">'+(d.startedAt?Math.min(1800,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):number(d.result))+'s</strong>+
-          '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>':
-          '<div class="goal-measure"><span>COMPLETED REPS</span><strong>'+safe(d.result)+'</strong><div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div></div>')+
+      measurement+
       '<p class="goal-footnote">Your results are self-recorded. Stop for pain, dizziness, or loss of control. You can retest later.</p>'+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="assessment-done">FINISH TEST →</button></div></div>';
   }
