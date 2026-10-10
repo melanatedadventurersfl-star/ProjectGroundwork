@@ -151,7 +151,7 @@
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="retest" data-goal-id="'+safe(g.id)+'">REASSESS</button><button class="goal-secondary" data-goal-action="edit" data-goal-id="'+safe(g.id)+'">EDIT TARGET</button></div>'+
       '<section class="goal-detail-section"><h3>Suggested training focus</h3><p>'+safe(rec.summary)+'</p><div class="goal-plan-steps">'+rec.sets.map(s=>'<div>'+safe(s)+'</div>').join('')+'</div><small>'+safe(rec.frequency)+'. Coordinate with your existing program and allow recovery.</small></section>'+
       '<section class="goal-detail-section"><h3>Performance history</h3>'+
-      (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(g.unit)+'</b><small>'+safe(a.source==='workout-set'?'Logged workout set':'Discovery test')+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
+      (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(a.unit||g.unit)+'</b><small>'+safe(a.variant||g.variant)+' · '+safe(a.source==='workout-set'?'Logged workout set':'Discovery test')+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
       '</section><div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="toggle-pause" data-goal-id="'+safe(g.id)+'">'+(g.status==='paused'?'RESUME':'PAUSE')+'</button><button class="goal-secondary" data-goal-action="delete" data-goal-id="'+safe(g.id)+'">DELETE GOAL</button></div></section>';
   }
   function render(training){
@@ -163,9 +163,24 @@
   function field(training,name,value){
     const d=ensure(training).draft;
     if(!d||!['label','unit','target','deadline','priority','variant','result'].includes(name))return false;
+    if(name==='unit'){
+      if(d.kind!=='custom'||!['reps','seconds','miles'].includes(value))return false;
+      if(d.unit!==value){
+        d.unit=value;
+        d.metric=value==='seconds'?'single hold':value==='miles'?'continuous distance':'continuous';
+        const restore=Boolean(d.goalId&&d.originalUnit===value);
+        d.result=restore?number(d.originalResult):0;
+        d.tested=restore;
+        d.testedAt=null;
+        d.startedAt=null;
+        d.startedElapsed=0;
+        d.effort='challenging';
+        d.target=value==='miles'?Math.max(.01,Math.round(number(d.target)*100)/100):Math.max(1,Math.round(number(d.target)));
+      }
+      return true;
+    }
     if(name==='target'||name==='result')d[name]=Math.max(0,Math.min(100000,number(value)));
     else d[name]=String(value).slice(0,100);
-    if(name==='unit'&&d.unit==='miles')d.result=rounded(number(d.result),d.unit);
     return true;
   }
   function action(training,name,node){
@@ -177,7 +192,7 @@
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
     if(name==='cancel'){s.draft=null;return result(true);}
     if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment'};s.selectedId=g.id;return result(true);}
-    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:g.best};return result(true);}
+    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:g.best,originalUnit:g.unit,originalResult:g.best};return result(true);}
     if(name==='toggle-pause'){const g=goal(node.dataset.goalId);if(!g)return result(false);g.status=g.status==='paused'?'active':'paused';g.updatedAt=now();return result(true);}
     if(name==='delete'){const g=goal(node.dataset.goalId);if(!g||!confirm('Delete '+g.name+' and its goal assessment history?'))return result(false);s.goals=s.goals.filter(x=>x.id!==g.id);s.selectedId=null;return result(true,'Goal deleted.');}
     if(!d)return result(false);
@@ -212,23 +227,33 @@
       const val=rounded(Math.max(0,number(d.result)),d.unit),at=now();
       if(d.goalId){
         const g=goal(d.goalId);if(!g)return result(false);
-        // Editing target does not fabricate a new assessment.
+        // Changing a custom unit requires a new physical baseline.
+        // Keep old assessments and tag their original units instead of
+        // relabeling old performance data as the new measurement.
+        const unitChanged=g.unit!==d.unit;
+        if(unitChanged&&!d.testedAt)return result(false,'Complete a new baseline test for the selected measurement.');
         if(d.stage==='review'&&g.name!==d.label)g.name=d.label;
-        const retested = d.stage==='review' && Boolean(d.testedAt);
-        if(retested){
-          g.assessments.push({at,value:val,source:'discovery',effort:d.effort,variant:d.variant});
-          if(String(d.variant).trim().toLowerCase()===String(g.variant).trim().toLowerCase())g.best=Math.max(g.best,val);
+        const retested=d.stage==='review'&&Boolean(d.testedAt);
+        if(unitChanged){
+          g.assessments=(g.assessments||[]).map(a=>({...a,unit:a.unit||g.unit}));
+          g.unit=d.unit;g.metric=d.metric;g.variant=d.variant;
+          g.baseline=val;g.best=val;g.painFlag=d.effort==='pain';
+          g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
+          g.achievedAt=null;
+        }else if(retested){
+          g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
+          if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(g.best,val);
           g.painFlag=d.effort==='pain';
         }
         g.target=rounded(number(d.target),d.unit);g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
-        if(g.best>=g.target && !g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
+        if(g.best>=g.target&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
         s.selectedId=g.id;
       } else {
         const t=template(d.kind);
         const g={id:uid(),kind:d.kind,exerciseId:d.exerciseId,name:String(d.label).slice(0,64),unit:d.unit,metric:d.metric,icon:t.icon,
           target:rounded(number(d.target),d.unit),baseline:val,best:val,variant:d.variant,deadline:d.deadline,
           priority:d.priority,status:'active',createdAt:at,updatedAt:at,painFlag:d.effort==='pain',
-          assessments:[{at,value:val,source:'discovery',effort:d.effort,variant:d.variant}],
+          assessments:[{at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant}],
           achievedAt:val>=number(d.target)&&d.effort!=='pain'?at:null};
         s.goals.push(g);s.selectedId=g.id;
       }
@@ -248,7 +273,7 @@
       const best=rounded(Math.max(...numbers),g.unit);
       if(best<=number(g.best))continue;
       g.best=best;g.updatedAt=entry.completedAt||now();
-      g.assessments.push({at:g.updatedAt,value:best,source:'workout-set',workoutId:entry.id,variant:g.variant});
+      g.assessments.push({at:g.updatedAt,value:best,unit:g.unit,source:'workout-set',workoutId:entry.id,variant:g.variant});
       g.assessments=g.assessments.slice(-75);
       if(best>=g.target)g.achievedAt=g.achievedAt||g.updatedAt;
       changed=true;
