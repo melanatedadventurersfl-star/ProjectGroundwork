@@ -142,7 +142,7 @@
   }
   function render(training){
     const s=ensure(training),d=s.draft,g=s.goals.find(x=>x.id===s.selectedId);
-    return '<div class="clean-page goal-lab-page"><div class="goal-back"><button data-goal-action="back-home">← BACK TO HOME</button></div>'+
+    return '<div class="clean-page goal-lab-page"><div class="goal-back"><button data-goal-action="back-home">← BACK TO HOME</button><button data-goal-action="all-goals">ALL GOALS</button></div>'+
       (d ? d.stage==='choose'?choose(d):d.stage==='target'?targetStage(d):d.stage==='assessment'?assessment(d):d.stage==='feedback'?feedback(d):review(d)
         :g?detail(g):overview(s))+'</div>';
   }
@@ -159,6 +159,7 @@
     const result=(ok,message='')=>({changed:ok,message});
     if(name==='new'){s.selectedId=null;s.draft=draft(node.dataset.mode==='discover'?'discover':'target');return result(true);}
     if(name==='back-home'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
+    if(name==='all-goals'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
     if(name==='cancel'){s.draft=null;return result(true);}
     if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment'};s.selectedId=g.id;return result(true);}
