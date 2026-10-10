@@ -32,3 +32,52 @@
 .goal-strategy-teaser>button{border:1px solid #357b56;color:#145433;background:#e9f4ea;padding:12px;border-radius:10px;font-weight:700;cursor:pointer}
 .goal-strategy-maintain{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:9px 0}
 @media(max-width:600px){.goal-strategy-panel,.goal-strategy-review,.goal-strategy-teaser{padding:15px;border-radius:14px}.goal-strategy-teaser{display:grid}.goal-strategy-choices button{flex:1}.goal-strategy-actions>*{flex:1}.goal-strategy-changes>div{display:grid}}
+
+
+/* Home screen: daily training is first, then one unified dark Goals panel. */
+.home-goals-panel{
+  display:grid;
+  gap:14px;
+  margin:20px 0;
+  padding:clamp(16px,3vw,23px);
+  border:1px solid #245a42;
+  border-radius:22px;
+  color:#f8f7ee;
+  background:linear-gradient(145deg,#133e2e 0%,#0d2d22 50%,#081d16 100%);
+  box-shadow:0 10px 25px rgba(1,15,8,.18);
+}
+.home-goals-panel *, .home-goals-panel *::before, .home-goals-panel *::after{box-sizing:border-box}
+.home-goals-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.home-goals-heading>span{font-size:.78rem;font-weight:900;letter-spacing:.12em;color:#e5bd65}
+.home-goals-heading>small{font-size:.72rem;letter-spacing:.08em;color:#c2d4c7;font-weight:700}
+.home-goals-track{display:flex;gap:12px;max-width:100%;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;padding:2px 0 6px;scrollbar-width:thin;scrollbar-color:#36674e transparent}
+.home-goal-item{flex:0 0 min(92%,460px);min-width:0;scroll-snap-align:start;display:grid;gap:10px;padding:13px 15px;border-radius:15px;border:1px solid rgba(141,190,151,.19);background:rgba(5,25,17,.31)}
+.home-goal-item:only-child{flex-basis:100%}
+.home-goal-line{display:flex;align-items:center;gap:12px;min-width:0}
+.home-goal-icon{display:grid;place-items:center;flex:0 0 42px;height:42px;background:#214d36;border:1px solid #357b53;border-radius:12px;font-size:1.25rem}
+.home-goal-labels{flex:1;display:grid;gap:4px;min-width:0}
+.home-goal-labels strong{font-size:clamp(1.08rem,3.2vw,1.35rem);line-height:1.2;color:#fff;overflow-wrap:anywhere}
+.home-goal-labels>span{font-size:.92rem;color:#ddebe0}
+.home-goal-percent{font-size:.92rem;font-weight:800;color:#ebc76f;font-variant-numeric:tabular-nums;align-self:end}
+.home-goal-progress{width:100%;height:7px;background:#345846;border-radius:50px;overflow:hidden}
+.home-goal-progress>i{display:block;height:100%;border-radius:50px;background:#e9bd61}
+.home-goal-milestone{margin:0;font-size:.82rem;line-height:1.35;color:#c9dccd}
+.home-goal-swipe{color:#c8d8c9;font-size:.76rem;line-height:1.2}
+.home-goals-strategy{display:flex;align-items:flex-start;gap:12px;border-top:1px solid rgba(192,221,190,.22);padding-top:14px}
+.home-goals-strategy-icon{flex:0 0 38px;height:38px;display:grid;place-items:center;border-radius:11px;background:#234c36;color:#f0c765;font-weight:800;font-size:1.4rem}
+.home-goals-strategy>div:last-child{display:grid;gap:4px;min-width:0}
+.home-goals-strategy strong{color:#fff;font-size:1rem;line-height:1.3}
+.home-goals-strategy p{margin:0;color:#d1dfd4;font-size:.85rem;line-height:1.42}
+.home-goals-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:9px}
+.home-goals-panel .home-goals-actions button{min-height:45px;border-radius:12px;padding:11px 16px;cursor:pointer;font-family:inherit;font-size:.82rem;font-weight:850;letter-spacing:.02em;transition:filter .15s ease}
+.home-goals-panel .home-goals-primary{flex:2;min-width:220px;background:#eabc61;color:#102c20;border:1px solid #eabc61}
+.home-goals-panel .home-goals-secondary{flex:1;min-width:130px;background:transparent;color:#efc769;border:1px solid #d4ab56}
+.home-goals-panel .home-goals-actions button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.home-goals-panel .home-goals-actions button:active{filter:brightness(.9)}
+@media(max-width:600px){
+  .home-goals-panel{margin:16px 0;padding:15px;border-radius:18px;gap:12px}
+  .home-goal-item{flex-basis:91%;padding:12px}
+  .home-goal-item:only-child{flex-basis:100%}
+  .home-goals-actions{display:grid;grid-template-columns:1fr}
+  .home-goals-panel .home-goals-actions button{min-width:0;width:100%}
+}
