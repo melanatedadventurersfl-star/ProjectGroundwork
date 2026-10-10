@@ -158,4 +158,18 @@ assert.match(style,/\.home-goals-panel\{/);
 assert.match(style,/\.home-goals-primary/);
 assert.match(style,/\.home-goals-track\{[^}]*overflow-x:auto/);
 
+// Visual regression: the dark shell text token must not bleed into light cards.
+const goalLabStyle=fs.readFileSync(path.join(__dirname,'goal-lab.css'),'utf8');
+const goalsHtml=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
+assert.match(goalLabStyle,/\\.goal-empty,\\.goal-how,\\.goal-wizard,\\.goal-detail\\{[^}]*color:#17392b/,
+  'Discovery and goal detail cards need explicit dark text on light surfaces');
+assert.match(style,/\\.goal-strategy-panel,\\.goal-strategy-review,\\.goal-strategy-teaser\\{[^}]*background:#f7faf6;color:#173629/,
+  'Strategy and weekly review cards need explicit high-contrast foregrounds');
+assert.match(style,/\\.goal-strategy-panel \\.goal-strategy-modes button/,
+  'Unselected strategy choices must remain readable');
+assert.match(style,/#app > \\.goal-strategy-review:last-child/,
+  'The final goal-review panel must clear bottom navigation and safe areas');
+assert.match(goalsHtml,/goal-lab\\.css\\?v=20261010-contrast-fix/);
+assert.match(goalsHtml,/goal-strategy\\.css\\?v=20261010-contrast-fix/);
+
 console.log('GO Workout Goal-to-Training V2: approval, integration, protection, progress and review checks passed.');
