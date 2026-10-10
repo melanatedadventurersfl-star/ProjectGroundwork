@@ -17848,8 +17848,8 @@ body.splash-active {
   justify-content: center;
   align-items: center;
   gap: 1px;
-  width: clamp(104px, 26vw, 144px);
-  height: clamp(104px, 26vw, 144px);
+  width: clamp(118px, 29vw, 148px);
+  height: clamp(118px, 29vw, 148px);
   padding: 10px;
   border: 1px solid rgba(242,218,160,.21);
   border-radius: 27%;
