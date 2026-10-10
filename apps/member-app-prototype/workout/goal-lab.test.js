@@ -79,4 +79,32 @@ click('feedback-next');
 assert.equal(state.goalLab.draft.stage,'target');
 assert.ok(state.goalLab.draft.target>=20,'discover-first mode recommends a measurable goal');
 
+
+const altered={};
+const modified=(name,data={})=>goals.action(altered,name,{dataset:data});
+modified('new',{mode:'target'});
+modified('template',{kind:'pushup'});
+modified('choose-next');
+modified('target-next');
+goals.field(altered,'variant','Incline push-up');
+for(let i=0;i<10;i++)modified('count-up');
+modified('assessment-done');modified('feedback-next');modified('save-goal');
+assert.equal(goals.isRunnableGoal(altered.goalLab.goals[0]),false);
+assert.equal(goals.buildGoalDay(altered,[{id:'push-up',name:'Push-Up',movement:'horizontal-push',muscles:['Chest'],loadMode:'bodyweight',equipment:['bodyweight']}],{equipment:'bodyweight'}),null);
+assert.equal(goals.afterWorkout(altered,{id:'standard-session',exercises:[{id:'push-up',sets:[{completed:true,reps:30}]}]}),false);
+assert.equal(altered.goalLab.goals[0].best,10);
+
+const changed={};
+const c=(name,dataset={})=>goals.action(changed,name,{dataset});
+c('new',{mode:'target'});c('template',{kind:'custom'});c('choose-next');c('target-next');c('count-up');c('assessment-done');c('feedback-next');c('save-goal');
+const custom=changed.goalLab.goals[0];c('edit',{goalId:custom.id});
+goals.field(changed,'unit','seconds');
+assert.equal(changed.goalLab.draft.tested,false);
+c('target-next');assert.equal(changed.goalLab.draft.stage,'assessment');
+goals.field(changed,'result',18);c('assessment-done');c('feedback-next');c('save-goal');
+assert.equal(custom.unit,'seconds');
+assert.equal(custom.baseline,18);
+assert.equal(custom.assessments[0].unit,'reps');
+assert.equal(custom.assessments[1].unit,'seconds');
+
 console.log('Goal Lab: all discovery, progress, variant, safety and persistence checks passed.');
