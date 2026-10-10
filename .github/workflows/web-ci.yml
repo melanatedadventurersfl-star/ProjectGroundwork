@@ -52,6 +52,7 @@ jobs:
           node --check apps/member-app-prototype/workout/goal-lab.js
           node --check apps/member-app-prototype/workout/goal-strategy.js
           node --check apps/member-app-prototype/workout/goal-strategy.tests.cjs
+          node apps/member-app-prototype/workout/splash.test.cjs
           node --check apps/member-app-prototype/workout/performance.js
           node --check apps/member-app-prototype/workout/onboarding.js
           node --check apps/member-app-prototype/workout/health-connect-core.js

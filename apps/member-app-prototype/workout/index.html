@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="preload" as="image" href="./assets/branding/goworkout-splash.webp" type="image/webp" />
-  <link rel="stylesheet" href="./styles.css?v=20261006-brand-splash" />
+  <link rel="preload" as="image" href="./assets/branding/goworkout-splash-scene.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./styles.css?v=20261010-sharp-fullscreen-splash" />
   <link rel="stylesheet" href="./performance.css" />
   <link rel="stylesheet" href="./goal-lab.css?v=20261010-contrast-fix" />
   <link rel="stylesheet" href="./onboarding.css" />
@@ -27,8 +27,13 @@
 </head>
 <body class="splash-active">
   <div id="goworkout-splash" class="goworkout-splash" role="status" aria-label="Opening GO Workout">
-    <div class="goworkout-splash-backdrop" aria-hidden="true"></div>
-    <img class="goworkout-splash-art" src="./assets/branding/goworkout-splash.webp" alt="" fetchpriority="high" />
+    <img class="goworkout-splash-art" src="./assets/branding/goworkout-splash-scene.svg" alt="" fetchpriority="high" />
+    <div class="goworkout-splash-shade" aria-hidden="true"></div>
+    <div class="goworkout-splash-brand" aria-hidden="true">
+      <div class="goworkout-splash-logo"><span>G</span><i></i></div>
+      <div class="goworkout-splash-wordmark"><b>G<span>O</span></b><strong>WORKOUT</strong></div>
+      <p>Training built around you.</p>
+    </div>
     <div class="goworkout-splash-loader" aria-hidden="true"><span></span></div>
   </div>
   <div class="app-shell">
