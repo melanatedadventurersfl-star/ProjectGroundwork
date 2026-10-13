@@ -247,30 +247,45 @@
     if(name==='all-goals'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
     if(name==='cancel'){s.draft=null;return result(true);}
-    if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment'};s.selectedId=g.id;return result(true);}
-    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:assessmentBest(g),originalUnit:g.unit,originalResult:assessmentBest(g)};return result(true);}
+    if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment',targetTimeSeconds:g.targetTimeSeconds||0,targetTimeText:g.targetTimeSeconds?formatDuration(g.targetTimeSeconds):''};s.selectedId=g.id;return result(true);}
+    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:assessmentBest(g),originalUnit:g.unit,originalResult:assessmentBest(g),targetTimeSeconds:g.targetTimeSeconds||0,targetTimeText:g.targetTimeSeconds?formatDuration(g.targetTimeSeconds):''};return result(true);}
     if(name==='toggle-pause'){const g=goal(node.dataset.goalId);if(!g)return result(false);g.status=g.status==='paused'?'active':'paused';g.updatedAt=now();return result(true);}
     if(name==='delete'){const g=goal(node.dataset.goalId);if(!g||!confirm('Delete '+g.name+' and its goal assessment history?'))return result(false);s.goals=s.goals.filter(x=>x.id!==g.id);s.selectedId=null;return result(true,'Goal deleted.');}
     if(!d)return result(false);
     if(name==='mode'){d.mode=node.dataset.mode==='discover'?'discover':'target';return result(true);}
-    if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false});return result(true);}
+    if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false,elapsedSeconds:0,elapsedText:'',targetTimeSeconds:0,targetTimeText:'',startedAt:null,startedElapsed:0,measurementSource:'manual'});return result(true);}
     if(name==='choose-next'){d.stage=d.mode==='discover'?'assessment':'target';return result(true);}
     if(name==='back'){
-      if(d.stage==='feedback'){d.result=0;d.tested=false;d.testedAt=null;}
+      if(d.stage==='feedback'){d.result=0;d.elapsedSeconds=0;d.elapsedText='';d.tested=false;d.testedAt=null;}
       d.startedAt=null;
       d.stage=d.stage==='assessment'?(d.mode==='discover'?'choose':'target'):d.stage==='feedback'?'assessment':d.stage==='review'?'target':'choose';return result(true);}
     if(name==='target-next'){
       if(!d.label.trim()||number(d.target)<=0)return result(false,'Enter a goal name and target above zero.');
+      const seconds=parseDuration(d.targetTimeText);
+      if(seconds===null)return result(false,'Enter a valid time, such as 9:00 or 1:09:00.');
+      d.targetTimeSeconds=seconds;
       d.stage=d.tested?'review':'assessment';return result(true);
     }
-    if(name==='timer-start'){if(d.unit!=='seconds')return result(false);d.startedAt=now();return result(true);}
-    if(name==='timer-stop'){if(d.unit!=='seconds'||!d.startedAt)return result(false);
-      d.result=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
-      d.startedAt=null;d.startedElapsed=0;return result(true);
+    if(name==='timer-start'){
+      if(d.startedAt)return result(false);
+      d.startedElapsed=0;d.startedAt=now();return result(true);
+    }
+    if(name==='timer-stop'){
+      if(!d.startedAt)return result(false);
+      const elapsed=Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+      if(d.unit==='seconds')d.result=elapsed;
+      else {d.elapsedSeconds=elapsed;d.elapsedText=formatDuration(elapsed);}
+      d.startedAt=null;d.startedElapsed=0;d.measurementSource='app';
+      return result(true);
     }
     if(name==='count-up'||name==='count-down'){if(d.unit!=='reps')return result(false);d.result=Math.max(0,Math.min(100000,number(d.result)+(name==='count-up'?1:-1)));return result(true);}
     if(name==='assessment-done'){
       if(d.startedAt)return result(false,'Stop the timer before finishing.');
+      if(d.unit!=='seconds'){
+        const seconds=parseDuration(d.elapsedText);
+        if(seconds===null)return result(false,'Enter a valid elapsed time, such as 9:00, or leave it empty.');
+        d.elapsedSeconds=seconds;
+      }else d.elapsedSeconds=number(d.result);
       d.tested=true;d.testedAt=now();d.stage='feedback';return result(true);
     }
     if(name==='effort'){d.effort=node.dataset.effort;return result(true);}
