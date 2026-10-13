@@ -130,6 +130,14 @@
     return goalInfo(training,profile,plan,catalog,entry,opts).rows.filter(x=>x.planned||x.couldAdd||x.isInDay);
   }
   function scheduleBadge(training,profile,plan,catalog,entry,dayCount){
+    if(entry?.status==='skipped')return '';
+    if(['complete','partial'].includes(entry?.status)){
+      const completed=all(training).filter(g=>(entry.history?.exercises||[]).some(ex=>
+        ex.id===g.exerciseId&&!ex.skipped&&(ex.sets||[]).some(set=>set.completed)));
+      if(!completed.length)return '';
+      return '<div class="adaptive-day-badge"><span>◎ '+esc(completed.slice(0,2).map(g=>g.name).join(' + '))+
+        '</span><small>Goal-related exercise performed · not a maximum-reps reassessment</small></div>';
+    }
     const data=goalInfo(training,profile,plan,catalog,entry,{dayCount});
     const active=data.rows.filter(x=>x.isInDay||x.planned||(data.approved&&x.couldAdd));
     if(!active.length)return '';
