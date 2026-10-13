@@ -6,11 +6,11 @@
   const user=()=>bridge()?.userId?.();
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const profileName=id=>bridge()?.connectionName?.(id)||'Workout member';
-  const state={uid:null,loading:false,loaded:false,error:'',notifications:[],agreements:[],checkins:[],preferences:null,channel:null,poll:null,lastSound:null};
+  const state={uid:null,loading:false,loaded:false,attempted:false,error:'',notifications:[],agreements:[],checkins:[],preferences:null,channel:null,poll:null,lastSound:null};
   function reset(){
     if(state.channel){try{api()?.removeChannel(state.channel);}catch{}}
     if(state.poll)clearInterval(state.poll);
-    Object.assign(state,{uid:null,loading:false,loaded:false,error:'',notifications:[],agreements:[],checkins:[],preferences:null,channel:null,poll:null});
+    Object.assign(state,{uid:null,loading:false,loaded:false,attempted:false,error:'',notifications:[],agreements:[],checkins:[],preferences:null,channel:null,poll:null});
   }
   function isTogether(){return bridge()?.tab?.()==='together';}
   const repaint=()=>{if(isTogether())bridge()?.render?.();};
@@ -21,12 +21,13 @@
     if(state.uid!==id){reset();state.uid=id;}
     if(state.loading)return;
     state.loading=true;
+    state.attempted=true;
     try{
       const db=api();
       const responses=await Promise.all([
         db.from('workout_circle_notifications').select('id,actor_id,kind,reference_id,created_at,read_at').eq('recipient_id',id).order('created_at',{ascending:false}).limit(30),
         db.from('workout_accountability_agreements').select('id,requester_id,partner_id,goal_id,frequency,support_style,status,created_at,accepted_at,updated_at').order('updated_at',{ascending:false}),
-        db.from('workout_circle_preferences').select('requests_enabled,encouragement_enabled,milestones_enabled,accountability_enabled').eq('user_id',id).maybeSingle()
+        db.from('workout_circle_preferences').select('requests_enabled,encouragement_enabled,invites_enabled,milestones_enabled,accountability_enabled').eq('user_id',id).maybeSingle()
       ]);
       if(id!==user())return;
       for(const r of responses)if(r.error)throw r.error;
@@ -82,6 +83,7 @@
       connection_request:'sent you a connection request',
       connection_accepted:'accepted your connection request',
       encouragement:'sent encouragement',
+      workout_invite:'invited you to work out together',
       milestone:'reached a shared milestone',
       accountability_request:'invited you to be an accountability partner',
       accountability_accepted:'accepted your accountability invitation',
@@ -108,7 +110,7 @@
   }
   async function updatePreferences(){
     if(!user())return;
-    const fields=['requests_enabled','encouragement_enabled','milestones_enabled','accountability_enabled'];
+    const fields=['requests_enabled','encouragement_enabled','invites_enabled','milestones_enabled','accountability_enabled'];
     const values={user_id:user(),updated_at:new Date().toISOString()};
     for(const f of fields)values[f]=Boolean(document.querySelector('[data-circle-pref="'+f+'"]')?.checked);
     const {error}=await api().from('workout_circle_preferences').upsert(values,{onConflict:'user_id'});
@@ -132,7 +134,7 @@
   }
   function panel({accepted=[]}={}){
     if(!user())return '';
-    if(!state.loaded&&!state.loading)queueMicrotask(()=>{void query();});
+    if(!state.loaded&&!state.loading&&!state.attempted)queueMicrotask(()=>{void query();});
     const unread=state.notifications.filter(n=>!n.read_at);
     const active=state.agreements.filter(a=>a.status==='active');
     const newRequests=state.agreements.filter(a=>a.status==='pending'&&a.partner_id===user());
@@ -171,7 +173,7 @@
        ).join('')+
       '</section></div>'+
       '<details class="circle-v2-preferences"><summary>Activity notification preferences</summary><div class="connections-card"><p class="connections-muted">Choose the updates that appear in your Circle. These settings do not enable background push notifications.</p>'+
-        [['requests_enabled','Connection requests'],['encouragement_enabled','Encouragement'],['milestones_enabled','Shared milestones'],['accountability_enabled','Accountability updates']].map(([id,title])=>
+        [['requests_enabled','Connection requests'],['encouragement_enabled','Encouragement'],['invites_enabled','Workout invitations'],['milestones_enabled','Shared milestones'],['accountability_enabled','Accountability updates']].map(([id,title])=>
           '<label class="connections-toggle"><input type="checkbox" data-circle-pref="'+id+'" '+(state.preferences?.[id]===false?'':'checked')+'>'+title+'</label>').join('')+
         '<button type="button" data-circle-action="preferences" class="connections-button">Save preferences</button></div></details>'+
       '</div>';
