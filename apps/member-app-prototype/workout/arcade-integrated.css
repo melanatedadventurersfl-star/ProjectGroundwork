@@ -83,3 +83,8 @@
 .ai-mode-focus .ai-achievement-head button{color:#245439}
 @media(max-width:420px){.ai-home{padding:12px}.ai-home-main{gap:11px}.ai-character{width:76px;height:93px}.ai-home-copy h3{font-size:15px}.ai-achievements{grid-template-columns:1fr}.ai-achievement{align-items:center}.ai-progress-head h3{font-size:16px}.ai-progress-level b{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.ai-xp-track>span{transition:none}}
+
+/* Character Locker keeps customization separate from everyday training. */
+.arcade-locker-milestones{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:rgba(246,228,184,.1);color:#f9edcb}
+.arcade-locker-milestones strong{font-size:13px;line-height:1.45;color:#f7e5ba}
+.arcade-locker-milestones .arcade-button{min-height:39px;max-width:100%;font-size:11px}
