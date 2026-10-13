@@ -5409,7 +5409,8 @@ function createWorkout(day,meta={}){
     revision:1,processedActions:{},finalizing:false,
     exercises:day.exercises.map(ex=>{
       const calibrated=store.calibration[ex.id];
-      const adaptive=day.goalFocused?null:adaptivePrescription(ex);
+      // Approved goal additions use the assessed goal prescription, not an unrelated learner override.
+      const adaptive=(day.goalFocused||ex.goalStrategyId)?null:adaptivePrescription(ex);
       let suggestedWeight=adaptive?.weight ?? calibrated?.weight ?? ex.startWeight ?? 0;
       const suggestedReps=day.goalFocused?(ex.startReps||recommendedRepCount(ex.reps)):(adaptive?.reps || ex.startReps || recommendedRepCount(ex.reps));
       if(day.holdProgression&&adaptive?.weight&&calibrated?.weight)suggestedWeight=Math.min(adaptive.weight,calibrated.weight);
@@ -5426,7 +5427,7 @@ function createWorkout(day,meta={}){
       };
     })
   };
-  if(!day.goalFocused)workout.exercises=workout.exercises.map(ex=>applyLearnerTargetInfluence(ex,workout));
+  if(!day.goalFocused)workout.exercises=workout.exercises.map(ex=>ex.goalStrategyId?ex:applyLearnerTargetInfluence(ex,workout));
   registerWorkoutLearningPredictions(workout);
   return workout;
 }
