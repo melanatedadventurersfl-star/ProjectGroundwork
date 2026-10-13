@@ -150,3 +150,13 @@
 .goal-evidence-list p,.goal-impact-evidence{font-size:.88rem;line-height:1.5}
 .goal-impact-evidence b{color:#225a3f}
 @media(max-width:600px){.goal-strategy-options .goal-strategy-choices{display:grid;grid-template-columns:1fr}.goal-strategy-guide{padding:8px}}
+
+
+.goal-strategy-rowing{display:grid;gap:13px;background:#ecf6ef;border:1px solid #accab5;border-radius:14px;padding:16px}
+.goal-strategy-rowing h3{margin:0;color:#173629}
+.goal-row-log{display:grid;gap:12px;border:1px solid #c4d8c9;background:#fff;border-radius:12px;padding:14px;color:#173629}
+.goal-row-log label{display:grid;gap:7px;font-size:.86rem;font-weight:750;color:#254f3b}
+.goal-row-log input{min-height:46px;width:100%;border:1px solid #8eafa0;background:#fff;color:#173629;border-radius:10px;padding:10px;font:inherit;font-size:1rem}
+.goal-row-log small{font-size:.8rem;color:#355747}
+.goal-row-log button{justify-self:start}
+@media(max-width:600px){.goal-row-log button{justify-self:stretch}}
