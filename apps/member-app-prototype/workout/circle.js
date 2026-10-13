@@ -11,6 +11,7 @@
     if(state.channel){try{api()?.removeChannel(state.channel);}catch{}}
     if(state.poll)clearInterval(state.poll);
     Object.assign(state,{uid:null,loading:false,loaded:false,attempted:false,error:'',notifications:[],agreements:[],checkins:[],preferences:null,channel:null,poll:null});
+    badge();
   }
   function isTogether(){return bridge()?.tab?.()==='together';}
   const repaint=()=>{if(isTogether())bridge()?.render?.();};
