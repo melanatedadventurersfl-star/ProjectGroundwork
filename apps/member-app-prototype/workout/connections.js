@@ -7,7 +7,7 @@
   const goals = () => B()?.goals?.() || [];
   const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clean = v => escapeHtml(v).slice(0,300);
-  const state = {profile:null,connections:[],profiles:{},shares:[],inbox:[],results:[],loaded:false,loading:false,error:'',query:'',saving:false,synced:null};
+  const state = {ownerId:null,attempted:false,profile:null,connections:[],profiles:{},shares:[],inbox:[],results:[],loaded:false,loading:false,error:'',query:'',saving:false,synced:null};
   const active = () => Boolean(client() && myId());
   const nameFor = id => state.profiles[id]?.display_name || 'Workout member';
   const notify = message => { if(B()?.toast)B().toast(message); };
@@ -97,9 +97,14 @@
     shareTimer=setTimeout(()=>{ shareTimer=null; void publishGoalShares(); },2500);
   }
   async function refresh(){
-    if(!active()||state.loading)return;
+    if(!active())return;
     const id=myId();
+    if(state.ownerId!==id){
+      Object.assign(state,{ownerId:id,attempted:false,profile:null,connections:[],profiles:{},shares:[],inbox:[],results:[],loaded:false,loading:false,error:'',query:'',synced:null});
+    }
+    if(state.loading)return;
     state.loading=true;
+    state.attempted=true;
     try {
       const api=client();
       const [profileRes,connectionsRes,inboxRes,blocksRes]=await Promise.all([
@@ -200,7 +205,7 @@
 
   function panel(){
     if(!active())return '';
-    if(!state.loaded&&!state.loading)queueMicrotask(()=>{void refresh();});
+    if(!state.loaded&&!state.loading&&!state.attempted)queueMicrotask(()=>{void refresh();});
     const list=state.connections.map(connectionOf);
     const accepted=list.filter(x=>x.status==='accepted');
     const received=list.filter(x=>x.status==='pending'&&x.recipient_id===myId());
