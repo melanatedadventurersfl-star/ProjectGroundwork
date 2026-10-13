@@ -156,6 +156,8 @@
     const added=[];
     for(const {goal,ex} of selectedCandidates){
       if(added.length>=2)break;
+      if(Number.isInteger(opts.dayIndex)&&window.GoWorkoutAdaptiveExperience &&
+        !window.GoWorkoutAdaptiveExperience.eligibleSlot(s.goalIds.indexOf(goal.id),opts.dayIndex,Math.max(1,num(profile?.days)||1)))continue;
       if(!ex||exerciseIds.has(ex.id))continue;
       if(typeof opts.allowExercise==='function'&&!opts.allowExercise(ex))continue;
       const recentlyTrained=s.trainingLog.some(log=>Date.now()-Date.parse(log.at)<40*3600000&&
@@ -384,7 +386,7 @@
       '<div class="goal-impact-footer"><button type="button" data-tab="train">VIEW TRAINING SCHEDULE →</button></div></section>';
   }
 
-  function panel(training,profile,plan,catalog,history){
+  function panel(training,profile,plan,catalog,history,schedule=[]){
     const active=selected(training),s=ensure(training);
     if(!goals(training).length||training.goalLab?.draft)return '';
     const d=s.draft,needsReview=s.status==='active'&&!current(training,profile,plan);
@@ -408,6 +410,7 @@
       if(d.preview){
         html+='<div class="goal-strategy-preview"><h3>3. Review proposed changes</h3><p>'+safe(p.summary)+'</p>'+
           '<p><strong>Selected priorities:</strong> '+safe(p.chosen.map(x=>x.goal.name).join(', ')||'None')+'</p>'+
+          (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.proposal(training,profile,plan,catalog,schedule):'')+
           (d.mode==='integrate'||d.mode==='focused'?'<div class="goal-strategy-changes">'+p.additions.map(x=>'<div><b>+ '+safe(x.ex.name)+'</b><span>'+safe(x.ex.sets+' sets × '+x.ex.reps)+' · '+safe(muscle[x.goal.kind]||'Goal progression')+'</span></div>').join('')+'</div>':'')+
           (p.unavailable.length?'<p class="goal-strategy-notice">Assessment-only for now: '+safe(p.unavailable.map(x=>x.goal.name+' ('+x.goal.variant+')').join(', '))+'. No unsupported variation will be substituted.</p>':'')+
           '<p><strong>Unchanged:</strong> Your existing schedule, exercises, partner settings, workout history, and saved baseline assessments.</p>'+
