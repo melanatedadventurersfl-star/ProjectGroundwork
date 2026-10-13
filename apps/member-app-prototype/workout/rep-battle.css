@@ -37,6 +37,10 @@
 .rep-guardian-leg.left{left:27px;transform:rotate(5deg)}.rep-guardian-leg.right{right:23px;transform:rotate(-5deg)}
 .rep-impact{position:absolute;left:54%;top:30%;font-size:67px;color:#fff3c6;text-shadow:0 0 12px #f4c661;opacity:0;z-index:8}
 .rep-damage{position:absolute;z-index:10;right:21%;top:1%;font-size:28px;font-weight:950;color:#fff2b7;text-shadow:0 3px 9px #624019;opacity:0}
+.rep-victory-glow{position:absolute;left:52%;top:4%;font-size:58px;color:#fff6ba;text-shadow:0 0 19px #fff2a3;z-index:7;animation:rep-victory-spark 1.4s ease-out both}
+.rep-victory-banner{position:absolute;top:24%;left:50%;transform:translateX(-50%);z-index:11;padding:7px 12px;border-radius:999px;background:#143f38e8;border:1px solid #ffdf88;color:#ffe6a6;font-weight:900;font-size:.63rem;white-space:nowrap;letter-spacing:.1em;box-shadow:0 4px 15px #183e37ad}
+.rep-arena.is-victory .rep-guardian{filter:saturate(.35);opacity:.62;transform:translateY(17px) rotate(7deg);transition:transform .5s ease,opacity .5s ease}
+@keyframes rep-victory-spark{0%{opacity:0;transform:scale(.4)}45%{opacity:1;transform:scale(1.13)}100%{opacity:.72;transform:scale(1)}}
 .rep-rest-shield{position:absolute;z-index:6;left:18%;top:6%;font-size:70px;color:#e1fffa;opacity:.55;text-shadow:0 0 16px #a6eee7}
 .rep-battle-caption{margin:10px 1px 8px;display:grid;gap:3px}
 .rep-battle-caption strong{color:#fff;font-size:.85rem;line-height:1.35}
@@ -47,7 +51,7 @@
 .rep-battle-steps small{font-size:.6rem;color:#bddbd0;letter-spacing:.05em}
 .rep-battle.is-collapsed{padding:12px 14px;margin-bottom:9px}
 .rep-battle.is-collapsed .rep-battle-hp{margin-bottom:6px}
-.rep-battle.is-rest .rep-player{animation:rep-breathe 2s ease-in-out infinite}
+.rep-arena.is-rest .rep-player{animation:rep-breathe 2s ease-in-out infinite}
 .rep-arena.is-rest .rep-rest-shield{animation:rep-shield 2.5s ease-in-out infinite}
 .rep-arena.is-hit .rep-player{animation:rep-strike .7s ease-out both}
 .rep-arena.is-hit .rep-guardian{animation:rep-stagger .75s ease-out both}
@@ -73,4 +77,4 @@
 .rep-battle-summary small{color:#bad6c8;font-size:.71rem}
 @media(max-width:700px){.rep-game-card{grid-template-columns:1fr}.rep-game-art{min-height:175px;padding:12px 12px 0}.rep-game-art .rep-arena{height:175px}.rep-game-copy{padding:10px 17px 18px}.rep-game-copy h3{font-size:1.25rem}}
 @media(max-width:410px){.rep-battle{margin-left:6px;margin-right:6px;padding:11px}.rep-arena{height:151px}.rep-player{left:10%;transform:scale(.83);transform-origin:bottom left}.rep-guardian{right:11%;transform:scale(.86);transform-origin:bottom right}.rep-battle-steps{gap:4px}.rep-battle-steps>span{gap:3px}.rep-battle-steps small{font-size:.52rem}.rep-battle-caption strong{font-size:.76rem}}
-@media(prefers-reduced-motion:reduce){.rep-battle-hp-track span{transition:none}.rep-arena.is-hit .rep-player,.rep-arena.is-hit .rep-guardian,.rep-arena.is-hit .rep-impact,.rep-arena.is-hit .rep-damage,.rep-arena.is-rest .rep-rest-shield,.rep-battle.is-rest .rep-player{animation:none}.rep-arena.is-hit .rep-impact{opacity:1}.rep-arena.is-hit .rep-damage{opacity:1}.rep-arena.is-rest .rep-rest-shield{opacity:.6}}
+@media(prefers-reduced-motion:reduce){.rep-victory-glow{animation:none;opacity:.7}.rep-arena.is-victory .rep-guardian{transition:none}.rep-battle-hp-track span{transition:none}.rep-arena.is-hit .rep-player,.rep-arena.is-hit .rep-guardian,.rep-arena.is-hit .rep-impact,.rep-arena.is-hit .rep-damage,.rep-arena.is-rest .rep-rest-shield,.rep-arena.is-rest .rep-player{animation:none}.rep-arena.is-hit .rep-impact{opacity:1}.rep-arena.is-hit .rep-damage{opacity:1}.rep-arena.is-rest .rep-rest-shield{opacity:.6}}
