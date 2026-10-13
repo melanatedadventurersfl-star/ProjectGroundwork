@@ -327,6 +327,7 @@ function saveStore(){
   syncLiveBadge();
   if(!sharedRuntime.syncMuted)scheduleSharedStateSync();
   scheduleCloudStateSync();
+  window.GoWorkoutConnections?.queueGoalSync?.();
   return persisted;
 }
 function uid(prefix){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
@@ -7670,7 +7671,7 @@ function savedSharedPartners(){
   const ownId=store.account?.userId||'';
   const seen=new Set();
   return sharedTrainingState().partners
-    .filter(item=>item?.userId&&item.userId!==ownId)
+    .filter(item=>item?.userId&&item.userId!==ownId&&item.status!=='disconnected')
     .filter(item=>{
       if(seen.has(item.userId))return false;
       seen.add(item.userId);
@@ -8679,6 +8680,7 @@ function renderTogether(){
   }
   return '<div class="clean-page together-page"><div class="clean-page-head"><div><p class="eyebrow">TOGETHER</p><h2>Train with your people.</h2><p>Start in the same gym, train remotely, or share a plan. Your performance record always remains your own.</p></div></div>'+
     '<section class="together-hero"><div class="together-icon">◎</div><div><span>NEXT AVAILABLE WORKOUT</span><h3>'+esc(next?.adaptedDay?.name||next?.day?.name||'No session scheduled')+'</h3><p>'+(next?esc(next.dayName)+' · '+esc(formatDate(next.dateKey))+' · ~'+esc(next.adaptedDay?.estimatedMinutes||store.profile.minutes)+' min':'Schedule a workout first.')+'</p></div></section>'+
+    (window.GoWorkoutConnections?.panel?.()||'')+
     '<section class="clean-panel shared-create-panel"><div class="clean-section-head"><div><p class="eyebrow">CREATE SHARED SESSION</p><h3>Choose who you are training with</h3></div></div>'+
       (savedPartners.length?'<label class="field"><span>SAVED PARTNER</span><select id="shared-saved-partner"><option value="">New partner</option>'+savedPartners.map(item=>'<option value="'+esc(item.userId)+'">'+esc(item.name||'Workout partner')+'</option>').join('')+'</select><small>Saved partners receive the session directly. No join code is required.</small></label>':'')+
       '<div class="form-grid two"><label class="field"><span>PARTNER NAME</span><input id="shared-partner-name" placeholder="Name"></label><label class="field"><span>EMAIL OR HANDLE <em>OPTIONAL</em></span><input id="shared-partner-contact" placeholder="Used to recognize a new partner"></label><label class="field"><span>MODE</span><select id="shared-mode"><option value="same-gym">Same Gym</option><option value="remote">Remote Together</option><option value="share-plan">Share Plan</option></select></label><label class="field"><span>TIMING</span><select id="shared-pace"><option value="stay-together">Match Timers When Aligned</option><option value="flexible">Independent Timers</option></select></label></div><button class="button primary-action" data-action="create-shared-draft" '+(!next?'disabled':'')+'>CREATE LOBBY</button></section>'+
@@ -10896,6 +10898,7 @@ function setTab(tab){
   persistUiState();
   render();updateTimers();window.scrollTo({top:0,behavior:'smooth'});
   if(currentTab==='together'&&store.account?.status==='connected'&&store.account?.userId){
+    queueMicrotask(()=>window.GoWorkoutConnections?.refresh?.());
     queueMicrotask(async()=>{
       try{
         await hydrateSavedWorkoutPartners();
@@ -11502,6 +11505,29 @@ function handleClick(event){
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'&&window.GoWorkoutGoalLab?.pauseTimer(ensureTrainingProgram()))saveStore();
 });
+window.GoWorkoutConnectionsBridge={
+  client:()=>workoutSupabase,
+  userId:()=>store.account?.status==='connected'?store.account.userId:null,
+  displayName:()=>displayName(),
+  goals:()=>window.GoWorkoutGoalLab?.ensure(ensureTrainingProgram())?.goals||[],
+  toast:message=>toast(message),
+  save:()=>saveStore(),
+  render:()=>{if(currentTab==='together')render();},
+  rememberPartner:({userId,name,status})=>{
+    const shared=sharedTrainingState(),previous=shared.partners.find(p=>p.userId===userId);
+    if(previous?.status===status&&previous?.name===name)return;
+    rememberSharedPartner({userId,name,status});
+    saveStore();
+  },
+  reconcilePartners:acceptedIds=>{
+    const keep=new Set(acceptedIds);
+    let changed=false;
+    for(const item of sharedTrainingState().partners){
+      if(item.status==='connected'&&!keep.has(item.userId)){item.status='disconnected';changed=true;}
+    }
+    if(changed)saveStore();
+  }
+};
 document.addEventListener('click',handleClick);
 document.addEventListener('load',event=>{
   const img=event.target?.closest?.('img');
