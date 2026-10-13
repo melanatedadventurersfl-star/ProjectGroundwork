@@ -96,5 +96,5 @@ assert.match(arcadeJs,/GoWorkoutRepBattle\.dashboardCard/);
 const battleCss=fs.readFileSync(path.join(__dirname,'rep-battle.css'),'utf8');
 assert.match(battleCss,/\.runner-v2-header>\.rep-header-status/,'HUD occupies an inline header row');
 assert.doesNotMatch(battleCss,/\.rep-battle-dock\s*\{/,'Fixed overlapping dock removed');
-assert.match(app,/data-arcade-action===\'battle-jump\'/,'VIEW returns to full arena');
+assert.match(app,/dataset\.arcadeAction==='battle-jump'/,'VIEW returns to full arena');
 console.log('GO Workout Rep Battle V1.1 tests passed.');
