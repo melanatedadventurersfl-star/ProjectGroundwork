@@ -295,14 +295,16 @@ begin
   if exists (select 1 from public.workout_connection_blocks b
     where (b.blocker_id = v_user_id and b.blocked_id = p_partner_user_id)
        or (b.blocker_id = p_partner_user_id and b.blocked_id = v_user_id))
-  then raise exception 'This workout invitation is unavailable'; end if;
+  then
+    raise exception 'This workout invitation is unavailable';
+  end if;
 
-  if upper(btrim(p_join_code)) !~ '^[A-Z2-9]{6}
+  if upper(btrim(p_join_code)) !~ '^[A-Z2-9]{6}$' then
     raise exception 'Invalid join code';
   end if;
 
-  -- A mutually accepted connection may be invited even before the first joint workout.
-  -- Previous join-code partners remain supported for backward compatibility.
+  -- Accepted connections can invite each other without a previous shared workout.
+  -- Prior code-connected workout partners remain eligible.
   if not exists (
     select 1 from public.workout_connections c
     where c.status = 'accepted'
@@ -373,85 +375,6 @@ grant execute on function public.create_workout_shared_session_for_partner(
 comment on function public.create_workout_shared_session_for_partner(
   text, uuid, text, text, text, date, text, jsonb, text, text, text
 ) is
-  'Creates a direct shared-workout invite for a previously connected workout partner. First-time partners still connect through the one-time join-code flow.';
-
-notify pgrst, 'reload schema';
- then
-    raise exception 'Invalid join code';
-  end if;
-
-  -- A mutually accepted connection may be invited even before the first joint workout.
-  -- Previous join-code partners remain supported for backward compatibility.
-  if not exists (
-    select 1 from public.workout_connections c
-    where c.status = 'accepted'
-      and ((c.requester_id = v_user_id and c.recipient_id = p_partner_user_id)
-        or (c.recipient_id = v_user_id and c.requester_id = p_partner_user_id))
-  )
-  and not exists (
-    select 1
-    from public.workout_shared_sessions s
-    where s.partner_user_id is not null
-      and (
-        (s.host_user_id = v_user_id and s.partner_user_id = p_partner_user_id)
-        or
-        (s.host_user_id = p_partner_user_id and s.partner_user_id = v_user_id)
-      )
-  ) then
-    raise exception 'Connect with this partner by code once before using direct invites';
-  end if;
-
-  insert into public.workout_shared_sessions (
-    join_code,
-    host_user_id,
-    partner_user_id,
-    host_name,
-    partner_name,
-    routine_name,
-    scheduled_date,
-    plan_day_id,
-    plan_snapshot,
-    mode,
-    pace,
-    set_flow,
-    lead_audio_user_id,
-    status
-  )
-  values (
-    upper(btrim(p_join_code)),
-    v_user_id,
-    p_partner_user_id,
-    v_host_name,
-    v_partner_name,
-    coalesce(nullif(btrim(p_routine_name), ''), 'Shared workout'),
-    p_scheduled_date,
-    p_plan_day_id,
-    coalesce(p_plan_snapshot, '{}'::jsonb),
-    p_mode,
-    p_pace,
-    p_set_flow,
-    v_user_id,
-    'lobby'
-  )
-  returning * into v_session;
-
-  return v_session;
-end;
-$$;
-
-revoke all on function public.create_workout_shared_session_for_partner(
-  text, uuid, text, text, text, date, text, jsonb, text, text, text
-) from public;
-revoke all on function public.create_workout_shared_session_for_partner(
-  text, uuid, text, text, text, date, text, jsonb, text, text, text
-) from anon;
-grant execute on function public.create_workout_shared_session_for_partner(
-  text, uuid, text, text, text, date, text, jsonb, text, text, text
-) to authenticated;
-
-comment on function public.create_workout_shared_session_for_partner(
-  text, uuid, text, text, text, date, text, jsonb, text, text, text
-) is
-  'Creates a direct shared-workout invite for a previously connected workout partner. First-time partners still connect through the one-time join-code flow.';
+  'Creates direct shared workouts for accepted GO Workout Connections or partners previously joined by code.';
 
 notify pgrst, 'reload schema';
