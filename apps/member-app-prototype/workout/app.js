@@ -6038,16 +6038,22 @@ function completeTimedSet(early=false){
   const w=pos.workout;
   const duration=Math.max(1,num(w.timedSetDuration)||num(pos.set.reps)||30);
   if(early){
-    const started=Date.parse(w.timedSetStartedAt||'');
-    pos.set.reps=String(Math.max(1,Math.min(duration,Math.round((Date.now()-started)/1000))));
+    const snap=timedSetSnapshot(w);
+    const elapsed=snap?duration-snap.remainingExact:(Date.now()-Date.parse(w.timedSetStartedAt||''))/1000;
+    pos.set.reps=String(Math.max(1,Math.min(duration,Math.round(Number.isFinite(elapsed)?elapsed:0))));
   }else{
     pos.set.reps=String(duration);
   }
   pos.set.plannedReps=String(pos.set.plannedReps??duration);
+  // Preserve the actual timer and prescribed duration for game scoring.
+  // These fields never change training targets or the user's workout record.
+  pos.set.repBattleTimedTargetSeconds=duration;
+  pos.set.repBattleTimedActualSeconds=num(pos.set.reps);
+  pos.set.timedSetEndedEarly=Boolean(early&&num(pos.set.reps)<duration);
+  pos.set.durationSeconds=num(pos.set.reps);
   const endedAt=new Date().toISOString();
   pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
   window.GoWorkoutRepBattle?.noteCompletedSet(ensureTrainingProgram(),w,pos.exercise,pos.set);
-  pos.set.durationSeconds=num(pos.set.reps);
   if((pos.exercise.sets||[]).every(set=>setIsResolved(set)))markExerciseEnd(w,pos.ei,endedAt);
   w.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight:String(pos.set.weight||''),reps:String(pos.set.reps||''),durationSeconds:pos.set.durationSeconds,plannedWeight:String(pos.set.plannedWeight||''),plannedReps:String(pos.set.plannedReps||duration)};
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
@@ -10171,14 +10177,15 @@ function renderRest(pos){
   const nextName=changingExercise?(nextEx?.name||'Next exercise'):next?pos.exercise.name:'Cooldown';
   const nextSet=changingExercise?1:next?(next.si+1):0;
   const last=pos.workout.lastCompletedSet;
+  const isTimed=pos.exercise.loadMode==='timed';
   const completed=last&&last.exerciseId===pos.exercise.id
-    ?((last.weight?last.weight+' lb × ':'')+last.reps+' reps'+(last.durationSeconds?' · '+formatClock(last.durationSeconds):''))
+    ?(isTimed?last.reps+' sec':((last.weight?last.weight+' lb × ':'')+last.reps+' reps'+(last.durationSeconds?' · '+formatClock(last.durationSeconds):'')))
     :'Set logged';
   const planned=last&&last.exerciseId===pos.exercise.id
-    ?((last.plannedWeight?last.plannedWeight+' lb × ':'')+last.plannedReps+' reps')
+    ?(isTimed?last.plannedReps+' sec':((last.plannedWeight?last.plannedWeight+' lb × ':'')+last.plannedReps+' reps'))
     :'';
   const changed=Boolean(planned&&completed&&!completed.startsWith(planned));
-  return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>'+(sameBlockNext?(blockRound?'Round complete.':'Quick transition.'):'Great set.')+'</h2><p>'+esc(completed)+'</p>'+
+  return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>'+(sameBlockNext?(blockRound?'Round complete.':'Quick transition.'):(isTimed&&num(last?.reps)<num(last?.plannedReps)?'Set recorded.':'Great set.'))+'</h2><p>'+esc(completed)+'</p>'+
     (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.postSetMoment(ensureTrainingProgram(),pos.workout,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):'')+
     (sameBlockNext?'<div class="runner-block-rest-label"><span>'+esc(dynamicBlockPositionLabel(pos.workout,pos.exercise))+'</span><strong>'+(blockRound?'FULL REST':'QUICK REST')+'</strong></div>':'')+
     (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
