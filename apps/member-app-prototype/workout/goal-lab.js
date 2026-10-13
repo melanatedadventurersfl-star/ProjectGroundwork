@@ -294,38 +294,49 @@
       return result(true);
     }
     if(name==='save-goal'){
+      const requestedSeconds=parseDuration(d.targetTimeText);
+      if(requestedSeconds===null)return result(false,'Enter a valid time target.');
+      d.targetTimeSeconds=requestedSeconds;
       if(!d.tested||number(d.target)<=0||!String(d.label).trim())return result(false,'Complete a baseline assessment and set your target.');
       const val=rounded(Math.max(0,number(d.result)),d.unit),at=now();
+      const record={at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant,
+        elapsedSeconds:d.unit==='seconds'?val:number(d.elapsedSeconds),measurementSource:d.measurementSource||'manual'};
       if(d.goalId){
         const g=goal(d.goalId);if(!g)return result(false);
-        // Changing a custom unit requires a new physical baseline.
-        // Keep old assessments and tag their original units instead of
-        // relabeling old performance data as the new measurement.
         const unitChanged=g.unit!==d.unit;
-        if(unitChanged&&!d.testedAt)return result(false,'Complete a new baseline test for the selected measurement.');
+        const compatibleDistance=unitChanged&&isDistanceUnit(g.unit)&&isDistanceUnit(d.unit);
+        if(unitChanged&&!compatibleDistance&&!d.testedAt)return result(false,'Complete a new baseline test for the selected measurement.');
         if(d.stage==='review'&&g.name!==d.label)g.name=d.label;
         const retested=d.stage==='review'&&Boolean(d.testedAt);
         if(unitChanged){
           g.assessments=(g.assessments||[]).map(a=>({...a,unit:a.unit||g.unit}));
+          if(compatibleDistance){
+            g.baseline=convertDistance(g.baseline,g.unit,d.unit);
+            g.best=convertDistance(g.best,g.unit,d.unit);
+          }
           g.unit=d.unit;g.metric=d.metric;g.variant=d.variant;
-          g.baseline=val;g.best=val;g.painFlag=d.effort==='pain';
-          g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
-          g.achievedAt=null;
-        }else if(retested){
-          g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
-          if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(assessmentBest(g),val);
-          g.painFlag=d.effort==='pain';
+          if(!compatibleDistance){
+            g.baseline=val;g.best=val;g.painFlag=d.effort==='pain';
+          }
         }
-        g.target=rounded(number(d.target),d.unit);g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
-        if(assessmentBest(g)>=g.target&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
+        if(retested||unitChanged&&!compatibleDistance){
+          g.assessments.push(record);
+          if(!unitChanged||compatibleDistance){
+            if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(assessmentBest(g),val);
+            g.painFlag=d.effort==='pain';
+          }
+        }
+        g.target=rounded(number(d.target),d.unit);g.targetTimeSeconds=d.targetTimeSeconds;
+        g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
+        if(meetsTarget(g)&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
         s.selectedId=g.id;
-      } else {
+      }else{
         const t=template(d.kind);
         const g={id:uid(),kind:d.kind,exerciseId:d.exerciseId,name:String(d.label).slice(0,64),unit:d.unit,metric:d.metric,icon:t.icon,
-          target:rounded(number(d.target),d.unit),baseline:val,best:val,variant:d.variant,deadline:d.deadline,
-          priority:d.priority,status:'active',createdAt:at,updatedAt:at,painFlag:d.effort==='pain',
-          assessments:[{at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant}],
-          achievedAt:val>=number(d.target)&&d.effort!=='pain'?at:null};
+          target:rounded(number(d.target),d.unit),targetTimeSeconds:d.targetTimeSeconds,baseline:val,best:val,
+          variant:d.variant,deadline:d.deadline,priority:d.priority,status:'active',createdAt:at,updatedAt:at,
+          painFlag:d.effort==='pain',assessments:[record],achievedAt:null};
+        if(meetsTarget(g)&&!g.painFlag)g.achievedAt=at;
         s.goals.push(g);s.selectedId=g.id;
       }
       s.draft=null;return result(true,'Personal goal saved.');
