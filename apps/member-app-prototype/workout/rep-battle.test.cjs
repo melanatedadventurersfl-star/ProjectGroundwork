@@ -68,6 +68,25 @@ assert.doesNotMatch(battle.livePanel(account,bad,'<span>avatar</span>'),/<img sr
 assert.match(battle.livePanel(account,{...bad,phase:'work'},'<span>avatar</span>'),/REP BATTLE/);
 assert.equal(arcade.stats([create('completed',6,6)]).xp,125,'Game has no additional XP path');
 assert.equal(arcade.stats([create('completed',1,1)]).xp,125,'XP remains equal for full plans');
+assert.match(battle.dockPanel(account,mini),/rep-battle-dock/,'A full set-based workout has a compact battle dock');
+assert.match(battle.dockPanel(account,mini),/Guardian 0 HP/,'Dock reflects saved set completion');
+assert.equal(battle.dockPanel({arcade:{mode:'companion'}},mini),'','Non-Arcade modes do not show a battle dock');
+assert.equal(battle.dockPanel(account,empty),'','Guided recovery has no battle dock');
+const mockDock={hidden:true};
+let arenaBottom=190;
+global.document={
+  getElementById:id=>id==='rep-battle-dock'?mockDock:null,
+  querySelector:selector=>selector==='.rep-battle'?{getBoundingClientRect:()=>({bottom:arenaBottom})}:null
+};
+battle.syncDock();
+assert.equal(mockDock.hidden,true,'Dock stays hidden while the full arena is visible');
+arenaBottom=70;
+battle.syncDock();
+assert.equal(mockDock.hidden,false,'Dock appears after the battle scrolls out of view');
+arenaBottom=350;
+battle.syncDock();
+assert.equal(mockDock.hidden,true,'Dock hides when full battle returns to the viewport');
+delete global.document;
 const documentHtml=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'app.js'),'utf8');
 const arcadeJs=fs.readFileSync(path.join(__dirname,'arcade.js'),'utf8');
@@ -79,6 +98,8 @@ assert.ok(documentHtml.indexOf('arcade.js')<documentHtml.indexOf('rep-battle.js'
 assert.match(app,/GoWorkoutRepBattle\?\.noteCompletedSet\(ensureTrainingProgram\(\),w,pos\.exercise,pos\.set\)/);
 assert.match(app,/GoWorkoutRepBattle\?\.noteCompletedSet\(ensureTrainingProgram\(\),pos\.workout,pos\.exercise,pos\.set\)/);
 assert.match(app,/data-arcade-action/);
+assert.match(app,/GoWorkoutRepBattle\.dockPanel/,'Workout renders the battle HUD');
+assert.match(app,/GoWorkoutRepBattle\?\.syncDock/,'HUD visibility is recalculated on render');
 assert.match(arcadeJs,/GoWorkoutRepBattle\.livePanel/);
 assert.match(arcadeJs,/GoWorkoutRepBattle\.summaryPanel/);
 assert.match(arcadeJs,/GoWorkoutRepBattle\.dashboardCard/);
