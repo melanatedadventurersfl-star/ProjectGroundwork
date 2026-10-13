@@ -55,8 +55,13 @@
     const differences=current.filter((g,i)=>prior[i]&&g.best!==prior[i].best);
     const onlySafeBaselines=differences.length>0&&differences.every(g=>{
       const match=live(training).find(x=>x.id===g.id);
+      const priorBest=prior.find(x=>x.id===g.id)?.best||0;
+      const beforeTarget=prescribedNumber(match,priorBest);
+      const afterTarget=prescribedNumber(match,g.best);
+      const smallProgression=beforeTarget!==null&&afterTarget!==null&&
+        (afterTarget<=beforeTarget||afterTarget-beforeTarget<=Math.max(2,Math.ceil(beforeTarget*.25)));
       return !g.pain&&g.best>0&&(strategy?.mode==='track'||(
-        (strategy?.goalIds||[]).includes(g.id)&&supported(match)));
+        (strategy?.goalIds||[]).includes(g.id)&&supported(match)&&smallProgression));
     });
     const auto=Boolean(before.approved&&allComparable&&before.mode==='smart'&&
       strategy?.status==='active'&&onlySafeBaselines);
@@ -187,7 +192,7 @@
   function notices(training){
     const saved=ensure(training).notices;
     if(!saved.length)return '';
-    return '<section class="adaptive-evolution"><div class="adaptive-evolution-head"><div><span class="adaptive-kicker">TRAINING INTELLIGENCE</span><h3>Your workout evolved</h3></div><span>'+saved.length+' update'+(saved.length===1?'':'s')+'</span></div>'+
+    return '<section class="adaptive-evolution"><div class="adaptive-evolution-head"><div><span class="adaptive-kicker">TRAINING INTELLIGENCE</span><h3>'+esc(saved.some(n=>n.status==='auto')?'Your workout evolved':'Goal assessment updates')+'</h3></div><span>'+saved.length+' update'+(saved.length===1?'':'s')+'</span></div>'+
       saved.slice(0,2).map(n=>'<div class="adaptive-notice"><div><strong>'+esc(n.name)+'</strong><span class="adaptive-notice-status '+(n.status==='auto'?'auto':n.status==='tracked'?'tracked':'review')+'">'+(n.status==='auto'?'Routine prescription refreshed':n.status==='tracked'?'Assessment saved':'Strategy approval needed')+'</span></div>'+
         '<p>Verified baseline: <b>'+esc(n.from+' '+n.unit)+'</b> → <b>'+esc(n.to+' '+n.unit)+'</b></p>'+
         (n.previousPrescription!==null&&n.nextPrescription!==null?'<p>Working suggestion: 2 × '+n.previousPrescription+' → 2 × '+n.nextPrescription+(n.unit==='sec'?' sec':' reps')+'.</p>':'')+
