@@ -109,4 +109,67 @@ assert.equal(custom.baseline,18);
 assert.equal(custom.assessments[0].unit,'reps');
 assert.equal(custom.assessments[1].unit,'seconds');
 
+
+// Distance and time share one assessment, including results copied from a machine.
+const rowState={};
+const rowClick=(name,dataset={})=>goals.action(rowState,name,{dataset});
+rowClick('new',{mode:'target'});rowClick('template',{kind:'row'});rowClick('choose-next');
+assert.match(goals.render(rowState),/Meters \(m\)/);
+goals.field(rowState,'targetTimeText','9:00');
+assert.equal(rowClick('target-next').changed,true);
+assert.equal(rowState.goalLab.draft.targetTimeSeconds,540);
+goals.field(rowState,'result',2000);
+goals.field(rowState,'elapsedText','9:00');
+goals.field(rowState,'measurementSource','machine');
+assert.equal(rowState.goalLab.draft.startedAt,null,'Machine timing does not require starting the app timer');
+assert.equal(rowClick('assessment-done').changed,true);
+rowClick('feedback-next');rowClick('save-goal');
+const rowing=rowState.goalLab.goals[0];
+assert.equal(rowing.kind,'row');
+assert.equal(rowing.assessments[0].elapsedSeconds,540);
+assert.equal(rowing.assessments[0].measurementSource,'machine');
+assert.equal(rowing.targetTimeSeconds,540);
+assert.equal(goals.meetsTarget(rowing),true);
+assert.match(goals.render(rowState),/2:15 \/ 500 m/);
+assert.equal(JSON.parse(JSON.stringify(rowState)).goalLab.goals[0].assessments[0].elapsedSeconds,540);
+rowClick('edit',{goalId:rowing.id});
+goals.field(rowState,'unit','kilometers');
+assert.equal(rowState.goalLab.draft.tested,true,'Changing distance display units should not demand a retest');
+rowClick('target-next');rowClick('save-goal');
+assert.equal(rowing.unit,'kilometers');
+assert.equal(rowing.target,2);
+assert.equal(rowing.baseline,2);
+assert.equal(rowing.assessments.length,1,'Unit conversion is not a second workout');
+assert.equal(rowing.assessments[0].unit,'meters','Historical source units remain accurate');
+assert.equal(goals.meetsTarget(rowing),true);
+rowClick('edit',{goalId:rowing.id});
+goals.field(rowState,'targetTimeText','8:59');
+rowClick('target-next');rowClick('save-goal');
+assert.equal(goals.meetsTarget(rowing),false,'Both distance and time are required to meet a timed goal');
+assert.equal(rowing.achievedAt,null);
+
+const manual={};
+const manualClick=(name,dataset={})=>goals.action(manual,name,{dataset});
+manualClick('new',{mode:'target'});manualClick('template',{kind:'pushup'});manualClick('choose-next');manualClick('target-next');
+goals.field(manual,'result',12);
+goals.field(manual,'elapsedText','0:45');
+assert.equal(manualClick('assessment-done').changed,true);
+manualClick('feedback-next');manualClick('save-goal');
+assert.equal(manual.goalLab.goals[0].baseline,12,'Typed reps work without counter buttons');
+assert.equal(manual.goalLab.goals[0].assessments[0].elapsedSeconds,45);
+
+const distanceTimer={};
+const distanceClick=(name,dataset={})=>goals.action(distanceTimer,name,{dataset});
+distanceClick('new',{mode:'target'});distanceClick('template',{kind:'cycle'});distanceClick('choose-next');distanceClick('target-next');
+goals.field(distanceTimer,'result',12.5);
+distanceClick('timer-start');
+assert.equal(goals.pauseTimer(distanceTimer),true);
+assert.equal(distanceTimer.goalLab.draft.result,12.5,'Pausing stopwatch must not erase a distance measurement');
+assert.ok(goals.render(distanceTimer).includes('Elapsed time'));
+assert.equal(goals.parseDuration('9:75'),null);
+assert.equal(goals.parseDuration('1:09:00'),4140);
+for(const kind of ['run','cycle','walk','row','swim','hike']){
+  assert.ok(goals.template(kind).id===kind,kind+' should be a selectable activity goal');
+}
+
 console.log('Goal Lab: all discovery, progress, variant, safety and persistence checks passed.');
