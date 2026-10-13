@@ -46,7 +46,7 @@
   }
   function baseXp(entry) {
     const sets=number(entry.completedSets);
-    return entry.completionStatus==='complete' ? 75+Math.min(75,sets*5) : 25+Math.min(45,sets*3);
+    return entry.completionStatus==='complete' ? 100 : Math.min(60,20+sets*5);
   }
   function stats(history) {
     const sessions=validHistory(history);
@@ -66,7 +66,9 @@
     const entry=sessions.find(s=>String(s.id)===String(id));
     if(!entry) return null;
     // The bonus is visible in the quest list and counted in the total once earned.
-    return {xp:baseXp(entry),level:stats(history).level};
+    const before=stats((Array.isArray(history)?history:[]).filter(s=>String(s?.id)!==String(id)));
+    const after=stats(history);
+    return {xp:after.xp-before.xp,level:after.level};
   }
   function scene(training,avatar,compact=false,celebrate=false) {
     const setting=ensure(training);
