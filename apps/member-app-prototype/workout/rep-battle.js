@@ -11,21 +11,38 @@
   const pendingHits = new Map();
   const recentHits = new Map();
 
+  function timedRatio(exercise,set) {
+    if(exercise?.loadMode!=='timed')return 1;
+    // New timed sessions preserve the live timer's prescribed duration.
+    // Legacy timed sets use their saved target and actual seconds if present.
+    const target=Number(set?.repBattleTimedTargetSeconds??set?.plannedReps);
+    const actual=Number(set?.repBattleTimedActualSeconds??set?.durationSeconds??set?.reps);
+    if(!(target>0)||!Number.isFinite(actual)||actual<0)return 1;
+    return Math.max(0,Math.min(1,actual/target));
+  }
+  function damageUnits(workout,excluded=null) {
+    const exercises=Array.isArray(workout?.exercises)?workout.exercises:[];
+    return exercises.reduce((sum,ex)=>sum+(Array.isArray(ex.sets)?ex.sets:[])
+      .reduce((setsTotal,set)=>setsTotal+(set?.completed===true&&set!==excluded?timedRatio(ex,set):0),0),0);
+  }
   function progress(workout) {
     const exercises=Array.isArray(workout?.exercises)?workout.exercises:[];
     const sets=exercises.flatMap(ex=>Array.isArray(ex.sets)?ex.sets:[]);
     const total=sets.length;
     const completed=sets.filter(set=>set?.completed===true).length;
     const skipped=sets.filter(set=>set?.skipped===true&&!set?.completed).length;
-    // Total health is fixed at 100. Damage is distributed over the prescribed
-    // sets, including sessions adapted to readiness or modified equipment.
-    const damageDealt=total?Math.round(completed*100/total):0;
+    // A prescribed set has one share of 100 HP. A timed set ended early
+    // earns only its recorded fraction. No set ever earns extra damage for
+    // exceeding its target, and easier prescribed plans remain achievable.
+    const units=damageUnits(workout);
+    const damageDealt=total?Math.min(100,Math.round(units*100/total)):0;
     const remainingHp=Math.max(0,100-damageDealt);
-    const nextHit=total && completed<total
-      ? Math.min(100,Math.round((completed+1)*100/total))-damageDealt
+    const remaining=Math.max(0,total-completed-skipped);
+    const nextHit=total && remaining
+      ? Math.max(0,Math.min(100,Math.round((units+1)*100/total))-damageDealt)
       : 0;
-    return {total,completed,skipped,remaining:Math.max(0,total-completed-skipped),
-      damageDealt,remainingHp,nextHit,victory:total>0&&completed===total,
+    return {total,completed,skipped,remaining,
+      damageDealt,remainingHp,nextHit,victory:total>0&&completed===total&&damageDealt===100,
       percentage:total?Math.round(completed*100/total):0};
   }
 
@@ -37,9 +54,14 @@
     // Persisted on the active workout. Only counted when a real set is logged.
     // Completion state is still derived exclusively from exercise sets.
     workout.arcadeBattlePlayed=true;
-    const before=Math.round(Math.max(0,snapshot.completed-1)*100/snapshot.total);
-    const damage=Math.max(0,snapshot.damageDealt-before);
-    const impact={damage,exerciseName:String(exercise?.name||'Set'),at:Date.now()};
+    const priorDamage=Math.round(damageUnits(workout,set)*100/snapshot.total);
+    const damage=Math.max(0,snapshot.damageDealt-priorDamage);
+    const ratio=timedRatio(exercise,set);
+    const timed=exercise?.loadMode==='timed';
+    const impact={damage,exerciseName:String(exercise?.name||'Set'),at:Date.now(),
+      partialTimed:timed&&ratio<1,
+      actualSeconds:timed?Number(set?.repBattleTimedActualSeconds??set?.durationSeconds??set?.reps)||0:0,
+      targetSeconds:timed?Number(set?.repBattleTimedTargetSeconds??set?.plannedReps)||0:0};
     pendingHits.set(String(workout.id),impact);
     recentHits.set(String(workout.id),impact);
     return true;
@@ -86,6 +108,7 @@
     const last=hit?pending.exerciseName:String(workout?.lastCompletedSet?.exerciseName||'');
     const status=paused?'Workout paused. Your battle progress is saved.':
       snapshot.victory?'Guardian defeated! Finish your workout to record your victory.':
+      snapshot.completed===snapshot.total?'All sets logged. Early-ended timed sets dealt reduced damage.':
       rest?'Shield up. Recover for your next set.':
       snapshot.skipped?'Your current plan is what matters. Keep training safely.':
       snapshot.completed?'Keep going. Each logged set moves you forward.':
@@ -96,13 +119,13 @@
       '<button class="rep-battle-toggle" type="button" data-arcade-action="battle-collapse" aria-expanded="'+(!collapsed)+'" aria-label="'+(collapsed?'Expand':'Minimize')+' Rep Battle">'+(collapsed?'EXPAND':'MINIMIZE')+' <span aria-hidden="true">'+(collapsed?'⌄':'⌃')+'</span></button></div>'+
       '<div class="rep-battle-hp"><div class="rep-battle-hp-label"><span>TRAINING GUARDIAN</span><b>'+snapshot.remainingHp+' HP</b></div>'+
       '<div class="rep-battle-hp-track" role="progressbar" aria-label="Training Guardian health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+snapshot.remainingHp+'"><span style="width:'+snapshot.remainingHp+'%"></span></div></div>'+
-      (collapsed?'<div class="rep-battle-small">'+snapshot.completed+' / '+snapshot.total+' sets logged <span>·</span> '+(snapshot.victory?'GUARDIAN DEFEATED':'NEXT HIT '+snapshot.nextHit+' HP')+'</div>':
+      (collapsed?'<div class="rep-battle-small">'+snapshot.completed+' / '+snapshot.total+' sets logged <span>·</span> '+(snapshot.victory?'GUARDIAN DEFEATED':snapshot.remaining===0?'TIMED WORK RECORDED':'NEXT HIT '+snapshot.nextHit+' HP')+'</div>':
         arena(avatar,hit,rest,pending?.damage||0,snapshot.victory)+
         '<div class="rep-battle-caption" aria-live="off"><strong>'+clean(status)+'</strong>'+
         '<span>'+snapshot.completed+' of '+snapshot.total+' prescribed sets completed'+(last?' · Last: '+clean(last):'')+'</span></div>'+
         '<div class="rep-battle-steps">'+
           '<span><b>'+snapshot.completed+'</b><small>SETS DONE</small></span>'+
-          '<span><b>'+(snapshot.victory?'WIN':snapshot.nextHit+' HP')+'</b><small>'+(snapshot.victory?'COMPLETE':'NEXT HIT')+'</small></span>'+
+          '<span><b>'+(snapshot.victory?'WIN':snapshot.remaining===0?'SAVED':snapshot.nextHit+' HP')+'</b><small>'+(snapshot.victory?'COMPLETE':'NEXT HIT')+'</small></span>'+
           '<span><b>'+snapshot.remaining+' </b><small>SETS LEFT</small></span></div>')+
       '</section>';
   }
@@ -116,11 +139,11 @@
     // Real set-completion events only. No animation is fabricated on refresh
     // or when a skipped set brings the user to feedback.
     if(!impact||Date.now()-impact.at>8000)return '';
-    const title=snap.victory?'Guardian down!':'Hit landed!';
+    const title=snap.victory?'Guardian down!':impact.partialTimed?'Partial hit!':'Hit landed!';
     return '<div class="rep-hit-moment" aria-label="Rep Battle set result">'+
       '<div class="rep-hit-moment-scene">'+arena(avatar,true,false,impact.damage,false)+'</div>'+
       '<div class="rep-hit-moment-copy"><span>REP BATTLE</span><strong>'+title+'</strong>'+
-      '<small>−'+impact.damage+' HP · Guardian '+snap.remainingHp+' HP</small></div></div>';
+      '<small>−'+impact.damage+' HP · Guardian '+snap.remainingHp+' HP'+(impact.partialTimed?' · '+impact.actualSeconds+'/'+impact.targetSeconds+' sec':'')+'</small></div></div>';
   }
 
   function dashboardCard(training,activeWorkout,avatar) {
@@ -147,7 +170,7 @@
     return '<section class="rep-battle-summary"><span class="arcade-eyebrow">REP BATTLE · SESSION RESULT</span>'+
       '<h3>'+(won?'Training Guardian defeated!':'Your battle progress was recorded.')+'</h3>'+
       '<p>'+snapshot.completed+' of '+snapshot.total+' planned sets logged.'+
-        (won?' You completed the mission within your prescribed workout.':' The sets you completed still count toward your regular progress.')+'</p>'+
+        (won?' You completed the mission within your prescribed workout.':snapshot.completed===snapshot.total?' Timed sets ended before their targets, so the Guardian still has '+snapshot.remainingHp+' HP.':' The sets you completed still count toward your regular progress.')+'</p>'+
       '<small>No extra workout XP required. Your original plan determines the challenge.</small></section>';
   }
 
