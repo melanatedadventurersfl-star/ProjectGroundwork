@@ -236,3 +236,78 @@ assert.match(adaptiveCss,/\.adaptive-preferences/);
 assert.match(adaptiveCss,/\.adaptive-compare-day/);
 
 console.log('GO Workout Goal-to-Training V2: approval, integration, protection, progress and review checks passed.');
+
+
+
+// Goal Engine V3: distance measurements, custom-goal recovery, and consent.
+const legacyTraining={};
+const legacyRun=(name,dataset={})=>G.action(legacyTraining,name,{dataset});
+legacyRun('new',{mode:'target'});
+legacyRun('template',{kind:'custom'});legacyRun('choose-next');
+G.field(legacyTraining,'label','Row machine 2k');legacyRun('target-next');
+for(let i=0;i<6;i++)legacyRun('count-up');
+legacyRun('assessment-done');legacyRun('feedback-next');legacyRun('save-goal');
+const legacyGoal=legacyTraining.goalLab.goals[0];
+assert.equal(legacyGoal.unit,'reps');
+assert.match(G.render(legacyTraining),/SET UP MEASURED ROWING GOAL/);
+legacyRun('setup-rowing');
+assert.equal(legacyTraining.goalLab.draft.kind,'row');
+assert.equal(legacyTraining.goalLab.draft.unit,'meters');
+assert.equal(legacyGoal.baseline,6,'Old recorded reps must not become meters');
+assert.equal(legacyTraining.goalLab.goals.length,1,'New setup does not erase older goal');
+
+const rowTraining={};
+const rowAction=(name,dataset={})=>G.action(rowTraining,name,{dataset});
+rowAction('new',{mode:'target'});rowAction('template',{kind:'row'});
+rowAction('choose-next');rowAction('target-next');
+G.field(rowTraining,'result','750');rowAction('assessment-done');
+rowAction('feedback-next');rowAction('save-goal');
+const row=rowTraining.goalLab.goals[0];
+assert.equal(row.kind,'row');
+assert.equal(row.unit,'meters');
+assert.equal(row.target,2000);
+assert.equal(G.assessmentBest(row),750);
+assert.equal(G.isRunnableGoal(row),false,'A meter-based goal is not a rep workout');
+assert.match(G.recommendations(row).summary,/not substitutes/);
+const rowCtx={profile,plan,catalog,history:[]};
+const rowPlan=(name,dataset={})=>S.action(rowTraining,name,{dataset},rowCtx);
+rowPlan('strategy-open');rowPlan('strategy-preview');
+const rowPreview=S.preview(rowTraining,profile,plan,catalog);
+assert.equal(rowPreview.additions.length,0,'Do not substitute cable or dumbbell rows');
+assert.equal(rowPreview.guided.length,1,'Recognized rowing goal has measured guidance');
+assert.equal(rowPlan('strategy-approve').changed,false,'No false automatic rowing support');
+rowPlan('strategy-mode',{mode:'focused'});rowPlan('strategy-preview');
+assert.equal(rowPlan('strategy-approve').changed,false,'Confirm machine access before enabling guided rowing');
+rowPlan('strategy-rower-access',{value:'yes'});rowPlan('strategy-preview');
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/Measured rowing guidance/);
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/not appear as executable sets/);
+assert.equal(rowPlan('strategy-approve').changed,true);
+assert.equal(S.current(rowTraining,profile,plan),true);
+assert.equal(S.applyDay(rowTraining,originalDay,catalog,profile,{plan}),originalDay,
+  'Guided rowing is not falsely scheduled as a runner exercise');
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/Baseline recorded/);
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/750 m/);
+
+// Reassessment evidence changes only after a new comparable test.
+rowAction('retest',{goalId:row.id});
+G.field(rowTraining,'result','900');
+rowAction('assessment-done');rowAction('feedback-next');rowAction('save-goal');
+assert.equal(row.baseline,750);
+assert.equal(G.assessmentBest(row),900);
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/Improving/);
+assert.equal(S.current(rowTraining,profile,plan),false,'New test awaits strategy refresh');
+
+// New opt-out for workout extensions must prevent unrequested additions.
+const timeTraining={};
+const timeRun=(name,dataset={})=>G.action(timeTraining,name,{dataset});
+timeRun('new',{mode:'target'});timeRun('template',{kind:'pushup'});timeRun('choose-next');timeRun('target-next');
+for(let i=0;i<10;i++)timeRun('count-up');
+timeRun('assessment-done');timeRun('feedback-next');timeRun('save-goal');
+const timePlan=(name,dataset={})=>S.action(timeTraining,name,{dataset},{profile,plan,catalog,history:[]});
+timePlan('strategy-open');timePlan('strategy-extension',{value:'no'});
+timePlan('strategy-preview');timePlan('strategy-approve');
+const fullDay={...originalDay,estimatedMinutes:30};
+assert.equal(S.applyDay(timeTraining,fullDay,catalog,profile,{plan,minutes:30}),fullDay,
+  'Hard time limit prevents goal work from silently extending a full workout');
+assert.equal(S.ensure(timeTraining).allowExtension,false);
+assert.match(S.panel(timeTraining,profile,plan,catalog,[]),/Baseline recorded/);
