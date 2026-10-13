@@ -9,7 +9,7 @@ global.window={};
 const battle=require('./rep-battle.js');
 const arcade=require('./arcade.js');
 const create=(id,total,completed=0,skipped=0)=>({
-  id,phase:'work',completionStatus:'complete',
+  id,phase:'work',completionStatus:'complete',completedSets:completed,
   exercises:[{id:'squat',name:'Squats',sets:Array.from({length:total},(_,i)=>({
     completed:i<completed,skipped:i>=completed && i<completed+skipped,
     reps:10,weight:25,completedAt:i<completed?'2026-10-12T19:00:00Z':null
