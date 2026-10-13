@@ -53,10 +53,10 @@
   }
   function ensure(training){
     const lab=goalEngine()?.ensure(training) || (training.goalLab=training.goalLab||{goals:[]});
-    if(!lab.strategy||typeof lab.strategy!=='object')lab.strategy={version:2,status:'inactive',mode:'track',goalIds:[],approvedSignature:null,approvedAt:null,revisions:[],trainingLog:[],checkIns:[],draft:null,allowExtension:false,rowerAccess:'unknown'};
+    if(!lab.strategy||typeof lab.strategy!=='object')lab.strategy={version:2,status:'inactive',mode:'track',goalIds:[],approvedSignature:null,approvedAt:null,revisions:[],trainingLog:[],checkIns:[],draft:null,allowExtension:true,rowerAccess:'unknown'};
     const s=lab.strategy;
     if(!['yes','no','unknown'].includes(s.rowerAccess))s.rowerAccess='unknown';
-    s.allowExtension=Boolean(s.allowExtension);
+    if(typeof s.allowExtension!=='boolean')s.allowExtension=true;
     for(const key of ['goalIds','revisions','trainingLog','checkIns'])if(!Array.isArray(s[key]))s[key]=[];
     return s;
   }
@@ -197,6 +197,9 @@
       if(Number.isInteger(opts.dayIndex)&&window.GoWorkoutAdaptiveExperience &&
         !window.GoWorkoutAdaptiveExperience.eligibleSlot(s.goalIds.indexOf(goal.id),opts.dayIndex,Math.max(1,num(profile?.days)||1)))continue;
       if(!ex||exerciseIds.has(ex.id))continue;
+      const estimated=num(result.estimatedMinutes)||available;
+      if(!s.allowExtension&&estimated+5>available)continue;
+      if(s.allowExtension&&estimated+5>available+10)continue;
       if(typeof opts.allowExercise==='function'&&!opts.allowExercise(ex))continue;
       const recentlyTrained=s.trainingLog.some(log=>Date.now()-Date.parse(log.at)<40*3600000&&
         Date.now()-Date.parse(log.at)>=0&&log.results.some(x=>x.goalId===goal.id));
@@ -205,6 +208,7 @@
       if(profile?.avoid?.includes('knee')&&ex.id==='bodyweight-squat')continue;
       // Never modify or replace an existing movement. Extras are opt-in
       // from the approved strategy and are limited to two movements.
+      result.estimatedMinutes=(num(result.estimatedMinutes)||available)+5;
       result.exercises.push(conservative?{...ex,sets:1,goalStrategyNote:ex.goalStrategyNote+' Reduced to one set based on recent effort.'}:ex);
       exerciseIds.add(ex.id);added.push(goal.name);
     }
@@ -212,7 +216,7 @@
     result.goalStrategyExtras=added.slice();
     result.goalStrategyVersion=s.approvedAt;
     result.goalStrategyExplanation='Added approved goal progressions: '+added.join(', ')+'.'+(conservative?' Reduced sets after demanding recent training.':'');
-    result.estimatedMinutes=num(result.estimatedMinutes)+5*added.length;
+    // Duration changes only for exercises actually appended.
     result.adaptationNotes=[...(result.adaptationNotes||[]),result.goalStrategyExplanation];
     return result;
   }
@@ -284,7 +288,8 @@
     if(!goals(training).length)return '';
     return '<section class="goal-strategy-review"><span class="goal-kicker">WEEKLY GOAL REVIEW</span><h3>Your progress is about more than one number</h3>'+
       '<div class="goal-strategy-stats"><div><strong>'+w.sessions+'</strong><small>Completed workouts</small></div><div><strong>'+w.goalSets+'</strong><small>Goal-related sets</small></div><div><strong>'+w.goalSessions+'</strong><small>Goals trained</small></div></div>'+
-      '<p>'+safe(w.tip)+'</p>'+
+      '<p>'+safe(w.tip)+'</p>'+ 
+      '<div class="goal-evidence-list">'+selected(training).map(g=>{const e=evidence(g);return '<p><b>'+safe(g.name)+': '+safe(e.status)+'</b> · '+safe(e.reason)+'</p>';}).join('')+'</div>'+
       (w.retests.length?'<p>Reassessment available for: '+safe(w.retests.join(', '))+'. You decide when to retest.</p>':'')+
       '</section>';
   }
@@ -298,7 +303,7 @@
       const best=num(G?.assessmentBest?.(g)??g.baseline);
       const target=Math.max(1,num(g.target));
       const progress=Math.max(0,Math.min(100,Math.round(best/target*100)));
-      const unit=g.unit==='seconds'?'sec':g.unit==='miles'?'mi':'reps';
+      const unit=units(g);
       const milestone=num(G?.nextMilestone?.(g)??target);
       const label=String(g.target)+' '+String(g.name||'Personal goal');
       return '<div class="home-goal-item" role="group" aria-label="'+safe(g.name)+' goal">'+
@@ -352,7 +357,7 @@
       const baseline=num(g.baseline);
       const verified=num(G?.assessmentBest?.(g)??baseline);
       const target=num(g.target);
-      const unit=g.unit==='seconds'?'sec':g.unit==='miles'?'mi':'reps';
+      const unit=units(g);
       const progress=target>0?Math.min(100,Math.max(0,Math.round(verified/target*100))):0;
       const linked=activeIds.includes(g.id);
       const draftLinked=draftIds.includes(g.id);
@@ -374,8 +379,8 @@
         state='Paused for discomfort';why='Goal-specific progressions are unavailable while discomfort is recorded.';
         type='review';
       }else if(!proposed){
-        state='Assessment or exercise review needed';
-        why=verified>0?'This variation cannot be prescribed automatically. Your recorded baseline remains saved.':'Record a comparable baseline before the app can propose training work.';
+        state=isRow(g)?'Guided rowing':'Assessment or exercise review needed';
+        why=support(g,catalog).message;
         type='review';
       }else if(s.draft && draftLinked){
         state='Proposed, not applied';why='The strategy draft includes this goal. Approve it before goal work can be added to eligible sessions.';
@@ -400,8 +405,9 @@
         state='Not prioritized';why='This goal is saved but has no workout additions in the approved strategy.';
       }
       const initialChange=oldPrescribed!==null && newPrescribed!==null && oldPrescribed!==newPrescribed;
+      const goalEvidence=evidence(g);
       const prescribed=proposed ? proposed.sets+' sets × '+proposed.reps+
-        (g.unit==='seconds'?' per hold':' reps') : 'No automatic prescription';
+        (g.unit==='seconds'?' per hold':' reps') : isRow(g)?'Guided rowing practice, not added to workouts':'No automatic prescription';
       const baselineText=baseline>0?baseline+' '+unit:'Not assessed';
       const verifiedText=verified>0?verified+' '+unit:'Not assessed';
       return '<article class="goal-impact-card">'+
@@ -411,7 +417,8 @@
         '<div class="goal-impact-prescription"><div><small>Baseline-informed prescription</small><strong>'+safe(prescribed)+'</strong></div>'+
         (initialChange?'<span>At initial baseline the same rule suggests '+safe('2 sets × '+oldPrescribed+(g.unit==='seconds'?' sec':' reps'))+'. Current calculated work: '+safe(prescribed)+'. This comparison does not mean either workout was performed.</span>':
           '<span>Calculated from the latest comparable assessment, not from a predicted result.</span>')+'</div>'+
-        '<p class="goal-impact-explanation"><b>Did the workout change?</b> '+safe(why)+'</p>'+
+        '<p class="goal-impact-explanation"><b>Did the workout change?</b> '+safe(why)+'</p>'+ 
+        '<p class="goal-impact-evidence"><b>'+safe(goalEvidence.status)+'</b> · '+safe(goalEvidence.reason)+'</p>'+
         (actual.length?'<p class="goal-impact-record">Recorded goal additions in '+actual.length+' workout'+(actual.length===1?'':'s')+'.</p>':
           '<p class="goal-impact-record">No confirmed goal-specific additions in available workout history.</p>')+
         (linked&&approved&&activeMode==='integrate'?'<p class="goal-impact-subtle">Approved priority '+(order+1)+'. Any addition happens at workout preparation, not automatically on the weekly calendar.</p>':'')+
