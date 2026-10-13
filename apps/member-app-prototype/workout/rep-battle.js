@@ -144,40 +144,26 @@
   }
 
 
-  // The large arena remains in the workout, while a small fixed HUD is
-  // visible only when the arena has scrolled above the screen. This lets
-  // members see logged damage without losing their exercise controls.
-  function dockPanel(training,workout) {
+  // The compact status lives INSIDE the sticky workout header. It occupies
+  // layout space, so it can never obscure exercises, form cues or feedback.
+  // The full arena remains available via VIEW.
+  function headerPanel(training,workout) {
     if(training?.arcade?.mode!=='arcade'||!workout)return '';
     const snap=progress(workout);
     if(!snap.total)return '';
     const impact=recentHits.get(String(workout.id));
-    const recent=Boolean(impact&&Date.now()-impact.at<2500);
-    const status=snap.victory?'VICTORY':workout.isPaused?'PAUSED':workout.phase==='rest'?'REST':'BATTLE';
-    return '<aside id="rep-battle-dock" class="rep-battle-dock'+(recent?' is-hit':'')+'" hidden aria-label="Rep Battle quick progress">'+
-      '<div class="rep-dock-figure" aria-hidden="true">⚔️</div>'+
-      '<div class="rep-dock-detail"><div class="rep-dock-title"><strong>REP BATTLE</strong><span>'+status+'</span></div>'+
-      '<div class="rep-dock-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+snap.remainingHp+'" aria-label="Training Guardian health"><span style="width:'+snap.remainingHp+'%"></span></div>'+
-      '<div class="rep-dock-caption"><span>Guardian '+snap.remainingHp+' HP</span><span>'+snap.completed+'/'+snap.total+' sets</span></div></div>'+
-      (recent?'<div class="rep-dock-hit" aria-hidden="true">−'+impact.damage+'</div>':'')+
-      '<button type="button" class="rep-dock-view" data-arcade-action="battle-jump" aria-label="View full Rep Battle arena">VIEW</button>'+
-    '</aside>';
+    const recent=Boolean(impact&&Date.now()-impact.at<2200);
+    const state=snap.victory?'GUARDIAN DOWN':workout.isPaused?'PAUSED':workout.phase==='rest'?'RECOVER':'BATTLE';
+    return '<div class="rep-header-status'+(recent?' is-hit':'')+'" aria-label="Rep Battle progress">'+
+      '<span class="rep-header-icon" aria-hidden="true">⚔</span>'+
+      '<div class="rep-header-data"><div class="rep-header-values">'+
+      '<strong>'+state+'</strong><b>'+snap.remainingHp+' HP</b><span>'+snap.completed+'/'+snap.total+' SETS</span></div>'+
+      '<div class="rep-header-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+snap.remainingHp+'" aria-label="Training Guardian health"><i style="width:'+snap.remainingHp+'%"></i></div></div>'+
+      (recent?'<span class="rep-header-damage" aria-hidden="true">−'+impact.damage+'</span>':'')+
+      '<button type="button" class="rep-header-view" data-arcade-action="battle-jump" aria-label="View full Rep Battle arena">VIEW</button>'+
+    '</div>';
   }
 
-  function syncDock() {
-    if(typeof document==='undefined')return;
-    const dock=document.getElementById('rep-battle-dock');
-    if(!dock)return;
-    const arena=document.querySelector('.rep-battle');
-    // Show only after the original battle has left the visible workout area.
-    // Do not cover the first screen or other pages.
-    dock.hidden=!(arena&&arena.getBoundingClientRect().bottom<96);
-  }
-  if(typeof window!=='undefined'&&typeof window.addEventListener==='function'){
-    window.addEventListener('scroll',syncDock,{passive:true});
-    window.addEventListener('resize',syncDock,{passive:true});
-  }
-
-  window.GoWorkoutRepBattle={progress,noteCompletedSet,livePanel,dashboardCard,summaryPanel,setCollapsed,dockPanel,syncDock};
+  window.GoWorkoutRepBattle={progress,noteCompletedSet,livePanel,dashboardCard,summaryPanel,setCollapsed,headerPanel};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutRepBattle;
 })();
