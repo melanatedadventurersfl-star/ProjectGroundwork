@@ -294,11 +294,100 @@
       '<p>'+safe(needsReview?'Your saved goals or training program changed. Review before goal sessions can update.':s.status==='active'?'Your original plan remains intact.':'Choose up to three goals to prioritize this cycle.')+'</p></div>'+
       '<button data-tab="goals">REVIEW GOALS →</button></section>';
   }
+
+  // Read-only explanation of the path from a verified goal baseline to
+  // an actual workout. Never interpret a proposed progression as scheduled.
+  function goalImpactPanel(training,profile,plan,catalog,history){
+    const all=goals(training);
+    const selectedId=training?.goalLab?.selectedId;
+    const visible=selectedId?all.filter(g=>g.id===selectedId):all;
+    if(!visible.length)return '';
+    const s=ensure(training);
+    const G=goalEngine();
+    const approved=current(training,profile,plan);
+    const activeIds=Array.isArray(s.goalIds)?s.goalIds:[];
+    const draftIds=Array.isArray(s.draft?.goalIds)?s.draft.goalIds:[];
+    const activeMode=approved?s.mode:'';
+    const cards=visible.map(g=>{
+      const baseline=num(g.baseline);
+      const verified=num(G?.assessmentBest?.(g)??baseline);
+      const target=num(g.target);
+      const unit=g.unit==='seconds'?'sec':g.unit==='miles'?'mi':'reps';
+      const progress=target>0?Math.min(100,Math.max(0,Math.round(verified/target*100))):0;
+      const linked=activeIds.includes(g.id);
+      const draftLinked=draftIds.includes(g.id);
+      const order=activeIds.indexOf(g.id);
+      const proposed=prescription(g,catalog);
+      const oldPrescribed=baseline>0 && proposed ?
+        (g.unit==='seconds'?Math.max(8,Math.floor(baseline*.65)):Math.max(1,Math.floor(baseline*.55))) : null;
+      const newPrescribed=proposed?.startReps?num(proposed.startReps):null;
+      const actual=(history||[]).filter(entry=>{
+        return (entry.exercises||[]).some(ex=>ex.goalStrategyId===g.id) ||
+          (entry.goalStrategyExtras||[]).includes(g.name);
+      });
+      let state='Not connected',why='This goal is being tracked, but has not been added to your workout strategy.';
+      let type='neutral';
+      if(g.status==='maintenance'){
+        state='Maintenance';why='You reached your assessed target. No new progression is prescribed for this goal.';
+      }else if(g.painFlag){
+        state='Paused for discomfort';why='Goal-specific progressions are unavailable while discomfort is recorded.';
+        type='review';
+      }else if(!proposed){
+        state='Assessment or exercise review needed';
+        why=verified>0?'This variation cannot be prescribed automatically. Your recorded baseline remains saved.':'Record a comparable baseline before the app can propose training work.';
+        type='review';
+      }else if(s.draft && draftLinked){
+        state='Proposed, not applied';why='The strategy draft includes this goal. Approve it before goal work can be added to eligible sessions.';
+      }else if(s.status==='active' && !approved && linked){
+        state='Review needed';why='Your goal, verified baseline, or program changed after approval. The previous strategy is not applied until you approve the update.';
+        type='review';
+      }else if(approved && linked && activeMode==='integrate'){
+        state='Approved · conditional addition';
+        why='This progression can be added when you prepare an eligible workout. Readiness, available time and exercises already included decide whether it appears. Your weekly schedule is not rewritten.';
+        type='linked';
+      }else if(approved && linked && activeMode==='focused'){
+        state='Approved · separate focus session';
+        why='The goal informs an on-demand workout. Your existing scheduled workouts remain unchanged.';
+        type='linked';
+      }else if(approved && linked && activeMode==='track'){
+        state='Tracking only';why='Your assessments are monitored. Your workouts and schedule do not change.';
+      }else if(s.status==='paused' && linked){
+        state='Integration paused';why='Your approved goal additions are paused. Scheduled workouts remain unchanged.';
+      }else if(s.draft && !draftLinked){
+        state='Not selected in draft';why='This goal is not in the strategy currently being prepared.';
+      }else if(approved && !linked){
+        state='Not prioritized';why='This goal is saved but has no workout additions in the approved strategy.';
+      }
+      const initialChange=oldPrescribed!==null && newPrescribed!==null && oldPrescribed!==newPrescribed;
+      const prescribed=proposed ? proposed.sets+' sets × '+proposed.reps+
+        (g.unit==='seconds'?' per hold':' reps') : 'No automatic prescription';
+      const baselineText=baseline>0?baseline+' '+unit:'Not assessed';
+      const verifiedText=verified>0?verified+' '+unit:'Not assessed';
+      return '<article class="goal-impact-card">'+
+        '<div class="goal-impact-card-heading"><div><span class="goal-impact-eyebrow">GOAL → BASELINE → WORKOUT</span><h3>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</h3></div><span class="goal-impact-state '+type+'">'+safe(state)+'</span></div>'+
+        '<div class="goal-impact-metrics"><div><small>Initial baseline</small><strong>'+safe(baselineText)+'</strong></div><div><small>Current verified best</small><strong>'+safe(verifiedText)+'</strong></div><div><small>Target</small><strong>'+safe(target+' '+unit)+'</strong></div></div>'+
+        '<div class="goal-impact-track" role="progressbar" aria-label="Verified '+safe(g.name)+' goal progress" aria-valuenow="'+progress+'" aria-valuemin="0" aria-valuemax="100"><i style="width:'+progress+'%"></i></div>'+
+        '<div class="goal-impact-prescription"><div><small>Baseline-informed prescription</small><strong>'+safe(prescribed)+'</strong></div>'+
+        (initialChange?'<span>Earlier baseline: '+safe('2 sets × '+oldPrescribed+(g.unit==='seconds'?' sec':' reps'))+' → current: '+safe(prescribed)+'</span>':
+          '<span>Calculated from the latest comparable assessment, not from a predicted result.</span>')+'</div>'+
+        '<p class="goal-impact-explanation"><b>Did the workout change?</b> '+safe(why)+'</p>'+
+        (actual.length?'<p class="goal-impact-record">Recorded goal additions in '+actual.length+' workout'+(actual.length===1?'':'s')+'.</p>':
+          '<p class="goal-impact-record">No confirmed goal-specific additions in available workout history.</p>')+
+        (linked&&approved&&activeMode==='integrate'?'<p class="goal-impact-subtle">Approved priority '+(order+1)+'. Any addition happens at workout preparation, not automatically on the weekly calendar.</p>':'')+
+      '</article>';
+    }).join('');
+    return '<section class="goal-impact-panel" aria-label="How your goals affect your workouts">'+
+      '<div class="goal-impact-intro"><span class="goal-impact-eyebrow">TRAINING TRANSPARENCY</span><h2>See what your baseline changes</h2>'+
+      '<p>Track the actual link between what you can do, the prescription GO Workout proposes, and whether that work is approved or added. A suggestion is not the same as a changed workout.</p></div>'+
+      '<div class="goal-impact-list">'+cards+'</div>'+
+      '<div class="goal-impact-footer"><button type="button" data-tab="train">VIEW TRAINING SCHEDULE →</button></div></section>';
+  }
+
   function panel(training,profile,plan,catalog,history){
     const active=selected(training),s=ensure(training);
     if(!goals(training).length||training.goalLab?.draft)return '';
     const d=s.draft,needsReview=s.status==='active'&&!current(training,profile,plan);
-    let html='<section class="goal-strategy-panel" id="training-strategy"><div class="goal-strategy-heading"><span class="goal-kicker">GO WORKOUT / YOUR TRAINING STRATEGY</span><h2>Multiple goals. One training plan.</h2><p>Your strategy coordinates priorities without resetting your existing plan or history.</p></div>';
+    let html=goalImpactPanel(training,profile,plan,catalog,history)+'<section class="goal-strategy-panel" id="training-strategy"><div class="goal-strategy-heading"><span class="goal-kicker">GO WORKOUT / YOUR TRAINING STRATEGY</span><h2>Multiple goals. One training plan.</h2><p>Your strategy coordinates priorities without resetting your existing plan or history.</p></div>';
     if(!d){
       html+='<div class="goal-strategy-status"><strong>'+safe(needsReview?'Review needed':s.status==='active'?modes[s.mode]:s.status==='paused'?'Integration paused':'No strategy approved yet')+'</strong>'+
         '<span>'+safe(needsReview?'Your goals or profile changed since approval. Existing workouts stay untouched until you approve an updated strategy.':s.status==='active'?'Approved '+new Date(s.approvedAt).toLocaleDateString()+'. Changes apply at the next workout readiness check.':'Your goals remain saved and individually assessable.')+'</span></div>'+
