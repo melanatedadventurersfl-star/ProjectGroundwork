@@ -10112,6 +10112,7 @@ function renderExerciseFeedback(pos){
   return '<div class="clean-feedback-stage">'+
     '<div class="summary-check small-check">✓</div><p class="eyebrow">EXERCISE COMPLETE</p><h2>'+esc(pos.exercise.name)+'</h2>'+
     '<p>How did that movement feel? One tap updates the next-session recommendation.</p>'+
+    (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.postSetMoment(ensureTrainingProgram(),pos.workout,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):'')+
     renderSetPerformanceInsight(latest,true)+
     '<div class="feedback-mini-summary"><span>'+total+' set'+(total===1?'':'s')+' completed</span><strong>'+esc(currentPrescriptionLabel(pos.exercise))+'</strong></div>'+
     '<div class="exercise-feedback-grid clean-feedback-grid">'+
@@ -10178,6 +10179,7 @@ function renderRest(pos){
     :'';
   const changed=Boolean(planned&&completed&&!completed.startsWith(planned));
   return '<div class="runner-rest-clean"><div class="runner-rest-check">✓</div><h2>'+(sameBlockNext?(blockRound?'Round complete.':'Quick transition.'):'Great set.')+'</h2><p>'+esc(completed)+'</p>'+
+    (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.postSetMoment(ensureTrainingProgram(),pos.workout,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):'')+
     (sameBlockNext?'<div class="runner-block-rest-label"><span>'+esc(dynamicBlockPositionLabel(pos.workout,pos.exercise))+'</span><strong>'+(blockRound?'FULL REST':'QUICK REST')+'</strong></div>':'')+
     (changed?'<div class="runner-rest-plan"><span>PLANNED</span><strong>'+esc(planned)+'</strong></div>':'')+
     (pos.exercise.learnerRest?.applied?'<div class="runner-rest-learning"><span>PERSONALIZED REST</span><strong>'+num(pos.exercise.rest)+' sec</strong><small>'+esc(pos.exercise.learnerRest.reason||'Learner-adjusted rest timer')+'</small></div>':'')+
@@ -11147,7 +11149,12 @@ function handleClick(event){
   if(arcadeOpen){setTab('arcade');return;}
   const arcadeChoice=event.target.closest('[data-arcade-action]');
   if(arcadeChoice?.dataset.arcadeAction==='battle-jump'){
-    document.querySelector('.rep-battle')?.scrollIntoView({behavior:'smooth',block:'start'});
+    const training=ensureTrainingProgram();
+    if(window.GoWorkoutRepBattle&&training.arcade?.battleCollapsed!==false){
+      window.GoWorkoutRepBattle.setCollapsed(training,false);
+      saveStore();render();
+    }
+    requestAnimationFrame(()=>document.querySelector('.rep-battle')?.scrollIntoView({behavior:'smooth',block:'start'}));
     return;
   }
   if(arcadeChoice?.dataset.arcadeAction==='play-battle'&&window.GoWorkoutArcade){
@@ -11159,7 +11166,7 @@ function handleClick(event){
   }
   if(arcadeChoice?.dataset.arcadeAction==='battle-collapse'&&window.GoWorkoutRepBattle){
     const training=ensureTrainingProgram();
-    const result=window.GoWorkoutRepBattle.setCollapsed(training,!training.arcade?.battleCollapsed);
+    const result=window.GoWorkoutRepBattle.setCollapsed(training,training.arcade?.battleCollapsed===false);
     if(result){saveStore();render();}
     return;
   }
