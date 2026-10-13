@@ -68,25 +68,14 @@ assert.doesNotMatch(battle.livePanel(account,bad,'<span>avatar</span>'),/<img sr
 assert.match(battle.livePanel(account,{...bad,phase:'work'},'<span>avatar</span>'),/REP BATTLE/);
 assert.equal(arcade.stats([create('completed',6,6)]).xp,125,'Game has no additional XP path');
 assert.equal(arcade.stats([create('completed',1,1)]).xp,125,'XP remains equal for full plans');
-assert.match(battle.dockPanel(account,mini),/rep-battle-dock/,'A full set-based workout has a compact battle dock');
-assert.match(battle.dockPanel(account,mini),/Guardian 0 HP/,'Dock reflects saved set completion');
-assert.equal(battle.dockPanel({arcade:{mode:'companion'}},mini),'','Non-Arcade modes do not show a battle dock');
-assert.equal(battle.dockPanel(account,empty),'','Guided recovery has no battle dock');
-const mockDock={hidden:true};
-let arenaBottom=190;
-global.document={
-  getElementById:id=>id==='rep-battle-dock'?mockDock:null,
-  querySelector:selector=>selector==='.rep-battle'?{getBoundingClientRect:()=>({bottom:arenaBottom})}:null
-};
-battle.syncDock();
-assert.equal(mockDock.hidden,true,'Dock stays hidden while the full arena is visible');
-arenaBottom=70;
-battle.syncDock();
-assert.equal(mockDock.hidden,false,'Dock appears after the battle scrolls out of view');
-arenaBottom=350;
-battle.syncDock();
-assert.equal(mockDock.hidden,true,'Dock hides when full battle returns to the viewport');
-delete global.document;
+assert.match(battle.headerPanel(account,mini),/rep-header-status/,'Battle status belongs in workout header');
+assert.match(battle.headerPanel(account,mini),/0 HP/,'Header reflects canonical completed-set data');
+assert.match(battle.headerPanel(account,mini),/3\/3 SETS/,'Header reflects adjusted set counts');
+assert.match(battle.headerPanel(account,mini),/GUARDIAN DOWN/,'Health reaches zero without prematurely saving the workout');
+assert.equal(battle.headerPanel({arcade:{mode:'companion'}},mini),'','Companion mode has no Rep Battle header');
+assert.equal(battle.headerPanel({arcade:{mode:'focus'}},mini),'','Focus mode has no Rep Battle header');
+assert.equal(battle.headerPanel(account,empty),'','Zero-set recovery has no battle header');
+assert.match(battle.headerPanel(account,create('skipped-again',3,2,1)),/33 HP/,'Skipped set does not harm Guardian');
 const documentHtml=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const app=fs.readFileSync(path.join(__dirname,'app.js'),'utf8');
 const arcadeJs=fs.readFileSync(path.join(__dirname,'arcade.js'),'utf8');
@@ -98,9 +87,14 @@ assert.ok(documentHtml.indexOf('arcade.js')<documentHtml.indexOf('rep-battle.js'
 assert.match(app,/GoWorkoutRepBattle\?\.noteCompletedSet\(ensureTrainingProgram\(\),w,pos\.exercise,pos\.set\)/);
 assert.match(app,/GoWorkoutRepBattle\?\.noteCompletedSet\(ensureTrainingProgram\(\),pos\.workout,pos\.exercise,pos\.set\)/);
 assert.match(app,/data-arcade-action/);
-assert.match(app,/GoWorkoutRepBattle\.dockPanel/,'Workout renders the battle HUD');
-assert.match(app,/GoWorkoutRepBattle\?\.syncDock/,'HUD visibility is recalculated on render');
+assert.match(app,/GoWorkoutRepBattle\.headerPanel/,'Workout renders status in its sticky header');
+assert.doesNotMatch(app,/GoWorkoutRepBattle\.dockPanel/,'Floating HUD no longer overlays exercises');
+assert.doesNotMatch(app,/GoWorkoutRepBattle\?\.syncDock/,'Scroll observer no longer needed');
 assert.match(arcadeJs,/GoWorkoutRepBattle\.livePanel/);
 assert.match(arcadeJs,/GoWorkoutRepBattle\.summaryPanel/);
 assert.match(arcadeJs,/GoWorkoutRepBattle\.dashboardCard/);
+const battleCss=fs.readFileSync(path.join(__dirname,'rep-battle.css'),'utf8');
+assert.match(battleCss,/\.runner-v2-header>\.rep-header-status/,'HUD occupies an inline header row');
+assert.doesNotMatch(battleCss,/\.rep-battle-dock\s*\{/,'Fixed overlapping dock removed');
+assert.match(app,/data-arcade-action===\'battle-jump\'/,'VIEW returns to full arena');
 console.log('GO Workout Rep Battle V1.1 tests passed.');
