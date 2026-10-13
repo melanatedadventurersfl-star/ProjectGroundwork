@@ -110,6 +110,10 @@
     if(!workout) return '';
     const setting=ensure(training);
     if(setting.mode==='focus') return '';
+    if(setting.mode==='arcade'&&window.GoWorkoutRepBattle){
+      const battle=window.GoWorkoutRepBattle.livePanel(training,workout,avatar);
+      if(battle)return battle;
+    }
     const sets=(workout.exercises||[]).reduce((sum,ex)=>sum+(ex.sets||[]).length,0);
     const done=(workout.exercises||[]).reduce((sum,ex)=>sum+(ex.sets||[]).filter(set=>set.completed).length,0);
     const percent=sets?Math.min(100,Math.round(done/sets*100)):0;
@@ -126,13 +130,14 @@
         (sets===0?'<small>Warm-up and recovery are part of your plan.</small>':'')+
       '</div></section>';
   }
-  function dashboard(training,history,avatar) {
+  function dashboard(training,history,avatar,activeWorkout=null) {
     const setting=ensure(training),result=stats(history);
     const pct=(result.levelXp/result.nextLevelXp*100).toFixed(1);
     return '<div class="clean-page arcade-page"><div class="arcade-page-header"><button class="text-button" type="button" data-action="home">‹ HOME</button><p class="arcade-eyebrow">GO WORKOUT ARCADE · V1</p>'+
       '<h2>Meet your training companion.</h2><p>Keep the workouts you already follow. Your game progress adapts to them.</p></div>'+
       '<section class="arcade-hero">'+scene(training,avatar,false,true)+'<div class="arcade-hero-stats"><span>LEVEL '+result.level+'</span><strong>'+result.xp+' XP</strong>'+
       '<small>'+result.levelXp+' / 400 XP to next level</small><div class="arcade-meter" role="progressbar" aria-valuenow="'+result.levelXp+'" aria-valuemin="0" aria-valuemax="400" aria-label="Next level progress"><span style="width:'+pct+'%"></span></div></div></section>'+
+      (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.dashboardCard(training,activeWorkout,avatar):'')+
       '<section class="arcade-section"><div class="arcade-section-heading"><h3>Choose your companion style</h3><p>Cosmetic only. This never changes your workout or goal targets.</p></div>'+
       '<div class="arcade-outfits">'+Object.entries(outfits).map(([id,item])=>
         '<button type="button" class="arcade-choice'+(setting.outfit===id?' is-selected':'')+'" data-arcade-action="outfit" data-arcade-value="'+id+'" aria-pressed="'+(setting.outfit===id)+'">'+
@@ -147,8 +152,9 @@
   }
   function summaryPanel(history,entry) {
     const reward=rewardFor(history,entry?.id);
-    if(!reward)return '';
-    return '<section class="arcade-summary"><div><span class="arcade-eyebrow">ARCADE REWARD</span><h3>+'+reward.xp+' XP earned</h3>'+
+    const battle=window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.summaryPanel(entry):'';
+    if(!reward)return battle;
+    return battle+'<section class="arcade-summary"><div><span class="arcade-eyebrow">ARCADE REWARD</span><h3>+'+reward.xp+' XP earned</h3>'+
       '<p>Your session is saved. Your companion is now level '+reward.level+'.</p></div>'+
       '<button type="button" class="arcade-button" data-action="open-arcade">SEE YOUR QUESTS →</button></section>';
   }
