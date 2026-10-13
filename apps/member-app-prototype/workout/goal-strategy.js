@@ -12,6 +12,39 @@
   const muscle={pushup:'Upper-body pushing and core',plank:'Core stability',squat:'Lower-body endurance',pullup:'Upper-body pulling and grip'};
   const modes={integrate:'Integrate with my current program',focused:'Keep my plan and offer goal-focus sessions',track:'Track goals without changing workouts'};
   const goalEngine=()=>window.GoWorkoutGoalLab;
+
+  const units=g=>g.unit==='seconds'?'sec':g.unit==='miles'?'mi':g.unit==='meters'?'m':'reps';
+  const isRow=g=>g?.kind==='row'&&g.unit==='meters';
+  const hasRowBaseline=g=>isRow(g)&&!g.painFlag&&num(goalEngine()?.assessmentBest?.(g)??g.baseline)>0;
+  function rowingGuide(g){
+    if(!hasRowBaseline(g))return null;
+    const best=num(goalEngine()?.assessmentBest?.(g)??g.baseline);
+    const interval=Math.max(100,Math.min(500,Math.floor(best*.3/50)*50||100));
+    const rounds=best<500?2:best<1200?3:4;
+    return {name:'Indoor rowing technique and steady intervals',interval,rounds,
+      description:'Try '+rounds+' × '+interval+' m at comfortable effort with recovery between efforts. Log a separate continuous-distance reassessment. This is guidance, not an automatically scheduled workout.'};
+  }
+  function support(g,catalog){
+    if(g.painFlag)return {status:'paused',message:'Training additions are paused following your discomfort report.'};
+    if(!num(goalEngine()?.assessmentBest?.(g)??g.baseline))return {status:'baseline',message:'Record a measured baseline before building this goal.'};
+    if(isRow(g))return {status:'guided',message:'Your measured rowing goal is recognized. Guided rowing is available, but the workout runner cannot insert distance-based intervals automatically yet.'};
+    if(g.kind==='custom'&&/\b(row|rowing|rower|ergometer)\b/i.test(g.name||''))return {status:'reconfigure',message:'Set up this goal in meters for rowing. Your original result remains saved.'};
+    if(prescription(g,catalog))return {status:'supported',message:'Compatible baseline and workout exercise available.'};
+    return {status:'tracking',message:'This goal is saved for assessments. No exact supported workout movement is available, so no substitute will be added.'};
+  }
+  function evidence(g){
+    const tests=(g.assessments||[]).filter(a=>a.source==='discovery'&&(!a.unit||a.unit===g.unit)&&
+      String(a.variant||'').toLowerCase()===String(g.variant||'').toLowerCase());
+    if(!tests.length)return {status:'Not enough data',reason:'Record a comparable baseline.'};
+    const last=Date.parse(tests[tests.length-1].at||'');
+    if(g.painFlag)return {status:'Needs attention',reason:'Discomfort was recorded. Do not increase training automatically.'};
+    if(!Number.isFinite(last)||Date.now()-last>21*86400000)return {status:'Needs reassessment',reason:'No comparable assessment in the past three weeks.'};
+    if(tests.length<2)return {status:'Baseline recorded',reason:'A second comparable assessment will show progress.'};
+    const first=num(tests[0].value),latest=num(tests[tests.length-1].value);
+    return {status:latest>first?'Improving':latest<first?'Review progress':'Holding steady',
+      reason:'Based on '+tests.length+' comparable assessments. Training sets do not verify goal completion.'};
+  }
+
   function goals(training){return (training?.goalLab?.goals||[]).filter(g=>g.status==='active' || g.status==='maintenance');}
   function selected(training){return goals(training).filter(g=>g.status==='active');}
   function signature(training,profile,plan){
@@ -20,8 +53,10 @@
   }
   function ensure(training){
     const lab=goalEngine()?.ensure(training) || (training.goalLab=training.goalLab||{goals:[]});
-    if(!lab.strategy||typeof lab.strategy!=='object')lab.strategy={version:2,status:'inactive',mode:'track',goalIds:[],approvedSignature:null,approvedAt:null,revisions:[],trainingLog:[],checkIns:[],draft:null};
+    if(!lab.strategy||typeof lab.strategy!=='object')lab.strategy={version:2,status:'inactive',mode:'track',goalIds:[],approvedSignature:null,approvedAt:null,revisions:[],trainingLog:[],checkIns:[],draft:null,allowExtension:false,rowerAccess:'unknown'};
     const s=lab.strategy;
+    if(!['yes','no','unknown'].includes(s.rowerAccess))s.rowerAccess='unknown';
+    s.allowExtension=Boolean(s.allowExtension);
     for(const key of ['goalIds','revisions','trainingLog','checkIns'])if(!Array.isArray(s[key]))s[key]=[];
     return s;
   }
@@ -33,7 +68,7 @@
     const s=ensure(training),active=selected(training);
     return {mode:s.status==='active'?s.mode:'integrate',
       goalIds:(s.goalIds.length?s.goalIds:active.map(g=>g.id)).filter(id=>active.some(g=>g.id===id)).slice(0,3),
-      signature:signature(training,profile,plan),preview:false};
+      signature:signature(training,profile,plan),preview:false,allowExtension:Boolean(s.allowExtension),rowerAccess:s.rowerAccess};
   }
   function sortedGoals(training,s){
     return s.goalIds.map(id=>selected(training).find(g=>g.id===id)).filter(Boolean);
@@ -64,8 +99,9 @@
     const chosen=candidates(training,d.goalIds,catalog);
     const additions=chosen.filter(x=>x.ex);
     const unavailable=chosen.filter(x=>!x.ex);
+    const guided=chosen.filter(x=>hasRowBaseline(x.goal)).map(x=>({goal:x.goal,guide:rowingGuide(x.goal)}));
     const mode=d.mode;
-    return {mode,chosen,additions,unavailable,
+    return {mode,chosen,additions,unavailable,guided,
       trainingDays:num(profile?.days)||0,
       summary:mode==='integrate'?'Keep your existing plan, with up to two short, compatible goal progressions on a training day when readiness and available time permit. An added movement may extend that session by about 5 to 10 minutes. No existing exercise is removed.'
         :mode==='focused'?'Keep existing scheduled workouts unchanged. Build separate, on-demand goal-focus sessions from supported baselines.'
@@ -113,6 +149,8 @@
     }
     if(!s.draft)return done(false);
     const d=s.draft;
+    if(name==='strategy-extension'){d.allowExtension=data.value==='yes';d.preview=false;return done(true);}
+    if(name==='strategy-rower-access'){if(!['yes','no','unknown'].includes(data.value))return done(false);d.rowerAccess=data.value;d.preview=false;return done(true);}
     if(name==='strategy-mode'){if(!Object.hasOwn(modes,data.mode))return done(false);d.mode=data.mode;d.preview=false;return done(true);}
     if(name==='strategy-toggle'){
       const id=String(data.goalId||'');
@@ -134,10 +172,10 @@
       if(d.signature!==signature(training,profile,plan)){s.draft=draft(training,profile,plan);return done(true,'Your goals or program changed. Review the updated strategy before approval.');}
       const p=preview(training,profile,plan,catalog);
       if(d.mode==='integrate'&&p.additions.length===0)return done(false,'No selected goals currently have compatible exercise variations. Select a compatible goal or choose tracking mode.');
-      if(d.mode==='focused'&&p.additions.length===0)return done(false,'Complete a compatible baseline first, or select tracking mode.');
-      const record={at:now(),mode:d.mode,goalIds:d.goalIds.slice(),signature:d.signature,description:p.summary};
+      if(d.mode==='focused'&&p.additions.length===0&&!(d.rowerAccess==='yes'&&p.guided.length))return done(false,'Complete a supported baseline, confirm rowing machine access for guided rowing, or select tracking mode.');
+      const record={at:now(),mode:d.mode,goalIds:d.goalIds.slice(),signature:d.signature,description:p.summary,allowExtension:d.allowExtension,rowerAccess:d.rowerAccess};
       s.revisions.push(record);s.revisions=s.revisions.slice(-30);
-      s.status='active';s.mode=d.mode;s.goalIds=d.goalIds.slice();s.approvedSignature=d.signature;s.approvedAt=record.at;s.draft=null;
+      s.status='active';s.mode=d.mode;s.goalIds=d.goalIds.slice();s.approvedSignature=d.signature;s.approvedAt=record.at;s.allowExtension=d.allowExtension;s.rowerAccess=d.rowerAccess;s.draft=null;
       return done(true,'Strategy approved. Your original workout plan and training history are preserved.');
     }
     return done(false);
