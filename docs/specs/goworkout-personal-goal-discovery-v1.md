@@ -59,7 +59,7 @@ Test coverage: fixed target, interactive and manual baseline, machine-recorded t
 
 ## Manual-entry acceptance criteria
 - A user can type 2,000 meters, type 9:00, and choose Exercise machine without starting the app timer. The result saves as one assessment and displays its measured pace (2:15 / 500 m).
-- A user can type 12 reps without pressing the counter. The stopwatch remains optional.
+- A user can type 12 reps without pressing the counter. A timed hold can be entered as 75 seconds or 1:15 without starting the stopwatch.
 - A custom goal supports distance-only or distance plus a time target. Its target is reached only when one comparable assessment satisfies every required measurement.
 - A user can select Running, Cycling, Walking, Rowing, Swimming, or Hiking without starting from scratch.
 - Editing from m to km preserves the physical result and original source details, with no duplicate assessment.
