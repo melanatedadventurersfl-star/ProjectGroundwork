@@ -1,0 +1,21 @@
+name: GO Workout Connections check
+on:
+  pull_request:
+    paths:
+      - 'apps/member-app-prototype/workout/**'
+      - '.github/workflows/goworkout-connections-check.yml'
+  workflow_dispatch:
+jobs:
+  connections:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check apps/member-app-prototype/workout/app.js
+          node --check apps/member-app-prototype/workout/connections.js
+      - name: Privacy and goal sharing tests
+        run: node --test apps/member-app-prototype/workout/connections.test.cjs
