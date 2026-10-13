@@ -12,7 +12,7 @@ function goal(opts={}){
   return {name:'Push-ups',kind:'pushup',unit:'reps',variant:'Standard push-up',baseline:10,target:50,best:24,status:'active',deadline:'8',createdAt:new Date(start).toISOString(),assessments:[first,second],...opts};
 }
 test('eight week goal uses real relative deadline and recorded assessments',()=>{
- assert.equal(summarize(goal(),now,engine).label,'Ahead of schedule');
+ assert.equal(summarize(goal({best:30}),now,engine).label,'Ahead of schedule');
 });
 test('missing reassessment never claims on track',()=>{
  assert.equal(summarize(goal({assessments:goal().assessments.slice(0,1)}),now,engine).label,'Awaiting reassessment');
@@ -27,7 +27,7 @@ test('paused goal never broadcasts falling behind',()=>{
  assert.equal(summarize(goal({status:'paused'}),now,engine).label,'Paused');
 });
 test('old assessment cannot be on track',()=>{
- const old=[goal().assessments[0],{...goal().assessments[1],at:new Date(now-30*day).toISOString()}];
+ const old=[{...goal().assessments[0],at:new Date(now-60*day).toISOString()},{...goal().assessments[1],at:new Date(now-30*day).toISOString()}];
  assert.equal(summarize(goal({assessments:old}),now,engine).label,'Needs reassessment');
 });
 test('goals without deadline never claim on track',()=>{
