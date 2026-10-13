@@ -3,6 +3,7 @@ create table public.workout_circle_preferences (
   user_id uuid primary key references auth.users(id) on delete cascade,
   requests_enabled boolean not null default true,
   encouragement_enabled boolean not null default true,
+  invites_enabled boolean not null default true,
   milestones_enabled boolean not null default true,
   accountability_enabled boolean not null default true,
   updated_at timestamptz not null default now()
@@ -17,7 +18,7 @@ create table public.workout_circle_notifications (
   recipient_id uuid not null references auth.users(id) on delete cascade,
   actor_id uuid not null references auth.users(id) on delete cascade,
   kind text not null check(kind in
-    ('connection_request','connection_accepted','encouragement','milestone',
+    ('connection_request','connection_accepted','encouragement','workout_invite','milestone',
      'accountability_request','accountability_accepted','accountability_checkin')),
   reference_id uuid,
   created_at timestamptz not null default now(),
@@ -101,6 +102,7 @@ begin
   select case
     when p_kind='connection_request' then coalesce(p.requests_enabled,true)
     when p_kind='encouragement' then coalesce(p.encouragement_enabled,true)
+    when p_kind='workout_invite' then coalesce(p.invites_enabled,true)
     when p_kind='milestone' then coalesce(p.milestones_enabled,true)
     when p_kind like 'accountability_%' then coalesce(p.accountability_enabled,true)
     else true end
@@ -126,6 +128,19 @@ $$;
 create trigger workout_circle_connection_alert
 after insert or update of status on public.workout_connections
 for each row execute function public.workout_circle_connection_alert();
+
+create or replace function public.workout_circle_workout_invite_alert()
+returns trigger language plpgsql security definer set search_path=pg_catalog,public as $
+begin
+  if new.partner_user_id is not null and new.status='lobby' then
+    perform public.workout_circle_notify(new.partner_user_id,new.host_user_id,'workout_invite',new.id);
+  end if;
+  return new;
+end;
+$;
+create trigger workout_circle_workout_invite_alert
+after insert on public.workout_shared_sessions
+for each row execute function public.workout_circle_workout_invite_alert();
 
 create or replace function public.workout_circle_encouragement_alert()
 returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
