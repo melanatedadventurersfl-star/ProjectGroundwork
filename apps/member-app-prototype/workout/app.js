@@ -8699,6 +8699,7 @@ function renderProfileHub(){
       '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>REVISIT TRAINING SETUP</span><strong>Update goals, schedule, equipment, restrictions and preferences</strong></div><em>›</em></button>'+
       '<button data-tab="goals"><i class="settings-icon" aria-hidden="true">◎</i><div><span>PERSONAL GOALS & ADAPTATION</span><strong>Baselines, training impact, strategy approval, and Smart Adaptive preferences</strong></div><em>›</em></button>'+
+      '<button data-action="open-adaptive-settings"><i class="settings-icon" aria-hidden="true">✧</i><div><span>ADAPTIVE TRAINING PREFERENCES</span><strong>Smart Adaptive or review goal changes before applying</strong></div><em>›</em></button>'+
       '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -11125,6 +11126,8 @@ function startGoalFocusWorkout(){
   render();
 }
 function handleClick(event){
+  const settings=event.target.closest('[data-action="open-adaptive-settings"]');
+  if(settings){setTab('goals');requestAnimationFrame(()=>document.querySelector('#adaptive-settings')?.scrollIntoView({block:'start',behavior:'smooth'}));return;}
   const adaptive=event.target.closest('[data-adaptive-action]');
   if(adaptive&&window.GoWorkoutAdaptiveExperience){
     if(adaptive.dataset.adaptiveAction==='mode'){
