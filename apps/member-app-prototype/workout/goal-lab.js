@@ -110,7 +110,8 @@
     if(kind==='plank')return {summary:'Build multiple quality holds rather than attempting a maximum every day.',sets:['Plank · 3 × '+Math.max(10,Math.min(45,Math.floor(b*.7)||10))+' sec','Bird dog · 2 × 8 per side'],frequency:'2 to 3 days per week with recovery'};
     if(kind==='pullup')return {summary:'Progress toward unassisted repetitions with controlled pulling variations.',sets:[b<1?'Assisted pull-ups · 3 × 5':'Pull-ups · 3 × '+Math.max(1,Math.floor(b*.6)),'Rows · 2 × 8 to 10'],frequency:'2 nonconsecutive days per week'};
     if(kind==='squat')return {summary:'Build comfortable repetition capacity with controlled movement.',sets:['Squats · 3 × '+Math.max(4,Math.min(15,Math.floor(b*.6)||6)),'Glute bridges · 2 × 10'],frequency:'2 to 3 nonconsecutive days per week'};
-    if(kind==='run')return {summary:'Increase comfortable distance gradually, mixing walking and running as needed.',sets:['Measured easy walk/run intervals','Record actual continuous distance','Increase only when recovery feels manageable'],frequency:'2 to 3 days per week'};
+    if(kind==='run')return {summary:'Increase comfortable distance gradually, mixing walking and running as needed.',sets:['Measured easy walk/run intervals','Record actual continuous distance and elapsed time','Increase only when recovery feels manageable'],frequency:'2 to 3 days per week'};
+    if(['cycle','walk','row','swim','hike'].includes(kind))return {summary:'Track repeatable distance and elapsed time. Build up gradually and compare like-for-like efforts.',sets:['Record your distance and time','Retest under similar conditions','Adjust gradually from your baseline'],frequency:'Flexible'};
     return {summary:'Log repeatable performances and adjust your target from the results. Custom goals do not receive automatic exercise prescriptions.',sets:[],frequency:'Flexible'};
   }
   function shortcuts(training,placement='home'){
@@ -174,7 +175,7 @@
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="assessment-done">FINISH TEST →</button></div></div>';
   }
   function feedback(d){
-    return '<div class="goal-wizard"><div class="goal-step">BASELINE FEEDBACK</div><h2>You recorded '+safe(rounded(d.result,d.unit))+' '+safe(d.unit)+'.</h2><p>How did that effort feel? This helps the plan choose a sensible starting intensity.</p>'+
+    return '<div class="goal-wizard"><div class="goal-step">BASELINE FEEDBACK</div><h2>You recorded '+safe(rounded(d.result,d.unit))+' '+safe(d.unit)+(d.unit!=='seconds'&&number(d.elapsedSeconds)>0?' in '+formatDuration(d.elapsedSeconds):'')+'.</h2><p>How did that effort feel? This helps the plan choose a sensible starting intensity.</p>'+
       '<div class="goal-choices">'+[['easy','Comfortable'],['challenging','Challenging but controlled'],['limit','Near my limit'],['pain','Pain or discomfort']].map(([v,n])=>'<button class="'+(d.effort===v?'chosen':'')+'" data-goal-action="effort" data-effort="'+v+'">'+n+'</button>').join('')+'</div>'+
       (d.effort==='pain'?'<div class="goal-alert">Training recommendations will be paused until you can choose a comfortable movement or seek appropriate guidance.</div>':'')+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">RETEST</button><button class="goal-primary" data-goal-action="feedback-next">SAVE BASELINE →</button></div></div>';
@@ -182,7 +183,7 @@
   function review(d){
     const tentative={...d,kind:d.kind,name:d.label,baseline:d.result,best:d.result,painFlag:d.effort==='pain'};
     const rec=recommendations(tentative);
-    return '<div class="goal-wizard"><div class="goal-step">YOUR TRAINING PATH</div><h2>Start where you are.</h2><div class="goal-result-pair"><div><small>YOUR BASELINE</small><strong>'+safe(d.result)+' '+safe(d.unit)+'</strong></div><div><small>YOUR GOAL</small><strong>'+safe(d.target)+' '+safe(d.unit)+'</strong></div></div>'+
+    return '<div class="goal-wizard"><div class="goal-step">YOUR TRAINING PATH</div><h2>Start where you are.</h2><div class="goal-result-pair"><div><small>YOUR BASELINE</small><strong>'+safe(d.result)+' '+safe(d.unit)+(number(d.elapsedSeconds)>0?' in '+formatDuration(d.elapsedSeconds):'')+'</strong></div><div><small>YOUR GOAL</small><strong>'+safe(d.target)+' '+safe(d.unit)+(number(d.targetTimeSeconds)>0?' in '+formatDuration(d.targetTimeSeconds):'')+'</strong></div></div>'+
       '<p>First milestone: <b>'+safe(nextMilestone(tentative))+' '+safe(d.unit)+'</b>. '+safe(rec.summary)+'</p>'+
       '<div class="goal-plan-steps">'+rec.sets.map(x=>'<div>'+safe(x)+'</div>').join('')+'</div>'+
       '<p class="goal-footnote">Suggested training focus only. This does not replace or silently overwrite your existing workout program. We’ll track related completed sets and guide your next reassessment.</p>'+
@@ -191,15 +192,15 @@
   function detail(g){
     const rec=recommendations(g),recentTests=recent(g);
     return '<section class="goal-detail"><div class="goal-step">YOUR GOAL · '+safe(g.status.toUpperCase())+'</div><h2>'+safe(g.icon)+' '+safe(g.name)+'</h2>'+
-      '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(assessmentBest(g))+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+'</strong></div></div>'+
+      '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(assessmentBest(g))+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+(number(g.targetTimeSeconds)>0?' in '+formatDuration(g.targetTimeSeconds):'')+'</strong></div></div>'+
       '<div class="goal-track"><i style="width:'+progress(g)+'%"></i></div>'+
-      '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(progress(g)===100?'Target reached. You can maintain it or set another target.':'')+'</p>'+
+      '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(meetsTarget(g)?'Target reached. You can maintain it or set another target.':'')+'</p>'+
       (SUPPORTED_VARIANTS[g.kind]&&!isRunnableGoal(g)?'<p class="goal-footnote">'+safe(g.variant||'This variation')+' is tracked through your assessments. Automated workouts do not yet include that exact exercise.</p>':'')+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="retest" data-goal-id="'+safe(g.id)+'">REASSESS</button><button class="goal-secondary" data-goal-action="edit" data-goal-id="'+safe(g.id)+'">EDIT TARGET</button></div>'+
       '<section class="goal-detail-section"><h3>Suggested training focus</h3><p>'+safe(rec.summary)+'</p><div class="goal-plan-steps">'+rec.sets.map(s=>'<div>'+safe(s)+'</div>').join('')+'</div><small>'+safe(rec.frequency)+'. Coordinate with your existing program and allow recovery.</small></section>'+
       '<section class="goal-detail-section"><h3>Training performance</h3><p>'+safe(number(g.trainingBest)>0?'Best completed training set: '+g.trainingBest+' '+g.unit+'. This does not count as a verified maximum.':'Training sets will appear separately from goal assessments.')+'</p></section>'+
       '<section class="goal-detail-section"><h3>Assessment history</h3>'+
-      (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(a.unit||g.unit)+'</b><small>'+safe(a.variant||g.variant)+' · '+safe(a.source==='workout-set'?'Logged workout set':'Discovery test')+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
+      (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(a.unit||g.unit)+(number(a.elapsedSeconds)>0?' in '+formatDuration(a.elapsedSeconds):'')+'</b><small>'+safe(a.variant||g.variant)+' · '+safe(a.measurementSource||'manual')+paceText(a.value,a.unit||g.unit,a.elapsedSeconds)+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
       '</section><div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="toggle-pause" data-goal-id="'+safe(g.id)+'">'+(g.status==='paused'?'RESUME':'PAUSE')+'</button><button class="goal-secondary" data-goal-action="delete" data-goal-id="'+safe(g.id)+'">DELETE GOAL</button></div></section>';
   }
   function render(training){
