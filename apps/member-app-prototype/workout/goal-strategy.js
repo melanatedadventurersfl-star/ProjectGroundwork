@@ -53,11 +53,11 @@
   }
   function ensure(training){
     const lab=goalEngine()?.ensure(training) || (training.goalLab=training.goalLab||{goals:[]});
-    if(!lab.strategy||typeof lab.strategy!=='object')lab.strategy={version:2,status:'inactive',mode:'track',goalIds:[],approvedSignature:null,approvedAt:null,revisions:[],trainingLog:[],checkIns:[],draft:null,allowExtension:true,rowerAccess:'unknown'};
+    if(!lab.strategy||typeof lab.strategy!=='object')lab.strategy={version:2,status:'inactive',mode:'track',goalIds:[],approvedSignature:null,approvedAt:null,revisions:[],trainingLog:[],checkIns:[],rowingSessions:[],draft:null,allowExtension:true,rowerAccess:'unknown'};
     const s=lab.strategy;
     if(!['yes','no','unknown'].includes(s.rowerAccess))s.rowerAccess='unknown';
     if(typeof s.allowExtension!=='boolean')s.allowExtension=true;
-    for(const key of ['goalIds','revisions','trainingLog','checkIns'])if(!Array.isArray(s[key]))s[key]=[];
+    for(const key of ['goalIds','revisions','trainingLog','checkIns','rowingSessions'])if(!Array.isArray(s[key]))s[key]=[];
     return s;
   }
   function current(training,profile,plan){
@@ -129,6 +129,16 @@
       const goal=goals(training).find(g=>g.id===data.goalId);
       if(!goal||goal.status!=='maintenance')return done(false);
       goal.status='active';goal.updatedAt=now();s.draft=null;return done(true,'Goal reactivated. Review your training strategy to include it.');
+    }
+    if(name==='strategy-row-log'){
+      const g=selected(training).find(x=>x.id===data.goalId&&hasRowBaseline(x));
+      if(!g||s.status!=='active'||s.mode!=='focused'||s.rowerAccess!=='yes'||!current(training,profile,plan))return done(false,'Review and approve a guided rowing strategy before logging practice.');
+      const raw=node?.closest?.('.goal-row-log')?.querySelector?.('input')?.value ?? data.meters;
+      const meters=Number(raw);
+      if(!Number.isInteger(meters)||meters<10||meters>10000)return done(false,'Enter the distance completed, from 10 to 10,000 meters.');
+      s.rowingSessions.push({goalId:g.id,at:now(),meters,source:'self-reported-rowing-practice'});
+      s.rowingSessions=s.rowingSessions.slice(-100);
+      return done(true,'Rowing practice saved. Your verified 2K assessment is unchanged.');
     }
     if(name==='strategy-checkin-choice'){
       const entryId=String(data.workoutId||'');
@@ -257,6 +267,7 @@
     const tracked=s.trainingLog.filter(x=>ids.has(x.workoutId));
     const supported=new Set(tracked.flatMap(x=>x.results.map(y=>y.goalId)));
     const sets=tracked.reduce((n,x)=>n+x.results.reduce((m,y)=>m+y.completedSets,0),0);
+    const rowingPractices=s.rowingSessions.filter(x=>{const t=Date.parse(x.at);return t>=weekStart&&t<end;}).length;
     const deferred=[];
     for(const g of goals(training)){
       if(g.status!=='active')continue;
@@ -270,7 +281,7 @@
       :last?.effort==='hard'||last?.limitation==='fatigue'?'Your latest session was demanding. Keep upcoming goal work conservative.'
       :matches.length===0?'No completed workouts recorded this week. Your baselines have not changed. Resume at a manageable level.'
       :'Training was logged. Goal achievement still requires a comparable reassessment.';
-    return {weekStart:new Date(weekStart).toISOString().slice(0,10),sessions:matches.length,goalSessions:supported.size,goalSets:sets,retests:deferred,tip};
+    return {weekStart:new Date(weekStart).toISOString().slice(0,10),sessions:matches.length,goalSessions:supported.size,goalSets:sets,rowingPractices,retests:deferred,tip};
   }
   function checkin(training,history){
     const s=ensure(training),latest=(history||[]).find(h=>!h.manualWorkoutCompletion&&h.completionStatus==='complete');
@@ -289,6 +300,7 @@
     if(!goals(training).length)return '';
     return '<section class="goal-strategy-review"><span class="goal-kicker">WEEKLY GOAL REVIEW</span><h3>Your progress is about more than one number</h3>'+
       '<div class="goal-strategy-stats"><div><strong>'+w.sessions+'</strong><small>Completed workouts</small></div><div><strong>'+w.goalSets+'</strong><small>Goal-related sets</small></div><div><strong>'+w.goalSessions+'</strong><small>Goals trained</small></div></div>'+
+      (w.rowingPractices?'<p><b>'+w.rowingPractices+' rowing practice '+(w.rowingPractices===1?'entry':'entries')+'</b> recorded separately from completed workout sessions.</p>':'')+
       '<p>'+safe(w.tip)+'</p>'+ 
       '<div class="goal-evidence-list">'+selected(training).map(g=>{const e=evidence(g);return '<p><b>'+safe(g.name)+': '+safe(e.status)+'</b> · '+safe(e.reason)+'</p>';}).join('')+'</div>'+
       (w.retests.length?'<p>Reassessment available for: '+safe(w.retests.join(', '))+'. You decide when to retest.</p>':'')+
@@ -379,6 +391,9 @@
       }else if(g.painFlag){
         state='Paused for discomfort';why='Goal-specific progressions are unavailable while discomfort is recorded.';
         type='review';
+      }else if(isRow(g)&&approved&&linked&&activeMode==='focused'){
+        state='Approved · guided rowing';why='Your self-reported rowing practice is recorded separately. A new distance assessment is still required to verify progress.';
+        type='linked';
       }else if(!proposed){
         state=isRow(g)?'Guided rowing':'Assessment or exercise review needed';
         why=support(g,catalog).message;
@@ -470,6 +485,13 @@
         html+='<button class="goal-primary" data-goal-action="strategy-preview">PREVIEW TRAINING CHANGES →</button>';
       }
       html+='<button class="goal-strategy-text-button" data-goal-action="strategy-cancel">CANCEL, KEEP EXISTING SETTINGS</button>';
+    }
+    if(!d&&current(training,profile,plan)&&s.mode==='focused'&&s.rowerAccess==='yes'){
+      const rowing=sortedGoals(training,s).filter(hasRowBaseline);
+      if(rowing.length)html+='<section class="goal-strategy-rowing"><span class="goal-kicker">GUIDED ROWING PRACTICE</span><h3>Train for your 2K row</h3><p>These are self-paced, distance-based practice suggestions. They do not alter the existing workout runner or verify a personal best.</p>'+rowing.map(g=>{
+        const guide=rowingGuide(g),logs=s.rowingSessions.filter(x=>x.goalId===g.id),last=logs.at(-1);
+        return '<div class="goal-row-log" data-row-log><strong>'+safe(g.name)+'</strong><p>'+safe(guide.description)+'</p><label>Distance you completed (meters)<input type="number" min="10" max="10000" step="1" inputmode="numeric" placeholder="e.g. '+guide.interval+'" aria-label="Rowing distance completed in meters"></label><button class="goal-primary" data-goal-action="strategy-row-log" data-goal-id="'+safe(g.id)+'">SAVE ROWING PRACTICE</button>'+(last?'<small>Last practice: '+safe(last.meters)+' m · '+safe(new Date(last.at).toLocaleDateString())+'. This is not a baseline test.</small>':'<small>No rowing practice logged yet.</small>')+'</div>';
+      }).join('')+'</section>';
     }
     const reached=goals(training).filter(g=>g.status==='active'&&num(goalEngine()?.assessmentBest?.(g)??g.baseline)>=num(g.target));
     if(reached.length)html+='<div class="goal-strategy-review"><h3>Assessment milestones achieved</h3>'+reached.map(g=>'<div class="goal-strategy-maintain"><span>'+safe(g.name)+' · '+safe(g.target)+' '+safe(g.unit)+'</span><button data-goal-action="strategy-maintain" data-goal-id="'+safe(g.id)+'">MOVE TO MAINTENANCE</button></div>').join('')+'</div>';
