@@ -7034,9 +7034,10 @@ function applyWorkoutSession(session){
   sharedRuntime.syncMuted=false;
   render();
   if(session?.user?.id){
-    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await hydrateSavedWorkoutPartners();await restoreSharedWorkoutSession(session.user.id);}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
+    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await hydrateSavedWorkoutPartners();await restoreSharedWorkoutSession(session.user.id);await window.GoWorkoutCircle?.refresh?.();}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
   }else if(previousUserId){
     unsubscribeSharedSession();
+    window.GoWorkoutCircle?.reset?.();
   }
 }
 async function signInEntryAccount(){
