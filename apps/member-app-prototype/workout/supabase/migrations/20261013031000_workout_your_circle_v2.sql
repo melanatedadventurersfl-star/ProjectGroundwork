@@ -65,6 +65,19 @@ create table public.workout_accountability_checkins (
   note text not null default '' check (char_length(note)<=240),
   created_at timestamptz not null default now()
 );
+-- Removing a social connection also ends its accountability agreement.
+create or replace function public.workout_accountability_disconnect()
+returns trigger language plpgsql security definer set search_path=pg_catalog,public as $
+begin
+  delete from public.workout_accountability_agreements
+  where user_low=old.user_low and user_high=old.user_high;
+  return old;
+end;
+$;
+create trigger workout_accountability_disconnect
+after delete on public.workout_connections
+for each row execute function public.workout_accountability_disconnect();
+
 create index workout_accountability_checkins_recent on public.workout_accountability_checkins(agreement_id,created_at desc);
 alter table public.workout_accountability_checkins enable row level security;
 create policy workout_accountability_checkins_read on public.workout_accountability_checkins
@@ -130,8 +143,10 @@ returns trigger language plpgsql security definer set search_path=pg_catalog,pub
 declare v_friend uuid;
 begin
   if new.visibility not in ('status','details') or
-     new.progress_status is distinct from 'Goal reached' or
-     (tg_op='UPDATE' and old.progress_status='Goal reached') then return new; end if;
+     new.progress_status is distinct from 'Goal reached' then return new; end if;
+  if tg_op='UPDATE' then
+    if old.progress_status='Goal reached' then return new; end if;
+  end if;
   for v_friend in
     select case when c.requester_id=new.owner_id then c.recipient_id else c.requester_id end
     from public.workout_connections c
