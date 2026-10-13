@@ -227,6 +227,7 @@
           d.target=Math.max(isDistanceUnit(value)?.01:1,rounded(d.target,value));
         }
         d.unit=value;d.metric=value==='seconds'?'single hold':isDistanceUnit(value)?'continuous distance':'continuous';
+        if(value==='seconds'){d.targetTimeText='';d.targetTimeSeconds=0;}
         d.startedAt=null;d.startedElapsed=0;
       }
       return true;
@@ -399,7 +400,9 @@
   function pauseTimer(training){
     const d=training?.goalLab?.draft;
     if(!d?.startedAt)return false;
-    d.result=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+    const elapsed=Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+    if(d.unit==='seconds')d.result=elapsed;
+    else {d.elapsedSeconds=elapsed;d.elapsedText=formatDuration(elapsed);}
     d.startedAt=null;d.startedElapsed=0;
     return true;
   }
@@ -408,9 +411,9 @@
     if(!clock)return;
     // The app rerenders after each action. The state is serialized in its page context.
     const start=clock.dataset.startedAt;
-    if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
+    if(start)clock.textContent=formatDuration(Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(start))/1000)+number(clock.dataset.startedElapsed))));
   }
   if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
-  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,assessmentBest,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
+  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,assessmentBest,meetsTarget,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse,parseDuration,formatDuration,convertDistance};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();
