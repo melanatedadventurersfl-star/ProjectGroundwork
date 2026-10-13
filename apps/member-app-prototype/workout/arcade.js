@@ -103,7 +103,7 @@
       '<div class="arcade-home-copy"><span class="arcade-eyebrow">GO WORKOUT ARCADE</span><h3>Your companion is ready.</h3>'+
         '<p>Every logged set advances your adventure. Today’s plan sets the challenge.</p>'+
         '<div class="arcade-home-stats"><strong>LEVEL '+s.level+'</strong><span>'+s.xp+' XP earned</span></div>'+
-        '<button type="button" class="arcade-button" data-action="open-arcade">OPEN ARCADE <span aria-hidden="true">→</span></button></div>'+
+        '<button type="button" class="arcade-button" data-action="open-arcade">CHARACTER LOCKER <span aria-hidden="true">→</span></button></div>'+
       scene(training,avatar,true,false)+'</section>';
   }
   function livePanel(training,workout,avatar) {
@@ -111,8 +111,10 @@
     const setting=ensure(training);
     if(setting.mode==='focus') return '';
     if(setting.mode==='arcade'&&window.GoWorkoutRepBattle){
+      // During training the HUD and in-context set hits are the battle.
+      // Mount the expanded arena only when the member explicitly selects VIEW.
       const battle=window.GoWorkoutRepBattle.livePanel(training,workout,avatar);
-      if(battle)return battle;
+      if(battle)return setting.battleCollapsed===false?battle:'';
     }
     const sets=(workout.exercises||[]).reduce((sum,ex)=>sum+(ex.sets||[]).length,0);
     const done=(workout.exercises||[]).reduce((sum,ex)=>sum+(ex.sets||[]).filter(set=>set.completed).length,0);
@@ -134,7 +136,7 @@
     const setting=ensure(training),result=stats(history);
     const pct=(result.levelXp/result.nextLevelXp*100).toFixed(1);
     return '<div class="clean-page arcade-page"><div class="arcade-page-header"><button class="text-button" type="button" data-action="home">‹ HOME</button><p class="arcade-eyebrow">GO WORKOUT ARCADE · V1</p>'+
-      '<h2>Meet your training companion.</h2><p>Keep the workouts you already follow. Your game progress adapts to them.</p></div>'+
+      '<h2>Character Locker</h2><p>Personalize your character and choose how Arcade appears within Home, Train, and Performance. Your workout stays the same.</p></div>'+
       '<section class="arcade-hero">'+scene(training,avatar,false,true)+'<div class="arcade-hero-stats"><span>LEVEL '+result.level+'</span><strong>'+result.xp+' XP</strong>'+
       '<small>'+result.levelXp+' / 400 XP to next level</small><div class="arcade-meter" role="progressbar" aria-valuenow="'+result.levelXp+'" aria-valuemin="0" aria-valuemax="400" aria-label="Next level progress"><span style="width:'+pct+'%"></span></div></div></section>'+
       (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.dashboardCard(training,activeWorkout,avatar):'')+
@@ -146,8 +148,8 @@
       '<div class="arcade-modes">'+Object.entries(modes).map(([id,item])=>
         '<button type="button" class="arcade-mode'+(setting.mode===id?' is-selected':'')+'" data-arcade-action="mode" data-arcade-value="'+id+'" aria-pressed="'+(setting.mode===id)+'">'+
         '<span class="arcade-radio" aria-hidden="true"></span><span><strong>'+item.name+'</strong><small>'+item.description+'</small></span></button>').join('')+'</div></section>'+
-      '<section class="arcade-section"><div class="arcade-section-heading"><h3>Your quests</h3><p>Based on completed workouts and logged sets in your private workout history.</p></div>'+
-      '<div class="arcade-quests">'+questCards(result)+'</div></section>'+
+      '<section class="arcade-section"><div class="arcade-section-heading"><h3>Your milestones</h3><p>Your earned achievements are based on private, saved workouts. See the full journey on Performance.</p></div>'+
+      '<div class="arcade-locker-milestones"><strong>'+result.earnedQuests.length+' of '+quests.length+' milestone badges earned</strong><button type="button" class="arcade-button" data-tab="progress">SEE TRAINING JOURNEY →</button></div></section>'+
       '<div class="arcade-footnote">XP is calculated from saved sessions. Partial workouts earn set XP. Completing a lighter session counts the same as any other full session. No extra reps or unsafe effort required.</div></div>';
   }
   function summaryPanel(history,entry) {
@@ -156,7 +158,7 @@
     if(!reward)return battle;
     return battle+'<section class="arcade-summary"><div><span class="arcade-eyebrow">ARCADE REWARD</span><h3>+'+reward.xp+' XP earned</h3>'+
       '<p>Your session is saved. Your companion is now level '+reward.level+'.</p></div>'+
-      '<button type="button" class="arcade-button" data-action="open-arcade">SEE YOUR QUESTS →</button></section>';
+      '<button type="button" class="arcade-button" data-action="open-arcade">SEE CHARACTER LOCKER →</button></section>';
   }
   function action(training,kind,value) {
     if(!['outfit','mode'].includes(kind)) return {changed:false};

@@ -1,0 +1,90 @@
+/* Arcade V1.2. Native GO Workout cards, not a separate game screen. */
+.ai-home,.ai-train,.ai-progress{--ai-ink:#15392d;--ai-gold:#e3b65d;--ai-moss:#276950;font-family:inherit;box-sizing:border-box}
+.ai-home *,.ai-train *,.ai-progress *{box-sizing:border-box}
+.ai-home{margin:9px 0 15px;padding:14px 16px 13px;background:linear-gradient(115deg,#0c3126,#174f3c 75%,#216344);color:#f6faf3;border-radius:19px;border:1px solid rgba(246,232,173,.25);box-shadow:0 8px 20px rgba(23,63,43,.16)}
+.ai-label-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.ai-kicker{font-size:10px;font-weight:850;letter-spacing:.105em;line-height:1.2;color:#d6c48e}
+.ai-locker-link,.ai-train-locker,.ai-achievement-head button{font:inherit;font-size:10px;letter-spacing:.045em;font-weight:850;border:0;background:transparent;color:#f8e4ad;cursor:pointer;padding:7px 0;text-align:right;white-space:nowrap}
+.ai-locker-link:focus-visible,.ai-train-locker:focus-visible,.ai-achievement-head button:focus-visible,.ai-mode-picker button:focus-visible{outline:3px solid #f5ce6e;outline-offset:2px}
+.ai-home-main{display:flex;align-items:center;gap:16px;margin:8px 0 11px;min-height:111px}
+.ai-character{flex:none;width:91px;height:102px;position:relative;display:grid;place-items:center;overflow:hidden;border-radius:16px;background:radial-gradient(circle at 52% 38%,#3e9972,#153d30 74%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.ai-character-orbit{position:absolute;inset:18% 10%;border:1px solid rgba(243,219,132,.32);border-radius:50%;transform:rotate(-17deg)}
+.ai-character>div,.ai-character>svg{position:relative;z-index:1;max-width:83%;max-height:92%}
+.ai-character img{object-fit:contain;max-height:90px;max-width:80px}
+.ai-character i{position:absolute;right:5px;top:8px;font-size:19px;color:#ecd078;font-style:normal}
+.ai-fallback{font-size:36px}
+.ai-focus-mark{display:grid;place-items:center;flex:none;width:45px;height:45px;border-radius:50%;background:#285d47;color:#f5d18c;font-size:27px}
+.ai-home-copy{flex:1;min-width:0}
+.ai-level{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.ai-level>span{font-size:10px;font-weight:850;letter-spacing:.09em;color:#e6c67d}
+.ai-level>b{font-size:14px;color:#fff;font-variant-numeric:tabular-nums}
+.ai-home-copy h3{margin:4px 0 4px;font-size:17px;font-weight:850;line-height:1.22;color:#fff}
+.ai-home-copy p{margin:0 0 9px;font-size:12px;line-height:1.35;color:#e2f0e8}
+.ai-home-copy>small{display:block;margin-top:6px;color:#c4e3d2;font-size:10px;line-height:1.3}
+.ai-xp-track{height:7px;border-radius:7px;background:#285f48;overflow:hidden}
+.ai-xp-track>span{height:100%;display:block;background:linear-gradient(90deg,#db9e47,#ffe08d);border-radius:7px}
+.ai-mode-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding-top:10px;border-top:1px solid rgba(234,245,216,.17)}
+.ai-mode-picker button{min-height:38px;border:1px solid rgba(200,231,210,.3);border-radius:10px;background:rgba(12,47,36,.35);color:#d3e8db;font:inherit;font-weight:750;font-size:12px;cursor:pointer}
+.ai-mode-picker button.is-active{background:#f6e5b6;color:#174831;border-color:#f6e5b6;box-shadow:0 2px 0 #c19b51}
+.ai-home.ai-mode-focus{background:#f2efe5;border-color:#ded5bb;box-shadow:none;color:#233e30}
+.ai-mode-focus .ai-kicker,.ai-mode-focus .ai-locker-link{color:#526b51}
+.ai-mode-focus .ai-home-copy h3,.ai-mode-focus .ai-level>b{color:#163b2d}
+.ai-mode-focus .ai-home-copy p,.ai-mode-focus .ai-home-copy>small{color:#4d6156}
+.ai-mode-focus .ai-xp-track{background:#d5dfd2}
+.ai-mode-focus .ai-mode-picker{border-color:#d1d9ca}
+.ai-mode-focus .ai-mode-picker button{background:#fff;color:#304b3c;border-color:#cbd8ca}
+.ai-mode-focus .ai-mode-picker button.is-active{background:#254f3f;color:#fff;border-color:#254f3f;box-shadow:none}
+.ai-home.ai-mode-companion .ai-character{width:65px;height:72px;border-radius:12px}
+.ai-home.ai-mode-companion .ai-home-main{min-height:80px}
+.ai-train{margin:11px 0 12px;padding:12px 14px;display:flex;align-items:center;gap:11px;border-radius:15px;border:1px solid #d2dfd1;background:linear-gradient(110deg,#f9f7f0,#edf3e7);color:#173c2a}
+.ai-train>div:first-child{flex:1;min-width:0;display:grid;gap:4px}
+.ai-train .ai-kicker{color:#6c8450}
+.ai-train strong{font-size:14px;line-height:1.3;overflow-wrap:anywhere}
+.ai-train small{font-size:11px;color:#607368;line-height:1.3}
+.ai-train-score{display:grid;gap:3px;text-align:center;flex:none}
+.ai-train-score b{font-size:13px;color:#245d41}
+.ai-train-score span{font-size:10px;color:#64734f}
+.ai-train-locker{color:#245d41;border-left:1px solid #d2dece;padding-left:9px;display:grid;place-items:center;gap:2px}
+.ai-train-locker span{font-size:9px}
+.ai-train.ai-mode-focus{background:#f8f6f0}
+.ai-progress{margin:13px 0 17px;border-radius:19px;padding:17px;background:linear-gradient(135deg,#133d30,#205944);color:#f4f9f1;border:1px solid rgba(248,226,162,.26)}
+.ai-progress-head{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:14px 0}
+.ai-progress-head>div:first-child{flex:1;min-width:0}
+.ai-progress-head h3{margin:5px 0;font-size:18px;line-height:1.3;color:#fff}
+.ai-progress-head p{margin:0;font-size:12px;color:#dce9db;line-height:1.4}
+.ai-progress-level{flex:none;display:grid;gap:4px;text-align:center;padding:10px;border-radius:12px;background:#1c503e}
+.ai-progress-level b{font-size:17px;color:#fbe0a6}
+.ai-progress-level span{font-size:11px;color:#f0f4e9}
+.ai-chapter-track{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:16px 0 18px}
+.ai-chapter{display:flex;flex-direction:column;align-items:center;gap:5px;border-radius:10px;padding:10px 3px 8px;background:#234f40;border:1px solid rgba(221,238,219,.2);color:#dfefe1;text-align:center}
+.ai-chapter>span{display:grid;place-items:center;border-radius:50%;height:25px;width:25px;font-size:12px;background:#3d6d56;font-weight:850}
+.ai-chapter small{font-size:9px;font-weight:800}
+.ai-chapter b{font-size:8px;color:#ffdf94}
+.ai-chapter.is-current{background:#36684e;border-color:#efd38b}
+.ai-chapter.is-current>span{background:#f6db93;color:#1f513d}
+.ai-chapter.is-past{opacity:.78}
+.ai-chapter.is-next{opacity:.6}
+.ai-achievement-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.ai-achievement-head strong{font-size:12px}
+.ai-achievements{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.ai-achievement{display:flex;align-items:flex-start;gap:7px;padding:8px 6px;min-width:0;border:1px solid #3f6953;border-radius:11px;background:#1c4a39}
+.ai-achievement>span{display:grid;place-items:center;width:23px;height:23px;flex:none;border-radius:7px;background:#456e55;color:#f8e1a8;font-size:13px}
+.ai-achievement>div{min-width:0;display:grid;gap:4px}
+.ai-achievement strong{font-size:10px;line-height:1.2}
+.ai-achievement small{font-size:9px;color:#c8e0cb;line-height:1.25}
+.ai-achievement.earned{border-color:#c6ac65}
+.ai-progress.ai-mode-focus{background:#f5f2ea;color:#193f2c;border-color:#d6d9ce}
+.ai-mode-focus.ai-progress .ai-progress-head h3,.ai-mode-focus.ai-progress .ai-progress-head p{color:#193f2c}
+.ai-mode-focus .ai-progress-level{background:#dfeade}
+.ai-mode-focus .ai-progress-level b,.ai-mode-focus .ai-progress-level span{color:#18432f}
+.ai-mode-focus .ai-chapter{background:#e4e9df;color:#245439;border-color:#cfdad0}
+.ai-mode-focus .ai-achievement{background:#eaf0e6;border-color:#d0dbce;color:#143b2b}
+.ai-mode-focus .ai-achievement small{color:#456252}
+.ai-mode-focus .ai-achievement-head button{color:#245439}
+@media(max-width:420px){.ai-home{padding:12px}.ai-home-main{gap:11px}.ai-character{width:76px;height:93px}.ai-home-copy h3{font-size:15px}.ai-achievements{grid-template-columns:1fr}.ai-achievement{align-items:center}.ai-progress-head h3{font-size:16px}.ai-progress-level b{font-size:14px}}
+@media(prefers-reduced-motion:reduce){.ai-xp-track>span{transition:none}}
+
+/* Character Locker keeps customization separate from everyday training. */
+.arcade-locker-milestones{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:rgba(246,228,184,.1);color:#f9edcb}
+.arcade-locker-milestones strong{font-size:13px;line-height:1.45;color:#f7e5ba}
+.arcade-locker-milestones .arcade-button{min-height:39px;max-width:100%;font-size:11px}

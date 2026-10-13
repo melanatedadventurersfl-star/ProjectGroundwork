@@ -7662,6 +7662,7 @@ function renderTrain(){
   ensureTrainProgramEngineCurrent();
   return '<div class="clean-page train-reframed train-reframed-v2">'+
     '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program, in motion.</h2><p>See what is next, what changed, and why each week is different.</p></div></div>'+
+    (window.GoWorkoutArcadeIntegrated?window.GoWorkoutArcadeIntegrated.trainPanel(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art'),{activeWorkout:store.activeWorkout}):'')+
     (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'train'):'')+
     (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.teaser(ensureTrainingProgram(),p,plan):'')+
     (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.goalsSummary(ensureTrainingProgram(),p,plan,catalog,currentWeekSchedule()):'')+
@@ -8707,7 +8708,7 @@ function renderProfileHub(){
   return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
-      '<button data-action="open-arcade"><i class="settings-icon" aria-hidden="true">✦</i><div><span>GO WORKOUT ARCADE</span><strong>Avatar, quests, XP, and game preferences</strong></div><em>›</em></button>'+
+      '<button data-action="open-arcade"><i class="settings-icon" aria-hidden="true">✦</i><div><span>CHARACTER LOCKER</span><strong>Companion looks, rewards, and experience modes</strong></div><em>›</em></button>'+
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
       '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>REVISIT TRAINING SETUP</span><strong>Update goals, schedule, equipment, restrictions and preferences</strong></div><em>›</em></button>'+
@@ -9359,7 +9360,7 @@ function renderHome(){
     '</section>'+
     (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.homePanel(ensureTrainingProgram(),p,plan):'')+
     (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.notices(ensureTrainingProgram()):'')+
-    (window.GoWorkoutArcade?window.GoWorkoutArcade.homePanel(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):'')+
+    (window.GoWorkoutArcadeIntegrated?window.GoWorkoutArcadeIntegrated.homePanel(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art'),{activeWorkout:store.activeWorkout,nextWorkout:x.entry?.day?.name||''}):(window.GoWorkoutArcade?window.GoWorkoutArcade.homePanel(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):''))+
     '<section class="clean-section home-week-section home-week-section-v3 home-week-section-v4"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
       renderHomeWeekPulse(schedule)+
@@ -10869,6 +10870,7 @@ function renderProgress(){
     (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'progress'):'')+
     (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.summary(ensureTrainingProgram(),store.history,store.profile,store.plan):'')+
     '<div class="progress-overview-grid progress-story-grid"><section class="clean-panel metric-panel"><span>CONSISTENCY</span><strong>'+completed+'/'+schedule.length+'</strong><small>planned workouts completed this week</small></section><section class="clean-panel metric-panel"><span>THIS WEEK</span><strong>'+formatVolume(thisWeekVolume)+'</strong><small>'+formatVolume(allVolume)+' total logged volume</small></section><section class="clean-panel metric-panel"><span>WORKOUTS</span><strong>'+store.history.length+'</strong><small>'+truePRCount+' true PR'+(truePRCount===1?'':'s')+' after baseline</small></section><section class="clean-panel metric-panel"><span>CURRENT BLOCK</span><strong>'+context.blockNumber+' · W'+context.blockWeek+'</strong><small>'+esc(blockPhaseLabel(context.blockWeek))+' · '+calibrated+' calibrated movements</small></section></div>'+
+    (window.GoWorkoutArcadeIntegrated?window.GoWorkoutArcadeIntegrated.progressPanel(ensureTrainingProgram(),store.history,{block:context.blockNumber,week:context.blockWeek,completed,planned:schedule.length}):'')+
     renderAdaptiveLearningOverview()+
     renderLearnerDiagnostics()+
     (trends.length?'<section class="clean-section progress-movements-section"><div class="clean-section-head"><div><p class="eyebrow">MOVEMENT PROGRESS</p><h3>What is changing</h3></div></div><div class="progress-movement-grid">'+trends.map(item=>{
