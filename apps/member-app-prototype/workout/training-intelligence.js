@@ -51,37 +51,42 @@
     if(!current.length)return false;
     const preferences=ensure(training);
     const strategy=training.goalLab?.strategy;
-    let changed=false,allComparable=prior.length===current.length&&prior.every((g,i)=>sameGoalConstraints(g,current[i]));
+    const allComparable=prior.length===current.length&&prior.every((g,i)=>sameGoalConstraints(g,current[i]));
+    const differences=current.filter((g,i)=>prior[i]&&g.best!==prior[i].best);
+    const onlySafeBaselines=differences.length>0&&differences.every(g=>{
+      const match=live(training).find(x=>x.id===g.id);
+      return !g.pain&&g.best>0&&(strategy?.mode==='track'||(
+        (strategy?.goalIds||[]).includes(g.id)&&supported(match)));
+    });
+    const auto=Boolean(before.approved&&allComparable&&before.mode==='smart'&&
+      strategy?.status==='active'&&onlySafeBaselines);
+    let changed=false;
     for(const goal of current){
       const previous=prior.find(g=>g.id===goal.id);
-      if(!previous || previous.best===goal.best || !sameGoalConstraints(previous,goal))continue;
+      if(!previous||previous.best===goal.best||!sameGoalConstraints(previous,goal))continue;
       const full=live(training).find(g=>g.id===goal.id);
       const beforeReps=prescribedNumber(full,previous.best);
       const afterReps=prescribedNumber(full,goal.best);
-      const meaningful=goal.best!==previous.best;
-      if(!meaningful)continue;
-      const auto=Boolean(before.approved && allComparable && before.mode==='smart' && strategy?.status==='active' &&
-        !goal.pain && goal.best>0 && supported(full) && (strategy.goalIds||[]).includes(goal.id));
+      const status=auto&&strategy?.mode!=='track'?'auto':
+        auto||strategy?.status!=='active'?'tracked':'review';
       const notice={
         id:'baseline-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
         goalId:goal.id,name:full?.name||'Personal goal',unit:shortUnit(full),
         from:previous.best,to:goal.best,previousPrescription:beforeReps,nextPrescription:afterReps,
-        at:new Date().toISOString(),status:auto?'auto':'review',seen:false
+        at:new Date().toISOString(),status,seen:false
       };
       preferences.notices.unshift(notice);
       changed=true;
     }
     preferences.notices=preferences.notices.slice(0,20);
-    // Auto-accept *only* a comparable baseline change, never new goals,
-    // targets, variation, restrictions or program changes.
-    if(changed && before.approved && allComparable && before.mode==='smart' &&
-      strategy?.status==='active' && prior.some((g,i)=>g.best!==current[i].best) &&
-      current.filter((g,i)=>g.best!==prior[i].best).every(g=>supported(live(training).find(x=>x.id===g.id)))){
+    // Baseline-only changes to existing approved goals can refresh the
+    // signature. New targets, variants, restrictions and priorities cannot.
+    if(changed&&auto){
       strategy.approvedSignature=S().signature(training,profile,plan);
       strategy.revisions=Array.isArray(strategy.revisions)?strategy.revisions:[];
       strategy.revisions.push({at:new Date().toISOString(),type:'baseline-progress',mode:strategy.mode,
         goalIds:strategy.goalIds.slice(),signature:strategy.approvedSignature,
-        description:'Comparable baseline reassessment updated working prescriptions; existing weekly schedule remains unchanged.'});
+        description:'Comparable baseline reassessment refreshed eligible goal work; existing weekly schedule remains unchanged.'});
       strategy.revisions=strategy.revisions.slice(-30);
     }
     return changed;
@@ -175,10 +180,10 @@
     const saved=ensure(training).notices;
     if(!saved.length)return '';
     return '<section class="adaptive-evolution"><div class="adaptive-evolution-head"><div><span class="adaptive-kicker">TRAINING INTELLIGENCE</span><h3>Your workout evolved</h3></div><span>'+saved.length+' update'+(saved.length===1?'':'s')+'</span></div>'+
-      saved.slice(0,2).map(n=>'<div class="adaptive-notice"><div><strong>'+esc(n.name)+'</strong><span class="adaptive-notice-status '+(n.status==='auto'?'auto':'review')+'">'+(n.status==='auto'?'Routine prescription refreshed':'Strategy approval needed')+'</span></div>'+
+      saved.slice(0,2).map(n=>'<div class="adaptive-notice"><div><strong>'+esc(n.name)+'</strong><span class="adaptive-notice-status '+(n.status==='auto'?'auto':n.status==='tracked'?'tracked':'review')+'">'+(n.status==='auto'?'Routine prescription refreshed':n.status==='tracked'?'Assessment saved':'Strategy approval needed')+'</span></div>'+
         '<p>Verified baseline: <b>'+esc(n.from+' '+n.unit)+'</b> → <b>'+esc(n.to+' '+n.unit)+'</b></p>'+
         (n.previousPrescription!==null&&n.nextPrescription!==null?'<p>Working suggestion: 2 × '+n.previousPrescription+' → 2 × '+n.nextPrescription+(n.unit==='sec'?' sec':' reps')+'.</p>':'')+
-        '<small>'+(n.status==='auto'?'Future eligible goal sessions use this recalculated suggestion; scheduled days did not change.':'The updated strategy must be reviewed before new goal additions resume.')+'</small></div>').join('')+
+        '<small>'+(n.status==='auto'?'Future eligible goal sessions use this recalculated suggestion; scheduled days did not change.':n.status==='tracked'?'Your assessment is recorded. No scheduled workout was changed.':'The updated strategy must be reviewed before new goal additions resume.')+'</small></div>').join('')+
       '<button type="button" data-tab="goals">REVIEW GOALS AND CHANGES →</button></section>';
   }
   function preferences(training){
