@@ -10,11 +10,38 @@
     {id:'squat',name:'Bodyweight squats',unit:'reps',target:30,exerciseId:'bodyweight-squat',icon:'🦵',metric:'continuous',instruction:'Complete comfortable controlled squats, counting full repetitions.',variation:'Bodyweight squat',cue:'Use a comfortable range and stop when control fades.'},
     {id:'pullup',name:'Pull-ups',unit:'reps',target:10,exerciseId:'pull-up',icon:'🏋',metric:'continuous',instruction:'Count controlled pull-ups without assistance, or record the assistance used.',variation:'Unassisted pull-up',cue:'Record the variation accurately so future tests remain comparable.'},
     {id:'run',name:'Running distance',unit:'miles',target:1,exerciseId:'',icon:'🏃',metric:'continuous distance',instruction:'Walk or run a measured route and record the distance completed continuously.',variation:'Measured route',cue:'Distance is self-recorded. The app does not automatically measure your route.'},
-    {id:'custom',name:'My own goal',unit:'reps',target:10,exerciseId:'',icon:'🎯',metric:'continuous',instruction:'Perform the movement safely and record the actual result.',variation:'Your chosen variation',cue:'Choose a measurable achievement and record a baseline before planning.'}
+    {id:'custom',name:'My own goal',unit:'reps',target:10,exerciseId:'',icon:'🎯',metric:'continuous',instruction:'Perform the movement safely and record the actual result.',variation:'Your chosen variation',cue:'Choose a measurable achievement and record a baseline before planning.'},
+    {id:'cycle',name:'Cycling',unit:'kilometers',target:10,exerciseId:'',icon:'🚴',metric:'distance',instruction:'Cycle a measured route or use your bike computer and record distance and elapsed time.',variation:'Bike or stationary bike',cue:'Record what the machine or bike displayed, even if you did not start the app timer.'},
+    {id:'walk',name:'Walking',unit:'kilometers',target:5,exerciseId:'',icon:'🚶',metric:'distance',instruction:'Walk a measured distance and log your elapsed time if available.',variation:'Walk or treadmill',cue:'You can use a treadmill reading or a measured route.'},
+    {id:'row',name:'Rowing',unit:'meters',target:2000,exerciseId:'',icon:'🚣',metric:'distance',instruction:'Record the rowing machine distance and elapsed time.',variation:'Rowing machine',cue:'For example, 2,000 meters in 9 minutes, directly from the machine display.'},
+    {id:'swim',name:'Swimming',unit:'meters',target:500,exerciseId:'',icon:'🏊',metric:'distance',instruction:'Record the total distance and your elapsed time, if known.',variation:'Pool or open-water swim',cue:'Record the pool length or measured course and any breaks consistently.'},
+    {id:'hike',name:'Hiking',unit:'kilometers',target:5,exerciseId:'',icon:'🥾',metric:'distance',instruction:'Hike a measured route and record the distance covered.',variation:'Trail hiking',cue:'Log moving time if you track it, or leave time blank.'}
   ];
   const safe = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number = v => Number.isFinite(Number(v)) ? Number(v) : 0;
-  const rounded = (v,unit) => unit==='miles' ? Math.round(v*100)/100 : Math.round(v);
+  const DISTANCE_UNITS=['meters','kilometers','miles','yards','feet'];
+  const isDistanceUnit=unit=>DISTANCE_UNITS.includes(unit);
+  const rounded=(v,unit)=>isDistanceUnit(unit)?Math.round(number(v)*100)/100:Math.round(number(v));
+  const formatDuration=value=>{
+    const total=Math.max(0,Math.floor(number(value)));
+    const h=Math.floor(total/3600),m=Math.floor(total%3600/60),s=total%60;
+    return h?h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'):m+':'+String(s).padStart(2,'0');
+  };
+  const parseDuration=value=>{
+    const raw=String(value??'').trim();
+    if(!raw)return 0;
+    const parts=raw.split(':');
+    if(parts.length<2||parts.length>3||parts.some(p=>!/^[0-9]+$/.test(p)))return null;
+    if(parts.slice(1).some(p=>p.length!==2||Number(p)>=60))return null;
+    const seconds=parts.reduce((total,part)=>total*60+Number(part),0);
+    return seconds>0&&seconds<=86400?seconds:null;
+  };
+  const distanceMeters=(value,unit)=>number(value)*({meters:1,kilometers:1000,miles:1609.344,yards:.9144,feet:.3048}[unit]||0);
+  const convertDistance=(value,from,to)=>isDistanceUnit(from)&&isDistanceUnit(to)?rounded(distanceMeters(value,from)/distanceMeters(1,to),to):number(value);
+  const paceText=(value,unit,seconds)=>{
+    const meters=distanceMeters(value,unit);
+    return meters>0&&number(seconds)>0?' · '+formatDuration(Math.round(number(seconds)*500/meters))+' / 500 m':'';
+  };
   const template = kind => TEMPLATES.find(x=>x.id===kind)||TEMPLATES[5];
   const now = () => new Date().toISOString();
   const uid = () => 'goal-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
@@ -28,15 +55,15 @@
     const t=template(kind);
     return {stage:'choose',mode,kind,goalId,label:t.name,unit:t.unit,metric:t.metric,exerciseId:t.exerciseId,
       target:t.target,deadline:'none',priority:'primary',variant:t.variation,result:0,
-      effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,tested:false};
+      effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,elapsedSeconds:0,elapsedText:'',timedResultText:'',targetTimeSeconds:0,targetTimeText:'',measurementSource:'manual',tested:false};
   }
   const active = s => s.goals.filter(g=>g.status==='active'||g.status==='maintenance');
   // Only comparable discovery tests establish verified continuous performance.
   // Completed training sets may improve trainingBest, but are not proof of
   // reaching a continuous-repetition or single-hold goal.
   function assessmentBest(g){
-    const evidence=(g.assessments||[]).filter(a=>a.source==='discovery'&&(!a.unit||a.unit===g.unit)&&
-      normalizeVariant(a.variant)===normalizeVariant(g.variant)).map(a=>number(a.value));
+    const evidence=(g.assessments||[]).filter(a=>a.source==='discovery'&&(!a.unit||a.unit===g.unit||(isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)))&&
+      normalizeVariant(a.variant)===normalizeVariant(g.variant)).map(a=>isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)?convertDistance(a.value,a.unit,g.unit):number(a.value));
     return evidence.length?Math.max(...evidence):number(g.baseline);
   }
   // A baseline for an assisted or modified movement is not interchangeable
@@ -52,20 +79,28 @@
     return Boolean(g?.exerciseId&&SUPPORTED_VARIANTS[g.kind]?.includes(normalizeVariant(g.variant)));
   }
   function recent(g){return (g.assessments||[]).slice(-6);}
-  function targetText(g){return String(g.target)+' '+(g.unit==='seconds'?'seconds':g.unit==='miles'?'miles':'reps');}
-  function progress(g){return g.target>0 ? Math.max(0,Math.min(100,Math.round(assessmentBest(g)/g.target*100))) : 0;}
+  function targetText(g){return String(g.target)+' '+g.unit+(number(g.targetTimeSeconds)>0?' in '+formatDuration(g.targetTimeSeconds):'');}
+  function meetsTarget(g){
+    if(number(g.targetTimeSeconds)>0)return (g.assessments||[]).some(a=>a.source==='discovery'&&
+      (a.unit===g.unit||(isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)))&&
+      normalizeVariant(a.variant)===normalizeVariant(g.variant)&&
+      (isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)?convertDistance(a.value,a.unit,g.unit):number(a.value))>=number(g.target)&&
+      number(a.elapsedSeconds)>0&&number(a.elapsedSeconds)<=number(g.targetTimeSeconds));
+    return assessmentBest(g)>=number(g.target);
+  }
+  function progress(g){const pct=number(g.target)>0?Math.max(0,Math.min(100,Math.round(assessmentBest(g)/g.target*100))):0;return pct===100&&!meetsTarget(g)?99:pct;}
   function suggestTarget(d){
     const value=number(d.result);
-    if(d.unit==='miles')return Math.max(.25,Math.round(Math.max(value*1.5,.5)*4)/4);
+    if(isDistanceUnit(d.unit))return rounded(Math.max(d.unit==='meters'?100:d.unit==='feet'?300:d.unit==='yards'?100:.25,value*1.5),d.unit);
     if(d.unit==='seconds')return Math.max(20,Math.ceil(Math.max(value*1.5,30)/5)*5);
     return Math.max(d.kind==='pullup'?1:5,Math.ceil(Math.max(value*1.5,value+3)));
   }
   function nextMilestone(g){
     const best=assessmentBest(g),target=number(g.target);
     if(best>=target)return target;
-    if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?0.25:1);
-    const step=g.unit==='miles'?0.25:g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
-    return rounded(Math.min(target,Math.max(best+step,best+1*(g.unit==='miles'?.25:1))),g.unit);
+    if(!best)return Math.min(target,g.unit==='seconds'?15:isDistanceUnit(g.unit)?(g.unit==='meters'?100:g.unit==='feet'?300:g.unit==='yards'?100:.25):1);
+    const step=isDistanceUnit(g.unit)?Math.max(g.unit==='meters'?100:g.unit==='feet'?300:g.unit==='yards'?100:.25,rounded(best*.25,g.unit)):g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
+    return rounded(Math.min(target,best+step),g.unit);
   }
   function recommendations(g){
     const b=assessmentBest(g),kind=g.kind;
@@ -75,7 +110,8 @@
     if(kind==='plank')return {summary:'Build multiple quality holds rather than attempting a maximum every day.',sets:['Plank · 3 × '+Math.max(10,Math.min(45,Math.floor(b*.7)||10))+' sec','Bird dog · 2 × 8 per side'],frequency:'2 to 3 days per week with recovery'};
     if(kind==='pullup')return {summary:'Progress toward unassisted repetitions with controlled pulling variations.',sets:[b<1?'Assisted pull-ups · 3 × 5':'Pull-ups · 3 × '+Math.max(1,Math.floor(b*.6)),'Rows · 2 × 8 to 10'],frequency:'2 nonconsecutive days per week'};
     if(kind==='squat')return {summary:'Build comfortable repetition capacity with controlled movement.',sets:['Squats · 3 × '+Math.max(4,Math.min(15,Math.floor(b*.6)||6)),'Glute bridges · 2 × 10'],frequency:'2 to 3 nonconsecutive days per week'};
-    if(kind==='run')return {summary:'Increase comfortable distance gradually, mixing walking and running as needed.',sets:['Measured easy walk/run intervals','Record actual continuous distance','Increase only when recovery feels manageable'],frequency:'2 to 3 days per week'};
+    if(kind==='run')return {summary:'Increase comfortable distance gradually, mixing walking and running as needed.',sets:['Measured easy walk/run intervals','Record actual continuous distance and elapsed time','Increase only when recovery feels manageable'],frequency:'2 to 3 days per week'};
+    if(['cycle','walk','row','swim','hike'].includes(kind))return {summary:'Track repeatable distance and elapsed time. Build up gradually and compare like-for-like efforts.',sets:['Record your distance and time','Retest under similar conditions','Adjust gradually from your baseline'],frequency:'Flexible'};
     return {summary:'Log repeatable performances and adjust your target from the results. Custom goals do not receive automatic exercise prescriptions.',sets:[],frequency:'Flexible'};
   }
   function shortcuts(training,placement='home'){
@@ -96,7 +132,7 @@
   }
   function card(g){
     const pct=progress(g);
-    return '<button class="goal-card" type="button" data-goal-action="open" data-goal-id="'+safe(g.id)+'"><div class="goal-card-top"><span>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</span><small>'+safe(g.status==='paused'?'PAUSED':g.status==='maintenance'?'MAINTENANCE':pct===100?'TARGET REACHED':'IN PROGRESS')+'</small></div>'+
+    return '<button class="goal-card" type="button" data-goal-action="open" data-goal-id="'+safe(g.id)+'"><div class="goal-card-top"><span>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</span><small>'+safe(g.status==='paused'?'PAUSED':g.status==='maintenance'?'MAINTENANCE':meetsTarget(g)?'TARGET REACHED':'IN PROGRESS')+'</small></div>'+
       '<div class="goal-card-numbers"><strong>'+safe(assessmentBest(g))+'</strong><span>/ '+safe(targetText(g))+'</span></div>'+
       '<div class="goal-track"><i style="width:'+pct+'%"></i></div><small>Initial baseline '+safe(g.baseline)+' '+safe(g.unit)+' · Next milestone '+safe(nextMilestone(g))+'</small></button>';
   }
@@ -108,34 +144,39 @@
   }
   function targetStage(d){
     return '<div class="goal-wizard"><div class="goal-step">PERSONAL TARGET</div><h2>Make your goal measurable.</h2><p>Keep your ambition. Your first milestone will be based on your discovery results.</p>'+
-      (d.kind==='custom'?'<label>Goal name<input data-goal-field="label" maxlength="64" value="'+safe(d.label)+'" placeholder="My goal"></label>'+
-        '<label>How will you measure it?<select data-goal-field="unit"><option value="reps" '+(d.unit==='reps'?'selected':'')+'>Repetitions</option><option value="seconds" '+(d.unit==='seconds'?'selected':'')+'>Seconds</option><option value="miles" '+(d.unit==='miles'?'selected':'')+'>Miles</option></select></label>':'')+
-      '<label>Target ('+safe(d.unit)+')<input type="number" data-goal-field="target" min="'+(d.unit==='miles'?'0.01':'1')+'" max="100000" step="'+(d.unit==='miles'?'0.01':'1')+'" value="'+safe(d.target)+'"></label>'+
+      ((d.kind==='custom'?'<label>Goal name<input data-goal-field="label" maxlength="64" value="'+safe(d.label)+'" placeholder="My goal"></label>':'')+(d.kind==='custom'||isDistanceUnit(d.unit)?
+        '<label>How will you measure it?<select data-goal-field="unit">'+(d.kind==='custom'?[["reps","Repetitions"],["seconds","Seconds"],["meters","Meters (m)"],["kilometers","Kilometers (km)"],["miles","Miles (mi)"],["yards","Yards (yd)"],["feet","Feet (ft)"]]:[["meters","Meters (m)"],["kilometers","Kilometers (km)"],["miles","Miles (mi)"],["yards","Yards (yd)"],["feet","Feet (ft)"]]).map(([unit,label])=>'<option value="'+unit+'" '+(d.unit===unit?'selected':'')+'>'+label+'</option>').join('')+'</select></label>':''))+
+      '<label>Target ('+safe(d.unit)+')<input type="number" data-goal-field="target" min="'+(isDistanceUnit(d.unit)?'0.01':'1')+'" max="100000" step="'+(isDistanceUnit(d.unit)?'0.01':'1')+'" value="'+safe(d.target)+'"></label>'+
+      (d.unit!=='seconds'?'<label>Time target (optional, m:ss or h:mm:ss)<input data-goal-field="targetTimeText" inputmode="numeric" placeholder="9:00" value="'+safe(d.targetTimeText||'')+'"></label><p class="goal-footnote">Example: Row 2,000 m in 9:00. Leave blank for a distance-only or rep-only goal.</p>':'')+
       '<label>Deadline (optional)<select data-goal-field="deadline">'+[['none','No deadline'],['4','4 weeks'],['8','8 weeks'],['12','12 weeks']].map(([v,t])=>'<option value="'+v+'" '+(d.deadline===v?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
       '<label>Priority<select data-goal-field="priority"><option value="primary" '+(d.priority==='primary'?'selected':'')+'>Primary goal</option><option value="secondary" '+(d.priority==='secondary'?'selected':'')+'>Secondary goal</option></select></label>'+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="target-next">'+(d.tested?'REVIEW MY PLAN':'TEST MY BASELINE')+' →</button></div></div>';
   }
   function assessment(d){
-    const isTimer=d.unit==='seconds',isDistance=d.unit==='miles',t=template(d.kind);
+    const timed=d.unit==='seconds',distance=isDistanceUnit(d.unit),t=template(d.kind);
     let measurement='';
-    if(isDistance){
-      measurement='<label>Distance you completed ('+safe(d.unit)+')<input data-goal-field="result" type="number" min="0" max="10000" step="0.01" value="'+safe(d.result)+'"></label>';
-    }else if(isTimer){
-      const elapsed=d.startedAt?Math.min(1800,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):number(d.result);
-      measurement='<div class="goal-measure"><span>HOLD TIMER</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'">'+elapsed+'s</strong>'+
-        '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>';
+    if(timed){
+      measurement='<label>Completed time (seconds)<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="86400" step="1" value="'+safe(d.result)+'"></label>'+ 
+        '<label>Or enter as m:ss / h:mm:ss<input data-goal-field="timedResultText" inputmode="numeric" placeholder="1:15" value="'+safe(d.timedResultText||'')+'"></label>';
     }else{
-      measurement='<div class="goal-measure"><span>COMPLETED REPS</span><strong>'+safe(d.result)+'</strong><div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div></div>';
+      measurement=(distance?'<label>Distance completed ('+safe(d.unit)+')':'<label>Completed reps')+
+        '<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="100000" step="'+(distance?'0.01':'1')+'" value="'+safe(d.result)+'"></label>'+
+        (d.unit==='reps'?'<div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div>':'')+
+        '<label>Elapsed time (optional, m:ss or h:mm:ss)<input data-goal-field="elapsedText" inputmode="numeric" placeholder="9:00" value="'+safe(d.elapsedText||'')+'"></label>';
     }
+    const elapsed=d.startedAt?Math.min(86400,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):timed?number(d.result):number(d.elapsedSeconds);
+    const stopwatch='<div class="goal-measure"><span>'+ (timed?'HOLD TIMER':'OPTIONAL STOPWATCH')+'</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'" data-started-elapsed="'+safe(d.startedElapsed||0)+'">'+formatDuration(elapsed)+'</strong>'+
+      '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>';
     return '<div class="goal-wizard"><div class="goal-step">BASELINE DISCOVERY · ACTION FIRST</div><h2>Let’s see what you can do.</h2>'+
       '<p>'+safe(t.instruction)+'</p><div class="goal-guidance"><strong>'+safe(d.label)+'</strong><span>'+safe(t.cue)+'</span></div>'+
       '<label>Exercise variation<input data-goal-field="variant" maxlength="100" value="'+safe(d.variant)+'" placeholder="Standard, assisted, elevated..."></label>'+
-      measurement+
-      '<p class="goal-footnote">Your results are self-recorded. Stop for pain, dizziness, or loss of control. You can retest later.</p>'+
+      measurement+stopwatch+
+      '<label>Measurement source<select data-goal-field="measurementSource">'+[['manual','Entered manually'],['machine','Exercise machine'],['watch','Watch or tracker'],['app','App timer']].map(([value,label])=>'<option value="'+value+'" '+(d.measurementSource===value?'selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
+      '<p class="goal-footnote">You can enter a machine or watch result even if you never started the app timer. Stop for pain, dizziness, or loss of control.</p>'+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="assessment-done">FINISH TEST →</button></div></div>';
   }
   function feedback(d){
-    return '<div class="goal-wizard"><div class="goal-step">BASELINE FEEDBACK</div><h2>You recorded '+safe(rounded(d.result,d.unit))+' '+safe(d.unit)+'.</h2><p>How did that effort feel? This helps the plan choose a sensible starting intensity.</p>'+
+    return '<div class="goal-wizard"><div class="goal-step">BASELINE FEEDBACK</div><h2>You recorded '+safe(rounded(d.result,d.unit))+' '+safe(d.unit)+(d.unit!=='seconds'&&number(d.elapsedSeconds)>0?' in '+formatDuration(d.elapsedSeconds):'')+'.</h2><p>How did that effort feel? This helps the plan choose a sensible starting intensity.</p>'+
       '<div class="goal-choices">'+[['easy','Comfortable'],['challenging','Challenging but controlled'],['limit','Near my limit'],['pain','Pain or discomfort']].map(([v,n])=>'<button class="'+(d.effort===v?'chosen':'')+'" data-goal-action="effort" data-effort="'+v+'">'+n+'</button>').join('')+'</div>'+
       (d.effort==='pain'?'<div class="goal-alert">Training recommendations will be paused until you can choose a comfortable movement or seek appropriate guidance.</div>':'')+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">RETEST</button><button class="goal-primary" data-goal-action="feedback-next">SAVE BASELINE →</button></div></div>';
@@ -143,7 +184,7 @@
   function review(d){
     const tentative={...d,kind:d.kind,name:d.label,baseline:d.result,best:d.result,painFlag:d.effort==='pain'};
     const rec=recommendations(tentative);
-    return '<div class="goal-wizard"><div class="goal-step">YOUR TRAINING PATH</div><h2>Start where you are.</h2><div class="goal-result-pair"><div><small>YOUR BASELINE</small><strong>'+safe(d.result)+' '+safe(d.unit)+'</strong></div><div><small>YOUR GOAL</small><strong>'+safe(d.target)+' '+safe(d.unit)+'</strong></div></div>'+
+    return '<div class="goal-wizard"><div class="goal-step">YOUR TRAINING PATH</div><h2>Start where you are.</h2><div class="goal-result-pair"><div><small>YOUR BASELINE</small><strong>'+safe(d.result)+' '+safe(d.unit)+(number(d.elapsedSeconds)>0?' in '+formatDuration(d.elapsedSeconds):'')+'</strong></div><div><small>YOUR GOAL</small><strong>'+safe(d.target)+' '+safe(d.unit)+(number(d.targetTimeSeconds)>0?' in '+formatDuration(d.targetTimeSeconds):'')+'</strong></div></div>'+
       '<p>First milestone: <b>'+safe(nextMilestone(tentative))+' '+safe(d.unit)+'</b>. '+safe(rec.summary)+'</p>'+
       '<div class="goal-plan-steps">'+rec.sets.map(x=>'<div>'+safe(x)+'</div>').join('')+'</div>'+
       '<p class="goal-footnote">Suggested training focus only. This does not replace or silently overwrite your existing workout program. We’ll track related completed sets and guide your next reassessment.</p>'+
@@ -152,15 +193,15 @@
   function detail(g){
     const rec=recommendations(g),recentTests=recent(g);
     return '<section class="goal-detail"><div class="goal-step">YOUR GOAL · '+safe(g.status.toUpperCase())+'</div><h2>'+safe(g.icon)+' '+safe(g.name)+'</h2>'+
-      '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(assessmentBest(g))+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+'</strong></div></div>'+
+      '<div class="goal-result-pair"><div><small>PERSONAL BEST</small><strong>'+safe(assessmentBest(g))+' '+safe(g.unit)+'</strong></div><div><small>TARGET</small><strong>'+safe(g.target)+' '+safe(g.unit)+(number(g.targetTimeSeconds)>0?' in '+formatDuration(g.targetTimeSeconds):'')+'</strong></div></div>'+
       '<div class="goal-track"><i style="width:'+progress(g)+'%"></i></div>'+
-      '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(progress(g)===100?'Target reached. You can maintain it or set another target.':'')+'</p>'+
+      '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(meetsTarget(g)?'Target reached. You can maintain it or set another target.':'')+'</p>'+
       (SUPPORTED_VARIANTS[g.kind]&&!isRunnableGoal(g)?'<p class="goal-footnote">'+safe(g.variant||'This variation')+' is tracked through your assessments. Automated workouts do not yet include that exact exercise.</p>':'')+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="retest" data-goal-id="'+safe(g.id)+'">REASSESS</button><button class="goal-secondary" data-goal-action="edit" data-goal-id="'+safe(g.id)+'">EDIT TARGET</button></div>'+
       '<section class="goal-detail-section"><h3>Suggested training focus</h3><p>'+safe(rec.summary)+'</p><div class="goal-plan-steps">'+rec.sets.map(s=>'<div>'+safe(s)+'</div>').join('')+'</div><small>'+safe(rec.frequency)+'. Coordinate with your existing program and allow recovery.</small></section>'+
       '<section class="goal-detail-section"><h3>Training performance</h3><p>'+safe(number(g.trainingBest)>0?'Best completed training set: '+g.trainingBest+' '+g.unit+'. This does not count as a verified maximum.':'Training sets will appear separately from goal assessments.')+'</p></section>'+
       '<section class="goal-detail-section"><h3>Assessment history</h3>'+
-      (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(a.unit||g.unit)+'</b><small>'+safe(a.variant||g.variant)+' · '+safe(a.source==='workout-set'?'Logged workout set':'Discovery test')+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
+      (recentTests.length?'<div class="goal-history">'+recentTests.map(a=>'<div><time>'+safe(new Date(a.at).toLocaleDateString())+'</time><b>'+safe(a.value)+' '+safe(a.unit||g.unit)+(number(a.elapsedSeconds)>0?' in '+formatDuration(a.elapsedSeconds):'')+'</b><small>'+safe(a.variant||g.variant)+' · '+safe(a.measurementSource||'manual')+paceText(a.value,a.unit||g.unit,a.elapsedSeconds)+'</small></div>').join('')+'</div>':'<p>Your first assessment establishes your baseline.</p>')+
       '</section><div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="toggle-pause" data-goal-id="'+safe(g.id)+'">'+(g.status==='paused'?'RESUME':'PAUSE')+'</button><button class="goal-secondary" data-goal-action="delete" data-goal-id="'+safe(g.id)+'">DELETE GOAL</button></div></section>';
   }
   function render(training){
@@ -171,25 +212,36 @@
   }
   function field(training,name,value){
     const d=ensure(training).draft;
-    if(!d||!['label','unit','target','deadline','priority','variant','result'].includes(name))return false;
+    if(!d||!['label','unit','target','deadline','priority','variant','result','elapsedText','timedResultText','targetTimeText','measurementSource'].includes(name))return false;
     if(name==='unit'){
-      if(d.kind!=='custom'||!['reps','seconds','miles'].includes(value))return false;
+      if(!['reps','seconds',...DISTANCE_UNITS].includes(value))return false;
+      if(d.kind!=='custom'&&!(isDistanceUnit(template(d.kind).unit)&&isDistanceUnit(value)))return false;
       if(d.unit!==value){
-        d.unit=value;
-        d.metric=value==='seconds'?'single hold':value==='miles'?'continuous distance':'continuous';
-        const restore=Boolean(d.goalId&&d.originalUnit===value);
-        d.result=restore?number(d.originalResult):0;
-        d.tested=restore;
-        d.testedAt=null;
-        d.startedAt=null;
-        d.startedElapsed=0;
-        d.effort='challenging';
-        d.target=value==='miles'?Math.max(.01,Math.round(number(d.target)*100)/100):Math.max(1,Math.round(number(d.target)));
+        const old=d.unit,compatibleDistance=isDistanceUnit(old)&&isDistanceUnit(value);
+        if(compatibleDistance){
+          d.target=convertDistance(d.target,old,value);
+          d.result=convertDistance(d.result,old,value);
+        }else{
+          const restore=Boolean(d.goalId&&d.originalUnit===value);
+          d.result=restore?number(d.originalResult):0;
+          d.tested=restore;d.testedAt=null;d.elapsedSeconds=0;d.elapsedText='';
+          d.target=Math.max(isDistanceUnit(value)?.01:1,rounded(d.target,value));
+        }
+        d.unit=value;d.metric=value==='seconds'?'single hold':isDistanceUnit(value)?'continuous distance':'continuous';
+        if(value==='seconds'){d.targetTimeText='';d.targetTimeSeconds=0;}
+        d.startedAt=null;d.startedElapsed=0;
       }
       return true;
     }
-    if(name==='target'||name==='result')d[name]=Math.max(0,Math.min(100000,number(value)));
-    else d[name]=String(value).slice(0,100);
+    if(name==='target'||name==='result'){
+      d[name]=Math.max(0,Math.min(100000,number(value)));
+      if(name==='result'&&d.unit==='seconds')d.timedResultText='';
+    }
+    else if(name==='elapsedText'||name==='targetTimeText'||name==='timedResultText')d[name]=String(value).trim().slice(0,16);
+    else if(name==='measurementSource'){
+      if(!['manual','machine','watch','app'].includes(value))return false;
+      d.measurementSource=value;
+    }else d[name]=String(value).slice(0,100);
     return true;
   }
   function action(training,name,node){
@@ -200,30 +252,50 @@
     if(name==='all-goals'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
     if(name==='cancel'){s.draft=null;return result(true);}
-    if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment'};s.selectedId=g.id;return result(true);}
-    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:assessmentBest(g),originalUnit:g.unit,originalResult:assessmentBest(g)};return result(true);}
+    if(name==='retest'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'assessment',targetTimeSeconds:g.targetTimeSeconds||0,targetTimeText:g.targetTimeSeconds?formatDuration(g.targetTimeSeconds):''};s.selectedId=g.id;return result(true);}
+    if(name==='edit'){const g=goal(node.dataset.goalId);if(!g)return result(false);s.draft={...draft('target',g.kind,g.id),kind:g.kind,label:g.name,unit:g.unit,target:g.target,priority:g.priority,deadline:g.deadline||'none',metric:g.metric,exerciseId:g.exerciseId,variant:g.variant,stage:'target',tested:true,result:assessmentBest(g),originalUnit:g.unit,originalResult:assessmentBest(g),targetTimeSeconds:g.targetTimeSeconds||0,targetTimeText:g.targetTimeSeconds?formatDuration(g.targetTimeSeconds):''};return result(true);}
     if(name==='toggle-pause'){const g=goal(node.dataset.goalId);if(!g)return result(false);g.status=g.status==='paused'?'active':'paused';g.updatedAt=now();return result(true);}
     if(name==='delete'){const g=goal(node.dataset.goalId);if(!g||!confirm('Delete '+g.name+' and its goal assessment history?'))return result(false);s.goals=s.goals.filter(x=>x.id!==g.id);s.selectedId=null;return result(true,'Goal deleted.');}
     if(!d)return result(false);
     if(name==='mode'){d.mode=node.dataset.mode==='discover'?'discover':'target';return result(true);}
-    if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false});return result(true);}
+    if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false,elapsedSeconds:0,elapsedText:'',timedResultText:'',targetTimeSeconds:0,targetTimeText:'',startedAt:null,startedElapsed:0,measurementSource:'manual'});return result(true);}
     if(name==='choose-next'){d.stage=d.mode==='discover'?'assessment':'target';return result(true);}
     if(name==='back'){
-      if(d.stage==='feedback'){d.result=0;d.tested=false;d.testedAt=null;}
+      if(d.stage==='feedback'){d.result=0;d.elapsedSeconds=0;d.elapsedText='';d.tested=false;d.testedAt=null;}
       d.startedAt=null;
       d.stage=d.stage==='assessment'?(d.mode==='discover'?'choose':'target'):d.stage==='feedback'?'assessment':d.stage==='review'?'target':'choose';return result(true);}
     if(name==='target-next'){
       if(!d.label.trim()||number(d.target)<=0)return result(false,'Enter a goal name and target above zero.');
+      const seconds=parseDuration(d.targetTimeText);
+      if(seconds===null)return result(false,'Enter a valid time, such as 9:00 or 1:09:00.');
+      d.targetTimeSeconds=seconds;
       d.stage=d.tested?'review':'assessment';return result(true);
     }
-    if(name==='timer-start'){if(d.unit!=='seconds')return result(false);d.startedAt=now();return result(true);}
-    if(name==='timer-stop'){if(d.unit!=='seconds'||!d.startedAt)return result(false);
-      d.result=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
-      d.startedAt=null;d.startedElapsed=0;return result(true);
+    if(name==='timer-start'){
+      if(d.startedAt)return result(false);
+      d.startedElapsed=0;d.startedAt=now();return result(true);
+    }
+    if(name==='timer-stop'){
+      if(!d.startedAt)return result(false);
+      const elapsed=Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+      if(d.unit==='seconds'){d.result=elapsed;d.timedResultText='';}
+      else {d.elapsedSeconds=elapsed;d.elapsedText=formatDuration(elapsed);}
+      d.startedAt=null;d.startedElapsed=0;d.measurementSource='app';
+      return result(true);
     }
     if(name==='count-up'||name==='count-down'){if(d.unit!=='reps')return result(false);d.result=Math.max(0,Math.min(100000,number(d.result)+(name==='count-up'?1:-1)));return result(true);}
     if(name==='assessment-done'){
       if(d.startedAt)return result(false,'Stop the timer before finishing.');
+      if(d.unit==='seconds'&&d.timedResultText){
+        const seconds=parseDuration(d.timedResultText);
+        if(seconds===null)return result(false,'Enter a valid time, such as 1:15.');
+        d.result=seconds;
+      }
+      if(d.unit!=='seconds'){
+        const seconds=parseDuration(d.elapsedText);
+        if(seconds===null)return result(false,'Enter a valid elapsed time, such as 9:00, or leave it empty.');
+        d.elapsedSeconds=seconds;
+      }else d.elapsedSeconds=number(d.result);
       d.tested=true;d.testedAt=now();d.stage='feedback';return result(true);
     }
     if(name==='effort'){d.effort=node.dataset.effort;return result(true);}
@@ -232,38 +304,49 @@
       return result(true);
     }
     if(name==='save-goal'){
+      const requestedSeconds=parseDuration(d.targetTimeText);
+      if(requestedSeconds===null)return result(false,'Enter a valid time target.');
+      d.targetTimeSeconds=requestedSeconds;
       if(!d.tested||number(d.target)<=0||!String(d.label).trim())return result(false,'Complete a baseline assessment and set your target.');
       const val=rounded(Math.max(0,number(d.result)),d.unit),at=now();
+      const record={at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant,
+        elapsedSeconds:d.unit==='seconds'?val:number(d.elapsedSeconds),measurementSource:d.measurementSource||'manual'};
       if(d.goalId){
         const g=goal(d.goalId);if(!g)return result(false);
-        // Changing a custom unit requires a new physical baseline.
-        // Keep old assessments and tag their original units instead of
-        // relabeling old performance data as the new measurement.
         const unitChanged=g.unit!==d.unit;
-        if(unitChanged&&!d.testedAt)return result(false,'Complete a new baseline test for the selected measurement.');
+        const compatibleDistance=unitChanged&&isDistanceUnit(g.unit)&&isDistanceUnit(d.unit);
+        if(unitChanged&&!compatibleDistance&&!d.testedAt)return result(false,'Complete a new baseline test for the selected measurement.');
         if(d.stage==='review'&&g.name!==d.label)g.name=d.label;
         const retested=d.stage==='review'&&Boolean(d.testedAt);
         if(unitChanged){
           g.assessments=(g.assessments||[]).map(a=>({...a,unit:a.unit||g.unit}));
+          if(compatibleDistance){
+            g.baseline=convertDistance(g.baseline,g.unit,d.unit);
+            g.best=convertDistance(g.best,g.unit,d.unit);
+          }
           g.unit=d.unit;g.metric=d.metric;g.variant=d.variant;
-          g.baseline=val;g.best=val;g.painFlag=d.effort==='pain';
-          g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
-          g.achievedAt=null;
-        }else if(retested){
-          g.assessments.push({at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant});
-          if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(assessmentBest(g),val);
-          g.painFlag=d.effort==='pain';
+          if(!compatibleDistance){
+            g.baseline=val;g.best=val;g.painFlag=d.effort==='pain';
+          }
         }
-        g.target=rounded(number(d.target),d.unit);g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
-        if(assessmentBest(g)>=g.target&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
+        if(retested||unitChanged&&!compatibleDistance){
+          g.assessments.push(record);
+          if(!unitChanged||compatibleDistance){
+            if(normalizeVariant(d.variant)===normalizeVariant(g.variant))g.best=Math.max(assessmentBest(g),val);
+            g.painFlag=d.effort==='pain';
+          }
+        }
+        g.target=rounded(number(d.target),d.unit);g.targetTimeSeconds=d.targetTimeSeconds;
+        g.deadline=d.deadline;g.priority=d.priority;g.updatedAt=at;
+        if(meetsTarget(g)&&!g.painFlag)g.achievedAt=g.achievedAt||at;else g.achievedAt=null;
         s.selectedId=g.id;
-      } else {
+      }else{
         const t=template(d.kind);
         const g={id:uid(),kind:d.kind,exerciseId:d.exerciseId,name:String(d.label).slice(0,64),unit:d.unit,metric:d.metric,icon:t.icon,
-          target:rounded(number(d.target),d.unit),baseline:val,best:val,variant:d.variant,deadline:d.deadline,
-          priority:d.priority,status:'active',createdAt:at,updatedAt:at,painFlag:d.effort==='pain',
-          assessments:[{at,value:val,unit:d.unit,source:'discovery',effort:d.effort,variant:d.variant}],
-          achievedAt:val>=number(d.target)&&d.effort!=='pain'?at:null};
+          target:rounded(number(d.target),d.unit),targetTimeSeconds:d.targetTimeSeconds,baseline:val,best:val,
+          variant:d.variant,deadline:d.deadline,priority:d.priority,status:'active',createdAt:at,updatedAt:at,
+          painFlag:d.effort==='pain',assessments:[record],achievedAt:null};
+        if(meetsTarget(g)&&!g.painFlag)g.achievedAt=at;
         s.goals.push(g);s.selectedId=g.id;
       }
       s.draft=null;return result(true,'Personal goal saved.');
@@ -326,7 +409,9 @@
   function pauseTimer(training){
     const d=training?.goalLab?.draft;
     if(!d?.startedAt)return false;
-    d.result=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+    const elapsed=Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
+    if(d.unit==='seconds'){d.result=elapsed;d.timedResultText='';}
+    else {d.elapsedSeconds=elapsed;d.elapsedText=formatDuration(elapsed);}
     d.startedAt=null;d.startedElapsed=0;
     return true;
   }
@@ -335,9 +420,9 @@
     if(!clock)return;
     // The app rerenders after each action. The state is serialized in its page context.
     const start=clock.dataset.startedAt;
-    if(start)clock.textContent=Math.max(0,Math.min(1800,Math.round((Date.now()-Date.parse(start))/1000)))+'s';
+    if(start)clock.textContent=formatDuration(Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(start))/1000)+number(clock.dataset.startedElapsed))));
   }
   if(typeof window!=='undefined'&&typeof window.setInterval==='function')window.setInterval(pulse,500);
-  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,assessmentBest,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse};
+  window.GoWorkoutGoalLab={ensure,render,shortcuts,field,action,afterWorkout,buildGoalDay,isRunnableGoal,assessmentBest,meetsTarget,pauseTimer,recommendations,nextMilestone,suggestTarget,template,pulse,parseDuration,formatDuration,convertDistance};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutGoalLab;
 })();
