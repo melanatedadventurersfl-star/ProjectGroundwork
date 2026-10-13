@@ -133,3 +133,20 @@
 .goal-impact-footer button{border:1px solid #f0c66b;background:transparent;border-radius:10px;color:#f8d27c;min-height:40px;padding:9px 15px;font-weight:850;cursor:pointer;font-size:.8rem}
 .goal-impact-footer button:focus-visible{outline:3px solid #fff;outline-offset:3px}
 @media(max-width:600px){.goal-impact-panel{padding:16px;border-radius:18px}.goal-impact-card{padding:13px}.goal-impact-list{grid-template-columns:minmax(0,1fr)}.goal-impact-metrics{gap:5px}.goal-impact-metrics>div{padding:8px 6px}.goal-impact-metrics small{font-size:.65rem}.goal-impact-footer button{width:100%}}
+
+
+/* Goal Engine V3: clear capability states and accessible strategy decisions. */
+.goal-strategy-options{display:grid;gap:9px;border:1px solid #cbdcd0;background:#edf5ef;border-radius:14px;padding:15px}
+.goal-strategy-options h3{margin:0;color:#173629}
+.goal-strategy-options .goal-strategy-choices{margin:2px 0 10px}
+.goal-strategy-options .goal-strategy-choices button{background:#fff;color:#173629;border:1px solid #92b49d;min-height:44px;border-radius:11px;padding:10px 14px;font-weight:700}
+.goal-strategy-options .goal-strategy-choices button.chosen{background:#dceddf;color:#17452f;border-color:#397e53}
+.goal-strategy-guides{display:grid;gap:10px;padding:14px;border:1px solid #9fbeab;border-radius:13px;background:#f5faf5}
+.goal-strategy-guides h4{margin:0;color:#173629}
+.goal-strategy-guide{display:grid;gap:6px;border-left:3px solid #318269;padding:8px 11px}
+.goal-strategy-guide strong{color:#173629}
+.goal-strategy-guide span{font-size:.9rem;line-height:1.5;color:#365747}
+.goal-evidence-list{display:grid;gap:4px;margin:10px 0}
+.goal-evidence-list p,.goal-impact-evidence{font-size:.88rem;line-height:1.5}
+.goal-impact-evidence b{color:#225a3f}
+@media(max-width:600px){.goal-strategy-options .goal-strategy-choices{display:grid;grid-template-columns:1fr}.goal-strategy-guide{padding:8px}}
