@@ -71,3 +71,11 @@
   .adaptive-compare-day span{font-size:.7rem}
   .adaptive-why-row{padding:12px}
 }
+
+
+.adaptive-live-why{margin:12px 16px 4px;padding:11px 14px;border:1px solid #336a4a;border-radius:13px;background:#133927;color:#e8f8eb}
+.adaptive-live-why summary{cursor:pointer;color:#8cf0b5;letter-spacing:.06em;font-size:.8rem;font-weight:900;min-height:27px;display:list-item;list-style-position:inside}
+.adaptive-live-why[open] summary{padding-bottom:9px;border-bottom:1px solid rgba(177,233,187,.2)}
+.adaptive-live-why .adaptive-why{padding-bottom:3px}
+.adaptive-notice-status.tracked{background:#e5ecdd;color:#2a5440}
+@media(max-width:600px){.adaptive-live-why{margin:9px 10px}}
