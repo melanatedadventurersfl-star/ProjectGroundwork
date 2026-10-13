@@ -99,3 +99,37 @@
   .home-goals-actions{display:grid;grid-template-columns:1fr}
   .home-goals-panel .home-goals-actions button{min-width:0;width:100%}
 }
+
+
+/* Goal-to-workout trace: distinguish a baseline, a suggestion and applied work */
+.goal-impact-panel{margin:18px 0 22px;display:grid;gap:16px;padding:clamp(18px,4vw,26px);border:1px solid #346e55;border-radius:22px;background:linear-gradient(160deg,#13362a,#0b241d 76%);color:#f7fbf7}
+.goal-impact-intro{display:grid;gap:6px}
+.goal-impact-eyebrow{display:block;font-size:.71rem;font-weight:900;letter-spacing:.11em;color:#efd088}
+.goal-impact-intro h2{margin:0;font-size:clamp(1.25rem,4vw,1.6rem);color:#fff;line-height:1.25}
+.goal-impact-intro p{margin:0;max-width:65ch;line-height:1.5;color:#cee2d4;font-size:.9rem}
+.goal-impact-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:12px}
+.goal-impact-card{display:grid;gap:13px;align-content:start;background:#eff6f0;color:#102b21;border:1px solid #b6d5bf;border-radius:17px;padding:16px;min-width:0}
+.goal-impact-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.goal-impact-card-heading h3{margin:4px 0 0;color:#123526;font-size:1.16rem;line-height:1.3}
+.goal-impact-card .goal-impact-eyebrow{color:#34734c;font-size:.66rem}
+.goal-impact-state{display:inline-block;max-width:100%;font-size:.69rem;font-weight:850;line-height:1.4;border-radius:999px;background:#e2e8e0;color:#28433a;padding:5px 9px}
+.goal-impact-state.linked{background:#d4eedd;color:#14603a}
+.goal-impact-state.review{background:#f9e8c6;color:#75500c}
+.goal-impact-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.goal-impact-metrics>div{display:grid;gap:3px;padding:10px 8px;border:1px solid #c9dfd1;border-radius:11px;background:#fff;min-width:0}
+.goal-impact-metrics small,.goal-impact-prescription small{font-size:.7rem;line-height:1.3;color:#4c6759}
+.goal-impact-metrics strong{font-size:clamp(.95rem,2vw,1.13rem);font-weight:850;color:#163c2a;overflow-wrap:anywhere}
+.goal-impact-track{height:9px;overflow:hidden;background:#b9d3c2;border-radius:99px}
+.goal-impact-track i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#3a9565,#e5b956)}
+.goal-impact-prescription{display:grid;gap:7px;padding:12px;background:#e3efe6;border:1px solid #a5cbb2;border-radius:12px}
+.goal-impact-prescription>div{display:grid;gap:3px}
+.goal-impact-prescription strong{color:#0f4832;font-size:1.07rem}
+.goal-impact-prescription>span{font-size:.77rem;color:#3c5e4c;line-height:1.45}
+.goal-impact-explanation{margin:0;color:#294c37;font-size:.84rem;line-height:1.5}
+.goal-impact-explanation b{color:#163e2a}
+.goal-impact-record,.goal-impact-subtle{margin:0;font-size:.77rem;line-height:1.45;color:#587466}
+.goal-impact-record{border-top:1px solid #c3ddcc;padding-top:10px}
+.goal-impact-footer{display:flex;justify-content:flex-end}
+.goal-impact-footer button{border:1px solid #f0c66b;background:transparent;border-radius:10px;color:#f8d27c;min-height:40px;padding:9px 15px;font-weight:850;cursor:pointer;font-size:.8rem}
+.goal-impact-footer button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+@media(max-width:600px){.goal-impact-panel{padding:16px;border-radius:18px}.goal-impact-card{padding:13px}.goal-impact-list{grid-template-columns:minmax(0,1fr)}.goal-impact-metrics{gap:5px}.goal-impact-metrics>div{padding:8px 6px}.goal-impact-metrics small{font-size:.65rem}.goal-impact-footer button{width:100%}}
