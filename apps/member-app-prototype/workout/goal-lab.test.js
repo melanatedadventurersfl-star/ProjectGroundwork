@@ -172,4 +172,14 @@ for(const kind of ['run','cycle','walk','row','swim','hike']){
   assert.ok(goals.template(kind).id===kind,kind+' should be a selectable activity goal');
 }
 
+const holdManual={};
+const holdClick=(name,dataset={})=>goals.action(holdManual,name,{dataset});
+holdClick('new',{mode:'target'});holdClick('template',{kind:'plank'});holdClick('choose-next');holdClick('target-next');
+goals.field(holdManual,'timedResultText','1:15');
+assert.equal(holdManual.goalLab.draft.startedAt,null);
+assert.equal(holdClick('assessment-done').changed,true);
+assert.equal(holdManual.goalLab.draft.result,75,'Manual m:ss hold time is normalized to seconds');
+holdClick('feedback-next');holdClick('save-goal');
+assert.equal(holdManual.goalLab.goals[0].baseline,75);
+
 console.log('Goal Lab: all discovery, progress, variant, safety and persistence checks passed.');
