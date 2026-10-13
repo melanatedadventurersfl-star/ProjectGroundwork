@@ -10,11 +10,38 @@
     {id:'squat',name:'Bodyweight squats',unit:'reps',target:30,exerciseId:'bodyweight-squat',icon:'🦵',metric:'continuous',instruction:'Complete comfortable controlled squats, counting full repetitions.',variation:'Bodyweight squat',cue:'Use a comfortable range and stop when control fades.'},
     {id:'pullup',name:'Pull-ups',unit:'reps',target:10,exerciseId:'pull-up',icon:'🏋',metric:'continuous',instruction:'Count controlled pull-ups without assistance, or record the assistance used.',variation:'Unassisted pull-up',cue:'Record the variation accurately so future tests remain comparable.'},
     {id:'run',name:'Running distance',unit:'miles',target:1,exerciseId:'',icon:'🏃',metric:'continuous distance',instruction:'Walk or run a measured route and record the distance completed continuously.',variation:'Measured route',cue:'Distance is self-recorded. The app does not automatically measure your route.'},
-    {id:'custom',name:'My own goal',unit:'reps',target:10,exerciseId:'',icon:'🎯',metric:'continuous',instruction:'Perform the movement safely and record the actual result.',variation:'Your chosen variation',cue:'Choose a measurable achievement and record a baseline before planning.'}
+    {id:'custom',name:'My own goal',unit:'reps',target:10,exerciseId:'',icon:'🎯',metric:'continuous',instruction:'Perform the movement safely and record the actual result.',variation:'Your chosen variation',cue:'Choose a measurable achievement and record a baseline before planning.'},
+    {id:'cycle',name:'Cycling',unit:'kilometers',target:10,exerciseId:'',icon:'🚴',metric:'distance',instruction:'Cycle a measured route or use your bike computer and record distance and elapsed time.',variation:'Bike or stationary bike',cue:'Record what the machine or bike displayed, even if you did not start the app timer.'},
+    {id:'walk',name:'Walking',unit:'kilometers',target:5,exerciseId:'',icon:'🚶',metric:'distance',instruction:'Walk a measured distance and log your elapsed time if available.',variation:'Walk or treadmill',cue:'You can use a treadmill reading or a measured route.'},
+    {id:'row',name:'Rowing',unit:'meters',target:2000,exerciseId:'',icon:'🚣',metric:'distance',instruction:'Record the rowing machine distance and elapsed time.',variation:'Rowing machine',cue:'For example, 2,000 meters in 9 minutes, directly from the machine display.'},
+    {id:'swim',name:'Swimming',unit:'meters',target:500,exerciseId:'',icon:'🏊',metric:'distance',instruction:'Record the total distance and your elapsed time, if known.',variation:'Pool or open-water swim',cue:'Record the pool length or measured course and any breaks consistently.'},
+    {id:'hike',name:'Hiking',unit:'kilometers',target:5,exerciseId:'',icon:'🥾',metric:'distance',instruction:'Hike a measured route and record the distance covered.',variation:'Trail hiking',cue:'Log moving time if you track it, or leave time blank.'}
   ];
   const safe = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number = v => Number.isFinite(Number(v)) ? Number(v) : 0;
-  const rounded = (v,unit) => unit==='miles' ? Math.round(v*100)/100 : Math.round(v);
+  const DISTANCE_UNITS=['meters','kilometers','miles','yards','feet'];
+  const isDistanceUnit=unit=>DISTANCE_UNITS.includes(unit);
+  const rounded=(v,unit)=>isDistanceUnit(unit)?Math.round(number(v)*100)/100:Math.round(number(v));
+  const formatDuration=value=>{
+    const total=Math.max(0,Math.floor(number(value)));
+    const h=Math.floor(total/3600),m=Math.floor(total%3600/60),s=total%60;
+    return h?h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'):m+':'+String(s).padStart(2,'0');
+  };
+  const parseDuration=value=>{
+    const raw=String(value??'').trim();
+    if(!raw)return 0;
+    const parts=raw.split(':');
+    if(parts.length<2||parts.length>3||parts.some(p=>!/^[0-9]+$/.test(p)))return null;
+    if(parts.slice(1).some(p=>p.length!==2||Number(p)>=60))return null;
+    const seconds=parts.reduce((total,part)=>total*60+Number(part),0);
+    return seconds>0&&seconds<=86400?seconds:null;
+  };
+  const distanceMeters=(value,unit)=>number(value)*({meters:1,kilometers:1000,miles:1609.344,yards:.9144,feet:.3048}[unit]||0);
+  const convertDistance=(value,from,to)=>isDistanceUnit(from)&&isDistanceUnit(to)?rounded(distanceMeters(value,from)/distanceMeters(1,to),to):number(value);
+  const paceText=(value,unit,seconds)=>{
+    const meters=distanceMeters(value,unit);
+    return meters>0&&number(seconds)>0?' · '+formatDuration(Math.round(number(seconds)*500/meters))+' / 500 m':'';
+  };
   const template = kind => TEMPLATES.find(x=>x.id===kind)||TEMPLATES[5];
   const now = () => new Date().toISOString();
   const uid = () => 'goal-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
@@ -28,15 +55,15 @@
     const t=template(kind);
     return {stage:'choose',mode,kind,goalId,label:t.name,unit:t.unit,metric:t.metric,exerciseId:t.exerciseId,
       target:t.target,deadline:'none',priority:'primary',variant:t.variation,result:0,
-      effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,tested:false};
+      effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,elapsedSeconds:0,elapsedText:'',targetTimeSeconds:0,targetTimeText:'',measurementSource:'manual',tested:false};
   }
   const active = s => s.goals.filter(g=>g.status==='active'||g.status==='maintenance');
   // Only comparable discovery tests establish verified continuous performance.
   // Completed training sets may improve trainingBest, but are not proof of
   // reaching a continuous-repetition or single-hold goal.
   function assessmentBest(g){
-    const evidence=(g.assessments||[]).filter(a=>a.source==='discovery'&&(!a.unit||a.unit===g.unit)&&
-      normalizeVariant(a.variant)===normalizeVariant(g.variant)).map(a=>number(a.value));
+    const evidence=(g.assessments||[]).filter(a=>a.source==='discovery'&&(!a.unit||a.unit===g.unit||(isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)))&&
+      normalizeVariant(a.variant)===normalizeVariant(g.variant)).map(a=>isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)?convertDistance(a.value,a.unit,g.unit):number(a.value));
     return evidence.length?Math.max(...evidence):number(g.baseline);
   }
   // A baseline for an assisted or modified movement is not interchangeable
@@ -52,20 +79,28 @@
     return Boolean(g?.exerciseId&&SUPPORTED_VARIANTS[g.kind]?.includes(normalizeVariant(g.variant)));
   }
   function recent(g){return (g.assessments||[]).slice(-6);}
-  function targetText(g){return String(g.target)+' '+(g.unit==='seconds'?'seconds':g.unit==='miles'?'miles':'reps');}
-  function progress(g){return g.target>0 ? Math.max(0,Math.min(100,Math.round(assessmentBest(g)/g.target*100))) : 0;}
+  function targetText(g){return String(g.target)+' '+g.unit+(number(g.targetTimeSeconds)>0?' in '+formatDuration(g.targetTimeSeconds):'');}
+  function meetsTarget(g){
+    if(number(g.targetTimeSeconds)>0)return (g.assessments||[]).some(a=>a.source==='discovery'&&
+      (a.unit===g.unit||(isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)))&&
+      normalizeVariant(a.variant)===normalizeVariant(g.variant)&&
+      (isDistanceUnit(a.unit)&&isDistanceUnit(g.unit)?convertDistance(a.value,a.unit,g.unit):number(a.value))>=number(g.target)&&
+      number(a.elapsedSeconds)>0&&number(a.elapsedSeconds)<=number(g.targetTimeSeconds));
+    return assessmentBest(g)>=number(g.target);
+  }
+  function progress(g){const pct=number(g.target)>0?Math.max(0,Math.min(100,Math.round(assessmentBest(g)/g.target*100))):0;return pct===100&&!meetsTarget(g)?99:pct;}
   function suggestTarget(d){
     const value=number(d.result);
-    if(d.unit==='miles')return Math.max(.25,Math.round(Math.max(value*1.5,.5)*4)/4);
+    if(isDistanceUnit(d.unit))return rounded(Math.max(d.unit==='meters'?100:d.unit==='feet'?300:d.unit==='yards'?100:.25,value*1.5),d.unit);
     if(d.unit==='seconds')return Math.max(20,Math.ceil(Math.max(value*1.5,30)/5)*5);
     return Math.max(d.kind==='pullup'?1:5,Math.ceil(Math.max(value*1.5,value+3)));
   }
   function nextMilestone(g){
     const best=assessmentBest(g),target=number(g.target);
     if(best>=target)return target;
-    if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?0.25:1);
-    const step=g.unit==='miles'?0.25:g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
-    return rounded(Math.min(target,Math.max(best+step,best+1*(g.unit==='miles'?.25:1))),g.unit);
+    if(!best)return Math.min(target,g.unit==='seconds'?15:isDistanceUnit(g.unit)?(g.unit==='meters'?100:g.unit==='feet'?300:g.unit==='yards'?100:.25):1);
+    const step=isDistanceUnit(g.unit)?Math.max(g.unit==='meters'?100:g.unit==='feet'?300:g.unit==='yards'?100:.25,rounded(best*.25,g.unit)):g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
+    return rounded(Math.min(target,best+step),g.unit);
   }
   function recommendations(g){
     const b=assessmentBest(g),kind=g.kind;
@@ -96,7 +131,7 @@
   }
   function card(g){
     const pct=progress(g);
-    return '<button class="goal-card" type="button" data-goal-action="open" data-goal-id="'+safe(g.id)+'"><div class="goal-card-top"><span>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</span><small>'+safe(g.status==='paused'?'PAUSED':g.status==='maintenance'?'MAINTENANCE':pct===100?'TARGET REACHED':'IN PROGRESS')+'</small></div>'+
+    return '<button class="goal-card" type="button" data-goal-action="open" data-goal-id="'+safe(g.id)+'"><div class="goal-card-top"><span>'+safe(g.icon||'🎯')+' '+safe(g.name)+'</span><small>'+safe(g.status==='paused'?'PAUSED':g.status==='maintenance'?'MAINTENANCE':meetsTarget(g)?'TARGET REACHED':'IN PROGRESS')+'</small></div>'+
       '<div class="goal-card-numbers"><strong>'+safe(assessmentBest(g))+'</strong><span>/ '+safe(targetText(g))+'</span></div>'+
       '<div class="goal-track"><i style="width:'+pct+'%"></i></div><small>Initial baseline '+safe(g.baseline)+' '+safe(g.unit)+' · Next milestone '+safe(nextMilestone(g))+'</small></button>';
   }
