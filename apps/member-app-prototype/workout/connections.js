@@ -23,7 +23,7 @@
     if(engine?.meetsTarget?.(goal)) return 'Goal reached';
     const assessed = (goal.assessments||[]).filter(a=>a.source==='discovery');
     if(assessed.length<2) return 'Awaiting reassessment';
-    const due = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(goal.deadline||'')) ? Date.parse(goal.deadline+'T23:59:59') : NaN;
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(String(goal.deadline||'')) ? Date.parse(goal.deadline+'T23:59:59') : NaN;
     const start = Date.parse(goal.createdAt||'');
     const latest = Date.parse(assessed[assessed.length-1]?.at||assessed[assessed.length-1]?.recordedAt||goal.updatedAt||'');
     const best = Number(engine?.assessmentBest?.(goal) ?? goal.baseline);
@@ -39,7 +39,7 @@
   }
   function projection(g) {
     const visibility = g.shareLevel||'private';
-    const row = {owner_id:myId(),goal_id:String(g.id||''),goal_name:String(g.name||'Fitness goal').slice(0,100),visibility};
+    const row = {owner_id:myId(),goal_id:String(g.id||''),goal_name:String(g.name||'Fitness goal').slice(0,100),visibility,progress_status:null,progress_percent:null,measured_value:null,target_value:null,unit:null};
     if(visibility==='status' || visibility==='details') row.progress_status=statusOf(g);
     if(visibility==='details') {
       const engine = window.GoWorkoutGoalLab;
@@ -75,6 +75,7 @@
         if(error)throw error;
       }
       state.synced=snapshot;
+      state.error='';
     } catch(e) { state.error='Goal sharing did not sync. Check your connection and retry.'; notify(state.error); }
     finally {state.saving=false;}
   }
@@ -110,6 +111,7 @@
         for(const p of found.data||[])state.profiles[p.user_id]=p;
       }
       const accepted=state.connections.filter(x=>x.status==='accepted').map(connectionOf);
+      B()?.reconcilePartners?.(accepted.map(c=>c.otherId));
       for(const c of accepted)B()?.rememberPartner?.({userId:c.otherId,name:c.name,status:'connected'});
       const owners=accepted.map(x=>x.otherId);
       state.shares=[];
@@ -161,15 +163,11 @@
   async function setGoalVisibility(goalId,level){
     const g=goals().find(x=>String(x.id)===String(goalId));
     if(!g)return;
-    const before=g.shareLevel||'private';
     g.shareLevel=level;
     B()?.save?.();
     state.synced=null;
     await publishGoalShares(true);
-    if(state.error){
-      // Do not leave a misleading public/private indicator when a privacy change failed.
-      g.shareLevel=before; B()?.save?.();
-    } else notify(level==='private'?'Goal is private.':'Goal sharing updated.');
+    if(!state.error)notify(level==='private'?'Goal is private.':'Goal sharing updated.');
     repaint();
   }
   async function sendEncouragement(id){
@@ -184,6 +182,7 @@
 
   function panel(){
     if(!active())return '';
+    if(!state.loaded&&!state.loading)queueMicrotask(()=>{void refresh();});
     const list=state.connections.map(connectionOf);
     const accepted=list.filter(x=>x.status==='accepted');
     const received=list.filter(x=>x.status==='pending'&&x.recipient_id===myId());
