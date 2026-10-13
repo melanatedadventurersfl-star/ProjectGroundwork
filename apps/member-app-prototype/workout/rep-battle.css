@@ -80,27 +80,40 @@
 @media(prefers-reduced-motion:reduce){.rep-victory-glow{animation:none;opacity:.7}.rep-arena.is-victory .rep-guardian{transition:none}.rep-battle-hp-track span{transition:none}.rep-arena.is-hit .rep-player,.rep-arena.is-hit .rep-guardian,.rep-arena.is-hit .rep-impact,.rep-arena.is-hit .rep-damage,.rep-arena.is-rest .rep-rest-shield,.rep-arena.is-rest .rep-player{animation:none}.rep-arena.is-hit .rep-impact{opacity:1}.rep-arena.is-hit .rep-damage{opacity:1}.rep-arena.is-rest .rep-rest-shield{opacity:.6}}
 
 
-/* Rep Battle V1.1 mobile correction: readable progress when the full arena
-   is out of view, without obscuring log-set or rest controls. */
-.rep-battle{scroll-margin-top:calc(78px + env(safe-area-inset-top))}
-.rep-battle-dock[hidden]{display:none!important}
-.rep-battle-dock{display:none;position:fixed;top:calc(72px + env(safe-area-inset-top));right:max(10px, env(safe-area-inset-right));z-index:14;box-sizing:border-box;width:min(336px,calc(100vw - 20px));min-height:67px;align-items:center;gap:9px;border:1px solid rgba(163,217,184,.55);border-radius:14px;padding:8px 9px;background:rgba(9,41,35,.97);color:#f5fff9;box-shadow:0 8px 28px rgba(0,0,0,.35);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-body.workout-mode .rep-battle-dock:not([hidden]){display:flex}
-body.modal-open .rep-battle-dock{display:none!important}
-.rep-dock-figure{font-size:23px;display:grid;place-items:center;flex:none;width:35px;height:42px;background:#295b4c;border-radius:10px}
-.rep-dock-detail{flex:1;min-width:0}
-.rep-dock-title{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:9px;letter-spacing:.05em}
-.rep-dock-title strong{color:#fff}
-.rep-dock-title span{font-size:8px;font-weight:750;color:#f3d991}
-.rep-dock-meter{height:6px;border-radius:9px;overflow:hidden;background:#31574a;margin:5px 0}
-.rep-dock-meter span{display:block;height:100%;background:linear-gradient(90deg,#eb984a,#f6c46d);border-radius:9px;transition:width .28s ease-out}
-.rep-dock-caption{display:flex;justify-content:space-between;gap:6px;color:#d0e6dc;font-size:9px;font-variant-numeric:tabular-nums}
-.rep-dock-view{flex:none;min-height:36px;border:1px solid #79998b;border-radius:8px;padding:0 9px;background:#2c6652;color:#fff;font-weight:800;font-size:10px;cursor:pointer}
-.rep-dock-view:focus-visible{outline:3px solid #ffe1a4;outline-offset:2px}
-.rep-dock-hit{position:absolute;right:62px;top:6px;z-index:2;padding:2px 5px;border-radius:6px;background:#f6c36b;color:#203d31;font-size:16px;font-weight:950;box-shadow:0 0 12px #f8d08c}
-.rep-battle-dock.is-hit .rep-dock-figure{animation:rep-dock-lunge .85s ease-out both}
-.rep-battle-dock.is-hit .rep-dock-hit{animation:rep-dock-hit 1.9s ease-out both}
-@keyframes rep-dock-lunge{0%,100%{transform:translateX(0)}35%{transform:translateX(8px)}60%{transform:translateX(-2px)}}
-@keyframes rep-dock-hit{0%{opacity:0;transform:translateY(9px) scale(.85)}18%{opacity:1;transform:translateY(0) scale(1.12)}55%{opacity:1}100%{opacity:0;transform:translateY(-18px)}}
-@media(max-width:350px){.rep-battle-dock{min-height:62px;gap:6px;padding:6px}.rep-dock-figure{width:28px;font-size:19px}.rep-dock-view{padding:0 6px}}
-@media(prefers-reduced-motion:reduce){.rep-battle-dock.is-hit .rep-dock-figure,.rep-battle-dock.is-hit .rep-dock-hit{animation:none}.rep-dock-meter span{transition:none}}
+/* Rep Battle header status replaces the overlay seen in the iPhone recording.
+   It occupies a second row in the existing sticky workout header, never
+   overlapping exercise media, buttons or post-set feedback. */
+.rep-battle{scroll-margin-top:calc(122px + env(safe-area-inset-top))}
+.runner-v2-header>.rep-header-status{
+  grid-column:1/-1;
+  box-sizing:border-box;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  min-width:0;
+  min-height:37px;
+  padding:3px 7px;
+  border:1px solid rgba(154,218,182,.38);
+  border-radius:9px;
+  background:rgba(21,68,51,.85);
+  text-align:left;
+  color:#f5fff7
+}
+.rep-header-icon{flex:none;font-size:16px;color:#f5da95}
+.rep-header-data{flex:1;min-width:0;display:grid;gap:4px}
+.rep-header-values{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;white-space:nowrap}
+.runner-v2-header .rep-header-values strong{font-size:9px;color:#f5fff7;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runner-v2-header .rep-header-values b{font-size:10px;color:#ffe09b;font-variant-numeric:tabular-nums;white-space:nowrap}
+.runner-v2-header .rep-header-values span{font-size:9px;color:#d0e9db;margin:0;white-space:nowrap}
+.rep-header-meter{height:4px;border-radius:4px;background:#2b5545;overflow:hidden}
+.rep-header-meter i{display:block;height:100%;background:linear-gradient(90deg,#ec9647,#f7c76e);border-radius:4px;transition:width .25s ease-out}
+.rep-header-view{flex:none;border:1px solid rgba(177,212,190,.45);border-radius:7px;background:#29634f;color:#fff;font-size:9px;font-weight:850;letter-spacing:.04em;min-height:33px;padding:0 8px;cursor:pointer}
+.rep-header-view:focus-visible{outline:3px solid #ffe19a;outline-offset:2px}
+.runner-v2-header .rep-header-damage{position:absolute;right:52px;bottom:35px;z-index:2;padding:2px 6px;border-radius:6px;background:#f5d087;color:#263b32;margin:0;font-weight:900;font-size:13px;pointer-events:none}
+.rep-header-status.is-hit .rep-header-icon{animation:rep-header-strike .72s ease-out both}
+.rep-header-status.is-hit .rep-header-damage{animation:rep-header-pop 1.8s ease-out both}
+@keyframes rep-header-strike{0%,100%{transform:translateX(0)}40%{transform:translateX(6px)}60%{transform:translateX(-2px)}}
+@keyframes rep-header-pop{0%{opacity:0;transform:translateY(7px)}22%{opacity:1;transform:translateY(0)}70%{opacity:1}100%{opacity:0;transform:translateY(-15px)}}
+@media(max-width:375px){.runner-v2-header>.rep-header-status{gap:5px;padding:3px 5px}.rep-header-view{padding:0 6px}.runner-v2-header .rep-header-values strong{font-size:8px}.runner-v2-header .rep-header-values span{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.rep-header-status.is-hit .rep-header-icon,.rep-header-status.is-hit .rep-header-damage{animation:none}.rep-header-meter i{transition:none}}
