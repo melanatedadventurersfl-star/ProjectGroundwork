@@ -6,7 +6,7 @@
   'use strict';
 
   const clean = value => String(value == null ? '' : value).replace(/[&<>"']/g, char => (
-    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','"':'&quot;'}[char] || '&#39;'
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]
   ));
   const pendingHits = new Map();
 
