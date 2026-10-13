@@ -68,13 +68,13 @@ create table public.workout_accountability_checkins (
 );
 -- Removing a social connection also ends its accountability agreement.
 create or replace function public.workout_accountability_disconnect()
-returns trigger language plpgsql security definer set search_path=pg_catalog,public as $
+returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
 begin
   delete from public.workout_accountability_agreements
   where user_low=old.user_low and user_high=old.user_high;
   return old;
 end;
-$;
+$$;
 create trigger workout_accountability_disconnect
 after delete on public.workout_connections
 for each row execute function public.workout_accountability_disconnect();
@@ -130,14 +130,14 @@ after insert or update of status on public.workout_connections
 for each row execute function public.workout_circle_connection_alert();
 
 create or replace function public.workout_circle_workout_invite_alert()
-returns trigger language plpgsql security definer set search_path=pg_catalog,public as $
+returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
 begin
   if new.partner_user_id is not null and new.status='lobby' then
     perform public.workout_circle_notify(new.partner_user_id,new.host_user_id,'workout_invite',new.id);
   end if;
   return new;
 end;
-$;
+$$;
 create trigger workout_circle_workout_invite_alert
 after insert on public.workout_shared_sessions
 for each row execute function public.workout_circle_workout_invite_alert();
