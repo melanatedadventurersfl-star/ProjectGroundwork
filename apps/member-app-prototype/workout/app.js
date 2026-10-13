@@ -11509,6 +11509,10 @@ window.GoWorkoutConnectionsBridge={
   client:()=>workoutSupabase,
   tab:()=>currentTab,
   connectionName:id=>window.GoWorkoutConnections?.nameFor?.(id),
+  nextWorkout:()=>{
+    const item=nextScheduledSession();
+    return item?{name:item.adaptedDay?.name||item.day?.name||'Workout',dateKey:item.dateKey,dayName:item.dayName}:null;
+  },
   userId:()=>store.account?.status==='connected'?store.account.userId:null,
   displayName:()=>displayName(),
   goals:()=>window.GoWorkoutGoalLab?.ensure(ensureTrainingProgram())?.goals||[],
