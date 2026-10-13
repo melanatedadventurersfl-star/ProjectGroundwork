@@ -55,7 +55,7 @@
     const t=template(kind);
     return {stage:'choose',mode,kind,goalId,label:t.name,unit:t.unit,metric:t.metric,exerciseId:t.exerciseId,
       target:t.target,deadline:'none',priority:'primary',variant:t.variation,result:0,
-      effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,elapsedSeconds:0,elapsedText:'',targetTimeSeconds:0,targetTimeText:'',measurementSource:'manual',tested:false};
+      effort:'challenging',note:'',pain:false,startedAt:null,startedElapsed:0,elapsedSeconds:0,elapsedText:'',timedResultText:'',targetTimeSeconds:0,targetTimeText:'',measurementSource:'manual',tested:false};
   }
   const active = s => s.goals.filter(g=>g.status==='active'||g.status==='maintenance');
   // Only comparable discovery tests establish verified continuous performance.
@@ -156,7 +156,8 @@
     const timed=d.unit==='seconds',distance=isDistanceUnit(d.unit),t=template(d.kind);
     let measurement='';
     if(timed){
-      measurement='<label>Completed time (seconds)<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="86400" step="1" value="'+safe(d.result)+'"></label>';
+      measurement='<label>Completed time (seconds)<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="86400" step="1" value="'+safe(d.result)+'"></label>'+ 
+        '<label>Or enter as m:ss / h:mm:ss<input data-goal-field="timedResultText" inputmode="numeric" placeholder="1:15" value="'+safe(d.timedResultText||'')+'"></label>';
     }else{
       measurement=(distance?'<label>Distance completed ('+safe(d.unit)+')':'<label>Completed reps')+
         '<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="100000" step="'+(distance?'0.01':'1')+'" value="'+safe(d.result)+'"></label>'+
@@ -211,7 +212,7 @@
   }
   function field(training,name,value){
     const d=ensure(training).draft;
-    if(!d||!['label','unit','target','deadline','priority','variant','result','elapsedText','targetTimeText','measurementSource'].includes(name))return false;
+    if(!d||!['label','unit','target','deadline','priority','variant','result','elapsedText','timedResultText','targetTimeText','measurementSource'].includes(name))return false;
     if(name==='unit'){
       if(!['reps','seconds',...DISTANCE_UNITS].includes(value))return false;
       if(d.kind!=='custom'&&!(isDistanceUnit(template(d.kind).unit)&&isDistanceUnit(value)))return false;
@@ -232,8 +233,11 @@
       }
       return true;
     }
-    if(name==='target'||name==='result')d[name]=Math.max(0,Math.min(100000,number(value)));
-    else if(name==='elapsedText'||name==='targetTimeText')d[name]=String(value).trim().slice(0,16);
+    if(name==='target'||name==='result'){
+      d[name]=Math.max(0,Math.min(100000,number(value)));
+      if(name==='result'&&d.unit==='seconds')d.timedResultText='';
+    }
+    else if(name==='elapsedText'||name==='targetTimeText'||name==='timedResultText')d[name]=String(value).trim().slice(0,16);
     else if(name==='measurementSource'){
       if(!['manual','machine','watch','app'].includes(value))return false;
       d.measurementSource=value;
@@ -254,7 +258,7 @@
     if(name==='delete'){const g=goal(node.dataset.goalId);if(!g||!confirm('Delete '+g.name+' and its goal assessment history?'))return result(false);s.goals=s.goals.filter(x=>x.id!==g.id);s.selectedId=null;return result(true,'Goal deleted.');}
     if(!d)return result(false);
     if(name==='mode'){d.mode=node.dataset.mode==='discover'?'discover':'target';return result(true);}
-    if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false,elapsedSeconds:0,elapsedText:'',targetTimeSeconds:0,targetTimeText:'',startedAt:null,startedElapsed:0,measurementSource:'manual'});return result(true);}
+    if(name==='template'){const t=template(node.dataset.kind);Object.assign(d,{kind:t.id,label:t.name,unit:t.unit,target:t.target,metric:t.metric,exerciseId:t.exerciseId,variant:t.variation,result:0,tested:false,elapsedSeconds:0,elapsedText:'',timedResultText:'',targetTimeSeconds:0,targetTimeText:'',startedAt:null,startedElapsed:0,measurementSource:'manual'});return result(true);}
     if(name==='choose-next'){d.stage=d.mode==='discover'?'assessment':'target';return result(true);}
     if(name==='back'){
       if(d.stage==='feedback'){d.result=0;d.elapsedSeconds=0;d.elapsedText='';d.tested=false;d.testedAt=null;}
@@ -274,7 +278,7 @@
     if(name==='timer-stop'){
       if(!d.startedAt)return result(false);
       const elapsed=Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
-      if(d.unit==='seconds')d.result=elapsed;
+      if(d.unit==='seconds'){d.result=elapsed;d.timedResultText='';}
       else {d.elapsedSeconds=elapsed;d.elapsedText=formatDuration(elapsed);}
       d.startedAt=null;d.startedElapsed=0;d.measurementSource='app';
       return result(true);
@@ -282,6 +286,11 @@
     if(name==='count-up'||name==='count-down'){if(d.unit!=='reps')return result(false);d.result=Math.max(0,Math.min(100000,number(d.result)+(name==='count-up'?1:-1)));return result(true);}
     if(name==='assessment-done'){
       if(d.startedAt)return result(false,'Stop the timer before finishing.');
+      if(d.unit==='seconds'&&d.timedResultText){
+        const seconds=parseDuration(d.timedResultText);
+        if(seconds===null)return result(false,'Enter a valid time, such as 1:15.');
+        d.result=seconds;
+      }
       if(d.unit!=='seconds'){
         const seconds=parseDuration(d.elapsedText);
         if(seconds===null)return result(false,'Enter a valid elapsed time, such as 9:00, or leave it empty.');
@@ -401,7 +410,7 @@
     const d=training?.goalLab?.draft;
     if(!d?.startedAt)return false;
     const elapsed=Math.max(0,Math.min(86400,Math.round((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)));
-    if(d.unit==='seconds')d.result=elapsed;
+    if(d.unit==='seconds'){d.result=elapsed;d.timedResultText='';}
     else {d.elapsedSeconds=elapsed;d.elapsedText=formatDuration(elapsed);}
     d.startedAt=null;d.startedElapsed=0;
     return true;
