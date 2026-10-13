@@ -58,14 +58,15 @@
       '<span class="rep-player-glow"></span></div>';
   }
 
-  function arena(avatar,hit=false,rest=false,damage=0) {
-    return '<div class="rep-arena'+(hit?' is-hit':'')+(rest?' is-rest':'')+'" role="img" aria-label="Your workout avatar faces the Training Guardian">'+
+  function arena(avatar,hit=false,rest=false,damage=0,victory=false) {
+    return '<div class="rep-arena'+(hit?' is-hit':'')+(rest?' is-rest':'')+(victory?' is-victory':'')+'" role="img" aria-label="Your workout avatar faces the Training Guardian">'+
       '<span class="rep-arena-sun"></span><span class="rep-arena-mountain mountain-back"></span>'+
       '<span class="rep-arena-mountain mountain-front"></span><span class="rep-arena-floor"></span>'+
       player(avatar)+guardian()+
       '<span class="rep-impact" aria-hidden="true">✦</span>'+
       (hit?'<span class="rep-damage" aria-hidden="true">−'+damage+'</span>':'')+
       (rest?'<span class="rep-rest-shield" aria-hidden="true">✧</span>':'')+
+      (victory?'<span class="rep-victory-glow" aria-hidden="true">✦</span><span class="rep-victory-banner">GUARDIAN DEFEATED</span>':'')+
       '</div>';
   }
 
@@ -95,12 +96,12 @@
       '<div class="rep-battle-hp"><div class="rep-battle-hp-label"><span>TRAINING GUARDIAN</span><b>'+snapshot.remainingHp+' HP</b></div>'+
       '<div class="rep-battle-hp-track" role="progressbar" aria-label="Training Guardian health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+snapshot.remainingHp+'"><span style="width:'+snapshot.remainingHp+'%"></span></div></div>'+
       (collapsed?'<div class="rep-battle-small">'+snapshot.completed+' / '+snapshot.total+' sets logged <span>·</span> '+(snapshot.victory?'GUARDIAN DEFEATED':'NEXT HIT '+snapshot.nextHit+' HP')+'</div>':
-        arena(avatar,hit,rest,pending?.damage||0)+
+        arena(avatar,hit,rest,pending?.damage||0,snapshot.victory)+
         '<div class="rep-battle-caption" aria-live="off"><strong>'+clean(status)+'</strong>'+
         '<span>'+snapshot.completed+' of '+snapshot.total+' prescribed sets completed'+(last?' · Last: '+clean(last):'')+'</span></div>'+
         '<div class="rep-battle-steps">'+
           '<span><b>'+snapshot.completed+'</b><small>SETS DONE</small></span>'+
-          '<span><b>'+snapshot.nextHit+' HP</b><small>NEXT HIT</small></span>'+
+          '<span><b>'+(snapshot.victory?'WIN':snapshot.nextHit+' HP')+'</b><small>'+(snapshot.victory?'COMPLETE':'NEXT HIT')+'</small></span>'+
           '<span><b>'+snapshot.remaining+' </b><small>SETS LEFT</small></span></div>')+
       '</section>';
   }
