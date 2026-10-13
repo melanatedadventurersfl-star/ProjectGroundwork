@@ -75,7 +75,7 @@
     const snapshot=progress(workout);
     if(!snapshot.total)return null; // Recovery or guided-only session: show existing companion.
     const prefs=training?.arcade||{};
-    const collapsed=Boolean(prefs.battleCollapsed);
+    const collapsed=prefs.battleCollapsed!==false;
     const rest=workout?.phase==='rest';
     const paused=Boolean(workout?.isPaused);
     // Animation is only triggered by this browser's real set-completion event,
@@ -105,6 +105,22 @@
           '<span><b>'+(snapshot.victory?'WIN':snapshot.nextHit+' HP')+'</b><small>'+(snapshot.victory?'COMPLETE':'NEXT HIT')+'</small></span>'+
           '<span><b>'+snapshot.remaining+' </b><small>SETS LEFT</small></span></div>')+
       '</section>';
+  }
+
+  function postSetMoment(training,workout,avatar) {
+    if(training?.arcade?.mode!=='arcade'||!workout?.id)return '';
+    if(!['rest','feedback'].includes(workout.phase))return '';
+    const snap=progress(workout);
+    if(!snap.total||!snap.completed)return '';
+    const impact=recentHits.get(String(workout.id));
+    // Real set-completion events only. No animation is fabricated on refresh
+    // or when a skipped set brings the user to feedback.
+    if(!impact||Date.now()-impact.at>8000)return '';
+    const title=snap.victory?'Guardian down!':'Hit landed!';
+    return '<div class="rep-hit-moment" aria-label="Rep Battle set result">'+
+      '<div class="rep-hit-moment-scene">'+arena(avatar,true,false,impact.damage,false)+'</div>'+
+      '<div class="rep-hit-moment-copy"><span>REP BATTLE</span><strong>'+title+'</strong>'+
+      '<small>−'+impact.damage+' HP · Guardian '+snap.remainingHp+' HP</small></div></div>';
   }
 
   function dashboardCard(training,activeWorkout,avatar) {
@@ -164,6 +180,6 @@
     '</div>';
   }
 
-  window.GoWorkoutRepBattle={progress,noteCompletedSet,livePanel,dashboardCard,summaryPanel,setCollapsed,headerPanel};
+  window.GoWorkoutRepBattle={progress,noteCompletedSet,livePanel,postSetMoment,dashboardCard,summaryPanel,setCollapsed,headerPanel};
   if(typeof module!=='undefined'&&module.exports)module.exports=window.GoWorkoutRepBattle;
 })();
