@@ -178,4 +178,61 @@ assert.match(S.panel(training,profile,plan,catalog,[]),/Did the workout change\?
 const markedWorkout={id:'goal-added',completionStatus:'complete',exercises:[{id:'push-up',goalStrategyId:push.id,skipped:false}]};
 assert.match(S.panel(training,profile,plan,catalog,[markedWorkout]),/Recorded goal additions in 1 workout/);
 
+
+// Explainable adaptive training: baseline-only changes can refresh approved
+// goal prescriptions in Smart mode, but not in Review mode.
+const Adaptive=require('./training-intelligence.js');
+const adaptiveTraining={};
+const create=(name,data={})=>G.action(adaptiveTraining,name,{dataset:data});
+create('new',{mode:'target'});create('template',{kind:'pushup'});create('choose-next');create('target-next');
+for(let i=0;i<8;i++)create('count-up');
+create('assessment-done');create('feedback-next');create('save-goal');
+const adaptiveGoal=adaptiveTraining.goalLab.goals[0];
+const review=(action,data={})=>S.action(adaptiveTraining,action,{dataset:data},{profile,plan,catalog,history:[]});
+review('strategy-open');review('strategy-preview');review('strategy-approve');
+assert.equal(S.current(adaptiveTraining,profile,plan),true);
+assert.equal(Adaptive.mode(adaptiveTraining),'smart');
+assert.equal(Adaptive.eligibleSlot(0,0,3),true);
+assert.equal(Adaptive.eligibleSlot(0,1,3),false);
+assert.equal(Adaptive.eligibleSlot(0,2,3),true);
+assert.equal(Adaptive.eligibleSlot(1,1,3),true);
+assert.equal(Adaptive.eligibleSlot(2,1,3),false);
+const beforeBaseline=Adaptive.snapshot(adaptiveTraining,profile,plan);
+create('retest',{goalId:adaptiveGoal.id});
+for(let i=0;i<12;i++)create('count-up');
+create('assessment-done');create('feedback-next');create('save-goal');
+assert.equal(G.assessmentBest(adaptiveGoal),12);
+assert.equal(S.current(adaptiveTraining,profile,plan),false);
+assert.equal(Adaptive.afterGoalAction(beforeBaseline,adaptiveTraining,profile,plan,catalog),true);
+assert.equal(S.current(adaptiveTraining,profile,plan),true,'Smart mode keeps approved strategy current for comparable assessments');
+assert.equal(Adaptive.ensure(adaptiveTraining).notices[0].status,'auto');
+assert.match(Adaptive.notices(adaptiveTraining),/Your workout evolved/);
+assert.match(Adaptive.why(adaptiveTraining,profile,plan,catalog,
+  {index:0,day:{name:'Upper',focus:'Strength',exercises:[]}}),/Verified 12 reps/);
+assert.equal(Adaptive.setMode(adaptiveTraining,'review'),true);
+const beforeReview=Adaptive.snapshot(adaptiveTraining,profile,plan);
+create('retest',{goalId:adaptiveGoal.id});
+for(let i=0;i<15;i++)create('count-up');
+create('assessment-done');create('feedback-next');create('save-goal');
+assert.equal(Adaptive.afterGoalAction(beforeReview,adaptiveTraining,profile,plan,catalog),true);
+assert.equal(S.current(adaptiveTraining,profile,plan),false,'Review mode requires approval');
+assert.equal(Adaptive.ensure(adaptiveTraining).notices[0].status,'review');
+assert.match(Adaptive.preferences(adaptiveTraining),/Review Changes/);
+const approvedToday=S.applyDay(adaptiveTraining,originalDay,catalog,profile,{plan,minutes:30,dayIndex:0});
+assert.equal(approvedToday,originalDay,'Pending approval cannot change workout');
+const stableConstraints=Adaptive.snapshot(adaptiveTraining,profile,plan);
+adaptiveGoal.target=35;
+assert.equal(Adaptive.afterGoalAction(stableConstraints,adaptiveTraining,profile,plan,catalog),false,'Changing target is never silent baseline progression');
+assert.equal(S.current(adaptiveTraining,profile,plan),false);
+assert.match(Adaptive.goalsSummary(adaptiveTraining,profile,plan,catalog,[]),/multiple goals/i);
+assert.match(goalsHtml,/training-intelligence.js\?v=20261012-intelligence-v1/);
+assert.match(goalsHtml,/training-intelligence.css\?v=20261012-intelligence-v1/);
+assert.match(appSource,/adaptive-preview-tab/);
+assert.match(appSource,/GoWorkoutAdaptiveExperience.scheduleBadge/);
+assert.match(appSource,/GoWorkoutAdaptiveExperience.afterGoalAction/);
+assert.match(style,/\.goal-impact-panel/);
+const adaptiveCss=fs.readFileSync(path.join(__dirname,'training-intelligence.css'),'utf8');
+assert.match(adaptiveCss,/\.adaptive-preferences/);
+assert.match(adaptiveCss,/\.adaptive-compare-day/);
+
 console.log('GO Workout Goal-to-Training V2: approval, integration, protection, progress and review checks passed.');
