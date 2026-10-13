@@ -1,0 +1,39 @@
+/* GO Workout V2: Your Circle. Neutral green surfaces match the existing Together tab. */
+.circle-v2{display:grid;gap:14px;margin:18px 0 22px;color:#183b2b}
+.circle-v2-hero{display:flex;justify-content:space-between;gap:18px;align-items:center;border-radius:20px;padding:19px;background:linear-gradient(125deg,#173d2e,#245941);color:#fff}
+.circle-v2-hero small{color:#d6bd70;font-size:.7rem;font-weight:800;letter-spacing:.11em}
+.circle-v2-hero h3{font-size:clamp(1.4rem,3vw,1.85rem);margin:5px 0}
+.circle-v2-hero p{font-size:.85rem;margin:0;line-height:1.45;color:#e1f0e7}
+.circle-v2-mark{width:50px;height:50px;border-radius:16px;background:#d8b96a;color:#123728;flex:none;display:grid;place-items:center;font-size:1.8rem}
+.circle-v2-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.circle-v2-stats>div{min-width:0;background:#eaf2e8;border:1px solid #d4e3d4;padding:13px;border-radius:13px;display:grid;gap:3px}
+.circle-v2-stats strong{font-size:1.4rem;line-height:1;color:#194b35}
+.circle-v2-stats span{font-size:.74rem;line-height:1.2;color:#3d6550}
+.circle-v2-columns{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.circle-v2-title{display:flex;align-items:center;justify-content:space-between}
+.circle-v2-event{display:flex;gap:9px;align-items:flex-start;padding:10px 0;border-top:1px solid #e7eee6}
+.circle-v2-event>div{display:grid;gap:4px;flex:1;min-width:0}
+.circle-v2-event strong{font-size:.82rem;line-height:1.4;color:#214a32;font-weight:600}
+.circle-v2-event small,.circle-v2-agreement small{display:block;font-size:.7rem;color:#69806e}
+.circle-v2-event.is-unread strong{font-weight:800}
+.circle-v2-dot{width:8px;height:8px;border-radius:50%;background:#cedbd1;margin-top:5px;flex:none}
+.circle-v2-event.is-unread .circle-v2-dot{background:#d1a84b}
+.circle-v2-agreement{border-top:1px solid #e4ebe4;display:grid;gap:9px;padding-top:12px}
+.circle-v2-agreement strong{font-size:.9rem}
+.circle-v2-agreement p{margin:0}
+.circle-v2-actions{display:flex;flex-wrap:wrap;gap:8px}
+.circle-v2-form{display:grid;gap:9px}
+.circle-v2-form label{font-size:.76rem;font-weight:700;display:grid;gap:5px;color:#355841}
+.circle-v2-form input,.circle-v2-form select{width:100%;min-width:0;background:#fff;border:1px solid #bccdbf;border-radius:10px;padding:10px;color:#1c402e;font:inherit;font-size:.82rem}
+.circle-v2-preferences{border:1px solid #d1dfd3;border-radius:14px;background:#f3f6f0;overflow:hidden}
+.circle-v2-preferences summary{cursor:pointer;padding:13px;font-weight:700;font-size:.86rem;color:#30523d}
+.circle-v2-preferences .connections-card{border:0;border-radius:0}
+.circle-nav-count{display:inline-flex;min-width:18px;height:18px;padding:0 4px;border-radius:12px;background:#d9b35e;color:#183825;align-items:center;justify-content:center;font-weight:800;font-size:.65rem;margin-left:4px}
+@media(max-width:760px){.circle-v2-columns{grid-template-columns:1fr}}
+@media(max-width:460px){.circle-v2-hero{padding:15px}.circle-v2-mark{width:42px;height:42px}.circle-v2-stats>div{padding:11px 8px}.circle-v2-stats span{font-size:.66rem}}
+
+.circle-v2-next{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 16px;border:1px solid #d5e2d7;border-radius:14px;background:#fff}
+.circle-v2-next>div{display:grid;gap:4px;min-width:0}
+.circle-v2-next span{color:#527660;font-size:.68rem;font-weight:800;letter-spacing:.08em}
+.circle-v2-next strong{color:#1c492f;font-size:1rem;overflow-wrap:anywhere}
+.circle-v2-next small{color:#67816d;font-size:.76rem}
