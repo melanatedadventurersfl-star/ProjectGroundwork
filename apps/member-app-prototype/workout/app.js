@@ -9748,7 +9748,8 @@ function renderWorkout(){
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
     '<section class="exercise-stage runner-v2-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='warmup-routine'?renderWarmupRoutine(w):w.phase==='warmup-complete'?renderWarmupComplete(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='side-switch'?renderSideSwitch(pos):w.phase==='partner-wait'?renderSharedPartnerWait(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
     (activeStrength?renderRunnerExerciseNavigation(pos):'')+
-    (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet">'+(activeStrength?'':'<button class="text-button" data-action="open-workout-map">WORKOUT MAP</button>')+'<button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+'</div>';
+    (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet">'+(activeStrength?'':'<button class="text-button" data-action="open-workout-map">WORKOUT MAP</button>')+'<button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+
+    (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.dockPanel(ensureTrainingProgram(),w):'')+'</div>';
 }
 
 function runnerStrengthContext(ex,set,setIndex=0){
@@ -10988,6 +10989,7 @@ function render(){
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
   prefetchUpcomingWorkoutMedia();
   prefetchCoachTimeline();
+  window.GoWorkoutRepBattle?.syncDock();
 }
 
 function updateTimers(){
@@ -11144,6 +11146,10 @@ function handleClick(event){
   const arcadeOpen=event.target.closest('[data-action="open-arcade"]');
   if(arcadeOpen){setTab('arcade');return;}
   const arcadeChoice=event.target.closest('[data-arcade-action]');
+  if(arcadeChoice?.dataset.arcadeAction==='battle-jump'){
+    document.querySelector('.rep-battle')?.scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
   if(arcadeChoice?.dataset.arcadeAction==='play-battle'&&window.GoWorkoutArcade){
     const result=window.GoWorkoutArcade.action(ensureTrainingProgram(),'mode','arcade');
     if(result.changed)saveStore();
