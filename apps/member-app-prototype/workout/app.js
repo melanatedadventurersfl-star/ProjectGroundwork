@@ -114,7 +114,7 @@ let store = loadStore();
 let clearedLegacyActiveWorkout = false;
 if(store.activeWorkout){const bootRecovery=validateActiveWorkoutCandidate(store.activeWorkout,store.history);if(bootRecovery.valid)store.activeWorkout=bootRecovery.workout;else{store.activeWorkout=null;clearedLegacyActiveWorkout=true;localStorage.setItem(STORAGE_KEY,JSON.stringify(store));}}
 const restoredUiState=loadUiState();
-const allowedTabs=new Set(['home','train','together','progress','profile','profile-edit','catalog','workout','history','summary','goals']);
+const allowedTabs=new Set(['home','train','together','progress','profile','profile-edit','catalog','workout','history','summary','goals','arcade']);
 let restoredTab=allowedTabs.has(restoredUiState.currentTab)?restoredUiState.currentTab:'';
 if(!store.profile||!store.plan)restoredTab='profile-edit';
 else if(restoredTab==='workout'&&!store.activeWorkout)restoredTab='home';
@@ -8696,6 +8696,7 @@ function renderProfileHub(){
   return '<div class="clean-page profile-hub"><section class="profile-identity"><div class="profile-avatar-large training-avatar-profile">'+renderAvatarFigure(avatar.id,'profile-avatar-figure')+'</div><div><p class="eyebrow">TRAINING PROFILE</p><h2>'+esc(name)+'</h2><p>'+esc(planGoalLabel(p.goal))+' · '+p.days+' days/week · '+esc(equipmentLabel(p.equipment))+'</p><small class="profile-avatar-label">'+esc(avatar.name)+' · '+esc(avatar.build)+'</small></div></section>'+
     '<div class="profile-stat-grid"><div><strong>'+store.history.length+'</strong><span>Workouts</span></div><div><strong>'+context.blockNumber+'</strong><span>Current block</span></div><div><strong>'+shared.partners.length+'</strong><span>Partners</span></div></div>'+
     '<section class="settings-list">'+
+      '<button data-action="open-arcade"><i class="settings-icon" aria-hidden="true">✦</i><div><span>GO WORKOUT ARCADE</span><strong>Avatar, quests, XP, and game preferences</strong></div><em>›</em></button>'+
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
       '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>REVISIT TRAINING SETUP</span><strong>Update goals, schedule, equipment, restrictions and preferences</strong></div><em>›</em></button>'+
@@ -9347,6 +9348,7 @@ function renderHome(){
     '</section>'+
     (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.homePanel(ensureTrainingProgram(),p,plan):'')+
     (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.notices(ensureTrainingProgram()):'')+
+    (window.GoWorkoutArcade?window.GoWorkoutArcade.homePanel(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):'')+
     '<section class="clean-section home-week-section home-week-section-v3 home-week-section-v4"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
       renderHomeWeekPulse(schedule)+
@@ -9735,6 +9737,7 @@ function renderWorkout(){
       window.GoWorkoutAdaptiveExperience.why(ensureTrainingProgram(),store.profile,store.plan,catalog,
         {index:scheduledEntryFor(w.planDayId,w.scheduledDate)?.index??0,day:{...w,name:w.routineName,focus:w.focus}})+'</details>':'')+
     renderSharedWorkoutSync(w)+
+    (window.GoWorkoutArcade?window.GoWorkoutArcade.livePanel(ensureTrainingProgram(),w,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):'')+
     '<div class="runner-cue-access">'+renderCueControls()+'</div>'+
     '<div id="coach-live-line" class="coach-live-line" '+(cueRuntime.lastCoachLine?'':'hidden')+'><span>COACH</span><p id="coach-live-text">'+esc(cueRuntime.lastCoachLine||'')+'</p><button type="button" data-action="replay-coach" aria-label="Replay coach cue">↻</button></div>'+
     (w.isPaused?'<div class="workout-pause-banner"><strong>WORKOUT PAUSED</strong><span>Timers are frozen.</span></div>':'')+
@@ -10881,6 +10884,7 @@ function renderSummary(){
     (x.engineLearning?(()=>{const learning=workoutLearningExperience(x.engineLearning);return '<section class="clean-panel workout-learning-card human-learning-card"><p class="eyebrow">WHAT GOWORKOUT LEARNED</p><h3>'+esc(learning.title)+'</h3><p>'+esc(learning.copy)+'</p><small>Your current block stays stable. Any block-level change begins with a future block, not in the workout you just finished.</small></section>';})():'')+
     ((x.trainingContext?.temporary||x.trainingContext?.adapted)?'<section class="clean-panel summary-training-context">'+renderTrainingContextSummary(x.trainingContext,false)+'</section>':'')+
     (x.sharedSession?'<section class="clean-panel shared-summary-card"><span>SHARED SESSION</span><strong>With '+esc(x.sharedSession.partnerName||'Partner')+'</strong><small>Your performance remains in your own history.</small></section>':'')+
+    (window.GoWorkoutArcade?window.GoWorkoutArcade.summaryPanel(store.history,x):'')+
     '<div class="summary-actions"><button class="button" data-action="home">BACK HOME</button><button class="button secondary" data-action="history">VIEW HISTORY</button></div></div>';
 }
 
@@ -10901,7 +10905,7 @@ function setTab(tab){
   }
 }
 function syncNav(){
-  const navTab=currentTab==='workout'?'train':currentTab==='goals'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
+  const navTab=currentTab==='arcade'?'home':currentTab==='workout'?'train':currentTab==='goals'?'train':currentTab==='catalog'?'train':currentTab==='history'||currentTab==='summary'?'progress':currentTab==='profile-edit'?'profile':currentTab;
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===navTab));
   const nav=document.querySelector('.bottom-nav');if(nav)nav.classList.toggle('nav-disabled',!store.profile);
 }
@@ -10942,6 +10946,7 @@ function render(){
   if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
   else if(currentTab==='profile')app.innerHTML=renderProfileHub();
   else if(currentTab==='home')app.innerHTML=renderHome();
+  else if(currentTab==='arcade')app.innerHTML=window.GoWorkoutArcade?window.GoWorkoutArcade.dashboard(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):renderHome();
   else if(currentTab==='train')app.innerHTML=renderTrain();
   else if(currentTab==='together')app.innerHTML=renderTogether();
   else if(currentTab==='catalog')app.innerHTML=renderCatalog();
@@ -11130,6 +11135,14 @@ function startGoalFocusWorkout(){
   render();
 }
 function handleClick(event){
+  const arcadeOpen=event.target.closest('[data-action="open-arcade"]');
+  if(arcadeOpen){setTab('arcade');return;}
+  const arcadeChoice=event.target.closest('[data-arcade-action]');
+  if(arcadeChoice&&window.GoWorkoutArcade){
+    const result=window.GoWorkoutArcade.action(ensureTrainingProgram(),arcadeChoice.dataset.arcadeAction,arcadeChoice.dataset.arcadeValue);
+    if(result.changed){saveStore();render();if(result.message)toast(result.message);}
+    return;
+  }
   const settings=event.target.closest('[data-action="open-adaptive-settings"]');
   if(settings){setTab('goals');requestAnimationFrame(()=>document.querySelector('#adaptive-settings')?.scrollIntoView({block:'start',behavior:'smooth'}));return;}
   const adaptive=event.target.closest('[data-adaptive-action]');
