@@ -188,7 +188,7 @@
   }
   function preferences(training){
     const selected=mode(training);
-    return '<section class="adaptive-preferences"><p class="adaptive-kicker">TRAINING PREFERENCES</p><h3>How should GO Workout adapt your goals?</h3><p>Both choices protect your schedule and ask before major changes. This preference controls automatic <strong>goal-baseline</strong> updates; daily readiness safeguards still apply.</p>'+
+    return '<section id="adaptive-settings" class="adaptive-preferences"><p class="adaptive-kicker">TRAINING PREFERENCES</p><h3>How should GO Workout adapt your goals?</h3><p>Both choices protect your schedule and ask before major changes. This preference controls automatic <strong>goal-baseline</strong> updates; daily readiness safeguards still apply.</p>'+
       '<div class="adaptive-preference-grid">'+
       [['smart','✦','Smart Adaptive','Automatically refresh routine goal prescriptions after comparable baseline reassessments. Major strategy changes still require approval.','RECOMMENDED'],
        ['review','☷','Review Changes','Review goal strategy updates, including routine prescription changes, before they affect future goal work.','']].map(([id,icon,name,copy,tag])=>
