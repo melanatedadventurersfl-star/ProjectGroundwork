@@ -170,6 +170,12 @@ assert.ok(style.includes('.goal-strategy-panel .goal-strategy-modes button'),
 assert.ok(style.includes('#app > .goal-strategy-review:last-child'),
   'The final goal-review panel must clear bottom navigation and safe areas');
 assert.ok(goalsHtml.includes('goal-lab.css?v=20261010-contrast-fix'));
-assert.ok(goalsHtml.includes('goal-strategy.css?v=20261010-contrast-fix'));
+assert.match(goalsHtml,/goal-strategy\.css\?v=20261012-goal-impact-v1/);
+assert.match(goalsHtml,/goal-strategy\.js\?v=20261012-goal-impact-v1/);
+assert.match(style,/\.goal-impact-panel/);
+assert.match(S.panel(training,profile,plan,catalog,[]),/See what your baseline changes/);
+assert.match(S.panel(training,profile,plan,catalog,[]),/Did the workout change\?/);
+const markedWorkout={id:'goal-added',completionStatus:'complete',exercises:[{id:'push-up',goalStrategyId:push.id,skipped:false}]};
+assert.match(S.panel(training,profile,plan,catalog,[markedWorkout]),/Recorded goal additions in 1 workout/);
 
 console.log('GO Workout Goal-to-Training V2: approval, integration, protection, progress and review checks passed.');
