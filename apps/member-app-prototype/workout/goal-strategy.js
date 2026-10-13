@@ -322,7 +322,8 @@
         (g.unit==='seconds'?Math.max(8,Math.floor(baseline*.65)):Math.max(1,Math.floor(baseline*.55))) : null;
       const newPrescribed=proposed?.startReps?num(proposed.startReps):null;
       const actual=(history||[]).filter(entry=>{
-        return (entry.exercises||[]).some(ex=>ex.goalStrategyId===g.id) ||
+        if(entry.completionStatus!=='complete')return false;
+        return (entry.exercises||[]).some(ex=>ex.goalStrategyId===g.id && !ex.skipped) ||
           (entry.goalStrategyExtras||[]).includes(g.name);
       });
       let state='Not connected',why='This goal is being tracked, but has not been added to your workout strategy.';
@@ -368,7 +369,7 @@
         '<div class="goal-impact-metrics"><div><small>Initial baseline</small><strong>'+safe(baselineText)+'</strong></div><div><small>Current verified best</small><strong>'+safe(verifiedText)+'</strong></div><div><small>Target</small><strong>'+safe(target+' '+unit)+'</strong></div></div>'+
         '<div class="goal-impact-track" role="progressbar" aria-label="Verified '+safe(g.name)+' goal progress" aria-valuenow="'+progress+'" aria-valuemin="0" aria-valuemax="100"><i style="width:'+progress+'%"></i></div>'+
         '<div class="goal-impact-prescription"><div><small>Baseline-informed prescription</small><strong>'+safe(prescribed)+'</strong></div>'+
-        (initialChange?'<span>Earlier baseline: '+safe('2 sets × '+oldPrescribed+(g.unit==='seconds'?' sec':' reps'))+' → current: '+safe(prescribed)+'</span>':
+        (initialChange?'<span>At initial baseline the same rule suggests '+safe('2 sets × '+oldPrescribed+(g.unit==='seconds'?' sec':' reps'))+'. Current calculated work: '+safe(prescribed)+'. This comparison does not mean either workout was performed.</span>':
           '<span>Calculated from the latest comparable assessment, not from a predicted result.</span>')+'</div>'+
         '<p class="goal-impact-explanation"><b>Did the workout change?</b> '+safe(why)+'</p>'+
         (actual.length?'<p class="goal-impact-record">Recorded goal additions in '+actual.length+' workout'+(actual.length===1?'':'s')+'.</p>':
