@@ -53,6 +53,7 @@ let exerciseHistoryMetric = 'weight';
 let swapContext = null;
 let readinessContext = null;
 let trainPreviewContext = null;
+let trainPreviewWhyOpen = false;
 let workoutMapOpen = false;
 let workoutMapView = 'strength';
 let setEditContext = null;
@@ -5083,6 +5084,7 @@ function readinessPreviewSnapshot(day,readiness,setup){
     preview=window.GoWorkoutGoalStrategy.applyDay(ensureTrainingProgram(),preview,catalog,store.profile,{
       plan:store.plan,minutes:readiness.timeAvailable,soreness:readiness.soreness,energy:readiness.energy,sleep:readiness.sleep,
       shared:Boolean(readinessContext?.sharedDraft),
+      dayIndex:(scheduledEntriesForWeek(readinessContext?.scheduledDate?dateFromKey(readinessContext.scheduledDate):new Date()).find(e=>e.dateKey===readinessContext?.scheduledDate&&e.day.id===readinessContext?.dayId)?.index??null),
       allowExercise:ex=>setupAllowsExercise(ex,setup)&&!avoided(ex,store.profile||{})
     });
     recalculatePlanDay(preview);
@@ -5344,6 +5346,7 @@ async function startPreparedWorkout(){
       day=window.GoWorkoutGoalStrategy.applyDay(ensureTrainingProgram(),day,catalog,store.profile,{
         plan:store.plan,minutes:readiness.timeAvailable,soreness:readiness.soreness,energy:readiness.energy,sleep:readiness.sleep,
         shared:false,
+        dayIndex:(scheduledEntriesForWeek(context.scheduledDate?dateFromKey(context.scheduledDate):new Date()).find(e=>e.dateKey===context.scheduledDate&&e.day.id===context.dayId)?.index??null),
         allowExercise:ex=>setupAllowsExercise(ex,setup)&&!avoided(ex,store.profile||{})
       });
       recalculatePlanDay(day);
@@ -7305,6 +7308,7 @@ function trainSessionCard(entry,{primary=false}={}){
     :planned;
   const status=entry.status||'upcoming';
   const statusLabel=status==='complete'?'COMPLETED':status==='today'?'TODAY':status==='missed'?'AVAILABLE':status==='partial'?'PARTIAL':status==='skipped'?'SKIPPED':'UPCOMING';
+  const goalBadge=window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.scheduleBadge(ensureTrainingProgram(),store.profile,store.plan,catalog,entry,Math.max(1,currentWeekSchedule().length)):'';
   if(primary){
     const media=trainDayMedia(day);
     return '<article class="train-next-session-card status-'+status+(media?' has-media':'')+'">'+
@@ -7312,7 +7316,7 @@ function trainSessionCard(entry,{primary=false}={}){
       '<div class="train-next-session-shade"></div>'+
       '<div class="train-next-session-copy"><span>'+statusLabel+'</span><h3>'+esc(day?.name||'Training')+'</h3><p>'+esc(day?.focus||'Training')+'</p>'+
         '<small>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+' · '+esc(workoutStructureLabel(day?.trainingStructure?.applied||'straight'))+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+
-        trainExercisePreviewMarkup(day,5)+
+        trainExercisePreviewMarkup(day,5)+goalBadge+
       '</div>'+
       '<div class="train-next-session-action">'+(!store.activeWorkout?'<button class="button primary-action" data-action="preview-train-day" data-day-id="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">PREVIEW WORKOUT</button>':'')+'</div>'+
     '</article>';
@@ -7320,7 +7324,7 @@ function trainSessionCard(entry,{primary=false}={}){
   return '<article class="train-session-row status-'+status+'">'+
     '<div class="train-session-node">'+(status==='complete'?'✓':entry.date.getDate())+'</div>'+
     '<div class="train-session-copy"><span>'+statusLabel+' · '+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+'</span><strong>'+esc(day?.name||'Training')+'</strong>'+
-      (status==='complete'?trainCompletedSessionMarkup(entry):'<small>'+esc(day?.focus||'Training')+' · '+esc(workoutStructureLabel(day?.trainingStructure?.applied||'straight'))+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+trainExercisePreviewMarkup(day,4))+
+      (status==='complete'?trainCompletedSessionMarkup(entry):'<small>'+esc(day?.focus||'Training')+' · '+esc(workoutStructureLabel(day?.trainingStructure?.applied||'straight'))+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+trainExercisePreviewMarkup(day,4))+goalBadge+
     '</div>'+
     (status!=='complete'&&!store.activeWorkout?'<button class="text-button" data-action="preview-train-day" data-day-id="'+esc(entry.day.id)+'" data-scheduled-date="'+esc(entry.dateKey)+'">PREVIEW</button>':'')+
   '</article>';
@@ -7560,6 +7564,7 @@ function openTrainPreview(dayId,scheduledDate=''){
   if(store.activeWorkout){currentTab='workout';render();return;}
   const entry=scheduledEntryFor(dayId,scheduledDate);
   if(!entry)return;
+  trainPreviewWhyOpen=false;
   trainPreviewContext={dayId,scheduledDate:scheduledDate||entry.dateKey,entry};
   render();
 }
@@ -7632,9 +7637,12 @@ function renderTrainPreviewModal(){
     '<section class="exercise-modal train-preview-modal" role="dialog" aria-modal="true" aria-label="Workout preview" data-train-preview-panel>'+
       '<button class="modal-close" type="button" data-action="close-train-preview" aria-label="Close workout preview">×</button>'+
       '<div class="train-preview-head"><p class="eyebrow">'+esc(entry.date.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))+'</p><h2>'+esc(day?.name||'Training')+'</h2><p>'+esc(day?.focus||'Training')+' · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min · '+runnerPhaseMinutes(warmup)+' min warm-up · '+runnerPhaseMinutes(cooldown)+' min cooldown</p></div>'+
-      phaseRows(warmup,'WARM-UP')+
+      '<div class="adaptive-preview-tabs" role="tablist" aria-label="Workout details"><button type="button" role="tab" aria-selected="'+(!trainPreviewWhyOpen)+'" class="'+(!trainPreviewWhyOpen?'selected':'')+'" data-action="adaptive-preview-tab" data-view="workout">Exercises</button><button type="button" role="tab" aria-selected="'+trainPreviewWhyOpen+'" class="'+(trainPreviewWhyOpen?'selected':'')+'" data-action="adaptive-preview-tab" data-view="why">Why This Workout?</button></div>'+
+      (trainPreviewWhyOpen&&window.GoWorkoutAdaptiveExperience?
+        window.GoWorkoutAdaptiveExperience.why(ensureTrainingProgram(),store.profile,store.plan,catalog,entry):
+        phaseRows(warmup,'WARM-UP')+
       '<section class="train-preview-phase strength structured"><div class="train-preview-phase-head"><span>STRENGTH · '+esc(workoutStructureLabel(day?.trainingStructure?.applied||'straight').toUpperCase())+'</span><strong>'+(day?.exercises?.length||0)+' exercises</strong></div>'+renderStructuredWorkoutRoadmap(day)+'</section>'+
-      phaseRows(cooldown,'COOLDOWN')+
+      phaseRows(cooldown,'COOLDOWN'))+
       '<div class="train-preview-actions"><button class="button primary-action" data-action="prepare-previewed-workout">SET UP THIS SESSION</button><small>Equipment and readiness choices stay session-specific. The final cooldown updates from the work you actually complete.</small></div>'+
     '</section></div>';
 }
@@ -7645,6 +7653,7 @@ function renderTrain(){
     '<div class="clean-page-head train-page-head"><div><p class="eyebrow">TRAIN</p><h2>Your program, in motion.</h2><p>See what is next, what changed, and why each week is different.</p></div></div>'+
     (window.GoWorkoutGoalLab?window.GoWorkoutGoalLab.shortcuts(ensureTrainingProgram(),'train'):'')+
     (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.teaser(ensureTrainingProgram(),p,plan):'')+
+    (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.goalsSummary(ensureTrainingProgram(),p,plan,catalog,currentWeekSchedule()):'')+
     (store.activeWorkout?'<button class="clean-resume-card" data-action="resume"><div><span>WORKOUT IN PROGRESS</span><strong>'+esc(store.activeWorkout.routineName)+'</strong></div><em>RESUME →</em></button>':'')+
     renderTrainTabs()+
     (trainView==='program'?renderTrainProgramView():trainView==='exercises'?renderTrainExercisesView():renderTrainWeekView())+
@@ -8689,7 +8698,7 @@ function renderProfileHub(){
       '<button data-action="open-avatar-picker"><i class="settings-icon avatar-settings-icon" aria-hidden="true">'+renderAvatarFigure(avatar.id,'settings-avatar-figure')+'</i><div><span>TRAINING AVATAR</span><strong>'+esc(avatar.name)+' · '+esc(avatar.presentation)+' · '+esc(avatar.build)+'</strong></div><em>›</em></button>'+
       '<button data-action="edit-profile"><i class="settings-icon" aria-hidden="true">◌</i><div><span>TRAINING PROFILE</span><strong>'+esc(workoutStructureLabel(profileWorkoutStructure(p)))+' · Goals, schedule, equipment, preferences</strong></div><em>›</em></button>'+
       '<button data-action="review-onboarding"><i class="settings-icon" aria-hidden="true">↻</i><div><span>REVISIT TRAINING SETUP</span><strong>Update goals, schedule, equipment, restrictions and preferences</strong></div><em>›</em></button>'+
-      '<button data-tab="goals"><i class="settings-icon" aria-hidden="true">◎</i><div><span>PERSONAL GOALS</span><strong>Discover your baseline, measure progress, and train toward a target</strong></div><em>›</em></button>'+
+      '<button data-tab="goals"><i class="settings-icon" aria-hidden="true">◎</i><div><span>PERSONAL GOALS & ADAPTATION</span><strong>Baselines, training impact, strategy approval, and Smart Adaptive preferences</strong></div><em>›</em></button>'+
       '<button data-action="train"><i class="settings-icon" aria-hidden="true">▦</i><div><span>CURRENT PROGRAM</span><strong>Block '+context.blockNumber+' · Week '+context.blockWeek+'</strong></div><em>›</em></button>'+
       '<button data-action="together"><i class="settings-icon" aria-hidden="true">◎</i><div><span>WORKOUT PARTNERS</span><strong>'+shared.partners.length+' saved partner'+(shared.partners.length===1?'':'s')+'</strong></div><em>›</em></button>'+
       '<button data-action="open-cue-settings"><i class="settings-icon" aria-hidden="true">◉</i><div><span>WORKOUT SETTINGS</span><strong>Voice, sound, haptics, flash</strong></div><em>›</em></button>'+
@@ -9335,6 +9344,7 @@ function renderHome(){
       (x.state==='active'?'<div class="home-state-secondary home-state-secondary-v4"><button class="text-button" data-action="discard-recovered">DISCARD</button><button class="text-button" data-action="discard-and-new">START NEW</button></div>':'')+
     '</section>'+
     (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.homePanel(ensureTrainingProgram(),p,plan):'')+
+    (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.notices(ensureTrainingProgram()):'')+
     '<section class="clean-section home-week-section home-week-section-v3 home-week-section-v4"><div class="clean-section-head home-week-head"><div><p class="eyebrow">THIS WEEK</p><h3>'+stats.completed+' of '+stats.planned+' workouts complete</h3></div><button class="text-button" data-action="train">SEE WEEK</button></div>'+
       '<div class="home-week-metrics"><div><strong>'+stats.completed+'/'+stats.planned+'</strong><span>WORKOUTS</span></div><div><strong>'+(stats.minutesKnown?stats.minutes:'—')+' <small>MIN</small></strong><span>TRAINED</span></div><div><strong>'+stats.remaining+'</strong><span>LEFT</span></div></div>'+
       renderHomeWeekPulse(schedule)+
@@ -10935,7 +10945,9 @@ function render(){
   else if(currentTab==='progress')app.innerHTML=renderProgress();
   else if(currentTab==='goals')app.innerHTML=window.GoWorkoutGoalLab?
     window.GoWorkoutGoalLab.render(ensureTrainingProgram())+
-    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.panel(ensureTrainingProgram(),store.profile,store.plan,catalog,store.history):''):renderTrain();
+    (window.GoWorkoutGoalStrategy?window.GoWorkoutGoalStrategy.panel(ensureTrainingProgram(),store.profile,store.plan,catalog,store.history,currentWeekSchedule()):'')+
+    (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.goalsSummary(ensureTrainingProgram(),store.profile,store.plan,catalog,currentWeekSchedule())+
+      window.GoWorkoutAdaptiveExperience.preferences(ensureTrainingProgram()):''):renderTrain();
   else if(currentTab==='summary')app.innerHTML=renderSummary();
   else app.innerHTML=renderHome();
   if(currentTab==='summary'&&window.GoWorkoutGoalStrategy)app.insertAdjacentHTML('beforeend',window.GoWorkoutGoalStrategy.checkin(ensureTrainingProgram(),store.history));
@@ -11113,16 +11125,31 @@ function startGoalFocusWorkout(){
   render();
 }
 function handleClick(event){
+  const adaptive=event.target.closest('[data-adaptive-action]');
+  if(adaptive&&window.GoWorkoutAdaptiveExperience){
+    if(adaptive.dataset.adaptiveAction==='mode'){
+      const changed=window.GoWorkoutAdaptiveExperience.setMode(ensureTrainingProgram(),adaptive.dataset.adaptiveMode);
+      if(changed){saveStore();render();toast('Goal adaptation preference saved.');}
+      return;
+    }
+  }
+  const previewTab=event.target.closest('[data-action="adaptive-preview-tab"]');
+  if(previewTab){trainPreviewWhyOpen=previewTab.dataset.view==='why';render();return;}
   const goalButton=event.target.closest('[data-goal-action]');
   if(goalButton&&window.GoWorkoutGoalLab){
     if(goalButton.dataset.goalAction==='start-session'){startGoalFocusWorkout();return;}
     const isStrategy=goalButton.dataset.goalAction.startsWith('strategy-');
+    const adaptiveBefore=!isStrategy&&window.GoWorkoutAdaptiveExperience?
+      window.GoWorkoutAdaptiveExperience.snapshot(ensureTrainingProgram(),store.profile,store.plan):null;
     const result=isStrategy&&window.GoWorkoutGoalStrategy?
       window.GoWorkoutGoalStrategy.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton,{
         profile:store.profile,plan:store.plan,catalog,history:store.history
       }):
       window.GoWorkoutGoalLab.action(ensureTrainingProgram(),goalButton.dataset.goalAction,goalButton);
     if(result?.changed){
+      if(!isStrategy&&window.GoWorkoutAdaptiveExperience){
+        window.GoWorkoutAdaptiveExperience.afterGoalAction(adaptiveBefore,ensureTrainingProgram(),store.profile,store.plan,catalog);
+      }
       saveStore();
       if(isStrategy&&goalButton.dataset.goalAction==='strategy-open'&&currentTab!=='goals')setTab('goals');
       else render();
