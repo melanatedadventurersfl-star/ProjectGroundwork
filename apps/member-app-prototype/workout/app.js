@@ -11507,6 +11507,8 @@ document.addEventListener('visibilitychange',()=>{
 });
 window.GoWorkoutConnectionsBridge={
   client:()=>workoutSupabase,
+  tab:()=>currentTab,
+  connectionName:id=>window.GoWorkoutConnections?.nameFor?.(id),
   userId:()=>store.account?.status==='connected'?store.account.userId:null,
   displayName:()=>displayName(),
   goals:()=>window.GoWorkoutGoalLab?.ensure(ensureTrainingProgram())?.goals||[],
