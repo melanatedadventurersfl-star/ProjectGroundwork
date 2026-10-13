@@ -211,25 +211,32 @@
   }
   function field(training,name,value){
     const d=ensure(training).draft;
-    if(!d||!['label','unit','target','deadline','priority','variant','result'].includes(name))return false;
+    if(!d||!['label','unit','target','deadline','priority','variant','result','elapsedText','targetTimeText','measurementSource'].includes(name))return false;
     if(name==='unit'){
-      if(d.kind!=='custom'||!['reps','seconds','miles'].includes(value))return false;
+      if(!['reps','seconds',...DISTANCE_UNITS].includes(value))return false;
+      if(d.kind!=='custom'&&!(isDistanceUnit(template(d.kind).unit)&&isDistanceUnit(value)))return false;
       if(d.unit!==value){
-        d.unit=value;
-        d.metric=value==='seconds'?'single hold':value==='miles'?'continuous distance':'continuous';
-        const restore=Boolean(d.goalId&&d.originalUnit===value);
-        d.result=restore?number(d.originalResult):0;
-        d.tested=restore;
-        d.testedAt=null;
-        d.startedAt=null;
-        d.startedElapsed=0;
-        d.effort='challenging';
-        d.target=value==='miles'?Math.max(.01,Math.round(number(d.target)*100)/100):Math.max(1,Math.round(number(d.target)));
+        const old=d.unit,compatibleDistance=isDistanceUnit(old)&&isDistanceUnit(value);
+        if(compatibleDistance){
+          d.target=convertDistance(d.target,old,value);
+          d.result=convertDistance(d.result,old,value);
+        }else{
+          const restore=Boolean(d.goalId&&d.originalUnit===value);
+          d.result=restore?number(d.originalResult):0;
+          d.tested=restore;d.testedAt=null;d.elapsedSeconds=0;d.elapsedText='';
+          d.target=Math.max(isDistanceUnit(value)?.01:1,rounded(d.target,value));
+        }
+        d.unit=value;d.metric=value==='seconds'?'single hold':isDistanceUnit(value)?'continuous distance':'continuous';
+        d.startedAt=null;d.startedElapsed=0;
       }
       return true;
     }
     if(name==='target'||name==='result')d[name]=Math.max(0,Math.min(100000,number(value)));
-    else d[name]=String(value).slice(0,100);
+    else if(name==='elapsedText'||name==='targetTimeText')d[name]=String(value).trim().slice(0,16);
+    else if(name==='measurementSource'){
+      if(!['manual','machine','watch','app'].includes(value))return false;
+      d.measurementSource=value;
+    }else d[name]=String(value).slice(0,100);
     return true;
   }
   function action(training,name,node){
