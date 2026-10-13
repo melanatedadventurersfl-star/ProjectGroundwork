@@ -9736,7 +9736,8 @@ function renderWorkout(){
   const timerBits=[w.phase==='intro'?'':'<span>Workout <b id="elapsed-clock">'+formatClock(workoutElapsedSeconds(w))+'</b></span>',exerciseElapsed,warmElapsed].filter(Boolean);
   const headerTimers=w.phase==='intro'?'':('<small class="runner-header-timers">'+timerBits.join('<i>·</i>')+'</small>');
   return '<div class="guided-shell cleaned-workout runner-v2 phase-'+esc(w.phase)+'"><div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
-    '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+headerTimers+'</div><button class="circle-action" data-action="open-workout-map" aria-label="Workout preview">•••</button></header>'+
+    '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+headerTimers+'</div><button class="circle-action" data-action="open-workout-map" aria-label="Workout preview">•••</button>'+
+      (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.headerPanel(ensureTrainingProgram(),w):'')+'</header>'+
     (w.phase==='warmup'?'<div class="runner-top-progress"><span style="width:'+(((warmSnap?.index||0)+1)/Math.max(1,w.warmup.length)*100)+'%"></span></div>':activeStrength?'<div class="runner-top-progress"><span style="width:'+((pos.ei+1)/Math.max(1,w.exercises.length)*100)+'%"></span></div>':'')+
     (w.phase==='intro'&&window.GoWorkoutAdaptiveExperience?'<details class="adaptive-live-why"><summary>◎ WHY THIS WORKOUT?</summary>'+
       window.GoWorkoutAdaptiveExperience.why(ensureTrainingProgram(),store.profile,store.plan,catalog,
@@ -9749,7 +9750,7 @@ function renderWorkout(){
     '<section class="exercise-stage runner-v2-stage">'+(w.phase==='intro'?renderWorkoutIntro(w):w.phase==='warmup-routine'?renderWarmupRoutine(w):w.phase==='warmup-complete'?renderWarmupComplete(w):w.phase==='review'?renderWorkoutReview(w):w.phase==='exercise-transition'?renderExerciseTransition(w):w.phase==='exercise-review'?renderExerciseReview(pos):w.phase==='warmup'||w.phase==='cooldown'?renderTimedStage(w):w.phase==='pre-set'?renderPreSet(pos):w.phase==='timed-set'?renderTimedWorkSet(pos):w.phase==='side-switch'?renderSideSwitch(pos):w.phase==='partner-wait'?renderSharedPartnerWait(pos):w.phase==='rest'?renderRest(pos):w.phase==='calibrate'?renderCalibration(pos):w.phase==='feedback'?renderExerciseFeedback(pos):renderWorkSet(pos))+'</section>'+
     (activeStrength?renderRunnerExerciseNavigation(pos):'')+
     (!guided&&w.phase!=='cooldown'&&w.phase!=='review'?'<div class="runner-v2-quiet">'+(activeStrength?'':'<button class="text-button" data-action="open-workout-map">WORKOUT MAP</button>')+'<button class="text-button muted" data-action="home">LEAVE & RESUME</button></div>':'')+
-    (window.GoWorkoutRepBattle?window.GoWorkoutRepBattle.dockPanel(ensureTrainingProgram(),w):'')+'</div>';
+    '</div>';
 }
 
 function runnerStrengthContext(ex,set,setIndex=0){
@@ -10989,7 +10990,6 @@ function render(){
   syncNav();syncLiveBadge();syncShellIdentity();persistUiState();
   prefetchUpcomingWorkoutMedia();
   prefetchCoachTimeline();
-  window.GoWorkoutRepBattle?.syncDock();
 }
 
 function updateTimers(){
