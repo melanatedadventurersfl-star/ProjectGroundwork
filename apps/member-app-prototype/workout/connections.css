@@ -1,0 +1,37 @@
+/* GO Workout Connections V1. Scoped to the Together tab. */
+.connections-v1{display:grid;gap:16px;margin:20px 0 26px;color:var(--text,#14372a)}
+.connections-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.connections-kicker{font-size:.68rem;font-weight:800;letter-spacing:.13em;color:#38765c}
+.connections-head h3{margin:5px 0 6px;font-size:clamp(1.3rem,3vw,1.65rem);line-height:1.2}
+.connections-head p,.connections-muted{font-size:.85rem;line-height:1.5;color:#557165;margin:5px 0 12px}
+.connections-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.connections-card{border:1px solid #d8e3da;background:#fff;border-radius:18px;padding:16px;min-width:0;display:grid;align-content:start;gap:11px}
+.connections-card h4{font-size:1rem;margin:0;color:#14372a}
+.connections-field{display:grid;gap:7px;font-size:.78rem;font-weight:700;color:#3b5a49}
+.connections-field input,.connections-search input,.connections-share-row select{width:100%;min-width:0;border:1px solid #bfcfc4;border-radius:11px;background:#fff;color:#183a2a;padding:12px;font:inherit;font-size:.9rem}
+.connections-toggle{display:flex;align-items:flex-start;gap:10px;font-size:.85rem;color:#305341;line-height:1.4}
+.connections-toggle input{accent-color:#235c41;margin-top:3px;flex:none;width:17px;height:17px}
+.connections-search{display:flex;gap:8px;align-items:center;min-width:0}
+.connections-search input{flex:1}
+.connections-button{background:#195b42;color:#fff;border:0;border-radius:10px;padding:11px 14px;font-weight:800;font-size:.78rem;min-height:42px;cursor:pointer}
+.connections-small{border:0;border-radius:10px;padding:9px 11px;background:#ecf2e5;color:#154c35;font-size:.75rem;font-weight:800;cursor:pointer}
+.connections-subtle{border:0;background:none;color:#355f4b;font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;padding:5px}
+.connections-person{display:flex;align-items:center;gap:9px;min-width:0;flex-wrap:wrap}
+.connections-person>div:nth-child(2){flex:1;min-width:95px;display:grid;gap:3px}
+.connections-person strong{font-size:.9rem;line-height:1.25;overflow-wrap:anywhere}
+.connections-person small,.connections-inbox small{font-size:.72rem;color:#647869}
+.connections-avatar{width:40px;height:40px;flex:none;border-radius:50%;background:#dcebdc;color:#17442d;display:grid;place-items:center;font-weight:800}
+.connections-friend{display:grid;gap:10px;padding:12px 0;border-top:1px solid #e2ebe2}
+.connections-friend:first-of-type{border-top:0;padding-top:0}
+.connections-goal{background:#f2f6ee;border-radius:11px;padding:11px 12px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;font-size:.83rem}
+.connections-goal span{color:#256a4d;font-weight:700}
+.connections-goal small{color:#536e5d}
+.connections-share-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(135px,190px);gap:12px;align-items:center;border-top:1px solid #e7eee8;padding-top:12px;font-size:.88rem}
+.connections-share-row span{font-weight:700;overflow-wrap:anywhere}
+.connections-share-row select{font-size:.78rem;padding:10px}
+.connections-inbox{display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap;border-top:1px solid #e2ebe2;padding-top:11px}
+.connections-inbox p{margin:0;flex-basis:100%;font-size:.85rem;line-height:1.4}
+.connections-inbox strong{font-size:.8rem}
+.connections-error{background:#fff1ef;color:#922c29;border:1px solid #e5aaa3;border-radius:10px;padding:12px;font-size:.85rem}
+@media(max-width:680px){.connections-grid{grid-template-columns:1fr}.connections-card{padding:15px}.connections-share-row{grid-template-columns:1fr}.connections-head{flex-wrap:wrap}.connections-search input{width:0}.connections-person{row-gap:6px}}
+@media(prefers-reduced-motion:reduce){.connections-v1 *{scroll-behavior:auto!important}}
