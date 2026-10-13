@@ -143,30 +143,34 @@
   }
   function targetStage(d){
     return '<div class="goal-wizard"><div class="goal-step">PERSONAL TARGET</div><h2>Make your goal measurable.</h2><p>Keep your ambition. Your first milestone will be based on your discovery results.</p>'+
-      (d.kind==='custom'?'<label>Goal name<input data-goal-field="label" maxlength="64" value="'+safe(d.label)+'" placeholder="My goal"></label>'+
-        '<label>How will you measure it?<select data-goal-field="unit"><option value="reps" '+(d.unit==='reps'?'selected':'')+'>Repetitions</option><option value="seconds" '+(d.unit==='seconds'?'selected':'')+'>Seconds</option><option value="miles" '+(d.unit==='miles'?'selected':'')+'>Miles</option></select></label>':'')+
-      '<label>Target ('+safe(d.unit)+')<input type="number" data-goal-field="target" min="'+(d.unit==='miles'?'0.01':'1')+'" max="100000" step="'+(d.unit==='miles'?'0.01':'1')+'" value="'+safe(d.target)+'"></label>'+
+      ((d.kind==='custom'?'<label>Goal name<input data-goal-field="label" maxlength="64" value="'+safe(d.label)+'" placeholder="My goal"></label>':'')+(d.kind==='custom'||isDistanceUnit(d.unit)?
+        '<label>How will you measure it?<select data-goal-field="unit">'+(d.kind==='custom'?[["reps","Repetitions"],["seconds","Seconds"],["meters","Meters (m)"],["kilometers","Kilometers (km)"],["miles","Miles (mi)"],["yards","Yards (yd)"],["feet","Feet (ft)"]]:[["meters","Meters (m)"],["kilometers","Kilometers (km)"],["miles","Miles (mi)"],["yards","Yards (yd)"],["feet","Feet (ft)"]]).map(([unit,label])=>'<option value="'+unit+'" '+(d.unit===unit?'selected':'')+'>'+label+'</option>').join('')+'</select></label>':''))+
+      '<label>Target ('+safe(d.unit)+')<input type="number" data-goal-field="target" min="'+(isDistanceUnit(d.unit)?'0.01':'1')+'" max="100000" step="'+(isDistanceUnit(d.unit)?'0.01':'1')+'" value="'+safe(d.target)+'"></label>'+
+      (d.unit!=='seconds'?'<label>Time target (optional, m:ss or h:mm:ss)<input data-goal-field="targetTimeText" inputmode="numeric" placeholder="9:00" value="'+safe(d.targetTimeText||'')+'"></label><p class="goal-footnote">Example: Row 2,000 m in 9:00. Leave blank for a distance-only or rep-only goal.</p>':'')+
       '<label>Deadline (optional)<select data-goal-field="deadline">'+[['none','No deadline'],['4','4 weeks'],['8','8 weeks'],['12','12 weeks']].map(([v,t])=>'<option value="'+v+'" '+(d.deadline===v?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
       '<label>Priority<select data-goal-field="priority"><option value="primary" '+(d.priority==='primary'?'selected':'')+'>Primary goal</option><option value="secondary" '+(d.priority==='secondary'?'selected':'')+'>Secondary goal</option></select></label>'+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="target-next">'+(d.tested?'REVIEW MY PLAN':'TEST MY BASELINE')+' →</button></div></div>';
   }
   function assessment(d){
-    const isTimer=d.unit==='seconds',isDistance=d.unit==='miles',t=template(d.kind);
+    const timed=d.unit==='seconds',distance=isDistanceUnit(d.unit),t=template(d.kind);
     let measurement='';
-    if(isDistance){
-      measurement='<label>Distance you completed ('+safe(d.unit)+')<input data-goal-field="result" type="number" min="0" max="10000" step="0.01" value="'+safe(d.result)+'"></label>';
-    }else if(isTimer){
-      const elapsed=d.startedAt?Math.min(1800,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):number(d.result);
-      measurement='<div class="goal-measure"><span>HOLD TIMER</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'">'+elapsed+'s</strong>'+
-        '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>';
+    if(timed){
+      measurement='<label>Completed time (seconds)<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="86400" step="1" value="'+safe(d.result)+'"></label>';
     }else{
-      measurement='<div class="goal-measure"><span>COMPLETED REPS</span><strong>'+safe(d.result)+'</strong><div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div></div>';
+      measurement=(distance?'<label>Distance completed ('+safe(d.unit)+')':'<label>Completed reps')+
+        '<input data-goal-field="result" type="number" inputmode="decimal" min="0" max="100000" step="'+(distance?'0.01':'1')+'" value="'+safe(d.result)+'"></label>'+
+        (d.unit==='reps'?'<div class="goal-counter-actions"><button aria-label="Subtract a repetition" data-goal-action="count-down">−</button><button data-goal-action="count-up">+ 1 REP</button></div>':'')+
+        '<label>Elapsed time (optional, m:ss or h:mm:ss)<input data-goal-field="elapsedText" inputmode="numeric" placeholder="9:00" value="'+safe(d.elapsedText||'')+'"></label>';
     }
+    const elapsed=d.startedAt?Math.min(86400,Math.floor((Date.now()-Date.parse(d.startedAt))/1000)+number(d.startedElapsed)):timed?number(d.result):number(d.elapsedSeconds);
+    const stopwatch='<div class="goal-measure"><span>'+ (timed?'HOLD TIMER':'OPTIONAL STOPWATCH')+'</span><strong data-goal-clock data-started-at="'+safe(d.startedAt||'')+'" data-started-elapsed="'+safe(d.startedElapsed||0)+'">'+formatDuration(elapsed)+'</strong>'+
+      '<div class="goal-counter-actions"><button class="goal-primary" data-goal-action="'+(d.startedAt?'timer-stop':'timer-start')+'">'+(d.startedAt?'STOP TIMER':'START TIMER')+'</button></div></div>';
     return '<div class="goal-wizard"><div class="goal-step">BASELINE DISCOVERY · ACTION FIRST</div><h2>Let’s see what you can do.</h2>'+
       '<p>'+safe(t.instruction)+'</p><div class="goal-guidance"><strong>'+safe(d.label)+'</strong><span>'+safe(t.cue)+'</span></div>'+
       '<label>Exercise variation<input data-goal-field="variant" maxlength="100" value="'+safe(d.variant)+'" placeholder="Standard, assisted, elevated..."></label>'+
-      measurement+
-      '<p class="goal-footnote">Your results are self-recorded. Stop for pain, dizziness, or loss of control. You can retest later.</p>'+
+      measurement+stopwatch+
+      '<label>Measurement source<select data-goal-field="measurementSource">'+[['manual','Entered manually'],['machine','Exercise machine'],['watch','Watch or tracker'],['app','App timer']].map(([value,label])=>'<option value="'+value+'" '+(d.measurementSource===value?'selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
+      '<p class="goal-footnote">You can enter a machine or watch result even if you never started the app timer. Stop for pain, dizziness, or loss of control.</p>'+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="assessment-done">FINISH TEST →</button></div></div>';
   }
   function feedback(d){
