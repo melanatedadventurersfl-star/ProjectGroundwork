@@ -42,7 +42,7 @@ timed.exercises[0].sets[3]={completed:true,reps:'4',durationSeconds:4,plannedRep
 assert.equal(battle.progress(timed).completed,4,'Early set remains saved as a completed set');
 assert.equal(battle.progress(timed).damageDealt,52,'Four of 37 seconds adds only two damage to 50 HP');
 assert.equal(battle.progress(timed).remainingHp,48,'Early ending cannot yield full 17 HP');
-assert.equal(battle.progress(timed).nextHit,17,'Next full timed set can still do its usual damage');
+assert.equal(battle.progress(timed).nextHit,16,'Next full timed set still deals its correct rounded share');
 const allTimed=create('all-timed',6,5);
 allTimed.exercises[0].loadMode='timed';
 allTimed.exercises[0].sets[5]={completed:true,reps:'4',durationSeconds:4,plannedReps:'37',
