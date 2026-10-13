@@ -33,12 +33,48 @@ assert.equal(battle.progress(skipped).remainingHp,25,'Skipped work never deals d
 assert.equal(battle.progress(skipped).victory,false,'Skipping cannot silently mark boss defeated');
 const partial=create('partial',3,2);
 assert.equal(battle.progress(partial).remainingHp,33,'Partial session keeps accurate saved progress');
+// Timed sets that finish early earn fractional battle damage only.
+const timed=create('timed-37',6,3);
+timed.exercises[0].loadMode='timed';
+timed.phase='rest';
+timed.exercises[0].sets[3]={completed:true,reps:'4',durationSeconds:4,plannedReps:'37',
+  repBattleTimedTargetSeconds:37,repBattleTimedActualSeconds:4};
+assert.equal(battle.progress(timed).completed,4,'Early set remains saved as a completed set');
+assert.equal(battle.progress(timed).damageDealt,52,'Four of 37 seconds adds only two damage to 50 HP');
+assert.equal(battle.progress(timed).remainingHp,48,'Early ending cannot yield full 17 HP');
+assert.equal(battle.progress(timed).nextHit,16,'Next full timed set still deals its correct rounded share');
+const allTimed=create('all-timed',6,5);
+allTimed.exercises[0].loadMode='timed';
+allTimed.exercises[0].sets[5]={completed:true,reps:'4',durationSeconds:4,plannedReps:'37',
+  repBattleTimedTargetSeconds:37,repBattleTimedActualSeconds:4};
+assert.equal(battle.progress(allTimed).completed,6,'Workout completion count is unchanged');
+assert.equal(battle.progress(allTimed).victory,false,'Partial timed effort never creates a false Guardian victory');
+assert.equal(battle.progress(allTimed).nextHit,0,'No more attacks when prescribed sets are exhausted');
+const fullTimed=create('full-timed',6,6);
+fullTimed.exercises[0].loadMode='timed';
+fullTimed.exercises[0].sets.forEach(set=>Object.assign(set,{reps:'37',durationSeconds:37,plannedReps:'37',
+  repBattleTimedTargetSeconds:37,repBattleTimedActualSeconds:37}));
+assert.equal(battle.progress(fullTimed).remainingHp,0,'Full timed sets still defeat the Guardian');
+const extraTimed=create('extra-timed',1,1);
+extraTimed.exercises[0].loadMode='timed';
+Object.assign(extraTimed.exercises[0].sets[0],{reps:'45',durationSeconds:45,plannedReps:'37',
+  repBattleTimedTargetSeconds:37,repBattleTimedActualSeconds:45});
+assert.equal(battle.progress(extraTimed).damageDealt,100,'Extra effort does not grant overpowered attacks');
+const historicalTimed=create('legacy-timed',6,3);
+historicalTimed.exercises[0].loadMode='timed';
+historicalTimed.exercises[0].sets[3]={completed:true,reps:'4',durationSeconds:4,plannedReps:'37'};
+assert.equal(battle.progress(historicalTimed).remainingHp,48,'Saved legacy timed work is correctly restored');
 const empty=create('recovery',0);
 assert.equal(battle.progress(empty).victory,false,'Guided-only workout has no artificial fight');
 const account={arcade:{mode:'companion',outfit:'explorer'}};
 assert.equal(battle.noteCompletedSet(account,mini,mini.exercises[0],mini.exercises[0].sets[2]),false,'No damage animations unless Arcade mode');
 assert.equal(mini.arcadeBattlePlayed,undefined,'Companion does not mark game participation');
 arcade.action(account,'mode','arcade');
+assert.equal(battle.noteCompletedSet(account,timed,timed.exercises[0],timed.exercises[0].sets[3]),true);
+assert.match(battle.postSetMoment(account,timed,'<span>avatar</span>'),/Partial hit!/);
+assert.match(battle.postSetMoment(account,timed,'<span>avatar</span>'),/−2 HP/);
+assert.match(battle.postSetMoment(account,timed,'<span>avatar</span>'),/4\/37 sec/);
+
 const prescription=JSON.stringify(mini.exercises);
 assert.equal(battle.noteCompletedSet(account,mini,mini.exercises[0],mini.exercises[0].sets[2]),true);
 assert.equal(mini.arcadeBattlePlayed,true,'Only played battle sessions are flagged');
@@ -107,6 +143,9 @@ assert.match(battleCss,/\.runner-v2-header>\.rep-header-status/,'HUD occupies an
 assert.doesNotMatch(battleCss,/\.rep-battle-dock\s*\{/,'Fixed overlapping dock removed');
 assert.match(app,/dataset\.arcadeAction==='battle-jump'/,'VIEW returns to full arena');
 assert.match(app,/GoWorkoutRepBattle\.postSetMoment/,'Game attack visible inside rest and feedback');
+assert.match(app,/repBattleTimedTargetSeconds=duration/,'Timed set preserves actual prescribed duration');
+assert.match(app,/repBattleTimedActualSeconds=num\(pos\.set\.reps\)/,'Actual timed seconds are recorded before the game scores the set');
+assert.match(app,/isTimed\?last\.reps\+' sec'/,'Rest report displays seconds instead of reps');
 assert.match(app,/setCollapsed\(training,false\)/,'VIEW opens the full game instead of returning to a collapsed card');
 assert.match(battleCss,/\.rep-hit-moment/,'Compact attack scene has in-context styling');
 console.log('GO Workout Rep Battle V1.1 tests passed.');
