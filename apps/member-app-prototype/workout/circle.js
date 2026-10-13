@@ -140,10 +140,12 @@
     const newRequests=state.agreements.filter(a=>a.status==='pending'&&a.partner_id===user());
     const agreementsByPerson=new Set(state.agreements.map(a=>a.requester_id===user()?a.partner_id:a.requester_id));
     const myGoals=(bridge()?.goals?.()||[]).filter(g=>['goal_only','status','details'].includes(g.shareLevel));
+    const next=bridge()?.nextWorkout?.();
     return '<div class="circle-v2" aria-label="Your Circle dashboard">'+
       '<div class="circle-v2-hero"><div><small>GO WORKOUT · TOGETHER</small><h3>Your Circle</h3><p>See your people, celebrate progress, and keep each other moving.</p></div><div class="circle-v2-mark" aria-hidden="true">♥</div></div>'+
       '<div class="circle-v2-stats"><div><strong>'+accepted.length+'</strong><span>Connections</span></div><div><strong>'+unread.length+'</strong><span>New activity</span></div><div><strong>'+active.length+'</strong><span>Accountability partners</span></div></div>'+
       (state.error?'<p role="alert" class="connections-error">'+esc(state.error)+'</p>':'')+
+      '<section class="circle-v2-next"><div><span>UPCOMING WORKOUT</span><strong>'+esc(next?.name||'Nothing scheduled')+'</strong><small>'+esc(next?.dateKey?new Date(next.dateKey+'T12:00:00').toLocaleDateString():'Plan a session to get started')+'</small></div><button class="connections-button" type="button" data-circle-action="workout">Prepare together</button></section>'+
       '<div class="circle-v2-columns"><section class="connections-card circle-v2-activity"><div class="circle-v2-title"><h4>Activity</h4><button data-circle-action="refresh" type="button" class="connections-subtle">Refresh</button></div>'+
         (state.notifications.length?state.notifications.slice(0,12).map(n=>'<div class="circle-v2-event '+(n.read_at?'':'is-unread')+'"><span class="circle-v2-dot" aria-hidden="true"></span><div><strong>'+esc(detail(n))+'</strong><small>'+esc(new Date(n.created_at).toLocaleString())+'</small></div>'+(n.read_at?'':'<button type="button" class="connections-subtle" data-circle-action="read" data-circle-id="'+esc(n.id)+'">Mark read</button>')+'</div>').join('')
           :'<p class="connections-muted">Requests, encouragement, and shared milestones will appear here.</p>')+
@@ -184,6 +186,9 @@
     const action=b.dataset.circleAction,id=b.dataset.circleId;
     if(action==='refresh')void query();
     else if(action==='read')void call('workout_circle_mark_read',{p_id:id});
+    else if(action==='workout'){
+      document.querySelector('.shared-create-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }
     else if(action==='preferences')void updatePreferences();
     else if(action==='propose')void propose(b.dataset.circleUser);
     else if(['accept','decline','pause','resume','remove'].includes(action)){
