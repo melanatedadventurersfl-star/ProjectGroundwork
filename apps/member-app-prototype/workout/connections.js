@@ -7,7 +7,7 @@
   const goals = () => B()?.goals?.() || [];
   const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clean = v => escapeHtml(v).slice(0,300);
-  const state = {profile:null,connections:[],profiles:{},shares:[],inbox:[],results:[],loaded:false,loading:false,error:'',query:'',saving:false,synced:null};
+  const state = {ownerId:null,attempted:false,profile:null,connections:[],profiles:{},shares:[],inbox:[],results:[],loaded:false,loading:false,error:'',query:'',saving:false,synced:null};
   const active = () => Boolean(client() && myId());
   const nameFor = id => state.profiles[id]?.display_name || 'Workout member';
   const notify = message => { if(B()?.toast)B().toast(message); };
@@ -17,7 +17,7 @@
     const otherId = row.requester_id===myId()?row.recipient_id:row.requester_id;
     return {...row,otherId,name:nameFor(otherId)};
   }
-  function statusOf(goal) {
+  function legacyStatusOf(goal) {
     const engine = window.GoWorkoutGoalLab;
     if(goal.painFlag || goal.status==='paused') return 'Paused';
     if(engine?.meetsTarget?.(goal)) return 'Goal reached';
@@ -37,6 +37,9 @@
     }
     return 'Progress recorded';
   }
+  function statusOf(goal) {
+    return window.GoWorkoutGoalProgress?.summarize?.(goal)?.label || legacyStatusOf(goal);
+  }
   function projection(g) {
     const visibility = g.shareLevel||'private';
     const row = {owner_id:myId(),goal_id:String(g.id||''),goal_name:String(g.name||'Fitness goal').slice(0,100),visibility,progress_status:null,progress_percent:null,measured_value:null,target_value:null,unit:null};
@@ -44,10 +47,11 @@
     if(visibility==='details') {
       const engine = window.GoWorkoutGoalLab;
       const current = Number(engine?.assessmentBest?.(g) ?? g.baseline);
+      const verified = window.GoWorkoutGoalProgress?.summarize?.(g);
       const target = Number(g.target);
       row.measured_value = Number.isFinite(current)?current:0;
       row.target_value = Number.isFinite(target)?target:0;
-      row.progress_percent = target>0?Math.min(100,Math.max(0,Math.round(100*current/target))):0;
+      row.progress_percent = verified?.percent ?? (target>0?Math.min(100,Math.max(0,Math.round(100*current/target))):0);
       row.unit = String(g.unit||'units').slice(0,50);
     }
     return row;
@@ -57,8 +61,14 @@
     const publish = goals().filter(g=>g?.id && ['goal_only','status','details'].includes(g.shareLevel)).map(projection);
     const snapshot = JSON.stringify(publish);
     if(!force && snapshot===state.synced)return;
-    if(state.saving)return;
+    if(state.saving){
+      if(!force)return false;
+      await state.savingPromise;
+      if(!active())return false;
+    }
     state.saving=true;
+    let release;
+    state.savingPromise=new Promise(resolve=>{release=resolve;});
     try {
       // Delete previously shared goals that have been made private or deleted.
       const {data:existing,error:readError}=await client().from('workout_goal_shares').select('goal_id').eq('owner_id',myId());
@@ -77,7 +87,8 @@
       state.synced=snapshot;
       state.error='';
     } catch(e) { state.error='Goal sharing did not sync. Check your connection and retry.'; notify(state.error); }
-    finally {state.saving=false;}
+    finally {state.saving=false;release();state.savingPromise=null;}
+    return !state.error;
   }
   let shareTimer = null;
   function queueGoalSync(){
@@ -86,9 +97,14 @@
     shareTimer=setTimeout(()=>{ shareTimer=null; void publishGoalShares(); },2500);
   }
   async function refresh(){
-    if(!active()||state.loading)return;
+    if(!active())return;
     const id=myId();
+    if(state.ownerId!==id){
+      Object.assign(state,{ownerId:id,attempted:false,profile:null,connections:[],profiles:{},shares:[],inbox:[],results:[],loaded:false,loading:false,error:'',query:'',synced:null});
+    }
+    if(state.loading)return;
     state.loading=true;
+    state.attempted=true;
     try {
       const api=client();
       const [profileRes,connectionsRes,inboxRes,blocksRes]=await Promise.all([
@@ -123,6 +139,7 @@
       state.error='';
       state.loaded=true;
       void publishGoalShares();
+      void window.GoWorkoutCircle?.refresh?.();
     }catch(e){
       state.error='Connections could not load. '+String(e?.message||'Please retry.');
     }finally {state.loading=false;repaint();}
@@ -163,11 +180,17 @@
   async function setGoalVisibility(goalId,level){
     const g=goals().find(x=>String(x.id)===String(goalId));
     if(!g)return;
+    const previous=g.shareLevel||'private';
     g.shareLevel=level;
-    B()?.save?.();
     state.synced=null;
-    await publishGoalShares(true);
-    if(!state.error)notify(level==='private'?'Goal is private.':'Goal sharing updated.');
+    const saved=await publishGoalShares(true);
+    if(saved){
+      B()?.save?.();
+      notify(level==='private'?'Goal is private.':'Goal sharing updated.');
+    }else{
+      g.shareLevel=previous;
+      notify('Goal visibility could not be updated. Please retry.');
+    }
     repaint();
   }
   async function sendEncouragement(id){
@@ -182,7 +205,7 @@
 
   function panel(){
     if(!active())return '';
-    if(!state.loaded&&!state.loading)queueMicrotask(()=>{void refresh();});
+    if(!state.loaded&&!state.loading&&!state.attempted)queueMicrotask(()=>{void refresh();});
     const list=state.connections.map(connectionOf);
     const accepted=list.filter(x=>x.status==='accepted');
     const received=list.filter(x=>x.status==='pending'&&x.recipient_id===myId());
@@ -190,6 +213,7 @@
     const actions=state.results.filter(x=>!list.some(c=>c.otherId===x.user_id));
     const goalList=goals().filter(g=>g?.id&&g.status!=='deleted');
     return '<section class="connections-v1" aria-label="Your workout connections">'+
+      (window.GoWorkoutCircle?.panel?.({accepted})||'')+
       '<div class="connections-head"><div><span class="connections-kicker">YOUR CIRCLE</span><h3>Connections &amp; encouragement</h3><p>Connect once. Share only the goals you choose. Support each other along the way.</p></div><button type="button" data-conn-action="refresh" class="connections-subtle">↻ Refresh</button></div>'+
       (state.error?'<p class="connections-error" role="alert">'+clean(state.error)+'</p>':'')+
       (!state.loaded?'<p class="connections-muted">Loading your circle…</p>':'')+
@@ -243,5 +267,5 @@
   document.addEventListener('change',event=>{
     if(event.target.matches?.('[data-conn-goal-id]'))void setGoalVisibility(event.target.dataset.connGoalId,event.target.value);
   });
-  window.GoWorkoutConnections={panel,refresh,queueGoalSync,publishGoalShares};
+  window.GoWorkoutConnections={panel,refresh,queueGoalSync,publishGoalShares,nameFor,snapshot:()=>({connections:state.connections,profiles:state.profiles,shares:state.shares})};
 })();
