@@ -10,12 +10,13 @@
     {id:'squat',name:'Bodyweight squats',unit:'reps',target:30,exerciseId:'bodyweight-squat',icon:'🦵',metric:'continuous',instruction:'Complete comfortable controlled squats, counting full repetitions.',variation:'Bodyweight squat',cue:'Use a comfortable range and stop when control fades.'},
     {id:'pullup',name:'Pull-ups',unit:'reps',target:10,exerciseId:'pull-up',icon:'🏋',metric:'continuous',instruction:'Count controlled pull-ups without assistance, or record the assistance used.',variation:'Unassisted pull-up',cue:'Record the variation accurately so future tests remain comparable.'},
     {id:'run',name:'Running distance',unit:'miles',target:1,exerciseId:'',icon:'🏃',metric:'continuous distance',instruction:'Walk or run a measured route and record the distance completed continuously.',variation:'Measured route',cue:'Distance is self-recorded. The app does not automatically measure your route.'},
+    {id:'row',name:'Row 2,000 meters',unit:'meters',target:2000,exerciseId:'',icon:'🚣',metric:'continuous distance',instruction:'Row at a comfortable, controlled effort and record the distance completed without stopping. Record the same machine setup for future comparisons.',variation:'Indoor rowing machine',cue:'This assessment tracks distance, not speed. A timed 2K target needs a separate timed assessment.'},
     {id:'custom',name:'My own goal',unit:'reps',target:10,exerciseId:'',icon:'🎯',metric:'continuous',instruction:'Perform the movement safely and record the actual result.',variation:'Your chosen variation',cue:'Choose a measurable achievement and record a baseline before planning.'}
   ];
   const safe = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number = v => Number.isFinite(Number(v)) ? Number(v) : 0;
   const rounded = (v,unit) => unit==='miles' ? Math.round(v*100)/100 : Math.round(v);
-  const template = kind => TEMPLATES.find(x=>x.id===kind)||TEMPLATES[5];
+  const template = kind => TEMPLATES.find(x=>x.id===kind)||TEMPLATES.find(x=>x.id==='custom');
   const now = () => new Date().toISOString();
   const uid = () => 'goal-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
   function ensure(training){
@@ -52,20 +53,21 @@
     return Boolean(g?.exerciseId&&SUPPORTED_VARIANTS[g.kind]?.includes(normalizeVariant(g.variant)));
   }
   function recent(g){return (g.assessments||[]).slice(-6);}
-  function targetText(g){return String(g.target)+' '+(g.unit==='seconds'?'seconds':g.unit==='miles'?'miles':'reps');}
+  function targetText(g){return String(g.target)+' '+(g.unit==='seconds'?'seconds':g.unit==='miles'?'miles':g.unit==='meters'?'meters':'reps');}
   function progress(g){return g.target>0 ? Math.max(0,Math.min(100,Math.round(assessmentBest(g)/g.target*100))) : 0;}
   function suggestTarget(d){
     const value=number(d.result);
     if(d.unit==='miles')return Math.max(.25,Math.round(Math.max(value*1.5,.5)*4)/4);
+    if(d.unit==='meters')return Math.max(100,Math.ceil(Math.max(value*1.25,value+100)/100)*100);
     if(d.unit==='seconds')return Math.max(20,Math.ceil(Math.max(value*1.5,30)/5)*5);
     return Math.max(d.kind==='pullup'?1:5,Math.ceil(Math.max(value*1.5,value+3)));
   }
   function nextMilestone(g){
     const best=assessmentBest(g),target=number(g.target);
     if(best>=target)return target;
-    if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?0.25:1);
-    const step=g.unit==='miles'?0.25:g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
-    return rounded(Math.min(target,Math.max(best+step,best+1*(g.unit==='miles'?.25:1))),g.unit);
+    if(!best)return Math.min(target,g.unit==='seconds'?15:g.unit==='miles'?0.25:g.unit==='meters'?100:1);
+    const step=g.unit==='miles'?0.25:g.unit==='meters'?Math.max(100,Math.ceil(best*.2/100)*100):g.unit==='seconds'?5:Math.max(1,Math.ceil(best*.25));
+    return rounded(Math.min(target,Math.max(best+step,best+(g.unit==='miles'?.25:g.unit==='meters'?100:1))),g.unit);
   }
   function recommendations(g){
     const b=assessmentBest(g),kind=g.kind;
@@ -75,6 +77,7 @@
     if(kind==='plank')return {summary:'Build multiple quality holds rather than attempting a maximum every day.',sets:['Plank · 3 × '+Math.max(10,Math.min(45,Math.floor(b*.7)||10))+' sec','Bird dog · 2 × 8 per side'],frequency:'2 to 3 days per week with recovery'};
     if(kind==='pullup')return {summary:'Progress toward unassisted repetitions with controlled pulling variations.',sets:[b<1?'Assisted pull-ups · 3 × 5':'Pull-ups · 3 × '+Math.max(1,Math.floor(b*.6)),'Rows · 2 × 8 to 10'],frequency:'2 nonconsecutive days per week'};
     if(kind==='squat')return {summary:'Build comfortable repetition capacity with controlled movement.',sets:['Squats · 3 × '+Math.max(4,Math.min(15,Math.floor(b*.6)||6)),'Glute bridges · 2 × 10'],frequency:'2 to 3 nonconsecutive days per week'};
+    if(kind==='row')return {summary:'Your rowing goal is measured by distance. Build comfortable steady effort and reassess on the same machine. Strength rows are not substitutes for indoor rowing.',sets:[b>0?'Practise at a comfortable distance below your assessed '+b+' meters.':'Record your first rowing baseline.','Record distance, effort, and equipment for comparable attempts','Allow recovery between harder rowing sessions'],frequency:'Up to 2 nonconsecutive sessions each week, adjusted to recovery and existing workouts'};
     if(kind==='run')return {summary:'Increase comfortable distance gradually, mixing walking and running as needed.',sets:['Measured easy walk/run intervals','Record actual continuous distance','Increase only when recovery feels manageable'],frequency:'2 to 3 days per week'};
     return {summary:'Log repeatable performances and adjust your target from the results. Custom goals do not receive automatic exercise prescriptions.',sets:[],frequency:'Flexible'};
   }
@@ -109,14 +112,14 @@
   function targetStage(d){
     return '<div class="goal-wizard"><div class="goal-step">PERSONAL TARGET</div><h2>Make your goal measurable.</h2><p>Keep your ambition. Your first milestone will be based on your discovery results.</p>'+
       (d.kind==='custom'?'<label>Goal name<input data-goal-field="label" maxlength="64" value="'+safe(d.label)+'" placeholder="My goal"></label>'+
-        '<label>How will you measure it?<select data-goal-field="unit"><option value="reps" '+(d.unit==='reps'?'selected':'')+'>Repetitions</option><option value="seconds" '+(d.unit==='seconds'?'selected':'')+'>Seconds</option><option value="miles" '+(d.unit==='miles'?'selected':'')+'>Miles</option></select></label>':'')+
+        '<label>How will you measure it?<select data-goal-field="unit"><option value="reps" '+(d.unit==='reps'?'selected':'')+'>Repetitions</option><option value="seconds" '+(d.unit==='seconds'?'selected':'')+'>Seconds</option><option value="miles" '+(d.unit==='miles'?'selected':'')+'>Miles</option><option value="meters" '+(d.unit==='meters'?'selected':'')+'>Meters</option></select></label>':'')+
       '<label>Target ('+safe(d.unit)+')<input type="number" data-goal-field="target" min="'+(d.unit==='miles'?'0.01':'1')+'" max="100000" step="'+(d.unit==='miles'?'0.01':'1')+'" value="'+safe(d.target)+'"></label>'+
       '<label>Deadline (optional)<select data-goal-field="deadline">'+[['none','No deadline'],['4','4 weeks'],['8','8 weeks'],['12','12 weeks']].map(([v,t])=>'<option value="'+v+'" '+(d.deadline===v?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
       '<label>Priority<select data-goal-field="priority"><option value="primary" '+(d.priority==='primary'?'selected':'')+'>Primary goal</option><option value="secondary" '+(d.priority==='secondary'?'selected':'')+'>Secondary goal</option></select></label>'+
       '<div class="goal-wizard-actions"><button class="goal-secondary" data-goal-action="back">BACK</button><button class="goal-primary" data-goal-action="target-next">'+(d.tested?'REVIEW MY PLAN':'TEST MY BASELINE')+' →</button></div></div>';
   }
   function assessment(d){
-    const isTimer=d.unit==='seconds',isDistance=d.unit==='miles',t=template(d.kind);
+    const isTimer=d.unit==='seconds',isDistance=['miles','meters'].includes(d.unit),t=template(d.kind);
     let measurement='';
     if(isDistance){
       measurement='<label>Distance you completed ('+safe(d.unit)+')<input data-goal-field="result" type="number" min="0" max="10000" step="0.01" value="'+safe(d.result)+'"></label>';
@@ -156,6 +159,7 @@
       '<div class="goal-track"><i style="width:'+progress(g)+'%"></i></div>'+
       '<p>Starting point: '+safe(g.baseline)+' '+safe(g.unit)+'. Next milestone: '+safe(nextMilestone(g))+' '+safe(g.unit)+'. '+(progress(g)===100?'Target reached. You can maintain it or set another target.':'')+'</p>'+
       (SUPPORTED_VARIANTS[g.kind]&&!isRunnableGoal(g)?'<p class="goal-footnote">'+safe(g.variant||'This variation')+' is tracked through your assessments. Automated workouts do not yet include that exact exercise.</p>':'')+
+      (g.kind==='custom'&&/\b(row|rowing|ergometer|rower)\b/i.test(g.name)?'<div class="goal-alert">Your saved custom goal has a rowing-related name. Set up a measured rowing goal to train toward 2,000 meters. Your original result will not be converted into meters.<button class="goal-secondary" data-goal-action="setup-rowing">SET UP MEASURED ROWING GOAL</button></div>':'')+
       '<div class="goal-actions"><button class="goal-primary" data-goal-action="retest" data-goal-id="'+safe(g.id)+'">REASSESS</button><button class="goal-secondary" data-goal-action="edit" data-goal-id="'+safe(g.id)+'">EDIT TARGET</button></div>'+
       '<section class="goal-detail-section"><h3>Suggested training focus</h3><p>'+safe(rec.summary)+'</p><div class="goal-plan-steps">'+rec.sets.map(s=>'<div>'+safe(s)+'</div>').join('')+'</div><small>'+safe(rec.frequency)+'. Coordinate with your existing program and allow recovery.</small></section>'+
       '<section class="goal-detail-section"><h3>Training performance</h3><p>'+safe(number(g.trainingBest)>0?'Best completed training set: '+g.trainingBest+' '+g.unit+'. This does not count as a verified maximum.':'Training sets will appear separately from goal assessments.')+'</p></section>'+
@@ -173,10 +177,10 @@
     const d=ensure(training).draft;
     if(!d||!['label','unit','target','deadline','priority','variant','result'].includes(name))return false;
     if(name==='unit'){
-      if(d.kind!=='custom'||!['reps','seconds','miles'].includes(value))return false;
+      if(d.kind!=='custom'||!['reps','seconds','miles','meters'].includes(value))return false;
       if(d.unit!==value){
         d.unit=value;
-        d.metric=value==='seconds'?'single hold':value==='miles'?'continuous distance':'continuous';
+        d.metric=value==='seconds'?'single hold':['miles','meters'].includes(value)?'continuous distance':'continuous';
         const restore=Boolean(d.goalId&&d.originalUnit===value);
         d.result=restore?number(d.originalResult):0;
         d.tested=restore;
@@ -196,6 +200,7 @@
     const s=ensure(training),d=s.draft,goal=id=>s.goals.find(g=>g.id===id);
     const result=(ok,message='')=>({changed:ok,message});
     if(name==='new'){s.selectedId=null;s.draft=draft(node.dataset.mode==='discover'?'discover':'target');return result(true);}
+    if(name==='setup-rowing'){s.selectedId=null;s.draft=draft('target','row');s.draft.stage='target';return result(true,'Your earlier goal and assessment history remain unchanged. Record a new rowing baseline in meters.');}
     if(name==='back-home'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
     if(name==='all-goals'){pauseTimer(training);s.draft=null;s.selectedId=null;return result(true);}
     if(name==='open'){s.draft=null;s.selectedId=node.dataset.goalId;return result(true);}
