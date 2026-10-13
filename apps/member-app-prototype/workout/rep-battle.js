@@ -154,7 +154,7 @@
   function setCollapsed(training,collapsed) {
     if(!training||typeof training!=='object')return false;
     training.arcade=training.arcade&&typeof training.arcade==='object'?training.arcade:{};
-    if(Boolean(training.arcade.battleCollapsed)===Boolean(collapsed))return false;
+    if((training.arcade.battleCollapsed!==false)===Boolean(collapsed))return false;
     training.arcade.battleCollapsed=Boolean(collapsed);
     return true;
   }
