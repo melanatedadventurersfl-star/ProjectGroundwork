@@ -104,7 +104,7 @@
     return {mode,chosen,additions,unavailable,guided,
       trainingDays:num(profile?.days)||0,
       summary:mode==='integrate'?'Keep your existing plan, with up to two short, compatible goal progressions on a training day when readiness and available time permit. An added movement may extend that session by about 5 to 10 minutes. No existing exercise is removed.'
-        :mode==='focused'?'Keep existing scheduled workouts unchanged. Build separate, on-demand goal-focus sessions from supported baselines.'
+        :mode==='focused'?'Keep scheduled workouts unchanged. Use supported on-demand goal sessions and measured rowing guidance when equipment is confirmed. Distance intervals are not inserted into the workout runner.'
         :'Keep workouts unchanged. Track assessments, performance, and goal milestones only.'};
   }
   function action(training,name,node,context={}){
@@ -171,6 +171,7 @@
       if(!d.preview)return done(false,'Review the proposed changes before approving.');
       if(d.signature!==signature(training,profile,plan)){s.draft=draft(training,profile,plan);return done(true,'Your goals or program changed. Review the updated strategy before approval.');}
       const p=preview(training,profile,plan,catalog);
+      if(d.rowerAccess!=='yes'&&d.mode==='focused'&&p.guided.length&&!p.additions.length)return done(false,'Confirm access to a rowing machine or choose tracking mode.');
       if(d.mode==='integrate'&&p.additions.length===0)return done(false,'No selected goals currently have compatible exercise variations. Select a compatible goal or choose tracking mode.');
       if(d.mode==='focused'&&p.additions.length===0&&!(d.rowerAccess==='yes'&&p.guided.length))return done(false,'Complete a supported baseline, confirm rowing machine access for guided rowing, or select tracking mode.');
       const record={at:now(),mode:d.mode,goalIds:d.goalIds.slice(),signature:d.signature,description:p.summary,allowExtension:d.allowExtension,rowerAccess:d.rowerAccess};
@@ -452,12 +453,17 @@
             (chosen?'<span>#'+(index+1)+'</span><button title="Move priority up" data-goal-action="strategy-move" data-direction="up" data-goal-id="'+safe(g.id)+'">↑</button><button title="Move priority down" data-goal-action="strategy-move" data-direction="down" data-goal-id="'+safe(g.id)+'">↓</button>':'')+
             '</div>';
         }).join('')+'</div>';
+      html+='<div class="goal-strategy-options"><h3>3. Check training requirements</h3>'+
+        '<p>Automatic additions never replace existing exercises. You control whether short sessions can extend your workout.</p>'+
+        '<div class="goal-strategy-choices"><button class="'+(d.allowExtension?'chosen':'')+'" data-goal-action="strategy-extension" data-value="yes">Allow up to 10 extra minutes</button><button class="'+(!d.allowExtension?'chosen':'')+'" data-goal-action="strategy-extension" data-value="no">Stay within my session time</button></div>'+
+        (d.goalIds.some(id=>active.some(g=>g.id===id&&isRow(g)))?'<p><b>For guided rowing:</b> do you have access to an indoor rowing machine?</p><div class="goal-strategy-choices">'+[['yes','Yes'],['no','Not now'],['unknown','Not sure']].map(([v,label])=>'<button class="'+(d.rowerAccess===v?'chosen':'')+'" data-goal-action="strategy-rower-access" data-value="'+v+'">'+label+'</button>').join('')+'</div>':'')+'</div>';
       if(d.preview){
-        html+='<div class="goal-strategy-preview"><h3>3. Review proposed changes</h3><p>'+safe(p.summary)+'</p>'+
+        html+='<div class="goal-strategy-preview"><h3>4. Review proposed changes</h3><p>'+safe(p.summary)+'</p>'+
           '<p><strong>Selected priorities:</strong> '+safe(p.chosen.map(x=>x.goal.name).join(', ')||'None')+'</p>'+
           (window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.proposal(training,profile,plan,catalog,schedule):'')+
           (d.mode==='integrate'||d.mode==='focused'?'<div class="goal-strategy-changes">'+p.additions.map(x=>'<div><b>+ '+safe(x.ex.name)+'</b><span>'+safe(x.ex.sets+' sets × '+x.ex.reps)+' · '+safe(muscle[x.goal.kind]||'Goal progression')+'</span></div>').join('')+'</div>':'')+
-          (p.unavailable.length?'<p class="goal-strategy-notice">Assessment-only for now: '+safe(p.unavailable.map(x=>x.goal.name+' ('+x.goal.variant+')').join(', '))+'. No unsupported variation will be substituted.</p>':'')+
+          (p.guided.length?'<div class="goal-strategy-guides"><h4>Measured rowing guidance</h4>'+p.guided.map(({goal,guide})=>'<div class="goal-strategy-guide"><strong>'+safe(goal.name)+'</strong><span>'+safe(guide.description)+'</span></div>').join('')+'<p>These distance intervals are guidance only. They will not appear as executable sets in the current workout runner. '+(d.rowerAccess==='yes'?'Rowing machine access confirmed.':'Confirm machine access for a separate guided focus strategy.')+'</p></div>':'')+
+          (p.unavailable.length?'<div class="goal-strategy-notice"><strong>Goals needing a different training route</strong>'+p.unavailable.map(x=>'<p><b>'+safe(x.goal.name)+':</b> '+safe(support(x.goal,catalog).message)+'</p>').join('')+'</div>':'')+
           '<p><strong>Unchanged:</strong> Your existing schedule, exercises, partner settings, workout history, and saved baseline assessments.</p>'+
           '<div class="goal-strategy-actions"><button class="goal-primary" data-goal-action="strategy-approve">APPROVE STRATEGY</button><button data-goal-action="strategy-preview">REFRESH PREVIEW</button></div></div>';
       }else{
