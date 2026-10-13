@@ -17,5 +17,7 @@ jobs:
         run: |
           node --check apps/member-app-prototype/workout/app.js
           node --check apps/member-app-prototype/workout/connections.js
+          node --check apps/member-app-prototype/workout/circle.js
+          node --check apps/member-app-prototype/workout/goal-progress.js
       - name: Privacy and goal sharing tests
-        run: node --test apps/member-app-prototype/workout/connections.test.cjs
+        run: node --test apps/member-app-prototype/workout/connections.test.cjs apps/member-app-prototype/workout/goal-progress.test.cjs apps/member-app-prototype/workout/circle.test.cjs

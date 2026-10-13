@@ -7034,9 +7034,10 @@ function applyWorkoutSession(session){
   sharedRuntime.syncMuted=false;
   render();
   if(session?.user?.id){
-    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await hydrateSavedWorkoutPartners();await restoreSharedWorkoutSession(session.user.id);}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
+    queueMicrotask(async()=>{try{await hydrateCloudState(session.user.id);await hydrateSavedWorkoutPartners();await restoreSharedWorkoutSession(session.user.id);await window.GoWorkoutCircle?.refresh?.();}catch(error){cloudHydrating=false;console.warn('Workout account restore failed',error);}});
   }else if(previousUserId){
     unsubscribeSharedSession();
+    window.GoWorkoutCircle?.reset?.();
   }
 }
 async function signInEntryAccount(){
@@ -11522,6 +11523,12 @@ document.addEventListener('visibilitychange',()=>{
 });
 window.GoWorkoutConnectionsBridge={
   client:()=>workoutSupabase,
+  tab:()=>currentTab,
+  connectionName:id=>window.GoWorkoutConnections?.nameFor?.(id),
+  nextWorkout:()=>{
+    const item=nextScheduledSession();
+    return item?{name:item.adaptedDay?.name||item.day?.name||'Workout',dateKey:item.dateKey,dayName:item.dayName}:null;
+  },
   userId:()=>store.account?.status==='connected'?store.account.userId:null,
   displayName:()=>displayName(),
   goals:()=>window.GoWorkoutGoalLab?.ensure(ensureTrainingProgram())?.goals||[],
