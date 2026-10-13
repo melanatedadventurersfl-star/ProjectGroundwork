@@ -6034,7 +6034,7 @@ function timedSetSnapshot(w,nowMs=Date.now()){
   return {complete:remainingExact<=0,remaining:Math.max(0,Math.ceil(remainingExact)),remainingExact,total:duration};
 }
 function completeTimedSet(early=false){
-  const pos=getActivePosition();if(!pos||pos.workout.phase!=='timed-set')return;
+  const pos=getActivePosition();if(!pos||pos.workout.phase!=='timed-set'||pos.set?.completed)return;
   const w=pos.workout;
   const duration=Math.max(1,num(w.timedSetDuration)||num(pos.set.reps)||30);
   if(early){
@@ -6046,6 +6046,7 @@ function completeTimedSet(early=false){
   pos.set.plannedReps=String(pos.set.plannedReps??duration);
   const endedAt=new Date().toISOString();
   pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
+  window.GoWorkoutRepBattle?.noteCompletedSet(ensureTrainingProgram(),w,pos.exercise,pos.set);
   pos.set.durationSeconds=num(pos.set.reps);
   if((pos.exercise.sets||[]).every(set=>setIsResolved(set)))markExerciseEnd(w,pos.ei,endedAt);
   w.lastCompletedSet={exerciseId:pos.exercise.id,exerciseName:pos.exercise.name,weight:String(pos.set.weight||''),reps:String(pos.set.reps||''),durationSeconds:pos.set.durationSeconds,plannedWeight:String(pos.set.plannedWeight||''),plannedReps:String(pos.set.plannedReps||duration)};
@@ -6351,6 +6352,7 @@ function completeCurrentSet(){
     delete pos.workout.setStartedAt;
   }
   pos.set.completed=true;pos.set.completedAt=endedAt;pos.set.endedAt=endedAt;
+  window.GoWorkoutRepBattle?.noteCompletedSet(ensureTrainingProgram(),pos.workout,pos.exercise,pos.set);
   if((pos.exercise.sets||[]).every(set=>setIsResolved(set)))markExerciseEnd(pos.workout,pos.ei,endedAt);
   const insight=setPerformanceInsight(pos.exercise,pos.set,pos.si);
   pos.set.performanceInsight=insight;
@@ -10949,7 +10951,7 @@ function render(){
   if(currentTab==='profile-edit')app.innerHTML=renderProfileEditor();
   else if(currentTab==='profile')app.innerHTML=renderProfileHub();
   else if(currentTab==='home')app.innerHTML=renderHome();
-  else if(currentTab==='arcade')app.innerHTML=window.GoWorkoutArcade?window.GoWorkoutArcade.dashboard(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art')):renderHome();
+  else if(currentTab==='arcade')app.innerHTML=window.GoWorkoutArcade?window.GoWorkoutArcade.dashboard(ensureTrainingProgram(),store.history,renderAvatarFigure(trainingAvatarId(),'arcade-user-art'),store.activeWorkout):renderHome();
   else if(currentTab==='train')app.innerHTML=renderTrain();
   else if(currentTab==='together')app.innerHTML=renderTogether();
   else if(currentTab==='catalog')app.innerHTML=renderCatalog();
@@ -11141,6 +11143,19 @@ function handleClick(event){
   const arcadeOpen=event.target.closest('[data-action="open-arcade"]');
   if(arcadeOpen){setTab('arcade');return;}
   const arcadeChoice=event.target.closest('[data-arcade-action]');
+  if(arcadeChoice?.dataset.arcadeAction==='play-battle'&&window.GoWorkoutArcade){
+    const result=window.GoWorkoutArcade.action(ensureTrainingProgram(),'mode','arcade');
+    if(result.changed)saveStore();
+    setTab(store.activeWorkout?'workout':'train');
+    if(!store.activeWorkout)toast('Rep Battle is ready. Choose your next workout to begin.');
+    return;
+  }
+  if(arcadeChoice?.dataset.arcadeAction==='battle-collapse'&&window.GoWorkoutRepBattle){
+    const training=ensureTrainingProgram();
+    const result=window.GoWorkoutRepBattle.setCollapsed(training,!training.arcade?.battleCollapsed);
+    if(result){saveStore();render();}
+    return;
+  }
   if(arcadeChoice&&window.GoWorkoutArcade){
     const result=window.GoWorkoutArcade.action(ensureTrainingProgram(),arcadeChoice.dataset.arcadeAction,arcadeChoice.dataset.arcadeValue);
     if(result.changed){saveStore();render();if(result.message)toast(result.message);}
