@@ -283,6 +283,12 @@ assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/Measured rowing guida
 assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/not appear as executable sets/);
 assert.equal(rowPlan('strategy-approve').changed,true);
 assert.equal(S.current(rowTraining,profile,plan),true);
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/SAVE ROWING PRACTICE/);
+assert.equal(rowPlan('strategy-row-log',{goalId:row.id,meters:'250'}).changed,true);
+assert.equal(rowTraining.goalLab.strategy.rowingSessions[0].meters,250);
+assert.equal(G.assessmentBest(row),750,'Practice distance is not verified 2K progress');
+assert.equal(rowPlan('strategy-row-log',{goalId:row.id,meters:'-40'}).changed,false);
+assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/Last practice: 250 m/);
 assert.equal(S.applyDay(rowTraining,originalDay,catalog,profile,{plan}),originalDay,
   'Guided rowing is not falsely scheduled as a runner exercise');
 assert.match(S.panel(rowTraining,profile,plan,catalog,[]),/Baseline recorded/);
