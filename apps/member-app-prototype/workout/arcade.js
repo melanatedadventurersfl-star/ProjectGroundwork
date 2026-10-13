@@ -31,10 +31,17 @@
     value.version=1;
     return value;
   }
+  function completedRecovery(entry) {
+    if(entry.completionStatus!=='complete' || number(entry.durationMinutes)<5) return false;
+    const exercises=Array.isArray(entry.exercises)?entry.exercises:[];
+    if(exercises.some(ex=>(ex.sets||[]).length>0)) return false;
+    const stages=[...(Array.isArray(entry.warmup)?entry.warmup:[]),...(Array.isArray(entry.cooldown)?entry.cooldown:[])];
+    return stages.some(item=>Boolean(item.completedAt)&&!item.skippedAt);
+  }
   function eligible(entry) {
     if(!entry || !entry.id || entry.externalWorkout || entry.manualWorkoutCompletion) return false;
     if(entry.completionStatus!=='complete' && entry.completionStatus!=='partial') return false;
-    return number(entry.completedSets)>0;
+    return number(entry.completedSets)>0 || completedRecovery(entry);
   }
   function validHistory(history) {
     const seen=new Set();
