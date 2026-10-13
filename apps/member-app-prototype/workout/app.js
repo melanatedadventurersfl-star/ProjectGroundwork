@@ -7408,7 +7408,7 @@ function renderTrainFutureWeek(offset){
     '</button>'+
     (expanded?'<div class="train-future-list">'+data.entries.map(entry=>{
       const day=entry.adaptedDay||entry.day;
-      return '<article class="train-future-row train-future-row-v2"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+' '+entry.date.getDate()+'</span><div><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+esc(workoutStructureLabel(day?.trainingStructure?.applied||'straight'))+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+trainExercisePreviewMarkup(day,4)+'</div></article>';
+      return '<article class="train-future-row train-future-row-v2"><span>'+esc(entry.date.toLocaleDateString(undefined,{weekday:'short'}))+' '+entry.date.getDate()+'</span><div><strong>'+esc(day?.name||'Training')+'</strong><small>'+esc(day?.focus||'Training')+' · '+esc(workoutStructureLabel(day?.trainingStructure?.applied||'straight'))+' · '+(day?.exercises?.length||0)+' exercises · ~'+(day?.estimatedMinutes||store.profile?.minutes||45)+' min</small>'+trainExercisePreviewMarkup(day,4)+(window.GoWorkoutAdaptiveExperience?window.GoWorkoutAdaptiveExperience.scheduleBadge(ensureTrainingProgram(),store.profile,store.plan,catalog,entry,data.entries.length):'')+'</div></article>';
     }).join('')+'<p class="train-provisional-note">Planned now. Completed workouts, readiness, equipment changes, and substitutions can refine future targets without rewriting completed weeks.</p></div>':'')+
   '</section>';
 }
@@ -9731,6 +9731,9 @@ function renderWorkout(){
   return '<div class="guided-shell cleaned-workout runner-v2 phase-'+esc(w.phase)+'"><div id="workout-cue-flash" class="workout-cue-flash" aria-hidden="true"></div>'+
     '<header class="runner-v2-header"><button class="workout-back" data-action="home" aria-label="Leave workout and resume later">‹</button><div><strong>'+esc(headerTitle)+'</strong>'+(headerProgress?'<span>'+esc(headerProgress)+'</span>':'')+headerTimers+'</div><button class="circle-action" data-action="open-workout-map" aria-label="Workout preview">•••</button></header>'+
     (w.phase==='warmup'?'<div class="runner-top-progress"><span style="width:'+(((warmSnap?.index||0)+1)/Math.max(1,w.warmup.length)*100)+'%"></span></div>':activeStrength?'<div class="runner-top-progress"><span style="width:'+((pos.ei+1)/Math.max(1,w.exercises.length)*100)+'%"></span></div>':'')+
+    (w.phase==='intro'&&window.GoWorkoutAdaptiveExperience?'<details class="adaptive-live-why"><summary>◎ WHY THIS WORKOUT?</summary>'+
+      window.GoWorkoutAdaptiveExperience.why(ensureTrainingProgram(),store.profile,store.plan,catalog,
+        {index:scheduledEntryFor(w.planDayId,w.scheduledDate)?.index??0,day:{...w,name:w.routineName,focus:w.focus}})+'</details>':'')+
     renderSharedWorkoutSync(w)+
     '<div class="runner-cue-access">'+renderCueControls()+'</div>'+
     '<div id="coach-live-line" class="coach-live-line" '+(cueRuntime.lastCoachLine?'':'hidden')+'><span>COACH</span><p id="coach-live-text">'+esc(cueRuntime.lastCoachLine||'')+'</p><button type="button" data-action="replay-coach" aria-label="Replay coach cue">↻</button></div>'+
