@@ -117,3 +117,28 @@
 @keyframes rep-header-pop{0%{opacity:0;transform:translateY(7px)}22%{opacity:1;transform:translateY(0)}70%{opacity:1}100%{opacity:0;transform:translateY(-15px)}}
 @media(max-width:375px){.runner-v2-header>.rep-header-status{gap:5px;padding:3px 5px}.rep-header-view{padding:0 6px}.runner-v2-header .rep-header-values strong{font-size:8px}.runner-v2-header .rep-header-values span{font-size:8px}}
 @media(prefers-reduced-motion:reduce){.rep-header-status.is-hit .rep-header-icon,.rep-header-status.is-hit .rep-header-damage{animation:none}.rep-header-meter i{transition:none}}
+
+
+/* In-context game response. The large arena stays collapsed by default.
+   On set completion, play a miniature attack inside the existing rest or
+   feedback card. Nothing is positioned over workout form or action buttons. */
+.rep-battle.is-collapsed{margin-top:4px;margin-bottom:3px}
+.rep-hit-moment{display:flex;align-items:center;gap:11px;margin:11px auto 4px;padding:5px 10px 5px 5px;width:min(100%,340px);box-sizing:border-box;min-height:75px;overflow:hidden;border:1px solid #a3cbb5;border-radius:12px;background:linear-gradient(120deg,#0b3029,#175745);color:#f9fff9;text-align:left;box-shadow:0 5px 15px rgba(18,49,33,.1)}
+.rep-hit-moment-scene{width:112px;min-width:112px;height:65px;overflow:hidden;border-radius:8px}
+.rep-hit-moment-scene .rep-arena{height:65px;border-radius:8px}
+.rep-hit-moment-scene .rep-arena-sun{height:24px;width:24px}
+.rep-hit-moment-scene .rep-player,.rep-hit-moment-scene .rep-guardian{bottom:0}
+.rep-hit-moment-scene .rep-player{left:1%;transform:scale(.45);transform-origin:bottom left}
+.rep-hit-moment-scene .rep-guardian{right:1%;transform:scale(.46);transform-origin:bottom right}
+.rep-hit-moment-scene .rep-impact{font-size:25px;top:12%;left:42%}
+.rep-hit-moment-scene .rep-damage{font-size:16px;right:12%;top:0}
+.rep-hit-moment-scene .rep-arena.is-hit .rep-player{animation:rep-moment-strike .8s ease-out both}
+.rep-hit-moment-scene .rep-arena.is-hit .rep-guardian{animation:rep-moment-stagger .8s ease-out both}
+@keyframes rep-moment-strike{0%,100%{transform:scale(.45) translateX(0)}48%{transform:scale(.45) translateX(28px) translateY(-6px)}}
+@keyframes rep-moment-stagger{0%,100%{transform:scale(.46) translateX(0)}48%{transform:scale(.46) translateX(12px) rotate(4deg)}}
+.rep-hit-moment-copy{display:grid;gap:2px;min-width:0}
+.rep-hit-moment-copy>span{font-size:.59rem;font-weight:850;letter-spacing:.095em;color:#c4e9d5}
+.rep-hit-moment-copy strong{display:block;font-size:1rem;line-height:1.2;color:#fff}
+.rep-hit-moment-copy small{display:block;color:#fbe4ae;font-size:.74rem;font-weight:800;line-height:1.35}
+@media(max-width:365px){.rep-hit-moment{gap:7px;padding-right:5px}.rep-hit-moment-scene{min-width:100px;width:100px}.rep-hit-moment-copy strong{font-size:.89rem}.rep-hit-moment-copy small{font-size:.68rem}}
+@media(prefers-reduced-motion:reduce){.rep-hit-moment-scene .rep-arena.is-hit .rep-player,.rep-hit-moment-scene .rep-arena.is-hit .rep-guardian{animation:none}.rep-hit-moment-scene .rep-arena.is-hit .rep-impact{opacity:1}.rep-hit-moment-scene .rep-arena.is-hit .rep-damage{opacity:1}}
