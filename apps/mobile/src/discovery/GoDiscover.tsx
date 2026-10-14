@@ -76,8 +76,8 @@ export default function GoDiscover() {
   }, [session?.user.id]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
-  const center: GeoPoint | null = homeLocation ? pointForCity(homeLocation.city, homeLocation.state) : null;
-  const visible = useMemo(() => filterDiscovery(items, filters, center), [items, filters, center?.latitude, center?.longitude]);
+  const center: GeoPoint | null = useMemo(() => homeLocation ? pointForCity(homeLocation.city, homeLocation.state) : null, [homeLocation?.city, homeLocation?.state]);
+  const visible = useMemo(() => filterDiscovery(items, filters, center), [items, filters, center]);
   const savedCategories = useMemo(() => new Set(items.filter(item => item.saved).map(item => item.category.trim().toLowerCase())), [items]);
   const recommended = useMemo(() => [...visible].sort((a, b) =>
     Number(savedCategories.has(b.category.toLowerCase())) - Number(savedCategories.has(a.category.toLowerCase())) ||
@@ -85,7 +85,7 @@ export default function GoDiscover() {
     Date.parse(a.startsAt) - Date.parse(b.startsAt)
   ).slice(0, 6), [visible, savedCategories]);
   const nearYou = useMemo(() => center ? [...visible].filter(item => item.point)
-    .sort((a, b) => distanceMiles(center, a.point!) - distanceMiles(center, b.point!)).slice(0, 5) : [], [visible, center?.latitude, center?.longitude]);
+    .sort((a, b) => distanceMiles(center, a.point!) - distanceMiles(center, b.point!)).slice(0, 5) : [], [visible, center]);
   const upcoming = useMemo(() => [...visible].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)), [visible]);
   const activeLabel = filters.mode === 'all' ? 'Everything' : filters.mode === 'nature' ? 'Nature' : 'Night';
   const tileWidth = Math.min(width * 0.60, 250);
