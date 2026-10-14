@@ -161,9 +161,9 @@ app.addEventListener('change',async event=>{const el=event.target;try{
  }catch(e){say(formatError(e),true)}});
 document.addEventListener('submit',async event=>{event.preventDefault();const f=event.target;const d=Object.fromEntries(new FormData(f));try{
  if(f.id==='auth-form'){
-  if(authMode==='signup'){const {data,error}=await supabase.auth.signUp({email:d.email,password:d.password,options:{emailRedirectTo:location.origin}});if(error)throw error;pendingEmailMessage=data.session?'Account created. You are signed in.':'Check your inbox to confirm your account, then sign in.';authMode='login';render();}
+  if(authMode==='signup'){const {data,error}=await supabase.auth.signUp({email:d.email,password:d.password,options:{emailRedirectTo:location.origin + location.pathname}});if(error)throw error;pendingEmailMessage=data.session?'Account created. You are signed in.':'Check your inbox to confirm your account, then sign in.';authMode='login';render();}
   else if(authMode==='login'){const {data,error}=await supabase.auth.signInWithPassword({email:d.email,password:d.password});if(error)throw error;session=data.session;pendingEmailMessage='';await loadData()}
-  else if(authMode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(d.email,{redirectTo:location.origin});if(error)throw error;authMode='login';pendingEmailMessage='If this email has an account, a reset link has been sent.';authView()}
+  else if(authMode==='reset'){const {error}=await supabase.auth.resetPasswordForEmail(d.email,{redirectTo:location.origin + location.pathname});if(error)throw error;authMode='login';pendingEmailMessage='If this email has an account, a reset link has been sent.';authView()}
   else if(authMode==='updatePassword'){const {error}=await supabase.auth.updateUser({password:d.password});if(error)throw error;authMode='login';pendingEmailMessage='Password updated.';render()}
  }
  else if(f.id==='workspace-form'){const {data,error}=await supabase.from('quest_workspaces').insert({name:d.name.trim(),owner_email:auth(),owner_user_id:session.user.id,state:blankState()}).select('id').single();if(error)throw error;await loadData();workspace=workspaces.find(w=>w.id===data.id)||workspaces[0];page='dashboard';render();say('QUEST workspace created.')}
