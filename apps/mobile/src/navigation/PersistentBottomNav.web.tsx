@@ -11,11 +11,11 @@ import { getWorkspaceAccess } from './workspaceAccess';
 type NavItem = { label: string; icon: AppIconName; href: string; isActive: (pathname: string) => boolean };
 
 const primaryItems: NavItem[] = [
-  { label: 'Trailhead', icon: 'trailhead', href: '/(tabs)', isActive: (pathname) => pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/' },
-  { label: 'Explore', icon: 'explore', href: '/(tabs)/explore', isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') },
-  { label: 'Outpost', icon: 'community', href: '/(tabs)/community', isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections') || pathname.startsWith('/local-events') },
-  { label: 'Trail Guide', icon: 'guide', href: '/trail-guide', isActive: (pathname) => pathname.startsWith('/trail-guide') },
-  { label: 'Profile', icon: 'profile', href: '/member/profile', isActive: (pathname) => pathname.startsWith('/member') || pathname.startsWith('/passport') },
+  { label: 'Home', icon: 'trailhead', href: '/(tabs)', isActive: (p) => p === '/' || p === '/(tabs)' || p === '/(tabs)/' },
+  { label: 'Discover', icon: 'explore', href: '/(tabs)/explore', isActive: (p) => p.includes('/explore') || p.startsWith('/adventures') || p.startsWith('/checkout') || p.startsWith('/local-events') },
+  { label: 'My GO', icon: 'passport', href: '/(tabs)/my-go', isActive: (p) => p.includes('/my-go') || p.startsWith('/member/trips') || p.startsWith('/member/journey') },
+  { label: 'Communities', icon: 'community', href: '/(tabs)/community', isActive: (p) => p.includes('/community') || p.startsWith('/communities') || p.startsWith('/groups') || p.startsWith('/connections') },
+  { label: 'More', icon: 'menu', href: '/(tabs)/menu', isActive: (p) => p.includes('/menu') || p.startsWith('/member/profile') || p.startsWith('/trail-guide') },
 ];
 
 function NavButton({ item, pathname, compact = false }: { item: NavItem; pathname: string; compact?: boolean }) {
@@ -112,7 +112,7 @@ export function PersistentBottomNav() {
 
   const hasOperations = hostApproved || vendorApproved;
   return <View style={styles.sidebar}>
-    <View style={styles.brandBlock}><Text style={styles.brandGo}>GO</Text><Text style={styles.brandMelanated}>MELANATED</Text><Text style={styles.brandTag}>Your outdoor life, in one place.</Text></View>
+    <View style={styles.brandBlock}><Text style={styles.brandGo}>GO</Text><Text style={styles.brandMelanated}>MELANATED</Text><Text style={styles.brandTag}>Two experiences. One connected world.</Text></View>
     <View style={styles.navGroup}>{primaryItems.map((item) => <NavButton key={item.label} item={item} pathname={pathname} />)}</View>
     {hasOperations ? <><View style={styles.divider} /><Text style={styles.sectionLabel}>OPERATIONS</Text><View style={styles.navGroup}>
       {hostApproved ? <NavButton item={{ label: 'Host Center', icon: 'community', href: '/host', isActive: (path) => path.startsWith('/host') }} pathname={pathname} /> : null}
