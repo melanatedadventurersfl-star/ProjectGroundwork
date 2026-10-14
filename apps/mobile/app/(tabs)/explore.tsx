@@ -6,6 +6,7 @@ import {
   getActiveExperienceContext,
   type ActiveExperienceContext,
 } from '../../src/platform/experience';
+import GoDiscover from '../../src/discovery/GoDiscover';
 import CommunityExplore from './community-explore';
 import OutdoorExplore from './outdoor-explore';
 
@@ -39,7 +40,7 @@ export default function ExploreScreen() {
     </View>;
   }
 
-  if (!context) return <OutdoorExplore />;
+  if (!context) return <GoDiscover />;
 
   const configuredEventsVariant = context.experience.navigation.events_variant;
   const configuredHomeVariant = context.experience.navigation.home_variant;
@@ -49,7 +50,7 @@ export default function ExploreScreen() {
       ? 'outdoor_adventure'
       : 'community';
 
-  if (eventsVariant === 'outdoor_adventure') return <OutdoorExplore />;
+  if (eventsVariant === 'outdoor_adventure') return <GoDiscover />;
   return <CommunityExplore context={context} />;
 }
 

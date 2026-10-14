@@ -65,6 +65,7 @@ export default function TabLayout() {
       <Tabs.Screen name="explore" options={{ title: eventsTitle, href: eventsEnabled ? undefined : null }} />
       <Tabs.Screen name="community" options={{ title: communityTitle, href: communityEnabled ? undefined : null }} />
       <Tabs.Screen name="passport" options={{ title: journeyTitle, href: null }} />
+      <Tabs.Screen name="my-go" options={{ title: 'My GO' }} />
       <Tabs.Screen name="menu" options={{ title: 'Menu' }} />
       <Tabs.Screen name="community-home" options={{ href: null }} />
       <Tabs.Screen name="outdoor-home" options={{ href: null }} />

@@ -6,6 +6,7 @@ import {
   getActiveExperienceContext,
   type ActiveExperienceContext,
 } from '../../src/platform/experience';
+import GoHome from '../../src/discovery/GoHome';
 import CommunityHome from './community-home';
 import OutdoorHome from './outdoor-home';
 
@@ -39,12 +40,12 @@ export default function MemberHomeScreen() {
     </View>;
   }
 
-  if (!context) return <OutdoorHome />;
+  if (!context) return <GoHome />;
 
   const configuredVariant = context.experience.navigation.home_variant;
   const homeVariant = typeof configuredVariant === 'string' ? configuredVariant : 'community';
 
-  if (homeVariant === 'outdoor_adventure') return <OutdoorHome />;
+  if (homeVariant === 'outdoor_adventure') return <GoHome />;
   return <CommunityHome context={context} />;
 }
 

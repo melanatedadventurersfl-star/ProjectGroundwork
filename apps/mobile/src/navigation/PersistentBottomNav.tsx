@@ -16,38 +16,11 @@ type NavItem = {
 };
 
 const items: NavItem[] = [
-  {
-    label: 'Trailhead',
-    icon: 'trailhead',
-    href: '/(tabs)',
-    isActive: (pathname) => pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/',
-  },
-  {
-    label: 'Explore',
-    icon: 'explore',
-    href: '/(tabs)/explore',
-    isActive: (pathname) => pathname.includes('/explore') || pathname.startsWith('/adventures') || pathname.startsWith('/checkout') || pathname.startsWith('/readiness'),
-  },
-  {
-    label: 'Outpost',
-    icon: 'community',
-    href: '/(tabs)/community',
-    requiresAuth: true,
-    isActive: (pathname) => pathname.includes('/community') || pathname.startsWith('/connections') || pathname.startsWith('/local-events'),
-  },
-  {
-    label: 'Trail Guide',
-    icon: 'guide',
-    href: '/trail-guide',
-    isActive: (pathname) => pathname.startsWith('/trail-guide'),
-  },
-  {
-    label: 'Profile',
-    icon: 'profile',
-    href: '/member/profile',
-    requiresAuth: true,
-    isActive: (pathname) => pathname.startsWith('/member/profile') || pathname.startsWith('/member/stamps') || pathname.startsWith('/member/badges') || pathname.startsWith('/past-adventures') || pathname.startsWith('/passport'),
-  },
+  { label: 'Home', icon: 'trailhead', href: '/(tabs)', isActive: (p) => p === '/' || p === '/(tabs)' || p === '/(tabs)/' },
+  { label: 'Discover', icon: 'explore', href: '/(tabs)/explore', isActive: (p) => p.includes('/explore') || p.startsWith('/adventures') || p.startsWith('/checkout') || p.startsWith('/local-events') },
+  { label: 'My GO', icon: 'passport', href: '/(tabs)/my-go', requiresAuth: true, isActive: (p) => p.includes('/my-go') || p.startsWith('/member/trips') || p.startsWith('/member/journey') },
+  { label: 'Communities', icon: 'community', href: '/(tabs)/community', requiresAuth: true, isActive: (p) => p.includes('/community') || p.startsWith('/communities') || p.startsWith('/groups') || p.startsWith('/connections') },
+  { label: 'More', icon: 'menu', href: '/(tabs)/menu', isActive: (p) => p.includes('/menu') || p.startsWith('/member/profile') || p.startsWith('/trail-guide') },
 ];
 
 function promptForAccount(destination: string) {
