@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, ImageBackground, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, View, useWindowDimensions,
@@ -89,6 +89,7 @@ export default function GoHome() {
   const { session } = useAuth();
   const { mode, chooseMode } = useGoMode(session?.user.id);
   const { width } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
   const [items, setItems] = useState<DiscoveryItem[]>([]);
   const [journeyCount, setJourneyCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,7 +124,11 @@ export default function GoHome() {
   const updateSaved = (id: string, saved: boolean) =>
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
 
-  return <ScrollView style={styles.screen} contentContainerStyle={styles.content}
+  function switchMode(next: 'nature' | 'night') {
+    chooseMode(next);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }
+  return <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}
     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
     <View style={styles.greetingRow}>
       <View style={styles.flex}>
@@ -138,7 +143,7 @@ export default function GoHome() {
       {(['nature', 'night'] as const).map(value => {
         const selected = mode === value;
         return <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected }}
-          onPress={() => chooseMode(value)}
+          onPress={() => switchMode(value)}
           style={[styles.modeButton, selected && { backgroundColor: value === 'nature' ? '#D5F6C8' : '#E8D5F7' }]}>
           <Text style={[styles.modeText, selected && styles.modeTextActive]}>{value === 'nature' ? '🌿 Nature' : '🌙 Night'}</Text>
         </Pressable>;
@@ -229,7 +234,7 @@ export default function GoHome() {
           ? `There ${otherItems.length === 1 ? 'is' : 'are'} ${otherItems.length} upcoming ${mode === 'nature' ? 'city' : 'outdoor'} experiences to explore.`
           : mode === 'nature' ? "See what else is happening nearby." : "Discover nature beyond the city."}</Text>
       </View>
-      <Pressable onPress={() => chooseMode(mode === 'nature' ? 'night' : 'nature')} style={styles.crossButton}>
+      <Pressable onPress={() => switchMode(mode === 'nature' ? 'night' : 'nature')} style={styles.crossButton}>
         <Text style={styles.crossButtonText}>Explore {mode === 'nature' ? 'Night' : 'Nature'} →</Text>
       </Pressable>
     </View>
