@@ -8,7 +8,7 @@ export type MemberTrip = {
   hold_expires_at: string | null;
   paid_at: string | null;
   created_at: string;
-  adventures: { id: string; title: string; starts_at: string; city: string; state: string; hero_image_url: string | null; status: string } | null;
+  adventures: { id: string; title: string; starts_at: string; ends_at: string; city: string; state: string; hero_image_url: string | null; status: string } | null;
 };
 
 type ProfileAvatarListener = (avatarUrl: string | null) => void;
@@ -117,7 +117,7 @@ export async function getMemberBasecamp() {
 }
 
 export async function getMemberTrips(): Promise<MemberTrip[]> {
-  const { data, error } = await supabase.from('orders').select('id,status,total_cents,hold_expires_at,paid_at,created_at,adventures(id,title,starts_at,city,state,hero_image_url,status)').order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('orders').select('id,status,total_cents,hold_expires_at,paid_at,created_at,adventures(id,title,starts_at,ends_at,city,state,hero_image_url,status)').order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as unknown as MemberTrip[];
 }
