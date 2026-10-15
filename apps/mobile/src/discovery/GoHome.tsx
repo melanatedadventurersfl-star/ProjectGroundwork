@@ -92,7 +92,7 @@ function greetingFor(hour: number) {
   return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 }
 function preferredName(profileName: string, username: string, metadataName: string, email: string) {
-  const local = email.split('@')[0].toLowerCase();
+  const local = (email.split('@')[0] ?? '').toLowerCase();
   const candidates = [profileName, metadataName, username];
   const name = candidates.find(value => value.trim() && !value.includes('@') && value.toLowerCase() !== local);
   return name ? name.trim().split(/\s+/)[0] : '';
@@ -173,7 +173,11 @@ export default function GoHome() {
     const target = index + direction;
     if (target < 0 || target >= sections.length) return;
     const next = [...sections];
-    [next[index], next[target]] = [next[target], next[index]];
+    const current = next[index];
+    const neighbor = next[target];
+    if (!current || !neighbor) return;
+    next[index] = neighbor;
+    next[target] = current;
     setHomeSections(next);
   }
   const load = useCallback(async (refresh = false) => {
