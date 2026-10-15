@@ -109,7 +109,7 @@ export default function CommunitiesScreen() {
             <Pressable key={value} accessibilityRole="button"
               accessibilityState={{ selected: value === 'all' ? showAll : !showAll && mode === value }}
               style={[styles.worldChoice, (value === 'all' ? showAll : !showAll && mode === value) && styles.worldChoiceActive]}
-              onPress={() => value === 'all' ? setShowAll(true) : (setShowAll(false), chooseMode(value))}>
+              onPress={() => { if (value === 'all') setShowAll(true); else { setShowAll(false); chooseMode(value); } }}>
               <Text style={[styles.worldChoiceText, (value === 'all' ? showAll : !showAll && mode === value) && styles.worldChoiceTextActive]}>
                 {value === 'nature' ? '🌿 Nature' : value === 'night' ? '🌙 Night' : 'All'}
               </Text>
