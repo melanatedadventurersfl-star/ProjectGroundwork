@@ -10,7 +10,11 @@ import { useAuth } from '../auth/AuthProvider';
 import { getCommunityFeed, getGroups, type CommunityPost, type CommunityGroup } from '../community/api';
 import { getMemberTrips, type MemberTrip } from '../member/api';
 import { supabase } from '../lib/supabase';
-import { getJourney, getLatestTrailPreview, type JourneyItem } from '../passport/api';
+import { getJourney, getLatestTrailPreview, getMemberBadges, type JourneyItem, type MemberBadge } from '../passport/api';
+import { getMyPassportRank } from '../passport/rankApi';
+import { rankFor, type RankName } from '../passport/RankEmblem';
+import { getWeather, type WeatherForecast } from '../weather/api';
+import { GoTrailheadScene } from '../trailhead/GoTrailheadScene';
 import { AppIcon } from '../ui/AppIcon';
 import { loadDiscoveryItems, saveDiscoveryAdventure, type DiscoveryItem } from './catalog';
 import { useGoMode } from './useGoMode';
@@ -21,7 +25,6 @@ const INK = '#0E1716';
 const MUTED = '#65706D';
 const DEFAULT_NATURE = require('../../assets/trailhead-banners/explorer-clear-morning.jpg');
 const DEFAULT_NIGHT = require('../../assets/trailhead-banners/adventurer-evening.jpg');
-const SCENIC_NATURE = require('../../assets/trailhead/explorer/explorer_clear_afternoon.png');
 
 /** Keep actual photography visible at the top, with legible copy below. */
 function PhotoShade({ id, night = false, gentle = false }: { id: string; night?: boolean; gentle?: boolean }) {
@@ -126,7 +129,7 @@ function preferredName(profileName: string, username: string, metadataName: stri
   const local = (email.split('@')[0] ?? '').toLowerCase();
   const candidates = [profileName, metadataName, username];
   const name = candidates.find(value => value.trim() && !value.includes('@') && value.toLowerCase() !== local);
-  return name ? name.trim().split(/\s+/)[0] : '';
+  return name ? (name.trim().split(/\s+/)[0] ?? '') : '';
 }
 function daysUntil(value: string) {
   return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 86400000));
@@ -166,8 +169,11 @@ export default function GoHome() {
   const [trips, setTrips] = useState<MemberTrip[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [memberBadges, setMemberBadges] = useState<MemberBadge[]>([]);
+  const [passportRank, setPassportRank] = useState<RankName | null>(null);
+  const [localWeather, setLocalWeather] = useState<WeatherForecast | null>(null);
   const [trailPreview, setTrailPreview] = useState<{ uri: string; adventureId: string } | null>(null);
-  const [profile, setProfile] = useState({ name: '', username: '', city: '', interests: [] as string[] });
+  const [profile, setProfile] = useState({ name: '', username: '', city: '', state: '', coverUrl: null as string | null, interests: [] as string[] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -217,20 +223,25 @@ export default function GoHome() {
     else setLoading(true);
     setNow(Date.now());
     const userId = session?.user.id;
-    const [results, history, bookings, details, activity, memberships, memoryImage] = await Promise.allSettled([
+    const [results, history, bookings, details, activity, memberships, memoryImage, badgesResult, rankResult] = await Promise.allSettled([
       loadDiscoveryItems(),
       userId ? getJourney() : Promise.resolve([] as JourneyItem[]),
       userId ? getMemberTrips() : Promise.resolve([] as MemberTrip[]),
-      userId ? supabase.from('profiles').select('display_name,username,home_city,interests').eq('id', userId).maybeSingle() : Promise.resolve({ data: null }),
+      userId ? supabase.from('profiles').select('display_name,username,home_city,home_state,cover_url,interests').eq('id', userId).maybeSingle() : Promise.resolve({ data: null }),
       userId ? getCommunityFeed() : Promise.resolve([] as CommunityPost[]),
       userId ? getGroups() : Promise.resolve([] as CommunityGroup[]),
       userId ? getLatestTrailPreview() : Promise.resolve(null),
+      userId ? getMemberBadges() : Promise.resolve([] as MemberBadge[]),
+      userId ? getMyPassportRank() : Promise.resolve(null),
     ]);
     if (results.status === 'fulfilled') {
       setItems(results.value);
       setError(null);
     } else setError('Experiences could not load. Pull down to try again.');
     if (history.status === 'fulfilled') setJourney(history.value);
+    if (badgesResult.status === 'fulfilled') setMemberBadges(badgesResult.value);
+    if (rankResult.status === 'fulfilled' && rankResult.value) setPassportRank(rankResult.value.effective_rank);
+    else setPassportRank(null);
     if (memberships.status === 'fulfilled') setGroups(memberships.value.filter(group => group.is_member));
     if (activity.status === 'fulfilled' && memberships.status === 'fulfilled') {
       const myGroups = new Set(memberships.value.filter(group => group.is_member).map(group => group.id));
@@ -240,11 +251,19 @@ export default function GoHome() {
     if (memoryImage.status === 'fulfilled') setTrailPreview(memoryImage.value);
     if (details.status === 'fulfilled' && details.value.data) {
       const data = details.value.data;
+      const city = String(data.home_city ?? '').trim();
+      const state = String(data.home_state ?? '').trim();
       setProfile({
         name: String(data.display_name ?? ''), username: String(data.username ?? ''),
-        city: String(data.home_city ?? ''),
+        city, state, coverUrl: typeof data.cover_url === 'string' ? data.cover_url : null,
         interests: Array.isArray(data.interests) ? data.interests.filter((item): item is string => typeof item === 'string') : [],
       });
+      if (city && state) {
+        try { setLocalWeather(await getWeather(city, state)); }
+        catch { setLocalWeather(null); }
+      } else setLocalWeather(null);
+    } else {
+      setLocalWeather(null);
     }
     setLoading(false);
     setRefreshing(false);
@@ -256,6 +275,7 @@ export default function GoHome() {
     String(session?.user.user_metadata?.first_name || session?.user.user_metadata?.display_name || ''),
     session?.user.email || '',
   );
+  const effectiveRank = passportRank ?? rankFor(journey.length);
   const myItems = useMemo(() => items.filter(item => item.mode === mode), [items, mode]);
   const futureTrips = useMemo(() => upcomingTrip(trips, now), [trips, now]);
   const liveTrip = trips.find(trip => trip.status === 'paid' && trip.adventures?.status !== 'cancelled'
@@ -412,14 +432,10 @@ export default function GoHome() {
     : mode === 'nature' ? 'New places. Familiar faces. Experiences you will remember.' : 'Music, culture, food, and good company. Find your next story.';
   return <ScrollView ref={scrollRef} style={[styles.screen, mode === 'night' && styles.nightScreen]}
     contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
-    <View style={styles.greetingRow}>
-      <View style={styles.flex}>
-        <Text style={styles.eyebrow}>GO MELANATED  /  YOUR TRAILHEAD</Text>
-        <Text style={styles.greeting}>{greetingFor(new Date(now).getHours()) + (memberName ? ', ' + memberName : '') + '.'}</Text>
-        {!actionTrip && <Text style={styles.greetingSub}>Where will your next story begin?</Text>}
-      </View>
+    <View style={styles.brandBar}>
+      <Text style={styles.eyebrow}>GO MELANATED · YOUR TRAILHEAD</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => router.push('/member/profile')} style={styles.profileButton}>
-        <AppIcon name="profile" color={INK} size={22}/>
+        <AppIcon name="profile" color={INK} size={21}/>
       </Pressable>
     </View>
     <View style={styles.switcher}>{(['nature', 'night'] as const).map(value =>
@@ -428,23 +444,19 @@ export default function GoHome() {
         style={[styles.modeButton, mode === value && { backgroundColor: value === 'nature' ? '#D6F0CC' : '#EAD8F7' }]}>
         <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌙  Night'}</Text>
       </Pressable>)}</View>
-    <View style={[styles.hero, { backgroundColor: primary }]}>
-      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? SCENIC_NATURE : DEFAULT_NIGHT}
-        style={styles.heroImage} imageStyle={styles.heroCorners}>
-        <PhotoShade id="goHomeHero" night={mode === 'night'}/>
-        <View style={styles.heroShade}>
-          <Text style={[styles.heroLabel, { color: accent }]}>{isLive ? 'YOUR ADVENTURE IS LIVE' : hasBooking ? isPending ? 'RESERVATION TO REVIEW' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
-          <Text style={styles.heroTitle} numberOfLines={2}>{heroHeading}</Text>
-          <Text style={styles.heroBody}>{heroDescription}</Text>
-          {hasBooking && <Text style={[styles.heroStatus, { color: accent }]}>{isLive ? 'Happening now' : isPending ? 'Check your booking status' : days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days + ' days to go'}</Text>}
-          <Pressable accessibilityRole="button" onPress={() => hasBooking ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : goDiscover(mode)}
-            style={[styles.heroButton, { backgroundColor: accent }]}>
-            <Text style={styles.heroButtonText}>{isLive ? 'Open your adventure' : hasBooking ? isPending ? 'Review reservation' : 'View your adventure' : 'Find your next experience'}  →</Text>
-          </Pressable>
-        </View>
-      </ImageBackground>
-    </View>
-    
+    <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
+      rank={effectiveRank} badges={memberBadges} weather={localWeather}
+      homeCity={profile.city} homeState={profile.state} coverUrl={profile.coverUrl} mode={mode}/>
+    <Pressable accessibilityRole="button" style={styles.nextAdventure}
+      onPress={() => hasBooking ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : goDiscover(mode)}>
+      <View style={styles.nextIcon}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
+      <View style={styles.flex}>
+        <Text style={styles.nextEyebrow}>{isLive ? 'HAPPENING NOW' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : 'YOUR NEXT ADVENTURE'}</Text>
+        <Text style={styles.nextTitle} numberOfLines={1}>{hasBooking ? heroHeading : 'Find somewhere new to go'}</Text>
+        <Text style={styles.nextMeta} numberOfLines={1}>{hasBooking ? heroDescription : 'Discover nature, culture, and new experiences.'}</Text>
+      </View>
+      <AppIcon name="chevron-forward" size={21} color={primary}/>
+    </Pressable>
     {loading && <ActivityIndicator color={primary} style={styles.loading}/>}
     {error && <Text style={styles.error}>{error}</Text>}
     <View style={styles.personalizeRow}><Text style={styles.homeLabel}>YOUR WORLD</Text>
@@ -539,7 +551,13 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F7F8F4' },
   nightScreen: { backgroundColor: '#F6F3F9' },
   content: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 32, width: '100%', maxWidth: 970, alignSelf: 'center' },
-  flex: { flex: 1 }, greetingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
+  flex: { flex: 1 },
+  brandBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9, minHeight: 40 },
+  nextAdventure: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E9E2', borderRadius: 17, marginTop: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  nextIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#E6F1E2', alignItems: 'center', justifyContent: 'center' },
+  nextEyebrow: { fontSize: 9, color: '#68836E', letterSpacing: 1, fontWeight: '900' },
+  nextTitle: { fontSize: 14, fontWeight: '900', color: INK, marginTop: 2 },
+  nextMeta: { fontSize: 11, color: MUTED, marginTop: 2 },
   eyebrow: { fontWeight: '900', fontSize: 10, color: '#427B59', letterSpacing: 1.4 },
   greeting: { color: INK, fontWeight: '900', fontSize: 22, marginTop: 3, letterSpacing: -0.5 },
   greetingSub: { color: MUTED, fontSize: 11, marginTop: 4 },
