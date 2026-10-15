@@ -16,6 +16,8 @@ export default function TenantSignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -77,8 +79,18 @@ export default function TenantSignUpScreen() {
 
         <View style={styles.card}>
           <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" placeholder="Email" placeholderTextColor="#6F7D75" style={styles.input} />
-          <TextInput value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" placeholder="Password (8+ characters)" placeholderTextColor="#6F7D75" style={styles.input} />
-          <TextInput value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry autoComplete="new-password" placeholder="Confirm password" placeholderTextColor="#6F7D75" style={[styles.input, confirmPassword.length > 0 && !passwordsMatch && styles.inputError]} onSubmitEditing={() => void createAccount()} />
+          <View style={styles.passwordRow}>
+            <TextInput value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoComplete="new-password" placeholder="Password (8+ characters)" placeholderTextColor="#6F7D75" style={styles.passwordInput} />
+            <Pressable accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} accessibilityRole="button" hitSlop={10} onPress={() => setShowPassword((value) => !value)} style={styles.visibilityButton}>
+              <Text style={styles.show}>{showPassword ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+          </View>
+          <View style={[styles.passwordRow, confirmPassword.length > 0 && !passwordsMatch && styles.inputError]}>
+            <TextInput value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showConfirmPassword} autoComplete="new-password" placeholder="Confirm password" placeholderTextColor="#6F7D75" style={styles.passwordInput} onSubmitEditing={() => void createAccount()} />
+            <Pressable accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'} accessibilityRole="button" hitSlop={10} onPress={() => setShowConfirmPassword((value) => !value)} style={styles.visibilityButton}>
+              <Text style={styles.show}>{showConfirmPassword ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+          </View>
           {password.length > 0 && password.length < 8 ? <Text style={styles.help}>Use at least 8 characters.</Text> : null}
           {confirmPassword.length > 0 && !passwordsMatch ? <Text style={styles.error}>Passwords do not match.</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -108,6 +120,10 @@ const styles = StyleSheet.create({
   invalidText: { color: '#B88F89', fontSize: 10, lineHeight: 15, marginTop: 3 },
   card: { borderRadius: 20, borderWidth: 1, borderColor: '#304037', backgroundColor: '#151E18', padding: 16, gap: 11, marginTop: 18 },
   input: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: '#3A4940', backgroundColor: '#0C130F', color: '#FFF8E8', paddingHorizontal: 14, fontSize: 14 },
+  passwordRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, borderColor: '#3A4940', backgroundColor: '#0C130F' },
+  passwordInput: { flex: 1, minHeight: 50, color: '#FFF8E8', paddingHorizontal: 14, fontSize: 14 },
+  visibilityButton: { minHeight: 44, minWidth: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  show: { color: '#D7B45A', fontSize: 10, fontWeight: '900' },
   inputError: { borderColor: '#A5554D' },
   help: { color: '#8F9D94', fontSize: 10 },
   error: { color: '#F0A199', fontSize: 10.5, lineHeight: 15 },
