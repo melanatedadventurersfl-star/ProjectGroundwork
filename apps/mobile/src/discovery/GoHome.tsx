@@ -5,11 +5,12 @@ import {
   ScrollView, StyleSheet, Text, View, useWindowDimensions,
 } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
+import Svg, { Defs, LinearGradient, Stop, Rect, Path } from 'react-native-svg';
 import { useAuth } from '../auth/AuthProvider';
 import { getCommunityFeed, getGroups, type CommunityPost, type CommunityGroup } from '../community/api';
 import { getMemberTrips, type MemberTrip } from '../member/api';
 import { supabase } from '../lib/supabase';
-import { getJourney, type JourneyItem } from '../passport/api';
+import { getJourney, getLatestTrailPreview, type JourneyItem } from '../passport/api';
 import { AppIcon } from '../ui/AppIcon';
 import { loadDiscoveryItems, saveDiscoveryAdventure, type DiscoveryItem } from './catalog';
 import { useGoMode } from './useGoMode';
@@ -20,6 +21,36 @@ const INK = '#0E1716';
 const MUTED = '#65706D';
 const DEFAULT_NATURE = require('../../assets/trailhead-banners/explorer-clear-morning.jpg');
 const DEFAULT_NIGHT = require('../../assets/trailhead-banners/adventurer-evening.jpg');
+const SCENIC_NATURE = require('../../assets/trailhead/explorer/explorer_clear_afternoon.png');
+
+/** Keep actual photography visible at the top, with legible copy below. */
+function PhotoShade({ id, night = false, gentle = false }: { id: string; night?: boolean; gentle?: boolean }) {
+  const color = night ? '#170D2F' : '#071B16';
+  return <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject} width="100%" height="100%" preserveAspectRatio="none">
+    <Defs><LinearGradient id={id} x1="0%" y1="0%" x2="0%" y2="100%">
+      <Stop offset="0%" stopColor={color} stopOpacity={0.02}/>
+      <Stop offset="38%" stopColor={color} stopOpacity={gentle ? 0.08 : 0.23}/>
+      <Stop offset="100%" stopColor={color} stopOpacity={gentle ? 0.75 : 0.94}/>
+    </LinearGradient></Defs>
+    <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`}/>
+  </Svg>;
+}
+function ContourLines({ light = false }: { light?: boolean }) {
+  const stroke = light ? '#E8C57D' : '#78A88A';
+  return <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject} viewBox="0 0 180 170">
+    <Path d="M61 -26 C147 -15 155 9 124 34 C87 63 177 66 161 117 C152 143 111 130 101 191" fill="none" stroke={stroke} strokeWidth="1.5" opacity="0.28"/>
+    <Path d="M82 -32 C184 -15 180 14 143 47 C120 76 200 87 179 130 C165 156 136 153 128 193" fill="none" stroke={stroke} strokeWidth="1.5" opacity="0.24"/>
+    <Path d="M34 -26 C110 -4 120 3 94 42 C66 88 147 86 132 121 C122 145 77 155 82 198" fill="none" stroke={stroke} strokeWidth="1.5" opacity="0.22"/>
+  </Svg>;
+}
+function relativeDate(value: string) {
+  const age = Date.now() - Date.parse(value);
+  if (!Number.isFinite(age) || age < 0) return dateLabel(value);
+  if (age < 86400000) return 'Today';
+  if (age < 172800000) return 'Yesterday';
+  if (age < 7 * 86400000) return Math.floor(age / 86400000) + 'd ago';
+  return dateLabel(value);
+}
 
 function dateLabel(value: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -135,6 +166,7 @@ export default function GoHome() {
   const [trips, setTrips] = useState<MemberTrip[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
+  const [trailPreview, setTrailPreview] = useState<{ uri: string; adventureId: string } | null>(null);
   const [profile, setProfile] = useState({ name: '', username: '', city: '', interests: [] as string[] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -185,13 +217,14 @@ export default function GoHome() {
     else setLoading(true);
     setNow(Date.now());
     const userId = session?.user.id;
-    const [results, history, bookings, details, activity, memberships] = await Promise.allSettled([
+    const [results, history, bookings, details, activity, memberships, memoryImage] = await Promise.allSettled([
       loadDiscoveryItems(),
       userId ? getJourney() : Promise.resolve([] as JourneyItem[]),
       userId ? getMemberTrips() : Promise.resolve([] as MemberTrip[]),
       userId ? supabase.from('profiles').select('display_name,username,home_city,interests').eq('id', userId).maybeSingle() : Promise.resolve({ data: null }),
       userId ? getCommunityFeed() : Promise.resolve([] as CommunityPost[]),
       userId ? getGroups() : Promise.resolve([] as CommunityGroup[]),
+      userId ? getLatestTrailPreview() : Promise.resolve(null),
     ]);
     if (results.status === 'fulfilled') {
       setItems(results.value);
@@ -201,9 +234,10 @@ export default function GoHome() {
     if (memberships.status === 'fulfilled') setGroups(memberships.value.filter(group => group.is_member));
     if (activity.status === 'fulfilled' && memberships.status === 'fulfilled') {
       const myGroups = new Set(memberships.value.filter(group => group.is_member).map(group => group.id));
-      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 2));
+      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 3));
     }
     if (bookings.status === 'fulfilled') setTrips(bookings.value);
+    if (memoryImage.status === 'fulfilled') setTrailPreview(memoryImage.value);
     if (details.status === 'fulfilled' && details.value.data) {
       const data = details.value.data;
       setProfile({
@@ -231,6 +265,11 @@ export default function GoHome() {
   const actionTrip = primaryTrip?.adventures ?? null;
   const isLive = Boolean(liveTrip);
   const isPending = primaryTrip?.status === 'held' || primaryTrip?.status === 'payment_pending';
+  const circlePhoto = groups.find(group => group.cover_image_url)?.cover_image_url
+    ?? posts.find(post => post.image_url)?.image_url ?? null;
+  const groupById = new Map(groups.map(group => [group.id, group.name]));
+  const latestTrail = trailPreview && journey.some(item => item.adventure_id === trailPreview.adventureId) ? trailPreview : null;
+  const nextMilestone = [1, 5, 10, 25, 50].find(value => value > journey.length) ?? null;
   const recentJourney = journey[0] ?? null;
   const recentAt = recentJourney ? Date.parse(recentJourney.experienced_at) : NaN;
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
@@ -363,9 +402,10 @@ export default function GoHome() {
         <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{value === 'nature' ? '🌿  Nature' : '🌙  Night'}</Text>
       </Pressable>)}</View>
     <View style={[styles.hero, { backgroundColor: primary }]}>
-      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? DEFAULT_NATURE : DEFAULT_NIGHT}
+      <ImageBackground source={actionTrip?.hero_image_url ? { uri: actionTrip.hero_image_url } : mode === 'nature' ? SCENIC_NATURE : DEFAULT_NIGHT}
         style={styles.heroImage} imageStyle={styles.heroCorners}>
-        <View style={[styles.heroShade, { backgroundColor: mode === 'nature' ? 'rgba(6,25,16,0.77)' : 'rgba(24,12,47,0.79)' }]}>
+        <PhotoShade id="goHomeHero" night={mode === 'night'}/>
+        <View style={styles.heroShade}>
           <Text style={[styles.heroLabel, { color: accent }]}>{isLive ? 'YOUR ADVENTURE IS LIVE' : hasBooking ? isPending ? 'RESERVATION TO REVIEW' : 'YOUR NEXT ADVENTURE' : mode === 'nature' ? 'LET’S GO OUTSIDE' : 'LET’S GO OUT'}</Text>
           <Text style={styles.heroTitle} numberOfLines={2}>{heroHeading}</Text>
           <Text style={styles.heroBody}>{heroDescription}</Text>
@@ -447,8 +487,8 @@ const styles = StyleSheet.create({
   modeButton: { flex: 1, paddingVertical: 7, borderRadius: 14, alignItems: 'center', minHeight: 41, justifyContent: 'center' },
   modeText: { color: '#6B7371', fontSize: 14, fontWeight: '700' }, modeTextActive: { color: INK, fontWeight: '900' },
   hero: { borderRadius: 21, overflow: 'hidden', marginBottom: 0 },
-  heroImage: { minHeight: 187, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 21 },
-  heroShade: { paddingHorizontal: 18, paddingVertical: 16, paddingTop: 22, minHeight: 187, justifyContent: 'flex-end' },
+  heroImage: { minHeight: 199, justifyContent: 'flex-end' }, heroCorners: { borderRadius: 21 },
+  heroShade: { paddingHorizontal: 18, paddingVertical: 16, paddingTop: 27, minHeight: 199, justifyContent: 'flex-end' },
   heroLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.3, marginBottom: 4 },
   heroTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 23, lineHeight: 27, maxWidth: 530 },
   heroBody: { color: '#F4F5EC', fontSize: 12, lineHeight: 17, marginTop: 5, maxWidth: 480 },
