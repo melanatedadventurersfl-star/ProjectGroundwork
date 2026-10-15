@@ -326,6 +326,8 @@ export default function GoHome() {
     ?? modePosts.find(post => post.image_url)?.image_url ?? null;
   const groupById = new Map(modeGroups.map(group => [group.id, group.name]));
   const latestTrail = trailPreview && journey.some(item => item.adventure_id === trailPreview.adventureId) ? trailPreview : null;
+  const nightPhoto = nextRsvp?.image_url ?? myItems.find(item => item.image)?.image ?? null;
+  const quickStoryPhoto = mode === 'nature' ? latestTrail?.uri ?? null : nightPhoto;
   const nextMilestone = [1, 5, 10, 25, 50].find(value => value > journey.length) ?? null;
   const recentJourney = journey[0] ?? null;
   const recentAt = recentJourney ? Date.parse(recentJourney.experienced_at) : NaN;
@@ -587,26 +589,24 @@ export default function GoHome() {
         style={[styles.quickTile, styles.quickTrail]} onPress={() => mode === 'nature' ? router.push('/member/journey')
           : nextRsvp ? router.push({ pathname: '/local-events/[id]', params: { id: nextRsvp.id } })
           : modeTrips.some(trip => activeBooking(trip, now)) ? router.push('/member/trips') : goDiscover('night')}>
-        {mode === 'night' && (nextRsvp?.image_url ?? myItems.find(item => item.image)?.image) ?
-          <Image source={{ uri: (nextRsvp?.image_url ?? myItems.find(item => item.image)?.image)! }} resizeMode="cover" style={styles.quickTilePhoto}/> :
-          mode === 'nature' && latestTrail ? <Image source={{ uri: latestTrail.uri }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
-        {(mode === 'night' && (nextRsvp?.image_url || myItems.some(item => item.image))) || (mode === 'nature' && latestTrail) ? <PhotoShade id="goHomeTrail" gentle/> : null}
+        {quickStoryPhoto ? <Image source={{ uri: quickStoryPhoto }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
+        {quickStoryPhoto && <PhotoShade id="goHomeTrail" gentle/>}
         <View style={styles.quickTileInner}>
           <View style={styles.quickTop}>
-            <AppIcon name={mode === 'nature' ? 'stamp' : 'calendar'} color={mode === 'night' || latestTrail ? '#F3DFAD' : '#4E6F50'} size={23}/>
-            <Text style={[styles.quickOverline, mode === 'nature' && !latestTrail && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
+            <AppIcon name={mode === 'nature' ? 'stamp' : 'calendar'} color={quickStoryPhoto ? '#F3DFAD' : '#4E6F50'} size={23}/>
+            <Text style={[styles.quickOverline, !quickStoryPhoto && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
           </View>
           <View>
-            <Text style={[styles.quickTileTitle, mode === 'nature' && !latestTrail && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
-            <Text style={[styles.quickTileCopy, !latestTrail && styles.quickTrailCopy]}>
+            <Text style={[styles.quickTileTitle, !quickStoryPhoto && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
+            <Text style={[styles.quickTileCopy, !quickStoryPhoto && styles.quickTrailCopy]}>
               {mode === 'night' ? upcomingRsvps.length + modeTrips.filter(trip => activeBooking(trip, now)).length + ' upcoming plans' : session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
             </Text>
           </View>
           <View style={styles.quickBottom}>
-            <Text style={[styles.quickMilestone, mode === 'nature' && !latestTrail && styles.quickTrailMilestone]}>
+            <Text style={[styles.quickMilestone, !quickStoryPhoto && styles.quickTrailMilestone]}>
               {mode === 'night' ? (nextRsvp ? dateLabel(nextRsvp.starts_at) + ' · ' + nextRsvp.city : 'Find your next city experience') : nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
             </Text>
-            <AppIcon name="chevron-forward" color={mode === 'night' || latestTrail ? '#FFF4E0' : '#405C45'} size={16}/>
+            <AppIcon name="chevron-forward" color={quickStoryPhoto ? '#FFF4E0' : '#405C45'} size={16}/>
           </View>
         </View>
       </Pressable>
