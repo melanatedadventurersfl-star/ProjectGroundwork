@@ -9,6 +9,7 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path } from 'react-native-svg';
 import { useAuth } from '../auth/AuthProvider';
 import { getCommunityFeed, getGroups, type CommunityPost, type CommunityGroup } from '../community/api';
 import { getMemberTrips, type MemberTrip } from '../member/api';
+import { listLocalEvents, type LocalEvent } from '../local-events/api';
 import { supabase } from '../lib/supabase';
 import { getJourney, getLatestTrailPreview, getMemberBadges, type JourneyItem, type MemberBadge } from '../passport/api';
 import { getMyPassportRank } from '../passport/rankApi';
@@ -16,7 +17,8 @@ import { rankFor, type RankName } from '../passport/RankEmblem';
 import { getWeather, type WeatherForecast } from '../weather/api';
 import { GoTrailheadScene } from '../trailhead/GoTrailheadScene';
 import { AppIcon } from '../ui/AppIcon';
-import { loadDiscoveryItems, saveDiscoveryAdventure, type DiscoveryItem } from './catalog';
+import { classifyExperience, loadDiscoveryItems, saveDiscoveryAdventure, type DiscoveryItem } from './catalog';
+import { belongsInWorld, postsForWorld } from './modeContent';
 import { useGoMode } from './useGoMode';
 
 const GREEN = '#A8ED8F';
@@ -110,12 +112,24 @@ export function ExperienceCard({ item, width = 238, onSavedChange }: {
 type HomeSection = 'circle' | 'trail' | 'picks';
 type AdventureMood = 'recharge' | 'people' | 'move' | 'curious';
 const HOME_SECTIONS: HomeSection[] = ['circle', 'trail', 'picks'];
-const MOODS: { id: AdventureMood; label: string; icon: string; search: string }[] = [
+const NATURE_MOODS: { id: AdventureMood; label: string; icon: string; search: string }[] = [
   { id: 'recharge', label: 'Unwind', icon: '🌿', search: 'park' },
   { id: 'people', label: 'Meet people', icon: '🤝', search: 'social' },
   { id: 'move', label: 'Get moving', icon: '🥾', search: 'hiking' },
   { id: 'curious', label: 'Try something new', icon: '✨', search: '' },
 ];
+const NIGHT_MOODS: typeof NATURE_MOODS = [
+  { id: 'recharge', label: 'Dinner & drinks', icon: '🍽', search: 'dinner' },
+  { id: 'people', label: 'Meet people', icon: '🤝', search: 'social' },
+  { id: 'move', label: 'Music & dance', icon: '🎶', search: 'music' },
+  { id: 'curious', label: 'Art & culture', icon: '🎭', search: 'art' },
+];
+const NIGHT_TERMS: Record<AdventureMood, RegExp> = {
+  recharge: /dinner|food|drink|restaurant|bar|brunch|culinary|tast/i,
+  people: /social|network|meet|community|mixer|gather|festival/i,
+  move: /music|dance|concert|live|dj|jazz|club/i,
+  curious: /gallery|art|museum|theat|comedy|culture|film|class|exhibit/i,
+};
 const MOOD_TERMS: Record<AdventureMood, RegExp> = {
   recharge: /park|spring|garden|beach|wellness|relax|picnic|nature|scenic|water/i,
   people: /group|social|meet|community|music|festival|gather|camp|brunch/i,
@@ -167,6 +181,7 @@ export default function GoHome() {
   const [items, setItems] = useState<DiscoveryItem[]>([]);
   const [journey, setJourney] = useState<JourneyItem[]>([]);
   const [trips, setTrips] = useState<MemberTrip[]>([]);
+  const [localEvents, setLocalEvents] = useState<LocalEvent[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [memberBadges, setMemberBadges] = useState<MemberBadge[]>([]);
@@ -223,7 +238,7 @@ export default function GoHome() {
     else setLoading(true);
     setNow(Date.now());
     const userId = session?.user.id;
-    const [results, history, bookings, details, activity, memberships, memoryImage, badgesResult, rankResult] = await Promise.allSettled([
+    const [results, history, bookings, details, activity, memberships, memoryImage, badgesResult, rankResult, outings] = await Promise.allSettled([
       loadDiscoveryItems(),
       userId ? getJourney() : Promise.resolve([] as JourneyItem[]),
       userId ? getMemberTrips() : Promise.resolve([] as MemberTrip[]),
@@ -233,6 +248,7 @@ export default function GoHome() {
       userId ? getLatestTrailPreview() : Promise.resolve(null),
       userId ? getMemberBadges() : Promise.resolve([] as MemberBadge[]),
       userId ? getMyPassportRank() : Promise.resolve(null),
+      userId ? listLocalEvents() : Promise.resolve([] as LocalEvent[]),
     ]);
     if (results.status === 'fulfilled') {
       setItems(results.value);
@@ -248,6 +264,7 @@ export default function GoHome() {
       setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 3));
     }
     if (bookings.status === 'fulfilled') setTrips(bookings.value);
+    if (outings.status === 'fulfilled') setLocalEvents(outings.value);
     if (memoryImage.status === 'fulfilled') setTrailPreview(memoryImage.value);
     if (details.status === 'fulfilled' && details.value.data) {
       const data = details.value.data;
@@ -277,34 +294,54 @@ export default function GoHome() {
   );
   const effectiveRank = passportRank ?? rankFor(journey.length);
   const myItems = useMemo(() => items.filter(item => item.mode === mode), [items, mode]);
-  const futureTrips = useMemo(() => upcomingTrip(trips, now), [trips, now]);
-  const liveTrip = trips.find(trip => trip.status === 'paid' && trip.adventures?.status !== 'cancelled'
+  const bookingInMode = useCallback((trip: MemberTrip) => {
+    const adventure = trip.adventures;
+    if (!adventure) return false;
+    const listed = items.find(item => item.source === 'adventure' && item.id === adventure.id);
+    return (listed?.mode ?? classifyExperience('', adventure.title, 'nature')) === mode;
+  }, [items, mode]);
+  const modeTrips = trips.filter(bookingInMode);
+  const futureTrips = upcomingTrip(modeTrips, now);
+  const liveTrip = modeTrips.find(trip => trip.status === 'paid' && trip.adventures?.status !== 'cancelled'
     && trip.adventures && Date.parse(trip.adventures.starts_at) <= now
     && Date.parse(trip.adventures.ends_at) >= now) ?? null;
   const primaryTrip = liveTrip ?? futureTrips;
-  const actionTrip = primaryTrip?.adventures ?? null;
+  const matchingOutings = localEvents.filter(event => event.status === 'published'
+    && classifyExperience(event.category, event.title, 'night') === mode);
+  const upcomingRsvps = matchingOutings.filter(event => event.my_rsvp === 'going' && Date.parse(event.starts_at) >= now)
+    .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+  const nextRsvp = upcomingRsvps[0] ?? null;
+  const modeTrip = primaryTrip?.adventures ?? null;
+  const showOuting = Boolean(nextRsvp && !liveTrip
+    && (!modeTrip || Date.parse(nextRsvp.starts_at) < Date.parse(modeTrip.starts_at)));
+  const actionTrip = showOuting ? null : modeTrip;
+  const actionOuting = showOuting ? nextRsvp : null;
   const isLive = Boolean(liveTrip);
   const isPending = primaryTrip?.status === 'held' || primaryTrip?.status === 'payment_pending';
-  const circlePhoto = groups.find(group => group.cover_image_url)?.cover_image_url
-    ?? posts.find(post => post.image_url)?.image_url ?? null;
-  const groupById = new Map(groups.map(group => [group.id, group.name]));
+  const modeGroups = groups.filter(group => belongsInWorld(group, mode));
+  const modePosts = postsForWorld(posts, groups, mode).slice(0, 3);
+  const modeMoodOptions = mode === 'nature' ? NATURE_MOODS : NIGHT_MOODS;
+  const modeMoodTerms = mode === 'nature' ? MOOD_TERMS : NIGHT_TERMS;
+  const circlePhoto = modeGroups.find(group => group.cover_image_url)?.cover_image_url
+    ?? modePosts.find(post => post.image_url)?.image_url ?? null;
+  const groupById = new Map(modeGroups.map(group => [group.id, group.name]));
   const latestTrail = trailPreview && journey.some(item => item.adventure_id === trailPreview.adventureId) ? trailPreview : null;
   const nextMilestone = [1, 5, 10, 25, 50].find(value => value > journey.length) ?? null;
   const recentJourney = journey[0] ?? null;
   const recentAt = recentJourney ? Date.parse(recentJourney.experienced_at) : NaN;
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
     && now - recentAt >= 0 && recentJourney?.photo_count === 0;
-  const savedCategories = useMemo(() => new Set(items.filter(item => item.saved).map(item => item.category.toLowerCase())), [items]);
+  const savedCategories = new Set(myItems.filter(item => item.saved).map(item => item.category.toLowerCase()));
   const suggestions = useMemo(() => {
     const related = myItems.filter(item => {
       if (!mood) return true;
-      return MOOD_TERMS[mood].test(item.title + ' ' + item.category + ' ' + item.description + ' ' + item.tags.join(' '));
+      return modeMoodTerms[mood].test(item.title + ' ' + item.category + ' ' + item.description + ' ' + item.tags.join(' '));
     });
     return [...related].sort((a, b) =>
       Number(savedCategories.has(b.category.toLowerCase())) - Number(savedCategories.has(a.category.toLowerCase()))
       || Number(b.featured) - Number(a.featured)
       || Date.parse(a.startsAt) - Date.parse(b.startsAt)).slice(0, 4);
-  }, [myItems, mood, savedCategories]);
+  }, [myItems, mood, modeMoodTerms, items]);
 
   const updateSaved = (id: string, saved: boolean) =>
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
@@ -318,14 +355,14 @@ export default function GoHome() {
     if (section === 'circle') return <View key="circle" style={styles.sectionBlock}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionLabelStack}>
-          <Text style={styles.overlineGold}>COMMUNITY PULSE</Text>
-          <Text style={styles.sectionTitle}>From your circle</Text>
+          <Text style={styles.overlineGold}>{mode === 'nature' ? 'OUTDOOR COMMUNITY' : 'CITY COMMUNITY'}</Text>
+          <Text style={styles.sectionTitle}>{mode === 'nature' ? 'From your outdoor circle' : 'From your city circle'}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="See all community activity" onPress={() => router.push('/communities')}>
           <Text style={styles.seeAll}>See all →</Text>
         </Pressable>
       </View>
-      {posts.length ? posts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
+      {modePosts.length ? modePosts.map(post => <Pressable key={post.id} accessibilityRole="button" style={styles.pulseCard}
         accessibilityLabel={`Community update from ${post.author_name || 'a member'}`}
         onPress={() => post.group_id ? router.push({ pathname: '/groups/[id]', params: { id: post.group_id } }) : router.push('/communities')}>
         {post.image_url ? <Image source={{ uri: post.image_url }} style={styles.pulsePhoto}
@@ -349,8 +386,8 @@ export default function GoHome() {
         {!post.image_url && <AppIcon name="chevron-forward" color={MUTED} size={17}/>}
       </Pressable>) : <Pressable accessibilityRole="button" style={styles.pulseEmpty} onPress={() => router.push('/communities')}>
         <View style={styles.pulseIcon}><AppIcon name="photos" color={primary} size={24}/></View>
-        <View style={styles.flex}><Text style={styles.pulseAuthor}>Your people, your stories</Text>
-          <Text style={styles.pulseBody}>Explore shared moments from the communities you&apos;ve joined.</Text></View>
+        <View style={styles.flex}><Text style={styles.pulseAuthor}>{mode === 'nature' ? 'Find your people outside' : 'Your city circle starts here'}</Text>
+          <Text style={styles.pulseBody}>{mode === 'nature' ? 'See outdoor stories and communities.' : 'Join a city-focused community to see its activity here.'}</Text></View>
         <AppIcon name="chevron-forward" color={MUTED} size={18}/>
       </Pressable>}
     </View>;
@@ -389,16 +426,16 @@ export default function GoHome() {
       </View>;
     }
     return <View key="picks" style={styles.sectionBlock}>
-      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>A little inspiration</Text>
+      <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{mode === 'nature' ? 'Explore the outdoors' : 'Around town'}</Text>
         <Pressable accessibilityRole="button" onPress={() => goDiscover(mode)}><Text style={styles.seeAll}>Discover →</Text></Pressable>
       </View>
       <Text style={styles.sectionIntro}>{savedCategories.size
-        ? 'Upcoming experiences, with your saved interests first.'
-        : 'A few upcoming possibilities to make your own.'}</Text>
+        ? (mode === 'nature' ? 'Outdoor ideas based on your saved experiences.' : 'City experiences based on your saved interests.')
+        : (mode === 'nature' ? 'Outdoor adventures to make your own.' : 'Food, music, culture, and local gatherings.') }</Text>
       <View style={styles.moodPanel}>
         <View style={styles.moodHead}><AppIcon name="sparkles" color={primary} size={20}/>
           <Text style={styles.moodTitle}>What sounds good today?</Text></View>
-        <View style={styles.moodRow}>{MOODS.map(option =>
+        <View style={styles.moodRow}>{modeMoodOptions.map(option =>
           <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: mood === option.id }}
             onPress={() => setMood(current => current === option.id ? null : option.id)}
             style={[styles.moodChip, mood === option.id && { borderColor: primary, backgroundColor: mode === 'nature' ? '#D8EEDB' : '#EDE0F6' }]}>
@@ -408,7 +445,7 @@ export default function GoHome() {
       {!!suggestions.length && <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
         {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} onSavedChange={updateSaved}/>)}
       </ScrollView>}
-      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? MOODS.find(value => value.id === mood)?.search : undefined)}>
+      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? modeMoodOptions.find(value => value.id === mood)?.search : undefined)}>
         <Text style={styles.emptyTitle}>Nothing matching that mood is listed yet.</Text>
         <Text style={styles.muted}>Browse more experiences in Discover →</Text>
       </Pressable>}
@@ -424,12 +461,15 @@ export default function GoHome() {
     </View>;
   }
 
-  const hasBooking = Boolean(actionTrip);
+  const hasBooking = Boolean(actionTrip || actionOuting);
   const days = actionTrip ? daysUntil(actionTrip.starts_at) : 0;
-  const heroHeading = actionTrip?.title || (mode === 'nature' ? 'Your next chapter starts outside.' : 'The city is yours to explore.');
-  const heroDescription = actionTrip
-    ? (isLive ? 'Happening now · ' : dateLabel(actionTrip.starts_at) + ' · ') + actionTrip.city + ', ' + actionTrip.state
-    : mode === 'nature' ? 'New places. Familiar faces. Experiences you will remember.' : 'Music, culture, food, and good company. Find your next story.';
+  const heroHeading = actionOuting?.title ?? actionTrip?.title
+    ?? (mode === 'nature' ? 'Your next chapter starts outside.' : 'Your next city experience awaits.');
+  const heroDescription = actionOuting
+    ? dateLabel(actionOuting.starts_at) + ' · ' + actionOuting.city + ', ' + actionOuting.state
+    : actionTrip
+      ? (isLive ? 'Happening now · ' : dateLabel(actionTrip.starts_at) + ' · ') + actionTrip.city + ', ' + actionTrip.state
+      : mode === 'nature' ? 'Find a hike, a campsite, or a community adventure.' : 'Discover music, culture, food, and your city community.';
   return <ScrollView ref={scrollRef} style={[styles.screen, mode === 'night' && styles.nightScreen]}
     contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={primary}/>}>
     <View style={styles.brandBar}>
@@ -448,12 +488,12 @@ export default function GoHome() {
       rank={effectiveRank} badges={memberBadges} weather={localWeather}
       homeCity={profile.city} homeState={profile.state} coverUrl={profile.coverUrl} mode={mode}/>
     <Pressable accessibilityRole="button" style={styles.nextAdventure}
-      onPress={() => hasBooking ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip!.id } }) : goDiscover(mode)}>
+      onPress={() => actionOuting ? router.push({ pathname: '/local-events/[id]', params: { id: actionOuting.id } }) : actionTrip ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip.id } }) : goDiscover(mode)}>
       <View style={styles.nextIcon}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
       <View style={styles.flex}>
-        <Text style={styles.nextEyebrow}>{isLive ? 'HAPPENING NOW' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : 'YOUR NEXT ADVENTURE'}</Text>
-        <Text style={styles.nextTitle} numberOfLines={1}>{hasBooking ? heroHeading : 'Find somewhere new to go'}</Text>
-        <Text style={styles.nextMeta} numberOfLines={1}>{hasBooking ? heroDescription : 'Discover nature, culture, and new experiences.'}</Text>
+        <Text style={styles.nextEyebrow}>{isLive ? 'HAPPENING NOW' : actionOuting ? 'CITY OUTING · GOING' : hasBooking ? isPending ? 'YOUR RESERVATION' : 'NEXT UP' : mode === 'nature' ? 'OUTDOOR PLANS' : 'CITY PLANS'}</Text>
+        <Text style={styles.nextTitle} numberOfLines={1}>{hasBooking ? heroHeading : mode === 'nature' ? 'Find your next outdoor adventure' : 'See what is happening in your city'}</Text>
+        <Text style={styles.nextMeta} numberOfLines={1}>{heroDescription}</Text>
       </View>
       <AppIcon name="chevron-forward" size={21} color={primary}/>
     </Pressable>
@@ -478,11 +518,11 @@ export default function GoHome() {
           </View>
           <View>
             <Text style={styles.quickTileTitle}>Your Circle</Text>
-            <Text style={styles.quickTileCopy}>{groups.length ? groups.length + (groups.length === 1 ? ' community joined' : ' communities joined') : 'Find your community'}</Text>
+            <Text style={styles.quickTileCopy}>{modeGroups.length ? modeGroups.length + (modeGroups.length === 1 ? ' community joined' : ' communities joined') : mode === 'nature' ? 'Find outdoor groups' : 'Find your city people'}</Text>
           </View>
           <View style={styles.quickBottom}>
             <View style={styles.faceRow}>
-              {posts.filter((post, index, all) => all.findIndex(p => p.author_id === post.author_id) === index).slice(0, 3).map(post =>
+              {modePosts.filter((post, index, all) => all.findIndex(p => p.author_id === post.author_id) === index).slice(0, 3).map(post =>
                 <View key={post.author_id} style={styles.face}>
                   {post.avatar_url ? <Image source={{ uri: post.avatar_url }} style={styles.facePhoto}/> :
                     <Text style={styles.faceInitial}>{(post.author_name || 'M').slice(0, 1).toUpperCase()}</Text>}
