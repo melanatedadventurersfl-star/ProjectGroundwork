@@ -94,16 +94,21 @@ function withHealthPackage(config){
   const targetHealthPackage=healthPackage(config);
   return withMainApplication(config,cfg=>{
     let source=cfg.modResults.contents;
-    const importLine='import '+targetHealthPackage+'.GoWorkoutHealthConnectPackage';
-    if(!source.includes(importLine)){
-      source=source.replace(/^(package\\s+[^\\n]+)/m,'$1\\n\\n'+importLine);
-    }
-    if(!source.includes('add(GoWorkoutHealthConnectPackage())')){
+    if(!source.includes('GoWorkoutHealthConnectModule(reactContext)')){
       const marker='PackageList(this).packages.apply {';
       if(!source.includes(marker)){
         throw new Error('Go Workout Health Connect could not find the React package list in MainApplication.kt');
       }
-      source=source.replace(marker,marker+'\n              add(GoWorkoutHealthConnectPackage())');
+      const registration=[
+        marker,
+        '              add(object : com.facebook.react.ReactPackage {',
+        '                override fun createNativeModules(reactContext: com.facebook.react.bridge.ReactApplicationContext): List<com.facebook.react.bridge.NativeModule> =',
+        '                  listOf('+targetHealthPackage+'.GoWorkoutHealthConnectModule(reactContext))',
+        '                override fun createViewManagers(reactContext: com.facebook.react.bridge.ReactApplicationContext): List<com.facebook.react.uimanager.ViewManager<*, *>> =',
+        '                  emptyList()',
+        '              })'
+      ].join('\n');
+      source=source.replace(marker,registration);
     }
     cfg.modResults.contents=source;
     return cfg;
@@ -126,14 +131,17 @@ import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
+import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.uimanager.ViewManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -231,7 +239,7 @@ class GoWorkoutHealthConnectModule(
       promise.reject("health_permission_busy", "A Health Connect permission request is already open.")
       return
     }
-    val activity = currentActivity
+    val activity = reactContext.getCurrentActivity()
     if (activity == null) {
       promise.reject("health_no_activity", "Go Workout must be open to request Health Connect permissions.")
       return
@@ -364,6 +372,16 @@ class GoWorkoutHealthConnectModule(
     }
   }
 }
+
+class GoWorkoutHealthConnectPackage : ReactPackage {
+  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
+    return listOf(GoWorkoutHealthConnectModule(reactContext))
+  }
+
+  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
+    return emptyList()
+  }
+}
 `;
 
 const rationaleSource=String.raw`package com.melanatedadventurers.app.health
@@ -384,24 +402,6 @@ class PermissionsRationaleActivity : Activity() {
   }
 }
 `;
-const packageSource=String.raw`package com.melanatedadventurers.app.health
-
-import com.facebook.react.ReactPackage
-import com.facebook.react.bridge.NativeModule
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.uimanager.ViewManager
-
-class GoWorkoutHealthConnectPackage : ReactPackage {
-  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-    return listOf(GoWorkoutHealthConnectModule(reactContext))
-  }
-
-  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-    return emptyList()
-  }
-}
-`;
-
 function withHealthSources(config){
   const targetHealthPackage=healthPackage(config);
   const targetScheme=appScheme(config);
@@ -413,7 +413,6 @@ function withHealthSources(config){
       .replaceAll('com.melanatedadventurers.app.health',targetHealthPackage)
       .replaceAll('melanatedadventurers://privacy-policy',targetScheme+'://privacy-policy');
     fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectModule.kt'),rewrite(moduleSource));
-    fs.writeFileSync(path.join(sourceDir,'GoWorkoutHealthConnectPackage.kt'),rewrite(packageSource));
     fs.writeFileSync(path.join(sourceDir,'PermissionsRationaleActivity.kt'),rewrite(rationaleSource));
     return cfg;
   }]);
