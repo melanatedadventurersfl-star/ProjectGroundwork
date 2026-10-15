@@ -23,14 +23,17 @@ type Props = {
   homeCity: string;
   homeState: string;
   coverUrl?: string | null;
+  nightImage?: string | null;
 };
 
-export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, coverUrl }: Props) {
+export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, coverUrl, nightImage }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const weatherTheme = weather ? normalizeWeather(weather.current.condition.text) : 'clear';
-  // Nights is a city-experience category, not a time-of-day setting.
+  // Nights includes city experiences throughout the day, not just evening events.
   const phase = dayPhaseFor(weather);
-  const background = coverUrl ? { uri: coverUrl } : mode === 'night' ? FALLBACK_CITY : backgroundFor(rank, weatherTheme, phase);
+  const background: ImageSourcePropType = mode === 'night'
+    ? nightImage ? { uri: nightImage } : coverUrl ? { uri: coverUrl } : FALLBACK_CITY
+    : coverUrl ? { uri: coverUrl } : backgroundFor(rank, weatherTheme, phase);
   const fallback = mode === 'night' ? FALLBACK_CITY : FALLBACK_NATURE;
   const source: ImageSourcePropType = imageFailed ? fallback : background;
   const accent = mode === 'night' ? '#E0B7F9' : rankThemes[rank].soft;
@@ -39,7 +42,7 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
   const temp = weather && Number.isFinite(weather.current.temp_f) ? Math.round(weather.current.temp_f) + '°' : null;
   const badgePreview = badges.slice(0, 3);
 
-  useEffect(() => { setImageFailed(false); }, [coverUrl, rank, mode, weatherTheme, phase]);
+  useEffect(() => { setImageFailed(false); }, [coverUrl, nightImage, rank, mode, weatherTheme, phase]);
 
   return (
     <View style={styles.wrapper}>
@@ -57,7 +60,7 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
         </Svg>
         <View style={styles.sceneBody}>
           <View style={styles.topRow}>
-            <Pressable onPress={() => router.push('/member/rank-progress')} accessibilityRole="button"
+            {mode === 'nature' ? <Pressable onPress={() => router.push('/member/rank-progress')} accessibilityRole="button"
               accessibilityLabel={'Open ' + rank + ' rank progress'} style={styles.rankCluster}>
               <RankEmblem rank={rank} size={65} />
               <View style={styles.rankTextGroup}>
@@ -65,7 +68,16 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
                 <Text style={[styles.rankText, { color: accent }]} numberOfLines={2}>{rank}</Text>
                 <Text style={styles.rankLink}>View progress →</Text>
               </View>
-            </Pressable>
+            </Pressable> :
+            <Pressable onPress={() => router.push({ pathname: '/(tabs)/explore', params: { mode: 'night' } })} accessibilityRole="button"
+              accessibilityLabel="Explore Night experiences" style={styles.rankCluster}>
+              <View style={styles.cityModeIcon}><AppIcon name="explore" color="#E6BCFA" size={28}/></View>
+              <View style={styles.rankTextGroup}>
+                <Text style={styles.smallLabel}>YOUR CITY WORLD</Text>
+                <Text style={[styles.rankText, { color: '#EDCCFA' }]}>GO Nights</Text>
+                <Text style={styles.rankLink}>Explore the city →</Text>
+              </View>
+            </Pressable>}
             <Pressable onPress={() => router.push('/member/weather')} accessibilityRole="button"
               accessibilityLabel={temp ? 'Weather: ' + temp + ', ' + weather?.current.condition.text : 'View local weather'}
               style={styles.weatherPill}>
@@ -78,7 +90,7 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
             </Pressable>
           </View>
           <View style={styles.bottom}>
-            <Text style={[styles.welcomeLabel, { color: accent }]}>GO MELANATED · YOUR TRAILHEAD</Text>
+            <Text style={[styles.welcomeLabel, { color: accent }]}>{mode === 'nature' ? 'GO MELANATED · NATURE TRAILHEAD' : 'GO MELANATED · NIGHTS TRAILHEAD'}</Text>
             <Text style={styles.hello} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.76}>
               {greeting + (displayName ? ', ' + displayName : '') + '.'}
             </Text>
@@ -118,6 +130,7 @@ const styles = StyleSheet.create({
   sceneBody: { flex: 1, minHeight: 239, paddingHorizontal: 15, paddingTop: 15, paddingBottom: 16, justifyContent: 'space-between' },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   rankCluster: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, minHeight: 72 },
+  cityModeIcon: { width: 62, height: 62, borderRadius: 18, backgroundColor: 'rgba(52,25,78,0.70)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(236,196,255,0.4)' },
   rankTextGroup: { flex: 1, minWidth: 0 },
   smallLabel: { color: '#F4EDDE', fontSize: 9, fontWeight: '900', letterSpacing: 0.75 },
   rankText: { fontSize: 15, fontWeight: '900', marginTop: 2 },
