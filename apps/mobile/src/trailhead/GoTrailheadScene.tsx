@@ -15,6 +15,7 @@ const FALLBACK_NIGHT = require('../../assets/trailhead/explorer/explorer_clear_n
 
 type Props = {
   displayName: string;
+  greeting: string;
   rank: RankName;
   badges: MemberBadge[];
   weather: WeatherForecast | null;
@@ -24,7 +25,7 @@ type Props = {
   coverUrl?: string | null;
 };
 
-export function GoTrailheadScene({ displayName, rank, badges, weather, mode, homeCity, homeState, coverUrl }: Props) {
+export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, coverUrl }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const weatherTheme = weather ? normalizeWeather(weather.current.condition.text) : 'clear';
   const phase = mode === 'night' ? 'night' : dayPhaseFor(weather);
@@ -78,7 +79,7 @@ export function GoTrailheadScene({ displayName, rank, badges, weather, mode, hom
           <View style={styles.bottom}>
             <Text style={[styles.welcomeLabel, { color: accent }]}>GO MELANATED · YOUR TRAILHEAD</Text>
             <Text style={styles.hello} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.76}>
-              {displayName ? 'Your world, ' + displayName + '.' : 'Your world starts here.'}
+              {greeting + (displayName ? ', ' + displayName : '') + '.'}
             </Text>
             <Text style={styles.description}>{mode === 'nature' ? 'Find your people. Make more memories.' : 'Your people. Your city. Your night.'}</Text>
           </View>
