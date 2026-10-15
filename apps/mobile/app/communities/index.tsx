@@ -5,6 +5,9 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getGroups, joinGroup, type CommunityGroup } from '../../src/community/api';
+import { useAuth } from '../../src/auth/AuthProvider';
+import { belongsInWorld } from '../../src/discovery/modeContent';
+import { useGoMode } from '../../src/discovery/useGoMode';
 import { communityOwnershipLabel, isPeopleCommunity } from '../../src/community/communityModel';
 import { getMemberBasecamp } from '../../src/member/api';
 
@@ -47,6 +50,9 @@ function CommunityCard({ group, joining, reason, onJoin }: { group: CommunityGro
 }
 
 export default function CommunitiesScreen() {
+  const { session } = useAuth();
+  const { mode, chooseMode } = useGoMode(session?.user.id);
+  const [showAll, setShowAll] = useState(false);
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
   const [query, setQuery] = useState('');
   const [homeCity, setHomeCity] = useState<string | null>(null);
@@ -67,14 +73,15 @@ export default function CommunitiesScreen() {
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  const joined = useMemo(() => groups.filter((group) => group.is_member), [groups]);
+  const worldGroups = useMemo(() => showAll ? groups : groups.filter(group => belongsInWorld(group, mode)), [groups, mode, showAll]);
+  const joined = useMemo(() => worldGroups.filter(group => group.is_member), [worldGroups]);
   const discover = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return groups
+    return worldGroups
       .filter((group) => !group.is_member)
       .filter((group) => !needle || `${group.name} ${group.description ?? ''} ${group.city ?? ''} ${group.state ?? ''}`.toLowerCase().includes(needle))
       .sort((a, b) => Number(nearby(b, homeCity, homeState)) - Number(nearby(a, homeCity, homeState)) || b.member_count - a.member_count);
-  }, [groups, query, homeCity, homeState]);
+  }, [worldGroups, query, homeCity, homeState]);
 
   const recommended = useMemo(() => discover.slice(0, 4), [discover]);
 
@@ -97,9 +104,20 @@ export default function CommunitiesScreen() {
       </View>
       {loading ? <View style={styles.center}><ActivityIndicator color={GOLD} /></View> : <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.searchWrap}><Ionicons name="search" size={18} color={MUTED} /><TextInput value={query} onChangeText={setQuery} placeholder="Search communities" placeholderTextColor="#758078" style={styles.searchInput} /></View>
+        <View style={styles.worldChoices}>
+          {(['nature', 'night', 'all'] as const).map(value =>
+            <Pressable key={value} accessibilityRole="button"
+              accessibilityState={{ selected: value === 'all' ? showAll : !showAll && mode === value }}
+              style={[styles.worldChoice, (value === 'all' ? showAll : !showAll && mode === value) && styles.worldChoiceActive]}
+              onPress={() => value === 'all' ? setShowAll(true) : (setShowAll(false), chooseMode(value))}>
+              <Text style={[styles.worldChoiceText, (value === 'all' ? showAll : !showAll && mode === value) && styles.worldChoiceTextActive]}>
+                {value === 'nature' ? '🌿 Nature' : value === 'night' ? '🌙 Night' : 'All'}
+              </Text>
+            </Pressable>)}
+        </View>
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Your Communities</Text><Text style={styles.sectionCopy}>The groups you belong to and can participate in.</Text></View>
-        {joined.length ? <View style={styles.list}>{joined.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}</View> : <View style={styles.empty}><Ionicons name="people-outline" size={23} color={GREEN} /><Text style={styles.emptyTitle}>You haven’t joined a community yet.</Text><Text style={styles.emptyCopy}>Communities are groups with people, ownership, and an ongoing purpose. Activity topics such as camping and hiking are handled as interests.</Text></View>}
+        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{showAll ? 'Your Communities' : mode === 'nature' ? 'Your Outdoor Communities' : 'Your City Communities'}</Text><Text style={styles.sectionCopy}>Joined groups that match this experience.</Text></View>
+        {joined.length ? <View style={styles.list}>{joined.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} onJoin={handleJoin} />)}</View> : <View style={styles.empty}><Ionicons name="people-outline" size={23} color={GREEN} /><Text style={styles.emptyTitle}>{showAll ? 'You haven’t joined a community yet.' : mode === 'nature' ? 'No outdoor communities joined yet.' : 'No city communities joined yet.'}</Text><Text style={styles.emptyCopy}>Browse groups below and join one to see its posts on your Trailhead.</Text></View>}
 
         {!query.trim() ? <><View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Recommended for You</Text><Text style={styles.sectionCopy}>Nearby groups and active communities appear first.</Text></View><View style={styles.list}>{recommended.length ? recommended.map((group) => <CommunityCard key={group.id} group={group} joining={joiningId === group.id} reason={nearby(group, homeCity, homeState) && homeCity ? `Near ${homeCity}` : `${group.member_count} members`} onJoin={handleJoin} />) : <Text style={styles.muted}>No additional communities are available right now.</Text>}</View></> : null}
 
@@ -111,6 +129,11 @@ export default function CommunitiesScreen() {
 }
 
 const styles = StyleSheet.create({
+  worldChoices: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 10 },
+  worldChoice: { flex: 1, borderRadius: 12, backgroundColor: '#28352D', minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  worldChoiceActive: { backgroundColor: '#D3BB84' },
+  worldChoiceText: { fontSize: 12, color: '#EBEEE6', fontWeight: '800' },
+  worldChoiceTextActive: { color: '#19251C' },
   safeArea: { flex: 1, backgroundColor: BG },
   flex: { flex: 1 },
   header: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: BORDER },
