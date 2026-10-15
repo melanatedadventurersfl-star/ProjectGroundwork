@@ -6,12 +6,12 @@ export function useGoMode(userId: string | undefined) {
   useEffect(() => {
     updateMode(getGoMode(userId ?? ''));
     return subscribeGoMode((updatedUserId, nextMode) => {
-      if (userId === updatedUserId) updateMode(nextMode);
+      if ((userId ?? '') === updatedUserId) updateMode(nextMode);
     });
   }, [userId]);
   const chooseMode = (nextMode: GoMode) => {
     updateMode(nextMode);
-    if (userId) setGoMode(userId, nextMode);
+    setGoMode(userId ?? '', nextMode);
   };
   return { mode, chooseMode };
 }
