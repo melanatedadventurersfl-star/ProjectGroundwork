@@ -261,7 +261,7 @@ export default function GoHome() {
     if (memberships.status === 'fulfilled') setGroups(memberships.value.filter(group => group.is_member));
     if (activity.status === 'fulfilled' && memberships.status === 'fulfilled') {
       const myGroups = new Set(memberships.value.filter(group => group.is_member).map(group => group.id));
-      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 3));
+      setPosts(activity.value.filter(post => myGroups.has(post.group_id || '') || (post.audience === 'everyone' && !post.group_id)).slice(0, 60));
     }
     if (bookings.status === 'fulfilled') setTrips(bookings.value);
     if (outings.status === 'fulfilled') setLocalEvents(outings.value);
@@ -391,6 +391,45 @@ export default function GoHome() {
         <AppIcon name="chevron-forward" color={MUTED} size={18}/>
       </Pressable>}
     </View>;
+    if (section === 'trail' && mode === 'night') return <View key="trail" style={styles.sectionBlock}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionLabelStack}>
+          <Text style={[styles.overlineGold, { color: '#765298' }]}>YOUR CITY LIFE</Text>
+          <Text style={styles.sectionTitle}>Your nights out</Text>
+        </View>
+        <Pressable accessibilityRole="button" onPress={() => goDiscover('night')}>
+          <Text style={styles.seeAll}>City events →</Text>
+        </Pressable>
+      </View>
+      {upcomingRsvps.length ? upcomingRsvps.slice(0, 3).map(event =>
+        <Pressable key={event.id} style={styles.cityPlanCard} accessibilityRole="button"
+          accessibilityLabel={'Open upcoming city outing ' + event.title}
+          onPress={() => router.push({ pathname: '/local-events/[id]', params: { id: event.id } })}>
+          {event.image_url ? <Image source={{ uri: event.image_url }} style={styles.cityPlanImage}/> :
+            <View style={styles.cityPlanIcon}><AppIcon name="calendar" color="#68438F" size={23}/></View>}
+          <View style={styles.flex}>
+            <Text style={styles.cityPlanLabel}>YOU'RE GOING · {dateLabel(event.starts_at)}</Text>
+            <Text style={styles.cityPlanTitle} numberOfLines={1}>{event.title}</Text>
+            <Text style={styles.cityPlanMeta} numberOfLines={1}>{event.city}, {event.state}</Text>
+          </View>
+          <AppIcon name="chevron-forward" color="#77588B" size={19}/>
+        </Pressable>) :
+        <Pressable accessibilityRole="button" style={styles.cityEmpty}
+          onPress={() => goDiscover('night')}>
+          <AppIcon name="calendar" color="#7B54A1" size={27}/>
+          <View style={styles.flex}>
+            <Text style={styles.cityPlanTitle}>No city outings on your calendar yet</Text>
+            <Text style={styles.cityPlanMeta}>Find music, food, art, and social experiences.</Text>
+            <Text style={styles.cityPlanLink}>Explore Night experiences →</Text>
+          </View>
+        </Pressable>}
+      <Pressable accessibilityRole="button" style={styles.universalLink}
+        onPress={() => router.push('/member/journey')}>
+        <AppIcon name="trail" color="#755893" size={18}/>
+        <Text style={styles.universalText}>All your memories stay in Your Trail</Text>
+        <AppIcon name="chevron-forward" color="#755893" size={16}/>
+      </Pressable>
+    </View>;
     if (section === 'trail') {
       const story = journey.find(item => item.adventure_id === latestTrail?.adventureId) ?? recentJourney;
       const nextLabel = nextMilestone ? `${nextMilestone - journey.length} more to your next chapter` : 'Your story keeps growing';
@@ -506,6 +545,18 @@ export default function GoHome() {
         <Text style={styles.editText}>{editing ? 'Done' : 'Customize'}</Text>
       </Pressable>
     </View>
+    <View style={styles.worldActions}>
+      <Pressable accessibilityRole="button" style={[styles.worldAction, mode === 'night' && styles.nightAction]}
+        onPress={() => mode === 'nature' ? router.push('/trail-guide') : goDiscover('night')}>
+        <AppIcon name={mode === 'nature' ? 'guide' : 'explore'} color={primary} size={19}/>
+        <Text style={[styles.worldActionText, { color: primary }]}>{mode === 'nature' ? 'Trail Guide' : 'Explore Night'}</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" style={[styles.worldAction, mode === 'night' && styles.nightAction]}
+        onPress={() => mode === 'nature' ? router.push('/member/badges') : goDiscover('night', 'music')}>
+        <AppIcon name={mode === 'nature' ? 'badge' : 'calendar'} color={primary} size={19}/>
+        <Text style={[styles.worldActionText, { color: primary }]}>{mode === 'nature' ? 'My badges' : 'Music & events'}</Text>
+      </Pressable>
+    </View>
     <View style={styles.quickTiles}>
       <Pressable accessibilityRole="button" accessibilityLabel="Your Circle. Open your communities"
         style={[styles.quickTile, styles.quickCircle]} onPress={() => router.push('/communities')}>
@@ -514,10 +565,10 @@ export default function GoHome() {
         <View style={styles.quickTileInner}>
           <View style={styles.quickTop}>
             <AppIcon name="community" color="#BEF4A4" size={23}/>
-            <Text style={styles.quickOverline}>YOUR PEOPLE</Text>
+            <Text style={styles.quickOverline}>{mode === 'nature' ? 'OUTDOOR CREW' : 'CITY CIRCLE'}</Text>
           </View>
           <View>
-            <Text style={styles.quickTileTitle}>Your Circle</Text>
+            <Text style={styles.quickTileTitle}>{mode === 'nature' ? 'Your Circle' : 'City Circle'}</Text>
             <Text style={styles.quickTileCopy}>{modeGroups.length ? modeGroups.length + (modeGroups.length === 1 ? ' community joined' : ' communities joined') : mode === 'nature' ? 'Find outdoor groups' : 'Find your city people'}</Text>
           </View>
           <View style={styles.quickBottom}>
@@ -532,26 +583,30 @@ export default function GoHome() {
           </View>
         </View>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Your Trail. Open your adventure memories"
-        style={[styles.quickTile, styles.quickTrail]} onPress={() => router.push('/member/journey')}>
-        {latestTrail ? <Image source={{ uri: latestTrail.uri }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
-        {latestTrail && <PhotoShade id="goHomeTrail" gentle/>}
+      <Pressable accessibilityRole="button" accessibilityLabel={mode === 'nature' ? 'Your Trail. Open your adventure memories' : 'Your city plans'}
+        style={[styles.quickTile, styles.quickTrail]} onPress={() => mode === 'nature' ? router.push('/member/journey')
+          : nextRsvp ? router.push({ pathname: '/local-events/[id]', params: { id: nextRsvp.id } })
+          : modeTrips.some(trip => activeBooking(trip, now)) ? router.push('/member/trips') : goDiscover('night')}>
+        {mode === 'night' && (nextRsvp?.image_url ?? myItems.find(item => item.image)?.image) ?
+          <Image source={{ uri: (nextRsvp?.image_url ?? myItems.find(item => item.image)?.image)! }} resizeMode="cover" style={styles.quickTilePhoto}/> :
+          mode === 'nature' && latestTrail ? <Image source={{ uri: latestTrail.uri }} resizeMode="cover" style={styles.quickTilePhoto}/> : <ContourLines/>}
+        {(mode === 'night' && (nextRsvp?.image_url || myItems.some(item => item.image))) || (mode === 'nature' && latestTrail) ? <PhotoShade id="goHomeTrail" gentle/> : null}
         <View style={styles.quickTileInner}>
           <View style={styles.quickTop}>
-            <AppIcon name="stamp" color={latestTrail ? '#F3DFAD' : '#4E6F50'} size={23}/>
-            <Text style={[styles.quickOverline, !latestTrail && styles.quickTrailOverline]}>YOUR STORY</Text>
+            <AppIcon name={mode === 'nature' ? 'stamp' : 'calendar'} color={mode === 'night' || latestTrail ? '#F3DFAD' : '#4E6F50'} size={23}/>
+            <Text style={[styles.quickOverline, mode === 'nature' && !latestTrail && styles.quickTrailOverline]}>{mode === 'nature' ? 'YOUR STORY' : 'YOUR CITY LIFE'}</Text>
           </View>
           <View>
-            <Text style={[styles.quickTileTitle, !latestTrail && styles.quickTrailTitle]}>Your Trail</Text>
+            <Text style={[styles.quickTileTitle, mode === 'nature' && !latestTrail && styles.quickTrailTitle]}>{mode === 'nature' ? 'Your Trail' : 'City Plans'}</Text>
             <Text style={[styles.quickTileCopy, !latestTrail && styles.quickTrailCopy]}>
-              {session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
+              {mode === 'night' ? upcomingRsvps.length + modeTrips.filter(trip => activeBooking(trip, now)).length + ' upcoming plans' : session && journey.length ? journey.length + (journey.length === 1 ? ' adventure remembered' : ' adventures remembered') : 'Your first chapter awaits'}
             </Text>
           </View>
           <View style={styles.quickBottom}>
-            <Text style={[styles.quickMilestone, !latestTrail && styles.quickTrailMilestone]}>
-              {nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
+            <Text style={[styles.quickMilestone, mode === 'nature' && !latestTrail && styles.quickTrailMilestone]}>
+              {mode === 'night' ? (nextRsvp ? dateLabel(nextRsvp.starts_at) + ' · ' + nextRsvp.city : 'Find your next city experience') : nextMilestone && journey.length ? nextMilestone - journey.length + ' to your next milestone' : 'Your outdoor life, remembered'}
             </Text>
-            <AppIcon name="chevron-forward" color={latestTrail ? '#FFF4E0' : '#405C45'} size={16}/>
+            <AppIcon name="chevron-forward" color={mode === 'night' || latestTrail ? '#FFF4E0' : '#405C45'} size={16}/>
           </View>
         </View>
       </Pressable>
@@ -621,6 +676,20 @@ const styles = StyleSheet.create({
   homeLabel: { color: '#74817A', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
   editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 9 },
   editText: { color: '#315A46', fontSize: 12, fontWeight: '800' },
+  worldActions: { flexDirection: 'row', gap: 9, marginTop: 10 },
+  worldAction: { flex: 1, minHeight: 43, backgroundColor: '#E6F1E5', borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', gap: 7, alignItems: 'center' },
+  nightAction: { backgroundColor: '#EBDEF6' },
+  worldActionText: { fontSize: 12, fontWeight: '900' },
+  cityPlanCard: { minHeight: 82, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cityPlanImage: { width: 74, height: 62, borderRadius: 11 },
+  cityPlanIcon: { width: 68, height: 62, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EBDFF3' },
+  cityPlanLabel: { fontSize: 9, color: '#7C549A', fontWeight: '900', letterSpacing: 0.7 },
+  cityPlanTitle: { color: INK, fontWeight: '900', fontSize: 13, marginTop: 3 },
+  cityPlanMeta: { color: MUTED, fontSize: 11, marginTop: 3 },
+  cityPlanLink: { color: '#7046A1', fontSize: 11, marginTop: 7, fontWeight: '900' },
+  cityEmpty: { flexDirection: 'row', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, alignItems: 'center' },
+  universalLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1E8F7', borderRadius: 14, minHeight: 46, padding: 12, gap: 9 },
+  universalText: { color: '#684582', fontWeight: '800', fontSize: 11, flex: 1 },
   quickTiles: { flexDirection: 'row', gap: 10, marginTop: 3, alignItems: 'stretch' },
   quickTile: { flex: 1, minWidth: 0, minHeight: 164, borderRadius: 18, overflow: 'hidden', justifyContent: 'flex-end' },
   quickCircle: { backgroundColor: '#163F2B' },
