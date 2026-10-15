@@ -206,6 +206,9 @@ export default function GoHome() {
     setMood(null);
     setSections(HOME_SECTIONS);
     if (!session?.user.id) return () => { active = false; };
+    void Storage.getItem('go-home-mood:v1:' + session.user.id + ':' + mode).then(value => {
+      if (active && (value === 'recharge' || value === 'people' || value === 'move' || value === 'curious')) setMood(value);
+    }).catch(() => {});
     void Storage.getItem(sectionKey(session.user.id, mode)).then(value => {
       if (active && value) {
         try { setSections(validSections(JSON.parse(value))); } catch { setSections(HOME_SECTIONS); }
@@ -478,7 +481,11 @@ export default function GoHome() {
           <Text style={styles.moodTitle}>What sounds good today?</Text></View>
         <View style={styles.moodRow}>{modeMoodOptions.map(option =>
           <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: mood === option.id }}
-            onPress={() => setMood(current => current === option.id ? null : option.id)}
+            onPress={() => {
+              const chosen = mood === option.id ? null : option.id;
+              setMood(chosen);
+              if (session?.user.id) void Storage.setItem('go-home-mood:v1:' + session.user.id + ':' + mode, chosen ?? '').catch(() => {});
+            }}
             style={[styles.moodChip, mood === option.id && { borderColor: primary, backgroundColor: mode === 'nature' ? '#D8EEDB' : '#EDE0F6' }]}>
             <Text style={styles.moodChipText}>{option.icon + ' ' + option.label}</Text>
           </Pressable>)}</View>
@@ -527,7 +534,8 @@ export default function GoHome() {
       </Pressable>)}</View>
     <GoTrailheadScene displayName={memberName} greeting={greetingFor(new Date(now).getHours())}
       rank={effectiveRank} badges={memberBadges} weather={localWeather}
-      homeCity={profile.city} homeState={profile.state} coverUrl={profile.coverUrl} mode={mode}/>
+      homeCity={profile.city} homeState={profile.state} coverUrl={profile.coverUrl}
+      nightImage={nightPhoto} mode={mode}/>
     <Pressable accessibilityRole="button" style={styles.nextAdventure}
       onPress={() => actionOuting ? router.push({ pathname: '/local-events/[id]', params: { id: actionOuting.id } }) : actionTrip ? router.push({ pathname: '/adventures/[id]', params: { id: actionTrip.id } }) : goDiscover(mode)}>
       <View style={styles.nextIcon}><AppIcon name={isLive ? 'map' : hasBooking ? 'calendar' : 'explore'} color={primary} size={21}/></View>
@@ -538,6 +546,17 @@ export default function GoHome() {
       </View>
       <AppIcon name="chevron-forward" size={21} color={primary}/>
     </Pressable>
+    {mode === 'night' && !loading && modeGroups.length === 0 && !upcomingRsvps.length && !myItems.length &&
+      <View style={styles.nightWelcome}>
+        <View style={styles.nightWelcomeIcon}><AppIcon name="sparkles" color="#E3C0F7" size={24}/></View>
+        <View style={styles.flex}>
+          <Text style={styles.nightWelcomeTitle}>Welcome to your city world</Text>
+          <Text style={styles.nightWelcomeCopy}>Night brings together music, art, dining, and social experiences. Your city community appears here when you join one.</Text>
+          <Pressable accessibilityRole="button" onPress={() => goDiscover('night')}>
+            <Text style={styles.nightWelcomeLink}>Explore city experiences →</Text>
+          </Pressable>
+        </View>
+      </View>}
     {loading && <ActivityIndicator color={primary} style={styles.loading}/>}
     {error && <Text style={styles.error}>{error}</Text>}
     <View style={styles.personalizeRow}><Text style={styles.homeLabel}>YOUR WORLD</Text>
@@ -676,6 +695,11 @@ const styles = StyleSheet.create({
   homeLabel: { color: '#74817A', fontWeight: '900', fontSize: 10, letterSpacing: 1.4 },
   editButton: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 7, paddingHorizontal: 9 },
   editText: { color: '#315A46', fontSize: 12, fontWeight: '800' },
+  nightWelcome: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#2A1E43', borderRadius: 16, padding: 16, marginTop: 12 },
+  nightWelcomeIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#493464', justifyContent: 'center', alignItems: 'center' },
+  nightWelcomeTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
+  nightWelcomeCopy: { color: '#E6D9F0', fontSize: 12, marginTop: 5, lineHeight: 18 },
+  nightWelcomeLink: { color: '#D7A9F7', fontSize: 12, fontWeight: '900', marginTop: 9 },
   worldActions: { flexDirection: 'row', gap: 9, marginTop: 10 },
   worldAction: { flex: 1, minHeight: 43, backgroundColor: '#E6F1E5', borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', gap: 7, alignItems: 'center' },
   nightAction: { backgroundColor: '#EBDEF6' },
