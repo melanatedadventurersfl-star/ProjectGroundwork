@@ -24,7 +24,7 @@ const PURPLE = '#C891F5';
 const INK = '#0E1716';
 const MUTED = '#65706D';
 const DEFAULT_NATURE = require('../../assets/trailhead-banners/explorer-clear-morning.jpg');
-const DEFAULT_NIGHT = require('../../assets/trailhead-banners/adventurer-evening.jpg');
+const DEFAULT_NIGHT = require('../../assets/onboarding/onboarding-people.jpg');
 
 /** Keep actual photography visible at the top, with legible copy below. */
 function PhotoShade({ id, night = false, gentle = false }: { id: string; night?: boolean; gentle?: boolean }) {
@@ -118,6 +118,18 @@ const MOODS: { id: AdventureMood; label: string; icon: string; search: string }[
   { id: 'move', label: 'Get moving', icon: '🥾', search: 'hiking' },
   { id: 'curious', label: 'Try something new', icon: '✨', search: '' },
 ];
+const CITY_MOODS: { id: AdventureMood; label: string; icon: string; search: string }[] = [
+  { id: 'recharge', label: 'Take it easy', icon: '☕', search: 'coffee' },
+  { id: 'people', label: 'Meet people', icon: '🤝', search: 'social' },
+  { id: 'move', label: 'Explore on foot', icon: '🚶', search: 'walk' },
+  { id: 'curious', label: 'Discover culture', icon: '🎨', search: 'museum' },
+];
+const CITY_MOOD_TERMS: Record<AdventureMood, RegExp> = {
+  recharge: /coffee|brunch|relax|food|museum/i,
+  people: /social|meet|connect|community|coffee|comedy|brunch|food/i,
+  move: /walk|market|gallery|explor|tour|fitness/i,
+  curious: /gallery|art|museum|culture|maker|workshop|volunteer|history/i,
+};
 const MOOD_TERMS: Record<AdventureMood, RegExp> = {
   recharge: /park|spring|garden|beach|wellness|relax|picnic|nature|scenic|water/i,
   people: /group|social|meet|community|music|festival|gather|camp|brunch/i,
@@ -297,16 +309,17 @@ export default function GoHome() {
   const needsReflection = Number.isFinite(recentAt) && now - recentAt < 14 * 86400000
     && now - recentAt >= 0 && recentJourney?.photo_count === 0;
   const savedCategories = useMemo(() => new Set(items.filter(item => item.saved).map(item => item.category.toLowerCase())), [items]);
+  const moodOptions = mode === 'nature' ? MOODS : CITY_MOODS;
   const suggestions = useMemo(() => {
     const related = myItems.filter(item => {
       if (!mood) return true;
-      return MOOD_TERMS[mood].test(item.title + ' ' + item.category + ' ' + item.description + ' ' + item.tags.join(' '));
+      return (mode === 'nature' ? MOOD_TERMS : CITY_MOOD_TERMS)[mood].test(item.title + ' ' + item.category + ' ' + item.description + ' ' + item.tags.join(' '));
     });
     return [...related].sort((a, b) =>
       Number(savedCategories.has(b.category.toLowerCase())) - Number(savedCategories.has(a.category.toLowerCase()))
       || Number(b.featured) - Number(a.featured)
       || Date.parse(a.startsAt) - Date.parse(b.startsAt)).slice(0, 4);
-  }, [myItems, mood, savedCategories]);
+  }, [myItems, mood, savedCategories, mode]);
 
   const updateSaved = (id: string, saved: boolean) =>
     setItems(current => current.map(item => item.id === id && item.source === 'adventure' ? { ...item, saved } : item));
@@ -400,7 +413,7 @@ export default function GoHome() {
       <View style={styles.moodPanel}>
         <View style={styles.moodHead}><AppIcon name="sparkles" color={primary} size={20}/>
           <Text style={styles.moodTitle}>What sounds good today?</Text></View>
-        <View style={styles.moodRow}>{MOODS.map(option =>
+        <View style={styles.moodRow}>{moodOptions.map(option =>
           <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: mood === option.id }}
             onPress={() => setMood(current => current === option.id ? null : option.id)}
             style={[styles.moodChip, mood === option.id && { borderColor: primary, backgroundColor: mode === 'nature' ? '#D8EEDB' : '#EDE0F6' }]}>
@@ -410,7 +423,7 @@ export default function GoHome() {
       {!!suggestions.length && <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
         {suggestions.map(item => <ExperienceCard key={item.source + ':' + item.id} item={item} width={cardWidth} onSavedChange={updateSaved}/>)}
       </ScrollView>}
-      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? MOODS.find(value => value.id === mood)?.search : undefined)}>
+      {!suggestions.length && <Pressable style={styles.empty} onPress={() => goDiscover(mode, mood ? moodOptions.find(value => value.id === mood)?.search : undefined)}>
         <Text style={styles.emptyTitle}>Nothing matching that mood is listed yet.</Text>
         <Text style={styles.muted}>Browse more experiences in Discover →</Text>
       </Pressable>}
