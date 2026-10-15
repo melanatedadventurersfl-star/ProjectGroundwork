@@ -28,7 +28,8 @@ type Props = {
 export function GoTrailheadScene({ displayName, greeting, rank, badges, weather, mode, homeCity, homeState, coverUrl }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const weatherTheme = weather ? normalizeWeather(weather.current.condition.text) : 'clear';
-  const phase = mode === 'night' ? 'night' : dayPhaseFor(weather);
+  // Nights is a city-experience category, not a time-of-day setting.
+  const phase = dayPhaseFor(weather);
   const background = coverUrl ? { uri: coverUrl } : backgroundFor(rank, weatherTheme, phase);
   const fallback = mode === 'night' ? FALLBACK_NIGHT : FALLBACK_NATURE;
   const source: ImageSourcePropType = imageFailed ? fallback : background;
