@@ -24,5 +24,13 @@ export function belongsInWorld(group: Pick<CommunityGroup, 'name' | 'description
 export function postsForWorld(posts: CommunityPost[], joinedGroups: CommunityGroup[], mode: DiscoveryMode) {
   const relevantIds = new Set(joinedGroups.filter(group => belongsInWorld(group, mode)).map(group => group.id));
   // Global activity is shared. Group activity needs an actual membership and a matching world.
-  return posts.filter(post => post.group_id ? relevantIds.has(post.group_id) : post.audience === 'everyone');
+  return posts.filter(post => {
+    if (post.group_id) return relevantIds.has(post.group_id);
+    if (post.audience !== 'everyone') return false;
+    const world = post.metadata?.world ?? post.metadata?.mode;
+    if (world === 'nature' || world === 'night') return world === mode;
+    // Older public updates without a world label belong to the original outdoor feed.
+    // Never present them as city content unless explicitly marked shared.
+    return world === 'shared' || mode === 'nature';
+  });
 }
