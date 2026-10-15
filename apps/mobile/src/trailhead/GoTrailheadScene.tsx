@@ -11,7 +11,7 @@ import type { WeatherForecast } from '../weather/api';
 import { backgroundFor, dayPhaseFor, glyph, normalizeWeather, rankThemes } from './trailheadBannerConfig';
 
 const FALLBACK_NATURE = require('../../assets/trailhead/explorer/explorer_clear_afternoon.png');
-const FALLBACK_NIGHT = require('../../assets/trailhead/explorer/explorer_clear_night.png');
+const FALLBACK_CITY = require('../../assets/onboarding/onboarding-people.jpg');
 
 type Props = {
   displayName: string;
@@ -30,8 +30,8 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
   const weatherTheme = weather ? normalizeWeather(weather.current.condition.text) : 'clear';
   // Nights is a city-experience category, not a time-of-day setting.
   const phase = dayPhaseFor(weather);
-  const background = coverUrl ? { uri: coverUrl } : backgroundFor(rank, weatherTheme, phase);
-  const fallback = mode === 'night' ? FALLBACK_NIGHT : FALLBACK_NATURE;
+  const background = coverUrl ? { uri: coverUrl } : mode === 'night' ? FALLBACK_CITY : backgroundFor(rank, weatherTheme, phase);
+  const fallback = mode === 'night' ? FALLBACK_CITY : FALLBACK_NATURE;
   const source: ImageSourcePropType = imageFailed ? fallback : background;
   const accent = mode === 'night' ? '#E0B7F9' : rankThemes[rank].soft;
   const homeLocation = [homeCity, homeState].filter(Boolean).join(', ');
@@ -82,7 +82,7 @@ export function GoTrailheadScene({ displayName, greeting, rank, badges, weather,
             <Text style={styles.hello} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.76}>
               {greeting + (displayName ? ', ' + displayName : '') + '.'}
             </Text>
-            <Text style={styles.description}>{mode === 'nature' ? 'Find your people. Make more memories.' : 'Your people. Your city. Your night.'}</Text>
+            <Text style={styles.description}>{mode === 'nature' ? 'Find your people. Make more memories.' : 'Your people. Your city. Your next experience.'}</Text>
           </View>
         </View>
       </View>
