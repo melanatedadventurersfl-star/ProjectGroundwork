@@ -129,7 +129,7 @@ function preferredName(profileName: string, username: string, metadataName: stri
   const local = (email.split('@')[0] ?? '').toLowerCase();
   const candidates = [profileName, metadataName, username];
   const name = candidates.find(value => value.trim() && !value.includes('@') && value.toLowerCase() !== local);
-  return name ? name.trim().split(/\s+/)[0] : '';
+  return name ? (name.trim().split(/\s+/)[0] ?? '') : '';
 }
 function daysUntil(value: string) {
   return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 86400000));
