@@ -52,6 +52,12 @@ const EXAMPLES: DemoDefinition[] = [
     weekday: 6, hour: 13, minute: 30, priceLabel: 'Free', tags: ['gallery', 'art', 'afternoon'],
   },
   {
+    id: 'demo-nights-photo-walk', title: 'Historic Neighborhood Photo Walk',
+    description: 'Explore architecture, street scenes, and hidden corners together on an easy city walk.',
+    category: 'City Walking & Photography', neighborhood: 'Springfield', duration: '90 minutes',
+    weekday: 0, hour: 15, priceLabel: 'Free', tags: ['walk', 'history', 'afternoon'],
+  },
+  {
     id: 'demo-nights-museum', title: 'Museum & Culture Afternoon',
     description: 'An easygoing museum meetup with time to explore exhibits together and talk over coffee afterward.',
     category: 'Museum & Culture', neighborhood: 'Downtown Jacksonville', duration: '2 hours',
